@@ -24,7 +24,7 @@ export function createProductionTelegramIO() {
   const log = row => appendFileSync(join(directory, 'telegram.jsonl'), `${JSON.stringify(row)}\n`);
   let polls = 0;
   const port = { invoke(input) {
-    if (input.method === 'getMe') return { kind: 'identity', identity: { id: 8820318295 } };
+    if (input.method === 'getMe') return { kind: 'identity', identity: { id: 12345678 } };
     if (input.method === 'getUpdates') {
       if (process.env.INSTAR_PREVIEW_CUTOVER_ROLE === 'canary') {
         log({ kind: 'poll', outcome: 'held', role: 'canary', offset: input.body.offset });

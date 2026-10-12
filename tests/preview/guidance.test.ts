@@ -162,7 +162,13 @@ describe('P14-NF-73/75: real reviewer outputs on recorded answer packets, this b
         jev: async () => { throw Error('already at the recorded contextual review'); },
         reserveEscalation: () => true, elapsedMs: () => 0, record: () => {},
         escalate: async (reply, _id, original, rules) => {
-          const context = JSON.parse(replyReviewContext(original!, reply, rules));
+          const review = prepareJournalEnvelope({ id: `${recorded.id}:reply-review`,
+            question: replyReviewQuestion(rules ?? []), context: replyReviewContext(original!, reply, rules) },
+          sample.model, 'grant:offline-replay', recorded.at);
+          const messages = JSON.parse(review).messages as { role: string; content: string }[];
+          expect(messages.find(message => message.role === 'user')!.content)
+            .toContain('Prioritize verdicts; do not repeat rules or context.');
+          const context = JSON.parse(messages.find(message => message.role === 'context')!.content).packet;
           expect(context.sources.map((source: { id: string }) => source.id))
             .toEqual(['purpose:purpose', 'purpose:coherency', 'rules:87', 'capability-note']);
           expect(context.candidateReply).toBe(candidate);
@@ -185,7 +191,12 @@ describe('P14-NF-73/75: real reviewer outputs on recorded answer packets, this b
       const prompt = prepareJournalEnvelope({ id: row.id, question: 'Review the recorded candidate.',
         context: JSON.stringify({ sources, audience: { surface: journalAudience({ bot: '8994258214', chat: forum ? '-1001234' : '7654321', operator: '7654321', ...(forum ? { forum: true } : {}) }) }, history: [] }) },
       'claude-sonnet-5', 'grant:offline-replay', 1790762566638);
-      const context = JSON.parse(replyReviewContext(prompt, row.raw));
+      const review = prepareJournalEnvelope({ id: `${row.id}:reply-review`, question: replyReviewQuestion([]),
+        context: replyReviewContext(prompt, row.raw) }, 'claude-sonnet-5', 'grant:offline-replay', 1790762566638);
+      const messages = JSON.parse(review).messages as { role: string; content: string }[];
+      expect(messages.find(message => message.role === 'user')!.content)
+        .toContain('Prioritize verdicts; do not repeat rules or context.');
+      const context = JSON.parse(messages.find(message => message.role === 'context')!.content).packet;
       expect(context.sources.map((source: { id: string }) => source.id))
         .toEqual(['purpose:purpose', 'purpose:coherency', 'rules:87', 'capability-note']);
       expect(context.candidateReply).toBe(row.raw);

@@ -1,9 +1,10 @@
 // Rules 78 and 84: the running agent's capability briefing is the register's generated
 // inventory, delivered at every grounding boundary, and is not maintained by hand.
+import { createHash } from 'node:crypto';
 import { expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { CAPABILITY_BRIEFING_PATH, CAPABILITY_LAUNCHER, capabilityBriefing, sourcePacket, SOURCE_PINS, SOURCE_EXCERPTS, SELF_IDENTITY, SIGN_OFF } from './briefing.js';
+import { CAPABILITY_BRIEFING_PATH, CAPABILITY_LAUNCHER, capabilityBriefing, sourcePacket, SOURCE_PINS, SOURCE_EXCERPTS, SELF_IDENTITY, SIGN_OFF, capabilitySentence, CAPABILITY_SENTENCE_LABEL } from './briefing.js';
 
 type Feature = { id: string; status: string; availability: string; userFacing: boolean; text: string | null };
 const generated = JSON.parse(readFileSync(CAPABILITY_BRIEFING_PATH, 'utf8')) as { generation: string; commit: string; launchers: Record<string, Feature[]> };
@@ -108,7 +109,8 @@ it('briefs the installation identity with and without the generated register, pr
     const read = available ? (path: string) => readFileSync(path, 'utf8') : () => { throw Error('absent'); };
     const { text } = capabilityBriefing(read, { ...limits, tools });
     expect(text).toContain(SELF_IDENTITY);
-    expect(text).toContain(SIGN_OFF);
+    if (!tools) expect(text).toContain(SIGN_OFF);
+    expect(text).toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools }));
     expect(text).toContain("You are an Instar 2.0 agent");
     expect(text).not.toMatch(/PREVIEW trial|This trial|Justin/u);
     expect(text).toContain(`at most ${limits.providerAttempts} model attempts, ending at epoch ms ${limits.expiresAt}`);
@@ -116,9 +118,35 @@ it('briefs the installation identity with and without the generated register, pr
     expect(text).toContain('Production safeguards are incomplete.');
     if (tools) {
       expect(text).not.toContain('You have no tools');
-      expect(text).toContain('standing grants need no new approval');
-      expect(text).toContain("doorway\'s four tests");
+      expect(text).toContain('Standing grants need no new approval');
+      expect(text).toContain("doorway's four checks");
     } else expect(text).toMatch(/no tools/u);
     expect(text.includes('capability briefing is unavailable')).toBe(!available);
+  }
+});
+
+// Both sides of each runtime choice: the rendered line follows the record, including
+// unknown MCP state and an absent generated feature inventory, without inventing access.
+it('pins the rendered tools/outbound sentence to each turn’s actual capability record', () => {
+  const read = (path: string) => readFileSync(path, 'utf8');
+  for (const tools of [false, true]) for (const mcp of [undefined, 0, 2]) {
+    const limits = { providerAttempts: 16, expiresAt: 1791232800000, tools, ...(mcp === undefined ? {} : { mcp }) };
+    const note = sourcePacket(read, SOURCE_PINS, limits).sources.find(source => source.id === 'capability-note')!;
+    const sentence = capabilitySentence(limits);
+    expect(note.text.split(CAPABILITY_SENTENCE_LABEL)).toHaveLength(2);
+    expect(note.text).toContain(CAPABILITY_SENTENCE_LABEL + sentence);
+    expect(note.provenance.renderedCapabilitySha256).toBe('sha256:' + createHash('sha256').update(sentence).digest('hex'));
+    expect(capabilityBriefing(() => { throw Error('missing'); }, limits).text).toContain(CAPABILITY_SENTENCE_LABEL + sentence);
+    if (tools) {
+      expect(sentence).toContain('files, shell, web reads, nested subagents');
+      expect(sentence).toContain('reversibility, resource limits, granted scope, sensitivity');
+      for (const condition of ['above the level', 'cannot be undone and falls outside', 'speaks publicly', 'widens the agent', 'marked sensitive'])
+        expect(sentence).toContain(condition);
+      expect(sentence).toContain(mcp === undefined ? 'MCP servers: unknown' : mcp === 0 ? 'no MCP server' : '2 MCP server(s)');
+      expect(sentence.includes('no logged-in account access')).toBe(mcp === 0);
+    } else {
+      expect(sentence).toContain('no tools');
+      expect(sentence).not.toContain('I can use');
+    }
   }
 });

@@ -130,11 +130,10 @@ it('keeps the always-sent prompt parts inside what the measured floor allows, wi
   expect(PREVIEW_FIXED_PROMPT_BYTES).toBeLessThanOrEqual(floor - replyReviewReserveFor(floor));
   // The reserve is sized from what the review really needs, so the review of THIS turn -- with a candidate
   // reply at the send path's own bound -- fits in the room the reserve sets aside. Keep measuring
-  // both envelopes: the composed train-6 delta is 6624 after shortening the review guidance, so
-  // the older 5132 measurement is not room we can
-  // reassign. The unchanged reserve is 4096 reply-bound bytes plus 2540 review-only bytes.
+  // both envelopes, retaining at least 40 bytes of maintenance margin. Shortening answer-only
+  // instructions increases this delta even when the review text stays unchanged. The unchanged reserve is 4096 reply-bound bytes plus 2540 review-only bytes.
   expect(measured.reviewTotal).not.toBeNull();
-  expect(measured.reviewTotal! - measured.answerTotal!).toBeLessThanOrEqual(replyReviewReserveFor(floor));
+  expect(measured.reviewTotal! - measured.answerTotal!).toBeLessThanOrEqual(replyReviewReserveFor(floor) - 40);
   expect(measured.reviewTotal! - measured.answerTotal!)
     .toBeLessThanOrEqual(PREVIEW_REPLY_BOUND_BYTES + REPLY_REVIEW_FIXED_BYTES);
   // Both halves of the reserve are real, not padding: a review with a bound-length reply needs more than
@@ -142,7 +141,7 @@ it('keeps the always-sent prompt parts inside what the measured floor allows, wi
   expect(measured.reviewTotal! - measured.answerTotal!).toBeGreaterThan(REPLY_REVIEW_FIXED_BYTES);
   // A summary step for that same turn also fits, so a conversation can be compacted at the floor.
   expect(measured.summaryTotal).not.toBeNull();
-  expect(measured.summaryTotal!).toBeLessThanOrEqual(floor - replyReviewReserveFor(floor));
+  expect(measured.summaryTotal!).toBeLessThanOrEqual(floor - replyReviewReserveFor(floor) - 40);
   // The default is admissible: at or above the floor, and within the approved live bound.
   expect(PREVIEW_MIN_SERVABLE_CONTEXT_BYTES).toBeLessThanOrEqual(PREVIEW_LIVE_LIMITS.contextBytes);
   expect(unservableContextReason(PREVIEW_LIVE_LIMITS.contextBytes)).toBeNull();

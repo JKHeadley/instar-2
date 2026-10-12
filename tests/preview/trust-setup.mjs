@@ -1,7 +1,8 @@
 // Operator setup for the existing effect doorway. This records authority; it never infers it.
-import { readFileSync, writeFileSync, renameSync, mkdirSync, openSync, closeSync, fsyncSync } from 'node:fs';
+import { readFileSync, renameSync, mkdirSync, openSync, closeSync, fsyncSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
+import { publishSetupRecord } from '../../scripts/onboarding-state.mjs';
 import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY } from './effect-doorway.mjs';
 import { readRootMcp } from './tool-turn.mjs';
 
@@ -30,7 +31,8 @@ export function setupTrustPolicy(request) {
       approves: ['scope', 'resources'], resourceLevelUsd: request.resourceLevelUsd,
       source: request.source, custodian: request.custodian, recovery: effect.recovery });
   }
-  return decodeEffectPolicy({ ...DEFAULT_EFFECT_POLICY, ...(request.role ? { role: request.role } : {}), policySensitive: request.policySensitive ?? [], registered, grants });
+  return decodeEffectPolicy({ ...DEFAULT_EFFECT_POLICY, ...(request.role ? { role: request.role } : {}), policySensitive: request.policySensitive ?? [], registered, grants,
+    ...(request.onboarding ? { onboarding: request.onboarding } : {}) });
 }
 
 /** Credentials enter through the vault, never through setup input. Environment values are references only. */
@@ -52,8 +54,8 @@ function read(path) {
   catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 }
 function durableWrite(path, value) {
-  const fd = openSync(path, 'wx', 0o600);
-  try { writeFileSync(fd, `${JSON.stringify(value, null, 2)}\n`); fsyncSync(fd); } finally { closeSync(fd); }
+  const installed = publishSetupRecord(path, value);
+  if (!same(installed, value)) throw Error('setup record already has different operator choices');
 }
 function replace(path, value) {
   const temporary = `${path}.trust-next`;
@@ -68,6 +70,13 @@ export function configureTrust(root, action, request) {
   if (!['setup', 'revise', 'tighten', 'revoke'].includes(action)) throw Error('choose setup, revise, tighten or revoke');
   const oldRawPolicy = read(policyPath), oldPolicy = oldRawPolicy === null ? null : decodeEffectPolicy(oldRawPolicy), oldMcp = read(mcpPath);
   const policy = action === 'revoke' ? { ...DEFAULT_EFFECT_POLICY } : { ...setupTrustPolicy(request) };
+  // Initial agent identity and monthly choice survive later grant edits. They do not
+  // authorize effects: revoke still removes all grants and the agreed active role.
+  if (oldPolicy?.onboarding) {
+    if (request?.onboarding && !same(request.onboarding, oldPolicy.onboarding))
+      throw Error('standing trust edits cannot replace the onboarding identity or monthly spending choice');
+    policy.onboarding = oldPolicy.onboarding;
+  }
   const mcp = action === 'revoke' ? { mcpServers: {}, reads: [] } : { ...setupMcp(request.mcp),
     operatorGrant: { source: request.source, custodian: request.custodian, recovery: request.recovery } };
   if (action === 'setup') {

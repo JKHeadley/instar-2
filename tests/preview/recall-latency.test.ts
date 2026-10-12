@@ -143,6 +143,12 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     expect(historical.memoryDecision).toContain('mode:"remember"');
     historical.memoryDecision = 'Return memory:[] unless the verified operator corrects, forgets or sets reply style. '
       + recordedGuide.slice(recordedGuide.indexOf('Each memory item'));
+    // Restore only the reviewed recall-prose trim, keeping the historical hash
+    // and every unrelated packet byte fixed. The current instruction still binds exact evidence.
+    expect(historical.capability).toContain('For recall, state a remembered detail only when the offered journal evidence supports that exact detail');
+    historical.capability = (historical.capability as string).replace(
+      /Summary covers earlier turns;.*?Cite sourceLabel; disclose unknown sources\./u,
+      "Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say \"I don't know from this journal\", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown.");
     const historicalText = JSON.stringify(historical);
     const withoutLookup = JSON.parse(historicalText) as Record<string, unknown>;
     expect(withoutLookup.memoryLookup).toBe('offered');

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CLAIM_SCOPED_RULES, DECLARED_OBLIGATIONS_GUIDE, exciseNamedClaims, namedClaimsIn, parseReplyReviewVerdict, quotedSpans,
   replyReviewQuestion, substantiveReply, type ReplyRule } from './reply-check.js';
-import { SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { SOURCE_PINS, sourcePacket, CAPABILITY_SENTENCE_LABEL, capabilitySentence, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 import { taskFields } from './answer-reading.js';
 import { governingConstraints, OBLIGATION_DECISION_TOOLS, previewCapabilities, TOOL_ATTEMPTS_MEANING } from './journal.js';
 
@@ -73,7 +73,7 @@ it('the guide distinguishes describing a listed limit from declining asked work,
   expect(sources.find(source => source.id === 'capability-note')!.text).toContain('Nothing unlisted is available: no tools, browsing');
   const tools = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
     { providerAttempts: 1, expiresAt: 1, tools: true }).sources.find(source => source.id === 'capability-note')!.text;
-  expect(tools).toContain(`- ${TOOLS_BRIEFING}`);
+  expect(tools).toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true }));
   expect(tools).toContain(TOOLS_LIMITS);
 });
 
@@ -103,12 +103,19 @@ it('on the tools route the review packet is route-true, and the same two sides h
       .replace("via the doorway's four tests on operator grant.",
         "via the doorway's four tests; standing grants need no new approval."), input).toContain(`- ${toolsBriefing(0)}`);
     // Plan #491 and #510 changed the answer-slot wording after capture; the October 10 budget repair then shortened
-    // requested reasons and bounded the whole response. Translate those exact historical instructions only:
+    // requested reasons and bounded the whole response; revdelta then compacted equivalent review prose.
+    // Translate those exact historical instructions only:
     // every rule, guide and packet line must still match. reply-review-budget.test.ts replays the new budget's real call.
     const content = envelopeOf(input).messages[0]!.content;
     if (input.startsWith('review-r2-')) expect(content
       .replace('Return inside conclusion.value exactly one line for every listed rule and no other rule, each of the form rule_id: PASS | short reason or rule_id: VIOLATION | short reason, with each reason under 300 characters; put any longer reasoning in reason.value.',
-        'Give every listed rule, and no other rule, one verdict "PASS | short reason" or "VIOLATION | short reason", with each reason under 160 characters. Keep reasoning under 400 characters and the entire JSON response under 4000 characters so every verdict fits the existing output allowance. Allocate the response to the verdicts, without repeating the rules or context.')
+        'Give each listed rule, and no others, one verdict "PASS | short reason" or "VIOLATION | short reason", with each reason under 160 characters. Keep reasoning under 400 characters and all JSON under 4000 so every verdict fits the output allowance. Prioritize verdicts; do not repeat rules or context.')
+      .replace('an illustrative or quoted literal explicitly requested or supplied by the verified operator is not a breach merely because it appears in the reply.',
+        'an illustrative or quoted literal the verified operator explicitly requested or supplied is not itself a breach.')
+      .replace('and every live authentication secret that reaches anyone other than the verified operator who supplied it in this same private chat.',
+        'and any live authentication secret reaching anyone but the verified operator who supplied it in this private chat.')
+      .replace('PASS means the reply does not breach the rule; VIOLATION means it does, and its reason names the breach.',
+        'PASS means no breach; VIOLATION means a breach, named in its reason.')
       .replace('A reason that finds no breach belongs on a PASS line. No other text.', `A reason that finds no breach belongs on a PASS verdict. ${taskFields('{rule_id: its verdict, one field for each listed rule, named by that rule id}')}`), input).toBe(replyReviewQuestion(flagged));
     else expect(content, input).not.toContain('in no broader terms');
   }

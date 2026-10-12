@@ -58,7 +58,7 @@ it('P9-PREVIEW-startup P9-PREVIEW-store-agreements P9-PREVIEW-journal-restore P9
   // The optional step observer is off in this launch: it is never run and never counted.
   expect(plans).not.toContain('step-check-reached');
   const byPlan = new Map(log.proofs.map(row => [row.plan, row]));
-  expect(byPlan.get('startup')).toMatchObject({ disposition: 'passed', observed: { identity: 8820318295, stepCheck: false } });
+  expect(byPlan.get('startup')).toMatchObject({ disposition: 'passed', observed: { identity: 12345678, stepCheck: false } });
   expect(byPlan.get('journal-restore')).toMatchObject({ disposition: 'passed', observed: { restored: true, differing: null } });
   expect(byPlan.get('reply-delivered')).toMatchObject({ disposition: 'passed' });
   for (const plan of ['telegram-identity', 'reply-drain', 'reply-review-reached']) expect(byPlan.get(plan).disposition, plan).toBe('passed');
