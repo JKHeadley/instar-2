@@ -254,6 +254,8 @@ export const createProductionTelegramIO = () => ({ invoke(input) {
 }, 180_000);
 
 it('keeps a tool turn\'s always-sent parts inside the same measured floor (Part Thirteen §9, docs/17-harness-adapters)', async () => {
+  // Regression: the approved Rule 87 progress sentence must not displace governingConstraints.
+  // Keep the complete capability note and shorten repeated instructions within the unchanged floor.
   // The tool briefing line replaces the no-tools line at no more bytes, so the packet ladder keeps the whole
   // always-sent shape at the floor. The tool system prompt is longer than the conversation one (measured:
   // SYSTEM_GROWTH below); the tool route's room is max(maxBytes, the policy's 32768), so at the floor the
