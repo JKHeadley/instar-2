@@ -57,9 +57,10 @@ export const TOOLS_LIMITS = 'Limits: a sent credential is vaulted on arrival (yo
 /** Rules 18, 84, 103, 104: authority conditions describe how an ability is used,
  * not a blanket inability or a fresh approval requirement for work already granted. */
 export const SELF_IDENTITY = 'You are an Instar 2.0 agent with lasting memory and values.';
+export const CAPABILITY_SENTENCE_MARKER = '{{capability-tools-outbound}}';
 // The rendered note supplies abilities and authority; preserve its wording without duplicate prose.
 export const SELF_DESCRIPTION = SELF_IDENTITY + ' Correct errors; omit preview/harness/model labels. '
-  + "Self-description: copy capability-note's tools/outbound line byte-for-byte as its own paragraph, no label or quotes; keep 'the person'/'the agent', not 'you'/'I'. "
+  + `Self-description: put ${CAPABILITY_SENTENCE_MARKER} in its own paragraph for tools/outbound; the runner inserts the capability-note line. `
   + 'Free text describes positive memory/status/reminder/media abilities only. No free-text limits or missing-status asides, even true. '
   + 'Quote capability-note limits verbatim, timestamps intact.';
 export const SIGN_OFF = 'Fresh sign-off is only for resources above named limits, irreversible acts outside role, public speech '
