@@ -33,7 +33,7 @@ function client(fetcher: (url: string, init: RequestInit) => Promise<unknown>, e
     sha256: (body: string) => createHash('sha256').update(body).digest('hex'),
     typesafeKey: () => 'TEST-only', observeJev: () => {}, recordModelCall: () => {}, fetch: fetcher, ...extras,
   }) as (judgment: string, text: string, questions: object, timeout?: number, occurrence?: string) => ReturnType<ReplyCheckPorts['jev']>;
-  return { timeouts, jev: (text: string, questions = jevQuestions, timeout?: number, occurrence?: string) =>
+  return { call, timeouts, jev: (text: string, questions = jevQuestions, timeout?: number, occurrence?: string) =>
     call('jev-reply-check', text, questions, timeout, occurrence) };
 }
 
@@ -190,4 +190,17 @@ it('spends only the remaining reply deadline and does not retry after it expires
   });
   expect(result).toEqual({ outcome: 'unavailable', path: 'jev' });
   expect(retries).toBe(0); expect(reviews).toBe(0); expect(rows[0]?.cause).toBe('timeout');
+});
+
+
+it('keeps summary admission outside its original provider timeout and adds no reply retry', async () => {
+  vi.useFakeTimers(); let release!: () => void, calls = 0;
+  const transport = client(async () => { calls++; return new Response(passBody); }, {
+    requireGroupDisclosure: () => new Promise<void>(resolve => { release = resolve; }),
+  });
+  const pending = transport.call('jev-summary-integrity', 'summary', jevQuestions);
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(calls).toBe(0); expect(transport.timeouts).toEqual([]);
+  release(); await pending;
+  expect(calls).toBe(1); expect(transport.timeouts).toEqual([2000]);
 });

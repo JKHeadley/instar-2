@@ -1777,6 +1777,14 @@ async function main() {
       return result;
     };
     const callJev = async (judgment, state, questions, timeoutMs = 2000, occurrence) => {
+      const admit = async () => {
+        await requireGroupDisclosure(journal.view);
+        assertLiveJudgment(judgment, 'typesafe-jev');
+        if (shared !== null && !await peerHolds()) throw Error('preview: Jev unavailable');
+      };
+      const replyCheck = judgment === 'jev-reply-check';
+      // Other Jev consumers retain their existing post-admission timeout; only replies get the short whole-call bound.
+      if (!replyCheck) await admit();
       const start = performance.now();
       const signal = AbortSignal.timeout(Math.max(1, Math.min(2000, Math.floor(timeoutMs))));
       const failure = cause => Object.assign(Error('preview: Jev unavailable'), { jevCause: cause });
@@ -1786,9 +1794,7 @@ async function main() {
         signal.addEventListener('abort', onAbort, { once: true });
       });
       const exchange = async () => {
-        await requireGroupDisclosure(journal.view);
-        assertLiveJudgment(judgment, 'typesafe-jev');
-        if (shared !== null && !await peerHolds()) throw failure('other');
+        if (replyCheck) await admit();
         // Admission may complete after our caller timed out. It must never dispatch a late request.
         if (signal.aborted) throw failure('timeout');
         const body = JSON.stringify({ state, model: JEV_MODEL, questions });
