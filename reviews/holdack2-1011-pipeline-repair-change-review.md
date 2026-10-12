@@ -15,7 +15,7 @@ Undo and recovery: Revert the repair and regenerate owner manifests and register
 Multi-machine posture: Same deterministic briefing composition and replay assertions on each machine. No new state or ownership path.
 Layer below: Read sourcePacket, envelope encoding, fixed-prompt floor, budget ladder, current capability note, recorded summary/review fixtures and the self-description capture. Assertion exceptions in provider callbacks explain the apparent no-call failures.
 Bug class: integration
-Bug evidence: reproducer=tests/preview/default-context-floor.test.ts and tests/preview/summary-cascade-stall.test.ts reproduce the failed budget and swallowed replay assertion; targeted repaired executions recorded in the absolute repair PROGRESS.
+Bug evidence: reproducer=tests/preview/summary-cascade-stall.test.ts
 Hook bypass: none
 Convergence: none
 Prompt review: Preserve the exact approved Rule 87 and every capability and effect checkpoint. Compact repeated self-description prose; identity remains in both trusted instructions and the capability note. Replay authentic writer uncertainty, Jev undecided, stronger review, delivered and empty reply shapes with unchanged raw bytes. The historical self-description capture is compared after only its explicit instruction-paragraph substitution; no fresh model-output claim.
