@@ -27,7 +27,9 @@ Prompt finding: 6af48f94b789 | protocol-literal | Existing grant/tool guidance r
 Prompt finding: 95e349aaf4ac | protocol-literal | Existing grant/tool guidance retained; historical fixture comparison, not a new phrase gate — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "via the doorway's four tests; standing grants need no new approval."
 Prompt finding: b00ed403060a | protocol-literal | Existing grant/tool guidance retained; historical fixture comparison, not a new phrase gate — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
 
-Subject (5 paths): tests/preview/briefing.ts, tests/preview/capnote-telegram.test.ts, tests/preview/fixtures/capnote-telegram-2026-10-12.json, tests/preview/group-carry.test.ts, tests/preview/selfdesc-abilities.test.ts
+Subject (12 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/briefing.ts, tests/preview/capnote-telegram.test.ts, tests/preview/fixtures/capnote-telegram-2026-10-12.json, tests/preview/group-carry.test.ts, tests/preview/selfdesc-abilities.test.ts
+
+Generated evidence: Regenerated with node scripts/build-register.mjs --commit 54c24662867f8d7a3a5df2f2b4c60f71f221f536; feature declarations and availability remain unchanged.
 
 ## Closing block
 
