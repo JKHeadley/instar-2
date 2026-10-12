@@ -14,8 +14,8 @@ Side effects: The supported certificate now matches the composition containing t
 Undo and recovery: Revert with the source composition it certified and regenerate publication; reverting only the digest correctly fails architecture lint. Retain both contract runs as evidence.
 Multi-machine posture: Shared declaration certifies the exact Darwin / Node executable and composition bytes tested here. It claims no new platform or remote authority; runtime state is unchanged.
 Layer below: Inspected compositionClosure and compositionDigest, currentRuntime executable hashing, selfHostCompositionEvidence and the adapter certificate consumer. The existing native contract builds, tests and installs a local capability through owner admissions and confinement, then exercises stop, failed charges and bounded launch readiness.
-Bug class: integration
-Bug evidence: reproducer=tests/preview/native-harness-contract.test.ts
+Bug class: none
+Bug evidence: none; declaration evidence refresh, not a runtime defect. The unchanged tests/preview/native-harness-contract.test.ts passed its native build/install case before the certificate update; its certificate assertion failed before and passed after. Both run logs are retained in the repair PROGRESS record.
 Hook bypass: none; checked core.hooksPath (unset) and common hooks directory (samples only).
 Convergence: none
 
