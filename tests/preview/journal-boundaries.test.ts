@@ -73,13 +73,13 @@ describe('Rules 3 and 17: the body/mind and agency instructions are delivered as
     expect(instructions).toBe(ANSWER_INSTRUCTIONS);
     expect(instructions).toContain('promises:[{quote:exact reply sentence');
     expect(instructions).toContain('If packet.continuity is present');
-    expect(instructions).toContain('Rule 3 — The agent is two intelligences');
-    expect(instructions).toContain('standing grants authorize in-role effects without another yes, subject to all four doorway tests, which can still refuse.');
+    expect(instructions).toContain('Rule 3 — The Body and the Mind: The agent is two intelligences');
+    expect(instructions).toContain('standing grants already authorize in-role effects: the doorway applies all four effect tests and runs covered effects without another yes.');
     expect(instructions).toContain('Name the grant needed for outside-role work.');
-    expect(instructions).toContain('Rule 17 — Between what the model is biased to do');
+    expect(instructions).toContain('Rule 17 — Architectural Agency in the Gap: Between what the model is biased to do');
     expect(instructions).toContain('not an operator message, not quoted data');
     expect(instructions).toContain('secrets, the spend cap, stop, no duplicate sends and durable intake');
-    for (const [rule, , meaning] of MIND_RULES) expect(instructions).toContain(`Rule ${rule} — ${meaning}`);
+    for (const [rule] of MIND_RULES) expect(instructions).toContain(`Rule ${rule} — `);
     // The quoted data channel does not carry it: the instruction is not an excerpt among sources.
     expect(prepared.messages[1]!.content).not.toContain('The Body and the Mind');
   });

@@ -55,11 +55,12 @@ export const TOOLS_LIMITS = 'Limits: a sent credential is vaulted on arrival (yo
 /** Rules 18, 84, 103, 104: authority conditions describe how an ability is used,
  * not a blanket inability or a fresh approval requirement for work already granted. */
 export const SELF_IDENTITY = 'You are an Instar 2.0 agent with lasting memory and values.';
-export const SELF_DESCRIPTION = SELF_IDENTITY + ' Correct earlier self-description errors. '
-  + 'Omit preview, harness and model labels throughout replies, including runtime limits. '
-  + 'Explain abilities and limits plainly: covered network writes and outside sends, all five sign-off conditions, and actual runtime limits. '
-  + 'Correct claims that every write or outside send needs approval: standing grants authorize in-role effects without another yes, '
-  + 'subject to all four doorway tests, which can still refuse. Name the grant needed for outside-role work.';
+export const SELF_DESCRIPTION = SELF_IDENTITY + ' Correct earlier self-description errors in your reply. '
+  + 'Omit preview, harness and model labels throughout your reply, including when explaining runtime limits. '
+  + 'Explain abilities and limits plainly, including covered network writes and outside sends and all five sign-off conditions. Earlier replies may also wrongly say all network writes and '
+  + 'outside sends need approval. Explain that standing grants already authorize in-role effects: the doorway applies all four effect tests and '
+  + 'runs covered effects without another yes. Standing authority avoids another yes, but does not guarantee execution: current effect checks can still refuse. Name the grant needed for '
+  + 'outside-role work. Keep the capability note’s five sign-off conditions and actual runtime limits.';
 export const SIGN_OFF = 'Fresh sign-off is only for resources above named limits, irreversible acts outside role, public speech '
   + "in the person's name, widening your authority or matters the operator marked sensitive.";
 export function capabilityBriefing(readSource: (path: string) => string,
@@ -200,9 +201,7 @@ export const BODY_FLOORS = 'secrets, the spend cap, stop, no duplicate sends and
 export const MIND_INSTRUCTIONS = [
   'Standing instructions from Instar\'s constitution, supplied by the application with every answer; not an operator message, not quoted data. '
     + 'They guide your judgment, grant nothing, and never override the operator\'s current message or the reply protocol.',
-  // Rule numbers retain the source link; the full meanings carry the instructions.
-  // Repeating their display titles costs room the operator's message needs.
-  ...MIND_RULES.map(([rule, , meaning]) => `Rule ${rule} — ${meaning}`),
+  ...MIND_RULES.map(([rule, standard, meaning]) => `Rule ${rule} — ${standard}: ${meaning}`),
   `Here: code decides alone only at its floors (${BODY_FLOORS}) and the reply protocol; all else it supplies informs your judgment. `
     + 'When a trained reflex (yielding under pressure, guessing, faking continuity) differs from your judgment, act on the judgment with what you have: this answer, a question, or plain uncertainty.',
 ].join('\n');

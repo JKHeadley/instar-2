@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { ANSWER_INSTRUCTIONS, capabilityBriefing, MIND_RULES, SELF_DESCRIPTION, SELF_IDENTITY, SIGN_OFF, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, capabilityBriefing, SELF_DESCRIPTION, SELF_IDENTITY, SIGN_OFF, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 import { readAnswer } from './answer-reading.js';
 import { governingConstraints, previewCapabilities, settledConstraintWording, type BlockerNote, type JournalView } from './journal.js';
 
@@ -31,20 +31,6 @@ const currentNote = (text: string) => text
   .replace('A subscription model answers. ', '')
   .replace('Production safeguards are incomplete.', `Production safeguards are incomplete. ${SIGN_OFF}`);
 
-// Replay archived outputs against today's compact instructions without rewriting captures.
-// Only display titles and the separately asserted self-description paragraph changed;
-// all constitutional meanings, answer protocols, capabilities and captured judgments stay exact.
-const compactInstructions = (text: string, description: string) => {
-  expect(text.split('\n').filter(line => line === description)).toHaveLength(1);
-  let current = text.replace(description, SELF_DESCRIPTION);
-  for (const [rule, standard, meaning] of MIND_RULES) {
-    const row = `Rule ${rule} — ${standard}: ${meaning}`;
-    expect(current).toContain(row);
-    current = current.replace(row, `Rule ${rule} — ${meaning}`);
-  }
-  return current;
-};
-
 it('replays preswitch update 840342287 with current self-description and the unchanged K11 rubric and capability inventory', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-outward-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
@@ -52,7 +38,7 @@ it('replays preswitch update 840342287 with current self-description and the unc
   // This base retains its harness-specific tool label; no tool or authority changed.
   const restoreBaseToolLabel = (text: string) => currentNote(text.replace('tools: full built-in set', 'tools: full Claude Code set'));
   expect(restoreBaseToolLabel(capture.replayNote).replace(capture.replayNote.split('\n')[0], SELF_IDENTITY)).toBe(note);
-  expect(compactInstructions(capture.replayInstructions, capture.replayNote.split('\n')[0])).toBe(ANSWER_INSTRUCTIONS);
+  expect(capture.replayInstructions.replace(capture.replayNote.split('\n')[0], SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   // Translate identity/authority guidance and remove internal model framing; actual capabilities and limits stay intact.
   expect(restoreBaseToolLabel(capture.originalNote).split('\n').slice(1)).toEqual(note.split('\n').slice(1));
   const frame = JSON.parse(capture.replayStdout);
@@ -72,18 +58,12 @@ it('replays preswitch update 840342287 with current self-description and the unc
   expect(capture.replayJudge.verdict).toBe('PASS');
 });
 
-it('replays the repaired answer and reviewed identity and standing grants with compact instruction wording', () => {
+it('binds the repaired answer and its explicitly reviewed identity and standing grants to the final inputs', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/preview-prompt-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
   expect(capture.question).toBe('What can you do for me here?');
   expect(capture.note).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
-  const description = capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY));
-  expect(typeof description).toBe('string');
-  expect(compactInstructions(capture.instructions, description)).toBe(ANSWER_INSTRUCTIONS);
-  for (const clause of ['Correct earlier self-description errors.', 'Omit preview, harness and model labels',
-    'covered network writes and outside sends', 'all five sign-off conditions', 'actual runtime limits',
-    'standing grants authorize in-role effects without another yes', 'all four doorway tests, which can still refuse',
-    'Name the grant needed for outside-role work.']) expect(SELF_DESCRIPTION).toContain(clause);
+  expect(capture.instructions).toBe(ANSWER_INSTRUCTIONS);
   expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   const reading = readAnswer(capture.raw, { wrapped: 'accept' });
   expect(reading.ok).toBe(true);
