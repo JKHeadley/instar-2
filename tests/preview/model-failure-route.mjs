@@ -1,3 +1,4 @@
+export { createSubscriptionVersionCheck } from '../../src/assembly/production-provider.js';
 // Isolated live probe only. The loader substitutes this route for the journal
 // launcher; it never calls a provider or exposes the prepared prompt.
 export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,

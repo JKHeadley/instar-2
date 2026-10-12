@@ -58,7 +58,7 @@ export function observedSubscriptionIO(physicalIO, policy, operation, append,
       const phase = JSON.stringify(command.args) === '["--version"]' ? 'version'
         : JSON.stringify(command.args) === '["auth","status","--json"]' ? 'auth' : null;
       const start = clock.elapsed(); let failed = false;
-      try { return await physicalIO.execute(command); }
+      try { const result = await physicalIO.execute(command); failed = result.limited || result.code !== 0; return result; }
       catch (error) { failed = true; throw error; }
       finally { if (phase) recordPhaseTiming(append, operation, phase,
         { elapsedMs: Math.max(0, Math.round(clock.elapsed() - start)), failed }, clock.at()); }

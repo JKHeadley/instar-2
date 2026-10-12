@@ -22,6 +22,16 @@ Decision: speedtrace-a-observations | Add content-free phase observations throug
 Decision: speedtrace-a-boundaries | Capture physical-send phases at the host invoke boundary and observe each CLI preflight in the existing physical IO wrapper; a model result remains its separate call-outcome. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speedtrace-1012-PROGRESS.md
 Prompt review: No prompt, model-output parsing or semantic accept/escalate/refuse decision changes. Existing captured acknowledgement timing replay remains part of validation; synthetic slow-path neighbors test only phase attribution.
 
+Prompt finding: 034c5250da92 | protocol-literal | Standing-grant description in the unchanged capability protocol; this unit changes only version-check reuse.
+Prompt finding: 45e37ea2e9e9 | protocol-literal | Unchanged capability protocol describing existing workspace/public-read grants; no new permission or phrase-dependent decision.
+Prompt finding: 6af48f94b789 | protocol-literal | Unchanged capability protocol describes the existing outward-send boundary; this unit preserves that boundary.
+Prompt finding: b00ed403060a | protocol-literal | Unchanged capability protocol states current grant checks; repeated fixture coverage is not an implementation answer target.
+Prompt finding: b1bb3946362d | protocol-literal | Unchanged conversation system-role literal identifies the agent, independently of fixture questions.
+Prompt finding: 450c79237a95 | protocol-literal | Unchanged ambiguity-handling protocol applies across memory questions; the cache does not modify prompts or acceptance.
+Prompt finding: 849db3a6296a | protocol-literal | Existing deterministic empty-memory result is also recognized for durable replay; timing frames do not modify that protocol.
+Prompt finding: bd01de21286a | protocol-literal | Existing citation protocol requires sourceLabel evidence; timing observations do not change packet guidance.
+Prompt finding: fb5fa7e706c8 | protocol-literal | Existing memory-evidence protocol is independent of test answers and remains byte-identical.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: add measurements to the existing diagnostic journal and physical IO wrapper, with injected-clock tests. No worker, polling loop, transport retry or audience cache policy is added. Existing authority, stop, spend, audience, ownership and durable-intent guards hold every effect. No live deployment or unattended production completion is claimed.

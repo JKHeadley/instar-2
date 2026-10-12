@@ -28,7 +28,8 @@ const artifactBytes = Buffer.from('offline executable bytes');
 const model = 'claude-offline-exact-1';
 /** Source for a substitute provider module: registers the doorway the launcher selects by default,
  * routed to the module's own `createClaudeCodeSubscriptionRoute`. */
-export const FIXTURE_DOORWAY = `import { SUBSCRIPTION_DOORWAYS } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
+export const FIXTURE_DOORWAY = `export { createSubscriptionVersionCheck } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
+import { SUBSCRIPTION_DOORWAYS } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
 export const DEFAULT_SUBSCRIPTION_DOORWAY = 'claude-code-subscription';
 export const subscriptionDoorway = id => {
   if (id !== DEFAULT_SUBSCRIPTION_DOORWAY) throw Error('subscription doorway ' + id + ' is not registered');

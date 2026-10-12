@@ -353,7 +353,7 @@ it('accepts the real 2.1.280 server policy only after the profile and activation
   const stamp = JSON.parse(serverPolicyFixture('policy-limits.json.stamp.json'));
   writeFileSync(join(profile.configDirectory, 'policy-limits.json.stamp.json'), JSON.stringify({ ...stamp, confirmed_at: stamp.confirmed_at + 1 }));
   expect((await renewedRoute.invoke('request', f.bounds)).state).toBe('complete');
-  expect(f.commands()).toHaveLength(6);
+  expect(f.commands()).toHaveLength(5); // version is reused; auth and model still run
 });
 
 const capturedPolicy = () => JSON.parse(serverPolicyFixture('policy-limits.json'));
