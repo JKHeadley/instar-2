@@ -578,7 +578,7 @@ const recordShape = (path, role, layer, outcome, shape) => {
     durablePreviewWrite(path, saved);
   } catch { /* a diagnostics write never changes a model outcome */ }
 };
-const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
+const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
   : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
 /** Rule 95, the fail direction of this consumer: may text around one complete Decision object be
  * discarded? The answer side says yes — the answer, a reply revision and the summary writer, which
@@ -602,7 +602,7 @@ const objectAnswerOf = id => /^summary:/u.test(id);
  * reply's held-class review is a reply review; the revision is the agent's own response to the
  * objections, with its own floor. A retrospective pass is its own judgment, and so is its duty follow-up
  * (`retrospective:N:duties`); its benchmark reruns (`retrospective:N:rerun:I`) replay an answer. */
-const judgmentOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review'
+const judgmentOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review'
   : id.endsWith(':reply-revision') ? 'reply-revision' : /^summary:.*:review$/u.test(id) ? 'summary-review'
   : /^summary:/u.test(id) ? 'summary' : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
 
@@ -2032,7 +2032,8 @@ async function main() {
 
           const reviewContext = replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id, wallNow()),
             credentialRegister());
-          const operationId = operation === 'revision' ? `${id}:revision-review` : `${id}:reply-review`;
+          const operationId = operation === 'acknowledgement' ? `${id}:held-notice-review`
+            : operation === 'revision' ? `${id}:revision-review` : `${id}:reply-review`;
           // Plan #491: the one format re-ask names the exact defect the reader found in this review's refused verdict.
           const defect = reviewDefects.get(operationId);
           const context = formatRetry ? withFormatReminder(reviewContext, defect ? `${REVIEW_FORMAT_REMINDER} The defect: ${defect}.`
@@ -2043,7 +2044,7 @@ async function main() {
           const prepared = modelEnvelope({ question, context, id: operationId, ...(writer ? { writer } : {}) });
           // A revised candidate's held-class review is its own operation; the worker journals its result row.
           // The revised text's review shares the loop's one deadline (ruling 2 budget).
-          const result = operation === 'revision' ? await invokeSubscription(prepared, operationId, undefined, deadlineAt)
+          const result = operation === 'revision' || operation === 'acknowledgement' ? await invokeSubscription(prepared, operationId, undefined, deadlineAt)
             : await invokeSubscription(prepared, operationId, id, deadlineAt);
           // A Decision-shape miss is a format miss like a malformed verdict line: the worker may re-ask it once.
           if (result.state === 'complete' && result.failureClass === 'malformed') {
@@ -2752,7 +2753,7 @@ async function main() {
         sourceEvidence: [selectedActivation.reference], terminalEvidence: selectedActivation.reference,
         strength: 'attestation', maxMetadataBytes: policy.maxMetadataBytes,
         maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
-      const work = operation.startsWith('summary:') ? 'maintenance' : operation.endsWith(':reply-review') ? 'review' : 'answer';
+      const work = operation.startsWith('summary:') ? 'maintenance' : operation.endsWith(':reply-review') || operation.endsWith(':held-notice-review') ? 'review' : 'answer';
       // A tool turn also ends on the journal's latched /stop and on tool-activation withdrawal: the resource
       // owner polls this every 25 ms and SIGKILLs the launch's own process group by its exact pid.
       const launchIO = createSubscriptionProviderIO({ repository: process.cwd(), runAs: runAsOf(selectedHarness),

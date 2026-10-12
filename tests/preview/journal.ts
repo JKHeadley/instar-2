@@ -386,6 +386,8 @@ export const replyBody = (turn: { intent?: string; continuity?: ContinuityAccoun
 /** The reply with the disclosure as its first sentence; strip the marker on older replies. */
 export const withDisclosure = (reply: string, disclosure: string) =>
   `${disclosure} ${reply.replace(/^PREVIEW — /u, '')}`;
+export const REPLY_ACKNOWLEDGEMENT_AFTER_MS = 8_000;
+export const REPLY_ACKNOWLEDGEMENT = "I'm working on your reply.";
 export const HELD_NOTICE_AFTER_MS = 600_000;
 /** Rule 95: every live gate of this runner and the way it fails when it cannot decide, chosen by who
  * bears the miss. `closed` gates are only the exact floors Rule 4 names (credential shape as its
@@ -1010,7 +1012,7 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 2;
+export const JOURNAL_GENERATION = 3;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -1026,7 +1028,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
 export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['group-carry', 'request-transfer', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
-  'held-notice-intent', 'held-notice-sent', 'hold', 'import', 'index-reserve', 'intake', 'intent',
+  'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
   'legacy-call', 'legacy-reply', 'limited-intent', 'limited-sent', 'lookup', 'meaning-index', 'media-claim', 'media-custody',
   'memory-undecided', 'minimal-outage', 'model-call', 'model-uncertain', 'notice', 'obligation-result',
   'obligation-start', 'operator-result-intent', 'operator-result-sent', 'operator-review',
@@ -1133,9 +1135,12 @@ export type JournalRecord =
   | { kind: 'status-answer'; id: string; text: string; prompt: string; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; latencyMs?: number; at: number }
   | { kind: 'notice'; id: string; noticeClass: 'unknown-answer' | 'too-long-input'; at: number }
+  // Non-additive: skipping this reservation would lose spend and the no-repeat fence.
+  | { kind: 'held-notice-review-reserve'; id: string; prompt: string; at: number }
+  | { kind: 'held-notice-review'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'held-notice-intent'; id: string; text: string; chat: string; thread?: number; update: number; grant: string;
     /** Other held messages in this conversation the one notice also answers; none gets a second push (P-14). */
-    covers?: string[]; provenance?: OutboundProvenance; at: number }
+    covers?: string[]; acknowledgement?: true; provenance?: OutboundProvenance; at: number }
   | { kind: 'held-notice-sent'; id: string; message: number; at: number }
 
   | { kind: 'reply-jev-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
@@ -1355,6 +1360,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   reminderDecided?: true; askConflict?: string; lastNamedPerson?: string;
 
 
+  heldNoticeReviewReserved?: true; heldNoticeReview?: ReplyCheckResult;
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
   answerMs?: number; sendMs?: number; answerReason?: string;
@@ -1926,6 +1932,7 @@ function verifyPendingEvidence(rows: JournalRecord[], view: JournalView): void {
       ...(turn.modelState === 'uncertain' ? ['model-uncertain'] : []),
       ...(turn.jevReserved ? ['reply-jev-reserve'] : []),
       ...(turn.reviewReserved ? ['reply-review-reserve'] : []),
+      ...(turn.heldNoticeReviewReserved ? ['held-notice-review-reserve'] : []),
       ...(turn.revisionReserved ? ['reply-revision-reserve'] : []),
       ...(turn.revisionReviewReserved ? ['reply-revision-review-reserve'] : []),
       ...(turn.intent !== undefined && turn.groupedInto === undefined ? ['intent'] : []), ...(turn.held !== undefined ? ['hold'] : [])];
@@ -2688,6 +2695,8 @@ export function unknownCallKeys(view: JournalView) {
   const reviews = [...view.order.filter(turn => turn.reviewReserved && turn.reviewState !== 'complete' && turn.reviewState !== 'rejected'
     && !turn.replyChecks?.some(check => check.path === 'subscription' && (check.verdict === 'pass' || check.verdict === 'violation')))
     .map(turn => `reply-review:${turn.id}`),
+    ...view.order.filter(turn => turn.heldNoticeReviewReserved && turn.heldNoticeReview?.verdict !== 'pass'
+      && turn.heldNoticeReview?.verdict !== 'violation').map(turn => `held-notice-review:${turn.id}`),
     // A revised-text review stays UNKNOWN until it records a conclusive verdict.
     ...view.order.filter(turn => turn.revisionReviewReserved && turn.revisionReview?.verdict !== 'pass'
       && turn.revisionReview?.verdict !== 'violation').map(turn => `revision-review:${turn.id}`)];
@@ -2728,7 +2737,7 @@ export function capacityRefused(view: JournalView, row: JournalRecord): boolean 
     || (row.kind === 'intake' && row.reserve !== undefined && !view.turns.has(row.id) && view.order.length < view.limits.maxTurns)
     || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
     || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'index-reserve' || row.kind === 'reply-review-reserve'
-      || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry' || row.kind === 'lookup'
+      || row.kind === 'held-notice-review-reserve' || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry' || row.kind === 'lookup'
       || row.kind === 'answer-replace' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve' || row.kind === 'retro-duty-reserve')
       && view.calls >= view.limits.maxCalls)
     || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
@@ -2884,7 +2893,8 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
     : index ? row.role === 'summary' && view.indexOpen?.key === `index:${index[1]!}`
     : row.role === 'summary' ? !!summary && view.summaryReservations.has(Number(summary[1]))
     && (summary[2] === undefined || view.summaryReviews.has(Number(summary[1])))
-    : row.role === 'reply-review' ? row.id.endsWith(':reply-review') && !!view.turns.get(row.id.slice(0, -13))?.reviewReserved
+    : row.role === 'reply-review' ? row.id.endsWith(':held-notice-review') && !!view.turns.get(row.id.slice(0, -19))?.heldNoticeReviewReserved
+      || row.id.endsWith(':reply-review') && !!view.turns.get(row.id.slice(0, -13))?.reviewReserved
       || row.id.endsWith(':reply-revision') && !!view.turns.get(row.id.slice(0, -15))?.revisionReserved
       || row.id.endsWith(':revision-review') && !!view.turns.get(row.id.slice(0, -16))?.revisionReviewReserved
     : /^retrospective:\d+(?::rerun:\d+|:duties)?$/u.test(row.id) ? view.retroPasses.some(pass => pass.state === undefined
@@ -4166,17 +4176,39 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (row.part === parts.length + 1) settleDeliveredReply(view, turn, row.message, row.at);
     return;
   }
+  if (row.kind === 'held-notice-review-reserve') {
+    if (!turn.accepted || !operatorWriter(view, turn, true) || turn.requestedAction || turn.editOf
+      || !turn.reserved || turn.intent !== undefined || turn.heldNoticeIntent !== undefined
+      || turn.heldNoticeReviewReserved || view.calls >= view.limits.maxCalls - 1
+      || view.replies >= view.limits.maxReplies - 1 || !row.prompt)
+      throw Error('preview journal: acknowledgement review order or cap');
+    reserveTokens(view, `held-notice-review:${row.id}`, 'replyCheck', view.limits.maxBytes, subscriptionOutputMaximum);
+    turn.heldNoticeReviewReserved = true; view.calls++; return;
+  }
+  if (row.kind === 'held-notice-review') {
+    if (!turn.heldNoticeReviewReserved || turn.heldNoticeReview !== undefined || turn.intent !== undefined
+      || !['pass', 'violation', 'unavailable'].includes(row.result.verdict)
+      || row.result.candidateDigest !== createHash('sha256').update(REPLY_ACKNOWLEDGEMENT).digest('hex'))
+      throw Error('preview journal: acknowledgement review result order');
+    turn.heldNoticeReview = row.result;
+    if (row.result.verdict !== 'unavailable') settleTokens(view, `held-notice-review:${row.id}`, row.result.usage);
+    return;
+  }
   if (row.kind === 'held-notice-intent') {
     const lastNotice = lastHeldNoticeAt(view, row.id);
     const heldCount = view.order.filter(item => item.accepted && item.held !== undefined && item.intent === undefined).length;
     const legacyText = /^(?:PREVIEW — )?I'm holding my answer to your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$/u.test(row.text);
     const countedText = new RegExp(`^(?:PREVIEW — )?I'm holding ${heldCount} ${heldCount === 1 ? 'answer' : 'answers'}, including your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$`, 'u').test(row.text);
-    if (!turn.accepted || !heldNoticeReason(turn.held) || turn.heldSince === undefined
-      || row.at <= turn.heldSince + HELD_NOTICE_AFTER_MS || turn.intent !== undefined
+    const acknowledgement = row.acknowledgement === true;
+    if (acknowledgement && (!operatorWriter(view, turn, true) || turn.requestedAction || turn.editOf
+      || turn.heldNoticeReview?.verdict !== 'pass' || row.text !== REPLY_ACKNOWLEDGEMENT || row.covers !== undefined))
+      throw Error('preview journal: acknowledgement intent refused');
+    if (!turn.accepted || !acknowledgement && (!heldNoticeReason(turn.held) || turn.heldSince === undefined
+      || row.at <= turn.heldSince + HELD_NOTICE_AFTER_MS) || turn.intent !== undefined
       || turn.heldNoticeIntent !== undefined || view.replies >= view.limits.maxReplies
-      || !legacyText && row.at < lastNotice + HELD_NOTICE_WINDOW_MS
+      || !acknowledgement && !legacyText && row.at < lastNotice + HELD_NOTICE_WINDOW_MS
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
-      || row.grant !== view.genesis.grant || !(legacyText || countedText
+      || row.grant !== view.genesis.grant || !(acknowledgement || legacyText || countedText
         || turn.held === GROUP_DISCLOSURE_HOLD && row.text === GROUP_DISCLOSURE_HOLD_NOTICE || turn.requestedAction?.legacy === 'summary'
         && /^(?:PREVIEW — )?I'm holding the summary you asked for \(due [0-9-]{10} [0-2][0-9]:[0-5][0-9]\); it will follow or I'll tell you why$/u.test(row.text)))
       throw Error('preview journal: held notice intent order');
@@ -5434,6 +5466,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     } finally { rerankBatch = undefined; }
   };
 
+  let activeReply: { turn: Turn; prompt: string } | undefined;
+  let acknowledgementInFlight: Promise<void> | undefined;
   let working = false, workingSince = 0, ordinaryFailedSince: number | null = null;
   /** Every live send consumes its durable signed intent; a refusal or unknown outcome is recorded, never
    * retried. The one exception is the transport's own proof that it never made the network call: nothing
@@ -5452,8 +5486,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     const subject = { target, chat: input.chat, ...(input.thread === undefined ? {} : { thread: input.thread }), body: input.text };
     // The forum reply anchor comes from durable intake, not a model-selected message or another topic.
-    const sourceTurn = journal.view.genesis.forum && target.startsWith('reply:')
-      ? journal.view.turns.get(target.slice('reply:'.length)) : undefined;
+    const sourceTurn = target.startsWith('held-notice:') && input.expectedText === REPLY_ACKNOWLEDGEMENT
+      ? journal.view.turns.get(target.slice('held-notice:'.length))
+      : journal.view.genesis.forum && target.startsWith('reply:')
+        ? journal.view.turns.get(target.slice('reply:'.length)) : undefined;
     const replyTo = sourceTurn && sourceTurn.update === input.update && sourceTurn.thread === input.thread ? turnMessageId(sourceTurn) : null;
     let attempted: SendOutcome = { kind: 'unknown', reason: 'send port failed' };
     if (!journal.verifyOutbound(provenance, subject)) attempted = { kind: 'refused', reason: 'outbound provenance unsigned' };
@@ -7488,6 +7524,45 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       journal.append({ kind: 'action-due', id, items, ...(overflow.length ? { overflow } : {}), update, writer: writerRecord(scheduler), at: now });
     }
   };
+  /** Rule 87's in-reply clarification: one acknowledgement belongs to an active answer, never to a
+   * proactive status. The existing poll step checks elapsed time, including while tools run.
+   * Its review has its own durable reservation so neither a restart nor the final answer reuses it. */
+  const acknowledgeReply = (): Promise<void> => {
+    if (acknowledgementInFlight) return acknowledgementInFlight;
+    const active = activeReply, check = ports.replyCheck;
+    if (!active || !check || halted()) return Promise.resolve();
+    const { turn, prompt } = active;
+    if (!fromOperator(turn) || turn.requestedAction || turn.editOf || !turn.reserved || turn.intent !== undefined
+      || turn.heldNoticeIntent !== undefined || turn.heldNoticeCoveredBy !== undefined || turn.limited !== undefined
+      || turn.heldNoticeReviewReserved || turn.held !== undefined || outsideAllowance(journal.view, turn)
+      || ports.now() - turn.at < REPLY_ACKNOWLEDGEMENT_AFTER_MS
+      || journal.view.calls >= journal.view.limits.maxCalls - 1 || journal.view.replies >= journal.view.limits.maxReplies - 1)
+      return Promise.resolve();
+    const run = async () => {
+      const text = REPLY_ACKNOWLEDGEMENT, candidateDigest = createHash('sha256').update(text).digest('hex');
+      ports.checkOutbound(text);
+      const decision = await reviewReply(text, turn.id, { ...check, now: ports.now,
+        deadlineAt: ports.now() + REPLY_CHECK_BUDGET_MS,
+        escalate: (candidate, id, originalPrompt, rules, deadline) => check.escalate(candidate, id, originalPrompt, rules, deadline, 'acknowledgement'),
+        reserveEscalation: () => { gate(); journal.append({ kind: 'held-notice-review-reserve', id: turn.id, prompt, at: ports.now() }); return true; },
+        record: result => journal.append({ kind: 'held-notice-review', id: turn.id, result: { ...result, candidateDigest }, at: ports.now() }),
+      }, [], prompt);
+      if (decision.outcome !== 'pass' || halted() || turn.intent !== undefined || turn.held !== undefined
+        || turn.limited !== undefined || journal.view.replies >= journal.view.limits.maxReplies - 1) return;
+      const chat = journal.view.genesis.chat, thread = turn.thread === undefined ? {} : { thread: turn.thread };
+      const target = `held-notice:${turn.id}`;
+      const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
+      const outcome = await push('reply', target, provenance, { text, expectedText: text, chat, ...thread, update: turn.update }, () => {
+        journal.append({ kind: 'held-notice-intent', id: turn.id, text, chat, ...thread, update: turn.update,
+          grant: journal.view.genesis.grant, acknowledgement: true, provenance, at: ports.now() });
+      });
+      if (outcome.kind === 'accepted') try {
+        journal.append({ kind: 'held-notice-sent', id: turn.id, message: outcome.message, at: ports.now() });
+      } catch { /* exact acknowledgement intent remains UNKNOWN; never resent */ }
+    };
+    acknowledgementInFlight = run().finally(() => { acknowledgementInFlight = undefined; });
+    return acknowledgementInFlight;
+  };
   /** Rules 2, 87, 88: a disclosure hold past the self-heal window is told once, content-free, per notice window; the
    * held turns are named only by this fixed text. Its intent precedes dispatch and an UNKNOWN is never repeated. */
   const noticeDisclosureHolds = async () => {
@@ -7745,6 +7820,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             corrections: carried, grounding, packetDropped: dropped, packetLimit: journal.view.limits.maxBytes,
             maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
 
+          activeReply = { turn, prompt: projectedReplyPrompt(prepared) ?? JSON.stringify({ messages: [
+            { role: 'user', content: turn.text }, { role: 'context', content: JSON.stringify({ packet: JSON.parse(context) as unknown }) }] }) };
+          await acknowledgeReply();
           type Answer = Awaited<ReturnType<PreviewPorts['model']>>;
           const answerStarted = elapsedMs();
           // Every answer invocation shares the same honest outcome handling, including retries and lookups.
@@ -8388,6 +8466,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         };
         const { rules: linkRules, reason: linkReason } = usableRefs(reply);
 
+        await acknowledgeReply();
         if (ports.replyCheck) {
           const reviewed = turn.replyChecks?.at(-1);
           if (turn.reviewReserved && reviewed?.path === 'subscription' && (reviewed.verdict === 'pass' || reviewed.verdict === 'violation')
@@ -8702,6 +8781,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         try { ports.checkOutbound(encodeReply(reply)); if (split.length > 1) for (const part of split) ports.checkOutbound(encodeReply(part)); }
         catch { journal.append({ kind: 'hold', id: turn.id, reason: 'outbound secret refused', at: ports.now() }); continue; }
         const thread = turn.thread === undefined ? {} : { thread: turn.thread };
+        await acknowledgementInFlight;
+        activeReply = undefined;
         const intentAt = ports.now();
         const stopBase = approvalBase(journal.view);
         const approval: ApprovalRequest | undefined = isStopCommand(turn.text) && reply.includes(STOP_CONFIRM_TEXT) && journal.view.stop === null
@@ -8752,7 +8833,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // Edits consume the existing summary judgment, never the reply doorway.
       if (!due && pendingMemory()?.editOf) settleBehind();
       if (!due && pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
-    } finally { working = false; }
+    } finally {
+      try { await acknowledgementInFlight; } finally { activeReply = undefined; working = false; }
+    }
   };
   /** The minimal responder (Rule 15): an operator message that an ordinary cap keeps from its
    * answer gets one prompt, limited, truthful reply from the reserve, grouped per conversation.
@@ -10515,7 +10598,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   /** The minimal path's own step, run by the host between polls without waiting on an ordinary drain
    * that may be blocked on a model: confirmed stops, verified raises, then limited answers (Rule 15). */
-  const minimal = async () => { gate(); completeApprovals(); if (journal.view.stop !== null) return; ensureStopChallenge(); await answerLimited();
+  const minimal = async () => { gate(); completeApprovals(); if (journal.view.stop !== null) return; ensureStopChallenge(); await acknowledgeReply(); await answerLimited();
     await pollReviewRequests(); await issueRetractRequest(); };
   return { intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 
