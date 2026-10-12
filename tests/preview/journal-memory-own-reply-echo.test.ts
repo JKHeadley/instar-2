@@ -67,7 +67,7 @@ it('the recorded rows are the live misfire: an own-reply prefer quote, then the 
   expect(decided.reply).toContain(decided.memory[0]!.quote);
   expect(QUESTION.text).not.toContain(decided.memory[0]!.quote);
   expect(QUESTION.recordedUndecided).toBe('summary-failed');
-  expect(QUESTION.recordedSent).toBe(`PREVIEW — ${MEMORY_UNDECIDED_REPLY}`);
+  expect(QUESTION.recordedSent).toBe("PREVIEW — I couldn't record that memory change. Please send it again.");
 });
 
 it('answers the plain question (715672853) and saves nothing when the decision echoes its own reply as a preference', async () => {
