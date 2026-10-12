@@ -52,6 +52,13 @@ Decision: train-12-replay-consumer | Adapt act-first historical reviewer-questio
 
 Additional consumer: tests/preview/act-first.test.ts keeps the original capture immutable and translates only six historical explanatory clauses; all other question bytes must match. No fresh model quality claim.
 
+Prompt finding: 5b486d8bd247 | quoted-evidence | The replay translates one exact historical reviewer-instruction clause to the already-reviewed train-11 wording; it is a provenance comparison, never a fixture-trigger rule or expected model verdict.
+Prompt finding: 5fa1a20c4031 | quoted-evidence | The replay translates one exact historical reviewer-instruction clause to the already-reviewed train-11 wording; it is a provenance comparison, never a fixture-trigger rule or expected model verdict.
+Prompt finding: aef7d91bef51 | quoted-evidence | The replay translates one exact historical reviewer-instruction clause to the already-reviewed train-11 wording; it is a provenance comparison, never a fixture-trigger rule or expected model verdict.
+Prompt finding: b288d6ef1604 | quoted-evidence | The replay translates one exact historical reviewer-instruction clause to the already-reviewed train-11 wording; it is a provenance comparison, never a fixture-trigger rule or expected model verdict.
+Prompt finding: e769ca9dd959 | quoted-evidence | The replay translates one exact historical reviewer-instruction clause to the already-reviewed train-11 wording; it is a provenance comparison, never a fixture-trigger rule or expected model verdict.
+Prompt finding: feadb66b8ad1 | quoted-evidence | The replay translates one exact historical reviewer-instruction clause to the already-reviewed train-11 wording; it is a provenance comparison, never a fixture-trigger rule or expected model verdict.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: continue the two verified ordinary merges, resolve the one desk-authorized prompt conflict by shortening its wording, and reuse desk generation. No added machinery or budget expansion. Start guards are exact heads and immutable captures; end guards are targeted tests, the unchanged floor and register checks. Existing safety floors remain. No autonomous deployment claim.
