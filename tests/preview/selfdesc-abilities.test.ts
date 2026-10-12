@@ -26,6 +26,9 @@ const live = (update: number) => ({ turns: new Map([[`telegram:8989505249:update
 const wall = (update: number, constraint: string) => ({ source: `telegram:8989505249:update:${update}`, constraint, rechecks: [] }) as unknown as BlockerNote;
 
 // Translate only superseded guidance, keeping captured bytes and the capability inventory intact.
+const currentChannelNote = (text: string) => text
+  .replace('In the code but switched off here, so not available:', 'Code switched off here:')
+  .replace('telegram-conversation-adapter.', 'telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot).');
 const currentNote = (text: string) => text
   .replace("via the doorway's four tests on operator grant.", "via the doorway's four tests; standing grants need no new approval.")
   .replace('A subscription model answers. ', '')
@@ -36,7 +39,7 @@ it('replays preswitch update 840342287 with current self-description and the unc
   expect(capture.update).toBe(840342287);
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text;
   // This base retains its harness-specific tool label; no tool or authority changed.
-  const restoreBaseToolLabel = (text: string) => currentNote(text.replace('tools: full built-in set', 'tools: full Claude Code set'));
+  const restoreBaseToolLabel = (text: string) => currentChannelNote(currentNote(text.replace('tools: full built-in set', 'tools: full Claude Code set')));
   expect(restoreBaseToolLabel(capture.replayNote).replace(capture.replayNote.split('\n')[0], SELF_IDENTITY)).toBe(note);
   expect(capture.replayInstructions.replace(capture.replayNote.split('\n')[0], SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   // Translate identity/authority guidance and remove internal model framing; actual capabilities and limits stay intact.
@@ -62,7 +65,7 @@ it('replays the repaired answer with compact identity guidance and unchanged cap
   const capture = JSON.parse(readFileSync(new URL('./fixtures/preview-prompt-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
   expect(capture.question).toBe('What can you do for me here?');
-  expect(capture.note).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
+  expect(currentChannelNote(capture.note)).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
   // Keep the captured bytes authentic. Only the self-description paragraph is shortened;
   // identity and the full capability/authority inventory remain in the unchanged note.
   const identity = capture.instructions.split('\n').filter((line: string) => line.startsWith(SELF_IDENTITY));
