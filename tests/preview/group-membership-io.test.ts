@@ -43,7 +43,9 @@ it('uses the real read-only Telegram bridge over HTTP and refuses extras, unknow
     { id: Number(scope.bot), username: 'fixture_bot' });
   try {
     expect(await verifyGroupAudience(scope, read)).toBe(true);
-    expect(methods).toEqual(['getChat', 'getMe', 'getChatMemberCount', 'getChatMember', 'getChatMember', 'getChatMemberCount']);
+    expect(methods[0]).toBe('getChatMemberCount');
+    expect(methods.slice(1, -1).sort()).toEqual(['getChat', 'getChatMember', 'getChatMember', 'getMe']);
+    expect(methods.at(-1)).toBe('getChatMemberCount');
     const cache = createGroupAudienceCache(() => 0, () => read);
     expect(await cache.verify(scope)).toBe(true);
     const warmed = methods.length;
