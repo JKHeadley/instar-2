@@ -20,7 +20,7 @@ Hook bypass: none; core.hooksPath unset and common hooks directory contains samp
 Convergence: none
 Decision: offline-bot | Reuse 12345678, the existing synthetic cutover token identity, in the shared world and fake endpoints. Preserve recorded live IDs. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/botid-1011-PROGRESS.md
 Prompt review: No model-facing behavior changes: no prompt, output parser, model verdict or reply text changes. Existing recorded replays remain byte-identical.
-Verification: Typecheck and architecture pass. Desk bash syntax and DRY_RUN=1 switch pass. The actual shared process filter and switch wrapper exclude the four reported RAM fixture shapes while retaining both production pollers and a neighboring non-test root; other bots, status commands and non-node prompt mentions are excluded. Targeted direct-consumer tests and final source-pin checks are recorded in the desk progress report.
+Verification: Typecheck and architecture pass. Desk bash syntax and DRY_RUN=1 switch pass. The actual shared process filter and switch wrapper exclude the four reported RAM fixture shapes while retaining both production pollers and a neighboring non-test root; other bots, status commands and non-node prompt mentions are excluded. Canonical owner-reference refresh and register generation passed for source b7d81a46. Targeted direct-consumer tests and final source-pin checks are recorded in the desk progress report.
 
 ## Closing block
 
