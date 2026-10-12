@@ -278,3 +278,35 @@ it('replays five recorded answers with the rendered paragraph verbatim and diges
     })).digest('hex')}`);
   }
 });
+
+it('replays ten answers to the train-11 capability failure with final instructions and digest-bound K11 judgments', () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/capsentence2-2026-10-11.json', import.meta.url), 'utf8'));
+  expect(capture.update).toBe(840342414);
+  expect(capture.question).toBe('What can you do for me here?');
+  expect(capture.instructions).toBe(ANSWER_INSTRUCTIONS);
+  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  expect(capture.runs).toHaveLength(10);
+  const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits);
+  const sentence = capabilitySentence(capture.limits);
+  for (const run of capture.runs) {
+    expect(run.capabilityNote.text).toBe(note.text);
+    expect(run.capabilityNote.provenance.renderedCapabilitySha256).toBe(note.renderedCapabilitySha256);
+    const reading = readAnswer(run.raw, { wrapped: 'accept' });
+    expect(reading.ok).toBe(true);
+    if (!reading.ok) throw Error(reading.defect);
+    expect(reading.value).toBe(run.answer);
+    expect(run.answer.split('\n').filter((line: string) => line === sentence)).toHaveLength(1);
+    expect(run.judge).toMatchObject({ verdict: 'PASS', rubric: 'k11a-rubric-v3-rendered' });
+    expect(run.judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+      v: run.judge.rubric, note: run.capabilityNote.text, reply: run.answer, provenance: run.capabilityNote.provenance,
+    })).digest('hex')}`);
+  }
+  // The real counterexample already quoted the record correctly. It still failed on
+  // its additional prose: the instruction must prevent that class of restatement.
+  const original = capture.original;
+  expect(original.answer.split('\n')).toContain(sentence);
+  expect(original.judge).toMatchObject({ verdict: 'FAIL', rubric: 'k11a-rubric-v3-rendered' });
+  expect(original.judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+    v: original.judge.rubric, note: original.capabilityNote.text, reply: original.answer, provenance: original.capabilityNote.provenance,
+  })).digest('hex')}`);
+});
