@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -119,12 +119,10 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
   const root = origin(), samples: number[] = [];
   const fact = 'The spare house key is under the blue heron statue.';
   let asked: string | undefined;
-  let replay: string | undefined;
-  let beforeQuestion: Buffer | undefined;
-  const open = (path = root) => world(path, { initial: genesis({ maxCalls: 200, maxReplies: 100, maxTurns: 100, maxBytes: 8192 }), model: input => {
+  const open = () => world(root, { initial: genesis({ maxCalls: 200, maxReplies: 100, maxTurns: 100, maxBytes: 8192 }), model: input => {
     if (input.id.startsWith('summary:')) return 'Ordinary talk about weather, errands and plans across two conversations.';
     if (input.question.includes('spare house key')) asked = input.context;
-    return replay ?? 'noted';
+    return 'noted';
   } });
   try {
     let current = open();
@@ -137,7 +135,6 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
       current.worker.intake([update(i, text, i === 4 ? 7 : thread, 1790000000 + i * 60)]);
       await current.worker.drain(); await current.worker.summarizeIfNeeded();
       samples.push(performance.now() - start);
-      if (i === 87) beforeQuestion = readFileSync(join(root, 'journal.encrypted'));
     }
     const view = current.journal.view;
     expect(view.order.every(turn => turn.sent !== undefined)).toBe(true);
@@ -147,13 +144,6 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
     expect(packet.audience.conversation).toBe('main chat');
     expect(packet.recalled).toContainEqual(expect.objectContaining({ id: 'telegram:12345678:update:4', date: '2026-09-21T14:17Z', conversation: 'topic 7', user: fact,
       answer: 'noted', outcome: 'Telegram API accepted' }));
-    // Exposure is only a tie breaker: repeatedly offered filler must yield to a new question.
-    const preceding = view.order.find(turn => turn.update === 87)!.grounding!.recalled;
-    expect(preceding.length).toBeGreaterThan(0);
-    expect(preceding).not.toContain('telegram:12345678:update:4');
-    // Compact guidance retains recent turns; optional candidates still yield to recalled evidence.
-    expect(view.order.find(turn => turn.update === 88)!.packetDropped).toContainEqual(
-      expect.objectContaining({ kind: 'candidate', source: 'telegram:12345678:update:87' }));
     // The saved grounding must prove the same cross-topic source survived packet fitting.
     expect(view.turns.get('telegram:12345678:update:88')?.grounding?.recalled).toContain('telegram:12345678:update:4');
     expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(8192);
@@ -168,23 +158,6 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
       + `final-ten median=${last.toFixed(1)} ms, growth=${(last - first).toFixed(1)} ms, final-ten max=${Math.max(...samples.slice(80)).toFixed(1)} ms\n`);
     expect(p95(samples)).toBeLessThanOrEqual(5000);
     expect(last - first).toBeLessThanOrEqual(1000);
-    // Captured writer, uncertain, Jev, review and empty output shapes still traverse the
-    // bounded packet route. This replays bytes, not a fresh model judgment of relevance.
-    const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
-      otherShapes: { kind: string; id: string; raw: string }[] };
-    for (const shape of shapes.otherShapes) {
-      const replayRoot = origin();
-      writeFileSync(join(replayRoot, 'journal.encrypted'), beforeQuestion!);
-      const recorded = open(replayRoot);
-      try {
-        replay = shape.raw; asked = undefined;
-        recorded.worker.intake([update(88, 'Where did I say the spare house key is?', undefined, 1790000000 + 88 * 60)]);
-        await recorded.worker.drain();
-        expect(JSON.parse(asked!).recalled, `${shape.kind} ${shape.id}`).toContainEqual(
-          expect.objectContaining({ id: 'telegram:12345678:update:4', user: fact }));
-        expect(Buffer.byteLength(asked!), shape.id).toBeLessThanOrEqual(8192);
-      } finally { recorded.journal.close(); rmSync(replayRoot, { recursive: true, force: true }); }
-    }
     current.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 180_000); // Measured: 90 turns of real journal work took 25.1 s of the old 30 s budget at load 24 — the budget

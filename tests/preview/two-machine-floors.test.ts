@@ -15,8 +15,6 @@ import { message, pause, started, twoMachines, until } from './two-machine-world
 it('the peer is lost in the middle of a turn: the next model call and the send both wait, and the turn finishes once when the peer is back', async () => {
   const t = await twoMachines();
   const modelCalls = () => { try { return readFileSync(join(t.world.directory, 'model.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)); } catch { return []; } };
-  const acknowledgements = () => t.sends().filter(call => call.text === "I'm working on your reply.");
-  const answers = () => t.sends().filter(call => call.text.split('\n\n')[0] === 'Juniper is the marker.');
   // A slow model on the owner, so the test can take the peer away while the answer is being produced.
   const studio = t.harness.startRunner(t.rootOf('studio'), 'studio', 100000, ['--machine-posture', 'multi-machine', '--conversation-authority', t.url,
     '--replica-listen', `127.0.0.1:${t.ports.studio}`, '--replica-peer', `http://127.0.0.1:${t.ports.laptop}`, '--owner-machine', 'studio',
@@ -35,19 +33,13 @@ it('the peer is lost in the middle of a turn: the next model call and the send b
   expect((await t.view()).claims).toBe(0);
   expect(studio.child.exitCode).toBe(null);
   const back = t.start('laptop');
-  // The slow turn sends one reviewed acknowledgement as well as its final answer.
-  // Either can arrive between polls; a total-send count is not a completion signal.
-  await until('the turn finishes', () => answers().length > 0, 90000);
-  expect(acknowledgements()).toHaveLength(1);
-  expect(answers()).toHaveLength(1);
-  expect(t.sends().every(call => call.role === 'studio')).toBe(true);
+  await until('the turn finishes', () => t.sends().length === 1, 90000);
+  expect(t.sends()[0].role).toBe('studio');
   expect(modelCalls().length).toBeGreaterThan(1);
   expect(modelCalls().every(call => call.role === 'studio')).toBe(true);
   await pause(6000);
-  expect(acknowledgements()).toHaveLength(1);
-  expect(answers()).toHaveLength(1);
-  expect(t.sends()).toHaveLength(2);
-  await until('nothing is left unresolved', async () => { const view = await t.view(); return view.claims === 2 && view.unresolved.length === 0; });
+  expect(t.sends()).toHaveLength(1);
+  await until('nothing is left unresolved', async () => { const view = await t.view(); return view.claims === 1 && view.unresolved.length === 0; });
   await t.stop(back); await t.stop(studio);
 }, 240000);
 

@@ -48,7 +48,7 @@ function launchResources(r) {
 export function observedSubscriptionIO(physicalIO, policy, operation, append,
   clock = { elapsed: () => performance.now(), at: () => Date.now() }) {
   const role = operation.endsWith(':reply-review') || operation.endsWith(':reply-revision')
-    || operation.endsWith(':revision-review') || operation.endsWith(':held-notice-review') ? 'reply-review'
+    || operation.endsWith(':revision-review') ? 'reply-review'
     : operation.startsWith('summary:') ? 'summary' : 'model';
   return { ...physicalIO, execute: async command => {
     // Preflights carry no input; model commands carry the prepared packet. Tool

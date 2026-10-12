@@ -193,26 +193,3 @@ it('keeps each owned launch\'s resource facts on its durable call-outcome row ac
     replayed.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
-
-it('meters an acknowledgement review under its own durable review reservation', async () => {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-ack-outcome-')));
-  const key = new Uint8Array(32).fill(7), path = join(root, 'journal.encrypted'), id = 'telegram:12345678:update:1';
-  const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
-    grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
-    maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 32768, cursor: 0 });
-  try {
-    journal.append({ kind: 'intake', id, update: 1, text: 'question', raw: JSON.stringify({ message: { from: { id: 7654321 } } }), accepted: true, cursor: 2, at: 1000 });
-    journal.append({ kind: 'reserve', id, at: 1001 });
-    const rows = [], io = observedSubscriptionIO({ execute: async () => physical(frame(2)) },
-      { maxTokens: 2048, maxOutputBytes: 16384 }, `${id}:held-notice-review`, row => rows.push(row), { elapsed: () => 10, at: () => 9000 });
-    await io.execute({ stdin: 'review candidate', args: [] });
-    expect(rows[0]).toMatchObject({ role: 'reply-review', id: `${id}:held-notice-review` });
-    expect(() => journal.append(rows[0])).toThrow(/call outcome/u);
-    journal.append({ kind: 'held-notice-review-reserve', id, prompt: '{}', at: 9000 });
-    journal.append(rows[0]);
-    expect(journal.view.calls).toBe(2);
-    journal.compact(); journal.close();
-    const reopened = openPreviewJournal(path, key);
-    expect(reopened.view.callOutcomes).toHaveLength(1); reopened.close();
-  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
-});

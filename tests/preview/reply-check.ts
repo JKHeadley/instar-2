@@ -357,7 +357,7 @@ export interface ReplyCheckPorts {
     occurrence?: string): Promise<{ value: unknown; latencyMs: number }>;
   escalate(text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[], deadlineAt?: number,
     /** `revision`: the held-class review of a revised candidate, a distinct operation from the first review. */
-    operation?: 'revision' | 'acknowledgement',
+    operation?: 'revision',
     /** The single format re-ask of a malformed first-review verdict (Rule 116). */
     formatRetry?: boolean): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
     findings?: ReplyFinding[];

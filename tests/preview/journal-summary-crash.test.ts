@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { openPreviewJournal, openQuestionCandidates, REPLY_ACKNOWLEDGEMENT } from './journal.js';
+import { openPreviewJournal, openQuestionCandidates } from './journal.js';
 
 const child = 'tests/preview/journal-summary-crash-child.mjs';
 const key = new Uint8Array(32).fill(7);
@@ -97,17 +97,11 @@ it.each(cuts)('recovers from %s', cut => {
       && points.indexOf(cut) <= points.indexOf('journal:before:reply-check:3');
     const uncertainSend = points.indexOf(cut) >= points.indexOf('journal:after:intent:2')
       && points.indexOf(cut) < points.indexOf('journal:after:sent:2');
-    // Recovery advances the injected clock by 100 seconds. A turn not yet answering when
-    // killed now gets one reviewed acknowledgement before its answer; neither may repeat.
-    const acknowledges = points.indexOf(cut) <= points.indexOf('journal:compact:after-reopen:1');
-    expect(sends.filter(item => item.text === REPLY_ACKNOWLEDGEMENT), cut).toEqual(acknowledges
-      ? [{ update: 2, text: REPLY_ACKNOWLEDGEMENT }] : []);
-    const answers = sends.filter(item => item.text !== REPLY_ACKNOWLEDGEMENT);
-    if (!uncertainSend) expect(answers.filter(item => item.update === 2), cut).toEqual([
+    if (!uncertainSend) expect(sends.filter(item => item.update === 2), cut).toEqual([
       { update: 2, text: 'From your note: Maya has the ORCHID key 731.' },
     ]);
-    else expect(answers.filter(item => item.update === 2).length, cut).toBeLessThanOrEqual(1);
-    expect(new Set(answers.map(item => item.update)).size, cut).toBe(answers.length);
+    else expect(sends.filter(item => item.update === 2).length, cut).toBeLessThanOrEqual(1);
+    expect(new Set(sends.map(item => item.update)).size, cut).toBe(sends.length);
     const journal = read(root);
     try {
       const view = journal.view;
@@ -115,7 +109,6 @@ it.each(cuts)('recovers from %s', cut => {
       expect(new Set(frontiers).size, cut).toBe(frontiers.length);
       expect(view.order.map(item => item.update), cut).toEqual([1, 2]);
       expect(view.order[1]?.accepted, cut).toBe(true);
-      expect(view.order[1]?.heldNoticeSent, cut).toBe(acknowledges ? 2 : undefined);
       if (!uncertainSend) {
         expect(frontiers.at(-1), cut).toBe(2);
         expect(view.summaries.at(-1)?.text, cut).toBe(baselineMemory);
