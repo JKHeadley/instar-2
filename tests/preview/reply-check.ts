@@ -363,15 +363,35 @@ export function jevUnavailableCause(error: unknown): JevUnavailableCause {
   return value?.name === 'TimeoutError' || value?.name === 'AbortError' ? 'timeout' : 'other';
 }
 export const JEV_REPLY_ATTEMPT_MS = 850;
-// A cold live-group audience probe took 1.8–1.9 s before any Jev dispatch (969390426/427).
-// Keep the fast first attempt; let the one retry finish admission plus the ~250 ms exchange.
+// Provider allowances start only after disclosure and host admission have completed.
 export const JEV_REPLY_RETRY_MS = 2500;
-export const JEV_REPLY_BUDGET_MS = 3500;
+export const JEV_ADMISSION_MS = 3000;
+// Two separately bounded admissions plus the two provider allowances, never another retry.
+export const JEV_REPLY_BUDGET_MS = 2 * JEV_ADMISSION_MS + JEV_REPLY_ATTEMPT_MS + JEV_REPLY_RETRY_MS;
+export type JevAdmissionBudget = { admissionMs: number; deadlineAt?: number };
+/** Both disclosure checkpoints share one admission allowance. A late admission has no
+ * continuation that can dispatch a provider request. The turn deadline still clips both phases. */
+export async function admitJev(check: () => Promise<void>, budget: JevAdmissionBudget,
+  elapsed: () => number, now: () => number): Promise<JevAdmissionBudget> {
+  const began = elapsed();
+  const allowance = Math.min(budget.admissionMs, budget.deadlineAt === undefined ? Infinity : budget.deadlineAt - now());
+  const timeout = () => Object.assign(Error('preview: Jev unavailable'), { jevCause: 'timeout' });
+  if (allowance <= 0) throw timeout();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([check(), new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(timeout()), allowance);
+    })]);
+    const admissionMs = budget.admissionMs - Math.max(0, elapsed() - began);
+    if (admissionMs <= 0 || budget.deadlineAt !== undefined && now() >= budget.deadlineAt) throw timeout();
+    return { ...budget, admissionMs };
+  } finally { clearTimeout(timer); }
+}
 
 export interface ReplyCheckPorts {
   /** `occurrence` is the journal turn the call serves, recorded beside its content-derived id (Rule 58). */
   jev(text: string, questions?: Record<string, { type: string; instructions: string }>, timeoutMs?: number,
-    occurrence?: string): Promise<{ value: unknown; latencyMs: number }>;
+    occurrence?: string, admission?: JevAdmissionBudget): Promise<{ value: unknown; latencyMs: number }>;
   escalate(text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[], deadlineAt?: number,
     /** `revision`: the held-class review of a revised candidate, a distinct operation from the first review. */
     operation?: 'revision' | 'acknowledgement',
@@ -397,7 +417,6 @@ const budgetResult = (path: ReplyPath, ruleIds: ReplyRule[], latencyMs: number):
 export async function checkReply(text: string, id: string, ports: ReplyCheckPorts,
   originalPrompt?: string, approval?: ApprovalFacts): Promise<ReplyDecision> {
   let first: ReplyCheckResult;
-  const started = ports.elapsedMs();
   if (expired(ports)) {
     ports.record(budgetResult('holding', [], 0));
     return { outcome: 'unavailable', path: 'holding' };
@@ -407,10 +426,11 @@ export async function checkReply(text: string, id: string, ports: ReplyCheckPort
     const began = ports.elapsedMs();
     let received = false;
     try {
-      const remaining = Math.min(allowance, JEV_REPLY_BUDGET_MS - (began - started),
+      const remaining = Math.min(allowance,
         ports.deadlineAt === undefined || !ports.now ? Infinity : ports.deadlineAt - ports.now());
       if (remaining <= 0) return { ...budgetResult('jev', [], 0), cause: 'timeout' };
-      const answer = await ports.jev(text, approval ? approvalQuestions(approval) : undefined, Math.max(1, Math.floor(remaining)), id);
+      const answer = await ports.jev(text, approval ? approvalQuestions(approval) : undefined, Math.max(1, Math.floor(remaining)), id,
+        { admissionMs: JEV_ADMISSION_MS, ...(ports.deadlineAt === undefined ? {} : { deadlineAt: ports.deadlineAt }) });
       received = true;
       if (expired(ports)) return { ...budgetResult('jev', [], Math.max(0, ports.elapsedMs() - began)), cause: 'timeout' };
       const result = interpretJev(answer.value, answer.latencyMs);
@@ -425,8 +445,7 @@ export async function checkReply(text: string, id: string, ports: ReplyCheckPort
   first = await attempt(JEV_REPLY_ATTEMPT_MS);
   ports.record(report ? { ...first, approvalReport: report } : first);
   // One new, reserved attempt. An unknown first call remains charged; recovery never repeats either call.
-  if (first.verdict === 'unavailable' && !expired(ports)
-    && ports.elapsedMs() - started < JEV_REPLY_BUDGET_MS && ports.reserveJevRetry?.()) {
+  if (first.verdict === 'unavailable' && !expired(ports) && ports.reserveJevRetry?.()) {
     first = await attempt(JEV_REPLY_RETRY_MS);
     ports.record(report ? { ...first, approvalReport: report } : first);
   }

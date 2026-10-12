@@ -138,3 +138,19 @@ it('replays recorded group question through durable intake, reserve, confident r
     { mode: 'warm', intakeMs: 0, reads: 0, probes: 5 },
   ]);
 });
+
+it('keeps successive text turns warm but observes an unannounced membership change at the ten-second bound', async () => {
+  let clock = 0, count = 2, reads = 0;
+  const cache = createGroupAudienceCache(() => clock, () => membership((method, _body, value) => {
+    reads++; return method === 'getChatMemberCount' ? count : value;
+  }));
+  expect(await cache.verify(scope)).toBe(true);
+  count = 3;
+  for (clock = 1000; clock < 10000; clock += 1000) {
+    cache.observe([{ message: { text: 'next turn' } }]);
+    expect(await cache.verify(scope)).toBe(true);
+    expect(reads).toBe(6);
+  }
+  expect(await cache.verify(scope)).toBe(false);
+  expect(reads).toBe(7);
+});

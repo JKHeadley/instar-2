@@ -1,7 +1,7 @@
 /** Content-free observations on the existing encrypted journal, never admission evidence.
  * One record per send attempt or checked phase; failures cannot change the observed operation. */
 export type PhaseTiming = {
-  kind: 'phase-timing'; id: string; phase: 'acknowledgement' | 'send' | 'audience' | 'version' | 'auth';
+  kind: 'phase-timing'; id: string; phase: 'acknowledgement' | 'send' | 'audience' | 'version' | 'auth' | 'jev-disclosure' | 'jev-admission' | 'jev';
   measurements: Record<string, number | boolean>; at: number;
   forward: { generation: 4; additive: true };
 };
@@ -9,7 +9,7 @@ const fields = new Set(['scheduledDueAt', 'callbackEnteredAt', 'timerCallback', 
   'audienceAdmittedAt', 'transportBegunAt', 'transportReturnedAt', 'attempt', 'provedNotSentAttempts',
   'cacheHit', 'elapsedMs', 'accepted', 'failed']);
 export function checkPhaseTiming(row: PhaseTiming): void {
-  if (!['acknowledgement', 'send', 'audience', 'version', 'auth'].includes(row.phase)
+  if (!['acknowledgement', 'send', 'audience', 'version', 'auth', 'jev-disclosure', 'jev-admission', 'jev'].includes(row.phase)
     || typeof row.id !== 'string' || row.id.length > 256
     || !row.measurements || typeof row.measurements !== 'object' || Array.isArray(row.measurements)
     || !Object.entries(row.measurements).every(([key, value]) => fields.has(key)

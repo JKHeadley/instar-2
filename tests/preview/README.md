@@ -2814,8 +2814,14 @@ launcher resolves vault entry `typesafe_api_key` into
 `INSTAR_SECRET_PREVIEW_TYPESAFE_KEY` for the runner process. Treat it like the
 existing storage and Telegram host bindings; never place it in command arguments,
 the journal, or logs. The key is required only for the Jev route. A missing key,
-timeout (2 seconds), or provider error invokes one contextual subscription
-review under the same journal call cap. Jev's pinned model is `jev-1.13.0`.
+provider timeout, or provider error permits one separately reserved retry, then
+invokes the contextual subscription review under the same journal call cap. Admission
+shares a 3000 ms allowance across worker disclosure and host audience/replication
+checks on each attempt. Only after admission does the provider's 850 ms first-call
+or 2500 ms retry allowance start; the turn deadline clips both phases. Late admission
+cannot dispatch. Two admissions and two calls therefore have a 9350 ms ceiling
+before fallback, subject to the earlier turn deadline. Unavailability remains an
+unavailable verdict, never an automatic pass. Jev's pinned model is `jev-1.13.0`.
 
 The 26 September Jev-default direction (observer #282) also applies to a group
 with current standing and membership verifying the operator alone. A pass on all
@@ -4264,7 +4270,15 @@ number and the cumulative proved-not-sent count. The final reply has no timer, s
 its applicable send phases. The host records transport time immediately around `sendMessage`,
 separately from audience and replication work. Audience records give the cache hit/miss and
 elapsed duration without member identities or message text. Version and auth preflight durations
-remain separate from the model's existing `call-outcome`. Observations never admit an effect or
+remain separate from the model's existing `call-outcome`. Jev reply attempts add
+`jev-disclosure` (worker), `jev-admission` (host), and `jev` (provider) phases keyed
+by the turn id. The two admission durations share one allowance, and both record
+acceptance; the provider duration excludes admission. The existing audience cache
+is runner-local, keyed by the exact lineage/bot/chat/operator, and expires ten
+seconds after probe start without sliding. It survives ordinary text turns; observed
+membership/service changes invalidate it before intake. A longer turn needs a fresh
+probe. This change does not widen the staleness bound or retain stale evidence on
+error (purpose least revelation; Rules 28, 32, 60, 95). Observations never admit an effect or
 make an UNKNOWN send retry; an observation write failure does not change the operation's result.
 
 The subscription runner retains one successful CLI version observation keyed by the complete

@@ -58,22 +58,21 @@ it.each(['unknown', 'not-sent'] as const)('records %s without widening the send 
   try {
     const worker = createJournalWorker(journal, { now: () => at, stopped: () => false, checkOutbound: () => {},
       model: async () => '42', send: async input => {
-        sent.push({ target: input.target, text: input.expectedText }); return { kind, reason: 'injected outcome' }; } });
+        sent.push({ target: input.target, text: input.expectedText });
+        return { kind, reason: 'injected outcome' };
+      } });
     worker.intake([raw]); await worker.drain(); await worker.drain();
-    const replyTarget = `reply:${journal.view.order[0]!.id}`;
-    const noticeTarget = `delivery-notice:${journal.view.order[0]!.id}`;
-    expect(sent).toEqual(kind === 'unknown'
-      ? [{ target: replyTarget, text: '42' }, { target: noticeTarget, text: UNKNOWN_SEND_NOTICE }]
-      : [{ target: replyTarget, text: '42' }, { target: replyTarget, text: '42' }]);
+    const turn = journal.view.order[0]!;
+    const answer = { target: `reply:${turn.id}`, text: '42' };
+    const notice = { target: `delivery-notice:${turn.id}`, text: UNKNOWN_SEND_NOTICE };
+    expect(sent).toEqual(kind === 'unknown' ? [answer, notice] : [answer, answer]);
     const rows = journal.view.phaseTimings!.filter(row => row.phase === 'send');
-    expect(rows).toHaveLength(2);
-    const replies = rows.filter(row => row.id === replyTarget);
-    expect(replies).toHaveLength(kind === 'unknown' ? 1 : 2);
-    expect(replies[0]!.measurements.attempt).toBe(1);
-    expect(replies.at(-1)!.measurements.provedNotSentAttempts).toBe(kind === 'unknown' ? 0 : 2);
-    const notices = rows.filter(row => row.id === noticeTarget);
-    expect(notices).toHaveLength(kind === 'unknown' ? 1 : 0);
-    if (kind === 'unknown') expect(notices[0]!.measurements).toMatchObject({ attempt: 1, provedNotSentAttempts: 0 });
+    expect(rows.map(row => ({ target: row.id, attempt: row.measurements.attempt,
+      provedNotSentAttempts: row.measurements.provedNotSentAttempts }))).toEqual(kind === 'unknown'
+      ? [{ target: answer.target, attempt: 1, provedNotSentAttempts: 0 },
+        { target: notice.target, attempt: 1, provedNotSentAttempts: 0 }]
+      : [{ target: answer.target, attempt: 1, provedNotSentAttempts: 1 },
+        { target: answer.target, attempt: 2, provedNotSentAttempts: 2 }]);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
