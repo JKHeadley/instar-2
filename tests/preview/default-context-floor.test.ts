@@ -140,9 +140,12 @@ it('keeps the always-sent prompt parts inside what the measured floor allows, wi
   // Both halves of the reserve are real, not padding: a review with a bound-length reply needs more than
   // the review-only parts alone, so neither addend can be dropped.
   expect(measured.reviewTotal! - measured.answerTotal!).toBeGreaterThan(REPLY_REVIEW_FIXED_BYTES);
-  // A summary step for that same turn also fits, so a conversation can be compacted at the floor.
+  // The summary is the largest measured fixed envelope (23073 bytes on this build).
+  // It too must fit beside the review reserve, so an admitted root can compact its first turn.
   expect(measured.summaryTotal).not.toBeNull();
   expect(measured.summaryTotal!).toBeLessThanOrEqual(floor - replyReviewReserveFor(floor));
+  // One byte below admission cannot fit this summary beside its review reserve.
+  expect(measured.summaryTotal!).toBeGreaterThan(floor - 1 - replyReviewReserveFor(floor - 1));
   // The default is admissible: at or above the floor, and within the approved live bound.
   expect(PREVIEW_MIN_SERVABLE_CONTEXT_BYTES).toBeLessThanOrEqual(PREVIEW_LIVE_LIMITS.contextBytes);
   expect(unservableContextReason(PREVIEW_LIVE_LIMITS.contextBytes)).toBeNull();
@@ -151,8 +154,8 @@ it('keeps the always-sent prompt parts inside what the measured floor allows, wi
 it('leaves a fresh root at the default limit real room for the message and its history', async () => {
   // The repair's measurable claim. Before: 32768 - 8192 reserve - 23013 parts = 1563 bytes for the operator's
   // message and ALL of its history, and the packet dropped the obligation guide from the third turn onward.
-  // After (re-measured at cint-L25): 32768 - 6775 - 22959 = 3034; at cint-L27 32768 - 6636 - 22959 = 3173. The whole
-  // desk report fits at the first turn.
+  // After (re-measured at cint-L25): 32768 - 6775 - 22959 = 3034; at cint-L27 32768 - 6636 - 22959 = 3173.
+  // The measured summary now sets the 23073-byte floor, leaving 3059 bytes; the whole desk report still fits at the first turn.
   const limit = PREVIEW_LIVE_LIMITS.contextBytes;
   const headroom = limit - replyReviewReserveFor(limit) - PREVIEW_FIXED_PROMPT_BYTES;
   expect(headroom).toBeGreaterThanOrEqual(PREVIEW_MIN_TURN_HEADROOM_BYTES);
