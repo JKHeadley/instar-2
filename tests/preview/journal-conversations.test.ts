@@ -151,8 +151,11 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
     const preceding = view.order.find(turn => turn.update === 87)!.grounding!.recalled;
     expect(preceding.length).toBeGreaterThan(0);
     expect(preceding).not.toContain('telegram:12345678:update:4');
+    // Compact guidance retains recent turns; optional candidates still yield to recalled evidence.
     expect(view.order.find(turn => turn.update === 88)!.packetDropped).toContainEqual(
-      expect.objectContaining({ kind: 'recent', source: expect.stringMatching(/^telegram:/u) }));
+      expect.objectContaining({ kind: 'candidate', source: 'telegram:12345678:update:87' }));
+    // The saved grounding must prove the same cross-topic source survived packet fitting.
+    expect(view.turns.get('telegram:12345678:update:88')?.grounding?.recalled).toContain('telegram:12345678:update:4');
     expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(8192);
     const p95 = (values: number[]) => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]!;
     // Rule 37 repair (docs/defects/full-suite-load-timeouts.md): growth compares the median of the first and last
