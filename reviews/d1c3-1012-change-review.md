@@ -21,14 +21,14 @@ Convergence: none
 Decision: d1c3-result-only | Choose route (b), reusing bound runner lines and existing send path; no second revision or new budget. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/d1c3-1012-PROGRESS.md
 Decision: d1c3-narrow-floor | Limit fallback to operator-only, sole incoherent_remainder and lines preserved by excision; retain credentials, other refusals and rejected prose. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/d1c3-1012-PROGRESS.md
 Decision: d1c3-evidence | Label the brief-derived 466-character reconstruction honestly; also replay captured claim/review 969389898 through the new branch and retain recorded neighboring shape tests. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/d1c3-1012-PROGRESS.md
-Decision: d1c3-publication | Regenerate the existing shape-only register from committed source 4cb5e41a; owner-manifest rehash and inventory repin made no changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/d1c3-1012-PROGRESS.md
+Decision: d1c3-publication | Regenerate the existing shape-only register from committed source b18c4610; owner-manifest rehash and inventory repin made no changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/d1c3-1012-PROGRESS.md
 Decision: d1c3-intent-wording | The durable intent records results selected for delivery, not sent; only a receipt establishes delivery, including UNKNOWN transport outcomes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/d1c3-1012-PROGRESS.md
 Decision: d1c3-verified-forum | Reuse current operatorOnlyVerified standing for forum parity; unverified groups and sensitivity violations remain excluded. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/d1c3-1012-PROGRESS.md
 Prompt review: No prompt or parser changed. The final candidate selection changes; exercise accepted-but-unchanged revision, excision leaving an empty list, result-only delivery, refusal neighbors and durable reopen. Captured review and reply fixtures are replayed by claim-scoped-floor, journal-revision-keeps-results, guidance and summary-cascade-stall. No claim that the desk brief supplied original candidate bytes or an update id.
 Prompt finding: 849db3a6296a | protocol-literal | Existing fixed memory inventory response; unchanged by this selection repair.
 Prompt finding: bd01de21286a | protocol-literal | Existing source label grounding instruction; unchanged.
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing memory retrieval instruction; unchanged.
-Verification: Eleven D1c cases, the required 21 floor tests, 88 pinned tests and recorded-shape neighbors passed; intent-wording correction also passes all eleven D1c cases; compiler, direct consumers and final publication gates recorded in the builder report. This is an author submission, not live deployment or independent convergence evidence.
+Verification: Thirteen D1c cases and 32 audience cases, the required 21 floor tests, 88 pinned tests and recorded-shape neighbors passed; intent-wording and verified-forum corrections pass the complete D1c matrix; compiler, direct consumers and final publication gates recorded in the builder report. This is an author submission, not live deployment or independent convergence evidence.
 
 ## Closing block
 
