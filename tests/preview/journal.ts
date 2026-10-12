@@ -1,3 +1,4 @@
+import { observeMemorySelection, shadowBaseline, validShadowRecord, MEMORY_SHADOW_LIMIT, MEMORY_SHADOW_BYTES, type MemoryShadowPorts, type ShadowStage, type ShadowRecord, type ShadowInput } from './memory-selection-shadow.js';
 import { groupCarryPacket, validCarriedMemory, type CarriedMemory } from './group-carry.js';
 import { boundThread, journalAudience, journalConversation, matchesBoundChat, validateChatBinding } from './forum-routing.js';
 /** The machine-local preview's only conversation and effect ledger. Records are
@@ -12,7 +13,7 @@ import { previewTurnId } from './durable-write.js';
 import { redact } from '../../src/recall/redact.js';
 import { namedTerms, selectRecall, selectSaidTurns, similarName, statedFacts } from './memory-sentinel.js';
 import { terms } from '../../src/recall/lexical.js';
-import { composeRecall } from '../../src/recall/retrieve.js';
+import { composeRecall, rerankPool } from '../../src/recall/retrieve.js';
 import type { RecallRerankPort } from '../../src/recall/contracts.js';
 import { isoMinute } from '../../src/recall/ground.js';
 import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } from '../../src/awareness/work.js';
@@ -1010,7 +1011,7 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 2;
+export const JOURNAL_GENERATION = 3;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -1028,7 +1029,7 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['group-carry', 'r
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'hold', 'import', 'index-reserve', 'intake', 'intent',
   'legacy-call', 'legacy-reply', 'limited-intent', 'limited-sent', 'lookup', 'meaning-index', 'media-claim', 'media-custody',
-  'memory-undecided', 'minimal-outage', 'model-call', 'model-uncertain', 'notice', 'obligation-result',
+  'memory-selection-reserve', 'memory-selection-call', 'memory-selection', 'memory-undecided', 'minimal-outage', 'model-call', 'model-uncertain', 'notice', 'obligation-result',
   'obligation-start', 'operator-result-intent', 'operator-result-sent', 'operator-review',
   'operator-review-closed', 'operator-yes', 'reminder-grant', 'reminder-intent', 'reminder-sent',
   'reply-check', 'reply-jev-reserve', 'reply-part-sent', 'reply-part-start', 'reply-review-reserve',
@@ -1042,6 +1043,10 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['group-carry', 'r
   'summary-reserve', 'summary-review-reserve', 'summary-uncertain', 'tool-turn', 'waiting']);
 
 export type JournalRecord =
+  // Non-additive: an older writer must not lose spend or repeat a shadow call after rollback.
+  | { kind: 'memory-selection-reserve'; id: string; stage: ShadowStage; bytes: number; baseline: ShadowRecord; at: number }
+  | { kind: 'memory-selection-call'; id: string; stage: ShadowStage; usage?: ModelUsage; at: number }
+  | { kind: 'memory-selection'; id: string; result: ShadowRecord; at: number }
   // Non-additive: an older writer must not discard the no-repeat expectation.
   | { kind: 'media-claim'; id: string; digest: string; at: number }
   | { kind: 'media-custody'; id: string; result: MediaCustodyResult; at: number }
@@ -1349,6 +1354,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   toolRouted?: boolean;
   /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
   writer?: WriterRecord;
+  memorySelection?: { reserved: ShadowStage[]; settled: ShadowStage[]; baseline?: ShadowRecord; result?: ShadowRecord };
   reserved: boolean; unusedToolCalls?: number; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentAt?: number; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; heldNoticeSentAt?: number; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
   /** This turn's own answer decided what it withdrew: the keys it cancelled, or none. Rules 57, 93: a
    * recorded decision, including "withdraws none", settles the reminder question this turn opened. */
@@ -2689,10 +2695,13 @@ export function unknownCallKeys(view: JournalView) {
     && !turn.replyChecks?.some(check => check.path === 'subscription' && (check.verdict === 'pass' || check.verdict === 'violation')))
     .map(turn => `reply-review:${turn.id}`),
     // A revised-text review stays UNKNOWN until it records a conclusive verdict.
+    ...view.order.flatMap(turn => turn.memorySelection?.reserved.includes('luna') && !turn.memorySelection.settled.includes('luna')
+      ? [`memory-selection:luna:${turn.id}`] : []),
     ...view.order.filter(turn => turn.revisionReviewReserved && turn.revisionReview?.verdict !== 'pass'
       && turn.revisionReview?.verdict !== 'violation').map(turn => `revision-review:${turn.id}`)];
-  const jev = view.order.filter(turn => turn.jevReserved && !turn.replyChecks?.some(check => check.path === 'jev' && check.verdict !== 'unavailable'))
-    .map(turn => `jev:${turn.id}`);
+  const jev = [...view.order.flatMap(turn => turn.memorySelection?.reserved.includes('jev') && !turn.memorySelection.settled.includes('jev')
+    ? [`memory-selection:jev:${turn.id}`] : []), ...view.order.filter(turn => turn.jevReserved && !turn.replyChecks?.some(check => check.path === 'jev' && check.verdict !== 'unavailable'))
+    .map(turn => `jev:${turn.id}`)];
   // Index-only calls: every superseded reservation plus the one still awaiting its result. Each is named by its
   // own unique reservation key, so a write-off still matches after a later batch supersedes it.
   const index = [...view.indexUnknown, ...(view.indexOpen === null ? [] : [view.indexOpen.key])];
@@ -3598,6 +3607,33 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     view.sendOutcomes.push({ target: row.target, outcome: row.outcome, reason: row.reason, at: row.at }); return;
   }
   if (row.kind === 'tool-turn') { projectToolTurn(view, row); return; }
+  if (row.kind === 'memory-selection-reserve' || row.kind === 'memory-selection-call' || row.kind === 'memory-selection') {
+    const turn = view.turns.get(row.id);
+    if (!turn?.reserved) throw Error('preview journal: shadow requires a reserved packet');
+    const shadow = turn.memorySelection ??= { reserved: [], settled: [] };
+    if (shadow.result) throw Error('preview journal: shadow already recorded');
+    if (row.kind === 'memory-selection-reserve') {
+      if (!['jev', 'luna'].includes(row.stage) || shadow.reserved.includes(row.stage)
+        || row.stage === 'luna' && !shadow.settled.includes('jev')
+        || !Number.isSafeInteger(row.bytes) || row.bytes < 1 || row.bytes > MEMORY_SHADOW_BYTES
+        || !validShadowRecord(row.baseline) || view.stop || row.at >= view.expires || !obligationCapacity(view))
+        throw Error('preview journal: shadow reservation order or cap');
+      shadow.baseline ??= row.baseline;
+      shadow.reserved.push(row.stage); view.calls++;
+      reserveTokens(view, `memory-selection:${row.stage}:${row.id}`, 'replyCheck', MEMORY_SHADOW_BYTES * 2,
+        row.stage === 'jev' ? jevOutputMaximum : subscriptionOutputMaximum);
+    } else if (row.kind === 'memory-selection-call') {
+      if (!shadow.reserved.includes(row.stage) || shadow.settled.includes(row.stage))
+        throw Error('preview journal: shadow settlement order');
+      shadow.settled.push(row.stage);
+      settleTokens(view, `memory-selection:${row.stage}:${row.id}`, row.usage, row.stage === 'jev');
+    } else {
+      if (!validShadowRecord(row.result))
+        throw Error('preview journal: invalid shadow result');
+      shadow.result = row.result;
+    }
+    return;
+  }
   if (row.kind === 'model-call') {
     checkModelCall(row);
     const counts = view.modelCalls;
@@ -5352,6 +5388,7 @@ export interface PreviewPorts {
   /** Uses the same pinned Jev route as reply supervision, only after exact preservation cannot decide. */
   summaryCheck?(evidence: string): Promise<unknown>;
 
+  memorySelection?: MemoryShadowPorts;
   stepCheck?: { jev(state: string, questions?: Record<string, { type: string; instructions: string }>): Promise<{ value: unknown; latencyMs: number }> };
   /** Extra plain lines for the status pull, read at the moment of answering (Rule 43: proof posture; Rules 63/33: ownership, store checks). */
   statusExtra?(): readonly string[];
@@ -5397,6 +5434,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       : { kind: 'refused', reason: 'group disclosure authority or audience refused' },
     ...(original.sessionWork ? { sessionWork: guarded(original.sessionWork) } : {}),
     ...(original.retrospect ? { retrospect: guarded(original.retrospect) } : {}),
+    ...(original.memorySelection ? { memorySelection: { ...original.memorySelection, jev: guarded(async (...args: Parameters<MemoryShadowPorts['jev']>) => { gate(); return original.memorySelection!.jev(...args); }),
+      luna: guarded(async (...args: Parameters<MemoryShadowPorts['luna']>) => { gate(); return original.memorySelection!.luna(...args); }) } } : {}),
     ...(original.stepCheck ? { stepCheck: { jev: guarded(original.stepCheck.jev) } } : {}),
     ...(original.summaryCheck ? { summaryCheck: guarded(original.summaryCheck) } : {}),
     ...(original.replyCheck ? { replyCheck: { ...original.replyCheck,
@@ -7428,6 +7467,48 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * strictly raises the floor, so it terminates within log2(history) steps and ends with the incoming message
    * alone. The message itself being too long is the one size refusal left, and it belongs to the message, not to
    * the conversation's length. */
+  /** Snapshot only eligible retained originals beside the actual fitted packet. No second retriever or
+   * mutation of originals, pins or packet. At most 50 items: actual first, then a spread across the prefix. */
+  const memorySelectionInput = (turn: Turn, context: string): ShadowInput => {
+    const packet = JSON.parse(context) as { summary?: { through: number }; historySetAside?: { through: number };
+      recalled?: { id: string }[]; history?: unknown[]; people?: { source?: string }[] };
+    const actualItems = packet.recalled ?? [];
+    const actual = actualItems.map(item => item.id);
+    const through = Math.max(packet.summary?.through ?? -1, packet.historySetAside?.through ?? -1);
+    const older = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update <= through);
+    const chosen = actual.flatMap(id => older.findIndex(item => item.id === id) < 0 ? [] : [older.findIndex(item => item.id === id)]);
+    const pool = [...new Set([...chosen, ...rerankPool(chosen, older.length, MEMORY_SHADOW_LIMIT)])].slice(0, MEMORY_SHADOW_LIMIT);
+    // Use the same renderer as the real packet, including redaction, edit exclusions and source labels.
+    const rendered = JSON.parse(packetFor(before(turn.update), true, pool.map(i => older[i]!), [], [], turn.thread)) as { recalled?: { id: string }[] };
+    const byId = new Map([...(rendered.recalled ?? []), ...actualItems].map(item => [item.id, item]));
+    const candidates = [...byId.values()].slice(0, MEMORY_SHADOW_LIMIT).map(item => ({ id: item.id,
+      text: JSON.stringify(item), bytes: Buffer.byteLength(JSON.stringify(item)) + 1 }));
+    const fixed = new Set([...learnedLessons().pinned, ...journal.view.order.filter(item => remembered(item)
+      && !sizeRefused(item) && item.update < turn.update).slice(-PREVIEW_CONTINUED_TURNS).map(item => item.id)]);
+    return { question: clean(redact(turn.text).text, true, turn.id),
+      context: JSON.stringify({ summary: packet.summary, recent: packet.history?.slice(-2), namingGlossary: packet.people }).slice(0, 4096),
+      eligibleCandidates: Math.max(older.length, candidates.length), candidates, actual, fixed: actual.filter(id => fixed.has(id)) };
+  };
+  const shadowMemory = async (turn: Turn, context: string) => {
+    const port = ports.memorySelection;
+    if (!port || port.enabled === false || turn.memorySelection?.result) return;
+    const input = memorySelectionInput(turn, context);
+    let result: ShadowRecord;
+    if (turn.memorySelection?.reserved.length) result = { ...shadowBaseline(input), reason: 'interrupted-no-repeat' };
+    else if (secretMaterialIn(JSON.stringify(input), ports.heldSecrets?.() ?? []))
+      result = { ...shadowBaseline(input), reason: 'secret-in-evidence' };
+    else result = await observeMemorySelection(input, turn.id, port, async (stage, bytes) => {
+      if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires || !obligationCapacity(journal.view)
+        || !await disclosure()) return false;
+      // Recheck after the asynchronous authority read: no stop/cap can be crossed by its delay.
+      if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires || !obligationCapacity(journal.view)) return false;
+      journal.append({ kind: 'memory-selection-reserve', id: turn.id, stage, bytes, baseline: shadowBaseline(input), at: ports.now() });
+      return true;
+    }, (stage, usage) => journal.append({ kind: 'memory-selection-call', id: turn.id, stage,
+      ...(usage ? { usage } : {}), at: ports.now() }));
+    journal.append({ kind: 'memory-selection', id: turn.id, result, at: ports.now() });
+  };
+
   const preparedWithFloor = (turn: Turn) => {
     try {
       let setAside = -1, attempt = preparedFor(turn, true, setAside);
@@ -7559,6 +7640,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // One fresh read per pass decides which turns may proceed; the model and send ports still re-read their own.
       const audienceHolds = await disclosure();
       completeApprovals();
+      // Interrupted observers settle visibly without repeating a paid request, even with shadow switched off.
+      for (const turn of journal.view.order) if (turn.memorySelection?.baseline && !turn.memorySelection.result)
+        journal.append({ kind: 'memory-selection', id: turn.id, result: { ...turn.memorySelection.baseline,
+          status: 'unavailable', reason: 'interrupted-no-repeat' }, at: ports.now() });
       // A split reply left part-way by a restart continues before anything new is answered.
       for (const turn of journal.view.order) if (turn.replyParts?.length) await sendReplyParts(turn);
       if (due) scheduleRequests();
@@ -7746,6 +7831,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
             corrections: carried, grounding, packetDropped: dropped, packetLimit: journal.view.limits.maxBytes,
             maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
+
+          await shadowMemory(turn, context);
+          gate();
 
           type Answer = Awaited<ReturnType<PreviewPorts['model']>>;
           const answerStarted = elapsedMs();

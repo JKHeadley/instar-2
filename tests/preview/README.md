@@ -4228,3 +4228,42 @@ credential state yields the ordinary unreadable attachment notice with tools ena
 Local ffmpeg and whisper-cli launches use the shared host resource owner as maintenance
 work, including Six allocation, answer reserve, tree census, stop and bounded output/time.
 Both run in the same private per-transcription directory, removed after completion.
+
+### Shadow memory selection
+
+The journal launcher defaults to `--memory-selection shadow`; `--memory-selection off`
+disables it. No live-selection mode exists. After fitting and reserving the actual answer
+packet, the observer compares the optional recalled-original selection with Jev 1.13.0's
+ranking. All other packet sections, required context, learned pins, continuation originals,
+retrieval and stored originals keep their existing behavior. The actual packet is never
+rebuilt from the shadow result.
+
+The observer reuses the recall pool and renderer: actual recalled ids plus a spread across
+eligible older originals, at most 50. Its journal result names the eligible population,
+sampled ids, full rendered UTF-8 costs, ranking-excerpt flags, scores, actual and proposed
+sets, differences and per-provider latency. Ranking excerpts are bounded to 384 bytes per
+item; the real packet never receives these excerpts. Its item and byte ceilings are the
+actual fitted recalled selection's ceilings, including fixed pins and continuation items.
+Originals too large for the equal byte allowance are skipped whole in the counterfactual.
+
+The lowest selected optional Jev score is the budget cutoff. Items within ±0.08, inclusive,
+and items with undecided or invalid individual scores are referred in one batch to GPT-6
+Luna. This is a probability movement band, not an absolute relevance threshold. Luna may
+include, exclude or say `cannot_tell`; the latter keeps the actual selection and records
+unavailable. The installed exact-model activation must authorize `gpt-6-luna` for that
+call. An activation for another model yields unavailable, never a disguised substitute or
+an expanded grant. This deployment prerequisite is distinct from a provider outage.
+
+Both attempts use the existing disclosure, model-call audit, shared journal, call allowance
+and stop boundaries. Observation yields at the existing medium-priority capacity threshold
+and preserves answer headroom. One durable reservation per provider and turn prevents
+repeating interrupted calls; usage that was not observed remains UNKNOWN. Reservations
+and results are non-additive generation-3 frames: a rollback must retain this reader or use
+a root from before observation, because an older reader cannot discard spending state.
+The content-free comparison is separate from the existing encrypted model-call audit,
+which retains scrubbed inputs and outputs. No shadow report is sent to the operator or model.
+
+`memory-selection-shadow.test.ts` verifies on/off/outage packet equality using the recorded
+garden-room fixture and its reconstructed journal, as well as boundary referrals, both
+budget ceilings, fixed context, malformed answers, stop, capacity and restart. Provider
+answers are injected; ranking quality, Luna performance and live deployment are unmeasured.

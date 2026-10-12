@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { MEMORY_SHADOW_LUNA, MEMORY_LUNA_QUESTION } from './memory-selection-shadow.js';
 import { isGroupReviewFinalNotice } from './reply-check.js';
 import { loadHarnessLogins, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { groupMembershipReader } from './group-membership-io.mjs';
@@ -706,6 +707,8 @@ const stepCheckView = view => ({ total: view.stepChecks.size,
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
+  if (options['memory-selection'] !== undefined && !['shadow', 'off'].includes(options['memory-selection'])) throw Error('preview: --memory-selection must be shadow or off');
+  const memorySelectionEnabled = options['memory-selection'] !== 'off';
   const stepCheckEnabled = options['step-check'] === 'true';
   if (options.retrospective !== undefined && !['true', 'false'].includes(options.retrospective)) throw Error('preview: --retrospective must be true or false');
   // On by default: one bounded pass at most hourly, inside the model-attempt cap with a reply reserve.
@@ -2018,6 +2021,28 @@ async function main() {
           ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
         return { state: 'complete', text: result.value, ...(result.reason ? { reason: result.reason } : {}),
           usage: recordedUsage(result.usage) };
+      },
+      memorySelection: {
+        enabled: memorySelectionEnabled, elapsedMs: () => performance.now(),
+        lunaAvailable: () => options.model === MEMORY_SHADOW_LUNA,
+        jev: (state, questions, id) => callJev('jev-memory-selection', state, questions, 2000, id),
+        luna: async (state, id) => {
+          // The installed activation binds an exact model. Never impersonate Luna with the answer model,
+          // substitute a login, or widen that grant for a shadow experiment.
+          if (options.model !== MEMORY_SHADOW_LUNA) throw Error('preview: authorized Luna route unavailable');
+          const operation = `${id}:memory-selection`, start = performance.now();
+          const writer = envelopeWriter(journal.systemWriter('reply-review', `${operation}\n${state}`, wallNow()));
+          const prepared = modelEnvelope({ question: MEMORY_LUNA_QUESTION, context: state, id: operation, ...(writer ? { writer } : {}) });
+          const policy = doorway.policyFor(MEMORY_SHADOW_LUNA, doorway.conversationFraming);
+          const result = await modelLaunch.run(() => callSubscription('luna-memory-selection', prepared, operation,
+            { operation, deadline: Math.min(journal.view.expires, wallNow() + 10000), timeout: Math.min(policy.timeout, 10000),
+              maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens, maxCharge: 0, automaticRetries: 0 }));
+          if (result.state !== 'complete' || !result.bytes) throw Error('preview: Luna unavailable');
+          const reading = readAnswer(result.bytes, { wrapped: 'refuse', object: true, evidence: [operation] });
+          if (!reading.ok) throw Error('preview: Luna malformed');
+          return { value: reading.value, latencyMs: performance.now() - start,
+            ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
+        },
       },
       summaryCheck: async evidence => (await callJev('jev-summary-faithfulness', evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
       replyCheck: {

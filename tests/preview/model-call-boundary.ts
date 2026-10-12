@@ -40,6 +40,8 @@ export const LIVE_JUDGMENTS = Object.freeze({
   'jev-summary-faithfulness': { route: 'typesafe-jev', actions: ['accept', 'escalate', 'reject'], default: 'reject', authority: 'mandatory',
     invalid: 'undecided (unsure band, unavailable, or evidence past its bound): escalates once to summary-review, whose pass alone accepts; when that review cannot be admitted (no route, stopped, call cap) or does not pass, the summary is not recorded; an unanswered Jev call keeps its reserved charge UNKNOWN' },
   retrospective: { route: 'preview-subscription', actions: ['record-review', 'discard'], default: 'discard', authority: 'signal', invalid: 'pass failed: no grade, finding or candidate is recorded and every case stays owed' },
+  'jev-memory-selection': { route: 'typesafe-jev', actions: ['record-rank'], default: 'record-rank', authority: 'signal', invalid: 'unavailable shadow result; actual packet unchanged' },
+  'luna-memory-selection': { route: 'preview-subscription', actions: ['record-inclusion'], default: 'record-inclusion', authority: 'signal', invalid: 'unavailable shadow result; requires the exact authorized gpt-6-luna model; actual packet unchanged' },
   'jev-step-check': { route: 'typesafe-jev', actions: ['record-verdict'], default: 'record-verdict', authority: 'signal', invalid: 'unavailable verdict recorded; observation only, no effect' },
 } as const);
 export type LiveJudgment = keyof typeof LIVE_JUDGMENTS;

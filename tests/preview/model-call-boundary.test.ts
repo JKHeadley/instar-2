@@ -78,7 +78,7 @@ it('real-model-shaped Decisions: the floor the system prompt asks the model to c
 it('every registered judgment names a route, a closed action space and a default inside it', () => {
   // Rule 57's enumeration, mirrored by the live-proof B7 criterion: the retrospective pass is registered.
   expect(Object.keys(LIVE_JUDGMENTS)).toEqual(['answer', 'reply-review', 'reply-revision', 'summary', 'summary-review', 'jev-reply-check',
-    'jev-summary-integrity', 'jev-summary-faithfulness', 'retrospective', 'jev-step-check']);
+    'jev-summary-integrity', 'jev-summary-faithfulness', 'retrospective', 'jev-memory-selection', 'luna-memory-selection', 'jev-step-check']);
   expect(() => assertLiveJudgment('retrospective', 'preview-subscription')).not.toThrow();
   for (const [name, judgment] of Object.entries(LIVE_JUDGMENTS)) {
     expect(['preview-subscription', 'typesafe-jev'], name).toContain(judgment.route);
