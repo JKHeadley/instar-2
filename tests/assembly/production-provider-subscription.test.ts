@@ -680,4 +680,14 @@ it('coalesces overlapping version checks only for the same complete profile', as
   await Promise.resolve(); expect(calls).toBe(1); release(); await Promise.all([a, b]);
   await check({ ...f.input.profile, version: 'different' }, async () => { calls++; });
   expect(calls).toBe(2);
+  // Failure of an older in-flight profile cannot discard a newer successful slot.
+  let reject!: (reason: Error) => void;
+  const older = check(f.input.profile, () => new Promise<void>((_resolve, fail) => { reject = fail; }));
+  await Promise.resolve();
+  const newer = { ...f.input.profile, version: 'newer' };
+  await check(newer, async () => { calls++; });
+  const rejected = expect(older).rejects.toThrow('older failed');
+  reject(Error('older failed')); await rejected;
+  await check(newer, async () => { calls++; });
+  expect(calls).toBe(3);
 });

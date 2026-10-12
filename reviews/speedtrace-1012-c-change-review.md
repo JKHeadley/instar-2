@@ -21,6 +21,7 @@ Convergence: none
 Decision: speedtrace-c-consumer | Prove phase timing reaches the CLI status consumer and classify limited/nonzero preflight results as failed without exposing their text. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speedtrace-1012-PROGRESS.md
 Decision: speedtrace-c-fixtures | Forward the real version-cache factory through existing substitute provider modules; repair the new import failure without changing fixture answers or policy. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speedtrace-1012-PROGRESS.md
 Decision: speedtrace-c-publication | Regenerate offline register publication from committed source; keep the Darwin runtime certificate's revalidation requirement explicit. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speedtrace-1012-PROGRESS.md
+Decision: speedtrace-c-cache-overlap | Prove a failed older in-flight version check cannot erase the successful slot of a different newer profile. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speedtrace-1012-PROGRESS.md
 Prompt review: No model-facing text or acceptance rule changes. Fixture answers and prompts are unchanged; the added export forwards production code. Diagnostic records contain measurements only.
 
 ## Closing block
