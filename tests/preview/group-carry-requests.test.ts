@@ -277,13 +277,15 @@ it('forgetting carried request text cannot silently cancel the owned request', a
 const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
 const modelCode = host.split('      model: async ({ id, prepared }) => {')[1]!.split('\n      summaryCheck:')[0]!;
 const modelFunction = 'async ({ id, prepared }) => {' + modelCode.trimEnd().replace(/,$/, '');
-const sendCode = host.split('      send: async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit, current }) => {')[1]!.split('\n    if (existsSync(stopPath))')[0]!;
-const sendFunction = 'async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit, current }) => {' + sendCode.slice(0, sendCode.lastIndexOf(' });'));
+// Keep the shipped parameter bindings too: optional phase observers must not break extraction
+// or become unbound names when this test executes the real send body.
+const sendCode = host.split('      send: ')[1]!.split('\n    if (existsSync(stopPath))')[0]!;
+const sendFunction = sendCode.slice(0, sendCode.lastIndexOf(' });'));
 
 it.each([true, false])('shipped send delivers answers and terminal notices when original exists: %s', async originalExists => {
   for (const text of ['A reviewed answer.', GROUP_REVIEW_FINAL_NOTICE]) {
     let admitted = 0, networkSends = 0;
-    const outcomes: string[] = [];
+    const outcomes: string[] = [], phases: string[] = [];
     const send = Function('journal', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'ownerHeld', 'shared',
       'GROUP_DISCLOSURE_HOLD_NOTICE', 'isGroupReviewFinalNotice', 'requireGroupDisclosure', 'physical', 'secretRef',
       'token', 'classifyTelegramSend', 'g', `return (${sendFunction});`)(
@@ -306,8 +308,10 @@ it.each([true, false])('shipped send delivers answers and terminal notices when 
           chat: { id: Number(body.chat_id) }, text: body.text, message_thread_id: body.message_thread_id, message_id: 7 } }) };
       } }, (x: string) => x, () => 'TEST', classifyTelegramSend, { forum: true });
     expect(await send({ text, expectedText: text, chat: scope.chat, thread: 3, replyTo: 6,
-      target: 'TEST-reply', provenance: {}, admit: () => { admitted++; } })).toEqual({ kind: 'accepted', message: 7 });
+      target: 'TEST-reply', provenance: {}, admit: () => { admitted++; },
+      observeSendPhase: (phase: string) => { phases.push(phase); } })).toEqual({ kind: 'accepted', message: 7 });
     expect(networkSends).toBe(1); expect(admitted).toBe(1); expect(outcomes).toEqual(['accepted']);
+    expect(phases).toEqual(['audienceAdmittedAt', 'transportBegunAt', 'transportReturnedAt']);
   }
 });
 
