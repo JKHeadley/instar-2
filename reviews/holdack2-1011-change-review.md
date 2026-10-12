@@ -4,7 +4,7 @@ Subject base: 7002feeb7cd44c8ea2ec2500aa005999962ff3b1
 Review state: open
 Reviewed content: none
 Outcome: Merge approved main d5d1ed51 and restore holdack behavior: one short in-reply acknowledgement on slow user turns, none on fast turns; preserve all four speed changes and pull-only held/agent status.
-Affected rules: Purpose least revelation and durable cause; Rules 1/4/13/14/26/28/34/36/37/41/46/49/57/58/63/70/74/75/77/87/95/101/111/112/113/116.
+Affected rules: Purpose least revelation and durable cause; Rules 1/4/13/14/15/26/28/34/36/37/41/46/49/57/58/63/70/74/75/77/87/95/101/111/112/113/116.
 Affected floors: secrets — existing outbound checks; spend cap — existing call/reply reservations; stop — existing intake/dispatch checkpoints; no duplicate sends — durable intent/receipt and unknown-outcome fence; durable intake — original encrypted journal unchanged by runtime rollback.
 Operator questions: none
 Suggested tier: critical

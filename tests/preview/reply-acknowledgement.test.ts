@@ -7,6 +7,7 @@ import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, unknown
 import { readAnswer } from './answer-reading.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { jevQuestions } from './reply-check.js';
+import { STOP_CONFIRM_TEXT } from './status-command.js';
 
 const key = new Uint8Array(32).fill(71);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -79,14 +80,48 @@ for (const options of [{ verdict: 'violation' as const }, { cap: 2 }, { replies:
     } finally { f.close(); }
   });
 
-it('stop during an acknowledgement review prevents its send', async () => {
-  const f = fixture(), review = pendingResult<Awaited<ReturnType<NonNullable<PreviewPorts['replyCheck']>['escalate']>>>();
-  f.ports.replyCheck!.escalate = async () => review.promise;
+it('polls subsequent input and confirms a Telegram stop before acknowledgement review completes', async () => {
+  const f = fixture(), reviewing = pendingResult<void>();
+  const review = pendingResult<Awaited<ReturnType<NonNullable<PreviewPorts['replyCheck']>['escalate']>>>();
+  f.ports.replyCheck!.escalate = async () => { reviewing.resolve(); return review.promise; };
   const worker = createJournalWorker(f.journal, f.ports);
-  try { worker.intake([update()]); const drain = worker.drain(); await f.entered.promise;
-    f.advance(8000); const tick = worker.minimal(); f.stop();
-    review.resolve({ verdict: 'pass', ruleIds: [], confidence: 1, latencyMs: 0 }); await tick;
-    f.answer.resolve('Done.'); await expect(drain).rejects.toThrow('preview stopped'); expect(f.sent).toHaveLength(0);
+  let nextPollStarted = false;
+  try {
+    worker.intake([update()]); const drain = worker.drain().catch(error => error); await f.entered.promise;
+    f.advance(8000);
+    // Match the host's pre-poll and post-intake awaits; an unresolved review must hold neither.
+    const cycle = (async () => {
+      await worker.minimal(); nextPollStarted = true;
+      worker.intake([update(2), { ...update(3), message: { ...update(3).message, text: '/stop' } }]);
+      await worker.minimal();
+      const stop = f.sent.find(row => row.expectedText === STOP_CONFIRM_TEXT);
+      const markup = stop?.replyMarkup as { inline_keyboard: { callback_data: string }[][] };
+      worker.intake([{ update_id: 4, callback_query: { id: 'stop-4', from: { id: 7654321 },
+        data: markup.inline_keyboard[0]![0]!.callback_data,
+        message: { message_id: 900, chat: { id: 7654321, type: 'private' } } } }]);
+    })();
+    await reviewing.promise; await new Promise<void>(done => setImmediate(done));
+    const pending = { nextPollStarted, inputConsumed: f.journal.view.order.some(turn => turn.update === 2),
+      stopped: f.journal.view.stop, reviews: f.journal.view.order[0]?.heldNoticeReview,
+      acknowledgements: f.sent.filter(row => row.expectedText === REPLY_ACKNOWLEDGEMENT).length };
+    review.resolve({ verdict: 'pass', ruleIds: [], confidence: 1, latencyMs: 0 }); await cycle;
+    f.answer.resolve('Done.'); expect(await drain).toMatchObject({ message: 'preview stopped' });
+    expect(pending).toEqual({ nextPollStarted: true, inputConsumed: true, stopped: 'operator',
+      reviews: undefined, acknowledgements: 0 });
+    expect(f.sent.map(row => row.expectedText)).toEqual([STOP_CONFIRM_TEXT]);
+  } finally { f.close(); }
+});
+
+it('a detached acknowledgement failure stays observable by the ordinary drain', async () => {
+  const f = fixture();
+  f.ports.checkOutbound = text => { if (text === REPLY_ACKNOWLEDGEMENT) throw Error('acknowledgement boundary failed'); };
+  const worker = createJournalWorker(f.journal, f.ports);
+  try {
+    worker.intake([update()]); const drain = worker.drain(); await f.entered.promise;
+    f.advance(8000); await worker.minimal(); await new Promise<void>(done => setImmediate(done));
+    await worker.minimal();
+    f.answer.resolve('Done.'); await expect(drain).rejects.toThrow('acknowledgement boundary failed');
+    expect(f.sent).toHaveLength(0);
   } finally { f.close(); }
 });
 
@@ -122,9 +157,13 @@ const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-fo
   otherShapes: { kind: string; id: string; raw: string }[] };
 for (const shape of shapes.otherShapes) it(`acknowledges once while replaying recorded ${shape.kind} ${shape.id}`, async () => {
   const f = fixture({ tool: true });
-  f.ports.model = async () => shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw) as { state: 'uncertain' } : shape.raw;
+  f.ports.model = async () => { f.entered.resolve(); await f.answer.promise;
+    return shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw) as { state: 'uncertain' } : shape.raw; };
   const worker = createJournalWorker(f.journal, f.ports);
-  try { worker.intake([update()]); f.advance(8000); await worker.drain();
+  try { worker.intake([update()]); const drain = worker.drain(); await f.entered.promise;
+    f.advance(8000); await worker.minimal(); await new Promise<void>(done => setImmediate(done));
+    expect(f.sent.map(row => row.expectedText)).toEqual([REPLY_ACKNOWLEDGEMENT]);
+    f.answer.resolve('release recorded output'); await drain;
     expect(f.sent.filter(row => row.expectedText === REPLY_ACKNOWLEDGEMENT)).toHaveLength(1);
     expect(f.sent.every(row => row.expectedText.trim().length > 0)).toBe(true);
     expect(f.journal.view.order[0]?.heldNoticeReview?.verdict).toBe('pass');
@@ -183,6 +222,10 @@ for (const receipt of [10, null]) it(`a crash after acknowledgement intent and b
   const f = fixture({ receipt });
   try { f.worker.intake([update()]); const drain = f.worker.drain(); await f.entered.promise;
     f.advance(8000); await f.worker.minimal();
+    // minimal no longer waits for dispatch; take the crash copy after its receipt has settled.
+    await new Promise<void>(done => setImmediate(done));
+    expect(f.journal.view.order[0]?.heldNoticeIntent).toBeDefined();
+    expect(f.journal.view.order[0]?.heldNoticeSent).toBe(receipt === null ? undefined : receipt);
     const copy = `${f.path}.crash-copy`;
     writeFileSync(copy, readFileSync(f.path));
     f.answer.resolve('Done.'); await drain;

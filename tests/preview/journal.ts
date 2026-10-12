@@ -7563,7 +7563,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         journal.append({ kind: 'held-notice-sent', id: turn.id, message: outcome.message, at: ports.now() });
       } catch { /* exact acknowledgement intent remains UNKNOWN; never resent */ }
     };
-    acknowledgementInFlight = run().finally(() => { acknowledgementInFlight = undefined; });
+    // Keep a rejected promise for the ordinary drain to observe, even if the model is still busy.
+    acknowledgementInFlight = run().then(() => { acknowledgementInFlight = undefined; });
     return acknowledgementInFlight;
   };
   /** Rules 2, 87, 88: a disclosure hold past the self-heal window is told once, content-free, per notice window; the
@@ -8838,7 +8839,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (!due && pendingMemory()?.editOf) settleBehind();
       if (!due && pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
     } finally {
-      try { await acknowledgementInFlight; } finally { activeReply = undefined; working = false; }
+      try { await acknowledgementInFlight; } finally { acknowledgementInFlight = undefined; activeReply = undefined; working = false; }
     }
   };
   /** The minimal responder (Rule 15): an operator message that an ordinary cap keeps from its
@@ -10602,7 +10603,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   /** The minimal path's own step, run by the host between polls without waiting on an ordinary drain
    * that may be blocked on a model: confirmed stops, verified raises, then limited answers (Rule 15). */
-  const minimal = async () => { gate(); completeApprovals(); if (journal.view.stop !== null) return; ensureStopChallenge(); await acknowledgeReply(); await answerLimited();
+  const minimal = async () => { gate(); completeApprovals(); if (journal.view.stop !== null) return; ensureStopChallenge();
+    // Rules 4/15/77: review must not delay intake or the limited responder. The ordinary drain
+    // awaits this same promise for final-send ordering and propagates any failure.
+    void acknowledgeReply().catch(() => {});
+    await answerLimited();
     await pollReviewRequests(); await issueRetractRequest(); };
   return { intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 
