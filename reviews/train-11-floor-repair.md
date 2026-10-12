@@ -14,8 +14,8 @@ Side effects: Prompt text is shorter but all verbatim constitutional rows, proto
 Undo and recovery: Revert the source repair and regenerate the register; historical journal outputs and gate evidence are read-only and need no recovery.
 Multi-machine posture: Stateless prompt composition is identical on each machine. Temporary offline replay journals and diagnostic logs are machine-local; no replication, ownership or transport changes.
 Layer below: Checked sourcePacket excerpt hashing, ANSWER_INSTRUCTIONS delivery, packetFor recall instructions, packet fitting and review reserve, replay callbacks and real recorded outputs. Both constitutional documents read in full.
-Bug class: prompt budget drift and obsolete replay source expectations
-Bug evidence: Before: 13 failures in four named files. After: those four files pass 39 tests, with only the existing manual capture test skipped. Exact floor and one-byte-over boundary both pass, including the tool route. Recorded default-root directive and blocker paths fire.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/default-context-floor.test.ts and default-root-conversation.test.ts plus guidance.test.ts and summary-cascade-stall.test.ts; Before: 13 failures in four named files. After: those four files pass 39 tests, with only the existing manual capture test skipped. Exact floor and one-byte-over boundary both pass, including the tool route. Recorded default-root directive and blocker paths fire.
 Hook bypass: none
 Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
@@ -28,6 +28,10 @@ Deferral: tests/preview/briefing.ts:217 | not-a-deferral=The instruction precede
 Subject (4 paths): tests/preview/briefing.ts, tests/preview/guidance.test.ts, tests/preview/journal.ts, tests/preview/summary-cascade-stall.test.ts
 
 Register replay: regenerated seven generated/ publications at source commit 89fca85326d2fc73677e28d755b451366edfa0be; reviewed the generation/source-only diff and retained all declaration counts.
+
+Recall consumers: updated the negative-control phrase locator and source-label assertion for the shortened guidance; five tests across hallucinated-memory-rate.test.ts and journal-channel-memory.test.ts pass.
+
+Prompt finding: e8708c7fea24 | quoted-evidence | The regression test locates and removes the current recall instruction to exercise its negative control; the runtime prose is not derived from a semantic fixture answer.
 
 ## Closing block
 
