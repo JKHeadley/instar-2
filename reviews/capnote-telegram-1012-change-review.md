@@ -31,6 +31,8 @@ Subject (12 paths): generated/capabilities.json, generated/capabilities.md, gene
 
 Generated evidence: Regenerated with node scripts/build-register.mjs --commit 54c24662867f8d7a3a5df2f2b4c60f71f221f536; feature declarations and availability remain unchanged.
 
+Historical-comparison repair: Apply the same explicit channel-note translation to the older K11a capture as to the two newer captures. Historical fixture bytes and judge digests remain unchanged. All eight selfdesc-abilities tests pass after this correction.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: qualify the misleading disabled entry in the existing note. The exact launcher plus available conversation feature guards against falsely claiming a channel for another installation. No new store, channel, authority or model call; the context floor and runtime limits are unchanged. End checks are consumer replays and the standard source gates. No unattended deployment claim.
