@@ -360,6 +360,8 @@ Skip: tests/preview/yes-batch-live.test.ts:375 | scope=Existing opt-in live capt
 Skip: tests/preview/yes-window.test.ts:222 | scope=Existing opt-in live capture or journal replay requires its declared provider/journal environment; the merge adds no skip.
 
 
+Verification update: The seven merged/first-landing files pass 37 tests; the remaining ten baseline files pass 71 tests. All 13 files named by the stale-main defect are active and passing (82 tests); close its obsolete quarantine status. The first-landing fixture verifies both already-landed and genuinely stale unlanded units.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge, resolve overlapping source expectations and regenerate existing pins. No new runtime mechanism or ability limit. Exact source digests guard entry; existing prompt caps and effect checkpoints guard limits. Targeted foreground verification establishes integration readiness, not a new autonomous-completion claim.
