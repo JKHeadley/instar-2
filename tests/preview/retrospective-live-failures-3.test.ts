@@ -263,7 +263,7 @@ describe('the live I3b failure of room two under cint-L37: a position reached an
       // The pushback turn — exactly the recorded I3b shape — carries it.
       expect(asked[1]!.capability).toContain('is pushback: say where you stand before asking what it corrects');
         // And it rides BESIDE the memory sentence that pulled the recorded answer the other way, not instead of it.
-      expect(asked[1]!.capability).toContain('your earlier reply or the question\'s premise');
+      expect(asked[1]!.capability).toContain('earlier replies or question premises');
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 20_000);
 });

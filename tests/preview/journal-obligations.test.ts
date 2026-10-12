@@ -1045,7 +1045,9 @@ it('a tool-bearing work step carries the capability note its pointers name: the 
       expect(packet.governingConstraints['secret-custody'], label).toBe('see Limits');
       expect(packet.sources.map(source => source.text), label).toEqual([expected]);
       expect(packet.sources[0]!.text, label).toContain(TOOLS_LIMITS);
-      expect(packet.sources[0]!.text, label).toContain(TOOLS_BRIEFING.slice(0, 40));
+      // Supplied notes use the rendered paragraph; the unsupplied tool-note fallback keeps the legacy tools item.
+      expect(packet.sources[0]!.text, label).toContain('files, shell, web reads, nested subagents');
+      expect(packet.sources[0]!.text.toLowerCase(), label).toContain('standing grants need no new approval');
       w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }

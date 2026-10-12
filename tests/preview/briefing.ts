@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
+// @ts-expect-error The effect doorway runs as plain JavaScript in the harness.
+import { CONSEQUENTIAL_TESTS, SIGN_OFF_TESTS, SIGN_OFF_WORDS } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
 
 export const SUCCESSIVE_CONTEXT_VERSION = 'successive-context-v1';
@@ -44,10 +46,11 @@ type BriefedFeature = { id: string; status: string; availability: string; userFa
  * (reply-check.ts DECLARED_OBLIGATIONS_GUIDE). It names no tool: what a tool may do is decided per call at the admission
  * hook. The tool route's capability and constraint entries point here instead of restating it, which pays for these bytes
  * within default-context-floor's measurement. */
+const GRANTED_TOOL_NAMES = 'files, shell, web reads, nested subagents';
 export function toolsBriefing(mcp?: number) {
   const servers = mcp === undefined ? 'MCP servers: unknown' : mcp === 0 ? 'no MCP server, so no logged-in account access'
     : `${String(mcp)} MCP server(s) (accounts only via their tools)`;
-  return `tools: full Claude Code set (files, shell, web reads, nested subagents); ${servers}; network writes and outside sends `
+  return `tools: full Claude Code set (${GRANTED_TOOL_NAMES}); ${servers}; network writes and outside sends `
     + 'via the doorway\'s four tests; standing grants need no new approval.';
 }
 export const TOOLS_BRIEFING = toolsBriefing();
@@ -62,6 +65,18 @@ export const SELF_DESCRIPTION = SELF_IDENTITY + ' Correct self-description; omit
   + 'Standing grants need no new yes; all four doorway tests can still refuse. Name missing grants.';
 export const SIGN_OFF = 'Fresh sign-off is only for resources above named limits, irreversible acts outside role, public speech '
   + "in the person's name, widening your authority or matters the operator marked sensitive.";
+/** The capability note is the record: render from this turn's granted tool state and
+ * the effect doorway's own checks, never from the model's recollection (Rules 78/84/103).
+ * The existing source provenance pins these exact bytes for offline K11 verification. */
+export const CAPABILITY_SENTENCE_LABEL = 'Tools/outbound sentence (quote verbatim): ';
+export function capabilitySentence(limits: { tools?: boolean; mcp?: number }): string {
+  if (!limits.tools) return 'I have no tools, browsing or code execution here, and cannot act outside this chat; I can answer later-time requests only as listed in my capability record.';
+  const tools = toolsBriefing(limits.mcp).split('; ')[1];
+  const checkNames: Record<string, string> = { irreversible: 'reversibility', resources: 'resource limits', scope: 'granted scope', policySensitive: 'sensitivity' };
+  const checks = (CONSEQUENTIAL_TESTS as string[]).map(key => checkNames[key]).join(', ');
+  const signOff = (SIGN_OFF_TESTS as string[]).map(key => SIGN_OFF_WORDS[key] as string).join('; ').replaceAll('’', "'");
+  return `I can use ${GRANTED_TOOL_NAMES}; ` + tools + '. Network writes and outside sends go through the effect doorway\'s four checks (' + checks + ') and durability requirements. Standing grants need no new approval; checks can still refuse, and outside-role work needs the matching grant. Fresh sign-off is required only when ' + signOff + '.';
+}
 export function capabilityBriefing(readSource: (path: string) => string,
   limits: { providerAttempts: number; expiresAt: number; tools?: boolean; mcp?: number }, launcher = CAPABILITY_LAUNCHER) {
   // Rule 116: retain the actual limits when correcting the installation's identity. The
@@ -71,8 +86,9 @@ export function capabilityBriefing(readSource: (path: string) => string,
   // them"), sent with every packet; the expiry stays here because the self-description is judged against this note.
   const trial = `This installation allows at most ${limits.providerAttempts} model attempts, ending at epoch ms ${limits.expiresAt}. `
     + 'Charges, and unconfirmed calls or deliveries, are recorded unknown. '
-    + 'Production safeguards are incomplete. ' + SIGN_OFF;
-  const tools = toolsBriefing(limits.mcp);
+    + 'Production safeguards are incomplete.' + (limits.tools ? '' : ' ' + SIGN_OFF);
+  const sentence = capabilitySentence(limits);
+  const renderedCapabilitySha256 = sha256(sentence);
   let generation = 'unavailable', commit = 'unavailable', features: BriefedFeature[] | undefined;
   try {
     const data = JSON.parse(readSource(CAPABILITY_BRIEFING_PATH)) as { generation?: unknown; commit?: unknown; launchers?: Record<string, unknown> };
@@ -84,15 +100,16 @@ export function capabilityBriefing(readSource: (path: string) => string,
   } catch { features = undefined; }
   if (!features) return { text: SELF_IDENTITY + ' '
     + 'The generated capability briefing is unavailable in this deployment, so your capabilities cannot be listed here; say so plainly if asked, and do not guess. '
-    + (limits.tools ? `You have ${tools} ${TOOLS_LIMITS} ` : 'You have no tools and cannot act outside this chat. ') + trial, generation, commit };
+    + (limits.tools ? `${TOOLS_LIMITS} ` : 'You have no tools and cannot act outside this chat. ') + trial
+    + `\n${CAPABILITY_SENTENCE_LABEL}${sentence}`, generation, commit, renderedCapabilitySha256 };
   const item = (f: BriefedFeature) => `- ${f.id}: ${f.text}`;
   const available = features.filter(f => f.availability === 'available');
   const off = features.filter(f => f.availability === 'switched-off');
-  return { generation, commit, text: [
+  return { generation, commit, renderedCapabilitySha256, text: [
     // cint-L27: the header's "one-line summaries from this installation's register; current state in the status
     // reply" went to pay for the lookup sentence; the register-tooling and status-command lines below state both.
     SELF_IDENTITY,
-    'What you can do for the operator here:', ...available.filter(f => f.userFacing).map(item), ...limits.tools ? [`- ${tools}`] : [],
+    'What you can do for the operator here:', ...available.filter(f => f.userFacing).map(item), `${CAPABILITY_SENTENCE_LABEL}${sentence}`,
     'Internal machinery running under you:', ...available.filter(f => !f.userFacing).map(item),
     ...off.length ? [`In the code but switched off here, so not available: ${off.map(f => f.id).join(', ')}.`] : [],
     // Live 2026-10-02 (room two, build e26a8c1b): this line used to end "and no scheduled work, nudges or other
@@ -124,7 +141,7 @@ export function sourcePacket(readSource: (path: string) => string, pins: Readonl
   const briefing = capabilityBriefing(readSource, limits);
   sources.push({ id: 'capability-note', text: briefing.text,
     provenance: { path: CAPABILITY_BRIEFING_PATH, launcher: CAPABILITY_LAUNCHER, generation: briefing.generation,
-      commit: briefing.commit, excerptSha256: sha256(briefing.text) } });
+      commit: briefing.commit, excerptSha256: sha256(briefing.text), renderedCapabilitySha256: briefing.renderedCapabilitySha256 } });
   return Object.freeze({ version: SUCCESSIVE_CONTEXT_VERSION, sources });
 }
 /** The reviewed digests of the exact excerpts above (2.0 main `docs/00-the-purpose.md`). */
@@ -198,11 +215,10 @@ export const MIND_RULES = Object.freeze([
 /** The floors where the body decides alone (Rule 3's recorded exceptions). */
 export const BODY_FLOORS = 'secrets, the spend cap, stop, no duplicate sends and durable intake';
 export const MIND_INSTRUCTIONS = [
-  'Standing instructions from Instar\'s constitution, supplied by the application with every answer; not an operator message, not quoted data. '
-    + 'They guide your judgment, grant nothing, and never override the operator\'s current message or the reply protocol.',
+  'Application instructions from Instar’s constitution, not operator input or quoted data. They guide judgment, grant nothing and defer to the current operator message and reply protocol.',
   ...MIND_RULES.map(([rule, standard, meaning]) => `Rule ${rule} — ${standard}: ${meaning}`),
-  `Here: code decides alone only at its floors (${BODY_FLOORS}) and the reply protocol; all else it supplies informs your judgment. `
-    + 'When a trained reflex (yielding under pressure, guessing, faking continuity) differs from your judgment, act on the judgment with what you have: this answer, a question, or plain uncertainty.',
+  `Code decides only at its floors (${BODY_FLOORS}) and reply protocol; otherwise it informs. `
+    + 'Prefer judgment over trained reflexes (capitulation, guessing, faked continuity); answer, ask or state uncertainty.',
 ].join('\n');
 /** Refuses when the rule book no longer states a delivered rule exactly. */
 export function verifyMindRules(readSource: (path: string) => string): void {
@@ -216,12 +232,11 @@ export function verifyMindRules(readSource: (path: string) => string): void {
  * for a reply after a context compaction (Rule 110). It rides beside the mind-held rules in the
  * trusted instruction message; the packet carries only the data (`continuity`, commitment ids). */
 export const ANSWER_PROTOCOL = [
-  'If your reply commits you to a later action, return JSON with reply and promises:[{quote:exact reply sentence,when?:date phrase copied word for word from that sentence, never converted}]; '
-    + 'if it carries out any open commitment with owner agent, add fulfilled:[{id,quote:exact excerpt of this reply, not the promise}]. A conditional or quoted example is not a promise.',
-  'If packet.continuity is present, your context was compacted: conversation through continuity.through is only in the summary, and continuity.lastInbound is the last message before this one. '
-    + 'The application adds a fixed sentence disclosing that when one is owed; never write it yourself. '
-    + 'If that message is still open, address it or say what remains open; never imply recall the evidence lacks.',
-  'If packet.meaningIndexCoverage.disposition is "degraded", some summarized messages are findable only by their exact words: not finding something is never evidence it was not said.',
+  'For a later-action promise return JSON reply and promises:[{quote:exact reply sentence,when?:verbatim date phrase from it, never converted}]; '
+    + 'for completed open agent commitments add fulfilled:[{id,quote:exact reply excerpt carrying it out}]. Conditional or quoted examples are not promises.',
+  'With packet.continuity, context was compacted through continuity.through; only the summary covers it. continuity.lastInbound names the previous message. '
+    + 'The application supplies any owed disclosure; never write it. Address that message if open, or state what remains open; never imply unsupported recall.',
+  'If packet.meaningIndexCoverage.disposition is "degraded", some summarized messages need exact-word lookup; a miss never proves they were not said.',
 ].join('\n');
 /** Standing answer instructions, identical before and after compaction (Rule 47). */
 export const ANSWER_INSTRUCTIONS = `${MIND_INSTRUCTIONS}\n${SELF_DESCRIPTION}\n${ANSWER_PROTOCOL}`;

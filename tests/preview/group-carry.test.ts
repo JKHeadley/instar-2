@@ -7,7 +7,7 @@ import { createJournalWorker, openPreviewJournal, openRequests, CARRIED_MEMORY_I
 import { resolveGroupDisclosure, verifyGroupAudience, createGroupAudienceCache } from './group-disclosure.js';
 import { now, key, sealKey, scope, records, authority, membership, permissionFor } from './group-carry-fixture.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { SELF_DESCRIPTION, SELF_IDENTITY, SOURCE_PINS, sourcePacket } from './briefing.js';
+import { SELF_DESCRIPTION, SELF_IDENTITY, SOURCE_PINS, sourcePacket, CAPABILITY_SENTENCE_LABEL, capabilitySentence } from './briefing.js';
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -311,6 +311,8 @@ it('replays all recorded model shapes through carried recall after the disclosur
         expect(packet.memoryDecision, shape.id).toContain(MEMORY_ITEM_SHAPE);
         expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
           .toContain(SELF_IDENTITY);
+        expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
+          .toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }));
         const envelope = JSON.parse(String(input.prepared));
         expect(envelope.messages.find((message: { role: string }) => message.role === 'instructions').content, shape.id)
           .toContain(SELF_DESCRIPTION);

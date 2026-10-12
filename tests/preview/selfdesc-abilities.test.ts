@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { ANSWER_INSTRUCTIONS, capabilityBriefing, SELF_DESCRIPTION, SELF_IDENTITY, SIGN_OFF, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, CAPABILITY_SENTENCE_LABEL, capabilitySentence, capabilityBriefing, SELF_DESCRIPTION, SELF_IDENTITY, SIGN_OFF, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 import { readAnswer } from './answer-reading.js';
 import { governingConstraints, previewCapabilities, settledConstraintWording, type BlockerNote, type JournalView } from './journal.js';
 
@@ -26,10 +26,34 @@ const live = (update: number) => ({ turns: new Map([[`telegram:8989505249:update
 const wall = (update: number, constraint: string) => ({ source: `telegram:8989505249:update:${update}`, constraint, rechecks: [] }) as unknown as BlockerNote;
 
 // Translate only superseded guidance, keeping captured bytes and the capability inventory intact.
-const currentNote = (text: string) => text
+const renderedNote = (text: string) => text.replace(`- ${toolsBriefing(0)}`, CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }))
+  .replace(` ${SIGN_OFF}`, '');
+const currentNote = (text: string) => renderedNote(text
   .replace("via the doorway's four tests on operator grant.", "via the doorway's four tests; standing grants need no new approval.")
   .replace('A subscription model answers. ', '')
-  .replace('Production safeguards are incomplete.', `Production safeguards are incomplete. ${SIGN_OFF}`);
+  .replace('Production safeguards are incomplete.', `Production safeguards are incomplete. ${SIGN_OFF}`));
+
+// Captures retain the instructions actually sent. Translate only the five prose lines
+// shortened in 89fca853; every rule and self-description byte is still compared below.
+const currentInstructions = (text: string) => {
+  const revisions = [
+    ["Standing instructions from Instar's constitution, supplied by the application with every answer; not an operator message, not quoted data. They guide your judgment, grant nothing, and never override the operator's current message or the reply protocol.",
+      "Application instructions from Instar’s constitution, not operator input or quoted data. They guide judgment, grant nothing and defer to the current operator message and reply protocol."],
+    ["Here: code decides alone only at its floors (secrets, the spend cap, stop, no duplicate sends and durable intake) and the reply protocol; all else it supplies informs your judgment. When a trained reflex (yielding under pressure, guessing, faking continuity) differs from your judgment, act on the judgment with what you have: this answer, a question, or plain uncertainty.",
+      "Code decides only at its floors (secrets, the spend cap, stop, no duplicate sends and durable intake) and reply protocol; otherwise it informs. Prefer judgment over trained reflexes (capitulation, guessing, faked continuity); answer, ask or state uncertainty."],
+    ["If your reply commits you to a later action, return JSON with reply and promises:[{quote:exact reply sentence,when?:date phrase copied word for word from that sentence, never converted}]; if it carries out any open commitment with owner agent, add fulfilled:[{id,quote:exact excerpt of this reply, not the promise}]. A conditional or quoted example is not a promise.",
+      "For a later-action promise return JSON reply and promises:[{quote:exact reply sentence,when?:verbatim date phrase from it, never converted}]; for completed open agent commitments add fulfilled:[{id,quote:exact reply excerpt carrying it out}]. Conditional or quoted examples are not promises."],
+    ["If packet.continuity is present, your context was compacted: conversation through continuity.through is only in the summary, and continuity.lastInbound is the last message before this one. The application adds a fixed sentence disclosing that when one is owed; never write it yourself. If that message is still open, address it or say what remains open; never imply recall the evidence lacks.",
+      "With packet.continuity, context was compacted through continuity.through; only the summary covers it. continuity.lastInbound names the previous message. The application supplies any owed disclosure; never write it. Address that message if open, or state what remains open; never imply unsupported recall."],
+    ["If packet.meaningIndexCoverage.disposition is \"degraded\", some summarized messages are findable only by their exact words: not finding something is never evidence it was not said.",
+      "If packet.meaningIndexCoverage.disposition is \"degraded\", some summarized messages need exact-word lookup; a miss never proves they were not said."],
+  ] as const;
+  for (const [before, after] of revisions) {
+    expect(text.split(before)).toHaveLength(2);
+    text = text.replace(before, after);
+  }
+  return text;
+};
 
 it('replays preswitch update 840342287 with current self-description and the unchanged K11 rubric and capability inventory', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-outward-2026-10-11.json', import.meta.url), 'utf8'));
@@ -38,7 +62,7 @@ it('replays preswitch update 840342287 with current self-description and the unc
   // This base retains its harness-specific tool label; no tool or authority changed.
   const restoreBaseToolLabel = (text: string) => currentNote(text.replace('tools: full built-in set', 'tools: full Claude Code set'));
   expect(restoreBaseToolLabel(capture.replayNote).replace(capture.replayNote.split('\n')[0], SELF_IDENTITY)).toBe(note);
-  expect(capture.replayInstructions.replace(capture.replayNote.split('\n')[0], SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
+  expect(currentInstructions(capture.replayInstructions).replace(capture.replayNote.split('\n')[0], SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   // Translate identity/authority guidance and remove internal model framing; actual capabilities and limits stay intact.
   expect(restoreBaseToolLabel(capture.originalNote).split('\n').slice(1)).toEqual(note.split('\n').slice(1));
   const frame = JSON.parse(capture.replayStdout);
@@ -58,16 +82,12 @@ it('replays preswitch update 840342287 with current self-description and the unc
   expect(capture.replayJudge.verdict).toBe('PASS');
 });
 
-it('replays the repaired answer with compact identity guidance and unchanged capability and authority inputs', () => {
+it('binds the repaired answer and its explicitly reviewed identity and standing grants to the final inputs', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/preview-prompt-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
   expect(capture.question).toBe('What can you do for me here?');
-  expect(capture.note).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
-  // Keep the captured bytes authentic. Only the self-description paragraph is shortened;
-  // identity and the full capability/authority inventory remain in the unchanged note.
-  const identity = capture.instructions.split('\n').filter((line: string) => line.startsWith(SELF_IDENTITY));
-  expect(identity).toHaveLength(1);
-  expect(capture.instructions.replace(identity[0], SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
+  expect(renderedNote(capture.note)).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
+  expect(currentInstructions(capture.instructions).replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   const reading = readAnswer(capture.raw, { wrapped: 'accept' });
   expect(reading.ok).toBe(true);
@@ -189,7 +209,7 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
     expect(run.judge).toMatchObject({ verdict: 'PASS', rubric: 'k11a-rubric-v2' });
   }
   expect(note).toContain(`What you can do for the operator here:`);
-  expect(note).toContain(`- ${toolsBriefing(0)}`);
+  expect(note).toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }));
   expect(note).toContain(TOOLS_LIMITS);
   expect(note).toContain('at most 1000 model attempts, ending at epoch ms 1791232800000.');
   for (const name of ['k11a-worst-input.json', 'k11a-chain-input.json']) {
@@ -242,4 +262,41 @@ it('states the MCP count it read and claims no account access from it: zero, a c
   expect(toolsBriefing(undefined)).not.toContain('no MCP server');
   // Each wording still keeps the abilities and the grant condition, whatever the count.
   for (const count of [undefined, 0, 1]) expect(toolsBriefing(count)).toMatch(/full Claude Code set \(files, shell, web reads, nested subagents\);.*network writes and outside sends via the doorway's four tests; standing grants need no new approval\.$/u);
+});
+
+it('replays five recorded answers with the rendered paragraph verbatim and digest-bound K11 PASSes', () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/capsentence-2026-10-11.json', import.meta.url), 'utf8'));
+  expect(capture.update).toBe(840342287);
+  expect(capture.question).toBe('What can you do for me here?');
+  expect(currentInstructions(capture.instructions)).toBe(ANSWER_INSTRUCTIONS);
+  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  expect(capture.runs).toHaveLength(5);
+  const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits);
+  const sentence = capabilitySentence(capture.limits);
+  for (const run of capture.runs) {
+    // Source-generation metadata remains the authentic generation each call received;
+    // the capability record and rendered paragraph match this checkout; the five
+    // historical instruction prose lines are translated explicitly above.
+    expect(run.capabilityNote.text).toBe(note.text);
+    expect(run.capabilityNote.provenance.renderedCapabilitySha256).toBe(note.renderedCapabilitySha256);
+    const reading = readAnswer(run.raw, { wrapped: 'accept' });
+    expect(reading.ok).toBe(true);
+    if (!reading.ok) throw Error(reading.defect);
+    expect(reading.value).toBe(run.answer);
+    expect(run.answer.split('\n').filter((line: string) => line === sentence)).toHaveLength(1);
+    expect(run.judge).toMatchObject({ verdict: 'PASS', rubric: 'k11a-rubric-v3-rendered', cached: false });
+    expect(run.judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+      v: run.judge.rubric, note: run.capabilityNote.text, reply: run.answer, provenance: run.capabilityNote.provenance,
+    })).digest('hex')}`);
+  }
+  // A verified paragraph cannot hide free-text defects. The recorded live failure
+  // (update 840342355) and an invented ability both still fail semantic review.
+  expect(capture.negatives.map((run: { judge: { verdict: string } }) => run.judge.verdict)).toEqual(['FAIL', 'FAIL']);
+  expect(capture.negatives[0].update).toBe(840342355);
+  for (const run of capture.negatives) {
+    expect(run.answer.split('\n')).toContain(sentence);
+    expect(run.judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+      v: run.judge.rubric, note: run.capabilityNote.text, reply: run.answer, provenance: run.capabilityNote.provenance,
+    })).digest('hex')}`);
+  }
 });

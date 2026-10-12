@@ -13,7 +13,7 @@ import { openPreviewJournal } from './journal.js';
 import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOL_RUNTIME_READS, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { nestedSessionWorkEdge, type SessionWorkEdge } from '../../src/assembly/production-session-work.js';
-import { capabilityBriefing, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { capabilityBriefing, capabilitySentence, CAPABILITY_SENTENCE_LABEL, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { TOOL_HOOK_SCRIPT, TOOL_MCP_LAUNCHER, TOOL_NOTICE_MAX_BYTES, attachEgress, attachScratch, detachScratch, networkToolReads, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, unmountWithin, workspaceBytes } from './tool-turn.mjs';
 // @ts-expect-error The physical host remains JavaScript.
@@ -198,8 +198,12 @@ it('runs tools only for answer turns and scheduled work, never for reviews, summ
 it('tells the agent and the operator exactly which tools exist and where outward effects go, and says why tools are off', () => {
   const read = () => JSON.stringify({ generation: 'g', commit: 'c', launchers: { 'tests/preview/journal-agent.mjs': [] } });
   const withTools = capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1, tools: true }).text;
-  // The tools item joins the can-do list and the real limits follow it (w4-selfdesc, live K11a 2026-10-04).
-  expect(withTools).toContain(`What you can do for the operator here:\n- ${TOOLS_BRIEFING}`);
+  // The rendered tools/outbound paragraph joins the can-do list; the custody and runtime limits follow it.
+  const toolsSentence = CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true });
+  expect(withTools).toContain(`What you can do for the operator here:\n${toolsSentence}`);
+  expect(withTools).toContain('I can use files, shell, web reads, nested subagents; MCP servers: unknown.');
+  expect(withTools).toContain("four checks (reversibility, resource limits, granted scope, sensitivity) and durability requirements.");
+  expect(withTools).toContain('Standing grants need no new approval; checks can still refuse, and outside-role work needs the matching grant.');
   expect(withTools).toContain(TOOLS_LIMITS);
   // It describes the capability, never a hand-picked list: the whole set is offered and each call is decided at the hook.
   expect(TOOLS_BRIEFING).toMatch(/^tools: full Claude Code set \(files, shell, web reads, nested subagents\); MCP servers: unknown;/u);
@@ -212,15 +216,20 @@ it('tells the agent and the operator exactly which tools exist and where outward
   // as logged-in account access (review round 1, finding 4; selfdesc-abilities covers the unknown count too).
   expect(toolsBriefing(0)).toContain('no MCP server, so no logged-in account access');
   expect(toolsBriefing(2)).toContain('2 MCP server(s) (accounts only via their tools)');
-  expect(capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1, tools: true, mcp: 0 }).text).toContain(`- ${toolsBriefing(0)}`);
+  expect(capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1, tools: true, mcp: 0 }).text)
+    .toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }));
   // The attempt cap and the expiry stay in the note: the note is what the self-description is held to.
   expect(withTools).toContain('at most 50 model attempts, ending at epoch ms 1.');
   expect(withTools).not.toContain('no tools, browsing, running code');
   const without = capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1 }).text;
   expect(without).toContain('Nothing unlisted is available: no tools, browsing, running code');
+  expect(without).toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: false }));
+  expect(without).not.toContain(toolsSentence);
   expect(without).not.toContain(TOOLS_BRIEFING); expect(without).not.toContain(TOOLS_LIMITS);
   const fallback = capabilityBriefing(() => { throw Error('absent'); }, { providerAttempts: 1, expiresAt: 1, tools: true }).text;
-  expect(fallback).toContain(`You have ${TOOLS_BRIEFING} ${TOOLS_LIMITS}`); expect(fallback).not.toContain('You have no tools');
+  expect(fallback).toContain(toolsSentence); expect(fallback).toContain(TOOLS_LIMITS);
+  expect(fallback).toContain('generated capability briefing is unavailable');
+  expect(fallback).not.toContain('You have no tools');
   const view = { toolTurns: { invocations: 2, reservedCalls: 14, refusedCap: 1, toolCalls: 5, toolRefusals: 2, inconsistent: 0, open: [] } };
   expect(toolStatusLines(view, true)).toEqual([
     `Tools: the harness's full built-in set (${SUBSCRIPTION_TOOL_NAMES.length} tools, each call decided at the admission hook) and the root's `

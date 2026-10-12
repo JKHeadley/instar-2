@@ -6,6 +6,11 @@ This is a machine-local, supervised test driver, not the production entry or pro
 
 The prefix is present before HTML rendering, digesting, and Eight preparation. There is no provider SecretRef, route, model call, tool call, or model spend. `stage2GuardedProviderPath` is selected only by explicit Stage 2 activation; the Stage 1 path remains closed to model work.
 
+The capability note renders the tools/outbound paragraph from the current tool grant,
+MCP state and effect doorway checks. Self-descriptions quote it verbatim; its digest in
+existing source provenance lets K11 verify that paragraph before judging the remaining
+prose by meaning. This adds no authority, store or outbound path.
+
 ## Capabilities
 
 The journal runner's capability briefing is generated from these lines and the feature declarations beside the shipped sources; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
