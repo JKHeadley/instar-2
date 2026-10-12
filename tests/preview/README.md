@@ -2815,6 +2815,15 @@ the journal, or logs. The key is required only for the Jev route. A missing key,
 timeout (2 seconds), or provider error invokes one contextual subscription
 review under the same journal call cap. Jev's pinned model is `jev-1.13.0`.
 
+The 26 September Jev-default direction (observer #282) also applies to a group
+with current standing and membership verifying the operator alone. A pass on all
+ten Jev questions ends that review. An unsure, positive or unavailable Jev result
+still escalates and includes the group's sensitivity question. Other groups retain
+mandatory full-context review. This does not extend the operator-echo shortcut or
+change revision review, unavailable-review handling, or model/send audience checks.
+`operator-group-cascade.test.ts` replays recorded update 969390381 and tests both
+routes, each question's unsure/positive boundary, restart and the existing floors.
+
 Jev checks the eight measured message questions in one batch. A clear pass sends
 the candidate. A violation, uncertain score, or unavailable Jev invokes one
 subscription review with the candidate, original operator message, the complete

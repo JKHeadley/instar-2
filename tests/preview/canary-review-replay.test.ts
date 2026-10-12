@@ -13,15 +13,34 @@ const valueOf = (output: string) => {
   return read.value;
 };
 
-it('replays both completed reviews of update 969390374 through the group escalation path', async () => {
+const promptFor = (audience: object) => JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({
+  packet: { audience, operatorMessage: captured.text, candidateReply: captured.answer } }) }] });
+
+it('replays update 969390374 through Jev for its recorded verified operator-only audience', async () => {
   expect(captured.delivered).toBe(GROUP_REVIEW_FINAL_NOTICE);
   expect(captured.checks.map((row: ReplyCheckResult) => row.verdict)).toEqual(['pass', 'unavailable']);
+  expect(captured.audience.operatorOnlyVerified).toBe(true);
+  const checks: ReplyCheckResult[] = [];
+  let calls = 0, reservations = 0, retries = 0;
+  const decision = await checkReply(captured.answer, captured.id, {
+    elapsedMs: () => 0, reserveEscalation: () => { reservations++; return true; },
+    reserveFormatRetry: () => { retries++; return true; },
+    jev: async () => ({ value: captured.jev, latencyMs: captured.checks[0].latencyMs }),
+    escalate: async () => { calls++; throw Error('unexpected review'); }, record: row => checks.push(row),
+  }, promptFor(captured.audience));
+  expect(decision).toEqual({ outcome: 'pass', path: 'jev' });
+  expect([calls, reservations, retries]).toEqual([0, 0, 0]);
+  expect(checks).toHaveLength(1);
+  expect(checks[0]).toMatchObject({ verdict: 'pass', path: 'jev', scores: captured.checks[0].scores });
+});
+
+it('replays both completed reviews of update 969390374 with an unverified audience negative neighbour', async () => {
   for (const review of captured.reviews) {
     expect(review.outcome).toBe('complete');
     const checks: ReplyCheckResult[] = [];
     let calls = 0, retries = 0;
-    const originalPrompt = JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({
-      packet: { audience: captured.audience, operatorMessage: captured.text, candidateReply: captured.answer } }) }] });
+    // Change only the standing for this control; preserve the captured fixture and model bytes.
+    const originalPrompt = promptFor({ ...captured.audience, operatorOnlyVerified: false });
     const decision = await checkReply(captured.answer, captured.id, {
       elapsedMs: () => 0, reserveEscalation: () => true, reserveFormatRetry: () => { retries++; return true; },
       jev: async () => ({ value: captured.jev, latencyMs: captured.checks[0].latencyMs }),
