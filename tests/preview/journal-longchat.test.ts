@@ -162,14 +162,14 @@ describe('Rule 11: a message the indexer skipped is retried and named, never sil
     expect(recorded.recallQuestion.deliveredReply).toContain("I don't know from this journal");
     expect(recorded.recallQuestion.deliveredReply).toContain("there's no record");
     // The instruction now states the gap and the prohibition, delivered as instructions rather than packet bytes.
-    expect(ANSWER_INSTRUCTIONS).toContain('not finding something is never evidence it was not said');
+    expect(ANSWER_INSTRUCTIONS).toContain('a miss never proves they were not said');
     // cint-L27: the "say your search is incomplete" sentence went to pay for w3-recallrank's lookup sentence. Where
     // the gap matters the answer now searches once instead, and a search that finds nothing must say it is not
     // proof (LOOKUP_DONE_GUIDANCE; real answers recorded in lanes/cint-L27-PROGRESS.md).
     expect(MEMORY_LOOKUP_INSTRUCTIONS).toContain('do not answer that it is missing or unknown yet');
     expect(LOOKUP_DONE_GUIDANCE).toContain('which is not proof it was never said');
     // And the disclosure sentence is the application's to add, only when one is owed.
-    expect(ANSWER_INSTRUCTIONS).toContain('adds a fixed sentence disclosing that when one is owed; never write it yourself');
+    expect(ANSWER_INSTRUCTIONS).toContain('supplies any owed disclosure; never write it');
   });
 });
 

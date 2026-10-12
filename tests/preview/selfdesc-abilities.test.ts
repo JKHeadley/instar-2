@@ -33,6 +33,28 @@ const currentNote = (text: string) => renderedNote(text
   .replace('A subscription model answers. ', '')
   .replace('Production safeguards are incomplete.', `Production safeguards are incomplete. ${SIGN_OFF}`));
 
+// Captures retain the instructions actually sent. Translate only the five prose lines
+// shortened in 89fca853; every rule and self-description byte is still compared below.
+const currentInstructions = (text: string) => {
+  const revisions = [
+    ["Standing instructions from Instar's constitution, supplied by the application with every answer; not an operator message, not quoted data. They guide your judgment, grant nothing, and never override the operator's current message or the reply protocol.",
+      "Application instructions from Instar’s constitution, not operator input or quoted data. They guide judgment, grant nothing and defer to the current operator message and reply protocol."],
+    ["Here: code decides alone only at its floors (secrets, the spend cap, stop, no duplicate sends and durable intake) and the reply protocol; all else it supplies informs your judgment. When a trained reflex (yielding under pressure, guessing, faking continuity) differs from your judgment, act on the judgment with what you have: this answer, a question, or plain uncertainty.",
+      "Code decides only at its floors (secrets, the spend cap, stop, no duplicate sends and durable intake) and reply protocol; otherwise it informs. Prefer judgment over trained reflexes (capitulation, guessing, faked continuity); answer, ask or state uncertainty."],
+    ["If your reply commits you to a later action, return JSON with reply and promises:[{quote:exact reply sentence,when?:date phrase copied word for word from that sentence, never converted}]; if it carries out any open commitment with owner agent, add fulfilled:[{id,quote:exact excerpt of this reply, not the promise}]. A conditional or quoted example is not a promise.",
+      "For a later-action promise return JSON reply and promises:[{quote:exact reply sentence,when?:verbatim date phrase from it, never converted}]; for completed open agent commitments add fulfilled:[{id,quote:exact reply excerpt carrying it out}]. Conditional or quoted examples are not promises."],
+    ["If packet.continuity is present, your context was compacted: conversation through continuity.through is only in the summary, and continuity.lastInbound is the last message before this one. The application adds a fixed sentence disclosing that when one is owed; never write it yourself. If that message is still open, address it or say what remains open; never imply recall the evidence lacks.",
+      "With packet.continuity, context was compacted through continuity.through; only the summary covers it. continuity.lastInbound names the previous message. The application supplies any owed disclosure; never write it. Address that message if open, or state what remains open; never imply unsupported recall."],
+    ["If packet.meaningIndexCoverage.disposition is \"degraded\", some summarized messages are findable only by their exact words: not finding something is never evidence it was not said.",
+      "If packet.meaningIndexCoverage.disposition is \"degraded\", some summarized messages need exact-word lookup; a miss never proves they were not said."],
+  ] as const;
+  for (const [before, after] of revisions) {
+    expect(text.split(before)).toHaveLength(2);
+    text = text.replace(before, after);
+  }
+  return text;
+};
+
 it('replays preswitch update 840342287 with current self-description and the unchanged K11 rubric and capability inventory', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-outward-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
@@ -40,7 +62,7 @@ it('replays preswitch update 840342287 with current self-description and the unc
   // This base retains its harness-specific tool label; no tool or authority changed.
   const restoreBaseToolLabel = (text: string) => currentNote(text.replace('tools: full built-in set', 'tools: full Claude Code set'));
   expect(restoreBaseToolLabel(capture.replayNote).replace(capture.replayNote.split('\n')[0], SELF_IDENTITY)).toBe(note);
-  expect(capture.replayInstructions.replace(capture.replayNote.split('\n')[0], SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
+  expect(currentInstructions(capture.replayInstructions).replace(capture.replayNote.split('\n')[0], SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   // Translate identity/authority guidance and remove internal model framing; actual capabilities and limits stay intact.
   expect(restoreBaseToolLabel(capture.originalNote).split('\n').slice(1)).toEqual(note.split('\n').slice(1));
   const frame = JSON.parse(capture.replayStdout);
@@ -65,7 +87,7 @@ it('binds the repaired answer and its explicitly reviewed identity and standing 
   expect(capture.update).toBe(840342287);
   expect(capture.question).toBe('What can you do for me here?');
   expect(renderedNote(capture.note)).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
-  expect(capture.instructions.replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
+  expect(currentInstructions(capture.instructions).replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   const reading = readAnswer(capture.raw, { wrapped: 'accept' });
   expect(reading.ok).toBe(true);
@@ -246,14 +268,15 @@ it('replays five recorded answers with the rendered paragraph verbatim and diges
   const capture = JSON.parse(readFileSync(new URL('./fixtures/capsentence-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
   expect(capture.question).toBe('What can you do for me here?');
-  expect(capture.instructions).toBe(ANSWER_INSTRUCTIONS);
+  expect(currentInstructions(capture.instructions)).toBe(ANSWER_INSTRUCTIONS);
   expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(capture.runs).toHaveLength(5);
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits);
   const sentence = capabilitySentence(capture.limits);
   for (const run of capture.runs) {
     // Source-generation metadata remains the authentic generation each call received;
-    // the model-facing record, instructions and rendered paragraph match this checkout.
+    // the capability record and rendered paragraph match this checkout; the five
+    // historical instruction prose lines are translated explicitly above.
     expect(run.capabilityNote.text).toBe(note.text);
     expect(run.capabilityNote.provenance.renderedCapabilitySha256).toBe(note.renderedCapabilitySha256);
     const reading = readAnswer(run.raw, { wrapped: 'accept' });

@@ -184,10 +184,12 @@ it('under the first clarified wording every real answer quotes its own reply and
 }, 60000);
 
 it('under the shortened wording a delivered promise closes and an undelivered one stays open', async () => {
-  // Six real claude-sonnet-5 calls, each sent the wording asserted here: four on the recorded A5b packet,
+  // Six real claude-sonnet-5 calls under the historical wording: four on the recorded A5b packet,
   // two with A5b's operator text replaced so that the reply delivers nothing.
   const trimmed = recorded.trimmedProtocol;
-  expect(ANSWER_PROTOCOL).toContain(trimmed.wording);
+  // The fixture stays historical; only the reviewed fulfilment-prose trim is translated.
+  expect(trimmed.wording).toBe('quote:exact excerpt of this reply, not the promise');
+  expect(ANSWER_PROTOCOL).toContain('fulfilled:[{id,quote:exact reply excerpt carrying it out}]');
   expect(trimmed.delivered).toHaveLength(4);
   expect(trimmed.undelivered).toHaveLength(2);
   for (const item of trimmed.delivered) {
