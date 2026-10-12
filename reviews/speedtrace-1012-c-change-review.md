@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Consumer verification and test wiring for the live runner's provider binding.
-Side effects: The failed preflight boolean also covers a limited or nonzero-exit physical command. The four fixture modules forward the actual factory rather than substituting its behavior. Register publication is regenerated from the exact committed source; it is an offline replay publication, not a new runtime authority or conformance certificate.
+Side effects: The failed preflight boolean also covers a limited or nonzero-exit physical command. The four fixture modules forward the actual factory rather than substituting its behavior. Register publication is regenerated from committed source faa8d7e278db34f3b6c1a66a9c7960f72d5c3a9c; it is an offline replay publication, not a new runtime authority or conformance certificate.
 Undo and recovery: Revert these observations and fixture exports with the runner change. Retain journal evidence and never retry UNKNOWN work. Regenerate publication after any source reversal.
 Multi-machine posture: No new state or coordination. Existing timing rows follow the journal; test fixtures remain local and do not use live roots or serving credentials.
 Layer below: The status command opens and replays the real encrypted journal. Substitute provider modules must satisfy the runner's imports even when only model creation is replaced. Inspected full-profile version reuse and existing auth/stop/digest checks at every dispatched command.
