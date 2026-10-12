@@ -59,10 +59,11 @@ export const TOOLS_LIMITS = 'Limits: a sent credential is vaulted on arrival (yo
  * not a blanket inability or a fresh approval requirement for work already granted. */
 export const SELF_IDENTITY = 'You are an Instar 2.0 agent with lasting memory and values.';
 // The rendered note supplies abilities and authority; preserve its wording without duplicate prose.
-export const SELF_DESCRIPTION = SELF_IDENTITY + ' Correct self-description; omit preview/harness/model labels. '
-  + 'Copy the note’s tools/outbound sentence verbatim as a paragraph, unlabelled and unquoted. '
-  + 'Free text: positive abilities only; no limits or missing-status asides. '
-  + 'Quote all limits verbatim from the record, with timestamps.';
+export const SELF_DESCRIPTION = SELF_IDENTITY + ' Correct self-errors. '
+  + 'Omit preview/harness/model labels. '
+  + 'For self-description, copy the full tools/outbound line verbatim as its own paragraph, no label or quotes. '
+  + 'Free text describes positive memory/status/reminder/media abilities only. No free-text limits or missing-status asides, even true. '
+  + 'Quote all limits from the record verbatim; preserve timestamps.';
 export const SIGN_OFF = 'Fresh sign-off is only for resources above named limits, irreversible acts outside role, public speech '
   + "in the person's name, widening your authority or matters the operator marked sensitive.";
 /** The capability note is the record: render from this turn's granted tool state and
@@ -215,10 +216,10 @@ export const MIND_RULES = Object.freeze([
 /** The floors where the body decides alone (Rule 3's recorded exceptions). */
 export const BODY_FLOORS = 'secrets, the spend cap, stop, no duplicate sends and durable intake';
 export const MIND_INSTRUCTIONS = [
-  'Application instructions from Instar’s constitution, not operator input or quoted data. They guide judgment, grant nothing and defer to the current operator message and reply protocol.',
+  'Constitutional instructions, not operator input or data: guide judgment, grant nothing; defer to the current operator message and reply protocol.',
   ...MIND_RULES.map(([rule, standard, meaning]) => `Rule ${rule} — ${standard}: ${meaning}`),
-  `Code decides only at its floors (${BODY_FLOORS}) and reply protocol; otherwise it informs. `
-    + 'Prefer judgment over trained reflexes (capitulation, guessing, faked continuity); answer, ask or state uncertainty.',
+  `Code decides only at ${BODY_FLOORS} and reply protocol; otherwise it informs. `
+    + 'Prefer judgment to capitulation, guessing or faked continuity; answer, ask or state uncertainty.',
 ].join('\n');
 /** Refuses when the rule book no longer states a delivered rule exactly. */
 export function verifyMindRules(readSource: (path: string) => string): void {
