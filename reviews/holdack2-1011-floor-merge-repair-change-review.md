@@ -24,6 +24,11 @@ Prompt finding: 95e349aaf4ac | protocol-literal | The unchanged four-test and st
 
 Verification: Branch reconciliation by floorfix-1011 reverts the alternative floor repair and applies holdack2 e6e1a781 with its SELF_DESCRIPTION conflict resolved toward holdack2. Existing literal-text consumers are aligned with that same paragraph; captured outputs and judgments remain authentic. The exact foreground commands, results and update IDs are recorded in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/floorfix-1011-PROGRESS.md. This record makes no fresh model-judgment or live deployment claim.
 
+Publication coverage: 0f40de19 regenerates the seven generated publications for the cherry-picked source; lint and register checks pass. This review includes that publication and the literal-text consumer alignment.
+Prompt finding: e8708c7fea24 | quoted-evidence | The unchanged recall instruction is removed by an existing negative-control test; reverting the floor constant does not change this instruction or classify meaning.
+Prompt finding: 849db3a6296a | protocol-literal | The existing memory-list response literal is unchanged by reverting the alternative floor measurement.
+Verification result: Four requested files produced 38 passing tests, one existing opt-in capture skip and one failed floor assertion: reply-review delta 6746 exceeds unchanged reserve 6636. This is red evidence, not a ready claim. Preserve the requested holdack2 paragraph and the unrelated train capability rendering; the desk must resolve the remaining composition mismatch before landing.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: shorten a repeated instruction list while leaving the complete capability note, constitutional excerpts and budget guards intact. No new mechanism or larger cap. Exact source hashes guard entry; unchanged floor and one-byte boundary tests guard fit; existing effect checkpoints guard consequences. Offline recorded replay establishes composition and parsing, not a new live deployment claim.
