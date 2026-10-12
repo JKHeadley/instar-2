@@ -10,10 +10,10 @@ Operator questions: Justin's code-owner Approve on the final head is required be
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: changes constitutional wording and the model's quoted context, despite adding no runtime send mechanism.
-Side effects: every sourcePacket consumer receives the appended sentence in the existing Rule 87 excerpt; prompt size increases slightly. MIND_RULES remains the exact held-by-the-mind group. The existing source digest check refuses stale or missing text.
+Side effects: the required launcher-proof fixture now injects a historical child clock inside its fixed activation window and tests the expired neighbour; no production expiry or clock changes. Every sourcePacket consumer receives the appended sentence in the existing Rule 87 excerpt; prompt size increases slightly. MIND_RULES remains the exact held-by-the-mind group. The existing source digest check refuses stale or missing text.
 Undo and recovery: publish a new governed version reverting the sentence and refresh the excerpt digest and generated register together; preserve earlier history. No runtime state migration or deployment.
 Multi-machine posture: identical repository wording and generated sources on every machine; no local state, ownership or replication changes.
-Layer below: complete purpose and rule book; PR 160's version and approval record; PR 154/158 amendment lineage; sourcePacket and prepareJournalEnvelope; bootstrapDeclarations, publication anchor and register replay checks.
+Layer below: complete purpose and rule book; PR 160's version and approval record; PR 154/158 amendment lineage; sourcePacket and prepareJournalEnvelope; bootstrapDeclarations, publication anchor and register replay checks; fixed activation expiry and the launcher clock/proof timestamp contract.
 Bug class: none
 Bug evidence: none
 Hook bypass: none
@@ -23,8 +23,10 @@ Decision: rule87-source | Reuse the existing pinned Rule 87 excerpt; MIND_RULES 
 Decision: publication-pins | Refresh existing shape-only publication hashes and regenerate from committed source; these pins confer no runtime authority. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/r87b-pr-1011-PROGRESS.md
 Decision: review-base-coverage | Cover the inherited PR 160 merge from its first parent without rewriting history; branch still begins at d5d1ed51. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/r87b-pr-1011-PROGRESS.md
 
+Decision: fixture-clock | The READY gate exposed expired calendar-dependent launcher fixtures; inject a test-only clock inside the recorded activation and prove expiry still refuses before poll/send. Post-open repair is required by this check failure. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/r87b-pr-1011-PROGRESS.md
+
 ## Closing block
 
-simplestRobustRoute: This is the simplest robust route: one exact sentence, one immutable changelog revision, one existing source digest and existing register generation. Start guard is Justin's recorded exact-text approval; end guards are sync/drift and generated-source checks; safety and resource floors remain unchanged. No new mechanism or autonomous capability is claimed.
+simplestRobustRoute: This is the simplest robust route: one exact sentence, one immutable changelog revision, one existing source digest and existing register generation. Start guard is Justin's recorded exact-text approval; end guards are sync/drift and generated-source checks; safety and resource floors remain unchanged. The test-only historical clock offset prevents calendar expiry without altering production limits; its expired neighbour still refuses before poll/send. No new runtime mechanism or autonomous capability is claimed.
 80/20: Exact sentence/history checks, four positive/negative constitutional sync tests, typecheck, architecture, lint, register replay and change-review pass. Fourteen recorded answer/review contexts carry the new sentence with preserved history; seven captured output shapes reach the worker model port with unchanged output dispositions versus PR 160. Historical overflow and empty-candidate provenance limits, plus targeted consumer and final-head READY gate results, are recorded in the builder report. Independent landing review and final-head code-owner approval remain pending.
 VERDICT: author submission; independent review pending
