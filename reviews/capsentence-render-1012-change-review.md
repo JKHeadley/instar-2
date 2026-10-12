@@ -36,6 +36,8 @@ Evidence: Full 12:24 delivered reply, capability-note provenance and K11 FAIL fo
 
 Publication: The supplied desk repin/owner-rehash scripts found zero stale artifact pins. Regenerated the seven register publications in replay mode from source commit 88675ffb44470cc3bb094d5f0bdb94593e9dad14 after lint identified the newly imported renderer in the wiring roster. Capability wording is unchanged; publication provenance and the source graph advance.
 
+Validation: Renderer tests pass (15 cases), including the recorded 715675677 answer before review/send, duplicate markers/copies, unchanged single copy, four tool/MCP routes, invalid/missing/ambiguous source text, historical person/agent forms, revision rendering and unrelated recorded summary/Jev/review/delivered/empty shapes. Default context floor passes (6 cases). Typecheck, build and architecture checks pass. The WSL change-review check reports only absent Studio report/live-evidence paths (Rules 102/70); this record itself has only its four expected Rule 102 missing-report findings.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: an explicit marker resolved from the existing hashed capability note at the answer and revision boundaries. No extra model call, gate, authority path or state. Whole-record legacy forms are needed because the old prompt explicitly requested the person/agent wording that caused update 715675677. Start: a supplied source note whose excerpt and sentence digests match. End: rendered candidate reviewed and sent once. Limit: missing references or invalid notes remain untouched; arbitrary prose is not classified. Shipped-path offline journal replay is recorded, not a new live delivery claim.

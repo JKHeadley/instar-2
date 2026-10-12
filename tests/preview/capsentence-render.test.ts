@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import { readFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { CAPABILITY_SENTENCE_LABEL, CAPABILITY_SENTENCE_MARKER, capabilitySentence, SOURCE_PINS, sourcePacket } from './briefing.js';
 import { renderCapabilityReply, renderCapabilityRevision } from './capability-render.js';
@@ -80,7 +81,12 @@ it.each([{ tools: false }, { tools: true }, { tools: true, mcp: 0 }, { tools: tr
   });
 
 it('leaves absent, ambiguous and altered evidence untouched instead of inventing a capability', () => {
-  const badNotes = [undefined, { ...note, text: note.text + 'changed' },
+  const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
+  const withText = (text: string) => ({ ...note, text,
+    provenance: { ...note.provenance, excerptSha256: hash(text) } });
+  const badNotes = [undefined, { ...note, text: null }, { ...note, text: note.text + 'changed' },
+    withText('No rendered record.'), withText(CAPABILITY_SENTENCE_LABEL),
+    withText(`${note.text}\n${CAPABILITY_SENTENCE_LABEL}${sentence}`),
     { ...note, provenance: { ...note.provenance, renderedCapabilitySha256: 'sha256:wrong' } },
     { ...note, provenance: { ...note.provenance, path: 'untrusted.json' } }];
   for (const bad of badNotes)
@@ -89,6 +95,7 @@ it('leaves absent, ambiguous and altered evidence untouched instead of inventing
   expect(renderCapabilityRevision(CAPABILITY_SENTENCE_MARKER, '{}')).toBe(CAPABILITY_SENTENCE_MARKER);
   // A partial old paragraph is not a protocol match; there is no prose/intent classifier.
   expect(renderCapabilityReply('The person can use files.', { sources: [note] })).toBe('The person can use files.');
+  expect(renderCapabilityReply(sentence.replace('I can use', 'The agent can use'), { sources: [note] })).toBe(sentence);
 });
 
 it('does not turn an empty answer or ordinary prose into a capability answer', async () => {
