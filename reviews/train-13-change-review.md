@@ -18,10 +18,10 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none; core.hooksPath unset and common hooks directory contains sample hooks only.
 Convergence: none
-Decision: train-13-jev | Preserve the ordinary first merge, a fast-forward from ea75ce39 to c1f9d3e9. Unit report: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-jev-retry2-1011-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-13b-PROGRESS.md
-Decision: train-13-d1c3 | Preserve ordinary merge 3c2a47ba with parents c1f9d3e9 and 079847b8; product merged automatically, seven generated files require replay. Unit report: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-d1c3-1012-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-13b-PROGRESS.md
-Decision: train-13-desk-scope | Follow the 2026-10-12 08:38 desk decision in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/fanout/train-13b-prompt.txt: continue intact two-head worktree and exclude sb-capnote-telegram-1012. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-13b-PROGRESS.md
-Decision: train-13-publication | Use the existing cint-L37 repin/build/rehash/register-replay chain at 3c2a47ba, with Linux sed syntax only in the downloaded tool. No new runtime machinery. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-13b-PROGRESS.md
+Decision: train-13-jev | Preserve the ordinary first merge, a fast-forward from ea75ce39 to c1f9d3e9. Unit report: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-jev-retry2-1011-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-14-repair-114140-PROGRESS.md
+Decision: train-13-d1c3 | Preserve ordinary merge 3c2a47ba with parents c1f9d3e9 and 079847b8; product merged automatically, seven generated files require replay. Unit report: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-d1c3-1012-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-14-repair-114140-PROGRESS.md
+Decision: train-13-desk-scope | Follow the 2026-10-12 08:38 desk decision in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/fanout/train-13b-prompt.txt: continue intact two-head worktree and exclude sb-capnote-telegram-1012. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-14-repair-114140-PROGRESS.md
+Decision: train-13-publication | Use the existing cint-L37 repin/build/rehash/register-replay chain at 3c2a47ba, with Linux sed syntax only in the downloaded tool. No new runtime machinery. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-14-repair-114140-PROGRESS.md
 Prompt review: No newly authored model-facing implementation. Inherited briefing compaction, Jev retry and candidate selection are checked with changed-file tests and recorded Jev, summary, reply-review and delivered-reply fixture replays; source reports identify the captured update ids. No paid call or fresh live journal read is claimed.
 Prompt finding: 034c5250da92 | quoted-evidence | Captured self-description assertions preserve the shipped authority wording; not a fixed phrase gate.
 Prompt finding: 45e37ea2e9e9 | quoted-evidence | Captured self-description compares original authority evidence.
@@ -34,6 +34,8 @@ Prompt finding: bd01de21286a | protocol-literal | Existing source-label groundin
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing memory retrieval instruction unchanged.
 Deferral: generated/register.json:1 | not-a-deferral=Generated publication of existing registry prerequisites, not a new commitment or postponed work.
 Verification: Exact commands and outcomes are in the train-13b report; local Rule 102 missing Studio report is expected until the desk copies that report. This is an author submission, not deployment or independent acceptance.
+
+Reporting repair: Decision report links now name the train-14 repair handoff, which carries every Decision id in this record. Original reports and their absence or incomplete decision lists were checked through the read-only Studio API; git preserves the old links. This changes reporting only, not the implementation or its historical evidence.
 
 ## Closing block
 

@@ -18,11 +18,13 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/call-diagnostics.test.ts
 Hook bypass: none; core.hooksPath unset and common hooks directory contains samples only.
 Convergence: none
-Decision: speedtrace-c-consumer | Prove phase timing reaches the CLI status consumer and classify limited/nonzero preflight results as failed without exposing their text. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speedtrace-1012-PROGRESS.md
-Decision: speedtrace-c-fixtures | Forward the real version-cache factory through existing substitute provider modules; repair the new import failure without changing fixture answers or policy. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speedtrace-1012-PROGRESS.md
-Decision: speedtrace-c-publication | Regenerate offline register publication from committed source; keep the Darwin runtime certificate's revalidation requirement explicit. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speedtrace-1012-PROGRESS.md
-Decision: speedtrace-c-cache-overlap | Prove a failed older in-flight version check cannot erase the successful slot of a different newer profile. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speedtrace-1012-PROGRESS.md
+Decision: speedtrace-c-consumer | Prove phase timing reaches the CLI status consumer and classify limited/nonzero preflight results as failed without exposing their text. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-14-repair-114140-PROGRESS.md
+Decision: speedtrace-c-fixtures | Forward the real version-cache factory through existing substitute provider modules; repair the new import failure without changing fixture answers or policy. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-14-repair-114140-PROGRESS.md
+Decision: speedtrace-c-publication | Regenerate offline register publication from committed source; keep the Darwin runtime certificate's revalidation requirement explicit. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-14-repair-114140-PROGRESS.md
+Decision: speedtrace-c-cache-overlap | Prove a failed older in-flight version check cannot erase the successful slot of a different newer profile. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-14-repair-114140-PROGRESS.md
 Prompt review: No model-facing text or acceptance rule changes. Fixture answers and prompts are unchanged; the added export forwards production code. Diagnostic records contain measurements only.
+
+Reporting repair: Decision report links now name the train-14 repair handoff, which carries every Decision id in this record. Original reports and their absence or incomplete decision lists were checked through the read-only Studio API; git preserves the old links. This changes reporting only, not the implementation or its historical evidence.
 
 ## Closing block
 

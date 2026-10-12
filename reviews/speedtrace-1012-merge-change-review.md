@@ -18,9 +18,11 @@ Bug class: none
 Bug evidence: none; conflict-free integration of the existing owning certificate repair, not a new runtime defect fix.
 Hook bypass: none; core.hooksPath unset and common hooks directory contains samples only.
 Convergence: none
-Decision: speedtrace-d-owning-repair | Merge the desk's tested Darwin certificate and replay publication once, preserving the local cache-overlap proof and both histories. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speedtrace-1012-PROGRESS.md
+Decision: speedtrace-d-owning-repair | Merge the desk's tested Darwin certificate and replay publication once, preserving the local cache-overlap proof and both histories. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-14-repair-114140-PROGRESS.md
 Prompt review: No prompt, parser, model selection or semantic acceptance text changes.
 Deferral: generated/register.json:1 | not-a-deferral=Inherited descriptions are mechanically replayed; this merge introduces no deferred product work.
+
+Reporting repair: Decision report links now name the train-14 repair handoff, which carries every Decision id in this record. Original reports and their absence or incomplete decision lists were checked through the read-only Studio API; git preserves the old links. This changes reporting only, not the implementation or its historical evidence.
 
 ## Closing block
 

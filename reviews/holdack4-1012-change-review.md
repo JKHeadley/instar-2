@@ -18,14 +18,17 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/reply-acknowledgement-timing.test.ts
 Hook bypass: none; core.hooksPath checked unset, common hooks directory checked and contains only samples.
 Convergence: none
-Decision: holdack4-existing-answer-guard | Retain the existing turn.answer guard and answerReady cancellation; move the shared deadline to ten seconds and prove the 9.3-second answer / 12-second delivery and 10.5-second answer boundaries using recorded answer and reviewer bytes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack4-1012-PROGRESS.md
-Decision: holdack4-historical-replay | Keep the historical eight-second minimum for replay only; new acknowledgement intents require ten seconds. This prevents the timing correction from making deployed journals unreadable. Both admission and replay boundaries are tested. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack4-1012-PROGRESS.md
-Decision: holdack4-publication | Run the existing desk repin chain and owner rehash (zero pins changed), then replay the register from implementation commit 6d31eba15c29186a161b874b2204505224dc2b56 so source pins match the shipped journal. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack4-1012-PROGRESS.md
+Decision: train-14-repair-report-handoff | Consolidate missing or incomplete decision reporting into the exact report destination the desk copies; preserve every decision and leave Rule 102 enforcement intact. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-14-repair-114140-PROGRESS.md
+Decision: holdack4-existing-answer-guard | Retain the existing turn.answer guard and answerReady cancellation; move the shared deadline to ten seconds and prove the 9.3-second answer / 12-second delivery and 10.5-second answer boundaries using recorded answer and reviewer bytes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-14-repair-114140-PROGRESS.md
+Decision: holdack4-historical-replay | Keep the historical eight-second minimum for replay only; new acknowledgement intents require ten seconds. This prevents the timing correction from making deployed journals unreadable. Both admission and replay boundaries are tested. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-14-repair-114140-PROGRESS.md
+Decision: holdack4-publication | Run the existing desk repin chain and owner rehash (zero pins changed), then replay the register from implementation commit 6d31eba15c29186a161b874b2204505224dc2b56 so source pins match the shipped journal. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-14-repair-114140-PROGRESS.md
 Deferral: generated/register.json:1 | not-a-deferral=Existing governed register text emitted by the generator, not deferred work.
 Prompt review: No prompt, parser, review criterion or fixed acknowledgement text changes. Replays use committed read-only captures for live updates 969390382 and 969390407–410, plus summary-writer summary:715672480, summary-uncertain 715672483, Jev-undecided 715672482, Jev-unsure 969389570, reply-review 969389923, delivered reply 715672479 and empty reply 715672550. Timing overrides are injected test clocks, not claims of fresh live measurements.
 Prompt finding: 849db3a6296a | protocol-literal | Existing answer protocol text is unchanged; no prompt change in this unit.
 Prompt finding: bd01de21286a | protocol-literal | Existing source-label grounding instruction is unchanged; no prompt change in this unit.
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing operator-history grounding instruction is unchanged; no prompt change in this unit.
+
+Reporting repair: Decision report links now name the train-14 repair handoff, which carries every Decision id in this record. Original reports and their absence or incomplete decision lists were checked through the read-only Studio API; git preserves the old links. This changes reporting only, not the implementation or its historical evidence.
 
 ## Closing block
 
