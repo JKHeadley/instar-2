@@ -113,12 +113,14 @@ export function createGroupAudienceCache(now: () => number, readFor: (scope: Gro
         }
       }
     },
-    async verify(scope: GroupCarryScope): Promise<boolean> {
+    async verify(scope: GroupCarryScope, observe?: (cacheHit: boolean) => void): Promise<boolean> {
       const key = JSON.stringify([scope.sourceRoot, scope.destinationRoot, scope.chat, scope.operator, scope.bot]);
       if (entry?.key === key && current(entry)) {
+        try { observe?.(true); } catch { /* diagnostics only */ }
         const hit = entry;
         return await hit.result && current(hit);
       }
+      try { observe?.(false); } catch { /* diagnostics only */ }
       const snapshot = { ...scope };
       const item: Entry = { key, started: now(), result: Promise.resolve(false) };
       entry = item;

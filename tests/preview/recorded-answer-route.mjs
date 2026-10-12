@@ -1,3 +1,4 @@
+export { createSubscriptionVersionCheck } from '../../src/assembly/production-provider.js';
 // Offline launcher tests only. Every other export is the real provider module; the route answers each question with the
 // verbatim recorded model output named for it in INSTAR_PREVIEW_RECORDED_ANSWERS ({ "<question>": "<raw output>" }).
 // A reply review passes every selected rule, a summary is a fixed short summary, and anything else is a definite refusal

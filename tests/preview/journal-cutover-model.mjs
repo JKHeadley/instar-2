@@ -1,3 +1,4 @@
+export { createSubscriptionVersionCheck } from '../../src/assembly/production-provider.js';
 export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
   validateSubscriptionActivation, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
   subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';

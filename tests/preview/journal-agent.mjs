@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { recordPhaseTiming } from './phase-timing.js';
 import { isGroupReviewFinalNotice } from './reply-check.js';
 import { loadHarnessLogins, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { groupMembershipReader } from './group-membership-io.mjs';
@@ -15,7 +16,7 @@ import { createProductionTelegramIO, createSubscriptionProviderIO, productionSto
 import { snapshotState } from '../../scripts/operator-dashboard.mjs';
 import { checkListen, createReadOnlyDashboard, pinCheckAt, serveReadOnly } from '../../scripts/operator-dashboard-readonly.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
-import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway,
+import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, createSubscriptionVersionCheck,
   SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { attachEgress, attachSessionVolume, networkToolReads, readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
   TOOLS_DEFAULT_ACTIVATION, createHeldSecrets, custodyHeldSources, heldSpan, heldVerdict } from './tool-turn.mjs';
@@ -1028,6 +1029,7 @@ async function main() {
       capacityAlerts: capacityAlerts(view.view),
       modelJsonShapes: readShapes(shapesPath),
       modelResultStates: Object.fromEntries(view.view.providerStates),
+      phaseTimings: view.view.phaseTimings ?? [],
       callOutcomeCounts: Object.fromEntries(view.view.callOutcomeCounts),
       lastCallOutcomes: view.view.callOutcomes.map(({ id, role, outcome: { diagnostic: _privateDiagnostic, ...outcome }, at }) => ({ id, role, ...outcome, at })),
       unknownSends: sendOutcomeCounts(view.view).unknown,
@@ -1268,11 +1270,17 @@ async function main() {
         operatorRecords(options['operator-records']), authoritySealKey(key()));
     } catch { return { kind: 'refused', reason: 'group disclosure authority unavailable' }; }
   };
+  const observeAudience = async check => {
+    const started = clock.elapsed(); let cacheHit, accepted = false;
+    try { accepted = await check(hit => { cacheHit = hit; }); return accepted; }
+    finally { if (journal) recordPhaseTiming(row => journal.append(row), 'group-disclosure', 'audience',
+      { ...(cacheHit === undefined ? {} : { cacheHit }), accepted, elapsedMs: Math.max(0, Math.round(clock.elapsed() - started)) }, wallNow()); }
+  };
   const requireGroupDisclosure = async view => {
     if (!view.groupCarry) return;
     const scope = view.groupCarry.scope;
-    if (groupPermission(scope).kind !== 'resolved' || !await groupAudience.verify(scope)
-      || groupPermission(scope).kind !== 'resolved') throw Error('group carry: disclosure grant or operator-only audience refused');
+    if (!await observeAudience(async observe => groupPermission(scope).kind === 'resolved'
+      && await groupAudience.verify(scope, observe) && groupPermission(scope).kind === 'resolved')) throw Error('group carry: disclosure grant or operator-only audience refused');
   };
   if (command === 'carry-group') {
     let destination, source, sourceStorage;
@@ -1368,6 +1376,7 @@ async function main() {
     } finally { capJournal?.close(); storage.close(); }
     return;
   }
+  const versionCheck = createSubscriptionVersionCheck();
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false, startupFailure = null;
   let handoff = null, reservedAtLaunch = new Set(), ownerClaim = null, installation = null, installUpdate = null;
   // Rule 15 / Eleven §5: the installed shape's evidence, set once the activation is validated at launch.
@@ -1974,7 +1983,7 @@ async function main() {
         if (journal.view.groupCarry) { await requireGroupDisclosure(journal.view); return true; }
         const scope = { sourceRoot: root, destinationRoot: root, chat: journal.view.genesis.chat,
           operator: journal.view.genesis.operator, bot: journal.view.genesis.bot };
-        return groupAudience.verify(scope);
+        return observeAudience(observe => groupAudience.verify(scope, observe));
       },
       presenceNotes: sentinelFamilies.has('presence'),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
@@ -2152,7 +2161,7 @@ async function main() {
       // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
       // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
       sendAdmits: true,
-      send: async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit, current }) => {
+      send: async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit, current, observeSendPhase }) => {
         if (!journal.verifyOutbound(provenance, { target, chat, ...(thread === undefined ? {} : { thread }), body: text }))
           return { kind: 'refused', reason: 'outbound provenance unsigned' };
         if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop)
@@ -2168,6 +2177,7 @@ async function main() {
         if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
           return { kind: 'refused', reason: 'stopped during audience check' };
         if (current && !current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
+        observeSendPhase?.('audienceAdmittedAt');
         admit?.(); // Durable intent only after disclosure; replication below includes it.
         if (shared) {
           // replicated(1): the journal through this send's signed intent is on the other machine, and the one
@@ -2182,11 +2192,14 @@ async function main() {
         if (current && !current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
         let outcome = { kind: 'unknown', reason: 'send port failed' };
         try {
-          const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
+          observeSendPhase?.('transportBegunAt');
+          let reply;
+          try { reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
             body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }),
               ...(replyTo === undefined ? {} : { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } }),
               ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }) },
-            timeoutMs: 30000 }, token());
+            timeoutMs: 30000 }, token()); }
+          finally { observeSendPhase?.('transportReturnedAt'); }
           outcome = classifyTelegramSend(reply, { chat, expectedText, forum: g.forum === true, ...(thread === undefined ? {} : { thread }) });
           return outcome;
         } finally { if (shared) await shared.outcome(target, outcome.kind); }
@@ -2801,7 +2814,7 @@ async function main() {
         resolveProfile: () => profile, provider: doorway.provider, model: options.model, route: 'preview-subscription',
         disclosure: 'Subscription preview; charge UNKNOWN', activation: toolTurn ? selectedTools : selectedActivation,
         framing, ...(toolTurn ? { toolTurn } : {}),
-        journalEnd: () => journal.view.expires, io,
+        journalEnd: () => journal.view.expires, io, versionCheck,
         now: wallNow, active: () => !workerStop.value && !existsSync(stopPath) && selectedActive() && !journal.view.stop,
         adapterEvidenceContract: contract,
         ...(journal.view.limits.maxBytes > doorway.policyFor(options.model, doorway.conversationFraming).maxPromptBytes

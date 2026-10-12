@@ -36,7 +36,7 @@ it('distinguishes a parsed 2048-token over-cap result from a 120-second local ti
   expect(over.diagnostic.rawOutputExcerpt).toContain('provider text');
 });
 
-it('durably records each physical model result before returning, without recording preflight commands', async () => {
+it('durably records each physical model result before returning, with separate content-free preflight timings', async () => {
   const rows = [], policy = { args: ['--safe-mode', '--print'], maxTokens: 2048, maxOutputBytes: 16384 };
   const commands = [], physicalIO = { execute: async command => { commands.push(command.args);
     if (command.args[0] === '--version') return physical('2.1.280 (Claude Code)');
@@ -46,7 +46,9 @@ it('durably records each physical model result before returning, without recordi
     { elapsed: () => (elapsed += 5), at: () => 123 });
   await io.execute({ args: ['--version'], stdin: '', timeout: 5000 });
   await io.execute({ args: ['auth', 'status', '--json'], stdin: '', timeout: 5000 });
-  expect(rows).toHaveLength(0);
+  expect(rows).toMatchObject([{ kind: 'phase-timing', phase: 'version', measurements: { elapsedMs: 5, failed: false } },
+    { kind: 'phase-timing', phase: 'auth', measurements: { elapsedMs: 5, failed: false } }]);
+  rows.length = 0;
   const result = await io.execute({ args: policy.args, stdin: 'prompt', timeout: 120000 });
   expect(result.stdout).toContain('provider text');
   expect(rows).toMatchObject([{ kind: 'call-outcome', role: 'summary', id: 'summary:2', at: 123,
@@ -84,6 +86,7 @@ it('replays answer, summary and reply-review outcomes and exposes bounded status
     journal.append({ kind: 'reply-review-reserve', id, candidate: MODEL_FAILURE_REPLY, at: 1015 });
     journal.append({ kind: 'call-outcome', id: `${id}:reply-review`, role: 'reply-review', outcome:
       subscriptionCallOutcome(physical(frame(2)), 60, 20, 2048, 16384), at: 1016 });
+    journal.append({ kind: 'phase-timing', id, phase: 'send', measurements: { transportBegunAt: 1016, transportReturnedAt: 1017, provedNotSentAttempts: 0 }, at: 1017, forward: { generation: 4, additive: true } });
     journal.close();
     const replayed = openPreviewJournal(path, key, undefined, undefined, true);
     expect(Object.fromEntries(replayed.view.callOutcomeCounts)).toMatchObject({ total: 3, 'role:model': 1,
@@ -96,6 +99,8 @@ it('replays answer, summary and reply-review outcomes and exposes bounded status
         env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
     expect(status.status, status.stderr).toBe(0);
     const parsed = JSON.parse(status.stdout);
+    expect(parsed.phaseTimings).toMatchObject([{ kind: 'phase-timing', phase: 'send',
+      measurements: { transportBegunAt: 1016, transportReturnedAt: 1017, provedNotSentAttempts: 0 } }]);
     expect(parsed.callOutcomeCounts.total).toBe(3);
     expect(parsed.lastCallOutcomes.map(row => row.role)).toEqual(['model', 'summary', 'reply-review']);
     expect(JSON.stringify(parsed.lastCallOutcomes)).not.toContain('provider text');
@@ -323,4 +328,20 @@ it.each(['stdout', 'stderr'])('preserves successful results through journal appe
     expect(reopened.view.callOutcomeCounts.get('total')).toBe(cases.length);
     reopened.close();
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('records refused or limited preflights without their output and preserves thrown failures', async () => {
+  for (const result of [{ code: 1, limited: false }, { code: 0, limited: true }]) {
+    const rows = [];
+    const io = observedSubscriptionIO({ execute: async () => ({ ...result, stdout: 'private auth output', stdoutBytes: Buffer.from('private auth output') }) },
+      {}, 'turn:1', row => rows.push(row), { elapsed: () => 10, at: () => 1000 });
+    await io.execute({ args: ['auth', 'status', '--json'], stdin: '' });
+    expect(rows).toMatchObject([{ phase: 'auth', measurements: { failed: true, elapsedMs: 0 } }]);
+    expect(JSON.stringify(rows)).not.toContain('private auth output');
+  }
+  const error = Error('private failure'), rows = [];
+  const io = observedSubscriptionIO({ execute: async () => { throw error; } }, {}, 'turn:1', row => rows.push(row));
+  await expect(io.execute({ args: ['--version'], stdin: '' })).rejects.toBe(error);
+  expect(rows).toMatchObject([{ phase: 'version', measurements: { failed: true } }]);
+  expect(JSON.stringify(rows)).not.toContain('private failure');
 });

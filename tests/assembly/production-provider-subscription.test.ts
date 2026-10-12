@@ -1,10 +1,11 @@
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
-import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, subscriptionConversationPolicy,
+import { createClaudeCodeSubscriptionRoute, createSubscriptionVersionCheck, subscriptionInvocationPolicy, subscriptionConversationPolicy,
   SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
   SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY,
   SUBSCRIPTION_THINKING_ENV, subscriptionActivationEndAllowed, subscriptionPolicyFor,
@@ -352,7 +353,7 @@ it('accepts the real 2.1.280 server policy only after the profile and activation
   const stamp = JSON.parse(serverPolicyFixture('policy-limits.json.stamp.json'));
   writeFileSync(join(profile.configDirectory, 'policy-limits.json.stamp.json'), JSON.stringify({ ...stamp, confirmed_at: stamp.confirmed_at + 1 }));
   expect((await renewedRoute.invoke('request', f.bounds)).state).toBe('complete');
-  expect(f.commands()).toHaveLength(6);
+  expect(f.commands()).toHaveLength(5); // version is reused; auth and model still run
 });
 
 const capturedPolicy = () => JSON.parse(serverPolicyFixture('policy-limits.json'));
@@ -580,4 +581,113 @@ it('uses generic Instar identity on decision, conversation and tool routes', () 
     // The legacy Decision subject is protocol metadata, not the agent’s identity.
     expect(prompt.split(". Your task")[0]).not.toMatch(/preview/iu);
   }
+});
+
+
+// These version-cache proofs use the same real synthetic executable on WSL, without
+// the macOS resource-owner launcher. No serving login or provider is involved.
+function versionFixture() {
+  const f = fixture();
+  const io = { ...f.input.io, execute: async (command: Parameters<ProductionProviderIO['execute']>[0]) => {
+    const result = spawnSync(command.executable, [...command.args], { cwd: command.cwd, env: command.env,
+      input: command.stdin, timeout: command.timeout, maxBuffer: command.maxBytes });
+    const stdoutBytes = result.stdout ?? Buffer.alloc(0);
+    return { code: result.status, limited: result.error !== undefined, stdout: stdoutBytes.toString('utf8'), stdoutBytes };
+  } };
+  return { ...f, input: { ...f.input, io } };
+}
+
+it('reuses a checked version across runner routes while checking auth and physical identity on every call', async () => {
+  const f = versionFixture(), versionCheck = createSubscriptionVersionCheck();
+  let inspected = 0, digested = 0;
+  const io = { ...f.input.io,
+    inspectSubscriptionProfile: (profile: ProviderSubscriptionProfile) => { inspected++; return f.input.io.inspectSubscriptionProfile(profile); },
+    executableBytes: (path: string) => { digested++; return f.input.io.executableBytes(path); } };
+  const route = () => value(createClaudeCodeSubscriptionRoute({ ...f.input, io, versionCheck }));
+  expect((await route().invoke('first', f.bounds)).state).toBe('complete');
+  const before = { inspected, digested };
+  expect((await route().invoke('second', f.bounds)).state).toBe('complete');
+  expect(inspected).toBeGreaterThan(before.inspected); expect(digested).toBeGreaterThan(before.digested);
+  const commands = f.commands();
+  expect(commands.filter(c => c.args[0] === '--version')).toHaveLength(1);
+  expect(commands.filter(c => c.args[0] === 'auth')).toHaveLength(2);
+  expect(commands.filter(c => c.stdin.length > 0)).toHaveLength(2);
+  // A successful version check grants no authority to a revoked runner.
+  const revoked = route(); f.stop();
+  expect((await revoked.invoke('third', f.bounds)).state).toBe('uncertain');
+  expect(f.commands()).toHaveLength(5);
+});
+
+it('a cached version does not cover a changed physical artifact, login identity or auth status', async () => {
+  for (const changed of ['artifact', 'identity', 'auth'] as const) {
+    const f = versionFixture(), versionCheck = createSubscriptionVersionCheck(); let altered = false;
+    const io = { ...f.input.io,
+      executableBytes: (path: string) => altered && changed === 'artifact' ? Buffer.from('different artifact') : f.input.io.executableBytes(path),
+      inspectSubscriptionProfile: (profile: ProviderSubscriptionProfile) => {
+        const observed = f.input.io.inspectSubscriptionProfile(profile);
+        return altered && changed === 'identity' ? { ...observed, loginProfileIdentity: 'changed' } : observed;
+      },
+      execute: async (command: Parameters<ProductionProviderIO['execute']>[0]) => {
+        const result = await f.input.io.execute(command);
+        if (altered && changed === 'auth' && command.args[0] === 'auth') {
+          const stdout = JSON.stringify({ loggedIn: false });
+          return { ...result, stdout, stdoutBytes: Buffer.from(stdout) };
+        }
+        return result;
+      } };
+    const route = value(createClaudeCodeSubscriptionRoute({ ...f.input, io, versionCheck }));
+    expect((await route.invoke('first', f.bounds)).state).toBe('complete'); altered = true;
+    expect((await route.invoke('second', f.bounds)).state).toBe('uncertain');
+    expect(f.commands().filter(c => c.stdin.length > 0)).toHaveLength(1);
+    expect(f.commands().filter(c => c.args[0] === '--version')).toHaveLength(1);
+  }
+});
+
+it('revalidates version when an authorized artifact or profile changes and does not retain a failed version', async () => {
+  const f = versionFixture(), versionCheck = createSubscriptionVersionCheck();
+  const route = (input = f.input) => value(createClaudeCodeSubscriptionRoute({ ...input, versionCheck }));
+  expect((await route().invoke('first', f.bounds)).state).toBe('complete');
+  const source = readFileSync(f.input.profile.executable, 'utf8') + '\n// new executable artifact\n';
+  writeFileSync(f.input.profile.executable, source);
+  const profile = Object.freeze({ ...f.input.profile, artifact: `sha256:${createHash('sha256').update(source).digest('hex')}` });
+  const changed = { ...f.input, profile, resolveProfile: () => profile,
+    activation: { ...f.input.activation, artifact: profile.artifact, profileDigest: hash(profile) },
+    adapterEvidenceContract: { ...f.input.adapterEvidenceContract, version: hash(profile) } };
+  expect((await route(changed).invoke('second', f.bounds)).state).toBe('complete');
+  const workingDirectory = join(f.root, 'second-work'); mkdirSync(workingDirectory, { mode: 0o700 });
+  const nextSeed = { ...profile, workingDirectory };
+  const nextProfile = Object.freeze({ ...nextSeed, ...f.input.io.inspectSubscriptionProfile(nextSeed) });
+  const next = { ...changed, profile: nextProfile, resolveProfile: () => nextProfile,
+    activation: { ...changed.activation, profileDigest: hash(nextProfile) },
+    adapterEvidenceContract: { ...changed.adapterEvidenceContract, credentialReference: nextProfile.reference, endpoint: nextProfile.loginProfileIdentity, version: hash(nextProfile) } };
+  // Profile changes revalidate even when the executable artifact stays fixed.
+  expect((await route(next).invoke('third', f.bounds)).state).toBe('complete');
+  expect(f.commands().filter(c => c.args[0] === '--version')).toHaveLength(3);
+  let attempts = 0;
+  const failed = createSubscriptionVersionCheck();
+  await expect(failed(profile, async () => { attempts++; throw Error('wrong version'); })).rejects.toThrow('wrong version');
+  await failed(profile, async () => { attempts++; });
+  await failed(profile, async () => { attempts++; });
+  expect(attempts).toBe(2);
+});
+
+it('coalesces overlapping version checks only for the same complete profile', async () => {
+  const f = versionFixture(), check = createSubscriptionVersionCheck(); let calls = 0;
+  let release!: () => void;
+  const wait = new Promise<void>(resolve => { release = resolve; });
+  const verify = async () => { calls++; await wait; };
+  const a = check(f.input.profile, verify), b = check(f.input.profile, verify);
+  await Promise.resolve(); expect(calls).toBe(1); release(); await Promise.all([a, b]);
+  await check({ ...f.input.profile, version: 'different' }, async () => { calls++; });
+  expect(calls).toBe(2);
+  // Failure of an older in-flight profile cannot discard a newer successful slot.
+  let reject!: (reason: Error) => void;
+  const older = check(f.input.profile, () => new Promise<void>((_resolve, fail) => { reject = fail; }));
+  await Promise.resolve();
+  const newer = { ...f.input.profile, version: 'newer' };
+  await check(newer, async () => { calls++; });
+  const rejected = expect(older).rejects.toThrow('older failed');
+  reject(Error('older failed')); await rejected;
+  await check(newer, async () => { calls++; });
+  expect(calls).toBe(3);
 });
