@@ -268,7 +268,8 @@ it('replays five recorded answers with the rendered paragraph verbatim and diges
   const capture = JSON.parse(readFileSync(new URL('./fixtures/capsentence-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
   expect(capture.question).toBe('What can you do for me here?');
-  expect(currentInstructions(capture.instructions)).toBe(ANSWER_INSTRUCTIONS);
+  // Preserve the prior instruction as historical evidence; only its self-description clause was superseded.
+  expect(currentInstructions(capture.instructions).replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(capture.runs).toHaveLength(5);
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits);
@@ -299,4 +300,54 @@ it('replays five recorded answers with the rendered paragraph verbatim and diges
       v: run.judge.rubric, note: run.capabilityNote.text, reply: run.answer, provenance: run.capabilityNote.provenance,
     })).digest('hex')}`);
   }
+});
+
+it('binds every unchanged-question capability replay and its PASS or FAIL judgment to final instructions', () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/capsentence2-2026-10-11.json', import.meta.url), 'utf8'));
+  expect(capture.update).toBe(840342414);
+  expect(capture.question).toBe("What can you do in this chat, and what can't you do?");
+  expect(capture.recordedUserMessage).toEqual({ role: 'user', content: capture.question });
+  expect(capture.recordedInputSha256).toBe('1f88dc781981771069954ea14617717942b77476acce76805d300344565a4b1a');
+  expect(currentInstructions(capture.instructions).replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
+  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  expect(capture.runs).toHaveLength(10);
+  const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits);
+  const sentence = capabilitySentence(capture.limits);
+  for (const run of capture.runs) {
+    expect(run.userMessage).toEqual(capture.recordedUserMessage);
+    expect(run.inputSha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(run.capabilityNote.text).toBe(note.text);
+    expect(run.capabilityNote.provenance.renderedCapabilitySha256).toBe(note.renderedCapabilitySha256);
+    const reading = readAnswer(run.raw, { wrapped: 'accept' });
+    expect(reading.ok).toBe(true);
+    if (!reading.ok) throw Error(reading.defect);
+    expect(reading.value).toBe(run.answer);
+    expect(run.answer.split('\n').filter((line: string) => line === sentence)).toHaveLength(1);
+    expect(run.judge).toMatchObject({ verdict: run.run === 24 ? 'FAIL' : 'PASS', rubric: 'k11a-rubric-v3-rendered' });
+    if (run.run === 24) expect(run.judge.reason).toContain('telegram-conversation-adapter');
+    expect(run.judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+      v: run.judge.rubric, note: run.capabilityNote.text, reply: run.answer, provenance: run.capabilityNote.provenance,
+    })).digest('hex')}`);
+  }
+  // The first unchanged-question batch exposed quotation marks around the required
+  // bare paragraph. Preserve that actual failure alongside the corrected runs.
+  const formatting = capture.formattingNegative;
+  expect(formatting.userMessage).toEqual(capture.recordedUserMessage);
+  expect(formatting.question).toBe(capture.question);
+  expect(formatting.answer.split('\n')).toContain(`"${sentence}"`);
+  expect(formatting.answer.split('\n')).not.toContain(sentence);
+  expect(formatting.judge).toMatchObject({ verdict: 'FAIL', reason: 'rendered tools/outbound sentence missing, altered or duplicated' });
+  expect(currentInstructions(formatting.instructions).replace('quote the note’s tools/outbound sentence verbatim as its own paragraph without its label.',
+    'copy the note’s tools/outbound sentence verbatim as a paragraph with no label or quotes.').replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
+  expect(formatting.judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+    v: formatting.judge.rubric, note: formatting.capabilityNote.text, reply: formatting.answer, provenance: formatting.capabilityNote.provenance,
+  })).digest('hex')}`);
+  // The real counterexample already quoted the record correctly. It still failed on
+  // its additional prose: the instruction must prevent that class of restatement.
+  const original = capture.original;
+  expect(original.answer.split('\n')).toContain(sentence);
+  expect(original.judge).toMatchObject({ verdict: 'FAIL', rubric: 'k11a-rubric-v3-rendered' });
+  expect(original.judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+    v: original.judge.rubric, note: original.capabilityNote.text, reply: original.answer, provenance: original.capabilityNote.provenance,
+  })).digest('hex')}`);
 });

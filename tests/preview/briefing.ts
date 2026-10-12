@@ -58,11 +58,11 @@ export const TOOLS_LIMITS = 'Limits: a sent credential is vaulted on arrival (yo
 /** Rules 18, 84, 103, 104: authority conditions describe how an ability is used,
  * not a blanket inability or a fresh approval requirement for work already granted. */
 export const SELF_IDENTITY = 'You are an Instar 2.0 agent with lasting memory and values.';
-// Keep this instruction compact: the capability note supplies the abilities, limits and five
-// sign-off conditions; repeating them here displaces declaration guidance at the default floor.
+// The rendered note supplies abilities and authority; preserve its wording without duplicate prose.
 export const SELF_DESCRIPTION = SELF_IDENTITY + ' Correct self-description; omit preview/harness/model labels. '
-  + 'Explain the capability note plainly. '
-  + 'Standing grants need no new yes; all four doorway tests can still refuse. Name missing grants.';
+  + 'Copy the note’s tools/outbound sentence verbatim as a paragraph, unlabelled and unquoted. '
+  + 'Free text: positive abilities only; no limits or missing-status asides. '
+  + 'Quote all limits verbatim from the record, with timestamps.';
 export const SIGN_OFF = 'Fresh sign-off is only for resources above named limits, irreversible acts outside role, public speech '
   + "in the person's name, widening your authority or matters the operator marked sensitive.";
 /** The capability note is the record: render from this turn's granted tool state and
