@@ -1,6 +1,6 @@
 # Change review — Retain tool constraints after Rule 87 growth
 
-Subject base: 32447011872c823f3e990d991db1180e617b980c
+Subject base: 4b68689b91a4eefec63f7a77f33487abfadea312
 Review state: open
 Reviewed content: none
 Outcome: Keep governingConstraints and every other required tool packet field inside the unchanged context floor after the approved Rule 87 progress sentence is merged.
@@ -22,7 +22,7 @@ Prompt review: Replace a repeated list with an instruction to explain the comple
 Prompt finding: 4b98dc2a1b9f | protocol-literal | The complete tool inventory is asserted by captured self-description replays; it does not classify user meaning.
 Prompt finding: 95e349aaf4ac | protocol-literal | The unchanged four-test and standing-grant capability wording is an authority instruction checked by the recorded replay, not a meaning filter.
 
-Verification: The unchanged floor assertion failed on the merged paragraph because governingConstraints disappeared, and passes after the prose reduction. Final replay batch passes 42 tests with one existing opt-in capture skipped. Evidence and exact recorded update IDs are in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-repair-PROGRESS.md. The capture is not needed to replay the checked-in authentic bytes.
+Verification: Branch reconciliation by floorfix-1011 reverts the alternative floor repair and applies holdack2 e6e1a781 with its SELF_DESCRIPTION conflict resolved toward holdack2. Existing literal-text consumers are aligned with that same paragraph; captured outputs and judgments remain authentic. The exact foreground commands, results and update IDs are recorded in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/floorfix-1011-PROGRESS.md. This record makes no fresh model-judgment or live deployment claim.
 
 ## Closing block
 
