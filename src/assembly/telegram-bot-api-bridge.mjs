@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { subscribe } from 'node:diagnostics_channel';
 import {
   closeSync, constants, existsSync, fsyncSync, linkSync, lstatSync, openSync,
   readFileSync, unlinkSync, writeSync,
@@ -322,9 +323,23 @@ function transportErrors(error, depth = 0) {
   return transportErrors(error.cause, depth + 1);
 }
 
+// This child owns one fetch at a time. Observe the native connector, before fetch wraps its
+// exception tree. connectError means TCP/TLS setup failed; sendHeaders is published before
+// the first request write. Never retain channel payloads (they contain credentials/addresses).
+let connectionPhase;
+subscribe('undici:client:beforeConnect', () => { if (connectionPhase) connectionPhase.pending++; });
+subscribe('undici:client:connectError', () => {
+  if (connectionPhase) { connectionPhase.pending--; connectionPhase.failed = true; }
+});
+subscribe('undici:client:connected', () => { if (connectionPhase) connectionPhase.opened = true; });
+subscribe('undici:client:sendHeaders', () => { if (connectionPhase) connectionPhase.writing = true; });
+const observedNeverSent = () => connectionPhase.failed && connectionPhase.pending === 0
+  && !connectionPhase.opened && !connectionPhase.writing;
+
 let provider;
 const signal = AbortSignal.timeout(request.timeoutMs);
 for (let attempt = 0; attempt < 2; attempt++) {
+  connectionPhase = { pending: 0, failed: false, opened: false, writing: false };
   try {
     provider = await fetch(`${testEndpoint ?? 'https://api.telegram.org'}/bot${token}/${request.method}`, {
       method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' },
@@ -334,13 +349,17 @@ for (let attempt = 0; attempt < 2; attempt++) {
   } catch (error) {
     // Stay inside the original physical admission and elapsed bound, including on replicated
     // installations. No second dispatch claim, renewed timeout, or ambiguous-send retry.
-    if (attempt === 0 && !signal.aborted && connectionNeverOpened(error?.cause)) continue;
+    const phaseProved = observedNeverSent();
+    const neverSent = phaseProved || !connectionPhase.opened && !connectionPhase.writing
+      && connectionNeverOpened(error?.cause);
+    if (attempt === 0 && !signal.aborted && neverSent) continue;
     const timeout = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
     // All earlier attempts continued only on the same proof. A later timeout/reset cannot
     // inherit an earlier connect refusal: it must independently prove non-delivery.
     const diagnostics = transportErrors(error);
     uncertain(timeout ? 'fetch-timeout' : 'fetch-failure', timeout ? 'timeout' : 'transport', {
-      ...(!timeout && connectionNeverOpened(error?.cause) ? { sent: false } : {}),
+      ...(neverSent ? { sent: false } : {}),
+      ...(phaseProved ? { transportPhase: 'connect-no-write' } : {}),
       ...(diagnostics.length ? { transportErrors: diagnostics } : {}),
     });
     process.exit(0);

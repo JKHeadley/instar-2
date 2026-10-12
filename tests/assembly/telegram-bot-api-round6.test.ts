@@ -52,6 +52,32 @@ describe('D01 fixed confined-child failure stages', () => {
       expect(observed.child.stdout).not.toContain(observed.secret);
     });
 
+  test('native connect phase survives nested exceptions through the decoder as structured no-write proof', () => {
+    const observed = run('real-connect-persistent');
+    expect(observed.reply).toMatchObject({ sent: false, transportPhase: 'connect-no-write' });
+    expect(observed.counts).toMatchObject({ fetches: 2, requests: 0 });
+    expect(classifyTelegramSend(observed.reply, { chat: '1', expectedText: 'reply' }).kind).toBe('not-sent');
+  });
+
+  test('a request that reached a real endpoint cannot be retried even with a connect-labelled exception', () => {
+    const observed = run('real-lost-receipt-connect-label');
+    expect(observed.reply).not.toHaveProperty('sent');
+    expect(observed.reply).not.toHaveProperty('transportPhase');
+    expect(observed.counts).toMatchObject({ fetches: 1, requests: 1 });
+    expect(observed.reply).toMatchObject({ transportErrors: [{ code: 'ETIMEDOUT', syscall: 'connect' }] });
+    expect(classifyTelegramSend(observed.reply, { chat: '1', expectedText: 'reply' }).kind).toBe('unknown');
+  });
+
+  test('only exact structured proof survives a fetch timeout, never body-read or an untrusted phase string', () => {
+    const decode = (stage: string, transportPhase: unknown) => telegramBridgeReplyFromExecution({ resolver: 'ok', status: 0,
+      stdout: JSON.stringify({ kind: 'uncertain', limitation: 'timeout', stage, sent: false, transportPhase }) });
+    expect(decode('fetch-timeout', 'connect-no-write')).toMatchObject({ sent: false, transportPhase: 'connect-no-write' });
+    for (const [stage, phase] of [['body-read', 'connect-no-write'], ['fetch-timeout', 'connect'], ['fetch-timeout', { secret: 'hidden' }]]) {
+      expect(decode(stage as string, phase)).not.toHaveProperty('sent');
+      expect(decode(stage as string, phase)).not.toHaveProperty('transportPhase');
+    }
+  });
+
   test('a persistent connection failure stops at two attempts', () => {
     const observed = run('connect-persistent');
     expect(observed.reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure',

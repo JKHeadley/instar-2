@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawn, spawnSync } from 'node:child_process';
-import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE,
+import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE, UNKNOWN_SEND_NOTICE,
   SUMMARY_UNKNOWN_RECOVERY_MS, SUMMARY_MAX_PROMPT_BYTES, SUMMARY_MAX_TURNS, SUMMARY_TARGET_OUTPUT_TOKENS, summaryPromptBytes } from './journal-test-worker.js';
 import { INDEX_ATTEMPT_LIMIT, INDEX_BACKLOG_LIMIT, OBLIGATION_FLOOR_PACKET_BYTES as FLOOR_GUIDE, TOO_LONG_INPUT_NOTICE } from './journal.js';
 // w3-floorduty (Rules 3, 93): under pressure the obligation guide now yields to its floor form instead of vanishing, so a
@@ -28,12 +28,14 @@ const update = (id: number, text = `question ${id}`) => ({ update_id: id,
 function world(root: string, options: { boundary?: (stage: string) => void; send?: () => number | null;
   model?: (input: { question: string; context: string }) => string } = {}) {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(), options.boundary);
-  let calls = 0, sends = 0, stopped = false;
+  let calls = 0, sends = 0, notices = 0, stopped = false;
   const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => stopped,
     model: async input => { calls++; return options.model?.(input) ?? `answer ${input.question}`; },
-    send: async () => { sends++; return options.send ? options.send() : sends; },
+    send: async input => {
+      if (input.target?.startsWith('delivery-notice:')) { expect(input.expectedText).toBe(UNKNOWN_SEND_NOTICE); notices++; return 900 + notices; }
+      sends++; return options.send ? options.send() : sends; },
     checkOutbound: text => { if (text.includes('SECRET')) throw Error('secret'); } });
-  return { journal, worker, get calls() { return calls; }, get sends() { return sends; }, stop: () => { stopped = true; } };
+  return { journal, worker, get calls() { return calls; }, get sends() { return sends; }, get notices() { return notices; }, stop: () => { stopped = true; } };
 }
 
 it('retains intake before advancing the cursor, deduplicates redelivery, and fences unknown sends without blocking later work', async () => {
@@ -43,6 +45,7 @@ it('retains intake before advancing the cursor, deduplicates redelivery, and fen
     expect(first.worker.intake([update(10)])).toBe(11);
     await first.worker.drain();
     expect(first.sends).toBe(1);
+    expect(first.notices).toBe(1);
     first.journal.close();
     const second = world(root);
     second.worker.intake([update(10), update(11)]);
@@ -201,6 +204,7 @@ it.each(['before:intake', 'after:intake', 'before:reserve', 'after:reserve', 'be
       expect(turn.answer).toBeUndefined();
       expect(turn.intent).toBeUndefined();
     } else if (['after:intent','before:sent'].includes(stage)) {
+      expect(first.notices + next.notices).toBe(1);
       expect(turn.intent).toBe('first answer');
       expect(turn.sent).toBeUndefined();
     } else expect(turn.sent).toBe(stage === 'after:sent' ? 42 : 43);
@@ -232,6 +236,7 @@ it('survives actual SIGKILL before and after every turn-path durable boundary', 
         expect(turn.answer, stage).toBeUndefined();
         expect(turn.intent, stage).toBeUndefined();
       } else if (stage === 'after:intent' || stage === 'before:sent') {
+        expect(resumed.notices, stage).toBe(1);
         expect(turn.intent, stage).toBe('answer');
         expect(turn.sent, stage).toBeUndefined();
       } else expect(turn.sent, stage).toBeGreaterThan(0);

@@ -89,11 +89,12 @@ it('each message shows its durable send outcome: accepted, refused and UNKNOWN a
   const outcomes = [{ kind: 'refused', reason: 'telegram 403: Forbidden: bot was blocked by the user' }, { kind: 'unknown', reason: 'transport timeout' }, 7];
   let next = 0;
   const worker = createJournalWorker(journal, { now: () => at, timeZone: zone, stopped: () => false, model: async () => 'an answer',
-    checkOutbound: () => {}, send: async () => outcomes[next++] as never });
+    checkOutbound: () => {}, send: async input => (input.target?.startsWith('delivery-notice:') ? 99 : outcomes[next++]) as never });
   worker.intake([update(1, 'first')]); await worker.drain();
   worker.intake([update(2, 'second')]); await worker.drain();
   worker.intake([update(3, 'third')]); await worker.drain();
   const turns = snapshotOf(journal.view).turns;
+  expect(journal.view.order[1]?.deliveryNotice?.sent).toBe(99);
   expect(turns.map(turn => turn.update)).toEqual([3, 2, 1]);
   expect(turns[0]).toMatchObject({ state: 'Answered', reply: expect.stringContaining('an answer') });
   expect(turns[1]!.state).toBe('My reply may or may not have arrived: delivery is UNKNOWN (transport timeout); it is not sent again');

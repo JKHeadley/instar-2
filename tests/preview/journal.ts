@@ -297,6 +297,7 @@ export const MEMORY_ITEM_SHAPE = 'Memory item: {"mode":"correct"|"forget"|"updat
  * carry keeps MEMORY_ITEM_SHAPE byte for byte. */
 export const CARRIED_MEMORY_ITEM_SOURCE = 'A source may also be a source from predecessorMemory.entries, quoting that carried entry text word for word.';
 export const MEMORY_UNDECIDED_REPLY = 'Your message is retained, but I could not validate and save the requested memory change.';
+export const UNKNOWN_SEND_NOTICE = 'My answer may not have arrived. Your request and the answer remain in the conversation record. You can ask me for the answer again.';
 export const UNKNOWN_ANSWER_NOTICE = 'The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.';
 export const TOO_LONG_INPUT_NOTICE = 'Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
 export const TOO_LONG_REPLY_NOTICE = 'I produced an answer, but it was too long for one Telegram reply. I did not send part of it. Please ask for a shorter answer.';
@@ -1146,8 +1147,8 @@ export type JournalRecord =
   | { kind: 'held-notice-review'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'held-notice-intent'; id: string; text: string; chat: string; thread?: number; update: number; grant: string;
     /** Other held messages in this conversation the one notice also answers; none gets a second push (P-14). */
-    covers?: string[]; acknowledgement?: true; provenance?: OutboundProvenance; at: number }
-  | { kind: 'held-notice-sent'; id: string; message: number; at: number }
+    covers?: string[]; acknowledgement?: true; deliveryUnknown?: true; provenance?: OutboundProvenance; at: number }
+  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; at: number }
 
   | { kind: 'reply-jev-reserve'; id: string; retry?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; promptSha256?: string; mentionedDates?: string[]; maxInputTokens?: number; maxOutputTokens?: number; at: number }
@@ -1366,6 +1367,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   reminderDecided?: true; askConflict?: string; lastNamedPerson?: string;
 
 
+  deliveryNotice?: { lead: string; text: string; at: number; sent?: number };
   heldNoticeReviewReserved?: true; heldNoticeReview?: ReplyCheckResult;
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevRetried?: true; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
@@ -2952,6 +2954,8 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
   const [kind, ...rest] = target.split(':'), key = rest.join(':');
   if (kind === 'reply') { const turn = view.turns.get(key);
     return turn?.intent !== undefined && turn.groupedInto === undefined ? { sent: turn.sent } : undefined; }
+  if (kind === 'delivery-notice') { const notice = view.turns.get(key)?.deliveryNotice;
+    return notice?.lead === key ? { sent: notice.sent } : undefined; }
   if (kind === 'held-notice') { const turn = view.turns.get(key);
     return turn?.heldNoticeIntent !== undefined ? { sent: turn.heldNoticeSent } : undefined; }
   if (kind === 'reply-part') { const part = view.turns.get(rest.slice(1).join(':'))?.replyParts?.[Number(rest[0]) - 2];
@@ -2974,6 +2978,12 @@ export function sendOutcomeOf(view: JournalView, target: string, sent: number | 
   if (sent !== undefined) return { kind: 'accepted', message: sent };
   const recorded = view.sendOutcomes.find(item => item.target === target);
   return recorded?.outcome === 'refused' ? { kind: 'refused', reason: recorded.reason } : { kind: 'unknown', reason: recorded?.reason ?? null };
+}
+/** An unknown answer keeps its original intent fenced. Its separate content-free notice may start once. */
+function needsDeliveryNotice(view: JournalView, turn: Turn): boolean {
+  if (!turn.accepted || turn.editOf || turn.groupedInto || turn.intent === undefined || turn.answer === undefined || turn.deliveryNotice) return false;
+  const whole = replyOutcomeOf(view, turn);
+  return whole.started && whole.outcome.kind === 'unknown';
 }
 /** The reply target a turn's intent was dispatched under (a grouped turn shares its leader's send). */
 export const replyTarget = (turn: Turn) => `reply:${turn.groupedInto ?? turn.id}`;
@@ -3038,6 +3048,7 @@ export function sendOutcomeCounts(view: JournalView) {
   for (const turn of view.order) {
     if (turn.intent !== undefined) settle(replyTarget(turn), turn.sent);
     for (const [index, part] of (turn.replyParts ?? []).entries()) if (part.started) settle(replyPartTarget(turn.id, index + 2), part.sent);
+    if (turn.deliveryNotice?.lead === turn.id) settle(`delivery-notice:${turn.id}`, turn.deliveryNotice.sent);
     if (turn.heldNoticeIntent !== undefined) settle(`held-notice:${turn.id}`, turn.heldNoticeSent);
     if (turn.limited?.lead === turn.id) settle(`limited:${turn.id}`, turn.limitedSent);
   }
@@ -3082,7 +3093,7 @@ export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' |
   if (row.kind === 'operator-result-intent') return { target: `operator-result:${row.request}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'limited-intent') return { target: `limited:${row.id}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'intent') return { target: `reply:${row.id}`, chat: row.chat, ...thread, body: row.body ?? row.text };
-  if (row.kind === 'held-notice-intent') return { target: `held-notice:${row.id}`, chat: row.chat, ...thread, body: row.text };
+  if (row.kind === 'held-notice-intent') return { target: `${row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.text };
   return { target: `requested-reminder:${String(row.batch)}`, chat: row.chat, ...thread, body: row.body };
 }
 /** Verifies a recorded system writer's owner signature over its exact occurrence. */
@@ -4216,6 +4227,23 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       throw Error('preview journal: acknowledgement review result order');
     turn.heldNoticeReview = row.result;
     if (row.result.verdict !== 'unavailable') settleTokens(view, `held-notice-review:${row.id}`, row.result.usage);
+    return;
+  }
+  if (row.kind === 'held-notice-intent' && row.deliveryUnknown) {
+    const covered = [turn, ...(row.covers ?? []).map(id => view.turns.get(id))];
+    if (row.deliveryUnknown !== true || row.acknowledgement !== undefined || row.text !== UNKNOWN_SEND_NOTICE
+      || view.stop !== null || view.replies >= view.limits.maxReplies || row.at >= view.expires
+      || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
+      || row.grant !== view.genesis.grant || new Set(covered).size !== covered.length
+      || covered.some(item => !item || !needsDeliveryNotice(view, item) || item.thread !== turn.thread))
+      throw Error('preview journal: delivery notice intent order');
+    for (const item of covered as Turn[]) item.deliveryNotice = { lead: turn.id, text: row.text, at: row.at };
+    view.replies++; return;
+  }
+  if (row.kind === 'held-notice-sent' && row.deliveryUnknown) {
+    if (row.deliveryUnknown !== true || turn.deliveryNotice?.lead !== turn.id || turn.deliveryNotice.sent !== undefined
+      || !Number.isSafeInteger(row.message) || row.message <= 0) throw Error('preview journal: delivery notice receipt order');
+    for (const item of view.order) if (item.deliveryNotice?.lead === turn.id) item.deliveryNotice.sent = row.message;
     return;
   }
   if (row.kind === 'held-notice-intent') {
@@ -6864,6 +6892,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
       ...(item.heldNoticeIntent ? { heldNotice: true, heldNoticeOutcome: heldNoticeOutcome(item) } : {}),
+      ...(item.deliveryNotice ? { deliveryNotice: item.deliveryNotice.text, deliveryNoticeOutcome:
+        sendOutcomeOf(journal.view, `delivery-notice:${item.deliveryNotice.lead}`, item.deliveryNotice.sent).kind } : {}),
       ...(item.limited ? { limitedAnswer: true, limitedAnswerOutcome: limitedOutcome(item) } : {}), outcome: outcome(item) }));
     // Each note renders its whole source message, so a quote is never read out of its context.
     const sources = new Map<string, { turn: Turn | undefined; item: ChannelItem | undefined;
@@ -6950,6 +6980,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
 
       ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
       ...(item.heldNoticeIntent ? { heldNotice: true, heldNoticeOutcome: heldNoticeOutcome(item) } : {}),
+      ...(item.deliveryNotice ? { deliveryNotice: item.deliveryNotice.text, deliveryNoticeOutcome:
+        sendOutcomeOf(journal.view, `delivery-notice:${item.deliveryNotice.lead}`, item.deliveryNotice.sent).kind } : {}),
       ...(item.limited ? { limitedAnswer: true, limitedAnswerOutcome: limitedOutcome(item) } : {}),
       outcome: outcome(item) })) : [];
     const corrections = flagged.filter(item => !journal.view.memory.some(change => (change.mode === 'correct' || change.mode === 'forget') &&
@@ -7682,6 +7714,27 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, ...thread, update: lead.update });
     if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: lead.id, message: outcome.message, at: ports.now() }); }
     catch { /* the notice stays UNKNOWN; never repeated */ }
+  };
+  // Reuse the durable notice doorway, with a separate slot because the acknowledgement may
+  // already have used heldNoticeIntent. A notice's own UNKNOWN never creates another notice.
+  const noticeUnknownReplies = async () => {
+    for (const turn of journal.view.order) {
+      if (halted() || journal.view.replies >= journal.view.limits.maxReplies) return;
+      if (!needsDeliveryNotice(journal.view, turn) || !await disclosure()) continue;
+      const covers = journal.view.order.filter(item => item !== turn && item.thread === turn.thread
+        && needsDeliveryNotice(journal.view, item)).map(item => item.id);
+      const text = UNKNOWN_SEND_NOTICE, chat = journal.view.genesis.chat, target = `delivery-notice:${turn.id}`;
+      const thread = turn.thread === undefined ? {} : { thread: turn.thread };
+      ports.checkOutbound(text);
+      const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
+      const outcome = await push('reply', target, provenance, { text, expectedText: text, chat, ...thread, update: turn.update }, () => {
+        journal.append({ kind: 'held-notice-intent', id: turn.id, deliveryUnknown: true, text, chat, ...thread,
+          update: turn.update, grant: journal.view.genesis.grant, ...(covers.length ? { covers } : {}), provenance, at: ports.now() });
+      });
+      if (outcome.kind === 'accepted') try {
+        journal.append({ kind: 'held-notice-sent', id: turn.id, deliveryUnknown: true, message: outcome.message, at: ports.now() });
+      } catch { /* the notice intent remains UNKNOWN, never repeated */ }
+    }
   };
   /** A created due turn is never answered or sent once withdrawn (or from a removed feature), and waits while a later
    * verified-operator turn that may withdraw one of its requests is unsettled (Rules 57, 93). */
@@ -8989,6 +9042,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // The rest of a split reply follows at once, before any later reply.
         if (parts.length) await sendReplyParts(turn);
       }
+      await noticeUnknownReplies();
       if (!audienceHolds) await noticeDisclosureHolds();
       // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
       // held-notice rows still replay; no other held notice is ever pushed.
