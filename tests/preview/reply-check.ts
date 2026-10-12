@@ -99,7 +99,9 @@ export const JEV_RESPONSE_MAX_BYTES = 4096;
  * returns one finding per selected rule, so every decision keeps its identity. */
 export interface ReplyFinding { rule: ReplyRule; verdict: 'pass' | 'violation'; reason: string }
 export interface ReplyCheckResult { verdict: ReplyVerdict; ruleIds: ReplyRule[]; confidence: number | null;
-  path: ReplyPath; latencyMs: number; scores?: Record<JevRule, number>; reason?: string; candidateDigest?: string;
+  path: ReplyPath; latencyMs: number; scores?: Record<JevRule, number>; reason?: string;
+  /** Content-free failure category; absent on historical rows. */
+  cause?: JevUnavailableCause; candidateDigest?: string;
   /** Present only when the reviewer judged each selected rule on its own; absent on a legacy combined verdict. */
   findings?: ReplyFinding[];
   durationMeasured?: true;
@@ -351,6 +353,18 @@ export function interpretJev(value: unknown, latencyMs: number): ReplyCheckResul
     : { verdict: 'pass', ruleIds: [], confidence: 1 - Math.max(...probabilities), path: 'jev', latencyMs, scores: scoreMap, usage };
 }
 
+export type JevUnavailableCause = 'timeout' | `http-${number}` | 'network' | 'parse' | 'other';
+/** Never persist an exception message, URL, response body or credential as a diagnostic. */
+export function jevUnavailableCause(error: unknown): JevUnavailableCause {
+  const value = error as { jevCause?: unknown; name?: unknown } | null;
+  const cause = value?.jevCause;
+  if (cause === 'timeout' || cause === 'network' || cause === 'parse' || cause === 'other'
+    || typeof cause === 'string' && /^http-[1-5][0-9]{2}$/u.test(cause)) return cause as JevUnavailableCause;
+  return value?.name === 'TimeoutError' || value?.name === 'AbortError' ? 'timeout' : 'other';
+}
+export const JEV_REPLY_ATTEMPT_MS = 850;
+export const JEV_REPLY_BUDGET_MS = 1800;
+
 export interface ReplyCheckPorts {
   /** `occurrence` is the journal turn the call serves, recorded beside its content-derived id (Rule 58). */
   jev(text: string, questions?: Record<string, { type: string; instructions: string }>, timeoutMs?: number,
@@ -363,6 +377,8 @@ export interface ReplyCheckPorts {
     findings?: ReplyFinding[];
     usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }>;
 
+  /** Durably reserve one additional Jev call, under the existing stop and spend floors. */
+  reserveJevRetry?(): boolean;
   reserveEscalation(text: string, originalPrompt?: string): boolean;
   /** Reserve the one format re-ask after a malformed verdict under the same call cap; false when capped or stopped. */
   reserveFormatRetry?(): boolean;
@@ -384,15 +400,33 @@ export async function checkReply(text: string, id: string, ports: ReplyCheckPort
     return { outcome: 'unavailable', path: 'holding' };
   }
   let report: ApprovalReport | undefined = approval && { request: approval.request, answer: 'unreadable' };
-  try { const answer = await ports.jev(text, approval ? approvalQuestions(approval) : undefined, ports.deadlineAt === undefined || !ports.now
-    ? undefined : Math.max(1, ports.deadlineAt - ports.now()), id);
-    first = expired(ports) ? budgetResult('jev', [], Math.max(0, ports.elapsedMs() - started))
-      : interpretJev(answer.value, answer.latencyMs);
-    if (approval && !expired(ports)) report = readApprovalReport(answer.value, approval.request); }
-  catch { first = { verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev',
-    latencyMs: Math.max(0, ports.elapsedMs() - started),
-    ...(expired(ports) ? { reason: REPLY_CHECK_BUDGET_REASON } : {}) }; }
+  const attempt = async (): Promise<ReplyCheckResult> => {
+    const began = ports.elapsedMs();
+    let received = false;
+    try {
+      const remaining = Math.min(JEV_REPLY_ATTEMPT_MS, JEV_REPLY_BUDGET_MS - (began - started),
+        ports.deadlineAt === undefined || !ports.now ? Infinity : ports.deadlineAt - ports.now());
+      if (remaining <= 0) return { ...budgetResult('jev', [], 0), cause: 'timeout' };
+      const answer = await ports.jev(text, approval ? approvalQuestions(approval) : undefined, Math.max(1, Math.floor(remaining)), id);
+      received = true;
+      if (expired(ports)) return { ...budgetResult('jev', [], Math.max(0, ports.elapsedMs() - began)), cause: 'timeout' };
+      const result = interpretJev(answer.value, answer.latencyMs);
+      if (approval) report = readApprovalReport(answer.value, approval.request);
+      return result;
+    } catch (error) {
+      return { verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev',
+        latencyMs: Math.max(0, ports.elapsedMs() - began), cause: received ? 'parse' : jevUnavailableCause(error),
+        ...(expired(ports) ? { reason: REPLY_CHECK_BUDGET_REASON } : {}) };
+    }
+  };
+  first = await attempt();
   ports.record(report ? { ...first, approvalReport: report } : first);
+  // One new, reserved attempt. An unknown first call remains charged; recovery never repeats either call.
+  if (first.verdict === 'unavailable' && !expired(ports)
+    && ports.elapsedMs() - started < JEV_REPLY_BUDGET_MS && ports.reserveJevRetry?.()) {
+    first = await attempt();
+    ports.record(report ? { ...first, approvalReport: report } : first);
+  }
   if (expired(ports)) return { outcome: 'unavailable', path: 'jev' };
   // A verified operator-only audience uses the confidence cascade; other groups still
   // need the full-context audience judgment even when all ten Jev questions pass.

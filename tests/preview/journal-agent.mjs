@@ -1777,35 +1777,50 @@ async function main() {
       return result;
     };
     const callJev = async (judgment, state, questions, timeoutMs = 2000, occurrence) => {
-      await requireGroupDisclosure(journal.view);
-      assertLiveJudgment(judgment, 'typesafe-jev');
-      if (shared !== null && !await peerHolds()) throw Error('preview: Jev unavailable');
-      const start = performance.now(), body = JSON.stringify({ state, model: JEV_MODEL, questions });
-      // The id is content-derived and repeats for identical requests; the occurrence names the turn it served.
-      const base = { id: `${judgment}:${sha256(body).slice(0, 16)}`, judgment, route: 'typesafe-jev', model: JEV_MODEL, input: body,
-        ...(typeof occurrence === 'string' && occurrence ? { occurrence } : {}) };
-      let response, text;
-      try {
-        response = await fetch('https://api.typesafe.ai/v1/systemone', {
-          method: 'POST', signal: AbortSignal.timeout(Math.min(2000, timeoutMs)),
-          headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' }, body });
-        text = await response.text();
-      } catch (error) {
-        recordModelCall({ ...base, output: null, outcome: 'failed', latencyMs: performance.now() - start, usage: null });
-        observeJev(judgment, null);
-        throw error;
-      }
-      let value = null;
-      try { if (response.ok) value = parseJevResponse(text); } catch { value = null; }
-      const usage = value?.usage && (typeof value.usage.input_tokens === 'number' || typeof value.usage.output_tokens === 'number')
-        ? { inputTokens: typeof value.usage.input_tokens === 'number' ? value.usage.input_tokens : null,
-          outputTokens: typeof value.usage.output_tokens === 'number' ? value.usage.output_tokens : null, charge: null } : null;
-      const latencyMs = Math.round(performance.now() - start);
-      recordModelCall({ ...base, output: text, outcome: !response.ok ? 'rejected' : value === null ? 'failed' : 'complete', latencyMs, usage });
-      // Rule 56: the doorway map observes the exchange; a failed map write never changes the outcome.
-      observeJev(judgment, response.ok ? value : null);
-      if (!response.ok || value === null) throw Error('preview: Jev unavailable');
-      return { value, latencyMs };
+      const start = performance.now();
+      const signal = AbortSignal.timeout(Math.max(1, Math.min(2000, Math.floor(timeoutMs))));
+      const failure = cause => Object.assign(Error('preview: Jev unavailable'), { jevCause: cause });
+      let onAbort;
+      const timeout = new Promise((_, reject) => {
+        onAbort = () => reject(failure('timeout'));
+        signal.addEventListener('abort', onAbort, { once: true });
+      });
+      const exchange = async () => {
+        await requireGroupDisclosure(journal.view);
+        assertLiveJudgment(judgment, 'typesafe-jev');
+        if (shared !== null && !await peerHolds()) throw failure('other');
+        // Admission may complete after our caller timed out. It must never dispatch a late request.
+        if (signal.aborted) throw failure('timeout');
+        const body = JSON.stringify({ state, model: JEV_MODEL, questions });
+        // Same content id, distinct durable call rows; occurrence binds both attempts to their turn.
+        const base = { id: `${judgment}:${sha256(body).slice(0, 16)}`, judgment, route: 'typesafe-jev', model: JEV_MODEL, input: body,
+          ...(typeof occurrence === 'string' && occurrence ? { occurrence } : {}) };
+        let response, text;
+        try {
+          response = await fetch('https://api.typesafe.ai/v1/systemone', {
+            method: 'POST', signal,
+            headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' }, body });
+          text = await response.text();
+        } catch (error) {
+          recordModelCall({ ...base, output: null, outcome: 'failed', latencyMs: performance.now() - start, usage: null });
+          observeJev(judgment, null);
+          throw failure(signal.aborted ? 'timeout' : error?.name === 'TypeError' ? 'network' : 'other');
+        }
+        let value = null;
+        try { if (response.ok) value = parseJevResponse(text); } catch { value = null; }
+        const usage = value?.usage && (typeof value.usage.input_tokens === 'number' || typeof value.usage.output_tokens === 'number')
+          ? { inputTokens: typeof value.usage.input_tokens === 'number' ? value.usage.input_tokens : null,
+            outputTokens: typeof value.usage.output_tokens === 'number' ? value.usage.output_tokens : null, charge: null } : null;
+        const latencyMs = Math.round(performance.now() - start);
+        recordModelCall({ ...base, output: text, outcome: !response.ok ? 'rejected' : value === null ? 'failed' : 'complete', latencyMs, usage });
+        // Rule 56: the doorway map observes the exchange; a failed map write never changes the outcome.
+        observeJev(judgment, response.ok ? value : null);
+        if (!response.ok) throw failure(`http-${response.status}`);
+        if (value === null) throw failure('parse');
+        return { value, latencyMs };
+      };
+      try { return await Promise.race([exchange(), timeout]); }
+      finally { signal.removeEventListener('abort', onAbort); }
     };
     // model-call-boundary:end
     /** A refused review verdict's defect, kept only until that review's one format re-ask reads it (content-free protocol text). */

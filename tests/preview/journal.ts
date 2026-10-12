@@ -1138,7 +1138,7 @@ export type JournalRecord =
     covers?: string[]; provenance?: OutboundProvenance; at: number }
   | { kind: 'held-notice-sent'; id: string; message: number; at: number }
 
-  | { kind: 'reply-jev-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'reply-jev-reserve'; id: string; retry?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; promptSha256?: string; mentionedDates?: string[]; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; diagnostics?: ReplyReviewDiagnostics; usage?: ModelUsage; at: number }
   /** One bounded revision of an objected draft, inside the existing call cap; no result is UNKNOWN, never repeated. */
@@ -1356,7 +1356,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
 
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
-  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
+  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevRetried?: true; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
   answerMs?: number; sendMs?: number; answerReason?: string;
   /** Stage boundaries projected from durable frames; absent evidence stays unknown. */
   answerAt?: number; checkDoneAt?: number;
@@ -2691,8 +2691,11 @@ export function unknownCallKeys(view: JournalView) {
     // A revised-text review stays UNKNOWN until it records a conclusive verdict.
     ...view.order.filter(turn => turn.revisionReviewReserved && turn.revisionReview?.verdict !== 'pass'
       && turn.revisionReview?.verdict !== 'violation').map(turn => `revision-review:${turn.id}`)];
-  const jev = view.order.filter(turn => turn.jevReserved && !turn.replyChecks?.some(check => check.path === 'jev' && check.verdict !== 'unavailable'))
-    .map(turn => `jev:${turn.id}`);
+  const jev = view.order.flatMap(turn => {
+    const checks = turn.replyChecks?.filter(check => check.path === 'jev') ?? [];
+    return [...(turn.jevReserved && (!checks[0] || checks[0].verdict === 'unavailable') ? [`jev:${turn.id}`] : []),
+      ...(turn.jevRetried && (!checks[1] || checks[1].verdict === 'unavailable') ? [`jev-retry:${turn.id}`] : [])];
+  });
   // Index-only calls: every superseded reservation plus the one still awaiting its result. Each is named by its
   // own unique reservation key, so a write-off still matches after a later batch supersedes it.
   const index = [...view.indexUnknown, ...(view.indexOpen === null ? [] : [view.indexOpen.key])];
@@ -4257,11 +4260,17 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     : turn.noticeClass === 'too-long-input' ? TOO_LONG_INPUT_NOTICE : undefined);
 
   if (row.kind === 'reply-jev-reserve') {
-    if (replyCandidate === undefined || turn.jevReserved || turn.intent !== undefined || view.jevChecks >= view.limits.maxReplies)
+    const retryAllowed = row.retry === true && turn.jevReserved && !turn.jevRetried
+      && turn.replyChecks?.filter(check => check.path === 'jev').length === 1
+      && turn.replyChecks.find(check => check.path === 'jev')?.verdict === 'unavailable' && !turn.reviewReserved;
+    if (replyCandidate === undefined || (row.retry ? !retryAllowed : turn.jevReserved)
+      || turn.intent !== undefined || view.jevChecks >= view.limits.maxReplies)
       throw Error('preview journal: Jev reservation order or cap');
-    reserveTokens(view, `jev:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
+    reserveTokens(view, `${row.retry ? 'jev-retry' : 'jev'}:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? jevOutputMaximum);
-    turn.jevReserved = true; turn.jevReservedAt = row.at; view.jevChecks++; return;
+    if (row.retry) turn.jevRetried = true;
+    else { turn.jevReserved = true; turn.jevReservedAt = row.at; }
+    view.jevChecks++; return;
   }
   if (row.kind === 'reply-review-reserve') {
     if (replyCandidate === undefined || turn.reviewReserved || turn.intent !== undefined) throw Error('preview journal: review reservation order');
@@ -4397,7 +4406,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (row.result.path === 'operator-echo' && (turn.jevReserved || turn.reviewReserved || row.result.verdict !== 'pass'))
       throw Error('preview journal: operator echo after a check');
     if (row.result.path === 'jev' && row.result.verdict !== 'unavailable')
-      settleTokens(view, `jev:${row.id}`, row.result.usage, true);
+      settleTokens(view, `${turn.jevRetried ? 'jev-retry' : 'jev'}:${row.id}`, row.result.usage, true);
     if (row.result.path === 'subscription' && row.result.verdict !== 'unavailable' && turn.reviewState !== 'uncertain')
       settleTokens(view, `review:${row.id}`, row.result.usage);
     turn.replyChecks ??= []; turn.replyChecks.push(row.result); turn.checkDoneAt = row.at;
@@ -8456,6 +8465,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           } else {
             const checkPorts = { ...ports.replyCheck, now: ports.now,
               deadlineAt: (turn.jevReservedAt ?? ports.now()) + REPLY_CHECK_BUDGET_MS,
+              reserveJevRetry: () => {
+                if (halted() || journal.view.jevChecks >= journal.view.limits.maxReplies) return false;
+                gate();
+                const shared = fromOperator(turn) ? disclosedApproval(journal.view) : undefined;
+                journal.append({ kind: 'reply-jev-reserve', id: turn.id, retry: true,
+                  maxInputTokens: Buffer.byteLength(jevRequestBody(reply, shared && approvalFacts(shared))),
+                  maxOutputTokens: jevOutputMaximum, at: ports.now() });
+                return true; },
               reserveEscalation: (candidate: string, originalPrompt?: string) => {
                 gate();
                 if (journal.view.calls >= journal.view.limits.maxCalls) return false;
@@ -8479,7 +8496,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // released on Jev's text-only pass; the contextual reviewer judges it with the declared record.
             if (refusedObligation(turn) && !turn.jevReserved) checked = await reviewReply(reply, turn.id, checkPorts, [], reviewPrompt);
             else if (turn.jevReserved) {
-              if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0 });
+              if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0, cause: 'other' });
               // Older durable Jev verdicts omitted uncertain rules when another rule was positive.
               // On recovery, review every rule rather than treating those omitted rules as cleared.
               checked = await reviewReply(reply, turn.id, checkPorts, [], projectedReplyPrompt(turn.prompt));
