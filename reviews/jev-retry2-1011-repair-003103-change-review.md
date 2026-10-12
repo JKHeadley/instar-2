@@ -25,7 +25,7 @@ Prompt review: No model-facing text or accepted output shape changes. Replays us
 Prompt finding: 849db3a6296a | protocol-literal | Existing fixed empty-memory response in journal.ts, unchanged by this admission repair.
 Prompt finding: bd01de21286a | protocol-literal | Existing source-citation guidance in journal.ts, unchanged by this admission repair.
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing recall guidance in journal.ts, unchanged by this admission repair.
-Verification: Targeted retry, stage latency, reply-check, cost, spend-cap, reply budget, group carry and unavailable-review release tests. Architecture, typecheck, publication checks and pinned-text checks are recorded in the repair report. Saved Studio full-gate results returned HTTP 404; no fabricated full-suite report replaces them.
+Verification: Targeted retry, stage latency, reply-check, cost, spend-cap, reply budget, group carry and unavailable-review release tests pass. Register publication was rebuilt from source commit 36071c35c5a7fa4b07b17f510e98c2106e205c42; the delegated owner-manifest and inventory rehash scripts found zero changed pins. Architecture, typecheck, publication checks and pinned-text checks are recorded in the repair report. Saved Studio full-gate results returned HTTP 404; no fabricated full-suite report replaces them.
 
 ## Closing block
 
