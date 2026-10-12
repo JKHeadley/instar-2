@@ -26,6 +26,7 @@ import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from 
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
 import { messageTime, zoneFormatter } from './self-state.js';
 import { TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
+import { renderCapabilityReply, renderCapabilityRevision } from './capability-render.js';
 import type { ObjectionDisposition, ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyFinding, ReplyReviewDiagnostics, ReplyRule } from './reply-check.js';
 import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
 import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJev, summaryFaithfulnessEvidence, summaryJevScore, summaryJevUsage } from './summary-faithfulness.js';
@@ -8319,6 +8320,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   text = memoryList(memory, dated);
               } else if (parsed && (parsed.memory !== undefined || parsed.memoryDisposition !== undefined || parsed.dated !== undefined || parsed.personMerges !== undefined || parsed.undo !== undefined)) invalidMemory = true;
             } catch { /* Legacy plain reply. */ }
+            // Resolve the explicit capability reference before recording, reviewing or sending.
+            text = renderCapabilityReply(text, JSON.parse(context));
+            if (separatedAnswer !== undefined) separatedAnswer = renderCapabilityReply(separatedAnswer, JSON.parse(context));
             // A runner-authored due turn carries no operator authority: only its reply text is used.
             if (turn.requestedAction) { const { directives: _admitted, directiveClosures: _closed, invalidDirective: _invalid, ...agentSide } = obligations;
               obligations = agentSide; operatorAction = undefined; unreadAction = false;
@@ -8744,7 +8748,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   ...(checkRow?.findings ? { findings: checkRow.findings } : {}),
                   ...(reason === undefined ? {} : { reason }), deadlineAt: loopDeadline }); }
                 catch { outcome = { state: 'failed' }; }
-                const text = outcome.state === 'complete' && typeof outcome.text === 'string' ? outcome.text.trim() : '';
+                const text = outcome.state === 'complete' && typeof outcome.text === 'string'
+                  ? renderCapabilityRevision(outcome.text.trim(), originalPrompt) : '';
                 const answered = text && validDispositions(outcome.dispositions, objections) ? outcome.dispositions : undefined;
                 // Plan #104: a real capability limit stated without its investigation record is corrected by
                 // declaring that record, not by hiding the limit. It is admitted exactly as an answer's blocker

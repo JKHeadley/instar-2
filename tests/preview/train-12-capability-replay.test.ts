@@ -4,11 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { createHash } from 'node:crypto';
-import { ANSWER_INSTRUCTIONS, capabilitySentence } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, capabilitySentence, SELF_DESCRIPTION, SELF_IDENTITY } from './briefing.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { readAnswer } from './answer-reading.js';
 
 const evidence = JSON.parse(readFileSync(new URL('./fixtures/train-12-capability-2026-10-12.json', import.meta.url), 'utf8'));
+// Historical prompts remain immutable; only the self-description protocol changed.
+const currentInstructions = (text: string) => text.replace(text.split('\n').find(line => line.startsWith(SELF_IDENTITY))!, SELF_DESCRIPTION);
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 
 // Replay the shipped second reading stage too: readAnswer serializes structured
@@ -40,9 +42,9 @@ it('retains live paraphrase and malformed-key failures beside the fixed-sample r
   expect(evidence.negativeReplay.update).toBe(715675606);
   expect(evidence.negativeReplay.judge).toMatchObject({ verdict: 'FAIL', reason: 'rendered tools/outbound sentence missing, altered or duplicated' });
   expect(evidence.negativeReplay.answer.split('\n')).not.toContain(capabilitySentence(evidence.negativeReplay.limits));
-  expect(evidence.liveReplay.instructions).toBe(ANSWER_INSTRUCTIONS);
+  expect(currentInstructions(evidence.liveReplay.instructions)).toBe(ANSWER_INSTRUCTIONS);
   expect(evidence.liveReplay.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
-  expect(evidence.instructions).toBe(ANSWER_INSTRUCTIONS);
+  expect(currentInstructions(evidence.instructions)).toBe(ANSWER_INSTRUCTIONS);
   expect(evidence.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(evidence.runs).toHaveLength(10);
   expect(evidence.question).toBe("What can you do in this chat, and what can't you do?");
