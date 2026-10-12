@@ -8724,7 +8724,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // No new review/call allowance: retain both verdicts and use the ordinary outbound floors.
             const resultRemainder = turn.revisionReviewRemainder;
             const checkedRemainder = turn.revisionReview;
-            const deliverableResults = holding && !audienceShared && fromOperator(turn) && !credentialShape
+            const deliverableResults = holding && (!audienceShared || operatorOnlyVerified) && fromOperator(turn) && !credentialShape
               && !credentialHeldClass(turn, candidateDigest) && withheld?.removed.length && nothingLeft
               && resultRemainder !== undefined && checkedRemainder?.verdict === 'violation'
               && checkedRemainder.ruleIds.length === 1 && checkedRemainder.ruleIds[0] === 'incoherent_remainder'

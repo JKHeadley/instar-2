@@ -21,7 +21,9 @@ const key = new Uint8Array(32).fill(63);
 const rules: ReplyRule[] = ['raw_path', 'cli_command', 'config_key', 'credential', 'api_endpoint',
   'quits_on_self', 'claims_blocked', 'parks_on_user', 'defers_work', 'unrecorded_blocker'];
 
-for (const mode of ['result', 'recorded-finding', 'none', 'credential', 'result-objected', 'unavailable', 'group', 'mixed-violation', 'pass', 'outbound-refused', 'unknown-send'] as const) {
+for (const mode of ['result', 'recorded-finding', 'none', 'credential', 'result-objected', 'unavailable', 'group', 'verified-group', 'verified-group-sensitive', 'mixed-violation', 'pass', 'outbound-refused', 'unknown-send'] as const) {
+  const group = mode === 'group' || mode === 'verified-group' || mode === 'verified-group-sensitive';
+  const verifiedGroup = mode === 'verified-group' || mode === 'verified-group-sensitive';
   // Exact quoted claim and contextual finding from inspect-k2.json, update 969389898,
   // already captured in claim-scoped-floor.test.ts; surrounding list and result are constructed.
   const claim = mode === 'recorded-finding' ? 'I log it as a one-time action, acting on it once when you next message me.'
@@ -31,7 +33,7 @@ for (const mode of ['result', 'recorded-finding', 'none', 'credential', 'result-
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'd1c3-results-')));
     const path = join(root, 'journal.encrypted');
     const clock = { now: 1791796200000 };
-    const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: mode === 'group' ? '-1007654321' : '7654321', ...(mode === 'group' ? { forum: true as const } : {}),
+    const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: group ? '-1007654321' : '7654321', ...(group ? { forum: true as const } : {}),
       operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
       expires: 9999999999999, maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 409600,
       cursor: 0, loopRevisitMs: 600_000 });
@@ -39,6 +41,7 @@ for (const mode of ['result', 'recorded-finding', 'none', 'credential', 'result-
     let answer = JSON.stringify({ reply: quote, memory: [], openLoops: [{ kind: 'deferral', quote, waitsOn: 'nothing' }] });
     let checking = false, revisions = 0;
     const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false,
+      groupDisclosure: async () => verifiedGroup,
       prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', clock.now),
       model: async input => input.id.startsWith('obligation:') ? JSON.stringify({ outcome: 'report', report }) : answer,
       replyCheck: { elapsedMs: () => 0,
@@ -49,10 +52,12 @@ for (const mode of ['result', 'recorded-finding', 'none', 'credential', 'result-
           if (kind === 'revision') {
             reviews.push(text);
             expect(reviewRules).toContain('incoherent_remainder');
+            if (group) expect(reviewRules).toContain('sensitive_disclosure');
             expect(text).not.toContain(claim);
             if (mode === 'unavailable') throw Error('recorded review outcome uncertain');
             return { verdict: mode === 'pass' ? 'pass' : 'violation',
-              ruleIds: mode === 'pass' ? [] : mode === 'mixed-violation' ? ['incoherent_remainder', 'credential'] : ['incoherent_remainder'], confidence: null, latencyMs: 1000 };
+              ruleIds: mode === 'pass' ? [] : mode === 'verified-group-sensitive' ? ['incoherent_remainder', 'sensitive_disclosure']
+                : mode === 'mixed-violation' ? ['incoherent_remainder', 'credential'] : ['incoherent_remainder'], confidence: null, latencyMs: 1000 };
           }
           const reason = mode === 'recorded-finding'
             ? 'The reply promises to "log it as a one-time action, acting on it once when you next message me" (a deferral), but declaredObligations.loops is empty and does not record this deferral.'
@@ -70,8 +75,8 @@ for (const mode of ['result', 'recorded-finding', 'none', 'credential', 'result-
         if (checking && mode === 'unknown-send') throw Error('unknown transport outcome');
         return sent.length; } });
     const say = async (update: number) => {
-      worker.intake([{ update_id: update, message: { chat: mode === 'group' ? { id: -1007654321, type: 'supergroup', is_forum: true } : { id: 7654321, type: 'private' },
-        ...(mode === 'group' ? { message_thread_id: 7 } : {}), from: { id: 7654321 },
+      worker.intake([{ update_id: update, message: { chat: group ? { id: -1007654321, type: 'supergroup', is_forum: true } : { id: 7654321, type: 'private' },
+        ...(group ? { message_thread_id: 7 } : {}), from: { id: 7654321 },
         text: checking ? 'hi' : 'Please prepare a plan for a later message.', date: Math.floor(clock.now / 1000) } }]);
       await worker.drain();
     };
@@ -88,7 +93,7 @@ for (const mode of ['result', 'recorded-finding', 'none', 'credential', 'result-
       const turn = journal.view.order.at(-1)!;
       const replies = sent.slice(before);
       expect(revisions).toBe(1);
-      if (mode === 'result' || mode === 'recorded-finding' || mode === 'unknown-send') {
+      if (mode === 'result' || mode === 'verified-group' || mode === 'recorded-finding' || mode === 'unknown-send') {
         expect(reviews).toHaveLength(1);
         expect(reviews[0]).toContain('Next steps:');
         expect(replies).toEqual([line.trimStart()]);
@@ -97,7 +102,7 @@ for (const mode of ['result', 'recorded-finding', 'none', 'credential', 'result-
         expect(turn.release).toMatchObject({ review: 'violation', revised: false,
           reason: expect.stringContaining('only bound runner results selected for delivery') });
         expect(turn.answerReports).toEqual(['commitment:0']);
-        if (mode === 'result' || mode === 'recorded-finding') {
+        if (mode === 'result' || mode === 'verified-group' || mode === 'recorded-finding') {
           expect(loopHealth(journal.view, clock.now).awaitingDelivery).toBe(0);
           expect(journal.view.obligationWork['commitment:0']?.report?.delivered).toBe(turn.id);
         } else expect(journal.view.obligationWork['commitment:0']?.report?.delivered).toBeUndefined();
@@ -118,7 +123,7 @@ for (const mode of ['result', 'recorded-finding', 'none', 'credential', 'result-
       const reopened = openPreviewJournal(path, key);
       expect(reopened.view.order.at(-1)?.release).toEqual(turn.release);
       expect(reopened.view.order.at(-1)?.revisionReview).toEqual(turn.revisionReview);
-      if (mode === 'result' || mode === 'recorded-finding') expect(loopHealth(reopened.view, clock.now).awaitingDelivery).toBe(0);
+      if (mode === 'result' || mode === 'verified-group' || mode === 'recorded-finding') expect(loopHealth(reopened.view, clock.now).awaitingDelivery).toBe(0);
       reopened.close();
     } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
   }, 120_000);
