@@ -5399,6 +5399,27 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (privateMemory() && !await disclosure()) throw Error('group carry: disclosure authority or audience refused');
     return method(...args);
   };
+  const guardedJev: ReplyCheckPorts['jev'] = async (text, questions, timeoutMs, occurrence) => {
+    const replyCheck = original.replyCheck!;
+    // Summary callers retain their existing admission behavior. Reply attempts carry a
+    // budget that starts before this outer disclosure checkpoint (Rules 55/60/77).
+    if (timeoutMs === undefined) return guarded(replyCheck.jev)(text, questions, timeoutMs, occurrence);
+    const began = replyCheck.elapsedMs();
+    const timeout = () => Object.assign(Error('preview: Jev unavailable'), { jevCause: 'timeout' });
+    if (timeoutMs <= 0) throw timeout();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      // Race only admission: a late resolution has no continuation that can dispatch.
+      const admitted = await Promise.race([
+        privateMemory() ? disclosure() : Promise.resolve(true),
+        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(timeout()), timeoutMs); }),
+      ]);
+      if (!admitted) throw Error('group carry: disclosure authority or audience refused');
+    } finally { clearTimeout(timer); }
+    const remaining = Math.floor(timeoutMs - (replyCheck.elapsedMs() - began));
+    if (remaining <= 0) throw timeout();
+    return replyCheck.jev(text, questions, remaining, occurrence);
+  };
   ports = { ...original, model: guarded(original.model),
     // The fixed content-free hold notice is the one outbound a refused disclosure admits: it names no private item.
     send: async input => !privateMemory() || isGroupReviewFinalNotice(input.text, input.expectedText) || await disclosure() || input.target?.startsWith('held-notice:') === true
@@ -5409,7 +5430,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     ...(original.stepCheck ? { stepCheck: { jev: guarded(original.stepCheck.jev) } } : {}),
     ...(original.summaryCheck ? { summaryCheck: guarded(original.summaryCheck) } : {}),
     ...(original.replyCheck ? { replyCheck: { ...original.replyCheck,
-      jev: guarded(original.replyCheck.jev), escalate: guarded(original.replyCheck.escalate),
+      jev: guardedJev, escalate: guarded(original.replyCheck.escalate),
       ...(original.replyCheck.revise ? { revise: guarded(original.replyCheck.revise) } : {}),
       ...(original.replyCheck.summaryReview ? { summaryReview: guarded(original.replyCheck.summaryReview) } : {}) } } : {}) };
 

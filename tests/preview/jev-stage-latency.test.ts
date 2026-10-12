@@ -27,6 +27,7 @@ const end = launcher.indexOf('    // model-call-boundary:end', start);
 if (start < 0 || end < 0) throw Error('shipped Jev boundary absent');
 const clientBody = `${launcher.slice(start, end)}\ncallJev;`;
 const rounds = 3; // Both count reads bracket one bounded round of four identity reads.
+const readMs = 100; // The admitted neighbor fits the reply budget; slow/refused admission is in jev-retry.test.ts.
 
 for (const hostProbe of [false, true]) it(`recorded Jev stage separates HTTP from admission (host probe ${hostProbe})`, async () => {
   const root = mkdtempSync(join(tmpdir(), 'jev-stage-')), path = join(root, 'group');
@@ -54,7 +55,7 @@ for (const hostProbe of [false, true]) it(`recorded Jev stage separates HTTP fro
     probes++;
     return verifyGroupAudience(scope, async (method, body) => {
       reads++; active++; peak = Math.max(peak, active);
-      const due = clock + 1000; await Promise.resolve(); clock = Math.max(clock, due); active--;
+      const due = clock + readMs; await Promise.resolve(); clock = Math.max(clock, due); active--;
       return membership()(method, body);
     });
   };
@@ -108,11 +109,11 @@ for (const hostProbe of [false, true]) it(`recorded Jev stage separates HTTP fro
     expect(turn.replyChecks![0]!.scores).toEqual(captured.scores);
     expect(turn.replyChecks![0]!.usage).toEqual(captured.usage);
     const stageMs = turn.checkDoneAt! - turn.jevReservedAt!;
-    expect(stageMs).toBe(rounds * 1000 * (hostProbe ? 2 : 1) + captured.latencyMs);
+    expect(stageMs).toBe(rounds * readMs * (hostProbe ? 2 : 1) + captured.latencyMs);
     expect(reads).toBe(probes * 6); expect(active).toBe(0);
     console.log(JSON.stringify({ update: fixture.recorded.update, hostProbe, stageMs,
       injectedProviderMs: captured.latencyMs, probes, reads, peak, requests, httpWallMs,
-      clientWallMs, reservationWallMs, clock: '1000 ms/read; recorded 164 ms provider; other local work zero',
+      clientWallMs, reservationWallMs, clock: `${readMs} ms/read; recorded 164 ms provider; other local work zero`,
       wall: 'local loopback HTTP and local journal; not live TypeSafe or Studio timings' }));
     journal.close(); journal = openPreviewJournal(path, key);
     await createJournalWorker(journal, ports).drain();

@@ -4,10 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { createHash } from 'node:crypto';
-import { checkReply, jevQuestions, JEV_MODEL, parseJevResponse, jevUnavailableCause,
+import { checkReply, jevQuestions, JEV_MODEL, JEV_REPLY_BUDGET_MS, parseJevResponse, jevUnavailableCause,
   type ReplyCheckResult, type ReplyCheckPorts } from './reply-check.js';
 import { createJournalWorker, openPreviewJournal, unknownCallKeys } from './journal.js';
 import { assertLiveJudgment, modelCallRecord } from './model-call-boundary.js';
+import { appendGroupCarry } from './group-carry.js';
+import { key, scope, now, permissionFor } from './group-carry-fixture.js';
 
 const launcher = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
 const start = launcher.indexOf('    const callJev = async ');
@@ -76,6 +78,61 @@ it('times out admission without a late provider dispatch', async () => {
   await vi.advanceTimersByTimeAsync(850);
   expect(await pending).toBe('timeout'); release(); await Promise.resolve(); await Promise.resolve();
   expect(calls).toBe(0);
+});
+
+// Reviewer reproduction: real carried-group worker + extracted shipped client,
+// recorded update 969390330, with controlled latency at the OUTER disclosure check.
+it.each([0, 400, 1500, Infinity])('includes a %s ms worker disclosure wait in the Jev budget', async delay => {
+  vi.useFakeTimers(); vi.setSystemTime(now);
+  const root = mkdtempSync(join(tmpdir(), 'jev-worker-deadline-'));
+  const genesis = { kind: 'genesis' as const, bot: scope.bot, chat: scope.operator, operator: scope.operator,
+    grant: 'TEST-jev-deadline', configurationDigest: 'sha256:test', expires: now + 86400000,
+    maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 65536, cursor: 0 };
+  const source = openPreviewJournal(join(root, 'source'), key, genesis);
+  const journal = openPreviewJournal(join(root, 'group'), key, { ...genesis, chat: scope.chat, forum: true });
+  appendGroupCarry(journal, source, scope, permissionFor(scope), true, now, () => false); source.close();
+  const dispatched: number[] = [], releases: (() => void)[] = [];
+  let fallbackAt = 0, sends = 0;
+  const transport = client(async () => {
+    dispatched.push(Date.now());
+    // Slow admitted requests prove the client only receives the unspent budget.
+    if (delay === 400) return new Promise(() => {});
+    return new Response('{}', { status: 503 });
+  }, { performance: { now: () => Date.now() } });
+  try {
+    const worker = createJournalWorker(journal, {
+      now: () => Date.now(), stopped: () => false,
+      groupDisclosure: async () => {
+        if (delay > 0 && journal.view.jevChecks > 0 && !journal.view.order[0]?.reviewReserved)
+          await new Promise<void>(resolve => {
+            releases.push(resolve);
+            if (Number.isFinite(delay)) setTimeout(resolve, delay);
+          });
+        return true;
+      },
+      model: async () => captured.recorded.answer, checkOutbound: () => {}, send: async () => ++sends,
+      replyCheck: { ...transport, elapsedMs: () => Date.now(), escalate: async () => {
+        fallbackAt = Date.now(); return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0 };
+      } },
+    });
+    worker.intake([{ update_id: captured.recorded.update, message: { message_id: 1,
+      chat: { id: Number(scope.chat), type: 'supergroup', is_forum: true },
+      from: { id: Number(scope.operator) }, text: captured.recorded.text } }]);
+    const pending = worker.drain();
+    await vi.advanceTimersByTimeAsync(JEV_REPLY_BUDGET_MS); await pending;
+    const turn = journal.view.order[0]!;
+    expect(fallbackAt - turn.jevReservedAt!).toBeLessThanOrEqual(JEV_REPLY_BUDGET_MS);
+    expect(dispatched).toHaveLength(delay < 850 ? 2 : 0);
+    expect(transport.timeouts).toEqual(delay === 0 ? [850, 850] : delay === 400 ? [450, 450] : []);
+    expect(turn.replyChecks?.filter(row => row.path === 'jev').map(row => row.cause))
+      .toEqual(delay === 0 ? ['http-503', 'http-503'] : ['timeout', 'timeout']);
+    expect(unknownCallKeys(journal.view).jev).toEqual([`jev:${turn.id}`, `jev-retry:${turn.id}`]);
+    expect(sends).toBe(1);
+    // Releasing either timed-out admission must not enter the client, even after send.
+    releases.forEach(release => release()); await vi.advanceTimersByTimeAsync(5000);
+    expect(dispatched).toHaveLength(delay < 850 ? 2 : 0);
+    await worker.drain(); expect(sends).toBe(1);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
 it('classifies malformed scores as parse and never retries a valid unsure verdict', async () => {
