@@ -81,6 +81,11 @@ function world(writer: Step[], forum = false, media = false) {
         }
         return 'Noted.';
       }
+      // The recorded complete and uncertain outputs exercise the compact question, with the
+      // full correction protocol retained once rather than repeated in two adjacent sentences.
+      expect(input.question).toContain('If the operator corrects your earlier answer rather than an operator/source fact');
+      expect(input.question.match(/Preserve the original question/g)).toHaveLength(1);
+      expect(input.question).not.toContain('For a correction to your earlier answer');
       throughs.push(Number(input.id.slice(8))); log.push('summary');
       // After the scripted steps the writer keeps returning the live room's recorded over-cap results.
       const step = writer[calls] ?? { kind: 'over-cap', index: calls % OVER_CAP.length }; calls++;
