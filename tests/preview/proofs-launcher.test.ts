@@ -3,24 +3,44 @@
 // capability's own outcome, and an unwritable proof log never stops the conversation (Rules 9, 14, 26, 43, 62, 73, 95).
 import { expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { readProofs } from './proof-log.js';
 import { offlineProfile, successiveWorld } from './successive-fixture.js';
+import { SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 
-const args = ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs'];
+// The recorded activation has a fixed reviewed expiry. Exercise its valid window with an
+// injected child clock that advances consistently across processes; never extend the
+// production allowance to keep a fixture alive.
+const fixtureNow = 1790520001000;
+const clockOrigin = Date.now();
+const clockImport = (now: number) => 'data:text/javascript,' + encodeURIComponent(
+  `const actualNow = Date.now; Date.now = () => ${now} + actualNow() - ${clockOrigin};`);
+const args = ['--no-warnings', '--import', clockImport(fixtureNow), '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs'];
 const key = Buffer.alloc(32, 19).toString('hex');
-const setup = () => {
-  const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile);
+const setup = (now = fixtureNow) => {
+  const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile, {
+    NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${clockImport(now)}`].filter(Boolean).join(' '),
+  });
   const operator = Number(world.configuration.operatorSenderId), chat = Number(world.configuration.chatId);
   const message = (update_id, text) => ({ update_id, message: { message_id: 100 + update_id,
-    from: { id: operator, is_bot: false, first_name: 'Justin' }, chat: { id: chat, type: 'private' }, date: Math.floor(Date.now() / 1000), text } });
+    from: { id: operator, is_bot: false, first_name: 'Justin' }, chat: { id: chat, type: 'private' }, date: Math.floor(now / 1000), text } });
   const record = (capability, update, ...extra) => spawnSync(process.execPath, [...args, 'record-live-proof',
     '--root', harness.liveRoot, '--capability', capability, '--update', String(update), ...extra],
   { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key }, encoding: 'utf8', timeout: 20000 });
   return { world, harness, message, record };
 };
+
+it('refuses the same recorded activation after its expiry without polling or sending', () => {
+  const { harness } = setup(SUBSCRIPTION_PREVIEW_EXPIRY + 1);
+  harness.setUpdates([]);
+  const launched = harness.launchLive(2);
+  expect(launched.status).toBe(1);
+  const runs = readFileSync(join(harness.liveRoot, 'runs.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
+  expect(runs.at(-1)).toMatchObject({ reason: 'refused before launch', refused: 'subscription activation expired or clock differs' });
+  expect(existsSync(join(harness.directory, 'telegram.jsonl'))).toBe(false);
+}, 60000);
 
 // Held probe evidence (register-contract-map): each probe named here executes on the real launcher and passes.
 it('P9-PREVIEW-startup P9-PREVIEW-store-agreements P9-PREVIEW-journal-restore P9-PREVIEW-telegram-identity P9-PREVIEW-reply-delivered P9-PREVIEW-reply-drain P9-PREVIEW-reply-review-reached runs the startup and due proofs on the live runner and reports them against the declared inventory', () => {

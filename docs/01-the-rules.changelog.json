@@ -1,5 +1,21 @@
 [
   {
+    "revision": 15,
+    "date": "2026-10-11",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, topic 102965, 2026-10-11 21:53 PDT: \"yes\"; final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Add to Rule 87: While that answer is still being worked on, a short progress line at a slow, bounded pace is also part of the answer.",
+        "why": "A short progress line at a slow, bounded pace belongs to the answer while the person's request is still being worked on. Preserve the acknowledgement sentence and the existing status and churn restriction.",
+        "ref": "Justin, topic 102965, 2026-10-11 21:53 PDT: \"yes\"; final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 14,
     "date": "2026-10-11",
     "status": "draft",
