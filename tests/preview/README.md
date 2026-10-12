@@ -4231,7 +4231,8 @@ Both run in the same private per-transcription directory, removed after completi
 
 ## Slow-reply acknowledgement
 
-The journal worker arms one cancellable timer against the accepted message's intake time. At eight
+Durable intake arms one cancellable timer per accepted operator message, independently of the
+serial answer worker. Its deadline uses the message's intake time. At eight
 seconds it may send the fixed, reviewed-once sentence “Checking that now.” in reply to that exact
 message. It contains no answer, private fact, request for user action or claim of completed work.
 Rule 87 and the rule book's retrospective-review principle admit this fixed template without a

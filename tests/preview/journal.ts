@@ -5474,10 +5474,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     } finally { rerankBatch = undefined; }
   };
 
-  let activeReply: Turn | undefined;
-  let cancelAcknowledgement: (() => void) | undefined;
-  const answerReady = () => { cancelAcknowledgement?.(); cancelAcknowledgement = undefined; activeReply = undefined; };
-  let acknowledgementInFlight: Promise<void> | undefined;
+  // Bounded by admitted turn slots. Intake arms these independently of the serial answer worker.
+  const acknowledgementTimers = new Map<Turn, () => void>();
+  const acknowledgementsInFlight = new Map<Turn, Promise<void>>();
+  const answerReady = (turn: Turn) => { acknowledgementTimers.get(turn)?.(); acknowledgementTimers.delete(turn); };
   let working = false, workingSince = 0, ordinaryFailedSince: number | null = null;
   /** Every live send consumes its durable signed intent; a refusal or unknown outcome is recorded, never
    * retried. The one exception is the transport's own proof that it never made the network call: nothing
@@ -5632,7 +5632,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         ...(accepted && parsed.thread !== undefined ? { thread: parsed.thread } : {}),
         ...(editOf === undefined || replaces === undefined ? {} : { editOf, replaces }),
         ...(reserve ? { reserve: true as const } : {}) });
-      if (accepted) answerOperatorRequest(parsed.id, update, principal);
+      if (accepted) {
+        answerOperatorRequest(parsed.id, update, principal);
+        startAcknowledgement(journal.view.turns.get(parsed.id)!);
+      }
     }
     intakeHeld = held;
     // A held page that moved the cursor may have more backlog behind it: the runner reads on at once.
@@ -7541,12 +7544,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   /** Rule 87: one fixed, reviewed-once acknowledgement while the answer is being made.
    * No per-send model review. Existing disclosure, secret, stop and durable send checks still apply. */
-  const acknowledgeReply = (): Promise<void> => {
-    if (acknowledgementInFlight) return acknowledgementInFlight;
-    const turn = activeReply;
-    if (!turn || halted()) return Promise.resolve();
-    const current = () => activeReply === turn && !halted() && turn.answer === undefined && turn.intent === undefined
-      && turn.held === undefined && turn.limited === undefined;
+  const acknowledgeReply = (turn: Turn): Promise<void> => {
+    const inFlight = acknowledgementsInFlight.get(turn);
+    if (inFlight) return inFlight;
+    if (halted()) return Promise.resolve();
+    const current = () => acknowledgementTimers.has(turn) && !halted() && turn.answer === undefined && turn.intent === undefined
+      && turn.held === undefined && turn.limited === undefined
+      && (turn.heldNoticeIntent !== undefined || journal.view.replies < journal.view.limits.maxReplies - 1);
     if (!fromOperator(turn) || turn.requestedAction || turn.editOf || !current()
       || turn.heldNoticeIntent !== undefined || turn.heldNoticeCoveredBy !== undefined
       || turn.heldNoticeReviewReserved || outsideAllowance(journal.view, turn)
@@ -7567,18 +7571,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       } catch { /* exact acknowledgement intent remains UNKNOWN; never resent */ }
     };
     // A failure stays observable by the ordinary drain; timer and poll observers never throw unhandled rejections.
-    acknowledgementInFlight = run().then(() => { acknowledgementInFlight = undefined; });
-    return acknowledgementInFlight;
+    const job = run().then(() => { acknowledgementsInFlight.delete(turn); });
+    acknowledgementsInFlight.set(turn, job);
+    return job;
   };
   const startAcknowledgement = (turn: Turn) => {
-    answerReady();
-    if (!fromOperator(turn) || turn.requestedAction || turn.editOf || turn.answer !== undefined || turn.intent !== undefined) return;
-    activeReply = turn;
+    if (acknowledgementTimers.has(turn) || !fromOperator(turn) || turn.requestedAction || turn.editOf
+      || turn.reserved || turn.answer !== undefined || turn.intent !== undefined || outsideAllowance(journal.view, turn)) return;
     const after = ports.acknowledgementTimer ?? ((ms: number, run: () => void) => {
       const timer = setTimeout(run, ms); timer.unref(); return () => clearTimeout(timer);
     });
-    cancelAcknowledgement = after(Math.max(0, turn.at + REPLY_ACKNOWLEDGEMENT_AFTER_MS - ports.now()),
-      () => { void acknowledgeReply().catch(() => {}); });
+    acknowledgementTimers.set(turn, after(Math.max(0, turn.at + REPLY_ACKNOWLEDGEMENT_AFTER_MS - ports.now()),
+      () => { void acknowledgeReply(turn).catch(() => {}); }));
   };
   /** Rules 2, 87, 88: a disclosure hold past the self-heal window is told once, content-free, per notice window; the
    * held turns are named only by this fixed text. Its intent precedes dispatch and an UNKNOWN is never repeated. */
@@ -7654,7 +7658,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (due) scheduleRequests();
       let blockedEarlier = false;
       for (const turn of journal.view.order) {
-        answerReady();
         if (!turn.accepted || turn.editOf || turn.sent || turn.intent) continue;
         if ((turn.requestedAction !== undefined) !== due) continue;
         // Past the ordinary turn allowance only the minimal responder answers (Rule 15).
@@ -7867,7 +7870,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           };
           let answer = await attempt({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) });
-          answerReady();
+          answerReady(turn);
           if (answer === false) continue;
           // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
           // once more with a runner-authored format reminder in the packet (never in the operator's message),
@@ -8483,7 +8486,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         };
         const { rules: linkRules, reason: linkReason } = usableRefs(reply);
 
-        answerReady();
+        answerReady(turn);
         if (ports.replyCheck) {
           const reviewed = turn.replyChecks?.at(-1);
           if (turn.reviewReserved && reviewed?.path === 'subscription' && (reviewed.verdict === 'pass' || reviewed.verdict === 'violation')
@@ -8799,8 +8802,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         try { ports.checkOutbound(encodeReply(reply)); if (split.length > 1) for (const part of split) ports.checkOutbound(encodeReply(part)); }
         catch { journal.append({ kind: 'hold', id: turn.id, reason: 'outbound secret refused', at: ports.now() }); continue; }
         const thread = turn.thread === undefined ? {} : { thread: turn.thread };
-        await acknowledgementInFlight;
-        activeReply = undefined;
+        await acknowledgementsInFlight.get(turn);
+        answerReady(turn);
         const intentAt = ports.now();
         const stopBase = approvalBase(journal.view);
         const approval: ApprovalRequest | undefined = isStopCommand(turn.text) && reply.includes(STOP_CONFIRM_TEXT) && journal.view.stop === null
@@ -8852,7 +8855,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (!due && pendingMemory()?.editOf) settleBehind();
       if (!due && pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
     } finally {
-      try { await acknowledgementInFlight; } finally { acknowledgementInFlight = undefined; answerReady(); working = false; }
+      try { await Promise.all(acknowledgementsInFlight.values()); } finally {
+        acknowledgementsInFlight.clear();
+        for (const turn of acknowledgementTimers.keys()) answerReady(turn);
+        working = false;
+      }
     }
   };
   /** The minimal responder (Rule 15): an operator message that an ordinary cap keeps from its
@@ -10619,7 +10626,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const minimal = async () => { gate(); completeApprovals(); if (journal.view.stop !== null) return; ensureStopChallenge();
     // Rules 4/15/77: review must not delay intake or the limited responder. The ordinary drain
     // awaits this same promise for final-send ordering and propagates any failure.
-    void acknowledgeReply().catch(() => {});
+    for (const turn of acknowledgementTimers.keys()) void acknowledgeReply(turn).catch(() => {});
     await answerLimited();
     await pollReviewRequests(); await issueRetractRequest(); };
   return { intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
