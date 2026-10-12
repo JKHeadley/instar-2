@@ -502,12 +502,31 @@ function validateClaudeActivation(record: SubscriptionActivationRecord,
   'subscription residuals absent');
 }
 
+/** One runner-local successful version observation, keyed by the complete pinned profile
+ * (including executable path, artifact and expected version). It is not authority or login evidence.
+ * Concurrent calls to the same profile share its check; a changed profile replaces the one slot.
+ * A failed check is never retained. Every caller still verifies current authority and physical state. */
+export function createSubscriptionVersionCheck() {
+  let checked: { digest: string; result: Promise<void> } | undefined;
+  return async (profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile,
+    verify: () => Promise<void>): Promise<void> => {
+    const digest = encoded(profile).hash;
+    if (checked?.digest === digest) return checked.result;
+    const entry = { digest, result: Promise.resolve().then(verify) };
+    checked = entry;
+    try { await entry.result; }
+    catch (error) { if (checked === entry) checked = undefined; throw error; }
+  };
+}
+
 /** Subscription-only preview route; deliberately absent from production boot defaults. */
 export function createClaudeCodeSubscriptionRoute(input:
   Omit<import('./provider-credential-custodian.js').ProviderSubscriptionCustodianInput, 'submit'> & Readonly<{
     activation: SubscriptionActivationRecord; io: SubscriptionProviderIO; now: () => number;
     active: () => boolean; adapterEvidenceContract: ProviderAdapterEvidenceContract;
     framing?: SubscriptionFraming;
+    /** Shared only within this runner; omission gives the route its own one-slot version check. */
+    versionCheck?: ReturnType<typeof createSubscriptionVersionCheck>;
     /** The journal's current end, read at every call; only it admits a record at the predecessor end. */
     journalEnd?: () => number;
     raisedPromptBytes?: number; promptAuthority?: string;
@@ -517,6 +536,7 @@ export function createClaudeCodeSubscriptionRoute(input:
   return boundary('ClaudeCodeSubscriptionRoute', null, input.context, () => {
     const config = Object.freeze({ ...input });
     const profile = config.profile;
+    const versionCheck = config.versionCheck ?? createSubscriptionVersionCheck();
     const activation = JSON.parse(JSON.stringify(config.activation)) as SubscriptionActivationRecord;
     const approved = JSON.parse(JSON.stringify(config.adapterEvidenceContract)) as ProviderAdapterEvidenceContract;
     const framing = config.framing ?? 'preview-decision-system-v2';
@@ -608,8 +628,12 @@ export function createClaudeCodeSubscriptionRoute(input:
           ensure(text === result.stdout, 'subscription stdout bytes differ');
           return { text, raw: result.stdoutBytes, code: result.code };
         };
-        const version = await command(['--version'], '', 5000, 1024);
-        ensure(version.text.trim() === `${profile.version} (Claude Code)`, 'subscription version differs');
+        // Only version is reusable. Every auth/model command still calls check() above
+        // for current authority, artifact, stop and login identity before physical dispatch.
+        await versionCheck(profile, async () => {
+          const version = await command(['--version'], '', 5000, 1024);
+          ensure(version.text.trim() === `${profile.version} (Claude Code)`, 'subscription version differs');
+        });
         ensure(claudeSubscriptionStatusAccepted(JSON.parse((await command(['auth', 'status', '--json'], '', 5000, 8192)).text), profile,
           config.io.descriptorLogin === true),
           'subscription authentication status refused');

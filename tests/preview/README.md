@@ -4246,3 +4246,21 @@ reviewed acknowledgement records remain readable without changing their text or 
 state is process-local; durable intake and send state remain in the existing replicated journal.
 Recorded timing cases 969390407–969390410 and crash/admission neighbours are exercised by the
 reply-acknowledgement tests. Fully parallel answers are outside this change.
+
+The encrypted journal's `phase-timing` diagnostics expose numeric/boolean measurements through
+`status.phaseTimings` (the latest 100; original frames remain in retained journal evidence).
+Acknowledgements record the scheduled wall-clock due time and timer callback entry separately;
+a poll-triggered check is labelled `timerCallback: false` and does not invent a callback time.
+Send records carry entry, final audience admission, physical transport entry/return, the attempt
+number and the cumulative proved-not-sent count. The final reply has no timer, so it records only
+its applicable send phases. The host records transport time immediately around `sendMessage`,
+separately from audience and replication work. Audience records give the cache hit/miss and
+elapsed duration without member identities or message text. Version and auth preflight durations
+remain separate from the model's existing `call-outcome`. Observations never admit an effect or
+make an UNKNOWN send retry; an observation write failure does not change the operation's result.
+
+The subscription runner retains one successful CLI version observation keyed by the complete
+pinned profile, including the executable artifact. Changed profiles/artifacts revalidate; failed
+checks are discarded. The observation is process-local and disappears on restart. It does not
+cache authorization or authentication: every invocation still checks the current artifact,
+authority, stop, login identity and `auth status --json` before dispatching its model command.

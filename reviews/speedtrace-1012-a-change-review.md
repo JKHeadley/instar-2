@@ -1,6 +1,6 @@
 # Change review — Content-free acknowledgement, send and preflight timing
 
-Subject base: ea75ce39
+Subject base: ea75ce395d9fdd4f9f2f970e8c278b9fe37a5387
 Review state: open
 Reviewed content: none
 Outcome: Distinguish late acknowledgement callbacks from slow audience admission and physical sends, and separate CLI version/auth preflights from the model invocation using the existing encrypted journal and status surface.
@@ -14,7 +14,7 @@ Side effects: Adds bounded content-free journal observations and status output. 
 Undo and recovery: Revert instrumentation and read with the prior generation's additive-frame support. Preserve the journal and all signed send intents; never repeat an UNKNOWN effect.
 Multi-machine posture: Timing is observed by the current owning runner, recorded through its existing journal and replicated with that journal. Ownership, peer admission and physical stop checks are unchanged. Timing never authorizes another machine to send.
 Layer below: Inspected dispatch's two-attempt proved-not-sent contract, delayed durable admission, host audience verification and physical invoke, call-outcome validation, snapshot replay and rollback window. Callback timing uses the injected worker clock; audience duration uses the runner's existing elapsed clock.
-Bug class: observability
+Bug class: unit
 Bug evidence: reproducer=tests/preview/phase-timing.test.ts
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains samples only.
 Convergence: none

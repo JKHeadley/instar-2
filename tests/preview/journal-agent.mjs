@@ -16,7 +16,7 @@ import { createProductionTelegramIO, createSubscriptionProviderIO, productionSto
 import { snapshotState } from '../../scripts/operator-dashboard.mjs';
 import { checkListen, createReadOnlyDashboard, pinCheckAt, serveReadOnly } from '../../scripts/operator-dashboard-readonly.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
-import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway,
+import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, createSubscriptionVersionCheck,
   SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { attachEgress, attachSessionVolume, networkToolReads, readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
   TOOLS_DEFAULT_ACTIVATION, createHeldSecrets, custodyHeldSources, heldSpan, heldVerdict } from './tool-turn.mjs';
@@ -1376,6 +1376,7 @@ async function main() {
     } finally { capJournal?.close(); storage.close(); }
     return;
   }
+  const versionCheck = createSubscriptionVersionCheck();
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false, startupFailure = null;
   let handoff = null, reservedAtLaunch = new Set(), ownerClaim = null, installation = null, installUpdate = null;
   // Rule 15 / Eleven §5: the installed shape's evidence, set once the activation is validated at launch.
@@ -2791,7 +2792,7 @@ async function main() {
         resolveProfile: () => profile, provider: doorway.provider, model: options.model, route: 'preview-subscription',
         disclosure: 'Subscription preview; charge UNKNOWN', activation: toolTurn ? selectedTools : selectedActivation,
         framing, ...(toolTurn ? { toolTurn } : {}),
-        journalEnd: () => journal.view.expires, io,
+        journalEnd: () => journal.view.expires, io, versionCheck,
         now: wallNow, active: () => !workerStop.value && !existsSync(stopPath) && selectedActive() && !journal.view.stop,
         adapterEvidenceContract: contract,
         ...(journal.view.limits.maxBytes > doorway.policyFor(options.model, doorway.conversationFraming).maxPromptBytes
