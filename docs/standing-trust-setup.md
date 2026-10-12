@@ -162,3 +162,54 @@ Omitted flags on existing registrations mean false; unregistered tools keep the 
 worst-case cost and durability refusal. Setup grants scope and the agreed resource level,
 not a blanket approval of sensitive matters. The journal retains its legacy risk flags
 for replay and duplicate prevention while new rows carry both classifications.
+
+## Terminal role onboarding
+
+Run `node bin/instar2.mjs setup [installation-directory]` (the package bin is
+`instar2 setup`). The default directory is `~/.instar2`. Run it as the installation
+owner, outside the agent's confined runtime. It asks for the role, starting trust,
+monthly US-dollar spending limit and sensitive matters once. Role and trust are
+recorded verbatim, not interpreted into external permissions. Separate sensitive
+matters with semicolons; `none` explicitly records an empty list. No credentials
+belong in these answers.
+
+Each answer is durably published before the next question. EOF pauses setup;
+interruption resumes from the first unanswered question. Concurrent attempts use
+no-replace publication, so they cannot replace another answer or agent identity.
+Setup feeds `configureTrust` and verifies its actual decoded policy and MCP
+records before writing a completion receipt. A second completed run prints
+“Already set up” and leaves those bytes unchanged. Missing or changed installed
+records are reported, never silently recreated after completion or revocation.
+An existing policy without this onboarding history is left intact.
+
+The agreed role lives in the existing `effect-policy.json` role record; sensitive
+matters use its existing `policySensitive` list. Its optional `onboarding` field
+holds the stable agent id, local installer provenance, monthly spending choice
+and enabled identity, self-knowledge, reflection and growth defaults. The existing
+`mcp.json` operator-grant provenance links the same conversation. Older policy
+files need no migration and keep decoding. Later trust edits retain the original
+onboarding record; it is not a replacement for an authorized cap-change operation.
+Revocation still removes active role and effect grants.
+
+This first slice records one role/grant-policy set with no connected-account effect
+grants: no account or channel has been bound. It does not infer tool scopes from a
+free-text role, manufacture an activation or enable paid calls. The monthly amount
+is a recorded installation choice, **not** the existing per-operation resource
+ceiling and **not** an enforced monthly meter. Per-operation grants remain zero.
+The subscription/activation increment must consume the monthly choice through the
+existing cap authority before permitting paid use; it must not interpret a setup
+receipt as verified activation, custody or single-machine loss-model acceptance.
+The tracked scope is install-scope-1010 increment 2; channel binding is increment 3.
+The command honestly reports role setup complete, not an active conversational
+agent. The existing runtime's identity/self-knowledge defaults are not disabled.
+
+`.onboarding/` is an installation-owner-local input/checkpoint record, deliberately
+matching the existing installation-local grant policy. It creates no second
+runtime journal or authority source. Validation detects malformed/missing records
+and disagreement with the installed policy. A crash may leave a private `.pending`
+file; only the atomically published name is consumed. Interrupted setup before the
+completion receipt may safely finish missing policy files from the same answers.
+After completion, policy changes go through the existing owner revision path.
+Preserve the input records and grant files together; do not clear them to reset an
+unknown installation or repeat an uncertain effect. No stop, intake, send or
+credential record is touched by this command.
