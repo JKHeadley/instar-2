@@ -24,6 +24,8 @@ Prompt finding: 95e349aaf4ac | protocol-literal | The unchanged four-test and st
 
 Verification: The unchanged floor assertion failed on the merged paragraph because governingConstraints disappeared, and passes after the prose reduction. Final replay batch passes 42 tests with one existing opt-in capture skipped. Evidence and exact recorded update IDs are in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-repair-PROGRESS.md. The capture is not needed to replay the checked-in authentic bytes.
 
+Publication: Replay generated the register from source commit e6e1a781e753ac089a926a112170e7b0c90331ce; the desk owner-manifest and grounding tools reported no remaining changed pins. Typecheck and build pass.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: shorten a repeated instruction list while leaving the complete capability note, constitutional excerpts and budget guards intact. No new mechanism or larger cap. Exact source hashes guard entry; unchanged floor and one-byte boundary tests guard fit; existing effect checkpoints guard consequences. Offline recorded replay establishes composition and parsing, not a new live deployment claim.
