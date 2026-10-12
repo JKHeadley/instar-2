@@ -78,7 +78,7 @@ export function sourcePacket(readSource: (path: string) => string, pins: Readonl
 }
 /** The reviewed digests of the exact constitutional excerpts above. */
 export const SOURCE_PINS = Object.freeze({
-  'rules:87': 'sha256:6e5a4dee91950b48f37923ad59d17cab575a34a6fc504dfee4202f27b5ab3187',
+  'rules:87': 'sha256:5702b6b29974a4a397a234de77bffdc84eb8f342b22c8048f9bad5c59b4dcc60',
   'purpose:name': 'sha256:936d4bdf6dc13976f7af73e0d48f9d11b78b9b844fa16beac9e950dbe7bf495e',
   'purpose:purpose': 'sha256:5d4b2142593c5a9569cb90cbffe20242c5ab2cf8d13f6929c888ec4166f87e51',
   'purpose:coherency': 'sha256:c04dbb447bf6298459cbe15fe4696ef88bd1bf632f2b422cbebbd49c174c27c4',
