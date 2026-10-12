@@ -25,6 +25,7 @@ Prompt review: The full recorded input of update 969390396 is structurally ident
 Prompt finding: 849db3a6296a | protocol-literal | Existing unchanged memory-inventory response, not a new semantic classifier.
 Prompt finding: bd01de21286a | protocol-literal | Existing unchanged source-label instruction and grounding assertion.
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing unchanged semantic memory retrieval instruction.
+Deferral: tests/preview/fixtures/unknown-answer-notice-969390396.json:21 | not-a-deferral=Verbatim captured reviewer reasoning assesses whether a candidate defers work; it is evidence, not a new commitment or postponed implementation.
 Deferral: generated/register.json:1 | not-a-deferral=Existing prerequisite descriptions are republished unchanged; no implementation is postponed.
 Generated publication: Existing replay generator, source 460a2dcc399ca090f718ec6c1d0b743d0fe0609b, generation sha256:d657fc31c523e71d93ef82d1b68e109d450767234a816156dd798a604082fb24.
 Verification: Targeted diagnostic, journal, lost-answer, physical resource and native contract results, plus typecheck, architecture, lint, register and pinned-set results are recorded in the absolute desk progress report. Full suite and independent landing review remain pipeline-owned. No live runner or Telegram send.
