@@ -24,7 +24,7 @@ Prompt review: The instructions classify by meaning and relationship, not fixtur
 Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory status wording tested at its consumer, not a phrase deciding operator intent.
 Prompt finding: e8708c7fea24 | protocol-literal | Existing source-provenance instruction tested at its consumer, not a phrase deciding operator intent.
 
-Publication: Regenerated seven shape-only register publications from source commit f8787af8c8157d32ef0ee388e4f5eaeb3fc526d4 using the existing replay generator. Generation sha256:d35d620f9e3afe02db7dbbd9f5fa9bdd5dffd6ec6c83dc7184d59d27573d7696. The desk owner-manifest rehash and grounding-chain repin found no pins to change. No declaration or authority changes.
+Publication: Regenerated seven shape-only register publications from source commit 2a660f8d0e372314c90036907a08ed5603c5f7be using the existing replay generator. Generation sha256:88ae2b1a1c2705d5ec2fb02caf51d87e7d87e8c02f8e41f77466836301428be0. The desk owner-manifest rehash and grounding-chain repin found no pins to change. No declaration or authority changes.
 
 simplestRobustRoute: This is the simplest robust route: remove the instruction that demands a separate remember even when replacing the same fact, and reuse the existing update operation. No new resolver, heuristic, model call or store. Start guards are verified retained intake and offered old sources; end guards are exact validated replacement and durable history projection; current caps, stop, secrets and send ownership remain. No unattended live-provider completion claim.
 80/20: Targeted regression and direct-import consumer tests, compile and architecture/publication checks; final independent review and the Studio gate own live acceptance.
