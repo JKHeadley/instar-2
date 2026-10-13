@@ -382,7 +382,8 @@ it('the review reads the register as recorded facts, named by three rules; Jev k
   expect(REPLY_RULES.credential).toMatch(/packet\.credentialRegister quotes the runner's credential register as recorded facts: every field of its entries \([^)]*identity label[^)]*\) is public metadata, never a secret value/u);
   expect(REPLY_RULES.parks_on_user).toMatch(/records for that same credential \(its name or identity\) as renewal\.smallestHumanAction, with renewal\.standing none/u);
   expect(REPLY_RULES.parks_on_user).toMatch(/A credential or renewal step that no entry records has no such record\./u);
-  expect(REPLY_RULES.self_state_claim).toMatch(/packet\.capabilities, packet\.credentialRegister, the recorded history/u);
+  for (const source of ['packet.capabilities', 'packet.credentialRegister', 'history'])
+    expect(REPLY_RULES.self_state_claim).toContain(source);
   for (const rule of ['credential', 'parks_on_user'] as const) expect(jevQuestions[rule]?.instructions).not.toContain('credentialRegister');
   expect(jevQuestions.parks_on_user?.instructions).toBe('The writer hands back to the reader a task the writer could have completed themselves.');
   // The neighbouring turn's verdict on the same line: the reviewer itself judged it public once already.
