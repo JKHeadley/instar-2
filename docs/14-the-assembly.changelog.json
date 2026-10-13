@@ -1,6 +1,6 @@
 [
   {
-    "revision": 25,
+    "revision": 27,
     "date": "2026-10-09",
     "status": "draft",
     "cause": {
@@ -16,7 +16,7 @@
     ]
   },
   {
-    "revision": 24,
+    "revision": 26,
     "date": "2026-10-03",
     "status": "draft",
     "cause": {
@@ -32,7 +32,7 @@
     ]
   },
   {
-    "revision": 23,
+    "revision": 25,
     "date": "2026-10-03",
     "status": "draft",
     "cause": {
@@ -42,13 +42,13 @@
     "changes": [
       {
         "what": "Operator question 2: the preview's tools are on by default under the operator's recorded grant, run under Part Thirteen's demonstrated boundary, and send every consequential effect to the effect doorway.",
-        "why": "The full tool set replaces the scoped first slice; the statement that the boundary is not §4 confinement and waives no floor is unchanged.",
+        "why": "The full tool set replaces the scoped first slice; the statement that the boundary is not \u00a74 confinement and waives no floor is unchanged.",
         "ref": "lanes/w4-toolsfull-PROGRESS.md; lanes/astra-fulltool-ruling.md (MF2-MF7 floors); LIVE-PATH-PLAN.md row #395"
       }
     ]
   },
   {
-    "revision": 22,
+    "revision": 24,
     "date": "2026-10-03",
     "status": "draft",
     "cause": {
@@ -57,9 +57,42 @@
     },
     "changes": [
       {
-        "what": "Operator question 2 states that the preview's ordinary scoped tools are supported ordinary work under Part Thirteen's demonstrated boundary (admission hook, harness sandbox, clean environment), which is not §4 confinement and grants no governed or protected status.",
+        "what": "Operator question 2 states that the preview's ordinary scoped tools are supported ordinary work under Part Thirteen's demonstrated boundary (admission hook, harness sandbox, clean environment), which is not \u00a74 confinement and grants no governed or protected status.",
         "why": "Replaces the proposed full-tool exception the ruling rejected (MF2, MF3); no preview label waives a floor.",
         "ref": "lanes/astra-fulltool-ruling.md (replacement text); lanes/w4-toolsreuse-PROGRESS.md (proven configuration); lanes/w4-toolsreal-PROGRESS.md; LIVE-PATH-PLAN.md rows #358, #363, #367"
+      }
+    ]
+  },
+  {
+    "revision": 23,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 162,
+      "note": "Independent bootstrap review: two authority gaps and three implementation/UX notes"
+    },
+    "changes": [
+      {
+        "what": "Connect preparation to the concrete genesis chain and split milestones from the first broker isolation unit.",
+        "why": "Close initial identity and authority without circular grants, extra approval classes or new stores.",
+        "ref": "PR 162; reviews/install-bootstrap-design-1013.md; astra-install-bootstrap-design-1013-review.md"
+      }
+    ]
+  },
+  {
+    "revision": 22,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "install-bootstrap-design-1013: desk selects verified binding before the existing P-02 yes, 2026-10-13"
+    },
+    "changes": [
+      {
+        "what": "Define supervised ordinary installation, evidence ordering, explicit overrides and four bounded build units.",
+        "why": "A fresh installation needs an authenticated initial operator and independently held approval anchor before ordinary subscription admission.",
+        "ref": "install-bootstrap-design-1013 brief; install-firstgrant-1013 finding; reviews/install-bootstrap-design-1013.md"
       }
     ]
   },

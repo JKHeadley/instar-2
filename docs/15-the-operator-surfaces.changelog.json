@@ -1,6 +1,6 @@
 [
   {
-    "revision": 8,
+    "revision": 10,
     "date": "2026-10-03",
     "status": "draft",
     "cause": {
@@ -17,6 +17,39 @@
         "what": "P11-NF-52: a missed negative control, or agent data shown without the passkey session, also fails; the eleven floors with every control detected are the positive neighbor.",
         "why": "A floor check that cannot fail, or a dashboard reachable without the credential, would pass the old wording.",
         "ref": "lanes/w4-dashboard-PROGRESS.md; scripts/check-dashboard-floors.mjs"
+      }
+    ]
+  },
+  {
+    "revision": 9,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 162,
+      "note": "Independent bootstrap review: two authority gaps and three implementation/UX notes"
+    },
+    "changes": [
+      {
+        "what": "Specify protected Mac selection of the provider-authenticated phone account and copied-code refusal.",
+        "why": "Close initial identity and authority without circular grants, extra approval classes or new stores.",
+        "ref": "PR 162; reviews/install-bootstrap-design-1013.md; astra-install-bootstrap-design-1013-review.md"
+      }
+    ]
+  },
+  {
+    "revision": 8,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "install-bootstrap-design-1013: desk selects verified binding before the existing P-02 yes, 2026-10-13"
+    },
+    "changes": [
+      {
+        "what": "Define authenticated mobile pairing and device-loss recovery through the existing custodian surface.",
+        "why": "A fresh installation needs an authenticated initial operator and independently held approval anchor before ordinary subscription admission.",
+        "ref": "install-bootstrap-design-1013 brief; install-firstgrant-1013 finding; reviews/install-bootstrap-design-1013.md"
       }
     ]
   },
