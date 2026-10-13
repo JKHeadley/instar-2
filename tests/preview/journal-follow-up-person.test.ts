@@ -114,7 +114,7 @@ it('omits a selected name when accepted forgetting removes it from the source, i
     let journal = openPreviewJournal(path, key, genesis);
     let worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'I met Priya Shah yesterday.')]); await worker.drain();
-    worker.intake([update(2, 'Forget the name Priya Shah.')]); await worker.drain();
+    worker.intake([update(2, 'Forget the name Priya Shah.')]); await worker.summarizeIfNeeded(); await worker.drain();
     expect(journal.view.memory).toMatchObject([{ mode: 'forget', source: journal.view.order[0]!.id, quote: 'Priya Shah' }]);
     expect(journal.view.order[1]?.lastNamedPerson).toBe('Priya Shah');
     journal.close();
