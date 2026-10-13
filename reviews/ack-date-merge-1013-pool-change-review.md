@@ -19,7 +19,8 @@ Bug evidence: reproducer=tests/preview/reply-acknowledgement-timing.test.ts
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains only samples.
 Convergence: none
 Prompt review: No prompt, parser, model decision or product change; recorded replay fixtures remain unchanged.
-Decision: ack-date-merge-pool | Preserve the ordinary conflict-free merge and add this record to cover the merge commit under Rule 74; use the existing clock repair without reimplementing it. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ack-date-merge-1013-PROGRESS.md
+Decision: ack-date-merge-pool | Preserve the ordinary conflict-free merge and add this record to cover the merge commit under Rule 74; use the existing clock repair without reimplementing it. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-login-pool-default-1012-repair-031403-PROGRESS.md
+Decision: pool-report-handoff-031403 | Correct the missing report reference to the desk's designated repair handoff and carry both decision ids in that report; the passing test implementation and enforcement stay unchanged. This record retains its original subject base to cover the merge and this report-reference repair. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-login-pool-default-1012-repair-031403-PROGRESS.md
 
 ## Closing block
 
