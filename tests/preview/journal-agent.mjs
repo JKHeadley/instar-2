@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { recordPhaseTiming } from './phase-timing.js';
 import { isGroupReviewFinalNotice } from './reply-check.js';
-import { loadHarnessLogins, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
+import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin } from './installed-harness-logins.mjs';
+import { loadHarnessLogins, harnessLoginPoolStatus, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { groupMembershipReader } from './group-membership-io.mjs';
 import { appendGroupCarry } from './group-carry.js';
 import { resolveGroupDisclosure, verifyGroupAudience, createGroupAudienceCache } from './group-disclosure.js';
@@ -713,7 +714,7 @@ async function main() {
   const retrospectiveEnabled = options.retrospective !== 'false';
   // Part 18 (plan #402): the live sentinels, all on by default; `--sentinels none` (or a subset) is the off-switch.
   const sentinelFamilies = sentinelFamiliesOf(options.sentinels);
-  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'carry-group', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'carry-group', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract', 'install-login', 'prepare-logins'].includes(command)) throw Error('preview: unknown command');
   if (command === 'seal-authority') {
     // The desk's recording step: seals the authority record it decided, under the trial's storage
     // SecretRef, into a new file (never replacing one). Nothing else is read or written.
@@ -730,8 +731,24 @@ async function main() {
   const doorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY);
 
   const root = resolve(required(options, 'root'));
-  if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
+  if (['run', 'install-login', 'prepare-logins'].includes(command)) mkdirSync(root, { recursive: true, mode: 0o700 });
   if (realpathSync(root) !== root || lstatSync(root).isSymbolicLink()) throw Error('preview: substituted root');
+  const verifyInstalledLogin = view => (row, profile, activation = JSON.parse(readFileSync(row.activation, 'utf8')), tools = undefined) => {
+    const memberOptions = { ...options, 'login-pool': 'installed', 'login-profile': row.profile,
+      'activation-record': row.activation, 'authority-record': row.authority };
+    const check = (record, framing, path) => {
+      doorway.validateActivation(record, profile, options.model, wallNow(), framing, view.expires ?? view.genesis.expires);
+      requireAuthority(memberOptions, record, path, view, wallNow(), doorway.policyFor(options.model, framing));
+      if (!activationMatchesJournal(view, record)) throw Error('preview: installed login differs from installation');
+    };
+    check(activation, doorway.conversationFraming, row.activation);
+    if (tools) check(tools, doorway.toolsFraming, row.toolsActivation ?? row.activation);
+    const memberHarness = harnessOf(memberOptions, root, doorway);
+    if (!memberHarness) throw Error('preview: installed login requires harness custody');
+    memberHarness.current();
+  };
+  const prepareLogins = (selected, view) => prepareInstalledHarnessLogins({ root, options: selected, doorway,
+    build: installedCode().codeDigest, now: wallNow(), verify: verifyInstalledLogin(view) });
   const stopPath = join(root, 'preview-stop.json');
   const retractPath = join(root, 'preview-retract-proposal.json');
   const journalPath = join(root, 'journal.encrypted');
@@ -856,7 +873,22 @@ async function main() {
       // Stranded (signal only): every current ownership record is assessed, with or without waiting input.
       const waiting = view.view.order.filter(turn => turn.accepted && turn.intent === undefined && turn.sent === undefined).length;
       const refusals = log.launches.filter(run => run.refused), lastRefusal = refusals.at(-1);
-      const report = { cursor: view.view.cursor, turns: view.view.order.length,
+      const poolReport = (() => {
+        try {
+          const launch = readFileSync(runsPath, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line))
+            .findLast(row => row.exit === undefined && row.harnessLoginSelection);
+          if (!launch?.harnessLoginManifest) return null;
+          const manifest = JSON.parse(readFileSync(launch.harnessLoginManifest, 'utf8')), primary = manifest.logins[0];
+          const configuration = loadHarnessLogins({ 'login-pool': launch.harnessLoginManifest, 'harness-user': 'status-only',
+            'login-profile': primary.profile, 'activation-record': primary.activation });
+          const state = JSON.parse(readFileSync(join(root, 'harness-login-pool.json'), 'utf8'));
+          return { members: configuration.entries.map(entry => entry.profile.reference), active: state.active,
+            holds: state.holds, lastSwitch: state.switches.at(-1) ?? null,
+            status: harnessLoginPoolStatus(configuration, state, new Map(launch.harnessLoginUnavailable ?? []),
+              () => configuration.usageFile ? JSON.parse(readFileSync(configuration.usageFile, 'utf8')) : null, wallNow) };
+        } catch { return { status: 'Model login pool: recorded configuration unavailable.' }; }
+      })();
+      const report = { harnessLoginPool: poolReport, cursor: view.view.cursor, turns: view.view.order.length,
       ownership: { ...ownership, holder: ownership.holder && { machine: ownership.holder.machine, since: ownership.holder.since,
         thisRoot: ownership.holder.root === root }, topology },
       stranded: assessStranded(ownership, waiting),
@@ -1235,7 +1267,7 @@ async function main() {
     } finally { check.close(); }
   }
   // Rule 35: a test composition never takes the writer lease of a production root (or the reverse).
-  if ((command === 'run' || command === 'carry-group') && existsSync(journalPath)) {
+  if (['run', 'carry-group', 'install-login', 'prepare-logins'].includes(command) && existsSync(journalPath)) {
     const composed = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT ? 'test' : 'production';
     const peek = openPreviewJournal(journalPath, key(), undefined, undefined, true);
     try { if ((peek.view.genesis.origin ?? 'production') !== composed) throw Error('preview: composition origin differs from journal'); }
@@ -1317,6 +1349,22 @@ async function main() {
       const reason = error instanceof Error && error.message.startsWith('group carry:') ? error.message : 'group carry: preparation failed';
       process.stderr.write(`${reason}\n`); process.exitCode = 1;
     } finally { source?.close(); sourceStorage?.close(); destination?.close(); storage.close(); }
+    return;
+  }
+  if (command === 'install-login' || command === 'prepare-logins') {
+    let installedJournal;
+    try {
+      let view;
+      if (existsSync(journalPath)) { installedJournal = openPreviewJournal(journalPath, key(), undefined, undefined, true); view = installedJournal.view; }
+      else {
+        const activation = JSON.parse(readFileSync(required(options, 'activation-record'), 'utf8'));
+        view = { genesis: { operator: required(options, 'operator-sender-id'), expires: expiry(required(options, 'expires-at')),
+          grant: required(options, 'grant-reference'), configurationDigest: required(options, 'configuration-digest') }, expires: activation.expiresAt };
+      }
+      if (command === 'install-login') installHarnessLogin({ root, options, verify: verifyInstalledLogin(view) });
+      const manifest = prepareLogins(options, view);
+      process.stdout.write(`${JSON.stringify({ installedLogins: manifest })}\n`);
+    } finally { installedJournal?.close(); storage.close(); }
     return;
   }
   if (command === 'import-store') {
@@ -1616,6 +1664,9 @@ async function main() {
     const allocation = createHostResourceAllocation({ root, machine: HOST_IDENTITY.machine, ceilings: allocationCeilings,
       incarnation: `launcher:${process.pid}:${createHash('sha256').update(`${process.pid}:${wallNow()}:${performance.now()}`).digest('hex').slice(0, 16)}`,
       now: wallNow, monotonic: () => performance.now() });
+    const installedLoginSelection = installedHarnessLaunch({ root, options,
+      prepare: selected => prepareLogins(selected, journal.view) });
+    Object.assign(options, installedLoginSelection.options);
     let loginConfiguration = options['login-pool'] !== undefined || options['harness-user'] !== undefined
       ? loadHarnessLogins(options) : null;
     if (options['login-pool'] !== undefined && doorway.toolTurn?.harness)
@@ -2280,41 +2331,50 @@ async function main() {
     // Each pool member has independent activation/authority withdrawal handles. No grant is
     // inherited from another account; default tool records still resolve the member's own grant.
     if (options['login-pool'] !== undefined) {
+      const unavailable = new Map();
       for (const entry of loginConfiguration.entries) {
-        const bytes = readFileSync(entry.activation, 'utf8'), record = JSON.parse(bytes);
-        const profileBytes = readFileSync(entry.profilePath, 'utf8');
-        const toolPath = entry.toolsActivation;
-        const toolBytes = toolsMode === 'off' ? null : toolPath ? readFileSync(toolPath, 'utf8')
-          : JSON.stringify({ ...record, invocationPolicyDigest: encoded(doorway.policyFor(options.model, doorway.toolsFraming)).hash });
-        const toolRecord = toolBytes === null ? null : JSON.parse(toolBytes);
-        const sessionPath = entry.sessionActivation;
-        const sessionBytes = sessionPath ? readFileSync(sessionPath, 'utf8') : null;
-        const sessionRecord = sessionBytes === null ? null : JSON.parse(sessionBytes);
-        const memberHarness = entry.index === 0 ? harness : harnessOf(entry.options, root, doorway);
-        const check = mode => {
-          const tools = mode === true, session = mode === 'session';
-          if (!loginConfiguration.current() || readFileSync(entry.activation, 'utf8') !== bytes
-            || readFileSync(entry.profilePath, 'utf8') !== profileBytes
-            || (tools && toolPath && readFileSync(toolPath, 'utf8') !== toolBytes)
-            || (session && sessionPath && readFileSync(sessionPath, 'utf8') !== sessionBytes))
-            throw Error('preview: harness login activation or profile withdrawn');
-          const target = session ? sessionRecord : tools ? toolRecord : record;
-          if (!target) throw Error('preview: harness login has no activation for this route');
-          const framing = tools ? doorway.toolsFraming : doorway.conversationFraming;
-          if (session) doorway.session.validateActivation(target, entry.profile, options.model, wallNow(), journal.view.expires);
-          else doorway.validateActivation(target, entry.profile, options.model, wallNow(), framing, journal.view.expires);
-          requireAuthority(entry.options, target, session ? sessionPath : tools && toolPath ? toolPath : entry.activation,
-            journal.view, wallNow(), tools ? doorway.policyFor(options.model, framing) : undefined);
-          if (!activationMatchesJournal(journal.view, target)) throw Error('preview: pool activation differs from journal');
-        };
-        const live = tools => { try { check(tools); return true; } catch { return false; } };
-        check(false); if (toolRecord) check(true);
-        if (options['session-work-activation'] !== undefined) check('session');
-        loginRuntimes.set(entry.index, { activation: record, toolsRecord: toolRecord, sessionRecord, harness: memberHarness, check, live });
+        try {
+          verifyPreparedHarnessLogin(entry);
+          const bytes = readFileSync(entry.activation, 'utf8'), record = JSON.parse(bytes);
+          const profileBytes = readFileSync(entry.profilePath, 'utf8');
+          const toolPath = entry.toolsActivation;
+          const toolBytes = toolsMode === 'off' ? null : toolPath ? readFileSync(toolPath, 'utf8')
+            : JSON.stringify({ ...record, invocationPolicyDigest: encoded(doorway.policyFor(options.model, doorway.toolsFraming)).hash });
+          const toolRecord = toolBytes === null ? null : JSON.parse(toolBytes);
+          const sessionPath = entry.sessionActivation;
+          const sessionBytes = sessionPath ? readFileSync(sessionPath, 'utf8') : null;
+          const sessionRecord = sessionBytes === null ? null : JSON.parse(sessionBytes);
+          const memberHarness = entry.index === 0 ? harness : harnessOf(entry.options, root, doorway);
+          const check = mode => {
+            const tools = mode === true, session = mode === 'session';
+            verifyPreparedHarnessLogin(entry);
+            if (!loginConfiguration.current() || readFileSync(entry.activation, 'utf8') !== bytes
+              || readFileSync(entry.profilePath, 'utf8') !== profileBytes
+              || (tools && toolPath && readFileSync(toolPath, 'utf8') !== toolBytes)
+              || (session && sessionPath && readFileSync(sessionPath, 'utf8') !== sessionBytes))
+              throw Error('preview: harness login activation or profile withdrawn');
+            const target = session ? sessionRecord : tools ? toolRecord : record;
+            if (!target) throw Error('preview: harness login has no activation for this route');
+            const framing = tools ? doorway.toolsFraming : doorway.conversationFraming;
+            if (session) doorway.session.validateActivation(target, entry.profile, options.model, wallNow(), journal.view.expires);
+            else doorway.validateActivation(target, entry.profile, options.model, wallNow(), framing, journal.view.expires);
+            requireAuthority(entry.options, target, session ? sessionPath : tools && toolPath ? toolPath : entry.activation,
+              journal.view, wallNow(), tools ? doorway.policyFor(options.model, framing) : undefined);
+            if (!activationMatchesJournal(journal.view, target)) throw Error('preview: pool activation differs from journal');
+          };
+          const live = tools => { try { check(tools); return true; } catch { return false; } };
+          check(false); if (toolRecord) check(true);
+          if (entry.index !== 0) memberHarness.current();
+          if (options['session-work-activation'] !== undefined) check('session');
+          loginRuntimes.set(entry.index, { activation: record, toolsRecord: toolRecord, sessionRecord, harness: memberHarness, check, live });
+        } catch (error) {
+          if (entry.index === 0) throw error;
+          unavailable.set(entry.index, 'activation, authority or authentication unavailable');
+        }
       }
-      loginPool = createHarnessLoginPool({ configuration: loginConfiguration,
+      loginPool = createHarnessLoginPool({ configuration: loginConfiguration, unavailable,
         statePath: join(root, 'harness-login-pool.json'), now: wallNow,
-        previouslyLaunched: () => harnessPoolPreviouslyLaunched(runsPath, loginConfiguration.identity),
+        previouslyLaunched: () => harnessPoolPreviouslyLaunched(runsPath, [loginConfiguration.identity, ...loginConfiguration.legacyIdentities]),
         validate: (entry, tools) => { const runtime = loginRuntimes.get(entry.index); runtime.check(tools); runtime.harness.current(); } });
     }
     const effectPolicyPath = options['effect-policy'];
@@ -2528,7 +2588,9 @@ async function main() {
     let priorRuns = null;
     try { priorRuns = existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''; } catch { /* readRuns reports readFailed */ }
     if (priorRuns !== null) installUpdate = installedUpdateFrom(installationRows(priorRuns), installation, launchedAt);
-    appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid, ...(loginPool ? { harnessLoginPool: loginConfiguration.identity } : {}), install: installation, work: { conversation: conversationOf(g) },
+    appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid, ...(loginPool ? { harnessLoginPool: loginConfiguration.identity, harnessLoginManifest: options['login-pool'],
+        harnessLoginUnavailable: loginConfiguration.entries.filter(entry => !loginRuntimes.has(entry.index))
+          .map(entry => [entry.index, 'activation, authority or authentication unavailable']) } : {}), harnessLoginSelection: installedLoginSelection.mode, install: installation, work: { conversation: conversationOf(g) },
       // Plan #449: the tools authority this launch resolved (grant, class, policy digest), or why tools are off (only --tools off).
       tools: toolsRecord && toolsResolution ? { state: 'on', grant: toolsResolution.grant, policyClass: toolsResolution.policyClass?.name ?? null,
         policyDigest: toolsRecord.invocationPolicyDigest } : { state: 'off', reason: toolsOff ?? 'no tool route' },
