@@ -162,8 +162,14 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     const completed = journal.view.order.filter(turn => turn.modelState === 'complete');
     if (secretAnswer) {
       expect(completed).toHaveLength(3);
-      expect(completed.every(turn => turn.answer === encodedPrimary && turn.replyChecks.some(check =>
-        check.path === 'holding' && check.verdict === 'violation' && check.ruleIds.includes('credential')))).toBe(true);
+      for (const turn of completed) {
+        // The journal appends due login/route notices before checking the whole candidate.
+        // Preserve the credential-bearing body assertion independently of those notices.
+        expect(turn.answer).toBe([encodedPrimary, ...(turn.answerNotices ?? []).map(notice => notice.line)].join('\n\n'));
+        expect(turn.replyChecks).toContainEqual(expect.objectContaining({
+          path: 'holding', verdict: 'violation', ruleIds: expect.arrayContaining(['credential']),
+        }));
+      }
       expect(sends.filter(row => row.text.includes(CREDENTIAL_SHAPE_NOTICE))).toHaveLength(3);
     }
     expect(completed.every(turn => turn.sent !== undefined)).toBe(true);
