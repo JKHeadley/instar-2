@@ -39,7 +39,11 @@ it('carries a restated reply preference once, keeps a different one, and forgett
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
     const worker = createJournalWorker(journal, ports);
-    const ask = async (n: number, text: string) => { worker.intake([update(n, text)]); await worker.drain(); };
+    const ask = async (n: number, text: string) => {
+      worker.intake([update(n, text)]);
+      if (styles.includes(text) || text === 'Forget my shorter-reply preference.') await worker.summarizeIfNeeded();
+      await worker.drain();
+    };
     await ask(1, 'Shorter please.');
     await ask(2, 'Shorter please.');
     await ask(3, 'How was the garden today?');
