@@ -236,7 +236,7 @@ it('settles a cannot-do claim only with a finite, governed investigation record,
     ['no avenues', blocker({ avenues: [] }), false],
     ['attempt asserted without a runner-owned record', blocker({ avenues: [{ avenue: 'clinic website', disposition: 'tried', evidence: 'externalTools' }] }), false],
     ['authored evidence text', blocker({ avenues: [{ avenue: 'clinic website', disposition: 'outside-standing', evidence: 'the site was down' }] }), false],
-    ['constraint its evidence does not support', blocker({ constraint: 'reply-only-grant' }), false],
+    ['unique constraint/evidence repair', blocker({ constraint: 'reply-only-grant' }), true],
     ['runtime inhibition as a wall', blocker({ constraint: 'spend-allowance' }), false],
     ['recheck too far', blocker({ recheck: day(T0 + 120 * DAY) }), false],
     ['claim not said', blocker({ claim: 'I cannot do anything at all here.' }), false],
@@ -429,7 +429,7 @@ it('gives the contextual reviewer the attached investigation record and the gove
   // reviewer wrote "unrecorded_blocker: VIOLATION | none — declaredObligations.blocker matches this exact claim".
   expect(REPLY_RULES.unrecorded_blocker).toContain('packet.declaredObligations.settled');
   // w3-selfdesc (plan #370) shortened both clauses to the wording its recorded real reviews ran on; the meaning holds.
-  expect(DECLARED_OBLIGATIONS_GUIDE).toMatch(/restating a settled limit, or [^.;]+, needs no new record/u);
+  expect(DECLARED_OBLIGATIONS_GUIDE).toContain('restating a recorded, still-open limit needs no duplicate record');
   expect(DECLARED_OBLIGATIONS_GUIDE).toContain('VIOLATION only when one such final claim is not recorded this way, with a reason quoting that claim');
   for (const rules of [[], ['unrecorded_blocker'], ['credential']] as ReplyRule[][])
     expect(replyReviewQuestion(rules)).toContain('A reason that finds no breach belongs on a PASS verdict.');

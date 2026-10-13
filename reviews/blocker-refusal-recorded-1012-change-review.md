@@ -1,0 +1,39 @@
+# Change review — blocker-refusal-recorded-1012
+
+Subject base: 0ed77d1682e55fb894fdc1f13b26cabd62972e00
+Review state: open
+Reviewed content: none
+Outcome: D4 update 46039927 declared reply-only-grant with externalTools evidence. The runner rejected it and a capability-note PASS released a refusal without a recheck. Admit the unique existing constraint when it alone makes the declaration valid; unresolved declarations with no current record use the existing bounded revision and holding path. Clarify that capability descriptions do not excuse refusals of asked work.
+Affected rules: 4, 10, 20, 21, 23, 36, 42, 55, 57, 75, 99, 101, 102, 103, 108, 113, 116
+Affected floors: secrets — retain credential checks and never replace a violation; spend cap — reuse the existing reserved revision/review calls and deadline; stop — existing gates precede every call/send; no duplicate sends — existing durable intent and receipts remain the only send path; durable intake — unchanged, the original writer bytes and refused declarations remain retained
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Changes admission of model-authored blocker records and the pre-send refusal holding decision.
+Side effects: Unique mismatches now become valid records (including those supplied in the single revision); unknown constraint names and malformed non-pair fields remain rejected. With no current blocker, an explicitly refused declaration can no longer be released by PASS or an unavailable review. A nonempty settled set is judged for the same limit by the contextual reviewer, not by keyword matching. Capability-description guidance remains permissive when no asked work is refused.
+Undo and recovery: Revert the source and prompt changes; no schema or storage migration. Existing journal records remain readable. Corrected admitted constraints are valid under the unchanged CONSTRAINT_EVIDENCE table.
+Multi-machine posture: Conversation-owner-local admission and review using the existing journal. No new store, peer operation, ownership rule, or send path; replay reads the durable admitted result rather than guessing the original pairing again.
+Layer below: validBlocker/validAssessment retain finite future rechecks, avenues, governed ids and exact claim binding; declaredObligations filters current open non-due blockers using the route wording; revision reservation and durable intent retain spend and duplicate-send boundaries.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/blocker-refusal-recorded.test.ts
+Hook bypass: none
+Convergence: none
+Decision: blocker-refusal-recorded-1012-unique-pair | Use the existing full validator to select exactly one replacement from existing constraint keys; never weaken the evidence table or repair other invalid fields | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/blocker-refusal-recorded-1012-PROGRESS.md
+Decision: blocker-refusal-recorded-1012-refused-floor | An explicit refused blocker with no current record uses the existing correction/holding path even if the review passes; nonempty settled-record semantic matching stays with the reviewer | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/blocker-refusal-recorded-1012-PROGRESS.md
+Prompt review: The existing declared-obligations guide now explicitly separates a description of capabilities from declining asked work; a refusal requires an admitted blocker or an open settled record for the same limit. No phrase classifier, invented constraint, provider route, or policy change. Real D4 writer/review bytes are replayed through the production reading and journal path; earlier self-description captures remain unchanged with explicit historical prompt translation in their test.
+Prompt finding: 5b486d8bd247 | protocol-literal | Unchanged protocol or fixed runner text; the cited test verifies it is carried, rather than using an operator phrase as a classifier — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "prioritize verdicts; do not repeat rules or context."
+Prompt finding: 5fa1a20c4031 | protocol-literal | Unchanged protocol or fixed runner text; the cited test verifies it is carried, rather than using an operator phrase as a classifier — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "an illustrative or quoted literal the verified operator explicitly requested or "
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged protocol or fixed runner text; the cited test verifies it is carried, rather than using an operator phrase as a classifier — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
+Prompt finding: aef7d91bef51 | protocol-literal | Unchanged protocol or fixed runner text; the cited test verifies it is carried, rather than using an operator phrase as a classifier — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "give each listed rule, and no others, one verdict"
+Prompt finding: b288d6ef1604 | protocol-literal | Unchanged protocol or fixed runner text; the cited test verifies it is carried, rather than using an operator phrase as a classifier — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "keep reasoning under 400 characters and all json under 4000 so every verdict fit"
+Prompt finding: e769ca9dd959 | protocol-literal | Unchanged protocol or fixed runner text; the cited test verifies it is carried, rather than using an operator phrase as a classifier — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "pass means no breach; violation means a breach, named in its reason."
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged protocol or fixed runner text; the cited test verifies it is carried, rather than using an operator phrase as a classifier — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
+Prompt finding: feadb66b8ad1 | protocol-literal | Unchanged protocol or fixed runner text; the cited test verifies it is carried, rather than using an operator phrase as a classifier — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "any live authentication secret reaching anyone but the verified operator who sup"
+
+Subject (7 paths): tests/preview/blocker-refusal-recorded.test.ts, tests/preview/blocker-restatement-instance.test.ts, tests/preview/fixtures/blocker-refusal-recorded-46039927.json, tests/preview/journal-obligations.test.ts, tests/preview/journal.ts, tests/preview/reply-check.ts, tests/preview/selfdesc-limits.test.ts
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: enumerate the four existing constraint keys against the unchanged complete validator and repair only a unique candidate, then reuse the existing one bounded revision when admission remains refused. The exact missing-record floor prevents the observed reviewer PASS from erasing a known rejection; it preserves the raw decision and never infers refusal from prose. No new retry loop, model call class, store or constraint. Guards are full admission, current settled records, credential walls, the existing call/deadline/stop limits and the durable send intent. Recorded D4 replay is local evidence; no claim of a new unattended live deployment is made.
+80/20: Recorded D4 replay and boundary controls cover unique/ambiguous pairs, unresolved correction, caps, durable reopen, existing settled records and duplicate intake. Targeted importer tests and machine checks are recorded in the builder report. Independent landing review remains the desk responsibility.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

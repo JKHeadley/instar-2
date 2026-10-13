@@ -8739,6 +8739,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             }
             decision = checked.outcome; capRefused = checked.capRefused === true;
           }
+          // D4: an explicitly declared but refused blocker with no current record cannot be cleared
+          // by a capability-note PASS (or an unavailable reviewer). This is exact enforcement of
+          // admission state, not classification of reply prose. Reuse the existing one correction
+          // and holding path; matching a nonempty settled set remains the contextual review's job.
+          const declared = declaredObligations(journal.view, turn.id, ports.now());
+          const missingBlockerRecord = Boolean(turn.answerRejected?.blocker && !declared.blocker && !declared.settled.length);
+          if (!credentialShape && decision !== 'violation' && missingBlockerRecord) {
+            const reason = 'The declared blocker was refused and no current blocker records it. Correct its constraint/evidence pairing and retain its recheck date.';
+            if (turn.replyChecks?.at(-1)?.reason !== reason) journal.append({ kind: 'reply-check', id: turn.id,
+              result: { verdict: 'violation', ruleIds: ['unrecorded_blocker'], confidence: null,
+                path: 'holding', latencyMs: 0, candidateDigest, reason }, at: ports.now() });
+            decision = 'violation';
+          }
           // Held classes, never released as advisory signals: Rule 86's secrets exception (Jev's credential
           // flag with no review verdict, or a review naming a credential), and build 4's obligation floor
           // (Rules 6, 20, 21, 23): a review naming an untracked deferral or an unevidenced cannot-do claim,
@@ -8824,7 +8837,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // Claim excision changes the answer's meaning. Reuse the one revision-review slot to judge
             // the exact remainder with full context; never infer coherence from nonempty text. If that slot
             // already reviewed a different rewrite, keep the holding notice rather than reuse its verdict.
-            let withheld: ClaimWithheld | undefined, scoped: string | undefined, nothingLeft = false;
+            let withheld: ClaimWithheld | undefined, scoped: string | undefined, nothingLeft = missingBlockerRecord;
             if (revised === undefined && (!turn.revisionReviewReserved || turn.revisionReviewRemainder !== undefined) && holding && !audienceUnreviewed && !credentialHeldClass(turn, candidateDigest)) {
               const named = reviewHoldingFindings(turn, candidateDigest);
               const stripped = (actionHeader === undefined ? reply : reply.slice(actionHeader.length + 1))
@@ -9556,6 +9569,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const blocker = { kind: value.kind, claim: value.claim, avenues: Array.isArray(value.avenues)
         ? value.avenues.map(item => ({ avenue: item?.avenue, disposition: item?.disposition, evidence: item?.evidence })) : value.avenues,
         constraint: value.constraint, outsideAction: value.outsideAction, recheckAt: dayEpoch(value.recheck, zone) };
+      // Rules 4, 20, 99, 116: repair only the constraint/evidence pairing, and only when the existing
+      // table has exactly one valid answer. Full validation of every other field still applies. Unknown
+      // constraint names are not typos we may interpret; ambiguous evidence stays refused for the mind.
+      if (!validBlocker(blocker, decidedFrom) && typeof blocker.constraint === 'string'
+        && Object.hasOwn(CONSTRAINT_EVIDENCE, blocker.constraint)) {
+        const candidates = Object.keys(CONSTRAINT_EVIDENCE).filter(constraint =>
+          validBlocker({ ...blocker, constraint }, decidedFrom));
+        if (candidates.length === 1) blocker.constraint = candidates[0]!;
+      }
       if (validBlocker(blocker, decidedFrom) && reply.includes(blocker.claim)) result.blocker = blocker;
       else result.rejected = { ...result.rejected, blocker: true };
     }
