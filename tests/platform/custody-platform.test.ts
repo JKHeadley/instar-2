@@ -86,7 +86,8 @@ describe('OS-neutral distribution verification', () => {
   it('checks UID and capability posture against a real captured Linux kernel record', () => {
     // Captured verbatim from /proc/self/status in a Node process on this WSL host,
     // 2026-10-13; no reconstructed sample and no credential or environment bytes.
-    const status = readFileSync('tests/platform/custody/linux-process-status.txt', 'utf8');
+    const captured = JSON.parse(readFileSync('tests/platform/custody/linux-process-status.json', 'utf8')) as { bytesBase64: string };
+    const status = Buffer.from(captured.bytesBase64, 'base64').toString('utf8');
     expect(brokerProcessObservation(status, 1000)).toBe(true);
     expect(brokerProcessObservation(status, 0)).toBe(false);
     expect(brokerProcessObservation(status.replace(/^Uid:.*$/m, ''), 1000)).toBe(false);
