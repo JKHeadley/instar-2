@@ -69,7 +69,7 @@ export interface LoopHealth { open: number; byKind: Record<LoopKind, number>; re
   ownedWork: number;
   rejectedDeclarations: number;
   oldestUnfinishedAt: number | null; oldestUnfinishedAgeMs: number | null; backlogOverdue: boolean;
-  /** Latest work attempt (including failure), independent of forward progress. Failure count is lifetime per journal. */
+  /** Latest work attempt (including failure), independent of forward progress. Counts retain known failures; older snapshots may retain only their latest one. */
   lastAttemptAt: number | null; lastAttemptOutcome: ObligationOutcome | 'in-flight' | null; failedAttempts: number;
   lastProgressAt: number | null; progressAgeMs: number | null; state: 'idle' | 'progressing' | 'stalled';
   inhibition: string | null; deliveryInhibition: string | null; correctionsWaiting: number }

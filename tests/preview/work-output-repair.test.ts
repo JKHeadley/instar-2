@@ -19,14 +19,14 @@ const launched = (output: string, id: string): Answer => {
   const read = readAnswer(output, { wrapped: 'accept', evidence: [id] });
   return read.ok ? { text: read.value, usage } : { state: 'complete', failureClass: 'malformed', rawOutput: output, usage };
 };
-async function world(outputs: (string | Answer)[], options: { cap?: number; revisit?: number; afterCall?: (clock: { now: number; stopped: boolean }) => void } = {}) {
+async function world(outputs: (string | Answer)[], options: { cap?: number; revisit?: number; refuseRepairPreparation?: boolean; afterCall?: (clock: { now: number; stopped: boolean }) => void } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'work-output-repair-')), path = join(root, 'journal');
   const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
     grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: T0 + 10 * DAY, maxCalls: options.cap ?? 100,
     maxReplies: 100, maxTurns: 100, maxBytes: 409600, cursor: 0, loopRevisitMs: options.revisit ?? DAY });
   const clock = { now: T0, stopped: false }, sent: string[] = [], calls: { id: string; context: string }[] = [];
   const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => clock.stopped,
-    prepareModel: input => input.context,
+    prepareModel: input => { if (options.refuseRepairPreparation && input.id.startsWith('work-repair:')) throw Error('envelope does not fit'); return input.context; },
     model: async input => {
       if (/^(obligation|work-repair):/u.test(input.id)) {
         calls.push(input); options.afterCall?.(clock);
@@ -52,7 +52,7 @@ it.each(fixture.calls)('repairs recorded frame $frame once; retains its bytes an
     expect(await w.worker.workObligations()).toBe(true);
     expect(w.calls).toHaveLength(2);
     expect(w.journal.view.calls - before).toBe(2);
-    expect(JSON.parse(w.calls[1]!.context).previousOutput).toBe(call.output);
+    expect(JSON.parse(w.calls[1]!.context)).toEqual({ ...JSON.parse(w.calls[0]!.context), previousOutput: call.output });
     expect(toolTurnEligible(w.calls[1]!.id)).toBe(false);
     expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ attempts: 1, outcome: 'report' });
     expect(w.journal.view.tokenTotals.answer.unknownCalls).toBe(0);
@@ -145,4 +145,28 @@ it('the actual launcher retains all three rejected work outputs for repair, but 
     expect(await invoke('{}', call.id)).toMatchObject({ failureClass: 'malformed', rawOutput: call.output });
     expect(await invoke('{}', 'telegram:12345678:update:1')).not.toHaveProperty('rawOutput');
   }
+});
+
+it('keeps a definite format failure when repair preparation fails, and never repairs past expiry', async () => {
+  const w = await world([fixture.calls[0]!.output], { refuseRepairPreparation: true });
+  try { await w.worker.workObligations(); expect(w.calls).toHaveLength(1);
+    expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'failed', failureClass: 'malformed' });
+  } finally { w.close(); }
+  const expired = await world([fixture.calls[0]!.output], { afterCall: clock => { clock.now = T0 + 10 * DAY; } });
+  try { await expired.worker.workObligations(); expect(expired.calls).toHaveLength(1);
+    expect(expired.journal.view.obligationWork['commitment:0']!.outcome).toBe('failed');
+  } finally { expired.close(); }
+});
+
+it('a good intermediate result does not reset the lifetime short-retry cap', async () => {
+  const bad = fixture.calls[0]!.output;
+  const w = await world([bad, bad, bad, bad, '{"outcome":"continue","note":"Still reviewing."}', bad, bad]);
+  try {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      w.clock.now = obligationSchedule(w.journal.view)[0]!.slot;
+      await w.worker.workObligations();
+    }
+    expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ formatFailures: 3, failedAttempts: 3 });
+    expect(obligationSchedule(w.journal.view)[0]!.slot).toBe(w.clock.now + DAY);
+  } finally { w.close(); }
 });

@@ -891,9 +891,9 @@ export const loopRevisitMs = (view: JournalView): number => view.genesis.loopRev
  * that slot is never repeated, and the next cadence slot is a new bounded attempt. */
 export type ObligationOutcome = 'report' | 'continue' | 'waiting' | 'still-blocked' | 'cleared' | 'failed' | 'uncertain';
 export interface ObligationWork { attempts: number; last: number; lastSlot: number; inFlight?: number;
-  outcome?: ObligationOutcome; note?: string;
+  outcome?: ObligationOutcome; note?: string; waitsOn?: 'operator' | 'external';
   /** Same-slot format repair is reserved once; counts survive journal replay and snapshots. */
-  repairSlot?: number; formatFailures?: number; failedAttempts?: number; failureClass?: 'malformed'; waitsOn?: 'operator' | 'external';
+  repairSlot?: number; formatFailures?: number; failedAttempts?: number; failureClass?: 'malformed';
   /** How many journal turns existed when the latest result was recorded: later turns are what arrived since. */
   turnsSeen?: number;
   /** `boundTo` is the reply whose durable intent carries the result (it is never attached again); `delivered` is set
@@ -2195,12 +2195,12 @@ const pendingReport = (work: ObligationWork | undefined) => work?.report !== und
 const attachableReport = (work: ObligationWork | undefined) => pendingReport(work) && work!.report!.boundTo === undefined;
 /** An attempt that supplied no account of the work: `uncertain` was interrupted, `failed` is a provider failure
  * or a malformed answer, and neither decided anything. What such a step was given to answer is therefore neither
- * answered nor consumed, and its retry waits the revisit cadence instead of running again at once. */
+ * answered nor consumed. Known format misses get only the bounded accelerated retries below. */
+const noAccount = (outcome: ObligationOutcome | undefined) => outcome === 'uncertain' || outcome === 'failed';
 export const OBLIGATION_FORMAT_RETRY_MS = 2 * 60_000, OBLIGATION_FORMAT_RETRIES = 2;
 /** Only known format misses accelerate; the lifetime cap cannot reset on a restart or a good result. */
 const workRetryDelay = (work: ObligationWork, revisit: number) => work.failureClass === 'malformed'
   && (work.formatFailures ?? 0) <= OBLIGATION_FORMAT_RETRIES ? Math.min(revisit, OBLIGATION_FORMAT_RETRY_MS) : revisit;
-const noAccount = (outcome: ObligationOutcome | undefined) => outcome === 'uncertain' || outcome === 'failed';
 /** Rules 8, 22, 46, 92, 99, 102: each open agent-owned obligation that the agent can act on without anyone else,
  * with the slot its next scheduled work step is due. Derived from durable state only; the verified operator's own
  * message (or the agent's reply to it) is the authority, so a probe or another sender's message never schedules work. */
@@ -2307,7 +2307,7 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
   const { inFlight: _done, waitsOn: _waits, note: _note, withheld, failureClass: _failure, ...rest } = work;
   const carried = row.outcome === 'uncertain' && work.waitsOn !== undefined;
   view.obligationWork[row.obligation] = { ...rest, last: row.at, outcome: row.outcome,
-    failedAttempts: (work.failedAttempts ?? 0) + (row.outcome === 'failed' ? 1 : 0),
+    failedAttempts: (work.failedAttempts ?? (work.outcome === 'failed' ? 1 : 0)) + (row.outcome === 'failed' ? 1 : 0),
     formatFailures: (work.formatFailures ?? 0) + (row.failureClass === 'malformed' ? 1 : 0),
     ...(row.failureClass ? { failureClass: row.failureClass } : {}),
     // The withheld result and its objection stay the work's input until a step actually answers them: an attempt that
@@ -10825,13 +10825,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (malformed(answer) && textOf(answer) !== undefined && !halted() && obligationCapacity(journal.view)) {
         // One formatting-only call: a distinct id excludes both scoped tools and delegated sessions. No effect is repeated.
         const repairId = `work-repair:${item.key}:${item.slot}`;
-        const repairContext = JSON.stringify({ packet: JSON.parse(context) as unknown,
+        const repairContext = JSON.stringify({ ...JSON.parse(context) as Record<string, unknown>,
           previousOutput: clean(redact(textOf(answer)!).text, true) });
         if (Buffer.byteLength(repairContext) <= journal.view.limits.maxBytes) {
           const repairQuestion = question + ' Your previous output in previousOutput did not match the requested object. '
             + 'Return one valid object for this obligation using the same facts. You have no tools in this formatting step; do not claim new actions.';
-          const repairPrepared = ports.prepareModel?.({ question: repairQuestion, context: repairContext, id: repairId });
-          if (!halted()) {
+          let repairPrepared: string | undefined, preparedRepair = true;
+          try { repairPrepared = ports.prepareModel?.({ question: repairQuestion, context: repairContext, id: repairId }); }
+          catch { preparedRepair = false; } // The original format failure still settles when an envelope cannot fit.
+          if (preparedRepair && !halted()) {
             journal.append({ kind: 'obligation-start', obligation: item.key, slot: item.slot, repair: true,
               ...usageOf(answer), maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
             try { answer = await ports.model({ question: repairQuestion, context: repairContext, id: repairId,
