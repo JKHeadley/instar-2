@@ -114,7 +114,7 @@ it('keeps a pending date in status after a preference summary settles memory, in
     }, send: async () => ++sends, checkOutbound: () => {} });
   try {
     let worker = create();
-    worker.intake([update(1, message)]); await worker.drain();
+    worker.intake([update(1, message)]); await worker.summarizeIfNeeded(); await worker.drain();
     const turn = journal.view.order[0]!;
     expect(journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id))).toBe(true);
     expect(turn.datedPending).toBe(true);
