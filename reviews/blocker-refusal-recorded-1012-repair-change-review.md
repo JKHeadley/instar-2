@@ -18,7 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/blocker-refusal-recorded.test.ts
 Hook bypass: none
 Convergence: none
-Decision: blocker-refusal-recorded-1012-revision-floor | Retain exact revision admission rejection in the existing durable row and reuse the missing-record predicate at candidate selection; withdrawing the declaration keeps the contextual route | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/blocker-refusal-recorded-1012-PROGRESS.md
+Decision: blocker-refusal-recorded-1012-revision-floor | Retain exact revision admission rejection in the existing durable row and reuse the missing-record predicate at candidate selection; withdrawing the declaration keeps the contextual route | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/blocker-refusal-recorded-1012-repair-190714-PROGRESS.md
 Prompt review: No model instructions or parsing protocol changed. D4 update 46039927's captured writer and review pass through the existing readers; synthetic changed-text neighbors exercise invalid admission, valid correction and withdrawal. The final selector enforces the exact rejected record rather than classifying prose. Raw review PASS remains independently visible.
 Prompt finding: 849db3a6296a | protocol-literal | Unchanged journal protocol text; no added phrase classifier — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
 Prompt finding: e8708c7fea24 | protocol-literal | Unchanged journal protocol text; no added phrase classifier — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
