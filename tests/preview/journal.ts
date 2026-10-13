@@ -2038,10 +2038,11 @@ export const declaredObligations = (view: JournalView, id: string, now: number) 
   // replacement refused to text reads no tools). Every recorded tool trace stays as the turn's history of attempts, the
   // only tool calls it made across all of them, whatever route its final call took.
   const toolAttempts = turn?.toolAttempts;
+  const rejected: RejectedObligations | undefined = turn?.revision?.rejectedBlocker
+    ? { ...turn.answerRejected, blocker: true, ...(turn.revision.blockerReason ? { blockerReason: turn.revision.blockerReason } : {}) }
+    : turn?.answerRejected;
   return { blocker: turn?.answerBlocker ?? turn?.revision?.blocker ?? null, settled, loops: turn?.answerLoops ?? [],
-    ...(turn?.revision?.rejectedBlocker
-      ? { rejected: { ...turn.answerRejected, blocker: true, blockerReason: turn.revision.blockerReason } }
-      : turn?.answerRejected ? { rejected: turn.answerRejected } : {}), capabilities: previewCapabilities(turn?.toolRouted === true),
+    ...(rejected ? { rejected } : {}), capabilities: previewCapabilities(turn?.toolRouted === true),
     ...(toolAttempts ? { toolAttempts: turn?.toolAttemptsOmitted
       ? { meaning: TOOL_ATTEMPTS_PARTIAL_MEANING, calls: toolAttempts, omitted: turn.toolAttemptsOmitted }
       : { meaning: TOOL_ATTEMPTS_MEANING, calls: toolAttempts } } : {}) };
