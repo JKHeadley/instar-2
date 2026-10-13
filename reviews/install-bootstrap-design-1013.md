@@ -7,7 +7,7 @@ Outcome: Specify the missing authenticated operator/genesis bootstrap for an ord
 Affected rules: Purpose independent safeguards, brief role onboarding, durable cause, single-machine operation and evidence constraints; Rules 7, 18, 26, 28, 29, 32, 38, 49, 55, 60, 63, 73, 74, 78, 79, 80, 82, 90, 91, 94, 98, 100, 101, 102, 103, 104, 109, 111, 113 and 116; P-01, P-02, P-05 and P-08.
 Affected floors: secrets — independently administered custody and recovery before use; spend cap — first paid use waits for actual cap authority, not a recorded monthly preference; stop — durable stop and independent recovery remain available; no duplicate sends — existing ownership, durable claims and uncertain-effect retention; durable intake — preserve input and resumable owner records before claiming acceptance.
 Operator questions: none for design direction; the brief selects option 1 and no constitutional or policy amendment is proposed. Repository CODEOWNERS still names Justin for docs approval; this branch is never merged by the builder.
-Suggested tier: ordinary
+Suggested tier: critical
 Declared tier: significant
 Tier rationale: A focused design addition affecting trust bootstrap requires independent review; it claims neither live protection nor an implemented installer.
 Side effects: Builders now have a concrete separate-identity custody and first-supervisor obligation. Role setup on the installation track and desk-only login/exchange helpers are explicitly distinguished from ordinary installation readiness. Publication pins and generated register metadata must follow the changed design bytes without conferring runtime authority.
@@ -46,7 +46,7 @@ Review the first-supervisor and trust-root boundary together: the operator-contr
 
 ## Publication validation
 
-The repository publication was regenerated from committed source with the existing build-register replay path. The owner-manifest helper refreshed the intake document hash; the desk repin chain changed no inventory or executable. Generated outputs are shape-only evidence and grant no runtime authority. Check references for custody use Ten’s isolation, key-lifecycle and restore fixtures, not worker-lifecycle fixtures.
+The repository publication was regenerated from committed source with the existing build-register replay path. The owner-manifest helper refreshed the intake document hash; the desk repin chain changed no inventory or executable. Generated outputs are shape-only evidence and grant no runtime authority. The typecheck, architecture, governed-document, changelog and initial pinned-text checks pass (five files, 54 tests). Final pushed-head checks and host-path exceptions are in the named report. Check references for custody use Ten’s isolation, key-lifecycle and restore fixtures, not worker-lifecycle fixtures.
 
 ## Closing block
 
