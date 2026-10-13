@@ -24,10 +24,10 @@ Decision: runner-order-fixtures | Assert reply-before-summary review and durable
 Prompt review: No prompt text, output parser or memory validation changes. Recorded summaries (including uncertain), Jev undecided/unsure, review verdicts, delivered replies and empty reply shapes exercise the unforced scheduler and independent answer path. Sources and update ids are listed in the progress report. No fresh model or deployment claim.
 Prompt finding: 450c79237a95 | protocol-literal | Existing ambiguity guidance tested as a fixed briefing contract, not a literal intent classifier.
 
+Publication: The delegated desk rehash tool refreshed the dated-memory test's owner artifact hash; the inventory chain had zero changed pins. Replay generation at source ae54957e7125f54d762a9b0a8c5c60a63f98dae2 produced sha256:b9a1049f21a1898c382c7b3f2114586b57ef90af1d07190d85e3ebddce9c4543. The seven generated publications update source/generation metadata without changing authority. This record covers both the fixture commit and its publication commit.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: update test consumers to invoke the existing summary scheduler explicitly and verify the new ordering. The proposed runtime change was disproved and removed; no mechanism is added. Start guards remain authenticated durable intake and owner admission; end guards remain validated journal decisions and durable sends; limits remain the existing shared cap, retry ceiling and stop. The finite slow-clock replay proves timely reservations while unforced summaries later run. Offline launcher evidence exercises the shipped scheduler; live deployment acceptance belongs to the desk.
 80/20: Targeted affected files in foreground chunks with nice -n 10 and one worker, recorded-shape replays, TypeScript, architecture, lint, register checks and change-review checks. Full-suite execution and its actual report remain with the Studio pipeline.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
-Publication: The delegated desk rehash tool refreshed the dated-memory test's owner artifact hash; the inventory chain had zero changed pins. Replay generation at source ae54957e7125f54d762a9b0a8c5c60a63f98dae2 produced sha256:b9a1049f21a1898c382c7b3f2114586b57ef90af1d07190d85e3ebddce9c4543. The seven generated publications update source/generation metadata without changing authority. This record covers both the fixture commit and its publication commit.
