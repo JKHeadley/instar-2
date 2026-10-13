@@ -161,7 +161,7 @@ root possession is not a recorded operator act. The agent and harness receive ne
 session nor elevation credentials. This is the initial out-of-band trust channel.
 
 One supported enrollment flow is **Telegram authentication on the phone, selected by a
-protected confirmation in the Mac installation session**:
+protected local confirmation in the installation session**:
 
 1. The broker creates a pending installation and expiring enrollment session. Eleven opens
    its complete HTTPS link on the phone. The release supplies the registered Telegram Login
@@ -177,10 +177,10 @@ protected confirmation in the Mac installation session**:
    signed user id, and retains bot identity, private conversation id and event capture.
    The DM event is channel-attested; the signed login and protected selection below supply
    the independent identity/enrollment evidence. A claimed chat id is insufficient.
-3. **On the Mac, the installing person chooses “Use this account for this installation” in
-   the protected installer UI**, after it displays the authenticated account, DM and machine.
+3. **On the installation host, the installing person chooses “Use this account for this installation” in
+   the protected installer surface**, after it displays the authenticated account, DM and machine.
    OS reauthentication authorizes that exact selection digest. The broker checks the OS
-   authorization result, original installation session and signed installer's authenticated
+   authorization result, original installation session and release-verified installer's authenticated
    local IPC peer; neither a caller-supplied UID nor an untrusted browser callback can invoke
    this act. Its durable enrollment record `E` binds installation, session, account subject,
    conversation, evidence captures, custodian identity and expiry. This is the act selecting
@@ -188,11 +188,23 @@ protected confirmation in the Mac installation session**:
    selected per pending enrollment; replacement invalidates the old challenge and candidate.
 4. Back on the phone, the broker admits confirmation only from its authenticated session
    for `E`'s exact subject and conversation, and only for the displayed candidate and request
-   digest. It checks the Mac selection, provider evidence, session freshness, unconsumed
+   digest. It checks the protected local selection, provider evidence, session freshness, unconsumed
    challenge, unchanged installation and empty genesis before signing. The short code only
    helps match screens. A second account with a copied code and a valid provider login lacks
    the protected selection and is refused; it cannot replace the selected subject, confirm
    its request, or obtain a grant. Replaying a completed identical act returns its receipt.
+
+Step 3 guarantees an installing person's protected local act that neither agent nor harness
+can perform or forge. On **macOS**, the protected installer UI uses Authorization Services
+reauthentication and authenticated local IPC. **Linux: to build — `install-linux-enrollment`**
+uses a root-owned helper with polkit fresh administrator authentication on desktop, or fresh
+sudo authentication in an operator-only console/SSH session on a headless server. It displays
+the broker's pending subject and requires explicit confirmation; the broker checks the
+OS-authenticated peer, original session and exact digest before recording `E`. Neither
+worker has helper authorization, authentication credentials, retained authorization or a
+way to replace the helper. [Ten's platform contract](14-the-assembly.md#installation-platforms)
+specifies these boundaries. Only the local mechanism varies: provider login, protected
+selection, then exact phone confirmation remain the same four-step enrollment on both OSes.
 
 The verifier is Nine's independently administered broker, using the OS authorization channel
 and Telegram's signing keys obtained through its authenticated provider endpoint, not keys
@@ -203,7 +215,7 @@ authority. This extends the existing surface, not a second approval service. The
 contract is [Telegram Login](https://core.telegram.org/bots/telegram-login) and the conversation
 capture uses the [Bot API](https://core.telegram.org/bots/api#getupdates). Subsequent approval,
 revocation and recovery actions remain phone-complete; the initial OS installation and
-account-selection act are explicitly Mac preparation, not a claim of phone-only installation.
+account-selection act are explicitly host preparation on macOS or Linux, not a claim of phone-only installation.
 
 Before confirmation, the authenticated stable account is included in the candidate org-intent
 and genesis; any changed subject regenerates the rendering and digest, never edits signed bytes.
@@ -227,8 +239,8 @@ identity requires an independently verified supersession, not an edit or new fir
 Revocation and stop stay available through the independent surface during repair. Recovery
 restores control, not evidence of an unknown earlier send; the P-08 loss limit stays visible.
 
-**Value — acceptance of the surface.** A fresh person selects the authenticated account in the protected Mac
-installer, confirms the displayed scope on the phone, then continues onboarding without a desk.
+**Value — acceptance of the surface.** A fresh person selects the authenticated account in the protected
+installer on macOS or Linux, confirms the displayed scope on the phone, then continues onboarding without a desk.
 The fixture pair is a current authenticated confirmation versus a copied code under another
 session, wrong account, changed installation, expired challenge or replay. The real-surface
 proof must cover phishing/forwarding, accessibility, interruption and both device-loss cases.
