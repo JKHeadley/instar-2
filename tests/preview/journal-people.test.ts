@@ -140,7 +140,9 @@ it('keeps same-name people apart for the model and gives an unknown person nothi
   const root = origin();
   try {
     // As the real extraction prompt asks: each name exactly as written, no extra short aliases.
-    const w = world(root, { names: ['Sam Patel', 'Sam Ruiz'], bad: false });
+    // This checks homonym recall after compaction, with room for both sourced people.
+    // The smaller pressure fixture can legitimately shed one after fixed guidance grows.
+    const w = world(root, { names: ['Sam Patel', 'Sam Ruiz'], bad: false, maxBytes: 16000 });
     await w.say(1, 'Sam Patel from accounting approved the budget.');
     await w.say(2, 'Sam Ruiz, my neighbour, lent me a ladder.');
     await w.say(3, 'My cofounder Sam thinks the launch should slip to November.');
