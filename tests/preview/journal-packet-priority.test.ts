@@ -42,7 +42,7 @@ const p95 = (values: number[]) => values.sort((a, b) => a - b)[Math.ceil(values.
 // retains every asserted transition without changing the packet cap or priority assertions.
 const PRIORITY_SWEEP_STEP = 200;
 
-it('retains higher-priority memory at the byte boundary and records every lower-priority drop', () => {
+it('retains higher-priority memory at the byte boundary and records every lower-priority drop', async () => {
   const path = root();
   try {
     const journal = openPreviewJournal(join(path, 'journal.encrypted'), key, genesis(20));
@@ -66,6 +66,8 @@ it('retains higher-priority memory at the byte boundary and records every lower-
     const seen = new Set<string>(), boundary = new Set<string>();
     const sweepStart = performance.now();
     for (let limit = 10000; limit >= 950; limit -= PRIORITY_SWEEP_STEP) {
+      // Let the test worker deliver progress between synchronous probes; no timing assertion changes.
+      await new Promise<void>(resolve => setImmediate(resolve));
       journal.view.limits.maxBytes = limit;
       const probe = worker.probe('What should I know about Sam and the studio?');
       if ('reason' in probe) continue;
