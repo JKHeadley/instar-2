@@ -1,5 +1,21 @@
 [
   {
+    "revision": 3,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "install-bootstrap-design-1013: desk selects verified binding before the existing P-02 yes, 2026-10-13"
+    },
+    "changes": [
+      {
+        "what": "Define separate OS custody, account-at-use evidence and independently recoverable installation material.",
+        "why": "A fresh installation needs an authenticated initial operator and independently held approval anchor before ordinary subscription admission.",
+        "ref": "install-bootstrap-design-1013 brief; install-firstgrant-1013 finding; reviews/install-bootstrap-design-1013.md"
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-10-10",
     "status": "draft",

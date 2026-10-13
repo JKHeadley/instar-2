@@ -150,6 +150,60 @@ mobile tests pass the same binding contract.
 
 ---
 
+### Fresh-install pairing
+
+**Rule — the verified surface is the custodian's, not the agent's.** Rules 28/29/79/80/82/98
+and P-01/P-02; **checks: P11-NF-07–13/16–23** include an empty installation. The one-line
+installer runs in the person's authenticated OS administration session before the agent
+exists. The OS authenticates that session and installs the reviewed custodian and its
+verification material into a separate protected identity; a caller's claimed UID or mere
+root possession is not a recorded operator act. The agent and harness receive neither that
+session nor elevation credentials. This is the initial out-of-band trust channel.
+
+The installer shows a short-lived code and a complete link to the custodian's verified
+surface. On that surface the person authenticates their existing platform account directly
+with its service, checks the matching code and installation, and confirms once. This can
+be done on a phone; no signing-key, repository or grant-file setup is required. The code
+selects the pending installation, not the operator. The custodian verifies the provider's
+account evidence and binds its stable subject to the OS-authorized enrollment session;
+chat text, a forwarded code or an agent-supplied identity assertion cannot do this. The
+registered adapter must prove the intended account and conversation, including cross-device
+session binding, before offering confirmation. Authentication state stays outside the agent.
+A provider unable to prove that association is unsupported for pairing, even if it supports
+ordinary chat. The surface remains available for diagnosis and choosing a supported adapter.
+
+Before confirmation, the authenticated stable account is included in the candidate org-intent
+and genesis; any changed subject regenerates the rendering and digest, never edits signed bytes.
+The primary confirmation says, in plain language, which agent and machine are being set up,
+which person will control it, which conversation is being bound, and that the selected
+custodian will protect its approvals. It displays the proposed org-intent and initial
+operator scope, P-01 administrators/recovery and residual root-loss risk, and the P-08
+single-machine operation set and permanent-loss consequences when applicable. Confirming
+signs those exact displayed digests through the custodian; declining records no grant.
+This is the existing verified pairing act, not P-02's subsequent account-assented yes.
+Role agreement and subscription selection continue in the same onboarding conversation.
+Credentials go directly to the custodian's secure surface, never into that conversation.
+
+**Rule — recovery does not depend on keeping the pairing phone.** Rules 79/100, P-01/P-02
+and the purpose's single-machine rule; **checks: P11-NF-19/23 and P10-NF-34/35** exercise
+phone loss and installation-machine loss separately. A replacement device uses the named
+platform's normal account recovery, then the custodian verifies that same stable account
+and reissues an expiring challenge. The [custody recovery contract](17-harness-adapters/03-capability-account-quota-and-launch-pins.md#installation-custody-and-recovery)
+provides the independent backup when the installation machine is lost. Changed account
+identity requires an independently verified supersession, not an edit or new first sender.
+Revocation and stop stay available through the independent surface during repair. Recovery
+restores control, not evidence of an unknown earlier send; the P-08 loss limit stays visible.
+
+**Value — acceptance of the surface.** A fresh person completes pairing with the displayed
+code and one clear confirmation on a phone, then continues onboarding without a desk.
+The fixture pair is a current authenticated confirmation versus a copied code under another
+session, wrong account, changed installation, expired challenge or replay. The real-surface
+proof must cover phishing/forwarding, accessibility, interruption and both device-loss cases.
+These are implementation exit tests, not a claim that a pairing service is already live.
+
+---
+
+
 ## 4. The minimal plane and its projections
 
 **Rule — the minimal plane is enumerated.** Rules 7, 14, 15, 32, 33, 43 and 69; **checks:

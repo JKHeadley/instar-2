@@ -374,6 +374,38 @@ document, and the host-verification material needed to check that anchor is dist
 out-of-band with the installation — a residual trust root this document names rather than hides,
 exactly as the secret-scan residual is named. Everything after genesis resolves normally.
 
+**Rule — fresh installation has an independently approved genesis.** The purpose's
+independent-safeguard and durable-cause rules, Rules 28/29/90/100 and P-01;
+**check:** the fresh-install cases in [assembly section 2](14-the-assembly.md#fresh-installation).
+Before a channel is bound, the installing person confirms the installer's short-lived code
+on Eleven's independently administered, authenticated pairing surface. That act approves
+one displayed installation identity, org-intent version and initial operator scope. Nine's
+operator-controlled bootstrap custodian, realized by Ten as a separate OS identity, signs
+and retains the approval anchor outside both the agent's and harness user's administrative
+reach. Its enrollment authority comes from the authenticated operator installation session,
+not from a proposed agent grant. [Eleven defines the act](15-the-operator-surfaces.md#fresh-install-pairing)
+and [Seventeen defines custody and recovery](17-harness-adapters/03-capability-account-quota-and-launch-pins.md#installation-custody-and-recovery).
+
+The installer first prepares candidate genesis material; creation is not admission. The
+custodian binds its verified act to the exact org-intent bytes, installation identity,
+machine key-set version and candidate genesis digest. One's org-intent decoder produces the
+initial operator and narrowly scoped installation-service standing grants; Two verifies and
+admits that genesis against the independent anchor. The approved version and genesis hash
+are pinned beside the installation's org-intent in its governed repository. The custodian
+supplies the host verification material through its protected installation channel, not a
+file the agent can replace beside the facts it authenticates. `approvedIn` retains the
+existing owner-defined approval/version chain; a local marker or installer success receipt
+cannot substitute for it. This creates no new approval type or parallel authority database.
+
+Four then records the binding through those grants. Later role and subscription grants use
+the ordinary signed history and approval decoder. A repeated confirmation returns the same
+record; changed bytes under the same identity conflict. Startup compares the installed
+anchor and admitted genesis with the custodian's retained copy: missing, mismatched or
+unverifiable material holds dependent authority and exposes independent recovery. It never
+regenerates an operator identity over missing history. Test unapproved candidate, changed
+org-intent, replay, interrupted append and agent-supplied key against a restart that admits
+exactly the same approved genesis once.
+
 **The happy path, before the refusals.** One ordinary append-and-replicate, with the terms in
 their places: (1) a doorway hands the boundary a candidate fact — principal verified, provenance
 pinned; (2) the appender fills the envelope: its lineage's next position, `prevInSegment`, the
