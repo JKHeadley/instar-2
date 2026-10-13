@@ -187,7 +187,7 @@ const live = JSON.parse(readFileSync(new URL('./fixtures/review-unavailable-2026
     reviewState: 'uncertain'; reviewDiagnostics: { outputTokens: number; thinkingPresent: 'unobservable' };
     check: Extract<JournalRecord, { kind: 'reply-check' }>['result']; delivered: null }[] };
 
-it.each(live.turns)('live $update: rejected blocker + output-capped UNKNOWN review releases once', async captured => {
+it.each(live.turns)('live $update: rejected blocker + output-capped UNKNOWN review holds once without accepting the record', async captured => {
   await withJournal(async path => {
     const sent: string[] = []; let reviews = 0, jev = 0, clock = now;
     const journal = openPreviewJournal(path, key, genesis());
@@ -210,17 +210,17 @@ it.each(live.turns)('live $update: rejected blocker + output-capped UNKNOWN revi
     await worker.drain(); await worker.drain();
     expect(jev).toBe(0); // The rejected blocker takes the direct full-context review route, as live.
     expect(reviews).toBe(1);
-    expect(sent).toEqual([captured.answer.text]);
+    expect(sent).toEqual([HOLDING_REPLY]);
     expect(journal.view.order[0]).toMatchObject({ answerRejected: { blocker: true }, reviewState: 'uncertain',
-      release: { review: 'unavailable' }, sent: 1 });
+      heldReview: { objections: ['unrecorded_blocker'] }, sent: 1 });
     expect(journal.view.order[0]?.held).toBeUndefined();
-    expect(journal.view.blockers).toEqual([]); // Release does not accept the refused blocker.
-    expect(reviewUnavailableReleases(journal.view)).toEqual({ total: 1, byRule: {} });
+    expect(journal.view.blockers).toEqual([]); // Holding does not accept the refused blocker.
+    expect(reviewUnavailableReleases(journal.view)).toEqual({ total: 0, byRule: {} });
     journal.close();
     const reopened = openPreviewJournal(path, key);
     await createJournalWorker(reopened, p).drain();
     expect(sent).toHaveLength(1); expect(reviews).toBe(1);
-    expect(reviewUnavailableReleases(reopened.view).total).toBe(1);
+    expect(reviewUnavailableReleases(reopened.view).total).toBe(0);
     reopened.close();
   });
 });
@@ -249,9 +249,9 @@ it.each(live.turns.flatMap(captured => [false, true].map(noticed => ({ ...captur
     const reopened = openPreviewJournal(path, key);
     await createJournalWorker(reopened, p).drain(); await createJournalWorker(reopened, p).drain();
     expect(reopened.view.calls).toBe(calls);
-    expect(sent).toEqual(captured.noticed ? [] : [captured.answer.text]);
+    expect(sent).toEqual(captured.noticed ? [] : [HOLDING_REPLY]);
     expect(reopened.view.order[0]?.held).toBe(captured.noticed ? 'reply check unavailable' : undefined);
-    expect(reviewUnavailableReleases(reopened.view)).toEqual({ total: captured.noticed ? 0 : 1, byRule: {} });
+    expect(reviewUnavailableReleases(reopened.view)).toEqual({ total: 0, byRule: {} });
     reopened.close();
   });
 });

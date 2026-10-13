@@ -63,7 +63,7 @@ it('declining asked work on a listed limit still needs its record under the new 
 });
 
 it('the guide distinguishes describing a listed limit from declining asked work, and names a source the packet carries', () => {
-  expect(DECLARED_OBLIGATIONS_GUIDE).toContain('Only a capability description that declines no asked work needs no record; a limit stated more broadly than the note states it (no logged-in account stated as unable to change any website) is a final claim.');
+  expect(DECLARED_OBLIGATIONS_GUIDE).toContain('descriptions alone do not; a limit stated more broadly than the note states it (no logged-in account stated as unable to change any website) is a final claim.');
   expect(DECLARED_OBLIGATIONS_GUIDE).toContain('is evidenced only when the blocker or one settled entry records that same limit');
   expect(replyReviewQuestion(['unrecorded_blocker'])).toContain(DECLARED_OBLIGATIONS_GUIDE);
   const sources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
@@ -110,7 +110,7 @@ it('on the tools route the review packet is route-true, and the same two sides h
     if (input.startsWith('review-r2-')) expect(content
       // D4 makes the distinction explicit after a live reviewer used the description exception to pass a refusal.
       .replace('restating a settled limit, or describing one the capability-note source lists in no broader terms without declining asked work, needs no new record;',
-        'restating a recorded, still-open limit needs no duplicate record. A capability note alone never records a refusal: declining asked work requires blocker or a settled entry for that same limit, even when the note explains it. Only a capability description that declines no asked work needs no record;')
+        'restating a recorded, still-open limit needs no duplicate record. A capability note alone never records a refusal. Declining asked work needs a record; descriptions alone do not;')
       .replace('Return inside conclusion.value exactly one line for every listed rule and no other rule, each of the form rule_id: PASS | short reason or rule_id: VIOLATION | short reason, with each reason under 300 characters; put any longer reasoning in reason.value.',
         'Give each listed rule, and no others, one verdict "PASS | short reason" or "VIOLATION | short reason", with each reason under 160 characters. Keep reasoning under 400 characters and all JSON under 4000 so every verdict fits the output allowance. Prioritize verdicts; do not repeat rules or context.')
       .replace('an illustrative or quoted literal explicitly requested or supplied by the verified operator is not a breach merely because it appears in the reply.',
