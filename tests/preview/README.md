@@ -18,17 +18,17 @@ authority, store or outbound path.
 The journal runner's capability briefing is generated from these lines and the feature declarations beside the shipped sources; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
 
 - `fetch-inbound-media`: saves inbound Telegram files with bounded effect admission; refused downloads retain the original message.
-- `preview-conversation`: answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.
+- `preview-conversation`: Ask me questions or ask for a draft here. Send photos, audio or files; I save them encrypted with text descriptions.
   Details: only the verified operator is admitted; a forum journal serves all topics of one configured group, including General, with topic-specific recent history and harness sessions. Forum packets identify the current topic (General, its recorded name, or topic number); shared facts carry their source topic so the agent can attribute them across topics. Private-chat packets retain their existing format. Unknown send outcomes are never resent.
-- `preview-durable-memory`: an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.
+- `preview-durable-memory`: Ask me to remember, correct or forget a fact. Our messages and memory are saved encrypted on this machine, across restarts.
   Details: keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory.
-- `preview-status-command`: "status" and "how are you doing" are answered from the journal without a model call.
+- `preview-status-command`: Ask "status" or "how are you doing" for a summary of my saved activity, without another model call.
   Details: the exact messages status and how are you doing are answered from the durable journal without generating an answer.
-- `preview-upcoming-date-mention`: a saved date within 48 hours can get one short mention in the next reply.
+- `preview-upcoming-date-mention`: I can mention a saved date coming up within 48 hours in my next reply, once.
   Details: when a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; the mention is remembered across restarts.
-- `preview-requested-actions`: an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.
+- `preview-requested-actions`: Ask me to remind you here at a set time, once, daily or on weekdays until you cancel; you do not need to message again.
   Details: when the operator explicitly asks for something at a settled later day and time (a reminder is one case), the runner brings that request back as an ordinary turn at the time asked, with no new operator message, and the answer is sent then through the same checks, first quoting the request and when it was made; requests due together in a conversation share one message, inside the reply limit. Daily or weekday requests at a local time repeat until cancelled; missed occurrences combine into one on recovery. Each occurrence uses the existing spend, stop and delivery limits. A later request for the same time adds a request; only the operator withdrawing one cancels it.
-- `preview-owned-obligations`: keeps standing instructions and works the promises its replies leave open, holding results for the next message.
+- `preview-owned-obligations`: I keep your standing instructions and work on open promises, saving results for your next message.
   Details: keeps the operator's standing instructions until superseded or done, and works the deferrals and promises its replies leave open, holding each result for the operator's next message.
 - `preview.rolling-summary`: keeps a faithfulness-checked rolling summary of earlier turns.
 - `preview.coherence-check`: checks each reply against remembered earlier turns without a model call.

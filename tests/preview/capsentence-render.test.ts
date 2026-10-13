@@ -52,7 +52,7 @@ async function deliver(answer: string, revision?: string, question = captured.qu
 it('repairs only the legacy sentence in the recorded 12:24 reply before review and send', async () => {
   expect(captured.delivered.update).toBe(715675677);
   expect(captured.judge).toMatchObject({ verdict: 'FAIL', reason: 'rendered tools/outbound sentence missing, altered or duplicated' });
-  expect(sentence).toBe(capabilitySentence({ tools: true, mcp: 0 }));
+  expect(note.provenance.renderedCapabilitySha256).toBe('sha256:' + createHash('sha256').update(sentence).digest('hex'));
   expect(captured.delivered.reply).not.toContain(sentence);
   const expected = captured.delivered.reply.replace(sentence.replace('I can use', 'The person can use'), sentence);
   const result = await deliver(captured.delivered.reply);

@@ -15,7 +15,7 @@ it('delivers every available generated feature, names switched-off ones, and omi
   const note = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS, limits).sources.find(s => s.id === 'capability-note')!;
   expect(note.provenance).toMatchObject({ path: CAPABILITY_BRIEFING_PATH, launcher: CAPABILITY_LAUNCHER, generation: generated.generation, commit: generated.commit });
   for (const f of briefed.filter(f => f.availability === 'available')) expect(note.text).toContain(`- ${f.text}`);
-  for (const f of briefed.filter(f => f.availability === 'switched-off')) expect(note.text).toMatch(new RegExp(`switched off here[^\\n]*\\b${f.id}\\b`));
+  expect(note.text).toContain('Not enabled here: the separate work coordinator, Slack conversations, Slack replies, another Telegram connection (this bot chat works).');
   for (const f of briefed.filter(f => f.availability === 'not-loaded')) expect(note.text).not.toContain(f.id);
   expect(note.text).toContain(`at most ${limits.providerAttempts} model attempts`);
   expect(briefed.filter(f => f.availability === 'available' && f.userFacing).map(f => f.id)).toEqual(expect.arrayContaining([
@@ -113,13 +113,13 @@ it('briefs the installation identity with and without the generated register, pr
     expect(text).toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools }));
     expect(text).toContain("You are an Instar 2.0 agent");
     expect(text).not.toMatch(/PREVIEW trial|This trial|Justin/u);
-    expect(text).toContain(`at most ${limits.providerAttempts} model attempts, ending at epoch ms ${limits.expiresAt}`);
+    expect(text).toContain(`at most ${limits.providerAttempts} model attempts, ending October 5, 2026 at 20:40 UTC`);
     expect(text).toContain('Charges, and unconfirmed calls or deliveries, are recorded unknown.');
     expect(text).toContain('Production safeguards are incomplete.');
     if (tools) {
       expect(text).not.toContain('You have no tools');
-      expect(text).toContain('Standing grants need no new approval');
-      expect(text).toContain("doorway's four checks");
+      expect(text).toContain('Work you have already allowed needs no new approval');
+      expect(text).toContain("Website changes and outside messages require checks of");
     } else expect(text).toMatch(/no tools/u);
     expect(text.includes('capability briefing is unavailable')).toBe(!available);
   }
@@ -138,12 +138,12 @@ it('pins the rendered tools/outbound sentence to each turn’s actual capability
     expect(note.provenance.renderedCapabilitySha256).toBe('sha256:' + createHash('sha256').update(sentence).digest('hex'));
     expect(capabilityBriefing(() => { throw Error('missing'); }, limits).text).toContain(CAPABILITY_SENTENCE_LABEL + sentence);
     if (tools) {
-      expect(sentence).toContain('files, shell, web reads, nested subagents');
-      expect(sentence).toContain('reversibility, resource limits, granted scope, sensitivity');
-      for (const condition of ['above the level', 'cannot be undone and falls outside', 'speaks publicly', 'widens the agent', 'marked sensitive'])
+      expect(sentence).toContain('files, run commands, look up web information and delegate tasks to agents');
+      expect(sentence).toContain('whether it can be undone, your resource limits, your permissions, sensitive matters');
+      for (const condition of ['above your limit', 'cannot be undone and is outside', 'speaks publicly', 'widens my permissions', 'marked sensitive'])
         expect(sentence).toContain(condition);
-      expect(sentence).toContain(mcp === undefined ? 'MCP servers: unknown' : mcp === 0 ? 'no MCP server' : '2 MCP server(s)');
-      expect(sentence.includes('no logged-in account access')).toBe(mcp === 0);
+      expect(sentence).toContain(mcp === undefined ? 'cannot confirm which tool connections' : mcp === 0 ? 'No accounts are connected' : '2 tool connections are configured');
+      expect(sentence.includes('cannot access your signed-in accounts')).toBe(mcp === 0);
     } else {
       expect(sentence).toContain('no tools');
       expect(sentence).not.toContain('I can use');

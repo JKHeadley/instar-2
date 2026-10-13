@@ -245,7 +245,7 @@ it('still serves the live recorded answers after the guidance rewording', async 
   // sentence the live blocker avenues quote as evidence, and the trial budget line.
   const second = JSON.parse(run.answerPackets[1]!) as { sources: { id: string; text: string }[] };
   const note = second.sources.find(item => item.id === 'capability-note')!;
-  expect(note.text).toContain('- answers the operator in chat/topics;');
+  expect(note.text).toContain('- Ask me questions or ask for a draft here.');
   expect(note.text).toContain('Nothing unlisted is available: no tools');
   expect(note.text).toContain('This installation allows at most');
 }, 120_000);

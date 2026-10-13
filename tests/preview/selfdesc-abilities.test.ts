@@ -26,9 +26,28 @@ const live = (update: number) => ({ turns: new Map([[`telegram:8989505249:update
 const wall = (update: number, constraint: string) => ({ source: `telegram:8989505249:update:${update}`, constraint, rechecks: [] }) as unknown as BlockerNote;
 
 // Translate only superseded guidance, keeping captured bytes and the capability inventory intact.
-const currentChannelNote = (text: string) => compactRecordedNote(text)
+const currentChannelNote = (text: string) => plainRecordedNote(compactRecordedNote(text)
   .replace('In the code but switched off here, so not available:', 'Code switched off here:')
-  .replace('telegram-conversation-adapter.', 'telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot).');
+  .replace('telegram-conversation-adapter.', 'telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot).'));
+const recordedSentence = (note: string) => note.split('\n').find(line => line.startsWith(CAPABILITY_SENTENCE_LABEL))!.slice(CAPABILITY_SENTENCE_LABEL.length);
+// Presentation-only migration of historical notes; real recorded bytes and judge digests remain untouched.
+const plainRecordedNote = (text: string) => {
+  const replacements = [
+    ["answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.", "Ask me questions or ask for a draft here. Send photos, audio or files; I save them encrypted with text descriptions."],
+    ["an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.", "Ask me to remember, correct or forget a fact. Our messages and memory are saved encrypted on this machine, across restarts."],
+    ["an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.", "Ask me to remind you here at a set time, once, daily or on weekdays until you cancel; you do not need to message again."],
+    ["keeps standing instructions and works the promises its replies leave open, holding results for the next message.", "I keep your standing instructions and work on open promises, saving results for your next message."],
+    ["\"status\" and \"how are you doing\" are answered from the journal without a model call.", "Ask \"status\" or \"how are you doing\" for a summary of my saved activity, without another model call."],
+    ["a saved date within 48 hours can get one short mention in the next reply.", "I can mention a saved date coming up within 48 hours in my next reply, once."],
+  ];
+  for (const [before, after] of replacements) text = text.replace(before!, after!);
+  return text.replace(/Tools\/outbound sentence \(quote verbatim\): I can use files, shell[^\n]*/u,
+    CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }))
+    .replace('Limits: a sent credential is vaulted on arrival (you see its SecretRef), not tool-readable.', TOOLS_LIMITS)
+    .replace('Code switched off here: rungraph-core, slack-conversation-adapter, slack-ordinary-reply, telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot).',
+      'Not enabled here: the separate work coordinator, Slack conversations, Slack replies, another Telegram connection (this bot chat works).')
+    .replace(/ending at epoch ms (\d+)/u, (_match, ms) => 'ending ' + new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(Number(ms)) + ' UTC');
+};
 const renderedNote = (text: string) => currentChannelNote(text).replace(`- ${toolsBriefing(0)}`, CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }))
   .replace(` ${SIGN_OFF}`, '');
 const currentNote = (text: string) => renderedNote(text
@@ -184,7 +203,7 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   const oldRequests = '- preview-requested-actions: an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message.';
   const recurringRequests = '- preview-requested-actions: an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.';
   expect(current.note.split(oldRequests)).toHaveLength(2);
-  expect(note).toContain(compactRecordedNote(recurringRequests));
+  expect(note).toContain(plainRecordedNote(compactRecordedNote(recurringRequests)));
   const oldGrant = 'checked when made: consequential effects (sending outside this conversation, writing to the network or a third-party account, '
     + 'spending, changing safeguards) go through the effect doorway: one runs once the operator registers and grants it, otherwise it '
     + 'is refused and the refusal names its reason; say so plainly when one is refused. ';
@@ -221,7 +240,7 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   expect(note).toContain(`Capabilities:`);
   expect(note).toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }));
   expect(note).toContain(TOOLS_LIMITS);
-  expect(note).toContain('at most 1000 model attempts, ending at epoch ms 1791232800000.');
+  expect(note).toContain('at most 1000 model attempts, ending October 5, 2026 at 20:40 UTC.');
   for (const name of ['k11a-worst-input.json', 'k11a-chain-input.json']) {
     const packet = packetOf(JSON.parse(read(name)) as Envelope);
     expect(packet.sources.find(source => source.id === 'capability-note')!.text, name).toBe(replays.note);
@@ -283,13 +302,13 @@ it('replays five recorded answers with the rendered paragraph verbatim and diges
   expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(capture.runs).toHaveLength(5);
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits);
-  const sentence = capabilitySentence(capture.limits);
+  const sentence = recordedSentence(capture.runs[0].capabilityNote.text);
   for (const run of capture.runs) {
     // Source-generation metadata remains the authentic generation each call received;
     // the capability record and rendered paragraph match this checkout; the five
     // historical instruction prose lines are translated explicitly above.
     expect(currentChannelNote(run.capabilityNote.text)).toBe(note.text);
-    expect(run.capabilityNote.provenance.renderedCapabilitySha256).toBe(note.renderedCapabilitySha256);
+    expect(run.capabilityNote.provenance.renderedCapabilitySha256).toBe('sha256:' + createHash('sha256').update(sentence).digest('hex'));
     const reading = readAnswer(run.raw, { wrapped: 'accept' });
     expect(reading.ok).toBe(true);
     if (!reading.ok) throw Error(reading.defect);
@@ -322,12 +341,12 @@ it('binds every unchanged-question capability replay and its PASS or FAIL judgme
   expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(capture.runs).toHaveLength(10);
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits);
-  const sentence = capabilitySentence(capture.limits);
+  const sentence = recordedSentence(capture.runs[0].capabilityNote.text);
   for (const run of capture.runs) {
     expect(run.userMessage).toEqual(capture.recordedUserMessage);
     expect(run.inputSha256).toMatch(/^[a-f0-9]{64}$/u);
     expect(currentChannelNote(run.capabilityNote.text)).toBe(note.text);
-    expect(run.capabilityNote.provenance.renderedCapabilitySha256).toBe(note.renderedCapabilitySha256);
+    expect(run.capabilityNote.provenance.renderedCapabilitySha256).toBe('sha256:' + createHash('sha256').update(sentence).digest('hex'));
     const reading = readAnswer(run.raw, { wrapped: 'accept' });
     expect(reading.ok).toBe(true);
     if (!reading.ok) throw Error(reading.defect);
