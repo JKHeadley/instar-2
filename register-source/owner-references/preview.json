@@ -31,7 +31,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-dated-memory.test.ts",
-        "hash": "sha256:bfe8becd9663dce801d8590b2cf465232c69eadeade8fc3454bcd6d48bc31f3c"
+        "hash": "sha256:e8184751c913a45263bd0842a288371abc8f92a638c9efe29abb6b5a59045c19"
       }
     },
     {
@@ -47,7 +47,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-obligations.test.ts",
-        "hash": "sha256:574583374e7935b9950ced9afde140669f00e98b656ca7d930f463fb02b6752e"
+        "hash": "sha256:fba84a0b17c66da27f6b857cc510d3625dc855488755f6230cbbcde6bad06d80"
       }
     },
     {
