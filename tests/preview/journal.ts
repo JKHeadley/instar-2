@@ -390,9 +390,14 @@ export const replyBody = (turn: { intent?: string; continuity?: ContinuityAccoun
 /** The reply with the disclosure as its first sentence; strip the marker on older replies. */
 export const withDisclosure = (reply: string, disclosure: string) =>
   `${disclosure} ${reply.replace(/^PREVIEW — /u, '')}`;
-export const REPLY_ACKNOWLEDGEMENT_AFTER_MS = 10_000;
+// Ten seconds is the receipt target, not the timer delay: reserve three seconds for
+// intake, timer/admission jitter and transport (observed combined maximum: 2.127 s).
+export const REPLY_ACKNOWLEDGEMENT_AFTER_MS = 7_000;
 /** Reviewed once: content-free, no result, promise, private fact or claim of completed work. */
-export const REPLY_ACKNOWLEDGEMENT = 'Checking that now.';
+export const REPLY_ACKNOWLEDGEMENT = 'I’m still working on your reply.';
+export const QUEUED_REPLY_ACKNOWLEDGEMENT = 'This is queued behind an earlier reply.';
+const PREVIOUS_REPLY_ACKNOWLEDGEMENT = 'Checking that now.';
+const fixedAcknowledgement = (text: string) => text === REPLY_ACKNOWLEDGEMENT || text === QUEUED_REPLY_ACKNOWLEDGEMENT;
 const LEGACY_REPLY_ACKNOWLEDGEMENT = "I'm working on your reply.";
 export const HELD_NOTICE_AFTER_MS = 600_000;
 /** Rule 95: every live gate of this runner and the way it fails when it cannot decide, chosen by who
@@ -4324,12 +4329,12 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     const legacyText = /^(?:PREVIEW — )?I'm holding my answer to your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$/u.test(row.text);
     const countedText = new RegExp(`^(?:PREVIEW — )?I'm holding ${heldCount} ${heldCount === 1 ? 'answer' : 'answers'}, including your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$`, 'u').test(row.text);
     const acknowledgement = row.acknowledgement === true;
-    // Previously admitted fixed acknowledgements used an eight-second deadline; preserve their durable history.
-    const acknowledgementAfter = admission === 'replay' ? 8_000 : REPLY_ACKNOWLEDGEMENT_AFTER_MS;
-    if (acknowledgement && row.text === REPLY_ACKNOWLEDGEMENT && (row.at < turn.at + acknowledgementAfter || view.replies >= view.limits.maxReplies - 1))
+    // Preserve earlier eight/ten-second fixed notices while admitting the budgeted templates.
+    const acknowledgementAfter = row.text === PREVIOUS_REPLY_ACKNOWLEDGEMENT ? 8_000 : REPLY_ACKNOWLEDGEMENT_AFTER_MS;
+    if (acknowledgement && (fixedAcknowledgement(row.text) || row.text === PREVIOUS_REPLY_ACKNOWLEDGEMENT) && (row.at < turn.at + acknowledgementAfter || view.replies >= view.limits.maxReplies - 1))
       throw Error('preview journal: fixed acknowledgement no longer due');
     if (acknowledgement && (!operatorWriter(view, turn, true) || turn.requestedAction || turn.editOf
-      || !(row.text === REPLY_ACKNOWLEDGEMENT || row.text === LEGACY_REPLY_ACKNOWLEDGEMENT
+      || !(fixedAcknowledgement(row.text) || admission === 'replay' && row.text === PREVIOUS_REPLY_ACKNOWLEDGEMENT || row.text === LEGACY_REPLY_ACKNOWLEDGEMENT
         && turn.heldNoticeReview?.verdict === 'pass') || row.covers !== undefined))
       throw Error('preview journal: acknowledgement intent refused');
     if (!turn.accepted || !acknowledgement && (!heldNoticeReason(turn.held) || turn.heldSince === undefined
@@ -5672,6 +5677,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const acknowledgementsInFlight = new Map<Turn, Promise<void>>();
   const cancelAcknowledgement = (turn: Turn) => { acknowledgementTimers.get(turn)?.(); acknowledgementTimers.delete(turn); };
   let working = false, workingSince = 0, ordinaryFailedSince: number | null = null;
+  let activeTurn: Turn | undefined;
   /** Every live send consumes its durable signed intent; a refusal or unknown outcome is recorded, never
    * retried. The one exception is the transport's own proof that it never made the network call: nothing
    * reached Telegram, so that exact intent is dispatched once more (the no-duplicate floor is untouched —
@@ -5694,7 +5700,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     const subject = { target, chat: input.chat, ...(input.thread === undefined ? {} : { thread: input.thread }), body: input.text };
     // The forum reply anchor comes from durable intake, not a model-selected message or another topic.
-    const sourceTurn = target.startsWith('held-notice:') && input.expectedText === REPLY_ACKNOWLEDGEMENT
+    const sourceTurn = target.startsWith('held-notice:') && fixedAcknowledgement(input.expectedText)
       ? journal.view.turns.get(target.slice('held-notice:'.length))
       : journal.view.genesis.forum && target.startsWith('reply:')
         ? journal.view.turns.get(target.slice('reply:'.length)) : undefined;
@@ -7759,6 +7765,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   /** Rule 87: one fixed, reviewed-once acknowledgement while the answer is being made.
    * No per-send model review. Existing disclosure, secret, stop and durable send checks still apply. */
+  const replyIsQueued = (turn: Turn) => !turn.reserved
+    && journal.view.order.slice(0, journal.view.order.indexOf(turn))
+      .some(item => item === activeTurn
+        || (item.accepted && item.intent === undefined && item.held === undefined && item.limited === undefined));
   const acknowledgeReply = (turn: Turn, callbackEnteredAt?: number): Promise<void> => {
     const inFlight = acknowledgementsInFlight.get(turn);
     if (inFlight) return inFlight;
@@ -7775,12 +7785,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       recordPhaseTiming(journal.append, `held-notice:${turn.id}`, 'acknowledgement', {
         scheduledDueAt: turn.at + REPLY_ACKNOWLEDGEMENT_AFTER_MS, timerCallback: callbackEnteredAt !== undefined,
         ...(callbackEnteredAt === undefined ? {} : { callbackEnteredAt }) }, ports.now());
-      const text = REPLY_ACKNOWLEDGEMENT;
+      // Durable order plus the turn actually occupying the worker, including awaited transport.
+      const queued = replyIsQueued(turn);
+      const text = queued ? QUEUED_REPLY_ACKNOWLEDGEMENT : REPLY_ACKNOWLEDGEMENT;
       ports.checkOutbound(text);
       const chat = journal.view.genesis.chat, thread = turn.thread === undefined ? {} : { thread: turn.thread };
       const target = `held-notice:${turn.id}`;
       const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
-      const outcome = await push('reply', target, provenance, { text, expectedText: text, chat, ...thread, update: turn.update, current }, () => {
+      const outcome = await push('reply', target, provenance, { text, expectedText: text, chat, ...thread, update: turn.update,
+        current: () => current() && (turn.heldNoticeIntent !== undefined || replyIsQueued(turn) === queued) }, () => {
         journal.append({ kind: 'held-notice-intent', id: turn.id, text, chat, ...thread, update: turn.update,
           grant: journal.view.genesis.grant, acknowledgement: true, provenance, at: ports.now() });
       });
@@ -7897,13 +7910,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const audienceHolds = await disclosure();
       completeApprovals();
       // A split reply left part-way by a restart continues before anything new is answered.
-      for (const turn of journal.view.order) if (turn.replyParts?.length) await sendReplyParts(turn);
+      for (const turn of journal.view.order) if (turn.replyParts?.length) {
+        activeTurn = turn;
+        await sendReplyParts(turn);
+      }
+      activeTurn = undefined;
       if (due) scheduleRequests();
       // Settlement reads only durable outcomes; answer admission never waits for speculative work.
       settleBehind();
       settleExhaustedEdit();
       let blockedEarlier = false;
       for (const turn of journal.view.order) {
+        activeTurn = turn;
         if (!turn.accepted || turn.editOf || turn.sent || turn.intent) continue;
         if ((turn.requestedAction !== undefined) !== due) continue;
         // Past the ordinary turn allowance only the minimal responder answers (Rule 15).
@@ -9207,6 +9225,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // The rest of a split reply follows at once, before any later reply.
         if (parts.length) await sendReplyParts(turn);
       }
+      activeTurn = undefined;
       await noticeUnknownReplies();
       if (!audienceHolds) await noticeDisclosureHolds();
       // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
@@ -9216,6 +9235,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (!due && pendingMemory()?.editOf) settleBehind();
       if (!due && pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
     } finally {
+      activeTurn = undefined;
       try { await Promise.all(acknowledgementsInFlight.values()); } finally {
         acknowledgementsInFlight.clear();
         for (const turn of acknowledgementTimers.keys()) cancelAcknowledgement(turn);

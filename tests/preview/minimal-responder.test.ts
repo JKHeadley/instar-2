@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MINIMAL_RESERVE, MINIMAL_POLL_LIMIT, UNLINKED_EDIT_FLAG,
-  UNREADABLE_OPERATOR_MESSAGE, limitedAnswerText, PREVIEW_LIVE_GATES, admittedDependencies, MINIMAL_WORKER_WAIT_MS, REPLY_ACKNOWLEDGEMENT, REPLY_ACKNOWLEDGEMENT_AFTER_MS,
+  UNREADABLE_OPERATOR_MESSAGE, limitedAnswerText, PREVIEW_LIVE_GATES, admittedDependencies, MINIMAL_WORKER_WAIT_MS, REPLY_ACKNOWLEDGEMENT, QUEUED_REPLY_ACKNOWLEDGEMENT, REPLY_ACKNOWLEDGEMENT_AFTER_MS,
   independentSurface, STOP_PAGE_BUTTON, STOP_CHALLENGE_MS, MINIMAL_WAITING_UPDATES, LIMITED_ANSWER_OPERATION,
   MISSING_INSTALLATION_POLICY } from './journal-test-worker.js';
 import { STOP_CONFIRM_TEXT } from './status-command.js';
@@ -367,7 +367,7 @@ it.each([1, 60])('a blocked worker acknowledges once per message or uses the lim
   clock += REPLY_ACKNOWLEDGEMENT_AFTER_MS - 1;
   await worker.minimal(); expect(sends).toHaveLength(0);
   clock += 1; await worker.minimal(); await worker.minimal();
-  const acknowledgements = maxReplies === 1 ? [] : [REPLY_ACKNOWLEDGEMENT, REPLY_ACKNOWLEDGEMENT];
+  const acknowledgements = maxReplies === 1 ? [] : [REPLY_ACKNOWLEDGEMENT, QUEUED_REPLY_ACKNOWLEDGEMENT];
   expect(sends.map(item => item.text)).toEqual(acknowledgements);
   clock += MINIMAL_WORKER_WAIT_MS - REPLY_ACKNOWLEDGEMENT_AFTER_MS - 1;
   await worker.minimal();
