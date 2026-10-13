@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readAnswer } from './answer-reading.js';
@@ -10,7 +10,7 @@ const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 it('reserves the recorded deferral and its next turn before slow unsettled memory work, without duplicate sends or a held notice', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'deferral-confirm-delay-')); roots.push(root);
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'deferral-confirm-delay-')); roots.push(root);
   const path = join(root, 'journal'), key = new Uint8Array(32).fill(91);
   let now = capture.at, summaryCalls = 0;
   const timers = new Map<() => void, number>();
@@ -60,7 +60,7 @@ it('reserves the recorded deferral and its next turn before slow unsettled memor
 
 it('applies a recorded update before reserving the dependent recall in the same drain', async () => {
   const memory = JSON.parse(readFileSync(new URL('./fixtures/memory-update-replaces-2026-10-13.json', import.meta.url), 'utf8'));
-  const root = mkdtempSync(join(tmpdir(), 'deferral-dependent-recall-')); roots.push(root);
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'deferral-dependent-recall-')); roots.push(root);
   const oldId = 'telegram:8994258214:update:715675723';
   const oldQuote = 'the desk test word is orchid-4138891c5620', newQuote = 'the desk test word is orchid-88c935deed4a';
   let now = memory.at;
@@ -95,7 +95,7 @@ it('applies a recorded update before reserving the dependent recall in the same 
 });
 
 it('does not join an already running summary when reserving the recorded deferral', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'deferral-running-summary-')); roots.push(root);
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'deferral-running-summary-')); roots.push(root);
   let now = capture.at;
   let completeSummary: (output: string) => void = () => { throw Error('summary not started'); };
   let summaryStarted: () => void = () => {};
@@ -131,7 +131,7 @@ it('does not join an already running summary when reserving the recorded deferra
 });
 
 it.each([false, true])('keeps one admitted preference when a summary overlaps the answer: %s', async overlaps => {
-  const root = mkdtempSync(join(tmpdir(), 'deferral-one-memory-')); roots.push(root);
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'deferral-one-memory-')); roots.push(root);
   const now = capture.at;
   const journal = openPreviewJournal(join(root, 'journal'), new Uint8Array(32).fill(94), { kind: 'genesis',
     bot: capture.bot, chat: capture.operator, operator: capture.operator, grant: 'grant:fixture', configurationDigest: 'sha256:fixture',
