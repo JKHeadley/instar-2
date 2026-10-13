@@ -83,6 +83,8 @@ Decision: train-20-ack-fixture | Explicitly settle summary judgment before testi
 
 Decision: train-20-memory-fixtures | Accepted-summary memory consumers explicitly execute summary judgment before asserting the mutation: follow-up-person retains forgotten-name suppression and replay assertions; memory-search retains correction chains, withheld forgotten clauses, citations and exact supervisor counts. No runtime ordering change. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-20-PROGRESS.md
 
+Decision: train-20-phase-timing | Align the existing phase observations with the merged seven-second acknowledgement deadline; retain both callback-late and audience-late cases, exact transport offsets, replay and unknown-send fences. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-20-PROGRESS.md
+
 simplestRobustRoute: This is the simplest robust route: ordinary merges of reviewed repairs, the requested ordinary revert and existing repin/build/rehash/register replay. No new machinery. Verified intake, existing bounded model/recovery work, current ownership and grant checks, durable dispatch and stop remain the start, end-state and limit guards. Captured replay proves integration; live acceptance belongs to the desk.
 80/20: Required changed tests, direct consumers and explicit journal/launcher families in foreground chunks; no full suite or convergence claim.
 VERDICT: author submission; independent review belongs to the desk
