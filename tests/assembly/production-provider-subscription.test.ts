@@ -199,8 +199,22 @@ it('refuses managed helpers and path swaps before dispatch', async () => {
 });
 it('bounds a pending physical child and never retries', async () => {
   const f = fixture({ pending: true });
-  expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', { ...f.bounds, timeout: 100 })).state).toBe('uncertain');
-  expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+  const attempts: Parameters<ProductionProviderIO['execute']>[0][] = [];
+  const outcomes: Awaited<ReturnType<ProductionProviderIO['execute']>>[] = [];
+  const io = { ...f.input.io, execute: async (input: Parameters<ProductionProviderIO['execute']>[0]) => {
+    if (!input.args.includes('--print')) return f.input.io.execute(input);
+    attempts.push(input);
+    const result = await f.input.io.execute(input);
+    outcomes.push(result);
+    return result;
+  } };
+  expect((await value(createClaudeCodeSubscriptionRoute({ ...f.input, io }))
+    .invoke('request', { ...f.bounds, timeout: 100 })).state).toBe('uncertain');
+  // The real child can time out before its CLI writes commands.jsonl. Observe the physical
+  // dispatch and timeout result, not an assumption that startup fits inside its 100 ms bound.
+  expect(attempts).toHaveLength(1);
+  expect(attempts[0]).toMatchObject({ stdin: 'request', timeout: 100 });
+  expect(outcomes).toEqual([expect.objectContaining({ limited: true, localLimit: 'timeout', signal: 'SIGKILL' })]);
 });
 
 for (const size of [16384, 16385]) it(`checks extracted Decision ${size} at the byte boundary independently of schema`, async () => {

@@ -422,11 +422,12 @@ export function scrubAdmissionRecord(stateDirectory, served, redactText) {
   renameSync(`${path}.scrub`, path);
 }
 
-/** The trace of one finished turn, read from the hook's record. An absent record is an empty trace. */
+/** The trace of one finished turn. Missing or unreadable evidence never proves an empty trace. */
 export function readToolTrace(stateDirectory) {
   let text = '';
-  try { text = readFileSync(join(stateDirectory, 'admission.jsonl'), 'utf8'); } catch { text = ''; }
-  return toolTrace(text.split('\n').filter(line => line.length > 0));
+  try { text = readFileSync(join(stateDirectory, 'admission.jsonl'), 'utf8'); }
+  catch { return { ...toolTrace([]), complete: false }; }
+  return { ...toolTrace(text.split('\n').filter(line => line.length > 0)), complete: true };
 }
 
 /** Bytes the turn left in its workspace (regular files, symlinks not followed, bounded walk). */
@@ -722,6 +723,8 @@ export function pruneToolTurns(root, keep = TOOL_TURNS_KEPT, detach = detachScra
  * carries the kept workspace's `volume` and `session` facts (w4-persist), when the turn had them. */
 function traceRow({ id, attempt, trace, egress, authority, ended, redactText, workspace, at, extra = {} }) {
   return { kind: 'tool-turn', phase: 'trace', id, attempt, consistent: trace.consistent,
+    evidenceComplete: trace.complete === true && trace.consistent && trace.calls.length <= 64 && trace.children.length <= SUBSCRIPTION_TOOL_LIMITS.maxChildren
+      && (!egress || egress.complete === true && egress.malformed === 0 && egress.requests.length <= TOOL_EGRESS_RECORDED),
     // The shell's network checkpoint: every request it decided (a CONNECT opens a tunnel; each request in it is its own row).
     ...(egress && (egress.requests.length || egress.limited) ? { egress: egress.requests.slice(0, TOOL_EGRESS_RECORDED).map(entry => ({ ...entry,
       path: redactText(entry.path), reason: redactText(entry.reason), ...(entry.error ? { error: redactText(entry.error) } : {}) })),

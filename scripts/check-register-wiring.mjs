@@ -3,10 +3,8 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readCommit, trailingInputs } from './register-source.mjs';
-import { loadOwnerReferences, ownerManifestPaths } from './register-owner-references.mjs';
 import { shippedInventory } from './register-inventory.mjs';
-import { checkShipped } from './register-shipped.mjs';
+import { buildCoreIfAbsent } from './check-architecture.mjs';
 
 // Public consumer symbols, not P3-owned decoders/schemas. Optional source-only
 // discovery lets a scanner report actual P2/P4 calls without inventing catalog
@@ -346,6 +344,13 @@ export function checkWiring(register, sourceFiles, scanned = scanSources(sourceF
   return { issues, residual, constructs, reports };
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  // The direct gate entry point must satisfy the same build precondition as lint.
+  // Delay compiled-core consumers until the existing builder has succeeded.
+  const built = buildCoreIfAbsent();
+  if (built.length) { console.error(JSON.stringify(built, null, 2)); process.exit(1); }
+  const { readCommit, trailingInputs } = await import('./register-source.mjs');
+  const { loadOwnerReferences, ownerManifestPaths } = await import('./register-owner-references.mjs');
+  const { checkShipped } = await import('./register-shipped.mjs');
   const register = JSON.parse(readFileSync('generated/register.json', 'utf8'));
   const input = readCommit(process.cwd(), register.commit);
   const owner = loadOwnerReferences(process.cwd(), input);
