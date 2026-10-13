@@ -112,3 +112,18 @@ it('retains the validated withdrawal when one message both corrects a fact and c
     } finally { reopened.close(); }
   } finally { w.journal.close(); }
 });
+
+it('does not persist a correction when stop arrives while the recovery model is running', async () => {
+  const w = world(); let stopped = false;
+  try {
+    w.intake(715675893, capture.messages.remember); await w.worker.drain();
+    w.intake(715675894, capture.messages['remember-update']); await w.worker.drain();
+    const worker = createJournalWorker(w.journal, { ...w.ports, stopped: () => stopped,
+      model: async input => { const result = await w.ports.model(input); stopped = true; return result; } });
+    await Promise.allSettled([worker.summarizeIfNeeded(true)]);
+    expect(stopped).toBe(true);
+    expect(w.journal.view.memory).toHaveLength(1);
+    expect(w.journal.view.summaries).toHaveLength(0);
+    expect(w.sends).toEqual(['Saved the requested fact.']);
+  } finally { w.journal.close(); }
+});

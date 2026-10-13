@@ -26,6 +26,10 @@ Prompt review: No prompt or output parser wording changes. The new regression us
 Prompt finding: 849db3a6296a | protocol-literal | Unchanged fixed memory inventory response, not an intent classifier.
 Prompt finding: e8708c7fea24 | protocol-literal | Unchanged source-provenance guidance, not a fixture-specific rule.
 
+Verification: The unmodified train-20 worker fails the new correction-persistence assertion; the invalid-replacement neighbor passes. The repaired worker passes five regression cases covering raw restart, snapshot restart, ungrounded replacement refusal, combined correction/cancellation, and stop arriving during the model call. Typecheck and architecture pass. Deferral, reminder, refusal, status and acknowledgement recorded-shape suites pass; the required wider consumer run is recorded in the report.
+
+Publication: The owner-manifest rehash and grounding-chain repin changed zero pins. The existing replay generator published source c61cd751fde04d9c020346ef4c5df3b1b6df3063 as generation sha256:1f8dcf3e3606fc3adf6bcb74ac02b01a191decb4ae071bbc9535d3d76dc9b1de. Generated changes update source/generation references and grant no authority.
+
 simplestRobustRoute: This is the simplest route: retain an already validated correction in the existing failure frame while preserving the summary refusal. The concrete failure is loss of a decided operator correction solely because its separate summary prose repeats the old clause. A timer change or another retry cannot ensure that decision survives. Start guards are verified durable intake and the existing memory validator; end guards are replayed mutation, truthful acknowledgement and durable send receipt. No unattended live-provider completion is claimed.
 80/20: Targeted changed tests and all direct journal/test-worker/agent consumers, compile, architecture and publication checks. The desk owns independent review and live acceptance. No full suite or second base worktree.
 VERDICT: author submission; independent convergence is not claimed
