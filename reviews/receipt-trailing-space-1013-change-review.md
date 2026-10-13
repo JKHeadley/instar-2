@@ -23,6 +23,7 @@ Prompt review: No model-facing prompt, model-output parser or judgment gate chan
 Decision: receipt-space-directional | Compare the returned plain text to either the exact intended text or that text with its complete terminal ASCII space/LF suffix removed. Keep signed intent bytes and all existing UNKNOWN records unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/receipt-trailing-space-1013-PROGRESS.md
 Decision: receipt-space-redaction | Put closed mismatch field names and bounded UTF-16 lengths/offset/whitespace-only escaped excerpts in the existing reason field; mask all non-whitespace code units before escaping to avoid retaining unknown secrets. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/receipt-trailing-space-1013-PROGRESS.md
 Decision: receipt-space-evidence | Preserve the forensic report's exact outgoing body and explicitly label the trimmed response as synthetic; no actual mismatching receipt survived, so neither the fixture nor the test establishes which field differed in the incident. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/receipt-trailing-space-1013-PROGRESS.md
+Decision: receipt-space-register | Regenerate the existing register from the committed classifier so source pins remain current; only generation and source-commit metadata change, with no new capability or authority. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/receipt-trailing-space-1013-PROGRESS.md
 
 ## Provider evidence and limits
 
@@ -34,7 +35,7 @@ Repository fixture inspection found recorded outgoing replies and sent IDs, but 
 
 The tests cover the captured body, exact and normalized success, altered content, routing mismatches, invalid message IDs, unsupported whitespace/entity/Unicode changes, bounded secret-free diagnostics surviving settlement and journal replay, refusal, lost receipt and a durable crash image between send and receipt. The replayed journal keeps UNKNOWN unresolved without a duplicate send.
 
-Subject (3 paths): tests/preview/telegram-send-outcome.mjs, tests/preview/receipt-trailing-space.test.ts, tests/preview/fixtures/receipt-trailing-space-2026-10-13.json
+Subject (10 paths): tests/preview/telegram-send-outcome.mjs, tests/preview/receipt-trailing-space.test.ts, tests/preview/fixtures/receipt-trailing-space-2026-10-13.json, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 ## Closing block
 
