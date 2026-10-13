@@ -1,5 +1,21 @@
 [
   {
+    "revision": 10,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "migration",
+      "note": "train-19 adopts origin/main design text exactly as required by the release-train brief."
+    },
+    "changes": [
+      {
+        "what": "Align the governed document and indexed sections with the merged main design text.",
+        "why": "The release train takes main design text exactly while preserving live history in this sibling changelog. This is a design-text integration, not a runtime behavior change.",
+        "ref": "reviews/train-19-change-review.md; origin/main 7ef8f158d4129a4cf90cf3c546701f32e348fdd3"
+      }
+    ]
+  },
+  {
     "revision": 9,
     "date": "2026-10-13",
     "status": "draft",

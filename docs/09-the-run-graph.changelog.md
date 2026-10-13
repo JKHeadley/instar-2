@@ -4,6 +4,18 @@ _Generated from `09-the-run-graph.changelog.json` by `scripts/render-changelog.m
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-10-13 · draft — train-19 adopts origin/main design text exactly as required by the release-train brief.
+
+- **Align the governed document and indexed sections with the merged main design text.** — The release train takes main design text exactly while preserving live history in this sibling changelog. This is a design-text integration, not a runtime behavior change. _(reviews/train-19-change-review.md; origin/main 7ef8f158d4129a4cf90cf3c546701f32e348fdd3)_
+
+## Revision 6 · 2026-10-13 · draft — train-22 operator merge brief: docs take reviewed main text exactly; retain accepted live-base history.
+
+- **Reconcile document text to reviewed main while retaining every live-base version.** — The train-22 brief explicitly selects main documentation at the merge boundary. _(`7ef8f158d`, `0de16e3cd`, reviews/train-22-change-review.md; train-22-main)_
+
+## Revision 5 · 2026-10-09 · draft — Operator direction via observer #202: remove the preview framing (w4-agentready).
+
+- **The accepted-reply projection renders the accepted answer without the preview label.** — Present Instar as the agent while preserving acceptance, grounding, escaping and size checks. _(w4-agentready; observer #202)_
+
 ## Revision 4 · 2026-09-23 · draft — PREVIEW-S2 design as amended by astra-preview-s2-bytecap.md; reviewed landing remains desk-owned
 
 - **Document the exact signed-Decision PREVIEW projection and unchanged raw-answer alternative.** — Use one accepted answer without releasing UNKNOWN provider obligations or broadening the existing Eight definitions. _(PREVIEW-S2 / ROUND 2)_

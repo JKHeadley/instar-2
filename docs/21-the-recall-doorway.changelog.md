@@ -4,6 +4,25 @@ _Generated from `21-the-recall-doorway.changelog.json` by `scripts/render-change
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 10 · 2026-10-13 · draft — train-19 adopts origin/main design text exactly as required by the release-train brief.
+
+- **Align the governed document and indexed sections with the merged main design text.** — The release train takes main design text exactly while preserving live history in this sibling changelog. This is a design-text integration, not a runtime behavior change. _(reviews/train-19-change-review.md; origin/main 7ef8f158d4129a4cf90cf3c546701f32e348fdd3)_
+
+## Revision 9 · 2026-10-13 · draft — train-22 operator merge brief: docs take reviewed main text exactly; retain accepted live-base history.
+
+- **Reconcile document text to reviewed main while retaining every live-base version.** — The train-22 brief explicitly selects main documentation at the merge boundary. _(`7ef8f158d`, `0de16e3cd`, reviews/train-22-change-review.md; train-22-main)_
+
+## Revision 8 · 2026-10-03 · draft — Unit review of w4-memlearn-s round 1 (Astra, VERDICT: NO): two must-fixes repaired at source. No constitution change.
+
+- **Section 16 offers the memoryFailure report after any answer to the operator, including a full-history one, as the packet's lowest-priority guidance that yields first under byte pressure; section 12 P21-NF-25 and section 13 P21-NEG-32 follow.** — A full-history "I don't know" states no wrong value, so the correction signal could not cover it and the operator's reminder was silently lost (Purpose constraint 2, Rule 85). _(lanes/w4-memlearn-s-PROGRESS.md (Pipeline repair); tests/preview/memory-learning.test.ts)_
+- **The never-stored cause is replaced by source unresolved: when the report names no original and no earlier operator message states its words exactly, the record says whether the fact was stored is unknown; P21-NF-26 follows.** — A wording miss is not evidence of absence (Rules 11 and 26); a paraphrased reminder was misreported as proof the fact was never stored. _(lanes/w4-memlearn-s-PROGRESS.md (Pipeline repair); tests/preview/memory-learning.ts)_
+
+## Revision 7 · 2026-10-03 · draft — Unit w4-memlearn-s (plan row #404): memory-failure recording and structural self-improvement, on the operator's direction of 2026-09-13 and the 2026-10-03 re-grounding (Justin, topic 102965, message 121996 and the 10:45 pillars). No constitution change.
+
+- **New section 16, memory failures and the learning loop: a failure is recorded from two model-judged signals (an operator correction naming the agent's restating reply; a structurally offered memoryFailure report after an answer given without part of memory verbatim), with the question, the returned reply, the truth and a cause read from the failed turn's recorded grounding; a projection over durable rows, with no new store.** — The re-grounding (plan rows #399 and #404) named memory-failure recording as missing: a forgotten fact left no record, so nothing could learn from it. _(lanes/w4-memlearn-s-PROGRESS.md; LIVE-PATH-PLAN.md row #404; tests/preview/memory-learning.test.ts)_
+- **Section 16 also states the learning loop inside the one recall owner: a retrieval hint adds the missed question's words to the source's meaning cues; a source that fails twice is pinned into recall; a forgotten or corrected source teaches nothing; the status reply and status record show the counts.** — A log line changes nothing; the lesson has to change what the next recall returns, measurably and within bounds. _(lanes/w4-memlearn-s-PROGRESS.md; tests/preview/memory-learning.ts)_
+- **Section 12 gains P21-NF-25 to P21-NF-27 (executable), section 13 gains P21-NEG-31 to P21-NEG-33, and the index lists section 16.** — Every new rule names executable checks with a positive neighbor (Rule 69). _(lanes/w4-memlearn-s-PROGRESS.md)_
+
 ## Revision 6 · 2026-10-10 · draft — operator review on PR #157; Astra round 1, head 309cf8e22f305c5490d9220608497076c380d14c; docs-align-1010 round 2 repair.
 
 - **Point the ownership glossary and live-review introduction to the purpose sign-off list and glossary meaning; describe live-review eligibility separately.** — N1: sign-off classification and selective irreversible history review have distinct governing conditions. _(`309cf8e22`, lanes/astra-unit-docs-align-1010-review.r1.md; reviews/docs-align-1010-r2-change-review.md)_

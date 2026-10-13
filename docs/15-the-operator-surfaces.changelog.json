@@ -1,5 +1,38 @@
 [
   {
+    "revision": 12,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 162,
+      "note": "Independent bootstrap review: two authority gaps and three implementation/UX notes"
+    },
+    "changes": [
+      {
+        "what": "Specify protected Mac selection of the provider-authenticated phone account and copied-code refusal.",
+        "why": "Close initial identity and authority without circular grants, extra approval classes or new stores.",
+        "ref": "PR 162; reviews/install-bootstrap-design-1013.md; astra-install-bootstrap-design-1013-review.md"
+      }
+    ]
+  },
+  {
+    "revision": 11,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "install-bootstrap-design-1013: desk selects verified binding before the existing P-02 yes, 2026-10-13"
+    },
+    "changes": [
+      {
+        "what": "Define authenticated mobile pairing and device-loss recovery through the existing custodian surface.",
+        "why": "A fresh installation needs an authenticated initial operator and independently held approval anchor before ordinary subscription admission.",
+        "ref": "install-bootstrap-design-1013 brief; install-firstgrant-1013 finding; reviews/install-bootstrap-design-1013.md"
+      }
+    ]
+  },
+  {
     "revision": 10,
     "date": "2026-10-13",
     "status": "draft",
@@ -103,7 +136,7 @@
     },
     "changes": [
       {
-        "what": "Include the bounded Slack reply in the fixed profile’s operator-accepted operation set.",
+        "what": "Include the bounded Slack reply in the fixed profile\u2019s operator-accepted operation set.",
         "why": "The operator-facing dependency verdict must describe the same closed set and permanent-machine-loss model as the purpose.",
         "ref": "astra-slack-closedset-ruling.md, Exact minimal governing edits and approval procedure (2026-09-24); approval PENDING"
       }
