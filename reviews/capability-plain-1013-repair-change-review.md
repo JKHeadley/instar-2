@@ -22,6 +22,10 @@ Decision: CPR-1 | Remove the unsupported setup sentence at its source and align 
 Prompt review: This deletion corrects self-knowledge against actual setup behavior. No classifier, authority restriction or new activation promise is added.
 Prompt finding: 4b98dc2a1b9f | protocol-literal | Existing tool briefing text is tested as an exact protocol value, not a meaning classifier.
 Prompt finding: 95e349aaf4ac | protocol-literal | Existing standing-grant protocol text is unchanged; the fixture compares its bytes without making a semantic decision.
+Prompt finding: 034c5250da92 | protocol-literal | Unchanged production-provider standing-trust protocol text is compared by the touched self-description fixture, not used as a meaning classifier.
+Prompt finding: 45e37ea2e9e9 | protocol-literal | Unchanged production-provider workspace grant protocol text is compared by the touched self-description fixture, not used as a meaning classifier.
+Prompt finding: 6af48f94b789 | protocol-literal | Unchanged production-provider one-machine effect protocol text is compared by the touched self-description fixture, not used as a meaning classifier.
+Prompt finding: b00ed403060a | protocol-literal | Unchanged production-provider grant protocol text is compared by the touched self-description fixture, not used as a meaning classifier.
 
 Evidence: The new negative assertion failed on the old setup instruction. Recorded update 6233122 exercises reading, rendering, review and two drains with one send; separate account advice and disabled-feature descriptions remain asserted. Existing non-capability recorded summary, uncertain, Jev, review and empty reply shapes are preserved. Reusing recorded review output is wiring evidence, not a fresh model verdict.
 
