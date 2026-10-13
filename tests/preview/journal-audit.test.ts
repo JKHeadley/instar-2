@@ -194,6 +194,9 @@ it.each(['correct', 'forget'] as const)('audits carried sources and %s projectio
     const earlier = { ...journal.view, lastPrompt: reserved };
     expect(auditJournal(earlier).findings).toEqual([]);
     correction = undefined;
+    // A settled mutation is not offered for a second decision; audit the next ordinary request.
+    worker.intake([envelope(715672602, 'What do you remember from our earlier conversation now?')]);
+    await worker.drain();
     await worker.summarizeIfNeeded(true);
     check(journal.view);
     const context = JSON.parse(JSON.parse(journal.view.lastPrompt!.prompt!).messages
@@ -654,7 +657,8 @@ it('audits a recorded preference beside an imported source after replay', async 
           input.question === 'Please keep your replies brief.' ? 'Okay.' : 'The studio opens Friday.'),
       send: async () => 1, checkOutbound: () => {} };
     let worker = createJournalWorker(journal, ports);
-    worker.intake([update(1, 'Please keep your replies brief.')]); await worker.drain();
+    worker.intake([update(1, 'Please keep your replies brief.')]);
+    await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory).toMatchObject([{ mode: 'prefer' }]);
     expect(memoryHealthLine(journal.view)).toContain('0 old-claim items withheld');
     journal.close();
@@ -703,7 +707,8 @@ it('traces a preference candidate clause to its source turn even when that turn 
       send: async () => 1, checkOutbound: () => {} };
     let journal = openPreviewJournal(path, key, g);
     let worker = createJournalWorker(journal, ports);
-    worker.intake([update(1, first)]); await worker.drain();
+    worker.intake([update(1, first)]);
+    await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.order[0]).toMatchObject({ modelState: 'uncertain' });
     expect(journal.view.memory).toMatchObject([{ mode: 'prefer', quote: clause }]);
     journal.close();

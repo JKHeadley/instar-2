@@ -88,14 +88,14 @@ it('settles every request an exhausted frontier already covers in one pass, and 
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 30000);
 
-it('keeps the correction hold while the frontier still has an attempt left, then releases both requests in one pass', async () => {
+it('answers while a speculative frontier still has attempts left, then settles both exhausted requests in one pass', async () => {
   const root = tmp('reachable');
   try {
     const w = world(root);
     await exhaust(w, 0);
     w.worker.intake([update(5, locker), update(6, spare), update(7, plain)]);
-    // Pass one spends the frontier's first attempt only, so the predicate is still false: a later summary can still
-    // decide these requests, and the ordering hold keeps its full discipline while a correction is genuinely pending.
+    // The summary scheduler spends the first attempt; it does not own answer admission.
+    await w.worker.summarizeIfNeeded(true);
     await w.worker.drain();
     const first = w.journal.view.order.find(turn => turn.text === locker)!;
     const second = w.journal.view.order.find(turn => turn.text === spare)!;
@@ -103,11 +103,11 @@ it('keeps the correction hold while the frontier still has an attempt left, then
     expect([...w.journal.view.summaryFailures.values()]).toEqual([1]);
     expect(first.memoryUndecided).toBeUndefined();
     expect(second.memoryUndecided).toBeUndefined();
-    expect(first.held).toBe('memory correction pending');
-    expect(question.held).toBe('earlier turn pending');
-    // Pass two spends the second attempt and the frontier is exhausted. Both requests are settled in this one pass,
-    // so the plain question is answered here -- before the fix it took a third pass, which is the 73.7 s the live
-    // root held update 6232689.
+    expect(first.held).toBeUndefined();
+    expect(question.held).toBeUndefined();
+    expect(question.sent).toBeDefined();
+    // Exhaustion still settles all requests, without re-sending the already delivered answers.
+    await w.worker.summarizeIfNeeded(true);
     await w.worker.drain();
     expect([...w.journal.view.summaryFailures.values()]).toEqual([2]);
     expect(first.memoryUndecided).toBe(true);

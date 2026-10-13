@@ -172,7 +172,7 @@ export async function runProbeTrafficReplay(): Promise<ProbeReplayResult & { pac
       people: { total: view.people.length, fromProbe: view.people.filter(note => fromProbe(note.source)).length,
         control: view.people.some(note => note.name === 'Juniper' && /niece/u.test(note.quote)) },
       preferences: { active: preferencesActive.length, fromProbe: preferencesActive.filter(change => fromProbe(change.source)).length,
-        control: preferencesActive.some(change => change.quote === 'I prefer short replies.') },
+        control: preferencesActive.some(change => change.quote === 'I prefer short replies') },
       commitments: { total: view.commitments.length, fromProbe: view.commitments.filter(note => fromProbe(note.source)).length },
       journal: { turns: view.order.length, probeTurns: view.order.filter(turn => probeTexts.has(turn.text)).length,
         auditable: [...probeTexts].every(text => view.order.some(turn => turn.text === text && turn.intent !== undefined)) },

@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -15,7 +15,7 @@ afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: tru
 
 it.each(['recorded sequence', 'restart-before-send', 'jev-unsure', 'jev-undecided', 'summary-uncertain', 'summary-writer', 'empty-memory-decision'])(
   'replays 46039931 with %s: preserves the answer and exactly one scheduled commitment', async mode => {
-  const root = mkdtempSync(join(tmpdir(), 'deferral-not-memory-')); dirs.push(root);
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'deferral-not-memory-')); dirs.push(root);
   const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(39);
   let interrupted = false;
   let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: capture.bot, chat: capture.operator,
@@ -47,16 +47,18 @@ it.each(['recorded sequence', 'restart-before-send', 'jev-unsure', 'jev-undecide
     worker.intake([{ update_id: capture.update, message: { chat: { id: Number(capture.operator), type: 'private' },
       from: { id: Number(capture.operator) }, text: capture.message } }]);
     if (mode === 'restart-before-send') {
-      await worker.drain(); // The first pass exhausts the summary frontier.
       await expect(worker.drain()).rejects.toThrow('interrupted after durable answer');
       expect(sends).toEqual([]);
       journal.close(); journal = openPreviewJournal(path, key);
       worker = createJournalWorker(journal, ports);
     }
     await worker.drain(); await worker.drain();
+    // The runner schedules summary work independently of answer draining.
+    await worker.summarizeIfNeeded(); await worker.summarizeIfNeeded();
     expect(summaries).toHaveLength(mode === 'summary-uncertain' ? 1 : 2);
     if (mode.startsWith('jev-')) { expect(judged).toBeGreaterThan(0); expect(reviewed).toBeGreaterThan(0); }
-    expect(journal.view.order[0]).toMatchObject({ memoryPending: true, memoryUndecided: true, memoryUnresolved: true });
+    expect(journal.view.order[0]!.memoryPending).toBe(true);
+    if (mode !== 'empty-memory-decision') expect(journal.view.order[0]!.memoryUnresolved).toBe(true);
     expect(sends).toEqual([JSON.parse(capture.answer.output).reply]);
     const commitments = journal.view.commitments.filter(item => item.source.endsWith(`:${capture.update}`));
     expect(commitments).toHaveLength(1);
@@ -78,7 +80,7 @@ it.each(['recorded sequence', 'restart-before-send', 'jev-unsure', 'jev-undecide
 // Delivered bytes are replayed as the reply field; no claim that they were model JSON.
 it.each(['delivered-reply', 'empty-reply-in-recorded-context'])(
   'handles recorded %s without turning unresolved memory into an acknowledgement of a save', async kind => {
-  const row = shape(kind), root = mkdtempSync(join(tmpdir(), 'deferral-shapes-')); dirs.push(root);
+  const row = shape(kind), root = mkdtempSync(join(realpathSync(tmpdir()), 'deferral-shapes-')); dirs.push(root);
   const key = new Uint8Array(32).fill(40), sends: string[] = [];
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: capture.bot,
     chat: capture.operator, operator: capture.operator, grant: 'grant:fixture', configurationDigest: 'sha256:fixture',
@@ -104,7 +106,7 @@ it.each(['delivered-reply', 'empty-reply-in-recorded-context'])(
 });
 
 it('retains an explicit unresolved save failure in the independent answer, once', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'deferral-save-failed-')); dirs.push(root);
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'deferral-save-failed-')); dirs.push(root);
   const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(41);
   let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: capture.bot, chat: capture.operator,
     operator: capture.operator, grant: 'grant:fixture', configurationDigest: 'sha256:fixture',

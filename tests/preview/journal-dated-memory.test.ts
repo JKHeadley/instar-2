@@ -473,7 +473,7 @@ it('withholds a corrected dated source and carries a replacement from the same v
         return 'Okay.';
       }, send: async () => ++sends, checkOutbound: () => {} });
     worker.intake([update(1, 'The invoice deadline is Oct 1.')]); await worker.drain();
-    worker.intake([update(2, 'Actually, the invoice deadline is October 3.')]); await worker.drain();
+    worker.intake([update(2, 'Actually, the invoice deadline is October 3.')]); await worker.summarizeIfNeeded(); await worker.drain();
     now = Date.UTC(2026, 9, 1, 17);
     await worker.sendRequested();
     expect(sends).toBe(2); // the old October 1 request was corrected before its due time.
@@ -490,7 +490,7 @@ it('withholds a corrected dated source and carries a replacement from the same v
     expect(due.context).not.toContain('The invoice deadline is Oct 1.');
     await worker.sendRequested();
     expect(sends).toBe(3); // the requested replacement is answered once, as its own due turn.
-    worker.intake([update(3, 'Forget the invoice deadline.')]); await worker.drain();
+    worker.intake([update(3, 'Forget the invoice deadline.')]); await worker.summarizeIfNeeded(); await worker.drain();
     const forgotten = worker.probe('What is due?');
     if ('reason' in forgotten) throw Error(forgotten.reason);
     expect(JSON.parse(forgotten.context).dated).toBeUndefined();

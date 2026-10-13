@@ -106,12 +106,13 @@ it('recovers a journal already wedged by the old build: the next drain settles t
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 20000);
 
-it('still decides a cued correction before later turns while its summary judgment is reachable', async () => {
+it('decides a cued correction when its reachable summary is scheduled before later turns', async () => {
   const root = tmp('reachable');
   try {
     const w = world(root, true);
     w.worker.intake([update(1, feeder)]); await w.worker.drain();
-    w.worker.intake([update(2, cancel), update(3, 'What should I plant next week?')]); await w.worker.drain();
+    w.worker.intake([update(2, cancel), update(3, 'What should I plant next week?')]);
+    await w.worker.summarizeIfNeeded(); await w.worker.drain();
     const correction = w.journal.view.order[1]!;
     // Decided by the summary, not settled as undecided; the later turn is answered after it.
     expect(correction.memoryUndecided).toBeUndefined();

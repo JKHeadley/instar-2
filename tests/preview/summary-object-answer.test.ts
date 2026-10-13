@@ -209,7 +209,8 @@ const drive = async (w: ReturnType<typeof world>) => {
   for (const text of [FEEDER, PLUMBER]) { w.worker.intake([update(id++, text)]); await w.worker.drain(); }
   expect(openRequests(w.journal.view).map(item => item.quote)).toEqual([FEEDER, PLUMBER]);
   w.worker.intake([update(id, CANCEL)]);
-  await w.worker.drain(); await w.worker.drain();
+  await w.worker.summarizeIfNeeded(true); await w.worker.summarizeIfNeeded(true);
+    await w.worker.drain(); await w.worker.drain();
 };
 
 it('records the withdrawal the summary wrote as {id, quote}, and the request it did not name still fires', async () => {

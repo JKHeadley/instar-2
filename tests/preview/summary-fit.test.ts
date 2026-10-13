@@ -400,6 +400,8 @@ for (const [count, settled] of [[32, false], [33, true]] as const)
       const w = world(journal, plain, undefined, { answer: decidingAnswer });
       w.worker.intake([update(count, cancel)]);
       await w.worker.drain();
+      // Admission is independent; the runner's background scheduler advances reachable memory work.
+      if (!settled) await w.worker.summarizeIfNeeded();
       const asked = journal.view.order.find(item => item.update === count)!;
       expect(asked.sent).toBeDefined();
       if (settled) {

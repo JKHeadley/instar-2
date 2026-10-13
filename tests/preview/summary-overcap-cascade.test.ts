@@ -103,6 +103,7 @@ it('settles a writer result proven over the output cap and accepts a shorter spa
   try {
     await converse(w);
     await w.worker.summarizeIfNeeded(true);
+    await w.worker.summarizeIfNeeded(true); // Independent scheduler, not an answer-admission retry.
     const [first] = w.journal.view.summaries;
     // Before: the over-cap result stayed UNKNOWN and nothing was accepted. Now it is a recorded failure,
     // the next span is shorter, and Jev's undecided verdict reaches the stronger review, which accepts it.
@@ -166,6 +167,7 @@ it('recovers the live journal state: four UNKNOWN over-cap reservations settle a
 
     for (const turn of late) { w.worker.intake([update(turn.update, turn.text)]); await w.worker.drain(); w.tick(60_000); }
     await w.worker.summarizeIfNeeded(true);
+    await w.worker.summarizeIfNeeded(true); // The answer no longer spends a summary attempt.
     // Each proven over-cap attempt is settled with its reason. #482 and #483 are spent, and #483 -- spent -- no longer
     // sets the ceiling: the lowest over-cap span with an attempt left is #487, so the largest untried prefix below it
     // (#484) is offered. Before this change the dead #483 held the ceiling and the span could only end at #481.

@@ -4678,6 +4678,14 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (row.state) turn.modelState = row.state;
     if (row.failureClass) turn.failureClass = row.failureClass;
     if (row.memoryPending) turn.memoryPending = true;
+    // Rule 42: the answer decision is durable before the separate hold frame.
+    // Recover a rejected mutation's dependency even if that next append never ran;
+    // unresolved judgments retain their independent answer and background work.
+    if (row.memoryPending && !row.memoryUnresolved && !turn.memoryUndecided) {
+      turn.held = 'memory correction pending';
+      turn.heldSince ??= row.at;
+      view.heldTurns.add(turn); turn.wasHeld = true;
+    }
     if (row.memoryUnresolved !== undefined) {
       if (row.memoryUnresolved !== true || !row.memoryPending || row.memory?.length || row.personMerges?.length
         || row.personAttributes?.length || row.undo !== undefined || row.failureClass || !row.text.trim())
@@ -6302,7 +6310,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // A cue only schedules the existing capped model judgment; it never creates a preference.
   const preferenceCue = (turn: Turn) => fromOperator(turn)
     && /^(?:\s*(?:please\s+)?(?:always|never|stop|don['’]t|do not|no|use|give|make|keep|be|more|less)\b[^\n]*\b(?:answer|answers|reply|replies|respond|response|format|bullet|brief|concise|verbose|tone|style)\b|\s*(?:please\s+)?shorter\b|\s*(?:please\s+)?(?:more|less)\s+detail\b|\s*(?:i(?:['’]d| would)?\s+)?prefer\b|\s*(?:from now on|going forward)\b[^\n]*\b(?:answer|reply|respond|format|bullet|tone|style)\b|\s*(?:no|fewer|more)\s+bullet\b)/iu.test(turn.text);
-  const pendingMemory = () => journal.view.order.find(turn => remembered(turn) && fromOperator(turn) && !turn.memoryUndecided
+  // A validated mutation from either decision path is authoritative for this request.
+  const appliedMemory = (turn: Turn) => journal.view.memory.some(change => change.trigger === turn.id);
+  const pendingMemory = (answerDependency = false) => journal.view.order.find(turn =>
+    (!answerDependency || turn.editOf || turn.held === 'memory correction pending' && turn.memoryPending && !turn.memoryUnresolved)
+    && remembered(turn) && fromOperator(turn) && !turn.memoryUndecided && !appliedMemory(turn)
     && turn.noticeClass !== 'too-long-input' && Buffer.byteLength(turn.text) <= journal.view.limits.maxBytes
     && (turn.editOf || memoryCue(turn) || preferenceCue(turn) || turn.memoryPending)
 
@@ -7839,6 +7851,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // A split reply left part-way by a restart continues before anything new is answered.
       for (const turn of journal.view.order) if (turn.replyParts?.length) await sendReplyParts(turn);
       if (due) scheduleRequests();
+      // Settlement reads only durable outcomes; answer admission never waits for speculative work.
+      settleBehind();
+      settleExhaustedEdit();
       let blockedEarlier = false;
       for (const turn of journal.view.order) {
         if (!turn.accepted || turn.editOf || turn.sent || turn.intent) continue;
@@ -7873,17 +7888,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (Buffer.byteLength(turn.text) > journal.view.limits.maxBytes && !turn.noticeClass && !turn.reserved)
           journal.append({ kind: 'notice', id: turn.id, noticeClass: 'too-long-input', at: ports.now() });
         if (turn.noticeClass === 'too-long-input' && turn.held) { delete turn.held; delete turn.heldSince; }
-        // A correction is decided before its reply, so an uncertain send cannot
-        // let a later answer use the old fact. Intake remains durable if the
-        // capped summary path cannot decide it.
+        // Rules 77, 86, 95: a lexical cue or an unresolved judgment is background
+        // work, not an answer dependency. Only an edit or a rejected mutation
+        // waits here. Valid answer mutations apply before the next reservation.
         // A content-free loss notice cannot repeat the stale fact; let it through
         // even if a later correction still holds ordinary answers.
-        if (pendingMemory() && turn.modelState !== 'uncertain' && turn.noticeClass !== 'too-long-input'
+        if (pendingMemory(true) && turn.modelState !== 'uncertain' && turn.noticeClass !== 'too-long-input'
           && !isStatusCommand(turn.text)) {
           settleBehind();
           // A batch can need more than one summary frontier before the edit is
           // reached. Finish each durable prefix before considering later replies.
-          for (let attempt = 0; pendingMemory() && attempt < journal.view.order.length; attempt++) {
+          for (let attempt = 0; pendingMemory(true) && attempt < journal.view.order.length; attempt++) {
             const before = journal.view.summaries.length;
             await summarizeIfNeeded(true);
             settleExhaustedEdit();
@@ -7893,7 +7908,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // so the recovery pause does not hold every later answer.
           for (let request = pendingMemory(); request && journal.view.summaryReservations.size > 0; request = pendingMemory())
             journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-uncertain', at: ports.now() });
-          if (pendingMemory()) {
+          if (pendingMemory(true)) {
             if (turn.held !== 'memory correction pending') journal.append({kind:'hold',id:turn.id,reason:'memory correction pending',at:ports.now()});
             blockedEarlier = true;
             continue; // later eligible loss notices must still be reached
@@ -7907,7 +7922,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           delete turn.held;
         // A settled request (decided or recorded undecided, e.g. across a restart) releases
         // its correction hold; a hold with no request behind it keeps int11's held notice.
-        if (!pendingMemory() && turn.held === 'memory correction pending' && correctionRequestBehind()) {
+        if (!pendingMemory(true) && turn.held === 'memory correction pending' && correctionRequestBehind()) {
           delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
         }
         if (turn.held === 'earlier turn pending' && !blockedEarlier) { delete turn.held; delete turn.heldSince; }
@@ -8605,7 +8620,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(text.trim() && unlabeledRecall(context, text) ? { unlabeledRecall: true } : {}),
               ...(typeof answer !== 'string' && answer.reason?.trim() ? { reason: redact(answer.reason.slice(0, 1000)).text } : {}),
               ...(typeof answer === 'string' ? {} : { usage: answer.usage }), latencyMs: answerMs, at: decisionAt });
-            if (invalidMemory && !turn.memoryUndecided) {
+            if (invalidMemory && !memoryUnresolved && !turn.memoryUndecided) {
               journal.append({ kind: 'hold', id: turn.id, reason: 'memory correction pending', at: ports.now() });
               continue;
 
@@ -10143,11 +10158,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // memory decision is never dropped.
         const overCapRetry = journal.view.summaryFormatFailures.some(failed => failed.overCap && failed.through === through);
         const closable = overCapRetry ? [] : openFor(through, 50).map(({ id, note, turn: source }) => ({ id, sourceLabel: turnLabel(source!), in: note.in, quote: note.quote }));
-        const strictTrigger = journal.view.order.find(item => remembered(item) && fromOperator(item) && !item.memoryUndecided
+        const strictTrigger = journal.view.order.find(item => remembered(item) && fromOperator(item) && !item.memoryUndecided && !appliedMemory(item)
           && (item.editOf || memoryCue(item) || preferenceCue(item) || item.memoryPending || item.held === 'memory correction pending')
 
           && item.update > previous && item.update <= through);
-        const trigger = strictTrigger ?? journal.view.order.filter(item => remembered(item) && fromOperator(item) && !sizeRefused(item)
+        const trigger = strictTrigger ?? journal.view.order.filter(item => remembered(item) && fromOperator(item) && !sizeRefused(item) && !appliedMemory(item)
           && item.update > previous && item.update <= through
           && !/^\s*(?:hi|hello|hey)(?:\s+(?:again|there))?[.!?]?\s*$/iu.test(item.text)).at(-1);
         const older = trigger ? journal.view.order.filter(item => remembered(item) && fromOperator(item) && item.update < trigger.update) : [];
@@ -10518,6 +10533,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if ((journal.view.retracted?.length ?? 0) !== retractedAtBuild) {
         journal.append({ kind: 'summary-failed', through, state: 'complete', reason: SUMMARY_RETRACTED_REASON,
           ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
+          ...(!ports.replyCheck && typeof summary !== 'string' ? { usage: summary.usage } : {}), at: ports.now() });
+        return;
+      }
+      // An answer may admit this request while the summary's model/review is awaited.
+      // Rebuild from the recorded decision rather than apply a second interpretation.
+      if (trigger && appliedMemory(trigger)) {
+        journal.append({ kind: 'summary-failed', through, state: 'complete', reason: 'memory request already applied',
           ...(!ports.replyCheck && typeof summary !== 'string' ? { usage: summary.usage } : {}), at: ports.now() });
         return;
       }

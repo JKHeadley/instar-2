@@ -41,6 +41,7 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
     let worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'Actually, forget this fact: The archive access phrase is silver crane.')]);
     await worker.drain();
+    await worker.summarizeIfNeeded(true);
     expect(journal.view.memory).toMatchObject([{ mode: 'forget', quote: 'The archive access phrase is silver crane.' }]);
     expect(journal.view.channelItems.size).toBe(2);
     journal.close();
@@ -74,12 +75,14 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
     const status = spawnSync(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
       { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
-        encoding: 'utf8', timeout: 10000 });
-    expect(status.status, status.stderr).toBe(0);
+        // A cold TypeScript loader can spend more than ten seconds starting on a shared host.
+        // Bound startup separately from the semantic assertions above and report its actual error.
+        encoding: 'utf8', timeout: 60000 });
+    expect(status.status, status.error?.message ?? status.stderr).toBe(0);
     expect(JSON.parse(status.stdout).withheld).toMatchObject([{
       channelSource: 'conversation', channelSourceId: 'archive-1 Silver Crane', reason: 'verified operator requested forgetting' }]);
   } finally { rmSync(root, { recursive: true, force: true }); }
-}, 10000);
+}, 90000);
 
 it('forgets a relevant import despite five unrelated near-term dated imports and drains the next turn', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-dated-imports-')));
@@ -112,6 +115,7 @@ it('forgets a relevant import despite five unrelated near-term dated imports and
       }, send: async input => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} });
     worker.intake([update(1, `Actually, forget this fact: ${target}`)]);
     await worker.drain();
+    await worker.summarizeIfNeeded(true);
     worker.intake([update(2, 'Hello again')]);
     await worker.drain();
     expect(summarySources).toHaveLength(1);
@@ -177,6 +181,7 @@ it('keeps a correction beside a delivered lost-answer notice across replay', asy
     let worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'The cedar trail starts at East Pier.')]); await worker.drain();
     worker.intake([update(2, 'Actually, the cedar trail starts at West Pier.')]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
     worker.intake([update(3, 'The cedar trail starts at East Pier. What time is the ferry?')]); await worker.drain();
     expect(sends.filter(text => text.includes(UNKNOWN_ANSWER_NOTICE))).toHaveLength(1);
     journal.close();
@@ -206,7 +211,7 @@ it('keeps a correction beside a delivered lost-answer notice across replay', asy
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 10000);
 
-it('delivers a content-free lost-answer notice while an unresolved correction holds answers', async () => {
+it('delivers a content-free lost-answer notice alongside an independently answered unresolved correction', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-pending-notice-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
@@ -223,8 +228,11 @@ it('delivers a content-free lost-answer notice while an unresolved correction ho
     journal.append({ kind: 'model-uncertain', id: lost.id, state: 'uncertain', at: 1790000000000 });
     await worker.drain();
     expect(sends.filter(text => text.includes(UNKNOWN_ANSWER_NOTICE))).toHaveLength(1);
-    expect(journal.view.order[2]?.held).toBe('memory correction pending');
-    expect(journal.view.order[2]?.answer).toBeUndefined();
+    expect(journal.view.order[2]?.held).toBeUndefined();
+    expect(journal.view.order[2]?.answer).toBe('Understood.');
+    await worker.summarizeIfNeeded(true);
+    expect(journal.view.order[2]?.memoryPending).toBe(true);
+    expect(journal.view.memory).toEqual([]);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 10000);
@@ -503,7 +511,8 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     expect(asked.intent!.startsWith('Earlier conversation up to #')).toBe(asked.continuity !== undefined);
     await w.say(id++, 'Actually my gym locker code is 4412, not 3310.');
     expect(w.journal.view.memory).toHaveLength(1);
-    expect(replyBody(w.journal.view.order.at(-1)!)).toBe('Changed My gym locker code is 3310 → my gym locker code is 4412.');
+    // The independent answer was sent before the background correction was admitted.
+    expect(replyBody(w.journal.view.order.at(-1)!)).toBe('I do not have that code.');
     w.journal.close(); w = world(root);
     await w.say(id++, question);
     const corrected = JSON.parse(w.prompts.get(question)!);
@@ -517,7 +526,7 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     if (!('reason' in sam)) expect(JSON.parse(sam.context).people).toBeUndefined();
     await w.say(id++, 'Forget my gym locker code.');
     expect(w.journal.view.memory).toHaveLength(2);
-    expect(w.journal.view.order.at(-1)?.intent).toBe('Forgot the requested information.');
+    expect(w.journal.view.order.at(-1)?.intent).toBe('Your gym locker code is 4412.');
     w.journal.append({ kind: 'coherence', id: w.journal.view.order.at(-1)!.id,
       findings: [{ rule: 96, check: 'possible stale quote', excerpt: 'My gym locker code is 3310' }],
       at: 1790000000000 });
@@ -716,7 +725,12 @@ it('settles a correction the capped summary path cannot decide as undecided and 
     await w.say(1, 'My gym locker code is 3310.');
     await w.say(2, 'Actually my gym locker code is 4412, not 3310.');
     expect(w.journal.view.memory).toEqual([]);
-    expect(w.journal.view.order[1]?.held).toBe('memory correction pending');
+    expect(w.journal.view.order[1]?.held).toBeUndefined();
+    expect(w.journal.view.order[1]?.memoryPending).toBe(true);
+    await w.worker.summarizeIfNeeded(true);
+    await w.worker.summarizeIfNeeded(true);
+    await w.worker.summarizeIfNeeded(true);
+    await w.worker.drain();
     await w.say(3, 'What is my gym locker code?');
     // Two attempts per span: two from the start, then, once the summary through #1 is accepted, two from that base.
     expect([...w.journal.view.summaryFailures]).toEqual([[2, 4]]);
@@ -724,7 +738,7 @@ it('settles a correction the capped summary path cannot decide as undecided and 
     expect(w.journal.view.summarySpanFailures).toEqual([2, 2]);
     expect(w.journal.view.order[1]).toMatchObject({ memoryPending: true, memoryUndecided: true });
     expect(w.journal.view.order[1]?.held).toBeUndefined();
-    expect(w.journal.view.order[1]?.intentBody).toBe(MEMORY_UNDECIDED_REPLY);
+    expect(w.journal.view.order[1]?.intentBody).toBe('I do not have that code.');
     expect(w.journal.view.order[2]?.held).toBeUndefined();
     expect(w.journal.view.order[2]?.intent).toBeDefined();
     const packet = JSON.parse(w.prompts.get('What is my gym locker code?')!);
@@ -742,8 +756,11 @@ it('does not turn an invalid attempted forget into an empty successful decision'
     await w.say(1, 'My gym locker code is 3310.');
     await w.say(2, 'Forget my gym locker code.');
     expect(w.journal.view.memory).toEqual([]);
-    expect(w.journal.view.order[1]?.held).toBe('memory correction pending');
-    expect(w.journal.view.order[1]?.intent).toBeUndefined();
+    expect(w.journal.view.order[1]?.held).toBeUndefined();
+    expect(w.journal.view.order[1]?.memoryPending).toBe(true);
+    expect(w.journal.view.order[1]?.intent).toBe('I do not have that code.');
+    expect(w.journal.view.summaries).toHaveLength(0);
+    expect(w.journal.view.summaryFailures.size).toBeGreaterThan(0);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -755,8 +772,11 @@ it('keeps an unresolved target pending rather than recording no request', async 
     await w.say(1, 'My gym locker code is 3310.');
     await w.say(2, 'Forget my gym locker code.');
     expect(w.journal.view.memory).toEqual([]);
-    expect(w.journal.view.order[1]?.held).toBe('memory correction pending');
-    expect(w.journal.view.order[1]?.intent).toBeUndefined();
+    expect(w.journal.view.order[1]?.held).toBeUndefined();
+    expect(w.journal.view.order[1]?.memoryPending).toBe(true);
+    expect(w.journal.view.order[1]?.intent).toBe('I do not have that code.');
+    expect(w.journal.view.summaries).toHaveLength(0);
+    expect(w.journal.view.summaryFailures.size).toBeGreaterThan(0);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -853,7 +873,7 @@ it('settles an undecidable correction with one honest reply and keeps answering 
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 20000);
 
-it('still holds later answers while a correction can be decided by a summary that has not run', async () => {
+it('answers independently and applies a correction when its background summary runs', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-decidable-')));
   const path = join(root, 'journal.encrypted');
   try {
@@ -867,7 +887,7 @@ it('still holds later answers while a correction can be decided by a summary tha
           const packet = JSON.parse(input.context);
           const source = packet.memoryCandidates?.find((item: { message: string }) => item.message.includes('3310'));
           return JSON.stringify({ summary: 'The operator corrected the locker code.', people: [],
-            memory: source ? [{ mode: 'correct', source: source.id, quote: 'My gym locker code is 3310.', value: 'My gym locker code is 4412.' }] : [] });
+            memory: source ? [{ mode: 'correct', source: source.id, quote: 'My gym locker code is 3310.', replacement: 'my gym locker code is 4412' }] : [] });
         }
         return 'Plain answer.';
       },
@@ -877,7 +897,11 @@ it('still holds later answers while a correction can be decided by a summary tha
     await worker.drain();
     worker.intake([update(2, 'Actually my gym locker code is 4412, not 3310.')]);
     await worker.drain();
-    expect(summaries).toBeGreaterThan(0);
+    expect(summaries).toBe(0);
+    expect(sends).toHaveLength(2);
+    await worker.summarizeIfNeeded(true);
+    expect(summaries).toBe(1);
+    expect(journal.view.memory).toMatchObject([{ mode: 'correct', replacement: 'my gym locker code is 4412' }]);
     expect(journal.view.order.some(turn => turn.memoryUndecided)).toBe(false);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -912,6 +936,12 @@ it('replays an undecided mark on an already-sent pending request and resumes lat
     expect(journal.view.order[1]?.sent).toBe(2);
     journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports as never);
     worker.intake([update(3, 'What is my gym locker code?')]);
+    await worker.summarizeIfNeeded(true);
+    // This regression exercises replay of an explicit settlement on an already-sent
+    // request. Independent answer admission no longer authors it as a blocking preflight.
+    expect(journal.view.summaryReservations.size).toBe(1);
+    journal.append({ kind: 'memory-undecided', id: journal.view.order[1]!.id,
+      reason: 'summary-uncertain', at: ports.now() });
     await worker.drain();
     expect(journal.view.order[1]?.memoryUndecided).toBe(true);
     expect(sends.map(item => item.update)).toEqual([1, 2, 3]); // later work resumed; turn 2 not repeated

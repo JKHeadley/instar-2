@@ -110,29 +110,28 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         '--expires-at', String(trial.expiresAt), '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),
         '--login-profile', profile, '--model', world.model,
         '--bot-username', world.configuration.botUsername, '--max-cycles',
-        mode === 'summary-contradiction' ? '1' : '3', '--max-poll-seconds', '1'],
+        '3', '--max-poll-seconds', '1'],
       { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env });
       expect(run.status, run.stderr).toBe(0);
       const rows = readFileSync(calls, 'utf8').trim().split('\n').map(line => JSON.parse(line));
       const roles = rows.map(row => row.role);
       expect(roles).toEqual(mode === 'summary-contradiction'
-        ? ['summary', 'summary-review', 'summary', 'summary-review']
+        ? ['answer', 'reply-review', 'summary', 'summary-review', 'summary', 'summary-review']
         : mode === 'reply-contradiction'
           // A contradicting verdict is a format miss: re-asked once (Rule 116), then held as before.
-          ? ['summary', 'summary-review', 'answer', 'reply-review', 'reply-review']
-          : ['summary', 'summary-review', 'answer', 'reply-review']);
+          ? ['answer', 'reply-review', 'reply-review', 'summary', 'summary-review']
+          : ['answer', 'reply-review', 'summary', 'summary-review']);
       // Rule 29: every model input names its verified writer. The operator writes the answer's input;
       // the runner, a verified system principal, writes the summary and both review envelopes.
       const runner = { id: `preview-runner:${world.configuration.botId}`, kind: 'system', adapter: 'preview-runner' };
       for (const row of rows) expect(row.writer, row.role).toEqual(row.role === 'answer'
         ? { id: world.configuration.operatorSenderId, kind: 'person', adapter: 'telegram-bot-api:offline-test-endpoint' } : runner);
-      if (mode !== 'summary-contradiction') {
+      {
         const reviewed = rows.find(row => row.role === 'reply-review').context;
         expect(answerOf(reviewed.candidateReply)).toBe(`${reply}`);
         expect(reviewed).toMatchObject({
           operatorMessage: operatorText,
-          audience: { surface: 'telegram-private-chat' },
-          preferences: expect.arrayContaining([expect.objectContaining({ text: operatorText })]) });
+          audience: { surface: 'telegram-private-chat' } });
       }
       expect(rows.find(row => row.role === 'summary-review').context).toMatchObject({
         packet: expect.objectContaining({ history: expect.arrayContaining([
@@ -147,7 +146,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
       { cwd: process.cwd(), encoding: 'utf8', timeout: 10000, env });
       expect(status.status, status.stderr).toBe(0);
       const view = JSON.parse(status.stdout);
-      expect(view.calls).toBe(mode === 'reply-contradiction' ? 5 : 4);
+      expect(view.calls).toBe(mode === 'summary-contradiction' ? 6 : mode === 'reply-contradiction' ? 5 : 4);
       const sealed = readFileSync(join(root, 'journal.encrypted'));
       const evidence = [];
       for (let offset = 0; offset < sealed.length;) {
@@ -166,7 +165,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
       expect(evidence.filter(row => row.kind === 'model-call' && row.route === 'preview-subscription'
         && row.usage?.inputTokens === 1 && row.usage?.outputTokens === 1
         && ['answer', 'reply-review', 'summary', 'summary-review'].includes(row.judgment)))
-        .toHaveLength(mode === 'reply-contradiction' ? 5 : 4);
+        .toHaveLength(mode === 'summary-contradiction' ? 6 : mode === 'reply-contradiction' ? 5 : 4);
       const metered = evidence.filter(row => row.kind !== 'model-call').filter(row => {
         const usage = row.usage ?? row.result?.usage ?? row.faithfulness?.usage;
         return usage?.inputTokens === 1 && usage?.outputTokens === 1;
@@ -175,17 +174,17 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
       // reply-check result (settlement is idempotent per reservation), so a passing
       // review carries one extra metered row.
       // A re-asked review (Rule 116) meters its second call too.
-      expect(metered).toHaveLength(mode === 'summary-contradiction' ? 4 : 5);
-      if (mode !== 'summary-contradiction') {
+      expect(metered).toHaveLength(mode === 'summary-contradiction' ? 7 : 5);
+      {
         expect(evidence.filter(row => row.kind === 'reply-review-state' && row.usage?.inputTokens === 1
           && row.usage?.outputTokens === 1)).toHaveLength(mode === 'reply-contradiction' ? 2 : 1);
         expect(evidence.filter(row => row.kind === 'reply-check' && row.result.path === 'subscription'
-          && row.result.usage)).toHaveLength(mode === 'wrapped' ? 1 : 0);
+          && row.result.usage)).toHaveLength(mode === 'reply-contradiction' ? 0 : 1);
         expect(evidence.filter(row => row.kind === 'reply-check' && row.result.path === 'subscription')
-          .map(row => row.result.verdict)).toEqual([mode === 'wrapped' ? 'pass' : 'unavailable']);
+          .map(row => row.result.verdict)).toEqual([mode === 'reply-contradiction' ? 'unavailable' : 'pass']);
       }
       expect(view.modelJsonShapes.counts).toMatchObject(mode === 'summary-contradiction'
-        ? { 'answer/decision/tolerated/fenced': 2, 'summary-review/decision/tolerated/fenced': 2 }
+        ? { 'answer/decision/tolerated/fenced': 3, 'reply-review/decision/tolerated/fenced': 1, 'summary-review/decision/tolerated/fenced': 2 }
         : { 'answer/decision/tolerated/fenced': 2,
           'reply-review/decision/tolerated/fenced': mode === 'reply-contradiction' ? 2 : 1,
           'summary-review/decision/tolerated/fenced': 1 });
@@ -199,9 +198,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         // A contradicted reply review is unavailable, never a pass nor a veto (Rules 77, 86, 95). This canary's
         // Jev is unsure (0.5) on every rule, credential included: below Jev's confident credential line, so with
         // no review verdict the reply is sent once with the unavailable review recorded (plan #102). The summary
-        // contradiction keeps its own hold, and nothing is sent there.
-        if (mode === 'reply-contradiction') expect(sends.map(send => answerOf(send.text))).toEqual([`${reply}`]);
-        else expect(sends).toHaveLength(0);
+        // contradiction refuses the summary without suppressing the already independent answer.
+        expect(sends.map(send => answerOf(send.text))).toEqual([`${reply}`]);
         expect(view.modelJsonShapes.counts).toMatchObject({
           [mode === 'reply-contradiction' ? 'reply-review/verdict/malformed/not-json'
             : 'summary-review/verdict/malformed/prose-wrapped']:

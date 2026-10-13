@@ -45,7 +45,9 @@ it('sends a later loss notice while an earlier ordinary turn is held for a pendi
     journal = openPreviewJournal(path, key);
     worker = createJournalWorker(journal, ports as never);
     worker.intake([update(3, 'Actually, the cedar trail starts at West Pier.')]);
-    for (let i = 0; i < 4; i++) await worker.drain();
+    for (let i = 0; i < 4; i++) {
+      await worker.summarizeIfNeeded(); await worker.summarizeIfNeeded(); await worker.drain();
+    }
     expect(sends.filter(item => item.text.includes(UNKNOWN_ANSWER_NOTICE))).toHaveLength(1);
     expect(journal.view.order[1]?.noticeClass).toBe('unknown-answer');
     // The correction's own summary judgment came back unresolved on both bounded attempts, so it settles as

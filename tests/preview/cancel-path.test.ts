@@ -118,11 +118,12 @@ const liveShape = async (w: ReturnType<typeof world>, extra: string[] = []) => {
   expect(openRequests(w.journal.view).map(item => item.quote)).toEqual([...extra, FEEDER, PLUMBER]);
   return id;
 };
-/** The withdrawal, drained until its summary span has used both attempts -- the live shape, where the
+/** Schedule the recorded summary attempts explicitly, then drain the withdrawal -- the live shape, where the
  * reply arrived 400 seconds after the message. */
 const withdraw = async (w: ReturnType<typeof world>, id: number, text = CANCEL) => {
   w.worker.intake([update(id, text)]);
-  await w.worker.drain(); await w.worker.drain();
+  await w.worker.summarizeIfNeeded(true); await w.worker.summarizeIfNeeded(true);
+    await w.worker.drain(); await w.worker.drain();
 };
 
 /** Case one: a withdrawal naming one open request. It is cancelled against the operator's own words, the
@@ -240,7 +241,8 @@ it('cancels every matching request when the operator\'s own words withdraw them 
         cancelReminders: offered(input).filter(item => item.quote.includes('bird feeder'))
           .map(item => ({ id: item.id, quote: 'cancel both bird feeder ones' })) }) }, clock);
     const id = await liveShape(w, [EARLIER]);
-    w.worker.intake([update(id, both)]); await w.worker.drain(); await w.worker.drain();
+    w.worker.intake([update(id, both)]); await w.worker.summarizeIfNeeded(true); await w.worker.summarizeIfNeeded(true);
+    await w.worker.drain(); await w.worker.drain();
     expect(w.journal.view.reminderCancels).toHaveLength(2);
     expect(openRequests(w.journal.view).map(item => item.quote)).toEqual([PLUMBER]);
     expect(w.sent.at(-1)!).toContain(EARLIER);
@@ -316,7 +318,8 @@ it('leaves a real memory correction on the memory path, cancelling nothing', asy
     const w = world(root, { summaryResolves: true,
       answer: () => JSON.stringify({ reply: 'Noted, Ana.', memory: [], dated: [], cancelReminders: [] }) }, clock);
     const id = await liveShape(w);
-    w.worker.intake([update(id, SISTER)]); await w.worker.drain(); await w.worker.drain();
+    w.worker.intake([update(id, SISTER)]); await w.worker.summarizeIfNeeded(true); await w.worker.summarizeIfNeeded(true);
+    await w.worker.drain(); await w.worker.drain();
     const correction = turnOf(w, SISTER);
     // The summary decided this turn's memory question, exactly as before.
     expect(w.journal.view.summaries.some(summary => summary.memoryFor?.includes(correction.id))).toBe(true);
