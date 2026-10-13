@@ -28,7 +28,7 @@ Decision: ack-timing-1013-budget | Schedule at seven seconds with three seconds 
 Decision: ack-timing-1013-queue | Use durable serial order for one queued or still-working line in the existing slot, rechecking queue state before admission. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ack-timing-1013-PROGRESS.md
 Decision: ack-timing-1013-replay | Replay F4/F8 intake, terminal text and timelines through the worker; preserve historical template readability. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ack-timing-1013-PROGRESS.md
 
-Subject (13 paths): tests/preview/journal.ts; tests/preview/minimal-responder.test.ts; tests/preview/reply-acknowledgement.test.ts; tests/preview/reply-acknowledgement-timing.test.ts; tests/preview/ack-timing-userwalk.test.ts; tests/preview/fixtures/ack-timing-userwalk-2026-10-13.json; generated/capabilities.json; generated/capabilities.md; generated/coverage.md; generated/glossary.md; generated/register.json; generated/rules.md; generated/source.json
+Subject (14 paths): tests/preview/journal.ts; tests/preview/minimal-responder.test.ts; tests/preview/send-stage-replay.test.ts; tests/preview/reply-acknowledgement.test.ts; tests/preview/reply-acknowledgement-timing.test.ts; tests/preview/ack-timing-userwalk.test.ts; tests/preview/fixtures/ack-timing-userwalk-2026-10-13.json; generated/capabilities.json; generated/capabilities.md; generated/coverage.md; generated/glossary.md; generated/register.json; generated/rules.md; generated/source.json
 
 ## Closing block
 
