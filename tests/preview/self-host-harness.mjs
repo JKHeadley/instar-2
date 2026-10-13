@@ -24,13 +24,13 @@ import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { SELF_HOST_HARNESS, SELF_HOST_STALL_COVERAGE } from './stall-coverage.js';
 import { createSelfHostOwners } from './self-host-owners.ts';
-import { compositionClosure, compositionDigest, currentRuntime, fileDigest } from '../../scripts/composition-digest.mjs';
+import { fileDigest } from '../../scripts/composition-digest.mjs';
 
 // startMs bounds spawn-to-readiness only (a runtime that never starts); wallMs bounds the work from readiness.
 export const CONFINEMENT_LIMITS = Object.freeze({ wallMs: 20000, memoryMb: 256, outputBytes: 4096, hostToolMs: 600000, graceMs: 5000, startMs: 120000 });
 const WORKER_PROFILE = new URL('../../deploy/macos/fixed-worker/worker.sb', import.meta.url);
-const DECLARATIONS = new URL('../../src/assembly/harness.declarations.json', import.meta.url);
-const REPOSITORY = new URL('../../', import.meta.url);
+import { selfHostCompositionEvidence } from './self-host-composition.mjs';
+export { selfHostCompositionEvidence } from './self-host-composition.mjs';
 const take = result => { if (result.kind !== 'Success') throw Error(`self-host: refused ${result.detail ?? ''}`); return result.value; };
 const tail = text => redact(String(text ?? '')).text.slice(-CONFINEMENT_LIMITS.outputBytes);
 const fsyncDirectory = path => { const fd = openSync(path, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } };
@@ -72,27 +72,6 @@ export function openRecordLog(root, context) {
         conflicts: bytes.get(record.id) === null ? [{ key: record.id, kind: 'immutable-disagreement', facts: [record.id], detail: 'one id, different bytes' }] : [] }));
     },
   });
-}
-
-/**
- * Rules 26, 49, 69, 115 (D17 §2): the exact composition the supported self-hosting tuple was certified
- * on. The declaration names the composition's entry points and the resolved runtime; the files are the
- * entries' static import closure, and the digest is recomputed from those files as they are now, on the
- * runtime actually running. `supported` is true only when the declared conformance and runtime match
- * this running composition exactly.
- */
-export function selfHostCompositionEvidence(declarations = JSON.parse(readFileSync(DECLARATIONS, 'utf8')),
-  read = path => { try { return readFileSync(new URL(path, REPOSITORY), 'utf8'); } catch { return null; } }) {
-  const metrics = declarations.flatMap(entry => entry.requiredFacts?.metrics ?? []);
-  const prefix = `harness.${SELF_HOST_HARNESS}.`;
-  const fact = name => metrics.filter(metric => metric.startsWith(prefix) && metric.includes(`.self-hosting.${name}=`)).map(metric => metric.slice(metric.indexOf('=') + 1));
-  const [entries] = fact('entries'), [declared] = fact('conformance'), [runtime] = fact('runtime');
-  const closure = compositionClosure((entries ?? '').split(',').filter(Boolean), read, 'src/assembly/harness.declarations.json');
-  const running = currentRuntime();
-  const digest = closure.complete && closure.files.length ? compositionDigest(running, closure.files, read) : null;
-  return { entries: (entries ?? '').split(',').filter(Boolean), files: closure.files, runtime: running, declaredRuntime: runtime ?? null,
-    declared: declared ?? null, digest: digest ?? hashBytes('incomplete composition'),
-    supported: digest !== null && declared === digest && runtime === running };
 }
 
 /**

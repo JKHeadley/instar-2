@@ -40,6 +40,7 @@ it('detects every macOS-only mechanism, directly or through a local helper, and 
     'tests/a/stat.test.ts': `spawnSync('/usr/bin/stat', ['-${'f'}', '%Lp', key]);\n`,
     'tests/a/gated.test.ts': `const mac = process.platform === 'dar${'win'}';\nit.runIf(mac)('x', () => {});\n`,
     'tests/a/inline-gate.test.ts': `it.skipIf(process.platform !== 'dar${'win'}')('x', () => {});\n`,
+    'tests/a/tool-gate.test.ts': `const imageTool = existsSync('/usr/bin/hdi${'util'}');\nit.runIf(imageTool)('volume', () => {});\n`,
     'tests/a/via-helper.test.ts': "import { run } from '../helpers/confined.js';\n",
     'tests/helpers/confined.ts': spawnOf('sandbox-exec'),
     'tests/a/via-script.test.ts': "import { disk } from '../../scripts/disk.mjs';\n",
@@ -49,7 +50,7 @@ it('detects every macOS-only mechanism, directly or through a local helper, and 
   const detected = detectMacosOnly(root);
   expect(detected.map((row: { file: string }) => row.file)).toEqual(['tests/a/gated.test.ts', 'tests/a/inline-gate.test.ts',
     'tests/a/launchd.test.ts', 'tests/a/owner-launch.test.ts', 'tests/a/plist.test.ts', 'tests/a/sandbox.test.ts', 'tests/a/stat.test.ts',
-    'tests/a/via-helper.test.ts', 'tests/a/via-script.test.ts']);
+    'tests/a/tool-gate.test.ts', 'tests/a/via-helper.test.ts', 'tests/a/via-script.test.ts']);
   expect(detected.find((row: { file: string }) => row.file === 'tests/a/via-helper.test.ts').reason)
     .toBe('spawns a macOS-only tool (via tests/helpers/confined.ts)');
   const files = detected.map((row: { file: string }) => row.file);
