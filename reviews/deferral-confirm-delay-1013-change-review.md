@@ -40,6 +40,8 @@ Decision: durable-rejection-replay | Reconstruct the existing hold from the pers
 Decision: explicit-background-fixtures | Schedule summaries explicitly and retain mutation, exhaustion and replay checks; independently sent answers keep their original text. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/deferral-confirm-delay-1013-repair-090451-PROGRESS.md
 Decision: finite-timing-control | Advance a snapshot of fake timers so the old blocking path fails promptly at its reservation assertion. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/deferral-confirm-delay-1013-repair-090451-PROGRESS.md
 
+Repair publication: Source 6627226bc25b97788ddf12a0f24bb05970786337 regenerated the existing register in replay mode as sha256:e4250b8980988e491d3b6f16760d40b2e2403c954852a3a354b2fd9c48689601. The generated publications update source and generation references; no authority is added.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest route: narrow the existing pre-answer dependency test and retain the existing independent-answer distinction at the post-answer hold. All mutation validation, journal application and send settlement remain in place. Existing summary scheduling owns unsettled memory work. No new runtime component or timer. Start guards are authenticated durable intake; end guards are validated memory application and durable reply receipts; secrets, caps and stop retain their existing checks. Captured-output worker replay is evidence for this submission; live deployment and unattended fresh-model acceptance remain with the desk.
