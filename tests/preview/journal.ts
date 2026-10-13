@@ -8054,11 +8054,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // failures quoted the old promise or changed the operator's words. Give these exact validation
           // failures the existing single format re-ask, before recording an answer or sending anything.
           // No meaning is inferred and no citation is repaired by code; the same validators decide again.
+          let requestDecisionMissing = false;
           const declarationDefect = (given: Answer): string | undefined => {
             const text = typeof given === 'string' ? given : 'text' in given ? given.text : undefined;
             if (text === undefined) return undefined;
             let value: Record<string, unknown>;
-            try { value = JSON.parse(text) as Record<string, unknown>; } catch { return undefined; }
+            try { value = JSON.parse(text) as Record<string, unknown>; } catch {
+              // A prose answer cannot settle the offered requests. Reuse the one bounded declaration
+              // repair; the model reads the message, never a keyword classifier (Rules 10, 93, 116).
+              if (text.trim() && fromOperator(turn) && !probeTurn(journal.view, turn) && !turn.requestedAction
+                && openRequests(journal.view).length) {
+                requestDecisionMissing = true;
+                return 'the offered reminders need a request decision: return cancelReminders with offered ids and exact operator quotes for withdrawals, or [] when this message withdraws none; retain the independent answer in reply';
+              }
+              return undefined;
+            }
             if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
             const reply = value.reply;
             const body = typeof reply === 'string' ? reply : reply && typeof reply === 'object' && !Array.isArray(reply)
@@ -8194,6 +8204,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           } else {
             const decisionAt = ports.now();
             const output = typeof answer === 'string' ? answer : answer.text;
+            let decided = false;
             let text = output, correction: string | undefined, memory: MemoryChange[] | undefined, dated: DatedItem[] | undefined, lastNamedPerson: string | undefined, personAttributes: PersonAttribute[] | undefined,
               personMerges: PersonMerge[] | undefined, separatedAnswer: string | undefined, invalidMemory = false, memoryUnresolved = false, invalidDate = false,
               invalidUndo = false, undo: UndoTarget | undefined, closedQuestions: string[] | undefined,
@@ -8215,6 +8226,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
               if (parsed && (typeof replyValue === 'string' || replyAnswer !== undefined)) {
+                // Repairing the reply envelope alone does not settle its missing request decision.
+                decided = !requestDecisionMissing || parsed.cancelReminders !== undefined;
                 separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string;
                 if (turn.grounding?.corrections.length && typeof parsed.correction === 'string'
                   && parsed.correction.trim() && parsed.correction.length <= MAX_ANSWER_BYTES) correction = parsed.correction.trim();
@@ -8465,8 +8478,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   : item.day ? ' I recorded this date; I act on a date only when you ask me to.' : '')).join(' ');
               text = `${text.trim()} ${receipt}`.trim();
             }
-            // Rules 10, 87, 93: plain prose is not an attempted mutation. Keep open requests silently;
-            // the existing rejected-cancellation / unresolved-change path below discloses actual failed changes.
+            // Rules 3, 10, 95: after the bounded repair, prose still proves no request decision. Ordinary
+            // communication stays open, including without reviewers; disclose the unchanged state rather
+            // than treating prose as a cancellation. A resolved unrelated answer carries no such notice.
             // Rule 52: open requests are named in one bounded line, never one message each.
             const nameRequests = (items: DatedItem[]) => items.slice(0, 3)
               .map(item => `"${clip(clean(redact(item.quote).text, true), 160)}"`).join('; ')
@@ -8479,7 +8493,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // two, d12bbf55, RA3): neither the refusal nor the standing requests reached the operator at all.
             const standing = !invalidMemory && !reminderCancels?.length
               && text.trim() && fromOperator(turn) && !probe && !turn.requestedAction
-              && (invalidCancel || turn.memoryUndecided === true) ? openRequests(journal.view) : [];
+              && (!decided || invalidCancel || turn.memoryUndecided === true) ? openRequests(journal.view) : [];
             // Rule 2: a set-aside echo never reads as a saved change; if a change was meant, the operator is asked again.
             if (ownReplyEcho && !invalidMemory && memory?.length === 0 && text.trim() && fromOperator(turn) && !probe && !turn.requestedAction)
               text = `${text.trim()}\n\nNo memory or preference change was saved from this message. If you meant to change one, please say it again.`;
@@ -8494,6 +8508,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (kept.length && text.trim()) text = `${text.trim()} I did not forget the text of ${kept.length > 1 ? 'requests that are' : 'a request that is'} `
               + `still open, so nothing is lost: ${nameQuotes(kept.map(change => clean(redact(change.quote).text, true)))}. `
               + 'Cancel it first if you want it forgotten.';
+            if (standing.length && !decided) text = `${text.trim()} No cancellation was recorded.`;
             if (standing.length) text = `${text.trim()} Your open request${standing.length > 1 ? 's' : ''} `
               + `still stand${standing.length > 1 ? '' : 's'} and will be sent at ${standing.length > 1 ? 'their' : 'its'} time: `
               + `${nameRequests(standing)}.`.trim();

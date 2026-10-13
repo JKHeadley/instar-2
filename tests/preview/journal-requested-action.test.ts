@@ -44,13 +44,17 @@ const decide = (input: Input) => {
 };
 const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<typeof genesis> = {}) => {
   const state = { now: start, stopped: false, stopWhenQueued: false, fail: false, uncertain: false, plain: false, crashDue: false,
-    plainCalls: 0, recordedDue: undefined as string | { state: 'uncertain' } | undefined,
+    plainCalls: 0, repair: undefined as 'keep' | 'cancel' | 'omit' | undefined, reviewersUnavailable: false,
+    recordedDue: undefined as string | { state: 'uncertain' } | undefined,
     plainText: 'Okay, I cancelled the Priya reminder.', summaryCancel: undefined as undefined | 'keep' | 'cancel' | 'omit',
     sent: [] as { text: string; thread?: number }[], dueCalls: 0 };
   let current: ReturnType<typeof OpenJournal> | undefined;
   const queued = () => current?.view.order.some(turn => turn.requestedAction && turn.intent === undefined) ?? false;
   const ports = { now: () => state.now, stopped: () => state.stopped || state.stopWhenQueued && queued(), timeZone: 'America/Los_Angeles',
     model: async (input: Input) => {
+      if (JSON.parse(input.context).formatReminder && state.repair)
+        return state.repair === 'cancel' ? decide(input)
+          : JSON.stringify({ reply: state.plainText, memory: [], ...(state.repair === 'omit' ? {} : { cancelReminders: [] }) });
       if (input.id.startsWith('summary:') && state.summaryCancel) {
         const listed = (JSON.parse(input.context) as { reminders?: { id: string }[] }).reminders ?? [];
         return JSON.stringify({ summary: `The operator asked: ${priya}.`, people: [], memory: [], commitments: [], questions: [],
@@ -73,7 +77,10 @@ const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<
   const open = (first = false) => {
     const journal = first ? openPreviewJournal(path, key, { ...genesis, maxReplies, ...limits }) : openPreviewJournal(path, key);
     current = journal;
-    return { journal, worker: createJournalWorker(journal, ports) };
+    return { journal, worker: createJournalWorker(journal, { ...ports, ...(state.reviewersUnavailable ? {
+      replyCheck: { elapsedMs: () => state.now, jev: async () => { throw Error('provider unavailable'); },
+        escalate: async () => { throw Error('provider unavailable'); } },
+    } : {}) }) };
   };
   const pushes = () => state.sent.filter(item => item.text.startsWith('You asked on')).map(item => item.text);
   return { state, open, pushes };
@@ -450,11 +457,13 @@ it('answers an ordinary question with a plain reply while a request is open, lea
     const { state, open, pushes } = harness(root);
     let { journal, worker } = open(true);
     worker.intake([update(1, priya)]); await worker.drain();
-    state.plain = true; state.plainText = 'Your test marker is "probe-9f77778e."';
+    state.plain = true; state.plainText = 'Your test marker is "probe-9f77778e."'; state.repair = 'keep';
     worker.intake([update(2, probeText)]); await worker.drain();
     await worker.summarizeIfNeeded(); // the launcher's per-cycle recovery call finds nothing to settle
     const probe = journal.view.order[1]!;
-    expect(state.plainCalls).toBe(1); // one call: no re-ask
+    expect(state.plainCalls).toBe(1); // the original prose; one repair records the empty request decision
+    expect(probe.answerRetried).toBe(true);
+    expect(probe.reminderDecided).toBe(true);
     expect(probe).toMatchObject({ answer: 'Your test marker is "probe-9f77778e."' });
     expect(probe.memoryPending).toBeUndefined();
     expect(probe.held).toBeUndefined();
@@ -475,24 +484,49 @@ it('answers an ordinary question with a plain reply while a request is open, lea
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('never treats a plain-text reply to a cancellation as a decision: only recorded changes mutate the request', async () => {
-  const root = tmp('plain');
+it.each(['absent', 'unavailable', 'capped', 'incomplete-repair'] as const)('discloses an unrecorded plain-text cancellation with reviewers %s', async mode => {
+  const root = tmp(`plain-${mode}`);
   try {
-    const { state, open, pushes } = harness(root);
+    const { state, open, pushes } = harness(root, genesis.maxReplies, mode === 'capped' ? { maxCalls: 2 } : {});
+    state.reviewersUnavailable = mode === 'unavailable';
     let { journal, worker } = open(true);
     worker.intake([update(1, priya)]); await worker.drain();
-    // With no contextual reviewer in this harness, plain prose is not an admitted mutation.
-    // The renderer must not infer intent from its words; rejected structured changes are covered below.
+    // The bounded repair also returns prose; reviewers cannot supply the missing outcome.
     state.plain = true;
+    if (mode === 'incomplete-repair') state.repair = 'omit';
     worker.intake([update(2, 'cancel the Priya reminder')]); await worker.drain();
     await worker.summarizeIfNeeded();
     expect(journal.view.order[1]?.memoryPending).toBeUndefined();
     expect(journal.view.reminderCancels).toEqual([]);
-    expect(state.sent.at(-1)!.text).toBe(state.plainText);
+    expect(state.sent.at(-1)!.text).toContain(state.plainText);
+    expect(state.sent.at(-1)!.text).toContain('No cancellation was recorded.');
+    expect(state.sent.at(-1)!.text).toContain('Your open request still stands');
+    expect(state.plainCalls).toBe(mode === 'capped' || mode === 'incomplete-repair' ? 1 : 2);
+    if (mode === 'unavailable') expect(journal.view.replyCheckCounts.unavailable).toBeGreaterThan(0);
     journal.close(); ({ journal, worker } = open());
     state.now = friday9; state.plain = false;
     await worker.drain(); await worker.sendRequested();
-    expect(pushes()).toEqual([`${priyaHeader}\nDoing what you asked: ${priya}.`]);
+    if (mode === 'capped') expect(pushes()).toEqual([]);
+    else expect(pushes()).toEqual([`${priyaHeader}\nDoing what you asked: ${priya}.`]);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('repairs a plain cancellation through the existing quoted decision and keeps it cancelled after restart', async () => {
+  const root = tmp('plain-repaired');
+  try {
+    const { state, open, pushes } = harness(root);
+    let { journal, worker } = open(true);
+    worker.intake([update(1, priya)]); await worker.drain();
+    state.plain = true; state.repair = 'cancel';
+    worker.intake([update(2, 'cancel the Priya reminder')]); await worker.drain();
+    expect(journal.view.reminderCancels).toHaveLength(1);
+    expect(state.sent.at(-1)!.text).toContain('Cancelled request:');
+    expect(state.sent.at(-1)!.text).not.toContain('still stands');
+    journal.close(); ({ journal, worker } = open());
+    state.now = friday9;
+    await worker.drain(); await worker.sendRequested();
+    expect(pushes()).toEqual([]);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
