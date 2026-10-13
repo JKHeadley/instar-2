@@ -18,7 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/status-truth-live.test.ts
 Hook bypass: none; core.hooksPath unset; inspected shared hooks directory contains sample hooks only.
 Convergence: none
-Prompt review: General evidence precedence and temporal reasoning; no literal user phrase classifier or prescribed scenario verdict. Supported completion remains allowed. Recorded outputs remain unchanged. Instruction-delivery assertions are not a fresh live model or Telegram proof.
+Prompt review: General evidence precedence and temporal reasoning; no literal user phrase classifier or prescribed scenario verdict. Supported completion remains allowed; recorded neighbors assert the accepted answer after its acknowledgement and the accepted autonomous reminder after its due time. Recorded outputs remain unchanged. Instruction-delivery assertions are not a fresh live model or Telegram proof.
 Decision: status-truth-1013-delivery | Put delivery precedence, due-versus-sent and as-of-versus-startup into existing answer/review instructions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/status-truth-1013-PROGRESS.md
 Decision: status-truth-1013-warning | Remove the blanket plain-answer warning; retain existing failed-mutation disclosures without classifying intent in code. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/status-truth-1013-PROGRESS.md
 Decision: status-truth-1013-evidence | Replay exact captured outputs and packets; distinguish contract checks from fresh live model evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/status-truth-1013-PROGRESS.md

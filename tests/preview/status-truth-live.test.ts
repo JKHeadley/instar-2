@@ -57,7 +57,9 @@ for (const [reserve, answer] of [[889, 902], [933, 946], [1189, 1199]])
     const held = packet.history.find((row: { id: string }) => row.id.endsWith(':6233134'));
     expect(held.outcome).toBe('holding reply delivered after review violation');
     expect(held.answer).toBe(frame(876).text);
-    expect(packet.history.some((row: { outcome: string }) => row.outcome === 'Telegram API accepted')).toBe(true);
+    // A prior acknowledgement does not keep a subsequently delivered answer open.
+    expect(packet.history.find((row: { id: string }) => row.id.endsWith(':6233120')))
+      .toMatchObject({ heldNotice: true, outcome: 'Telegram API accepted' });
     if (reserve !== 1189) {
       expect(packet.reminders).toHaveLength(1);
       expect(packet.clock.time < '09:15').toBe(true);
@@ -65,6 +67,8 @@ for (const [reserve, answer] of [[889, 902], [933, 946], [1189, 1199]])
     } else {
       expect(packet.reminders).toBeUndefined();
       expect(frame(993).at).toBeLessThan(packet.now);
+      expect(packet.history.find((row: { id: string }) => row.id === 'requested-action:0'))
+        .toMatchObject({ outcome: 'Telegram API accepted', answer: frame(991).text });
     }
     const question = replyReviewQuestion(['self_state_claim']);
     expect(question).toContain('A holding notice does not deliver the answer or refusal');
