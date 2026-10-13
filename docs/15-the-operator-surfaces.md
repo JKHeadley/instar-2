@@ -109,30 +109,6 @@ it reaches approved, declined, superseded, expired, withdrawn, conflict, or stil
 any timer-to-yes transition. The original requester receives an attributable receipt for each
 terminal disposition through eight's message operation.
 
-**Rule — the operator dashboard reads; it grants nothing.** Owner: Eleven. Rules 2, 79, 80, 81,
-87 and 113, and the purpose's least-revelation rule; **checks: P11-NF-52** and
-`node scripts/check-dashboard-floors.mjs`. The dashboard is a page of the registered approval
-surface, rendered by that surface's own process and opened only by the passkey enrolled there to
-approve. Sign-in is one assertion over a fresh nonce whose signed bytes are typed apart from every
-act, so a sign-in never stands for an approval and an approval never opens a session; a short,
-bounded session follows, and without it every dashboard address shows only the sign-in page. Its
-audience is that operator. It shows the agent's status as the exact chat status answer, the
-requests waiting for the operator with a direct link to the surface that answers each, recent
-messages with their outcomes, the allowance used, and the stop, which links to the surface's own
-standing stop. Approve, decline and stop complete only on those surfaces. Its data is one
-disposable snapshot the agent publishes into its own request outbox, projected from the journal by
-the functions the status reply uses. The page treats it as untrusted data: it accepts only a closed,
-bounded shape whose only links are a GitHub review page or the operator's own chat, escapes every
-field, and shows the snapshot's age. A missing, unreadable or stale snapshot is stated plainly on
-every view, which is the loss detector this state needs; the outbox directory's permissions are its
-local access boundary. The page never refreshes itself. Eleven objective floors hold it, each with a
-negative control: one full-width panel and nothing collapsed; every view reachable from every page;
-a purpose line on every page; no sideways scrolling on a phone; every control labeled; plain empty,
-missing, unreadable and stale states; one shared stylesheet; every link resolving; no background
-refresh; a front page of one headline and at most five tiles within 150 words without insider
-vocabulary; and every tile and row opening its next layer. It is machine-local: the page and the
-outbox live on the machine that serves the conversation.
-
 ---
 
 ## 3. The full conversation-binding surface
@@ -173,6 +149,93 @@ implementation may choose one only after its capture, phishing, forwarding, acce
 mobile tests pass the same binding contract.
 
 ---
+
+### Fresh-install pairing
+
+**Rule — the verified surface is the custodian's, not the agent's.** Rules 28/29/79/80/82/98
+and P-01/P-02; **checks: P11-NF-07–13/16–23** include an empty installation. The one-line
+installer runs in the person's authenticated OS administration session before the agent
+exists. The OS authenticates that session and installs the reviewed custodian and its
+verification material into a separate protected identity; a caller's claimed UID or mere
+root possession is not a recorded operator act. The agent and harness receive neither that
+session nor elevation credentials. This is the initial out-of-band trust channel.
+
+One supported enrollment flow is **Telegram authentication on the phone, selected by a
+protected confirmation in the Mac installation session**:
+
+1. The broker creates a pending installation and expiring enrollment session. Eleven opens
+   its complete HTTPS link on the phone. The release supplies the registered Telegram Login
+   client and reachable HTTPS origin through the existing surface; no per-person bot or
+   repository registration is part of this flow. A missing configured surface is a setup
+   hold, not a localhost link or a request that the person build a service.
+2. The person authenticates with Telegram. The broker's registered login adapter verifies
+   the provider-signed ID token (signature, issuer, audience, expiry and its session nonce);
+   the authentication request and callback are bound to the broker's pending session. It
+   retains the stable issuer/subject and signed Telegram user id, never substitutes a display
+   name. The person opens the proposed bot DM from that same account. The broker fetches the
+   DM event directly over authenticated TLS from Telegram, checks its sender against that
+   signed user id, and retains bot identity, private conversation id and event capture.
+   The DM event is channel-attested; the signed login and protected selection below supply
+   the independent identity/enrollment evidence. A claimed chat id is insufficient.
+3. **On the Mac, the installing person chooses “Use this account for this installation” in
+   the protected installer UI**, after it displays the authenticated account, DM and machine.
+   OS reauthentication authorizes that exact selection digest. The broker checks the OS
+   authorization result, original installation session and signed installer's authenticated
+   local IPC peer; neither a caller-supplied UID nor an untrusted browser callback can invoke
+   this act. Its durable enrollment record `E` binds installation, session, account subject,
+   conversation, evidence captures, custodian identity and expiry. This is the act selecting
+   THIS account; successful provider login alone selects nobody. Only one subject can be
+   selected per pending enrollment; replacement invalidates the old challenge and candidate.
+4. Back on the phone, the broker admits confirmation only from its authenticated session
+   for `E`'s exact subject and conversation, and only for the displayed candidate and request
+   digest. It checks the Mac selection, provider evidence, session freshness, unconsumed
+   challenge, unchanged installation and empty genesis before signing. The short code only
+   helps match screens. A second account with a copied code and a valid provider login lacks
+   the protected selection and is refused; it cannot replace the selected subject, confirm
+   its request, or obtain a grant. Replaying a completed identical act returns its receipt.
+
+The verifier is Nine's independently administered broker, using the OS authorization channel
+and Telegram's signing keys obtained through its authenticated provider endpoint, not keys
+supplied by the harness. One verifies the broker's captured enrollment/confirmation evidence
+against the verification material installed through Ten's protected distribution channel.
+The phone reaches Eleven through certificate-validated HTTPS; routing carries no enrollment
+authority. This extends the existing surface, not a second approval service. The provider
+contract is [Telegram Login](https://core.telegram.org/bots/telegram-login) and the conversation
+capture uses the [Bot API](https://core.telegram.org/bots/api#getupdates). Subsequent approval,
+revocation and recovery actions remain phone-complete; the initial OS installation and
+account-selection act are explicitly Mac preparation, not a claim of phone-only installation.
+
+Before confirmation, the authenticated stable account is included in the candidate org-intent
+and genesis; any changed subject regenerates the rendering and digest, never edits signed bytes.
+The primary confirmation says, in plain language, which agent and machine are being set up,
+which person will control it, which conversation is being bound, and that the selected
+custodian will protect its approvals. It displays the proposed org-intent and initial
+operator scope, P-01 administrators/recovery and residual root-loss risk, and the P-08
+single-machine operation set and permanent-loss consequences when applicable. Confirming
+signs those exact displayed digests through the custodian; declining records no grant.
+This is the existing verified pairing act, not P-02's subsequent account-assented yes.
+Role agreement and subscription selection continue in the same onboarding conversation.
+Credentials go directly to the custodian's secure surface, never into that conversation.
+
+**Rule — recovery does not depend on keeping the pairing phone.** Rules 79/100, P-01/P-02
+and the purpose's single-machine rule; **checks: P11-NF-13/19 and P10-NF-34/36** exercise
+phone loss and installation-machine loss separately. A replacement device uses the named
+platform's normal account recovery, then the custodian verifies that same stable account
+and reissues an expiring challenge. The [custody recovery contract](17-harness-adapters/03-capability-account-quota-and-launch-pins.md#installation-custody-and-recovery)
+provides the independent backup when the installation machine is lost. Changed account
+identity requires an independently verified supersession, not an edit or new first sender.
+Revocation and stop stay available through the independent surface during repair. Recovery
+restores control, not evidence of an unknown earlier send; the P-08 loss limit stays visible.
+
+**Value — acceptance of the surface.** A fresh person selects the authenticated account in the protected Mac
+installer, confirms the displayed scope on the phone, then continues onboarding without a desk.
+The fixture pair is a current authenticated confirmation versus a copied code under another
+session, wrong account, changed installation, expired challenge or replay. The real-surface
+proof must cover phishing/forwarding, accessibility, interruption and both device-loss cases.
+These are implementation exit tests, not a claim that a pairing service is already live.
+
+---
+
 
 ## 4. The minimal plane and its projections
 
@@ -467,7 +530,7 @@ plane is called live from screenshots, mocks, configured routes, self-report or 
 | P11-NF-49 | wiring/e2e | Any required port is null/no-op or bypassed; real delegation evidence passes |
 | P11-NF-50 | accounting | Duration/memory/token/money/attempt count missing or beyond cap; complete bounded sample passes |
 | P11-NF-51 | live | Mock/canned provider or synthetic delivery satisfies production slice; real bounded call/witness passes |
-| P11-NF-52 | UI | Objective dashboard/mobile floor fails, a floor's negative control is missed, or a dashboard address shows agent data without the passkey session; the eleven floors with every control detected pass |
+| P11-NF-52 | UI | Objective dashboard/mobile floor fails; activation remains blocked |
 | P11-NF-53 | build | Declared fixture lacks executed check-run evidence; no held/live claim is emitted |
 
 ---

@@ -1,6 +1,6 @@
 # First-landing and additivity checks refuse a branch that does not contain the current main tip (Rule 37 quarantine)
 
-**Status:** CLOSED (2026-10-11). **Owner:** constitutional-build integration desk (Echo). **Opened:** 2026-09-28.
+**Status:** OPEN. **Owner:** constitutional-build integration desk (Echo). **Opened:** 2026-09-28.
 
 On branch `cint-1` (full runs retained as `/private/tmp/claude-501/cint1-livefix/full2.log` and `re1.log`, and a pristine built checkout of `2988aa95` as `base-re1.log`), these cases fail deterministically, on this change and on its base alike:
 - `tests/assembly/round8-additivity.test.ts` — `R8-F1 compares pre-existing Part Ten fixture outcomes on P11 first landing`, `V72 compares Part Ten decoder field deletions on P11 first landing`.
@@ -28,5 +28,3 @@ On branch `cint-1` (full runs retained as `/private/tmp/claude-501/cint1-livefix
 **Re-check on cint-L3b post-check repair (2026-09-29):** `HEAD` now contains the local and remote `main` tip `02753cdc`. `SLB-LEGACY-ALL-KINDS-93 SLB-LEGACY-TEXT-RANGES-111 compares 1313 signed legacy mutations on loop A1 first landing` is restored and passes (3/3 in `tests/transport/loop-main-head-mutation.test.ts`; it reports the comparison inapplicable because the unit is already on the current-main baseline), because `scripts/check-transport-contracts.mjs` requires it as seam evidence. That case is no longer covered here. The other cases listed above stay quarantined in this repair; with `main` now contained they are expected to pass and are the next to restore.
 
 **Multi-machine posture:** the tests are machine-local. This record and the quarantine travel with the repository.
-
-**Closure (holdack2-1011, 2026-10-11):** all listed cases are already restored in the inherited branch. Ordinary merge 6dcf9ed3 contains landed main 1b262226 without moving the local main ref. The shared-history firstLanding implementation retains refusal for a genuinely unlanded unit on a stale baseline and recognizes previously landed units even when main advances. Foreground runs pass the first-landing fixture and all 13 files containing the cases listed above (82 baseline tests, plus the separate first-landing fixture). Evidence: `/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-main-targeted.log` and `holdack2-1011-main-baselines.log`. No case listed in this record remains quarantined.
