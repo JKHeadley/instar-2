@@ -25,5 +25,7 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory status w
 Prompt finding: e8708c7fea24 | protocol-literal | Existing source-provenance instruction tested at its consumer, not a phrase deciding operator intent.
 
 simplestRobustRoute: This is the simplest robust route: remove the instruction that demands a separate remember even when replacing the same fact, and reuse the existing update operation. No new resolver, heuristic, model call or store. Start guards are verified retained intake and offered old sources; end guards are exact validated replacement and durable history projection; current caps, stop, secrets and send ownership remain. No unattended live-provider completion claim.
+Publication: Regenerated seven shape-only register publications from source commit f8787af8c8157d32ef0ee388e4f5eaeb3fc526d4 using the existing replay generator. Generation sha256:d35d620f9e3afe02db7dbbd9f5fa9bdd5dffd6ec6c83dc7184d59d27573d7696. The desk owner-manifest rehash and grounding-chain repin found no pins to change. No declaration or authority changes.
+
 80/20: Targeted regression and direct-import consumer tests, compile and architecture/publication checks; final independent review and the Studio gate own live acceptance.
 VERDICT: author submission; independent convergence is not claimed
