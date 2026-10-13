@@ -15,7 +15,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-memory-correction.test.ts",
-        "hash": "sha256:9ea2c0069c88a38101bb77e6af17eb970e6ac5c6a9bd682a83ae4c6ba72eb67b"
+        "hash": "sha256:45b555d37b822af8d0bcf99b66467ccf3bdd4828d2f809147124879bec8d4d98"
       }
     },
     {

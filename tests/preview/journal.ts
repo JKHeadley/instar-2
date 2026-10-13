@@ -4660,6 +4660,14 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (row.state) turn.modelState = row.state;
     if (row.failureClass) turn.failureClass = row.failureClass;
     if (row.memoryPending) turn.memoryPending = true;
+    // Rule 42: the answer decision is durable before the separate hold frame.
+    // Recover a rejected mutation's dependency even if that next append never ran;
+    // unresolved judgments retain their independent answer and background work.
+    if (row.memoryPending && !row.memoryUnresolved && !turn.memoryUndecided) {
+      turn.held = 'memory correction pending';
+      turn.heldSince ??= row.at;
+      view.heldTurns.add(turn); turn.wasHeld = true;
+    }
     if (row.memoryUnresolved !== undefined) {
       if (row.memoryUnresolved !== true || !row.memoryPending || row.memory?.length || row.personMerges?.length
         || row.personAttributes?.length || row.undo !== undefined || row.failureClass || !row.text.trim())

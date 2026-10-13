@@ -16,7 +16,7 @@ it('reserves the recorded deferral and its next turn before slow unsettled memor
   const timers = new Map<() => void, number>();
   const advance = (ms: number) => {
     now += ms;
-    for (const [run, due] of timers) if (due <= now) { timers.delete(run); run(); }
+    for (const [run, due] of [...timers]) if (due <= now) { timers.delete(run); run(); }
   };
   let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: capture.bot, chat: capture.operator,
     operator: capture.operator, grant: 'grant:fixture', configurationDigest: 'sha256:fixture',
