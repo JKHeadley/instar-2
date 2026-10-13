@@ -4,10 +4,10 @@ import { CAPABILITY_BRIEFING_PATH, CAPABILITY_SENTENCE_LABEL, CAPABILITY_SENTENC
 const sha256 = (text: string) => `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
 
 /** Resolve the writer's explicit capability reference from the note it received.
- * The whole capability answer is rendered: retaining arbitrary surrounding prose
- * retained the grant overclaim in recorded update 715675709. No intent classifier
- * or paraphrase matcher. Ordinary answers have no reference and stay untouched.
- * Rules 10, 36, 78, 84, 116: exact record rendering, before existing review. */
+ * Only the explicit whole-answer marker replaces surrounding prose. Literal
+ * sentences retain adjacent content; legacy pronouns are substituted locally.
+ * Unmarked grant claims remain for the existing contextual review and revision.
+ * Rules 3, 4, 10, 36, 78, 84, 116: exact rendering, no inference of answer scope. */
 export function renderCapabilityReply(text: string, packet: { sources?: readonly unknown[] }): string {
   const note = packet.sources?.find(source => source !== null && typeof source === 'object'
     && (source as { id?: unknown }).id === 'capability-note') as
@@ -20,8 +20,8 @@ export function renderCapabilityReply(text: string, packet: { sources?: readonly
   if (!sentence || note.provenance.renderedCapabilitySha256 !== sha256(sentence)) return text;
   const legacy = sentence.startsWith('I can use ')
     ? ['The person', 'The agent'].map(subject => subject + sentence.slice(1)) : [];
-  const tokens = [CAPABILITY_SENTENCE_MARKER, sentence, ...legacy];
-  if (!tokens.some(token => text.includes(token))) return text;
+  if (!text.includes(CAPABILITY_SENTENCE_MARKER))
+    return legacy.reduce((reply, token) => reply.split(token).join(sentence), text);
   const records = note.text.split('\n');
   const grantsStart = records.indexOf('Capabilities:');
   const sentenceAt = records.indexOf(CAPABILITY_SENTENCE_LABEL + sentence);
