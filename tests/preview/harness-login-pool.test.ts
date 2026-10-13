@@ -325,7 +325,9 @@ it('replays recorded summary/Jev/review/delivered/empty-context shapes unchanged
     f.pool.observe(f.pool.select(), { state: 'rejected', failure: classifyProviderFailure({ code: 1, limited: false, stdout, now: f.clock.at }) });
     f.pool.observe(f.pool.select(), limit);
     f.clock.at += 8 * 86400_000;
+    writeFileSync(f.settings.statePath, JSON.stringify({ ...f.pool.state, identity: f.configuration.legacyIdentity }));
     const recovered = createHarnessLoginPool({ ...f.settings, usage: () => capacity(f) });
+    expect(recovered.state.migrations, row.id).toHaveLength(1);
     const next = recovered.select(); expect(next.profile.reference, row.kind).toBe('serving-b');
     expect(recovered.state.holds).toEqual({});
     // The pool has no judgment parser: recorded uncertainty is not provider capacity evidence.
@@ -360,4 +362,99 @@ it('the existing launch log detects a deleted pool sidecar instead of retrying A
   expect(() => createHarnessLoginPool({ ...f.settings, previouslyLaunched: () => harnessPoolPreviouslyLaunched(runs, f.configuration.identity) }))
     .toThrow(/state was lost/);
   writeFileSync(runs, '{'); expect(() => harnessPoolPreviouslyLaunched(runs, f.configuration.identity)).toThrow(/unreadable/);
+});
+
+it('build B keeps build A selection, holds, history and spent notice keys with different record paths', () => {
+  const f = fixture();
+  f.pool.observe(f.pool.select(), limit); f.pool.select();
+  const before = f.pool.state, notices = f.pool.notices();
+  const next = join(f.root, 'build-b.json');
+  writeFileSync(next, JSON.stringify({ ...f.manifest, logins: f.manifest.logins.map(row => ({ ...row,
+    activation: `${row.activation}-build-b`, authority: `${row.authority}-build-b` })) }));
+  const configuration = loadHarnessLogins({ ...f.options, 'login-pool': next,
+    'activation-record': `${f.manifest.logins[0].activation}-build-b` });
+  expect(configuration.identity).toBe(f.configuration.identity);
+  const reopened = createHarnessLoginPool({ ...f.settings, configuration });
+  expect(reopened.state).toEqual(before); expect(reopened.notices()).toEqual(notices);
+  expect(openReplyNotices([{ id: 'sent', answerNotices: notices, sent: 2 }], reopened.notices(), 'next')).toEqual([]);
+});
+
+it.each([false, true])('adopts old path-hashed state losslessly with stable historic notice keys (new paths=%s)', newPaths => {
+  const f = fixture(); f.pool.observe(f.pool.select(), limit); f.pool.select();
+  const old = { ...f.pool.state, identity: f.configuration.legacyIdentity };
+  writeFileSync(f.settings.statePath, JSON.stringify(old));
+  const notices = [{ key: `doorway:harness-login:${old.identity}:1`, line: f.pool.notices()[0].line }];
+  let configuration = f.configuration;
+  if (newPaths) {
+    const next = join(f.root, 'new-build.json');
+    writeFileSync(next, JSON.stringify({ ...f.manifest, previousManifest: f.options['login-pool'],
+      logins: f.manifest.logins.map(row => ({ ...row, activation: `${row.activation}-new`, authority: `${row.authority}-new` })) }));
+    configuration = loadHarnessLogins({ ...f.options, 'login-pool': next, 'activation-record': `${f.manifest.logins[0].activation}-new` });
+  }
+  const pool = createHarnessLoginPool({ ...f.settings, configuration });
+  expect(pool.state).toMatchObject({ active: old.active, holds: old.holds, switches: old.switches,
+    identity: configuration.identity, noticeIdentity: old.identity });
+  expect(pool.state.migrations).toHaveLength(1);
+  expect(pool.notices()).toEqual(notices);
+  expect(openReplyNotices([{ id: 'sent', answerNotices: notices, sent: 2 }], pool.notices(), 'next')).toEqual([]);
+  expect(createHarnessLoginPool({ ...f.settings, configuration }).state).toEqual(pool.state);
+});
+
+it('refuses a real ordered member change and an unproven legacy identity without writing state', () => {
+  const f = fixture(); const before = readFileSync(f.settings.statePath, 'utf8');
+  const changed = fixture(['serving-a', 'different-account']);
+  expect(() => createHarnessLoginPool({ ...f.settings, configuration: changed.configuration })).toThrow(/state differs/);
+  expect(readFileSync(f.settings.statePath, 'utf8')).toBe(before);
+  writeFileSync(f.settings.statePath, JSON.stringify({ ...f.pool.state, identity: 'unknown-old-hash' }));
+  expect(() => createHarnessLoginPool(f.settings)).toThrow(/state differs/);
+});
+
+it('excludes an unavailable member without renumbering holds/history, records one notice and reports stale quota honestly', () => {
+  const f = fixture(); f.pool.observe(f.pool.select(), limit); f.pool.select();
+  const pool = createHarnessLoginPool({ ...f.settings, unavailable: new Map([[1, 'missing authority']]) });
+  expect(pool.state.active).toBe(1); expect(pool.state.holds).toEqual(f.pool.state.holds);
+  expect(() => pool.select()).toThrow(/no reviewed login/);
+  expect(pool.status()).toContain('serving-b (active); unavailable (missing authority)');
+  expect(pool.status()).toContain('switching only after a typed limit reply');
+  expect(pool.status()).toContain('Last switch: serving-a to serving-b, provider-limit');
+  const notices = pool.notices(); expect(notices).toHaveLength(2);
+  expect(openReplyNotices([{ id: 'sent', answerNotices: notices, sent: 2 }], pool.notices(), 'next')).toEqual([]);
+  f.clock.at += 1;
+  const reading = capacity(f);
+  const recovered = createHarnessLoginPool({ ...f.settings, usage: () => reading });
+  expect(recovered.status()).toContain('fresh usage, switches at 95%');
+});
+
+it('a threshold observed while A is in flight affects only the next dispatch, with one result per accepted message', async () => {
+  const f = fixture(); let reading = capacity(f), finish;
+  const pool = createHarnessLoginPool({ ...f.settings, usage: () => reading });
+  const delivered = [], dispatched = [];
+  const dispatch = async (id, wait) => {
+    const selected = pool.select(); dispatched.push([id, selected.profile.reference]);
+    await wait;
+    pool.observe(selected, { state: 'complete', bytes: id });
+    delivered.push([id, selected.profile.reference]);
+  };
+  const first = dispatch('message-1', new Promise(resolve => { finish = resolve; }));
+  reading.accounts[0].lastQuota.fiveHour.utilizationPct = 95;
+  await dispatch('message-2', Promise.resolve());
+  finish(); await first;
+  expect(dispatched).toEqual([['message-1', 'serving-a'], ['message-2', 'serving-b']]);
+  expect(delivered).toEqual([['message-2', 'serving-b'], ['message-1', 'serving-a']]);
+  expect(pool.state.switches).toHaveLength(1);
+  expect(pool.state.switches[0].reason).toBe('usage-threshold');
+});
+
+
+it('retained admission profiles cannot replace live profiles for dispatchable members', () => {
+  const f = fixture();
+  const retained = { ...f.manifest, logins: f.manifest.logins.map(row => ({ ...row,
+    admittedProfile: JSON.parse(readFileSync(row.profile, 'utf8')) })) };
+  writeFileSync(f.options['login-pool'], JSON.stringify(retained));
+  expect(loadHarnessLogins(f.options).identity).toBe(f.configuration.identity);
+  rmSync(retained.logins[1].profile);
+  expect(() => loadHarnessLogins(f.options)).toThrow(/ENOENT/);
+  retained.logins[1].unavailable = 'profile missing';
+  writeFileSync(f.options['login-pool'], JSON.stringify(retained));
+  expect(loadHarnessLogins(f.options).identity).toBe(f.configuration.identity);
 });

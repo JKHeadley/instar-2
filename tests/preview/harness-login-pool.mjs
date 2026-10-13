@@ -35,7 +35,10 @@ export function loadHarnessLogins(options, readText = read) {
       if (row[key] !== undefined && (typeof row[key] !== 'string' || !isAbsolute(row[key]))) fail('grant paths must be absolute');
     if (row.usageAccount !== undefined && (typeof row.usageAccount !== 'string' || !/^[a-z0-9-]{1,128}$/u.test(row.usageAccount)))
       fail('usage account id is malformed');
-    const profile = Object.freeze(JSON.parse(readText(row.profile)));
+    // Retained admission evidence represents an excluded member and verifies predecessors.
+    // Dispatchable members still require the live profile and all existing admission checks.
+    const profile = Object.freeze((row.unavailable || options.previousManifest) && row.admittedProfile
+      ? row.admittedProfile : JSON.parse(readText(row.profile)));
     if (manifest || options['harness-user'] !== undefined) harnessLoginPath(profile);
     return Object.freeze({ ...row, profilePath: row.profile, profile,
       // A manifest entry cannot inherit the primary account's authority implicitly.
@@ -49,10 +52,40 @@ export function loadHarnessLogins(options, readText = read) {
       if (primary[key] !== undefined && rows[0][key] !== primary[key]) fail(`primary ${key} differs from launch`);
   }
   if (manifest?.usageFile !== undefined && (typeof manifest.usageFile !== 'string' || !isAbsolute(manifest.usageFile))) fail('usage path must be absolute');
-  return Object.freeze({ entries: Object.freeze(entries), threshold, usageFile: manifest?.usageFile,
+  // Build records and executable pins are revalidated at launch, not pool membership.
+  const identity = hash(entries.map(({ profile }) => Object.fromEntries(
+    ['reference', 'expectedAccount', 'organization', 'plan', 'home', 'configDirectory', 'workingDirectory']
+      .map(key => [key, profile[key]]))));
+  const legacyIdentity = hash({ entries: entries.map(({ profile, activation, authority, toolsActivation, sessionActivation, usageAccount }) =>
+    ({ profile, activation, authority, toolsActivation, sessionActivation, usageAccount })), threshold });
+  const legacyIdentities = [legacyIdentity];
+  if (manifest?.previousManifest !== undefined) {
+    if (typeof manifest.previousManifest !== 'string' || !isAbsolute(manifest.previousManifest) || options.previousManifest)
+      fail('predecessor manifest must be one absolute retained manifest');
+    const previous = JSON.parse(readText(manifest.previousManifest));
+    const first = previous.logins?.[0];
+    if (!first) fail('predecessor manifest is malformed');
+    // Only one predecessor is needed for v1 adoption; ignore its own predecessor link.
+    const prior = loadHarnessLogins({ ...options, previousManifest: true, 'login-pool': manifest.previousManifest,
+      'login-profile': first.profile, 'activation-record': first.activation, 'authority-record': first.authority,
+      'tools-activation': first.toolsActivation, 'session-work-activation': first.sessionActivation },
+    path => {
+      if (path === manifest.previousManifest) return JSON.stringify({ ...previous, previousManifest: undefined });
+      try { return readText(path); } catch (error) {
+        // Imported v1 manifests predate snapshots. Retain the admitted profile only for a
+        // missing predecessor path; the legacy hash must still match the durable state.
+        const retained = entries.find(entry => entry.unavailable && entry.profilePath === path && entry.admittedProfile);
+        if (error?.code !== 'ENOENT' || !retained) throw error;
+        return JSON.stringify(retained.admittedProfile);
+      }
+    });
+    if (prior.identity !== identity) fail('predecessor members differ; explicit membership migration required');
+    legacyIdentities.push(prior.legacyIdentity);
+  }
+  return Object.freeze({ entries: Object.freeze(entries), threshold, usageFile: manifest?.usageFile, identity, legacyIdentity,
+    legacyIdentities: Object.freeze(legacyIdentities),
     current: () => bytes === null || readText(path) === bytes,
-    identity: hash({ entries: entries.map(({ profile, activation, authority, toolsActivation, sessionActivation, usageAccount }) =>
-      ({ profile, activation, authority, toolsActivation, sessionActivation, usageAccount })), threshold }) });
+  });
 }
 
 /** Read 1.x SubscriptionPool's non-secret quota snapshot. Match email and either config home
@@ -90,7 +123,7 @@ export function harnessQuotaLimit(document, profile, threshold, now, usageAccoun
  * No timer retries: an exhausted profile becomes eligible after a provider/reading reset time.
  * Unknown resets recover from newer matched readings with capacity in both quota windows. */
 export function createHarnessLoginPool({ configuration, statePath, now, validate,
-  readText = read, write = durablePreviewWrite, previouslyLaunched = () => false, usage = () => configuration.usageFile
+  unavailable = new Map(), readText = read, write = durablePreviewWrite, previouslyLaunched = () => false, usage = () => configuration.usageFile
     ? JSON.parse(readText(configuration.usageFile)) : null }) {
   const { entries, identity } = configuration;
   let state;
@@ -101,7 +134,8 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     state = { version: 1, identity, active: 0, holds: {}, switches: [] };
     write(statePath, state);
   }
-  if (state?.version !== 1 || state.identity !== identity || !Number.isInteger(state.active)
+  const adoptLegacy = state?.identity !== identity && configuration.legacyIdentities?.includes(state?.identity);
+  if (state?.version !== 1 || (state.identity !== identity && !adoptLegacy) || !Number.isInteger(state.active)
     || !entries[state.active] || !state.holds || typeof state.holds !== 'object' || Array.isArray(state.holds) || !Array.isArray(state.switches)) fail('state differs; desk migration required');
   for (const [index, hold] of Object.entries(state.holds))
     if (!/^[0-7]$/u.test(index) || !entries[index] || !['provider-limit', 'usage-threshold'].includes(hold?.reason)
@@ -111,8 +145,14 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     if (event?.sequence !== index + 1 || !Number.isSafeInteger(event.at)
       || !entries.some(entry => entry.profile.reference === event.from)
       || !entries.some(entry => entry.profile.reference === event.to) || event.from === event.to
-      || !['provider-limit', 'usage-threshold'].includes(event.reason)) fail('switch history is malformed');
+      || !['provider-limit', 'usage-threshold', 'member-unavailable'].includes(event.reason)) fail('switch history is malformed');
   const persist = next => { write(statePath, next); state = next; };
+  if (adoptLegacy) persist({ ...state, identity, noticeIdentity: state.noticeIdentity ?? state.identity,
+    migrations: [...(state.migrations ?? []), { from: state.identity, to: identity, at: now(),
+      reason: 'build-independent ordered login identity; verified predecessor manifest' }] });
+  const excluded = [...unavailable].filter(([index]) => !(state.exclusions ?? []).some(item => item.index === index));
+  if (excluded.length) persist({ ...state, exclusions: [...(state.exclusions ?? []),
+    ...excluded.map(([index, reason]) => ({ index, reason, at: now() }))] });
   // Legacy holds have no observation time. Establish a durable freshness boundary once;
   // only a subsequent measurement can release one, including after another restart.
   const legacy = Object.entries(state.holds).filter(([, hold]) => hold.observedAt === undefined);
@@ -153,13 +193,13 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
         }
       }
       const limited = index => state.holds[index] && (state.holds[index].resetAt === null || state.holds[index].resetAt > at);
-      if (!limited(state.active)) return admitted(entries[state.active], tools);
+      if (!limited(state.active) && !unavailable.has(state.active)) return admitted(entries[state.active], tools);
       for (let offset = 1; offset < entries.length; offset++) {
         const index = (state.active + offset) % entries.length;
-        if (limited(index)) continue;
+        if (limited(index) || unavailable.has(index)) continue;
         const next = admitted(entries[index], tools);
         const event = { from: entries[state.active].profile.reference, to: next.profile.reference,
-          reason: state.holds[state.active].reason, at, sequence: state.switches.length + 1 };
+          reason: unavailable.has(state.active) ? 'member-unavailable' : state.holds[state.active].reason, at, sequence: state.switches.length + 1 };
         persist({ ...state, active: index, switches: [...state.switches, event] });
         return next;
       }
@@ -171,13 +211,35 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       const reset = result.failure.resetAt;
       hold(entry, { reason: 'provider-limit', observedAt: now(), resetAt: Number.isSafeInteger(reset) && reset > now() ? reset : null });
     },
-    notices: () => state.switches.map(event => ({ key: `doorway:harness-login:${identity}:${event.sequence}`,
-      line: `The model login reached its ${event.reason === 'usage-threshold' ? 'configured usage threshold' : 'usage limit'}. I switched to the next approved login for this runner.` })),
-    status: () => `Model login pool: using approved login ${state.active + 1} of ${entries.length}; `
-      + `${entries.filter(entry => !state.holds[entry.index] || state.holds[entry.index].resetAt !== null
-        && state.holds[entry.index].resetAt <= now()).length} with no observed usage limit.`,
+    notices: () => [
+      ...state.switches.filter(event => event.reason !== 'member-unavailable').map(event => ({ key: `doorway:harness-login:${state.noticeIdentity ?? identity}:${event.sequence}`,
+        line: `The model login reached its ${event.reason === 'usage-threshold' ? 'configured usage threshold' : 'usage limit'}. I switched to the next approved login for this runner.` })),
+      ...(state.exclusions ?? []).map(({ index }) => ({ key: `doorway:harness-login:${identity}:unavailable:${index}`,
+        line: `Approved model login ${index + 1} was unavailable and was removed from selection. See status for current login availability.` })),
+    ],
+    status: () => harnessLoginPoolStatus(configuration, state, unavailable, usage, now),
     get state() { return structuredClone(state); },
   });
+}
+
+export function harnessLoginPoolStatus(configuration, state, unavailable, usage, now) {
+  const { entries } = configuration;
+  let document = null;
+  try { document = usage(); } catch { /* Report unknown freshness on the pull surface. */ }
+  const at = now();
+  const members = entries.map(entry => {
+    const held = state.holds[entry.index];
+    const quota = harnessQuotaReading(document, entry.profile, at, entry.usageAccount);
+    return `${entry.index + 1}: ${entry.profile.reference}${entry.index === state.active ? ' (active)' : ''}; `
+      + (unavailable.has(entry.index) ? `unavailable (${unavailable.get(entry.index)})`
+        : held && (held.resetAt === null || held.resetAt > at)
+          ? `hold ${held.reason}, reset ${held.resetAt ?? 'unknown'}` : 'no observed hold')
+      + (quota?.windows.some(Boolean) ? `; fresh usage, switches at ${configuration.threshold}%`
+        : '; usage stale or unavailable, switching only after a typed limit reply');
+  });
+  const last = state.switches.at(-1);
+  return `Model login pool: using approved login ${state.active + 1} of ${entries.length}. ` + members.join(' | ')
+    + (last ? ` Last switch: ${last.from} to ${last.to}, ${last.reason}, at ${last.at}.` : ' Last switch: none.');
 }
 
 /** Session steps expose the registered driver's typed observation rather than CLI result frames.
@@ -195,6 +257,6 @@ export function harnessPoolPreviouslyLaunched(path, identity, readText = read) {
   try { text = readText(path); } catch (error) { if (error?.code === 'ENOENT') return false; throw error; }
   return text.split('\n').filter(Boolean).some(line => {
     let row; try { row = JSON.parse(line); } catch { fail('run log is unreadable; cannot establish selection history'); }
-    return row.harnessLoginPool === identity;
+    return Array.isArray(identity) ? identity.includes(row.harnessLoginPool) : row.harnessLoginPool === identity;
   });
 }
