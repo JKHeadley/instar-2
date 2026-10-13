@@ -2,7 +2,7 @@ import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createJournalWorker, openPreviewJournal, openBlockers, BLOCKER_RECHECK_MAX_MS } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, openBlockers, declaredObligations, BLOCKER_RECHECK_MAX_MS } from './journal-test-worker.js';
 import { readAnswer } from './answer-reading.js';
 import { HOLDING_REPLY, REPLY_CHECK_BUDGET_MS, parseReplyReviewVerdict, REPLY_RULES, DECLARED_OBLIGATIONS_GUIDE } from './reply-check.js';
 
@@ -90,12 +90,12 @@ it('a changed refusal with a rejected revision record stays held despite the rec
   expect(openBlockers(w.journal.view)).toHaveLength(0);
   expect(w.journal.view.order[0]!.revisionReview?.verdict).toBe('pass');
   expect(w.sent).toEqual([HOLDING_REPLY]);
-  expect(w.journal.view.order[0]!.revision).toMatchObject({ text, rejectedBlocker: true });
+  expect(w.journal.view.order[0]!.revision).toMatchObject({ text, rejectedBlocker: true, blockerReason: 'invalid avenues or unsupported constraint evidence' });
   expect(w.journal.view.calls).toBeLessThanOrEqual(4);
   await w.worker.drain(); expect(w.sent).toHaveLength(1); expect(w.revisions()).toBe(1);
   w.journal.close();
   const reopened = openPreviewJournal(w.path, w.key);
-  expect(reopened.view.order[0]!.revision).toMatchObject({ text, rejectedBlocker: true });
+  expect(reopened.view.order[0]!.revision).toMatchObject({ text, rejectedBlocker: true, blockerReason: 'invalid avenues or unsupported constraint evidence' });
   expect(openBlockers(reopened.view)).toHaveLength(0); reopened.close();
 });
 
@@ -128,14 +128,19 @@ it('call cap holds the unresolved declaration without spending a revision', asyn
 });
 
 it.each([
-  { constraint: 'unknown-boundary' },
-  { evidence: 'unsupported-evidence' },
-  { recheck: '2027-10-12' },
-  { recheck: '2026-10-11' },
+  { constraint: 'unknown-boundary', reason: 'unknown governing constraint' },
+  { evidence: 'unsupported-evidence', reason: 'invalid avenues or unsupported constraint evidence' },
+  { constraint: 'no-tools', recheck: '2027-10-12', reason: 'recheck must be in the future and within 90 days' },
+  { constraint: 'no-tools', recheck: '2026-10-11', reason: 'recheck must be in the future and within 90 days' },
 ])('never repairs another invalid field or an invented constraint: %j', async options => {
   const w = world(options); await w.say();
   expect(openBlockers(w.journal.view)).toHaveLength(0);
-  expect(w.sent).toEqual([HOLDING_REPLY]); w.journal.close();
+  expect(w.sent).toEqual([HOLDING_REPLY]);
+  const id = w.journal.view.order[0]!.id;
+  expect(declaredObligations(w.journal.view, id, capture.at).rejected).toMatchObject({ blocker: true, blockerReason: options.reason });
+  w.journal.close();
+  const reopened = openPreviewJournal(w.path, w.key);
+  expect(reopened.view.order[0]!.answerRejected).toMatchObject({ blockerReason: options.reason }); reopened.close();
 });
 
 it('a slow review consumes the existing deadline; no correction runs outside it', async () => {
