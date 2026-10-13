@@ -108,6 +108,13 @@ it('on the tools route the review packet is route-true, and the same two sides h
     // every rule, guide and packet line must still match. reply-review-budget.test.ts replays the new budget's real call.
     const content = envelopeOf(input).messages[0]!.content;
     if (input.startsWith('review-r2-')) expect(content
+      // Relative-reminder review adds admitted date evidence; retain the captured self-description verdicts.
+      .replace('The writer defers work to later (saying they will do it, check it, decide it or report back later) and packet.declaredObligations.loops does not record that deferral as an exact quote of this reply.',
+        'The writer promises later work without a matching record: packet.declaredObligations.loops quotes this reply exactly, or packet.declaredObligations.dated records that requested action at that time. Neither supports unrelated promises.')
+      .replace('loops the deferrals, judgments and promises it will track, rejected',
+        "loops the deferrals, judgments and promises it will track, dated this turn's admitted reminders (operator quote, day/time, zone), rejected")
+      .replace('A deferral the loops do not record is defers_work.',
+        'An unresolved date or unrecorded scheduling claim is no admitted reminder.')
       // D4 makes the distinction explicit after a live reviewer used the description exception to pass a refusal.
       .replace('restating a settled limit, or describing one the capability-note source lists in no broader terms without declining asked work, needs no new record;',
         'restating a recorded, still-open limit needs no duplicate record. A capability note alone never records a refusal. Declining asked work needs a record; descriptions alone do not;')

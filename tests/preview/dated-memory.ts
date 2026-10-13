@@ -2,7 +2,9 @@
 export interface DatedItem { source: string; quote: string; when: string; zone: string;
   day?: string; time?: string; ambiguity?: string; repeat?: 'weekly'; recurrence?: 'daily' | 'weekdays';
   /** The verified operator explicitly asked to be reminded: the scoped grant for one occurrence or the declared recurring series. */
-  remind?: true }
+  remind?: true;
+  /** Model resolution provenance; scheduling still uses the existing local-minute path. */
+  resolution?: { at: number; instant: string } }
 
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
@@ -101,6 +103,26 @@ export function parseDatedItem(source: string, quote: string, when: string, at: 
   return { source, quote, when: phrase, zone, ...(recurrence ? { recurrence } : {}), ...(day ? { day } : {}), ...(time ? { time } : {}),
     ...(weekday?.[1]?.toLowerCase() === 'every' && day ? { repeat: 'weekly' as const } : {}),
     ...(ambiguity ? { ambiguity } : {}) };
+}
+
+/** Model interpretation of a phrase outside the calendar grammar. The quote remains the
+ * authority; the clock/zone binding prevents a delayed answer resolving against a new now.
+ * Known calendar ambiguity/invalidity cannot be overridden by a model restatement. */
+export function resolvedDatedItem(item: DatedItem, resolution: unknown, at: number): DatedItem {
+  if (item.ambiguity !== 'date expression unresolved' || resolution === undefined) return item;
+  const value = resolution as { instant?: unknown; at?: unknown; zone?: unknown; ambiguity?: unknown } | null;
+  if (value && typeof value.ambiguity === 'string' && value.ambiguity.trim() && value.ambiguity.length <= 200)
+    return { ...item, ambiguity: value.ambiguity };
+  if (!value || value.at !== at || value.zone !== item.zone || typeof value.instant !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value.instant))
+    return { ...item, ambiguity: 'date resolution needs the original clock, zone and a valid UTC instant' };
+  const instant = Date.parse(value.instant);
+  if (!Number.isFinite(instant) || new Date(instant).toISOString() !== value.instant || instant <= at)
+    return { ...item, ambiguity: 'invalid or past resolved instant' };
+  const local = localParts(instant, item.zone);
+  const { ambiguity: _ambiguity, ...rest } = item;
+  return { ...rest, resolution: { at, instant: value.instant }, day: dayKey(local.year, local.month, local.day),
+    time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}` };
 }
 
 export function dueState(item: DatedItem, now: number): 'upcoming' | 'due' | 'overdue' | 'ambiguous' {
