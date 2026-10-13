@@ -43,6 +43,8 @@ Deferral: tests/preview/fixtures/deferral-not-memory-2026-10-12.json:16 | not-a-
 Deferral: tests/preview/fixtures/deferral-not-memory-2026-10-12.json:21 | not-a-deferral=Recorded model output whose commitment the regression verifies is scheduled.
 Deferral: tests/preview/fixtures/work-output-live-2026-10-12.json:11 | not-a-deferral=verbatim recorded model output retained as a regression fixture, not a promise by this builder.
 
+Publication evidence: Desk inventory repin and owner-manifest rehash changed zero pins. The replay generator used combined source 3ed87c825d78a50386c1582f779320af07bd1936 and produced generation sha256:a7942e5dc2604a28dd94e6544b92ebe1d1d6bea76a98be13a80ce9a45983e04f (289 entries, 116 rules, 34 terms, 108 prerequisites). Seven generated publications change source/generation metadata only. The 53 core regression and floor tests pass with PREVIEW_FIXED_PROMPT_BYTES unchanged at 22,959; typecheck passes.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: three ordinary merges of reviewed repairs, preserving the live base behavior, followed by existing desk repin/rehash/register generation and direct-consumer tests. No new orchestration or runtime mechanism. Each added unit field prevents a named restart/accounting/refusal-loss failure; the imported reviews explain why local variables or retrying whole tool work would not suffice. Start guards are durable authenticated intake and reserved calls; end guards are exact obligation admission and durable send receipts; limits remain secrets, spend, stop and bounded retries. Evidence is captured-output replay, not a claim of fresh unattended deployment.
