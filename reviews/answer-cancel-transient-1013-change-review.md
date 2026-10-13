@@ -12,6 +12,7 @@ Declared tier: critical
 Tier rationale: alters cancellation and answer recovery at the physical provider boundary.
 Side effects: an already admitted process may run up to 200ms through unavailable authority evidence. A present changed record is immediate withdrawal. Persistent unreadability still cancels. Recovery consumes separately accounted capacity. Existing timeout replacement behavior is unchanged. Unknown tool writes receive scheduled follow-up, never speculative replay. Follow-up reports use the existing next-reply delivery policy; this does not introduce unsolicited send authority.
 Undo and recovery: revert this change as a unit, including generated pins. New model-uncertain followUp and turn projection fields are additive; preserve the encrypted journal and UNKNOWN accounting. Do not replay an old reservation during rollback.
+Additional files: src/assembly/harness.declarations.json and generated outputs refresh the existing composition/source pins; no new supported platform is declared. macOS conformance execution remains a Studio check.
 Multi-machine posture: cancellation polling is machine-local because it owns a local child. Recovery state lives in the existing journal; the existing writer ownership, stop, cap and intent fences continue to govern replacement and delivery across reopen or handoff. No new store or peer dependency.
 Layer below: resource-owner stopped polling and cleanup evidence; sealed activation authority and owner-record cache; call-diagnostics whitelist and durable validation; answer-replace reservation projection and tokenCurrent retention; complete tool trace before clipped review excerpts; obligation scheduling and delivery inhibition.
 Bug class: user-facing
@@ -24,9 +25,11 @@ Decision: cancel-report-location | retain the host-prescribed absolute reported 
 Prompt review: New obligation context describes the actual interrupted-answer state, preserves UNKNOWN effects, and asks for evidence-based recovery or an honest account. No classifier, fixed semantic trigger or provider call bypass is introduced. Recorded physical cancellation from update 715675816 drives recovery; the fixture explicitly distinguishes report-transcribed fields from its older resource envelope. Existing captured summary/Jev/review/delivered and empty shapes are negative physical-cancellation controls; existing unknown-answer-notice tests replay them through their worker paths.
 Prompt finding: 849db3a6296a | protocol-literal | existing memory-list reply literal is unchanged
 Prompt finding: e8708c7fea24 | protocol-literal | existing source-label guidance is unchanged
+Deferral: generated/register.json:1 | not-a-deferral=generated projection of implemented declarations
+Deferral: tests/preview/journal.ts:745 | not-a-deferral=names the scheduled recovery path implemented in this change
 Deferral: tests/preview/journal.ts:733 | not-a-deferral=describes the durable scheduled obligation implemented in this change
-Deferral: tests/preview/journal.ts:4596 | not-a-deferral=validation error for the implemented recovery record
-Deferral: tests/preview/journal.ts:10838 | not-a-deferral=delivered instructions for the implemented scheduled recovery consumer
+Deferral: tests/preview/journal.ts:4608 | not-a-deferral=validation error for the implemented recovery record
+Deferral: tests/preview/journal.ts:10850 | not-a-deferral=delivered instructions for the implemented scheduled recovery consumer
 
 ## Closing block
 
