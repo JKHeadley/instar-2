@@ -110,3 +110,17 @@ it('keeps two unrelated saved facts separate', async () => {
     expect(memoryReport(w.journal.view)).toContain(oldQuote); expect(memoryReport(w.journal.view)).toContain(other);
   } finally { w.journal.close(); }
 });
+
+it('replays the original save then recall attempts without treating recall as authority to save or replace a fact', async () => {
+  const w = world((_packet, ordinal) => ordinal === 1 ? capture.savedAnswer : capture.updateAnswer);
+  try {
+    await seed(w); w.worker.intake([capture.intake]); await w.worker.drain();
+    w.worker.intake([capture.recallIntake]); await w.worker.drain();
+    const repair = w.packets.find(packet => packet.formatReminder);
+    expect(repair).toBeDefined(); checkGuidance(repair!.formatReminder!);
+    // The recorded update's new clause is absent from the recall request. Keep that exact admission boundary.
+    expect(w.journal.view.memory).toHaveLength(2);
+    expect(w.journal.view.memory.every(item => item.mode === 'remember')).toBe(true);
+    expect(w.journal.view.turns.get('telegram:8994258214:update:715675726')?.memoryPending).toBe(true);
+  } finally { w.journal.close(); }
+});
