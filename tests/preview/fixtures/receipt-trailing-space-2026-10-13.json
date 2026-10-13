@@ -1,0 +1,10 @@
+{
+  "source": "Studio lanes/long-answer-unsent-1013-PROGRESS.md; read-only forensic extraction of proofroom4-dshort15-20261013-145143, update 46039986, frames 240/259/260. Body transcribed verbatim from the forensic report. Actual provider receipt was not retained.",
+  "update": 46039986,
+  "intent": "Here's a general month-by-month plan for a temperate Northern Hemisphere climate (adjust by 2-6 weeks for your actual last/first frost dates and zone — I don't know your location, so treat timing as a template, not a fixed calendar).\n\n**January**\n- Sow: Onions, leeks, and early brassicas (cabbage, broccoli) indoors under lights — they need a long head start before transplanting.\n- Transplant: None yet — too cold outside.\n- Harvest: Overwintered leeks, kale, Brussels sprouts — cold actually sweetens these.\n- Care: Order seeds early and check stored produce for rot; plan bed layout and crop rotation now while there's little else to do.\n\n**February**\n- Sow: Peppers and eggplant indoors (slow germinators, need 8-10 weeks before transplant); early peas outdoors if soil is workable.\n- Transplant: None outdoors yet.\n- Harvest: Remaining stored roots (carrots, beets), winter greens.\n- Care: Chit seed potatoes in a bright, cool spot so they sprout before planting; test and amend soil pH based on what you'll grow.\n\n**March**\n",
+  "recordedOutcome": {
+    "kind": "unknown",
+    "reason": "receipt differs from intent"
+  },
+  "receiptEvidence": "The trimmed receipt in tests is a synthetic provider-normalization neighbour, NOT a recovered receipt or proof of the original differing field."
+}
