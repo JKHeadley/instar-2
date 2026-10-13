@@ -56,6 +56,10 @@ export function createProductionTelegramIO() {
     if (input.method === 'sendMessage') {
       log({ kind: 'send', role: process.env.INSTAR_PREVIEW_CUTOVER_ROLE, text: input.body.text,
         thread: input.body.message_thread_id, replyTo: input.body.reply_parameters?.message_id });
+      // A slow transport return exposes the gap between Telegram accepting a send and the
+      // runner recording/replicating its receipt, without putting CPU load on the gate host.
+      const sendDelayMs = Number(process.env.INSTAR_PREVIEW_CUTOVER_SEND_DELAY_MS ?? 0);
+      if (sendDelayMs > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, sendDelayMs);
       return { kind: 'response', status: 200, bytes: JSON.stringify({ ok: true, result: {
         message_id: 42, chat: { id: Number(input.body.chat_id) },
         ...(input.body.message_thread_id === undefined ? {} : { message_thread_id: input.body.message_thread_id }),

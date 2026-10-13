@@ -145,9 +145,12 @@ it('the owner machine is lost: the other machine takes over WITH the history, ho
   await t.stop(returned);
 }, 240000);
 
-it('an owner that stalls past its term and comes back is stale: it sends nothing, retires, and is wanted back as the standby', async () => {
+it.each([0, 1500])('an owner that stalls past its term and comes back is stale: it sends nothing, retires, and is wanted back as the standby (%i ms transport return)', async sendDelayMs => {
   const t = await twoMachines();
-  const studio = t.start('studio', ['--journal-lineage', 'seed']);
+  const studio = t.harness.startRunner(t.rootOf('studio'), 'studio', 100000, ['--machine-posture', 'multi-machine', '--conversation-authority', t.url,
+    '--replica-listen', `127.0.0.1:${t.ports.studio}`, '--replica-peer', `http://127.0.0.1:${t.ports.laptop}`, '--owner-machine', 'studio',
+    '--journal-lineage', 'seed'], { ...t.envOf('studio'), INSTAR_PREVIEW_CUTOVER_SEND_DELAY_MS: String(sendDelayMs) });
+  started.push(studio.child);
   await until('the seeded machine serves', () => studio.output.stderr.includes('owner: epoch 1'));
   const laptop = t.start('laptop');
   await until('the second machine stands by', () => laptop.output.stderr.includes('standby: held by studio'));
@@ -156,9 +159,23 @@ it('an owner that stalls past its term and comes back is stale: it sends nothing
   await until('the shared cursor passes it', async () => (await t.view()).cursor === 2);
 
   const sendsBefore = t.sends();
+  // This scenario stalls AFTER a completed exchange. The shared cursor proves replicated
+  // intake, not a replicated send receipt. Even after Telegram accepted the first reply,
+  // a slow transport return can leave only its intent in the standby's copy. Taking over
+  // there correctly reports an UNKNOWN send and can emit an extra recovery notice.
+  // Wait for the same receipt/copy boundary as the owner-loss scenario above, not a delay.
+  await until('the owner recorded the receipts before stalling', async () =>
+    (await t.status('studio'))?.sendOutcomes?.accepted === sendsBefore.length);
+  await until('the standby holds the completed exchange before stalling', () => {
+    const copy = JSON.parse(readFileSync(join(t.rootOf('laptop'), 'replica', 'copy-state.json'), 'utf8'));
+    return copy.machine === 'studio' && copy.epoch === 1
+      && copy.size === statSync(join(t.rootOf('studio'), 'journal.encrypted')).size;
+  });
   // The owner stalls (SIGSTOP by exact PID) for longer than its term; the standby takes over with the history.
   studio.child.kill('SIGSTOP');
   await until('the standby takes over', () => laptop.output.stderr.includes('owner: epoch 2; history adopted'), 60000);
+  expect(await t.status('laptop')).toMatchObject({ turns: 1, unknownSends: 0,
+    sendOutcomes: { accepted: sendsBefore.length } });
   t.harness.setUpdates([message(t.world, 1, 'What is the marker? Juniper.'), message(t.world, 2, 'And again: what is the marker? Juniper.')]);
   await until('the new owner reads the message', async () => (await t.status('laptop'))?.turns === 2);
   const stalePolls = t.polls('studio').length;
