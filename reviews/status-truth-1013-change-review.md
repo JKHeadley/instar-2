@@ -23,7 +23,9 @@ Decision: status-truth-1013-delivery | Put delivery precedence, due-versus-sent 
 Decision: status-truth-1013-warning | Remove the blanket plain-answer warning; retain existing failed-mutation disclosures without classifying intent in code. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/status-truth-1013-PROGRESS.md
 Decision: status-truth-1013-evidence | Replay exact captured outputs and packets; distinguish contract checks from fresh live model evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/status-truth-1013-PROGRESS.md
 
-Subject (5 paths): tests/preview/journal.ts, tests/preview/reply-check.ts, tests/preview/journal-requested-action.test.ts, tests/preview/status-truth-live.test.ts, tests/preview/fixtures/status-truth-1013.json
+Decision: status-truth-1013-pins | Refresh the existing owner-reference and generated register pins so final lint and register checks bind this source commit. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/status-truth-1013-PROGRESS.md
+
+Subject (including mechanical pins): tests/preview/journal.ts, tests/preview/reply-check.ts, tests/preview/journal-requested-action.test.ts, tests/preview/status-truth-live.test.ts, tests/preview/fixtures/status-truth-1013.json, register-source/owner-references/preview.json, generated/
 
 ## Closing block
 
