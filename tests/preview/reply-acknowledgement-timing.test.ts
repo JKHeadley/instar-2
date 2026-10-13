@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, type PreviewPorts } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, QUEUED_REPLY_ACKNOWLEDGEMENT, type PreviewPorts } from './journal-test-worker.js';
 import { readAnswer } from './answer-reading.js';
 import { at as roomAt, room, question, update as roomUpdate } from './recall-rank-room.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -14,7 +14,7 @@ const captured = JSON.parse(readFileSync(new URL('./fixtures/reply-acknowledgeme
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 afterEach(() => vi.useRealTimers());
 
-for (const sample of captured.cases.slice(0, 3)) it(`real recorded timing ${sample.update}: fixed ack starts at ten seconds, never after final send dispatch`, async () => {
+for (const sample of captured.cases.slice(0, 3)) it(`real recorded timing ${sample.update}: fixed ack starts within the receipt budget, never after final send dispatch`, async () => {
   vi.useFakeTimers(); vi.setSystemTime(sample.at);
   const root = mkdtempSync(join(tmpdir(), 'ack-timing-'));
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(71), {
@@ -29,7 +29,7 @@ for (const sample of captured.cases.slice(0, 3)) it(`real recorded timing ${samp
     model: async () => { await wait(sample.timing.answerReady); readyAt = Date.now();
       const parsed = readAnswer(sample.answer, { wrapped: 'refuse' }); if (!parsed.ok) throw Error('recorded output invalid'); return parsed.value; },
     checkOutbound: () => {},
-    send: async input => { await wait(input.expectedText === REPLY_ACKNOWLEDGEMENT ? sample.timing.ackSend! : sample.timing.send); sent.push({ text: input.expectedText, at: Date.now(), replyTo: input.replyTo }); return 100 + sent.length; },
+    send: async input => { await wait([REPLY_ACKNOWLEDGEMENT, QUEUED_REPLY_ACKNOWLEDGEMENT].includes(input.expectedText) ? (sample.timing.ackSend ?? 1000) : sample.timing.send); sent.push({ text: input.expectedText, at: Date.now(), replyTo: input.replyTo }); return 100 + sent.length; },
     replyCheck: { elapsedMs: () => Date.now(),
       jev: async () => { await wait(sample.timing.review); return { value: { model: 'jev-1.13.0',
         answers: Object.fromEntries(Object.entries(sample.checks[0]!.scores).map(([rule, noul]) => [rule, { type: 'noul', noul }])) }, latencyMs: sample.checks[0]!.latencyMs }; },
@@ -39,14 +39,14 @@ for (const sample of captured.cases.slice(0, 3)) it(`real recorded timing ${samp
       } } };
   try {
     const worker = createJournalWorker(journal, ports); worker.intake([sample.raw]); const drain = worker.drain();
-    await vi.advanceTimersByTimeAsync(9999);
+    await vi.advanceTimersByTimeAsync(6999);
     expect(sent.filter(row => row.text === REPLY_ACKNOWLEDGEMENT)).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(50000); await drain;
     const acknowledgements = sent.filter(row => row.text === REPLY_ACKNOWLEDGEMENT);
-    if (sample.timing.answerReady < 10000) expect(acknowledgements).toHaveLength(0);
+    if (sample.timing.answerReady + sample.timing.review < 7000) expect(acknowledgements).toHaveLength(0);
     else { expect(acknowledgements).toHaveLength(1);
-      expect(acknowledgements[0]!.at - sample.at).toBe(10000 + sample.timing.ackSend!);
-      expect(acknowledgements[0]!.at).toBeLessThan(readyAt!);
+      expect(acknowledgements[0]!.at - sample.at).toBe(7000 + (sample.timing.ackSend ?? 1000));
+      expect(acknowledgements[0]!.at - sample.at).toBeLessThanOrEqual(10000);
       expect(acknowledgements[0]!.replyTo).toBe(sample.raw.message!.message_id); }
     expect(ackReviews).toBe(0);
     expect(sent.at(-1)?.text).toBe(sample.reply);
@@ -72,7 +72,7 @@ it('picks up recorded second input and acknowledges it while the first turn stil
       const parsed = readAnswer(sample.answer, { wrapped: 'refuse' }); if (!parsed.ok) throw Error('recorded output invalid'); return parsed.value; },
     checkOutbound: () => {}, send: async input => {
       const sample = input.update === first.update ? first : second;
-      await wait(input.expectedText === REPLY_ACKNOWLEDGEMENT ? sample.timing.ackSend! : sample.timing.send);
+      await wait([REPLY_ACKNOWLEDGEMENT, QUEUED_REPLY_ACKNOWLEDGEMENT].includes(input.expectedText) ? (sample.timing.ackSend ?? 1000) : sample.timing.send);
       events.push({ update: input.update, text: input.expectedText, at: Date.now() }); return 100 + events.length; },
     replyCheck: { elapsedMs: () => Date.now(),
       jev: async (_text, _questions, _timeout, id) => { const sample = id?.endsWith(String(first.update)) ? first : second;
@@ -86,15 +86,15 @@ it('picks up recorded second input and acknowledges it while the first turn stil
     await vi.advanceTimersByTimeAsync(second.at - first.at); worker.intake([second.raw]);
     expect(journal.view.order[1]).toMatchObject({ update: second.update, at: second.at, accepted: true, reserved: false });
     expect(journal.view.cursor).toBe(second.update + 1);
-    await vi.advanceTimersByTimeAsync(10000 + second.timing.ackSend!);
-    const ack = events.filter(row => row.update === second.update && row.text === REPLY_ACKNOWLEDGEMENT);
-    expect(ack).toHaveLength(1); expect(ack[0]!.at - second.at).toBe(10000 + second.timing.ackSend!);
+    await vi.advanceTimersByTimeAsync(7000 + second.timing.ackSend!);
+    const ack = events.filter(row => row.update === second.update && row.text === QUEUED_REPLY_ACKNOWLEDGEMENT);
+    expect(ack).toHaveLength(1); expect(ack[0]!.at - second.at).toBe(7000 + second.timing.ackSend!);
     expect(answering).toEqual([first.update]); // answer calls remain serial, with no speculative paid reservation
     expect(events.some(row => row.text === first.reply)).toBe(false);
     await vi.advanceTimersByTimeAsync(50000); await drain;
     expect(answering).toEqual([first.update, second.update]); expect(peak).toBe(1);
-    expect(events.filter(row => row.text === REPLY_ACKNOWLEDGEMENT)).toHaveLength(2);
-    expect(events.filter(row => row.text !== REPLY_ACKNOWLEDGEMENT).map(row => row.text)).toEqual([first.reply, second.reply]);
+    expect(events.filter(row => [REPLY_ACKNOWLEDGEMENT, QUEUED_REPLY_ACKNOWLEDGEMENT].includes(row.text))).toHaveLength(2);
+    expect(events.filter(row => ![REPLY_ACKNOWLEDGEMENT, QUEUED_REPLY_ACKNOWLEDGEMENT].includes(row.text)).map(row => row.text)).toEqual([first.reply, second.reply]);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -163,12 +163,12 @@ it.each([
     journal = openPreviewJournal(path, key);
     const worker = createJournalWorker(journal, ports), drain = worker.drain();
     await vi.advanceTimersByTimeAsync(10000);
-    expect(sent).toEqual(samples.map(sample => ({ update: sample.update, text: REPLY_ACKNOWLEDGEMENT })));
+    expect(sent).toEqual(samples.map((sample, index) => ({ update: sample.update, text: index === 0 ? REPLY_ACKNOWLEDGEMENT : QUEUED_REPLY_ACKNOWLEDGEMENT })));
     expect(answering).toEqual([samples[0]!.update]);
     expect(journal.view.order[1]?.reserved).toBe(false);
     await vi.advanceTimersByTimeAsync(40000); await drain;
     expect(answering).toEqual(samples.map(sample => sample.update));
-    expect(sent.filter(row => row.text !== REPLY_ACKNOWLEDGEMENT).map(row => row.text)).toEqual(samples.map(sample => sample.reply));
+    expect(sent.filter(row => ![REPLY_ACKNOWLEDGEMENT, QUEUED_REPLY_ACKNOWLEDGEMENT].includes(row.text)).map(row => row.text)).toEqual(samples.map(sample => sample.reply));
     journal.close(); journal = openPreviewJournal(path, key);
     await createJournalWorker(journal, ports).drain();
     expect(sent).toHaveLength(4); // accepted acknowledgement intents and answers never repeat
@@ -202,7 +202,7 @@ it.each([false, true])('saved answer remains acknowledgement-eligible during slo
       journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
     }
     const drain = worker.drain();
-    await vi.advanceTimersByTimeAsync(8999); expect(sent).toEqual([]);
+    await vi.advanceTimersByTimeAsync(5999); expect(sent).toEqual([]);
     await vi.advanceTimersByTimeAsync(1); expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT]);
     expect(journal.view.order[0]?.intent).toBeUndefined();
     await vi.advanceTimersByTimeAsync(10000); await drain;
@@ -272,19 +272,19 @@ it.each([
       escalate: async () => { throw Error('unexpected escalation'); } } };
   try {
     const worker = createJournalWorker(journal, ports); worker.intake([sample.raw]); const drain = worker.drain();
-    await vi.advanceTimersByTimeAsync(9999);
+    await vi.advanceTimersByTimeAsync(6999);
     expect(sent.filter(row => row.text === REPLY_ACKNOWLEDGEMENT)).toEqual([]);
-    if (answerMs + reviewMs < 10000) expect(journal.view.order[0]?.intent).toBeDefined();
+    if (answerMs + reviewMs < 7000) expect(journal.view.order[0]?.intent).toBeDefined();
     if (answerMs === 9300) {
-      expect(journal.view.order[0]?.answer).toBeDefined();
+      expect(journal.view.order[0]?.answer).toBeUndefined();
       expect(journal.view.order[0]?.sent).toBeUndefined();
     }
     await vi.advanceTimersByTimeAsync(1);
-    const ack = { text: REPLY_ACKNOWLEDGEMENT, at: 10000, replyTo: sample.raw.message!.message_id };
-    expect(sent.filter(row => row.text === REPLY_ACKNOWLEDGEMENT)).toEqual(answerMs + reviewMs >= 10000 ? [ack] : []);
+    const ack = { text: REPLY_ACKNOWLEDGEMENT, at: 7000, replyTo: sample.raw.message!.message_id };
+    expect(sent.filter(row => row.text === REPLY_ACKNOWLEDGEMENT)).toEqual(answerMs + reviewMs >= 7000 ? [ack] : []);
     await vi.advanceTimersByTimeAsync(30000); await drain; await worker.minimal();
     const reply = { text: sample.reply, at: answerMs + reviewMs + sendMs, replyTo: sample.raw.message!.message_id };
-    expect(sent).toEqual(answerMs + reviewMs >= 10000 ? [ack, reply] : [reply]);
+    expect(sent).toEqual(answerMs + reviewMs >= 7000 ? [ack, reply] : [reply]);
     // New intents admitted after answer readiness remain readable and never resend on restart.
     const count = sent.length;
     journal.compact(); journal.close();
