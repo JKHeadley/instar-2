@@ -44,6 +44,8 @@ Deferral: tests/preview/fixtures/reminder-relative-1013.json:772 | not-a-deferra
 Deferral: tests/preview/fixtures/reminder-relative-1013.json:793 | not-a-deferral=Historical captured model output retained verbatim as regression evidence, not an author promise
 Deferral: tests/preview/fixtures/reminder-relative-1013.json:803 | not-a-deferral=Historical captured model output retained verbatim as regression evidence, not an author promise
 
+Publication: Register regenerated from source 70e1b67ccc48cb75e2ffd22d10cce1194b4f5f70, generation sha256:3b5a08d17e1ee3faf56c062a0f784320b19a3c7cd6b91d66f24968a02a2dd9e6; this review covers the merge and generated publication.
+
 simplestRobustRoute: This is the simplest robust route: ordinary merge, append-only history union, existing renderers and publication tools. No new runtime machinery or check bypass. Existing verified intake and admission are start guards, durable dispatch is the end guard, and stop, spend and resource bounds remain limit guards. This gate candidate does not claim unattended live acceptance.
 80/20: Target changed tests and direct imports, member tests and required machine checks; no full suite or second base worktree.
 VERDICT: author submission; independent landing review belongs to the desk
