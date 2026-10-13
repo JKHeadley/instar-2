@@ -112,3 +112,22 @@ it.each(['stop', 'cap', 'wrong-sender'] as const)('keeps the %s floor for the re
     expect(journal.view.order).toHaveLength(1);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+it.each([
+  { sent: '2026-10-14T06:55:00.000Z', instant: '2026-10-14T07:07:00.000Z', day: '2026-10-14', time: '00:07', admitted: true },
+  { sent: '2026-11-01T08:55:00.000Z', instant: '2026-11-01T09:07:00.000Z', day: '2026-11-01', time: '01:07', admitted: false },
+])('keeps local calendar conversion and refuses an unrepresentable repeated minute: $instant', async row => {
+  const root = mkdtempSync(join(tmpdir(), 'relative-zone-')), clock = Date.parse(row.sent);
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, expires: clock + 86400_000 });
+  try {
+    const proposed = { ...original, dated: [{ ...original.dated[0],
+      resolution: { at: clock, zone, instant: row.instant } }] };
+    const worker = createJournalWorker(journal, { now: () => clock, stopped: () => false,
+      model: async () => JSON.stringify(proposed), send: async () => 1, checkOutbound: () => {} });
+    const raw = JSON.parse(intake.raw); raw.message.date = clock / 1000;
+    worker.intake([raw]); await worker.drain();
+    expect(journal.view.dated[0]).toMatchObject({ day: row.day, time: row.time, resolution: { at: clock, instant: row.instant } });
+    expect(openRequests(journal.view)).toHaveLength(row.admitted ? 1 : 0);
+    if (!row.admitted) expect(journal.view.order[0]!.answer).toContain('which occurrence do you mean?');
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
