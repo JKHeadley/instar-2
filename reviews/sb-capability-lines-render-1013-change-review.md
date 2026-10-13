@@ -19,6 +19,8 @@ Bug evidence: none
 Hook bypass: none; core.hooksPath unset and common hooks directory contains only sample hooks
 Convergence: none
 Prompt review: Carries the reviewed briefing instruction to use the explicit marker only for a whole capability answer. No new prompt text in this build. Recorded 715675677 and 715675709 replies replay alongside summary, uncertain, Jev undecided/unsure, reply-review and empty reply shapes. Harness-supplied review/revision results prove wiring, not live model judgment.
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Existing tool-record wording is unchanged by the unit; this fixture asserts the advertised tool protocol, not a phrase used to classify intent.
+Prompt finding: 95e349aaf4ac | protocol-literal | Existing effect-doorway and standing-grant wording is unchanged; the fixture verifies the actual authority protocol, not a keyword gate.
 
 Decision: sb-capability-lines-render-1013-merge | Ordinary merge fast-forwarded from exact live base to 5831032778c0a29a37e93135ae74dffc534111b4 without conflicts; retain the unit and its repair byte-for-byte. Unit evidence is in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/capability-lines-render-1013-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-capability-lines-render-1013-PROGRESS.md
 Decision: sb-capability-lines-render-1013-replay | Follow cint-L37 desk chain: inventory repin, compiled build, owner rehash, register replay at merged head. Zero inventory and owner pins changed; generated provenance refreshed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-capability-lines-render-1013-PROGRESS.md
