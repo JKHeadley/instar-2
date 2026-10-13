@@ -21,6 +21,8 @@ Convergence: none
 Prompt review: No model-facing behavior or model-output parsing change. Synthetic secret-shaped fixtures exercise real OS pipes and the actual copied launcher; no live credentials or real logins used.
 Decision: linux-mcp-anonymous-pipe | Bridge only Linux MCP descriptor 4 through a real anonymous pipe, preserving the existing argument, one-use delivery, direct descriptor-3 login and stdin remainder; keep macOS unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/linux-limit-launcher-1013-PROGRESS.md
 
+Decision: linux-limit-register-refresh | Regenerate the existing register from the pushed source commit so both launcher changes and the composition pin are bound to current bytes; no authority or declaration population is added. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/linux-limit-launcher-1013-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: the existing one-use descriptor is retained, with a tiny local stream bridge because Linux cannot reopen Node's socket as a file path. A disk file or inline argument would weaken secret custody. Start guards remain installed executable validation and the bounded handoff header; end guards remain EOF and owned teardown; resource limits and stop remain inherited. Real launcher tests prove successful byte delivery and refused malformed neighbors. This is author evidence for the desk's independent landing review.
