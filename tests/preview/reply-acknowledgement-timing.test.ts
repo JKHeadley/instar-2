@@ -133,10 +133,14 @@ it.each([1000, 20000])('keeps acknowledgement through a format continuation last
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
-it('reopens two durable queued inputs and reconstructs both timers before the first serial answer', async () => {
+it.each([
+  { clock: 'fixture day', installedAt: captured.cases[2]!.at },
+  { clock: 'today', installedAt: Date.now() },
+  { clock: 'far future', installedAt: Date.UTC(2099, 0, 1) },
+])('reopens two durable queued inputs and reconstructs both timers before the first serial answer ($clock)', async ({ installedAt }) => {
   const samples = captured.cases.slice(2);
   const at = samples[0]!.at;
-  vi.useFakeTimers(); vi.setSystemTime(at);
+  vi.useFakeTimers({ now: installedAt }); vi.setSystemTime(at);
   const root = mkdtempSync(join(tmpdir(), 'ack-restart-')), path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(71);
   let journal = openPreviewJournal(path, key, {
     kind: 'genesis', bot: '8820318295', chat: '-1004290919884', operator: '7812716706', forum: true,
@@ -153,6 +157,9 @@ it('reopens two durable queued inputs and reconstructs both timers before the fi
     createJournalWorker(journal, ports).intake(samples.map(sample => sample.raw));
     expect(journal.view.order.every(turn => turn.accepted && !turn.reserved)).toBe(true);
     journal.close(); vi.clearAllTimers(); // process loss discards local timers, not durable intake
+    // clearAllTimers also resets the fake clock to its installation epoch. A restart
+    // must keep the fixture time even when the host date is beyond the trial expiry.
+    vi.setSystemTime(at);
     journal = openPreviewJournal(path, key);
     const worker = createJournalWorker(journal, ports), drain = worker.drain();
     await vi.advanceTimersByTimeAsync(10000);
