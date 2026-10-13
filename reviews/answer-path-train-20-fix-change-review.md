@@ -1,0 +1,31 @@
+# Change review — preserve a decided correction when summary prose is refused
+
+Subject base: d9d1c5a51eed6b5c8c8338fa9fd6a771f40de361
+Review state: open
+Reviewed content: none
+Outcome: An exactly admitted operator correction survives the stale-claim refusal of its accompanying summary. The reply acknowledges the durable correction and later recall uses the corrected fact, including after restart and snapshot compaction.
+Affected rules: Purpose coherence and constraints 2/3; Rules 4/7/10/14/15/26/34/36/42/46/49/57/70/74/77/85/95/101/102/111/113/116.
+Affected floors: secrets — unchanged redaction and outbound checks; spend cap — existing reservations and bounded attempts, no new call; stop — checked before recording the result and dispatch; no duplicate sends — existing intents/receipts, replay exercised; durable intake — accepted input and rejected summary remain retained, the admitted correction shares the durable failure frame.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Changes durable memory settlement on the live answer path; requires recorded-case provenance, refusal neighbors, restart and snapshot checks.
+Side effects: The summary stays refused and its frontier never advances. Only nonempty batches consisting entirely of corrections already accepted by memoryFrom can survive this specific stale-claim refusal. Preference, forgetting, unresolved/malformed decisions and full-context faithfulness rejection keep their existing paths. No cue, prompt, provider, timeout, retry policy or outbound path changes. An additive memory field on summary-failed reconstructs the same memory/change-history projection used by accepted answer and summary frames. Old frames without it replay unchanged.
+Undo and recovery: The existing operator undo uses the same changeHistory entries. To roll back the writer, retain the additive summary-failed reader; reverting that reader on a journal containing these frames would hide recorded corrections. No existing journal is rewritten. Old summaries are not retroactively reinterpreted. A crash after the atomic failure/correction frame and before acknowledgement retains the correction and sends one final reply through the existing receipt path.
+Multi-machine posture: Uses the existing journal replication and owner-gated worker. The correction and rejected-summary outcome travel in the same frame and reconstruct identically on each reader. No new store, machine-local authority, timer or transport.
+Layer below: memoryFrom validates authenticated operator standing, offered sources, exact old/new clauses and mutation shape before the stale-summary check. Accepted answer decisions already apply these mutations independently of summary review. The stale check used allMemory including the proposed correction, then discarded it with the prose. The train-20 result exports show only one prior remember and no prior corrections, then this exact stale-claim recovery refusal: the correction was admitted before refusal. Admission remains unchanged; summary integrity remains closed. Replay and memoryAcknowledgement consume durable changes, never a model success claim.
+Bug class: user-facing
+Bug evidence: reproducer=tests/preview/answer-path-train-20.test.ts; live=tests/preview/fixtures/answer-path-train-20-2026-10-13.json
+Hook bypass: none; core.hooksPath unset and shared hooks directory contains sample hooks only. Plain commits.
+Convergence: none
+Decision: train20-correction-settlement | Record a validated correction with the stale-summary failure instead of losing it with refused prose; reuse the existing journal and memory projection, without another model call. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/answer-path-family-1013-PROGRESS.md
+Decision: train20-result-provenance | Preserve the actual proof exports and label constructed model controls; request the absent raw answer/retry/summary frames rather than claim unseen bytes were replayed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/answer-path-family-1013-PROGRESS.md
+Decision: train20-reader-rollback | Keep the additive frame reader on rollback so durable corrections do not disappear; snapshots and journal replay reconstruct the same correction once. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/answer-path-family-1013-PROGRESS.md
+Decision: train20-settlement-consumers | Clear the resolved correction's transient flags and keep its validated reminder cancellation in the same frame, so status remains truthful and a combined correction/withdrawal loses neither outcome. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/answer-path-family-1013-PROGRESS.md
+Prompt review: No prompt or output parser wording changes. The new regression uses recorded operator messages, delivered outcomes and exact refusal classification, with synthetic mutation/summary controls explicitly marked. Existing memory-update and deferral suites replay actual recorded model outputs, including uncertain summaries, Jev unsure/undecided, reply reviews and empty delivered bubbles. Fresh live-provider acceptance remains the desk's proof.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged fixed memory inventory response, not an intent classifier.
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged source-provenance guidance, not a fixture-specific rule.
+
+simplestRobustRoute: This is the simplest route: retain an already validated correction in the existing failure frame while preserving the summary refusal. The concrete failure is loss of a decided operator correction solely because its separate summary prose repeats the old clause. A timer change or another retry cannot ensure that decision survives. Start guards are verified durable intake and the existing memory validator; end guards are replayed mutation, truthful acknowledgement and durable send receipt. No unattended live-provider completion is claimed.
+80/20: Targeted changed tests and all direct journal/test-worker/agent consumers, compile, architecture and publication checks. The desk owns independent review and live acceptance. No full suite or second base worktree.
+VERDICT: author submission; independent convergence is not claimed

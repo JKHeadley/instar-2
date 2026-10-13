@@ -1,0 +1,156 @@
+{
+  "provenance": {
+    "root": "lanes/pipeline/live-proof/results/preswitch-train-20-d9d1c5a5-20261013-155058/FIRST-proofroom-ps",
+    "files": [
+      "msg-remember.txt",
+      "msg-remember-update.txt",
+      "msg-lookup.txt",
+      "msg-recall.txt",
+      "turns-recall.json",
+      "status-recall.json"
+    ],
+    "limitation": "Result exports, not raw model frames. The test labels its constructed mutation/summary controls separately. Raw answer and summary outputs for update 715675894 were requested from the desk."
+  },
+  "messages": {
+    "remember": "Please remember that the desk test word is orchid-383265c47f70.",
+    "remember-update": "Please remember that the desk test word is orchid-a6b3fdb13d0f.",
+    "lookup": "Starting a fresh conversation segment: please look up today's weather in Portland, Oregon using your tools, and name where you found it.",
+    "recall": "What is the desk test word? Please repeat the exact word."
+  },
+  "turns": [
+    {
+      "update": 715675893,
+      "at": 1791931979892,
+      "textSha256": "sha256:a247400bd46ab5d75f0f15770aaa606ba388105678851f8e28c7bcc4b54f0ef2",
+      "accepted": true,
+      "reply": "Saved the requested fact.",
+      "sent": 6618,
+      "sentAt": 1791931988806,
+      "held": null,
+      "heldNoticeSent": 6617,
+      "prompted": true,
+      "release": null,
+      "heldReview": null
+    },
+    {
+      "update": 715675894,
+      "at": 1791932004648,
+      "textSha256": "sha256:775166b17941ec857a04fef02d209b43f7004bf3c1dad4ebc27ad525b805fb9e",
+      "accepted": true,
+      "reply": "Your message is retained, but I could not validate and save the requested memory change.",
+      "sent": 6623,
+      "sentAt": 1791932048372,
+      "held": null,
+      "heldNoticeSent": 6620,
+      "prompted": true,
+      "release": null,
+      "heldReview": null
+    },
+    {
+      "update": 715675895,
+      "at": 1791932039643,
+      "textSha256": "sha256:0cdaa1b9efc26365302991dea5b5fdeca186b6bcaabd928adf5b8d4c4cc9b3f3",
+      "accepted": true,
+      "reply": "Today (Oct 13, 2026) in Portland, Oregon: cool, mostly cloudy autumn conditions. KGW's local station reported 48\u00b0F and clear early this morning; Weather Underground's mid-morning update showed 62\u00b0F and mostly cloudy with light winds. The daytime high is expected to reach around 62\u00b0F with only a 2% chance of precipitation, dropping to an overnight low near 40\u00b0F. Humidity is around 75-81%, sunrise was ~7:25 AM and sunset is ~6:28 PM. Looking ahead, KOIN News reports dry, sunny weather continuing into Thursday/Friday with highs climbing into the mid-70s, then a chance of light showers Saturday before clearing again Sunday.\n\nSources: I found this via a live web search, pulling from KGW (kgw.com/weather), Weather Underground (wunderground.com/weather/us/or/portland), and KOIN News (koin.com/weather/forecast/your-portland-weather-forecast).",
+      "sent": 6624,
+      "sentAt": 1791932077175,
+      "held": null,
+      "heldNoticeSent": 6622,
+      "prompted": true,
+      "release": null,
+      "heldReview": null
+    },
+    {
+      "update": 715675896,
+      "at": 1791932095903,
+      "textSha256": "sha256:50c975675b1470cd26211959bc8b4970d18e258b455012892433ba63401e2dd0",
+      "accepted": true,
+      "reply": "The desk test word on record is: orchid-383265c47f70 (saved from your message at 2026-10-13T22:52Z).\n\nNote: you later sent a message to change it to orchid-a6b3fdb13d0f, but that update could not be validated and saved (my reply at the time said so), so it never took effect. My records flag that correction as unresolved, so if you intended orchid-a6b3fdb13d0f to be the current word, let me know and I'll try saving it again.",
+      "sent": 6627,
+      "sentAt": 1791932121116,
+      "held": null,
+      "heldNoticeSent": 6626,
+      "prompted": true,
+      "release": null,
+      "heldReview": null
+    }
+  ],
+  "lastSummaryFailure": {
+    "through": 715675894,
+    "reason": "summary faithfulness: stale corrected or forgotten claim"
+  },
+  "timings": [
+    {
+      "update": 715675891,
+      "intakeAt": 1791931902203,
+      "turnStartAt": 1791931902433,
+      "answerAt": 1791931919631,
+      "checkDoneAt": 1791931919849,
+      "sentAt": 1791931920546,
+      "answerMs": 17193,
+      "jevMs": 175,
+      "fallbackMs": null,
+      "sendMs": 692
+    },
+    {
+      "update": 715675892,
+      "intakeAt": 1791931937532,
+      "turnStartAt": 1791931937772,
+      "answerAt": 1791931944352,
+      "checkDoneAt": 1791931953676,
+      "sentAt": 1791931954437,
+      "answerMs": 6575,
+      "jevMs": 153,
+      "fallbackMs": 9119,
+      "sendMs": 756
+    },
+    {
+      "update": 715675893,
+      "intakeAt": 1791931979892,
+      "turnStartAt": 1791931980171,
+      "answerAt": 1791931987873,
+      "checkDoneAt": 1791931988091,
+      "sentAt": 1791931988806,
+      "answerMs": 7695,
+      "jevMs": 176,
+      "fallbackMs": null,
+      "sendMs": 710
+    },
+    {
+      "update": 715675894,
+      "intakeAt": 1791932004648,
+      "turnStartAt": 1791932004863,
+      "answerAt": 1791932023643,
+      "checkDoneAt": 1791932047632,
+      "sentAt": 1791932048372,
+      "answerMs": 18774,
+      "jevMs": null,
+      "fallbackMs": null,
+      "sendMs": 736
+    },
+    {
+      "update": 715675895,
+      "intakeAt": 1791932039643,
+      "turnStartAt": 1791932048611,
+      "answerAt": 1791932076189,
+      "checkDoneAt": 1791932076431,
+      "sentAt": 1791932077175,
+      "answerMs": 27571,
+      "jevMs": 202,
+      "fallbackMs": null,
+      "sendMs": 738
+    },
+    {
+      "update": 715675896,
+      "intakeAt": 1791932095903,
+      "turnStartAt": 1791932096145,
+      "answerAt": 1791932111710,
+      "checkDoneAt": 1791932120403,
+      "sentAt": 1791932121116,
+      "answerMs": 15559,
+      "jevMs": 261,
+      "fallbackMs": 8371,
+      "sendMs": 708
+    }
+  ]
+}

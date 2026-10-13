@@ -1317,7 +1317,9 @@ export type JournalRecord =
   | { kind: 'summary-faithfulness'; through: number; result: SummaryFaithfulness; at: number }
   | { kind: 'summary-integrity-reserve'; through: number; at: number }
   | { kind: 'summary-review-reserve'; through: number; at: number }
-  | { kind: 'summary-failed'; through: number; format?: number; memoryPendingFor?: string; reason?: string; output?: string; evidence?: string; faithfulness?: SummaryFaithfulness; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage; at: number }
+  | { kind: 'summary-failed'; through: number; format?: number; memoryPendingFor?: string;
+    /** Exact admitted operator corrections survive refusal of the summary prose. */
+    memory?: MemoryChange[]; reminderCancels?: string[]; reason?: string; output?: string; evidence?: string; faithfulness?: SummaryFaithfulness; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage; at: number }
 
 
   | { kind: 'summary-uncertain'; through: number; state: 'uncertain'; usage?: ModelUsage; at: number }
@@ -4028,6 +4030,19 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
 
   }
   if (row.kind === 'summary-failed') {
+    if (row.memory !== undefined) {
+      const trigger = row.memoryPendingFor === undefined ? undefined : view.turns.get(row.memoryPendingFor);
+      if (row.reason !== 'summary faithfulness: stale corrected or forgotten claim' || row.state !== 'complete'
+        || !trigger || !verifiedOperatorTurn(view, trigger) || trigger.update > row.through
+        || !row.memory.length || row.memory.length > 3 || view.memory.some(change => change.trigger === trigger.id)
+        || row.memory.some(change => change.mode !== 'correct' || change.trigger !== trigger.id
+          || typeof change.replacement !== 'string' || !redact(trigger.text).text.includes(change.replacement)))
+        throw Error('preview journal: failed summary correction refused');
+    }
+    if (row.reminderCancels !== undefined && (!row.memory || !Array.isArray(row.reminderCancels)
+      || new Set(row.reminderCancels).size !== row.reminderCancels.length
+      || row.reminderCancels.some(key => !openRequests(view).some(item => datedKey(item) === key))))
+      throw Error('preview journal: failed summary cancellation refused');
     // Rule 26: an over-cap settlement stands only on the attempt's own physical outcome row.
     if (row.reason === SUMMARY_OVER_CAP_REASON && !view.summaryOverCap.some(item => item.through === row.through))
       throw Error('preview journal: over-cap summary without its outcome');
@@ -4038,6 +4053,24 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       const trigger = view.turns.get(row.memoryPendingFor);
       if (!trigger?.accepted || trigger.update > row.through) throw Error('preview journal: failed summary trigger absent');
       trigger.memoryPending = true;
+    }
+    // The summary stays failed. Its separately admitted correction has the same
+    // authority as an answer's mutation and must not be lost with defective prose.
+    for (const change of row.memory ?? []) {
+      view.memory.push(change); view.changeHistory.push({ kind: 'memory', at: row.at, value: change, undone: false });
+      operatorEvent(view, row.at, view.turns.get(change.trigger)!.update, 'corrected a recorded fact');
+    }
+    if (row.memory?.length) {
+      const trigger = view.turns.get(row.memoryPendingFor!)!;
+      delete trigger.memoryPending; delete trigger.memoryUnresolved; delete trigger.memoryUndecided;
+      if (trigger.held === 'memory correction pending' || trigger.held?.startsWith('summary faithfulness:')) {
+        delete trigger.held; delete trigger.heldSince; view.heldTurns.delete(trigger);
+      }
+      // A correction and a withdrawal can share one operator message. Keep the
+      // already validated request decision with it; never lose a cancellation.
+      if (row.reminderCancels !== undefined) {
+        view.reminderCancels.push(...row.reminderCancels); trigger.reminderDecided = true;
+      }
     }
     if (row.state !== 'uncertain') settleTokens(view, `summary:${String(row.through)}`, row.usage);
     const failures = (view.summaryFailures.get(row.through) ?? 0) + 1;
@@ -10429,11 +10462,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         && (hasClaim(summaryText, change.quote)
           || change.summaryPassages?.some(passage => hasClaim(summaryText, passage))))) {
         const reason = 'summary faithfulness: stale corrected or forgotten claim';
+        // Rules 4/85/116: memoryFrom already checked the full-context decision's
+        // authority, offered source and exact old/new clauses. Refusing a summary
+        // that repeats the old clause must not discard that decided correction.
+        // Keep the failure and correction in one durable frame; never reuse an
+        // obsolete result after an answer applied the request or intake retracted it.
+        const corrections = trigger && !appliedMemory(trigger)
+          && (journal.view.retracted?.length ?? 0) === retractedAtBuild
+          && memory?.length && memory.every(change => change.mode === 'correct') ? memory : undefined;
+        gate();
         journal.append({kind:'summary-failed',format:SUMMARY_FORMAT,through,state:'complete',failureClass:'malformed',reason,
           ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
+          ...(corrections ? { memory: corrections, ...(reminderCancels ? { reminderCancels } : {}) } : {}),
           ...(typeof summary === 'string' ? {} : { usage: summary.usage }),...failedOutput, at:ports.now()});
         const affected = journal.view.order.find(item => item.update === through);
-        if (affected) journal.append({kind:'hold',id:affected.id,reason,...failedOutput, at:ports.now()});
+        if (affected && !corrections) journal.append({kind:'hold',id:affected.id,reason,...failedOutput, at:ports.now()});
         return;
       }
       // The prose ceiling: past the carried size every packet is sized for, a rewrite asked too much whatever the span,

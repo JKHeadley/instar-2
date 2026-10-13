@@ -1772,7 +1772,16 @@ frames name the request they decided; old frames without that field keep their h
 settled, so an upgrade can continue draining later turns.
 
 The original turns and previous summaries stay in the encrypted append-only journal. Replay
-rebuilds the superseding records from summary or answer frames. Every later packet filters
+rebuilds the superseding records from summary or answer frames, including the admitted
+corrections carried by a refused summary. When all proposed memory changes are validated
+corrections but the summary prose repeats an old claim, the existing `summary-failed`
+frame records those corrections atomically with the refusal. The summary does not advance
+and its prose is never used. The correction is applied before its acknowledgement or a
+dependent answer; restart and snapshot replay retain it exactly once. Unresolved judgments,
+invalid quotations, obsolete results and unvalidated changes acquire no authority through
+this path. Existing secret, stop, call-budget and send checks still apply. A rollback must
+retain this frame reader so corrections already recorded on this path remain visible.
+Every later packet filters
 superseded claims from history, summary text, recalled originals, channel imports, earlier answers, commitments and person
 notes. Source-linked replies are withheld without a phrase test; the model identifies other
 affected replies and summary passages by meaning. Exact old clauses and overlapping note excerpts are withheld;
