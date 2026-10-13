@@ -29,7 +29,8 @@ it('replays the historical over-cap forum review and its real bounded-prompt rep
   const rulesEnd = '}. For raw_path,';
   expect(fixture.replay.question.split(rulesEnd)).toHaveLength(2);
   // Preserve the capture and hashes above. Apply only the six explanatory prose
-  // shortenings from train-11 (00641ee8), as in act-first.test.ts; this is historical
+  // shortenings from train-11 (00641ee8) and D4's capability/refusal clarification,
+  // as in act-first.test.ts; this is historical
   // replay evidence, not a fresh model judgment of the current prompt.
   let question = fixture.replay.question;
   for (const [before, after] of [
@@ -44,6 +45,8 @@ it('replays the historical over-cap forum review and its real bounded-prompt rep
       'Prioritize verdicts; do not repeat rules or context.'],
     ['PASS means the reply does not breach the rule; VIOLATION means it does, and its reason names the breach.',
       'PASS means no breach; VIOLATION means a breach, named in its reason.'],
+    ['restating a settled limit, or describing one the capability-note source lists in no broader terms without declining asked work, needs no new record;',
+      'restating a recorded, still-open limit needs no duplicate record. A capability note alone never records a refusal. Declining asked work needs a record; descriptions alone do not;'],
   ] as const) {
     expect(question.split(before)).toHaveLength(2);
     question = question.replace(before, after);
