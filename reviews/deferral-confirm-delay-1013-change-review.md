@@ -26,7 +26,7 @@ Prompt review: No prompt wording or parser changes. Already-applied requests are
 Prompt finding: 849db3a6296a | protocol-literal | Unchanged fixed memory inventory response, not an intent classifier.
 Prompt finding: e8708c7fea24 | protocol-literal | Unchanged source-label provenance guidance, not a fixture-specific decision.
 
-Publication evidence: The desk rehash and repin tools changed zero pins. The existing register replay generator used source 6a170b6e46e32b27bcc19c1121da8eb05d26c923 and produced generation sha256:9f455505c427163f247facfb77eae507b92930ede000455cd38dbd2f0b6739f8. Seven generated publications refresh source/generation metadata only; they are included in this review and grant no new authority.
+Publication evidence: The desk rehash and repin tools changed zero pins. The existing register replay generator used source 07320aad8b64ac0ea49e89f0efedc9a3bc351207 and produced generation sha256:104820949f27ab762a3d172c1e039793330e64e224cf198c2f0d6c721cf9bf7a. Seven generated publications refresh source/generation metadata only; they are included in this review and grant no new authority.
 
 ## Closing block
 
