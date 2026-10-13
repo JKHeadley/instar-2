@@ -376,6 +376,8 @@ Skip: tests/preview/session-admission.test.ts:322 | scope=Existing confinement i
 Skip: tests/preview/yes-batch-live.test.ts:375 | scope=Existing opt-in live capture or journal replay requires its declared provider/journal environment; the merge adds no skip. (Inherited disposition: reviews/holdack2-1011-main-merge-change-review.md.)
 Skip: tests/preview/yes-window.test.ts:222 | scope=Existing opt-in live capture or journal replay requires its declared provider/journal environment; the merge adds no skip. (Inherited disposition: reviews/holdack2-1011-main-merge-change-review.md.)
 
+Publication: Existing desk tools changed zero owner or inventory pins. Register replay at source 25e8a52cca3e2c2dd837b7efa4375b7b93100fbc generated sha256:9311b49487d14963b1ba55de84f9c1df30ab007a9028c0675a6ce968fd006676. This record covers the merge, fixture repair and generated publication commits.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary integration, existing publication tools, and canonical test paths. No runtime mechanism is added. Start guards remain authenticated durable intake and owner admission; end guards remain validated journal mutations and durable sends; limits remain the spend cap and stop. No new autonomous shipped-path completion claim.
