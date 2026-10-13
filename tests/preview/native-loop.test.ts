@@ -23,7 +23,7 @@ import { prepareToolTurn, readToolTrace, runToolTurn } from './tool-turn.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { NATIVE_EXECUTION, NATIVE_STEPS_ROLE, nativeShellProfile, nativeStepEnvelope, parseNativeStep, runHook, runNativeLoop } from './native-loop.mjs';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
-import { createResourceOwner, RESOURCE_CEILINGS } from '../../scripts/resource-owner.mjs';
+import { createResourceOwner, RESOURCE_CEILINGS, hostQuery } from '../../scripts/resource-owner.mjs';
 
 type Owner = { execute: (input: unknown, work?: string) => Promise<unknown>; attach: (options: object) => Promise<unknown> };
 let owner: Owner;
@@ -47,6 +47,30 @@ const ask = (...calls: Array<[string, Record<string, unknown>]>): Step =>
   answer(JSON.stringify({ calls: calls.map(([tool, input]) => ({ tool, input })) }));
 const admission = (stateDirectory: string) => readFileSync(join(stateDirectory, 'admission.jsonl'), 'utf8').trim().split('\n')
   .map(line => JSON.parse(line));
+
+// This fixture measures the launch tree, not the shared user ID. A six-process RLIMIT_NPROC
+// allowance can be spent by unrelated parallel workers between census and fork, refusing even
+// `echo ordinary`. Inject only an unavailable UID count; retain the real tree census, identity,
+// sandbox joins, sampling and cleanup. The kernel UID limit has its own resource-owner tests.
+const treeLimitQuery = (query: (file: string, args: string[]) => Promise<string | null>) =>
+  (file: string, args: string[]) => file === '/bin/ps' && args.length === 4
+    && args[0] === '-U' && args[1] === String(process.getuid?.()) && args[2] === '-o' && args[3] === 'pid='
+    ? Promise.resolve(null) : query(file, args);
+
+it('the tree-limit fixture isolates the UID allowance while retaining census, identity and sandbox observations', async () => {
+  const calls: Array<[string, string[]]> = [];
+  const query = treeLimitQuery(async (file, args) => { calls.push([file, args]); return 'observed'; });
+  expect(await query('/bin/ps', ['-U', String(process.getuid?.()), '-o', 'pid='])).toBeNull();
+  expect(calls).toEqual([]);
+  const observations: Array<[string, string[]]> = [
+    ['/bin/ps', ['-U', String(process.getuid?.()), '-ww', '-o', 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=']],
+    ['/bin/ps', ['-o', 'lstart=', '-p', '123']],
+    ['/usr/bin/python3', ['-c', 'sandbox-reader', '1', '/scratch', '123']],
+    ['/usr/sbin/lsof', ['-a', '-d', 'cwd', '-p', '123', '-Fpn', '-w']],
+  ];
+  for (const [file, args] of observations) expect(await query(file, args)).toBe('observed');
+  expect(calls).toEqual(observations);
+});
 
 /** One native turn through runToolTurn: the scripted steps answer in order; returns what the loop, journal and hook recorded. */
 async function nativeTurn(script: Step[] | ((envelope: string, index: number) => Step | Promise<Step>), options: {
@@ -440,7 +464,7 @@ describe('the tools\' execution boundary', () => {
   it('every tool launch passes the host resource owner: its memory and process ceilings end a command over them; ordinary work runs', { timeout: 30000 }, async () => {
     const small = createResourceOwner({ ...RESOURCE_CEILINGS,
       launch: { ...RESOURCE_CEILINGS.launch, memoryBytes: 96 * 1024 * 1024, processCount: 6 } }) as Owner;
-    await small.attach({});
+    await small.attach({ query: treeLimitQuery(hostQuery) });
     const run = await nativeTurn([ask(
       ['Bash', { command: 'echo ordinary' }],
       ['Bash', { command: '/usr/bin/perl -e \'$x = "a" x 400_000_000; sleep 10\'' }],
@@ -450,8 +474,8 @@ describe('the tools\' execution boundary', () => {
     const posts = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
     expect(posts[0]).toMatchObject({ stdout: 'ordinary\n', exitCode: 0 });
     expect(posts[1]).toMatchObject({ exitCode: null, interrupted: 'memory' });
-    // The tree's process count is sampled against the ceiling; the user ID's kernel process limit may refuse forks first.
-    expect(posts[2].interrupted === 'processes' || /fork|Resource temporarily unavailable/iu.test(String(posts[2].stderr))).toBe(true);
+    // This must be the owner's tree ceiling, never an unrelated user's process-count race.
+    expect(posts[2]).toMatchObject({ exitCode: null, interrupted: 'processes' });
     expect(posts[3]).toEqual({ content: 'still fine' });
     // Every launch, the ones the owner ended on a ceiling included, had its end proven by the owner under the sandbox join.
     expect(run.outcome.result.native.unresolved).toEqual([]);
@@ -460,6 +484,7 @@ describe('the tools\' execution boundary', () => {
       lastLaunch: { cleanup: string } } }).snapshot();
     expect(view.counters).toMatchObject({ cleanupUnresolved: 0, completed: 4 });
     expect(view.counters.killed.memory).toBe(1);
+    expect(view.counters.killed.processes).toBe(1);
     expect(view.lastLaunch.cleanup).toBe('verified');
   });
 

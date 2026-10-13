@@ -4015,11 +4015,42 @@ without replacing an existing file. Existing malformed entries remain refused, a
 file is retained for older runners. Dispatch reads only the profile-specific record. Pools never
 use this migration: provision each reviewed member explicitly before enabling the pool.
 
-A runner may name an ordered pool with `--login-pool /ABSOLUTE/runner-logins.json`. Its first entry must match
-`--login-profile` and `--activation-record` (and any explicit authority/tool/session paths). Every account has its own
-profile, custody record and sealed activation authority; accounts and profile directories must be distinct within the list.
-Use disjoint lists/accounts for serving, the parked private runner, each proof room and answer checks. Nothing discovers
-accounts outside the list, inherits another member's grant, or falls back to the old singleton custody file.
+An installation records already authenticated and independently admitted harness logins with the shipped
+`journal-agent.mjs install-login` command. Use the same installation, model, harness-user, operator-records,
+profile, activation and authority options as its existing single-login launch. Before the first run, also
+supply the trial's `--operator-sender-id`, `--grant-reference`, `--configuration-digest` and `--expires-at`.
+Each successful admission appends the login to `<root>/harness-logins.json`; a repeated admission updates
+that member in its recorded position. The first member stays the installation anchor. This command
+never signs in, copies credentials, creates grants or inherits authority from another login.
+
+`install-login` prepares conversation, tools and sealed authority records for every admitted login using
+one shared preparation step. `prepare-logins` runs that step at update time; an automatic launch also
+prepares a changed build. Records live in `<root>/harness-login-builds/`, derived from the running code,
+policy and source records. Conversation and explicit tools successors preserve their previous account observation, expiry and
+predecessor evidence. A changed policy must still resolve under that member's own sealed authority; the preparation
+cannot widen an exact grant to cover a new policy. Default tools records resolve the member's own tools
+grant. The original records remain withdrawal handles, checked together with the prepared records.
+
+With multiple installed logins, `run` without `--login-profile` or `--login-pool` derives and selects the pool
+automatically. With one installed login, it supplies the same single-login options and creates no pool
+selection state. With no installation inventory, the existing launch path is unchanged. An explicit
+`--login-profile` without `--login-pool` remains the single-login override; the run log records that choice.
+A secondary member with missing, withdrawn or unauthenticated records is excluded with one durable,
+reply-deduplicated notice. Its admitted non-secret profile, index, holds and history stay recorded; a missing profile can
+represent history and verify a predecessor but cannot authorize dispatch. Other members can continue.
+The primary still has to validate as the installation anchor. No call is retried by this preparation.
+
+Existing installations can pass their reviewed `--login-pool` to `install-login` together with the
+matching primary options. It admits the list in its existing order and retains that manifest as the
+predecessor, including its quota source and threshold. An explicit `--usage-file` overrides the imported
+source; 95 percent applies only when the source omits its threshold. Subsequent builds produce their manifests automatically. Adding or changing members once
+pool selection state exists refuses for an explicit membership migration; it never resets selection.
+
+An explicit `--login-pool /ABSOLUTE/runner-logins.json` remains supported. Its first entry must match
+`--login-profile` and `--activation-record` (and any explicit authority/tool/session paths). Every account
+has its own profile, custody record and sealed activation authority; accounts and profile directories
+must be distinct. Lists/accounts for serving and proof rooms remain disjoint. No machine-wide account
+scan, grant inheritance or fallback to the old singleton custody file occurs.
 
 ```json
 {
@@ -4041,7 +4072,7 @@ edge; it carries that member's `sessionActivation`, and the existing session dri
 member for subsequent calls/steps. Session calls already inside a running step keep their original credential; the held step
 ends uncertain and is never automatically repeated. Call, turn, step and spend caps do not increase on a switch.
 
-Optional `usageFile` names a read-only 1.x SubscriptionPool JSON snapshot (`version: 1`, `accounts[].email`, `configHome`,
+The installer’s optional `--usage-file` (manifest `usageFile`) names a read-only 1.x SubscriptionPool JSON snapshot (`version: 1`, `accounts[].email`, `configHome`,
 `lastQuota.measuredAt`, `lastQuota.fiveHour`/`sevenDay` with `utilizationPct` and ISO `resetsAt`). Only a reading matching
 the profile's exact account and config directory (or the entry's explicitly reviewed `usageAccount` id when the pool polls
 the account in its original config home), at most five minutes old and with no reported identity drift, can trigger the configured threshold
@@ -4050,13 +4081,20 @@ reset time restores eligibility then. An unknown reset recovers when a newer, fr
 reading shows both five-hour and seven-day windows below the threshold with valid future resets.
 Recovery is durable; missing, stale, partial or mismatched evidence preserves the hold. Legacy holds
 without observation times gain a durable freshness boundary on first reopen and need a later reading. Exhausting
-all listed members holds calls; it never picks an unlisted account. Status reports capacity for the whole list.
+all listed members holds calls; it never picks an unlisted account. Status names each member, the active member,
+holds and their reset times, and the last switch with its reason. When a member’s quota reading is stale or
+unavailable, status states that selection for it switches only after a typed limit reply. Part 17 gives
+no numeric threshold; the shipped 95 percent default is retained. This path reads the existing quota
+snapshot without opening a credential or inventing a fresh measurement.
 
 `<root>/harness-login-pool.json` retains active selection, holds and all switch records through atomic fsynced writes under
 the root's writer lease. The existing run log names the pool configuration, so loss of its state after launch refuses instead of silently resetting.
-A changed manifest is refused until restart, and a state/configuration mismatch requires desk
-migration (archive the old state with the stopped runner, then initialize the new reviewed list). Do not delete a live
-selection file. Switch notices use the existing journal-deduplicated doorway notice on the next eligible operator reply:
+A changed manifest is refused until restart. Identity binds the ordered logins, accounts and profile homes,
+not per-build activation/authority paths. Old path-hashed state is adopted only when its hash matches the
+current or retained `previousManifest` and the ordered members agree. Adoption preserves active selection,
+holds, switch history and the original notice-key identity, and records its reason. No historical notice is
+reissued. Unknown identity or a real member change refuses for explicit migration. Retain predecessor
+manifests and profiles; never delete selection state to make a launch pass. Switch notices use the existing journal-deduplicated doorway notice on the next eligible operator reply:
 one line per switch, never a new chat, no account identities or tokens. Machine-local deliberately: each machine needs
 its own custody, profiles and grants; this file is not shared login authority.
 
