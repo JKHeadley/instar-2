@@ -23,6 +23,7 @@ Prompt finding: 849db3a6296a | protocol-literal | Unchanged fixed empty-memory r
 Prompt finding: e8708c7fea24 | quoted-evidence | Unchanged recall source instruction and negative-control test, unrelated to queue selection.
 Decision: ack-timing-1013-repair-worker | Keep a process-local current-turn reference through final and remaining-part sends, and clear it on pass exit; an intent alone cannot prove the worker is free. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ack-timing-1013-repair-111335-PROGRESS.md
 Decision: ack-timing-1013-repair-evidence | Replay recorded answers with zero and 2500 ms transport, accepted and UNKNOWN outcomes, and recorded multipart text across restart; injected delays are not live measurements. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ack-timing-1013-repair-111335-PROGRESS.md
+Verification: Five focused files passed 98/98 tests. Typecheck and build passed. The delegated owner-manifest and inventory repin tools changed no pins; build-register replay regenerated generated/ from source commit 31df16f022997f77cece81b2eb89169e9145dae7. Final lint, register and change-review results are recorded in the local handoff report.
 
 ## Closing block
 
