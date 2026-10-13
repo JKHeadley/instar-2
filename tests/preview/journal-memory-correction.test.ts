@@ -75,12 +75,14 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
     const status = spawnSync(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
       { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
-        encoding: 'utf8', timeout: 10000 });
-    expect(status.status, status.stderr).toBe(0);
+        // A cold TypeScript loader can spend more than ten seconds starting on a shared host.
+        // Bound startup separately from the semantic assertions above and report its actual error.
+        encoding: 'utf8', timeout: 60000 });
+    expect(status.status, status.error?.message ?? status.stderr).toBe(0);
     expect(JSON.parse(status.stdout).withheld).toMatchObject([{
       channelSource: 'conversation', channelSourceId: 'archive-1 Silver Crane', reason: 'verified operator requested forgetting' }]);
   } finally { rmSync(root, { recursive: true, force: true }); }
-}, 10000);
+}, 90000);
 
 it('forgets a relevant import despite five unrelated near-term dated imports and drains the next turn', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-dated-imports-')));
