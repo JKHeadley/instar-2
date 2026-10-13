@@ -4,7 +4,7 @@ Subject base: 0ed77d1682e55fb894fdc1f13b26cabd62972e00
 Review state: open
 Reviewed content: none
 Outcome: D4 update 46039927 declared reply-only-grant with externalTools evidence. The runner rejected it and a capability-note PASS released a refusal without a recheck. Admit the unique existing constraint when it alone makes the declaration valid; unresolved declarations with no current record use the existing bounded revision and holding path. Clarify that capability descriptions do not excuse refusals of asked work.
-Affected rules: 4, 10, 20, 21, 23, 36, 42, 55, 57, 75, 99, 101, 102, 103, 108, 113, 116
+Affected rules: 4, 10, 20, 21, 23, 36, 42, 55, 57, 75, 86, 95, 99, 101, 102, 103, 108, 113, 116
 Affected floors: secrets — retain credential checks and never replace a violation; spend cap — reuse the existing reserved revision/review calls and deadline; stop — existing gates precede every call/send; no duplicate sends — existing durable intent and receipts remain the only send path; durable intake — unchanged, the original writer bytes and refused declarations remain retained
 Operator questions: none
 Suggested tier: critical
@@ -18,8 +18,8 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/blocker-refusal-recorded.test.ts
 Hook bypass: none
 Convergence: none
-Decision: blocker-refusal-recorded-1012-unique-pair | Use the existing full validator to select exactly one replacement from existing constraint keys; never weaken the evidence table or repair other invalid fields | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/blocker-refusal-recorded-1012-PROGRESS.md
-Decision: blocker-refusal-recorded-1012-refused-floor | An explicit refused blocker with no current record uses the existing correction/holding path even if the review passes; nonempty settled-record semantic matching stays with the reviewer | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/blocker-refusal-recorded-1012-PROGRESS.md
+Decision: blocker-refusal-recorded-1012-unique-pair | Use the existing full validator to select exactly one replacement from existing constraint keys; never weaken the evidence table or repair other invalid fields | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/blocker-refusal-recorded-1012-repair-184146-PROGRESS.md
+Decision: blocker-refusal-recorded-1012-refused-floor | An explicit refused blocker with no current record uses the existing correction/holding path even if the review passes; nonempty settled-record semantic matching stays with the reviewer | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/blocker-refusal-recorded-1012-repair-184146-PROGRESS.md
 Prompt review: The existing declared-obligations guide now explicitly separates a description of capabilities from declining asked work; a refusal requires an admitted blocker or an open settled record for the same limit. No phrase classifier, invented constraint, provider route, or policy change. Real D4 writer/review bytes are replayed through the production reading and journal path; earlier self-description captures remain unchanged with explicit historical prompt translation in their test.
 Prompt finding: 5b486d8bd247 | protocol-literal | Unchanged protocol or fixed runner text; the cited test verifies it is carried, rather than using an operator phrase as a classifier — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "prioritize verdicts; do not repeat rules or context."
 Prompt finding: 5fa1a20c4031 | protocol-literal | Unchanged protocol or fixed runner text; the cited test verifies it is carried, rather than using an operator phrase as a classifier — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "an illustrative or quoted literal the verified operator explicitly requested or "

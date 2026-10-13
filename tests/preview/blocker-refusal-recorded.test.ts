@@ -14,7 +14,7 @@ const recordedReview = parseReplyReviewVerdict(readReview.value);
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
-function world(options: { evidence?: string; constraint?: string; revise?: boolean; invalidRevision?: boolean; maxCalls?: number;
+function world(options: { evidence?: string; constraint?: string; revise?: boolean; invalidRevision?: boolean; revisionText?: string; withdrawBlocker?: boolean; maxCalls?: number;
   recheck?: string; reviewUnavailable?: boolean; reviewDelay?: number; credentialViolation?: boolean } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'blocker-replay-')); roots.push(root);
   const key = new Uint8Array(32).fill(23), path = join(root, 'journal.encrypted');
@@ -42,9 +42,10 @@ function world(options: { evidence?: string; constraint?: string; revise?: boole
           : { ...recordedReview, confidence: null, latencyMs: 0 };
       },
       ...(options.revise ? { revise: async () => { revisions++;
-        return { state: 'complete' as const, text: writer.reply,
+        return { state: 'complete' as const, text: options.revisionText ?? writer.reply,
           dispositions: [{ objection: 'unrecorded_blocker', decision: 'accept' as const, reason: 'Record the limit.' }],
-          blocker: { ...answer.blocker, constraint: options.invalidRevision ? 'reply-only-grant' : 'no-tools' } }; } } : {}) },
+          ...(options.withdrawBlocker ? {} : { blocker: { ...answer.blocker,
+            constraint: options.invalidRevision ? 'reply-only-grant' : 'no-tools' } }) }; } } : {}) },
     checkOutbound: () => {}, send: async input => { sent.push(input.text); return sent.length; } });
   const say = async (update = 1) => { worker.intake([{ update_id: update, message: { chat: { id: 7654321, type: 'private' },
     from: { id: 7654321 }, text: 'Renew my library card on the city library website.', date: Math.floor(capture.at / 1000) } }]); await worker.drain(); };
@@ -69,14 +70,44 @@ it('replays D4 writer and passing review: records the unique supported constrain
   expect(openBlockers(reopened.view)).toHaveLength(1); reopened.close();
 });
 
-it('ambiguous accounts evidence uses one existing revision round, then sends with the admitted record', async () => {
-  const w = world({ evidence: 'accounts', revise: true });
+it.each([false, true])('ambiguous accounts evidence uses one revision and an admitted record (changed text %s)', async changed => {
+  const w = world({ evidence: 'accounts', revise: true,
+    ...(changed ? { revisionText: `${writer.reply} Please use the library website directly.` } : {}) });
   await w.say();
   expect(w.revisions()).toBe(1);
   expect(openBlockers(w.journal.view)).toHaveLength(1);
   expect(w.sent[0]).toContain(writer.reply);
   expect(w.journal.view.calls).toBeLessThanOrEqual(4);
   await w.worker.drain(); expect(w.revisions()).toBe(1); expect(w.sent).toHaveLength(1);
+  w.journal.close();
+});
+
+it('a changed refusal with a rejected revision record stays held despite the recorded PASS', async () => {
+  const text = `${writer.reply} Please use the library website directly.`;
+  const w = world({ evidence: 'accounts', revise: true, invalidRevision: true, revisionText: text });
+  await w.say();
+  expect(w.revisions()).toBe(1);
+  expect(openBlockers(w.journal.view)).toHaveLength(0);
+  expect(w.journal.view.order[0]!.revisionReview?.verdict).toBe('pass');
+  expect(w.sent).toEqual([HOLDING_REPLY]);
+  expect(w.journal.view.order[0]!.revision).toMatchObject({ text, rejectedBlocker: true });
+  expect(w.journal.view.calls).toBeLessThanOrEqual(4);
+  await w.worker.drain(); expect(w.sent).toHaveLength(1); expect(w.revisions()).toBe(1);
+  w.journal.close();
+  const reopened = openPreviewJournal(w.path, w.key);
+  expect(reopened.view.order[0]!.revision).toMatchObject({ text, rejectedBlocker: true });
+  expect(openBlockers(reopened.view)).toHaveLength(0); reopened.close();
+});
+
+it('a revision withdrawing the refusal can still be released by contextual review', async () => {
+  const text = 'Which city library is this for?';
+  const w = world({ evidence: 'accounts', revise: true, withdrawBlocker: true, revisionText: text });
+  await w.say();
+  expect(w.revisions()).toBe(1);
+  expect(openBlockers(w.journal.view)).toHaveLength(0);
+  expect(w.journal.view.order[0]!.revisionReview?.verdict).toBe('pass');
+  expect(w.sent).toEqual([text]);
+  expect(w.journal.view.order[0]!.revision?.blocker).toBeUndefined();
   w.journal.close();
 });
 
