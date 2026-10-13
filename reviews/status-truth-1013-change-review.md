@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: ordinary
 Tier rationale: Existing instructions and notice rendering only; no new gate, state, action or authority.
-Side effects: Contextual judgments remain model judgments; instructions do not mechanically rewrite false prose. Plain prose proves no attempted mutation. Existing rejected-cancellation and unresolved-change evidence controls failed-change disclosure. Existing packet bounds remain enforced.
+Side effects: Contextual judgments remain model judgments; instructions do not mechanically rewrite false prose. Plain prose proves no attempted mutation. Existing rejected-cancellation and unresolved-change evidence controls failed-change disclosure. Existing packet bounds remain enforced. The expanded review initially exceeded its measured allowance by 137 bytes; shortening the same rule preserves its evidence sources and distinctions without increasing the floor.
 Undo and recovery: Revert this commit; no schema, persisted state, migration or replay format change.
 Multi-machine posture: Same journal-derived instructions and rendering on every host; no new local state. Studio owns final live acceptance. Generated register refreshed against source f481b7e32509a12e95510743193a186e75f79a72 with existing shape-only authority.
 Layer below: Inspected recorded frames 889/933/1189, history outcomes, reminders, replyReviewContext, cancellation quote admission, reminderUnsettled and openRequests. dueState describes calendar position, not a send. Cancellation still requires an offered ID and exact operator quote.
