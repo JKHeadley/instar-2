@@ -14,6 +14,7 @@ Side effects: Requests completing between seven and ten seconds can now receive 
 Undo and recovery: Revert runtime scheduling while retaining replay acceptance for newly admitted templates. Older readers must not open journals containing new template bytes. Unknown notice sends stay fenced on restart.
 Multi-machine posture: Machine-local timer, deliberately; durable notice and reply intents remain in the existing owned conversation journal and send doorway.
 Layer below: Regenerated the existing register from the committed source to refresh wiring pins. Inspected disclosure, provenance, reply anchor, admission callback, UNKNOWN fence, final dispatch cancellation/await, journal replay and allowance checks. F4/F8 frames show intake plus ten seconds before transport, and serialized second requests. The separate memory serialization cause belongs to deferral-confirm-delay-1013.
+Replay timing: The injected receipt interval includes captured callback-to-admission time and transport, including the extra 750ms transport neighbour.
 Bug class: integration
 Bug evidence: reproducer=tests/preview/ack-timing-userwalk.test.ts
 Hook bypass: none; core.hooksPath is unset and the shared hooks directory contains sample hooks only.

@@ -41,7 +41,9 @@ async function replay(updates: number[], extraTransport = 0) {
     send: async input => {
       const sample = turns.find(s => s.update === input.update)!;
       const notice = input.target?.startsWith('held-notice:') === true;
-      await wait(notice ? sample.receipt.at - sample.notice.at + extraTransport : sample.sent.at - sample.intent.at);
+      // Include the captured callback-to-admission interval as well as transport.
+      await wait(notice ? sample.receipt.at - (sample.intake.at + 10000 + sample.callbackDelay) + extraTransport
+        : sample.sent.at - sample.intent.at);
       sends.push({ update: input.update, text: input.expectedText, at: Date.now(), ...(input.replyTo ? { replyTo: input.replyTo } : {}) });
       return 100 + sends.length;
     } };
