@@ -1720,9 +1720,11 @@ async function main() {
     const heldSecrets = createHeldSecrets({
       environment: () => Object.entries(process.env).flatMap(([name, value]) => name.startsWith('INSTAR_SECRET_') && value ? [value] : []),
       ...custodyHeldSources(custody, () => readRootMcp(root)?.secrets ?? {}),
-      ...(harnessLoginProfiles.length === 0 ? {} : {
-        'harness login': () => harnessLoginProfiles.map(profile => readHarnessLogin(profile)),
-        'harness profile login': () => harnessLoginProfiles.flatMap(profile => harnessCredentialValues(profile.configDirectory)) }),
+      // Each member is a separate source: missing secondary custody cannot discard a readable primary value.
+      ...Object.fromEntries(harnessLoginProfiles.flatMap((profile, index) => [
+        [`harness login ${index}`, () => [readHarnessLogin(profile)]],
+        [`harness profile login ${index}`, () => harnessCredentialValues(profile.configDirectory)],
+      ])),
     });
     const heldSecretValues = () => heldSecrets().values;
     // Plans #446, #451: the register's public entries (names, labels, custody, expiry, renewal standing and step), given

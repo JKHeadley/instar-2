@@ -7,15 +7,19 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, offlineActivationAuthority, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
 import { encoded } from './stage2-provider.js';
-import { openPreviewJournal } from './journal.js';
+import { CREDENTIAL_SHAPE_NOTICE, openPreviewJournal } from './journal.js';
 import { harnessLoginPath, storeHarnessLogin } from './harness-user.mjs';
 
-it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', 'imported'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
+it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', 'imported', 'missing-custody', 'missing-custody-secret', 'intact-custody-secret'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
   const world = successiveWorld(), directory = world.directory, root = join(directory, 'pool-runner');
   const absolute = relative => pathToFileURL(join(process.cwd(), relative)).href;
   const log = join(directory, 'telegram.log'), updates = join(directory, 'updates.json'), calls = join(directory, 'calls.jsonl');
-  const missing = ['missing', 'missing-profile'].includes(mode);
-  const pooled = mode !== 'legacy', automatic = ['installed', 'fresh', 'missing', 'missing-profile', 'imported'].includes(mode);
+  const custodyCase = mode.includes('custody');
+  const missingCustody = mode.startsWith('missing-custody');
+  const secretAnswer = mode.endsWith('custody-secret');
+  const encodedPrimary = Buffer.from('sk-ant-oat01-synthetic-serving-a-only').toString('base64');
+  const missing = ['missing', 'missing-profile'].includes(mode) || custodyCase;
+  const pooled = mode !== 'legacy', automatic = custodyCase || ['installed', 'fresh', 'missing', 'missing-profile', 'imported'].includes(mode);
   const logins = (pooled ? ['serving-a', 'serving-b'] : ['serving-b']).map(name => {
     const profile = { ...offlineProfile, reference: name, activationReference: `${name}-activation`, expectedAccount: `${name}@example.invalid`,
       home: `/offline/${name}/home`, configDirectory: `/offline/${name}/config`, workingDirectory: `/offline/${name}/work` };
@@ -62,7 +66,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
   else {
    appendFileSync(${JSON.stringify(calls)},JSON.stringify({account,home:command.env.HOME,config:command.env.CLAUDE_CONFIG_DIR,evidence:JSON.parse(JSON.parse(command.stdin).messages[1].content).bindings.evidence})+'\\n');
    if(account==='serving-a' && ${JSON.stringify(!missing)}){stdout=captured;code=1;}
-   else stdout=JSON.stringify({type:'result',subtype:'success',is_error:false,result:JSON.stringify({reasoning:'The operator asked an ordinary question.',answer:'The second approved login answered.'}),
+   else stdout=JSON.stringify({type:'result',subtype:'success',is_error:false,result:JSON.stringify({reasoning:'The operator asked an ordinary question.',answer:${JSON.stringify(secretAnswer ? encodedPrimary : 'The second approved login answered.')}}),
     session_id:'offline-b',usage:{input_tokens:10,output_tokens:20,cache_creation_input_tokens:0,cache_read_input_tokens:0}});
   }
   return {code,limited:false,stdout,stdoutBytes:Buffer.from(stdout)};
@@ -109,10 +113,11 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       }
       const registry = JSON.parse(readFileSync(join(root, 'harness-logins.json'), 'utf8'));
       expect(registry.logins.map(row => row.profile)).toEqual(logins.map(row => row.profile));
-      if (missing) {
+      if (missing && !custodyCase) {
         const prepared = JSON.parse(readFileSync(registry.preparedManifest, 'utf8'));
         rmSync(mode === 'missing-profile' ? logins[1].profile : prepared.logins[1].activation);
       }
+      if (missingCustody) rmSync(harnessLoginPath(JSON.parse(readFileSync(logins[1].profile, 'utf8')), join(directory, 'custody')));
       if (mode === 'fresh') {
         const usageFile = join(directory, 'usage.json');
         const a = JSON.parse(readFileSync(logins[0].profile, 'utf8'));
@@ -132,7 +137,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       throw Error(first.stderr + JSON.stringify(detail));
     }
     const rows = readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse);
-    expect(rows[0].account).toBe(['pool', 'installed', 'missing', 'missing-profile', 'imported'].includes(mode) ? 'serving-a' : 'serving-b');
+    expect(rows[0].account).toBe(custodyCase || ['pool', 'installed', 'missing', 'missing-profile', 'imported'].includes(mode) ? 'serving-a' : 'serving-b');
     expect(rows.slice(1).every(row => row.account === (missing ? 'serving-a' : 'serving-b'))).toBe(true);
     expect(rows.length).toBeGreaterThan(1);
     if (pooled) {
@@ -148,12 +153,19 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     const detail = {modelCalls:diagnostic.view.modelCalls, calls:diagnostic.view.calls, limits:diagnostic.view.limits, turns:diagnostic.view.order.map(turn => ({ id: turn.id, held: turn.held, failure: turn.failureClass, state: turn.modelState, answer: turn.answer, notices: turn.answerNotices, reserved:turn.reserved, accepted:turn.accepted }))};
     diagnostic.close();
     expect(sends.filter(row => row.text.includes('next approved login')), JSON.stringify({ sends, detail, rows, stdout:first.stdout, stderr:first.stderr })).toHaveLength(pooled && !missing ? 1 : 0);
-    if (missing) expect(sends.filter(row => row.text.includes('removed from selection'))).toHaveLength(1);
-    expect(sends.some(row => row.text.includes('second approved login answered'))).toBe(true);
+    if (missing && !custodyCase) expect(sends.filter(row => row.text.includes('removed from selection'))).toHaveLength(1);
+    expect(sends.some(row => row.text.includes(encodedPrimary))).toBe(false);
+    if (!secretAnswer) expect(sends.some(row => row.text.includes('second approved login answered'))).toBe(true);
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, undefined, undefined, true);
     expect(journal.view.order[0].modelState).toBe(['pool', 'installed', 'imported'].includes(mode) ? 'rejected' : 'complete');
     expect(journal.view.order.map(turn => turn.update)).toEqual([1, 2, 3]);
     const completed = journal.view.order.filter(turn => turn.modelState === 'complete');
+    if (secretAnswer) {
+      expect(completed).toHaveLength(3);
+      expect(completed.every(turn => turn.answer === encodedPrimary && turn.replyChecks.some(check =>
+        check.path === 'holding' && check.verdict === 'violation' && check.ruleIds.includes('credential')))).toBe(true);
+      expect(sends.filter(row => row.text.includes(CREDENTIAL_SHAPE_NOTICE))).toHaveLength(3);
+    }
     expect(completed.every(turn => turn.sent !== undefined)).toBe(true);
     expect(new Set(completed.map(turn => turn.sent)).size).toBe(completed.length);
     const failed = journal.view.order.filter(turn => turn.modelState !== 'complete');
