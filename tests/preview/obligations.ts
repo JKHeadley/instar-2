@@ -3,7 +3,7 @@
  * rebuilds it exactly, and every item stays open until a recorded cause closes it. */
 import { dueState } from './dated-memory.js';
 import { commitmentOpen, commitmentWaitsOn, loopRevisitMs, loopRevisits, obligationCapacity, obligationSchedule, openBlockers,
-  openDirectives, openQuestionCandidates, openRequests, probeTurn, wallEpoch, type JournalView, type Turn } from './journal.js';
+  openDirectives, openQuestionCandidates, openRequests, probeTurn, wallEpoch, type JournalView, type Turn, type ObligationOutcome } from './journal.js';
 
 /** Measured engineering defaults (Rule 46/64): accepted work older than this, or no forward
  * progress for this long while work waits, is reported as overdue on the pull surface. */
@@ -69,6 +69,8 @@ export interface LoopHealth { open: number; byKind: Record<LoopKind, number>; re
   ownedWork: number;
   rejectedDeclarations: number;
   oldestUnfinishedAt: number | null; oldestUnfinishedAgeMs: number | null; backlogOverdue: boolean;
+  /** Latest work attempt (including failure), independent of forward progress. Failure count is lifetime per journal. */
+  lastAttemptAt: number | null; lastAttemptOutcome: ObligationOutcome | 'in-flight' | null; failedAttempts: number;
   lastProgressAt: number | null; progressAgeMs: number | null; state: 'idle' | 'progressing' | 'stalled';
   inhibition: string | null; deliveryInhibition: string | null; correctionsWaiting: number }
 
@@ -98,6 +100,9 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
   const worked = Object.values(view.obligationWork).filter(work => work.inFlight === undefined && work.outcome !== undefined
     && work.outcome !== 'uncertain' && work.outcome !== 'failed').map(work => work.last);
   const lastProgressAt = Math.max(0, ...view.order.map(turn => turn.sentAt ?? 0), ...worked) || null;
+  const attempts = Object.values(view.obligationWork);
+  const latestAttempt = attempts.reduce<(typeof attempts)[number] | undefined>((latest, work) =>
+    !latest || work.last >= latest.last ? work : latest, undefined);
   const oldestTurn = turns[0];
   const inhibition = view.stop ?? (now >= view.expires ? 'trial expired'
     : view.calls >= view.limits.maxCalls ? 'model-call allowance used'
@@ -119,6 +124,9 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
     nextWorkAt: wakeAt.length ? Math.min(...wakeAt) : null, rejectedDeclarations: view.rejectedObligations,
     oldestUnfinishedAt: oldestAt ?? null, oldestUnfinishedAgeMs: oldestAt === undefined ? null : Math.max(0, now - oldestAt),
     backlogOverdue: oldestAt !== undefined && now - oldestAt > BACKLOG_AGE_LIMIT_MS,
+    lastAttemptAt: latestAttempt?.last ?? null,
+    lastAttemptOutcome: latestAttempt?.inFlight !== undefined ? 'in-flight' : latestAttempt?.outcome ?? null,
+    failedAttempts: attempts.reduce((sum, work) => sum + (work.failedAttempts ?? (work.outcome === 'failed' ? 1 : 0)), 0),
     lastProgressAt, progressAgeMs: lastProgressAt === null ? null : Math.max(0, now - lastProgressAt),
     state: oldestAt === undefined ? 'idle' : now - oldestAt > PROGRESS_STALL_MS ? 'stalled' : 'progressing',
     inhibition: oldestAt !== undefined || view.stop ? inhibition : null,
@@ -138,6 +146,7 @@ export function loopStatusLines(view: JournalView, now: number): string[] {
       ? `Backlog: ${health.unfinished} unfinished (${health.unansweredTurns} message${health.unansweredTurns === 1 ? '' : 's'}, ${health.dueWork} due work step${health.dueWork === 1 ? '' : 's'}); oldest ${age(health.oldestUnfinishedAgeMs!)}${health.backlogOverdue ? `, over the ${age(BACKLOG_AGE_LIMIT_MS)} limit` : ''}${health.inhibition ? `; waiting on ${health.inhibition}` : ''}.`
       : `Backlog: none${health.inhibition ? `; ${health.inhibition}` : ''}.`,
     `Progress: ${health.state}; last ${health.progressAgeMs === null ? 'none yet' : `${age(health.progressAgeMs)} ago`}.`,
+    ...(health.lastAttemptAt === null ? [] : [`Last work attempt: ${age(Math.max(0, now - health.lastAttemptAt))} ago; ${health.lastAttemptOutcome}; ${health.failedAttempts} failed attempts.`]),
     `Scheduled work: ${health.scheduledWork} waiting for their time${health.workInFlight ? `, ${health.workInFlight} in progress` : ''}${health.deliveryInhibition ? `; ${health.deliveryInhibition}` : ''}.`,
     ...health.waitingWork.slice(0, 3).map(item => `Waiting on ${item.waitsOn === 'operator' ? 'you' : 'an outside party'}: ${item.need}`),
     ...(health.deliveryUnknown ? [`Delivery unknown: ${health.deliveryUnknown} finished ${health.deliveryUnknown === 1 ? 'result was' : 'results were'} sent without a confirmed receipt; not resent and not counted as delivered.`] : []),
