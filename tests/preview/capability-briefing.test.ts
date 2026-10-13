@@ -15,7 +15,7 @@ it('delivers every available generated feature, names switched-off ones, and omi
   const note = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS, limits).sources.find(s => s.id === 'capability-note')!;
   expect(note.provenance).toMatchObject({ path: CAPABILITY_BRIEFING_PATH, launcher: CAPABILITY_LAUNCHER, generation: generated.generation, commit: generated.commit });
   for (const f of briefed.filter(f => f.availability === 'available')) expect(note.text).toContain(`- ${f.text}`);
-  expect(note.text).toContain('Not enabled here: the separate background-work coordinator, Slack conversations, Slack replies, the separate Telegram connection (this bot chat works).');
+  expect(note.text).toContain('Not enabled here: the separate work coordinator, Slack conversations, Slack replies, another Telegram connection (this bot chat works).');
   for (const f of briefed.filter(f => f.availability === 'not-loaded')) expect(note.text).not.toContain(f.id);
   expect(note.text).toContain(`at most ${limits.providerAttempts} model attempts`);
   expect(briefed.filter(f => f.availability === 'available' && f.userFacing).map(f => f.id)).toEqual(expect.arrayContaining([
@@ -119,7 +119,7 @@ it('briefs the installation identity with and without the generated register, pr
     if (tools) {
       expect(text).not.toContain('You have no tools');
       expect(text).toContain('Work you have already allowed needs no new approval');
-      expect(text).toContain("Before changing a website or sending a message elsewhere, I check");
+      expect(text).toContain("Website changes and outside messages require checks of");
     } else expect(text).toMatch(/no tools/u);
     expect(text.includes('capability briefing is unavailable')).toBe(!available);
   }
@@ -138,7 +138,7 @@ it('pins the rendered tools/outbound sentence to each turn’s actual capability
     expect(note.provenance.renderedCapabilitySha256).toBe('sha256:' + createHash('sha256').update(sentence).digest('hex'));
     expect(capabilityBriefing(() => { throw Error('missing'); }, limits).text).toContain(CAPABILITY_SENTENCE_LABEL + sentence);
     if (tools) {
-      expect(sentence).toContain('files, run commands, look up information on the web and delegate parts of a task to other agents');
+      expect(sentence).toContain('files, run commands, look up web information and delegate tasks to agents');
       expect(sentence).toContain('whether it can be undone, your resource limits, your permissions, sensitive matters');
       for (const condition of ['above your limit', 'cannot be undone and is outside', 'speaks publicly', 'widens my permissions', 'marked sensitive'])
         expect(sentence).toContain(condition);

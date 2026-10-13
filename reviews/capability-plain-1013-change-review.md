@@ -20,10 +20,21 @@ Hook bypass: none; core.hooksPath unset and common hooks directory has sample fi
 Convergence: none
 Prompt review: Generated note remains the single capability record used by answer and contextual reviewer. Existing explicit whole-answer marker and exact-paragraph hash stay in force.
 
+Prompt finding: 034c5250da92 | protocol-literal | Existing capability protocol bytes are compared as provenance, never used as a meaning classifier — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "run without another yes. the operator can tighten or revoke trust through setup-"
+Prompt finding: 45e37ea2e9e9 | protocol-literal | Existing capability protocol bytes are compared as provenance, never used as a meaning classifier — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Existing capability protocol bytes are compared as provenance, never used as a meaning classifier — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "tools: full claude code set"
+Prompt finding: 6af48f94b789 | protocol-literal | Existing capability protocol bytes are compared as provenance, never used as a meaning classifier — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "sends remain outside the one-machine closed set. the effect doorway reports any "
+Prompt finding: 95e349aaf4ac | protocol-literal | Existing capability protocol bytes are compared as provenance, never used as a meaning classifier — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "via the doorway's four tests; standing grants need no new approval."
+Prompt finding: b00ed403060a | protocol-literal | Existing capability protocol bytes are compared as provenance, never used as a meaning classifier — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
+
 Decision: CP-1 | Edit existing module descriptions and note; no parallel capability inventory. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/capability-plain-1013-PROGRESS.md
 Decision: CP-2 | Missing, unknown and configured connections never imply a login or a grant. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/capability-plain-1013-PROGRESS.md
 Decision: CP-3 | Render supplied expiry in explicit UTC. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/capability-plain-1013-PROGRESS.md
 Decision: CP-4 | Preserve recorded bytes; replay actual marker against new note using identical installed abilities and limits. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/capability-plain-1013-PROGRESS.md
+
+Decision: CP-5 | Shorten capability prose to retain governing constraints at the existing measured context floor; do not raise the floor or drop required context. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/capability-plain-1013-PROGRESS.md
+
+Evidence: Recorded 6233122 fails the old wording assertions and passes the new plain-language replay. Model-reader → renderer → review → one journal send is exercised, with repeated drain and no network send. Eight focused files (99 tests) pass, including the unchanged context floor. Other recorded summary/uncertain/Jev/review/delivered/empty shapes retain their bytes. Existing K11 v3-rendered judge passed the plain answer and failed an unsupported private-account grant; final tightened wording is rejudged before READY.
 
 ## Closing block
 

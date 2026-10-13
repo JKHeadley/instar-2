@@ -1047,7 +1047,7 @@ it('a tool-bearing work step carries the capability note its pointers name: the 
       expect(packet.sources[0]!.text, label).toContain(TOOLS_LIMITS);
       // Supplied notes use the rendered paragraph; the unsupplied tool-note fallback keeps the legacy tools item.
       expect(packet.sources[0]!.text, label).toContain(label === 'tool note'
-        ? 'files, run commands, look up information on the web and delegate parts of a task'
+        ? 'files, run commands, look up web information and delegate tasks'
         : 'files, shell, web reads, nested subagents');
       expect(packet.sources[0]!.text.toLowerCase(), label).toContain(label === 'tool note'
         ? 'work you have already allowed needs no new approval' : 'standing grants need no new approval');

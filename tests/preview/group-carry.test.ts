@@ -328,7 +328,7 @@ it('replays all recorded model shapes through carried recall after the disclosur
     expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
       .toContain(SELF_IDENTITY);
     expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
-      .toContain('the separate Telegram connection (this bot chat works)');
+      .toContain('another Telegram connection (this bot chat works)');
     expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
       .toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }));
     const envelope = JSON.parse(String(input.prepared));

@@ -11,7 +11,7 @@ const capture = JSON.parse(readFileSync(new URL('./fixtures/capnote-telegram-202
   recordedCapabilityNote: { text: string }; telegramAnswers: { quotes: string[] };
 };
 const read = (path: string) => readFileSync(path, 'utf8');
-const clarification = 'the separate Telegram connection (this bot chat works)';
+const clarification = 'another Telegram connection (this bot chat works)';
 
 it('replays the three reported Telegram answers with a note that distinguishes their active channel from the dark core adapter', async () => {
   // Historical note from capsentence2 update 840342414; the three later answer excerpts
@@ -21,10 +21,10 @@ it('replays the three reported Telegram answers with a note that distinguishes t
   const sources = sourcePacket(read, SOURCE_PINS, capture.limits).sources;
   const note = sources.find(source => source.id === 'capability-note')!.text;
   expect(note).toContain(clarification);
-  expect(note).toContain('Not enabled here: the separate background-work coordinator, Slack conversations, Slack replies, ' + clarification);
+  expect(note).toContain('Not enabled here: the separate work coordinator, Slack conversations, Slack replies, ' + clarification);
   // No capability has been promoted to available, and sends still require the doorway.
   expect(note).not.toContain('- telegram-conversation-adapter:');
-  expect(note).toContain("Before changing a website or sending a message elsewhere, I check");
+  expect(note).toContain("Website changes and outside messages require checks of");
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'capnote-telegram-')));
   const now = 1790000060000;
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(23), {

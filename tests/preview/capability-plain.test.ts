@@ -100,3 +100,17 @@ it('preserves recorded non-capability shapes under the new note, including empty
     'jev-unsure', 'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
   for (const row of otherShapes) expect(renderCapabilityReply(row.raw, packet())).toBe(row.raw);
 });
+
+it('only offers the features actually available in the generated inventory', () => {
+  const path = 'generated/capabilities.json';
+  const inventory = JSON.parse(readFileSync(path, 'utf8'));
+  const features = inventory.launchers['tests/preview/journal-agent.mjs'];
+  const reminders = features.find((feature: { id: string }) => feature.id === 'preview-requested-actions');
+  expect(renderCapabilityReply(marker, packet())).toContain(reminders.text);
+  for (const availability of ['not-loaded', 'switched-off']) {
+    reminders.availability = availability;
+    const withoutReminders = sourcePacket(file => file === path ? JSON.stringify(inventory) : readFileSync(file, 'utf8'),
+      SOURCE_PINS, limits);
+    expect(renderCapabilityReply(marker, withoutReminders)).not.toContain(reminders.text);
+  }
+});

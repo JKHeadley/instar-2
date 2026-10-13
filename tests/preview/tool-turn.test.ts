@@ -201,9 +201,9 @@ it('tells the agent and the operator exactly which tools exist and where outward
   // The rendered tools/outbound paragraph joins the can-do list; the custody and runtime limits follow it.
   const toolsSentence = CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true });
   expect(withTools).toContain(`Capabilities:\n${toolsSentence}`);
-  expect(withTools).toContain('I can use files, run commands, look up information on the web and delegate parts of a task to other agents, who can delegate in turn.');
-  expect(withTools).toContain("whether it can be undone, your resource limits, your permissions, sensitive matters and save the required records.");
-  expect(withTools).toContain('Work you have already allowed needs no new approval; these checks can still stop an action, and work outside my role needs the matching permission.');
+  expect(withTools).toContain('I can use files, run commands, look up web information and delegate tasks to agents who can delegate in turn.');
+  expect(withTools).toContain("whether it can be undone, your resource limits, your permissions, sensitive matters, plus saved records.");
+  expect(withTools).toContain('Work you have already allowed needs no new approval. Checks can still refuse; outside my role I need the matching permission.');
   expect(withTools).toContain(TOOLS_LIMITS);
   // It describes the capability, never a hand-picked list: the whole set is offered and each call is decided at the hook.
   expect(TOOLS_BRIEFING).toMatch(/^tools: full Claude Code set \(files, shell, web reads, nested subagents\); MCP servers: unknown;/u);
