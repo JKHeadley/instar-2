@@ -1,5 +1,22 @@
 [
   {
+    "revision": 12,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 162,
+      "note": "Independent bootstrap review: two authority gaps and three implementation/UX notes"
+    },
+    "changes": [
+      {
+        "what": "Specify the finite enrollment seed, exact first Authorization and runtime genesis/version record sequence.",
+        "why": "Close initial identity and authority without circular grants, extra approval classes or new stores.",
+        "ref": "PR 162; reviews/install-bootstrap-design-1013.md; astra-install-bootstrap-design-1013-review.md"
+      }
+    ]
+  },
+  {
     "revision": 11,
     "date": "2026-10-13",
     "status": "draft",

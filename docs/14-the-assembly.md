@@ -248,7 +248,9 @@ session admits a finite setup manifest under its own administration authority, i
 of the agent being created. Its installation-service org-intent and finite setup grant are
 part of the independently approved release bootstrap, decoded by One and verified by Two
 against the distribution anchor; they permit only preparation for that OS-authorized session,
-not choosing its operator, activating its agent or approving its subscription. Placing these
+not choosing its operator, activating its agent or approving its subscription. The separate
+finite human enrollment seed and first approval follow [Two's concrete record sequence](06-the-fact-envelope.md#admission--the-one-boundary-a-fact-can-enter-through);
+the service cannot use its preparation grant as that seed. Placing these
 already approved inputs follows section 12's manual-placement contract. Seven then starts its
 bounded supervisor using an installer-supplied,
 locally executable model under finite resource reservations; its exact model/adapter artifacts
@@ -269,7 +271,7 @@ existing owner records, with finite retries and a stop that survives restart.
 | Step | Status | Record, consumer and completion evidence |
 |---|---|---|
 | Genesis material created | **to build** | Supervised custodian prepares one installation identity, machine key set, org-intent candidate and recovery package. Nothing is an approved anchor yet. Two later admits only the digest approved in pairing. |
-| Pairing/binding | **to build** | Eleven's code confirmation authenticates the person independently; the custodian seals the exact org-intent/genesis subject and P-01/P-08 choices. One/Two admit initial standing, then Four records the authenticated account/conversation binding. Repeating the act yields the same records. |
+| Pairing/binding | **to build** | Eleven's provider authentication, protected Mac account selection and phone confirmation establish enrollment; the custodian seals the exact org-intent/genesis subject and P-01/P-08 choices. One/Two admit initial standing, then Four records the authenticated account/conversation binding. Repeating the act yields the same records. |
 | Role agreement | **exists** | Slice 1 (`bin/instar2.mjs setup`, `scripts/onboarding.mjs` on the installation track) records role, starting trust, monthly choice and sensitive matters durably. Connecting its input to the verified conversation/standing decoders is to build; its terminal receipt alone is not binding, activation or an enforced monthly cap. |
 | First subscription request answered by P-02 yes | **to build** | Four prepares the exact account/installation/runtime/custody/resource request under current initial standing. The bound operator replies once; One's approval decoder produces the scoped grant, Two records it, and existing cap authority installs the agreed spend bounds before paid use. |
 | Login admitted | **exists but desk-only** | `install-login` / `prepare-logins` in the preview's `installed-harness-logins.mjs` verify already granted logins. Ordinary composition must replace desk-sealed authority with the preceding grant, root-contained custodian/profile references, fresh account evidence and Ten's current AssemblyAdmission. No copied preview waiver. |
@@ -309,11 +311,21 @@ single-machine path requires no peer; enrolled peers receive authority/history t
 while private custody handles and host isolation remain machine-local. Enrolling a peer
 retains P-08's replicated default and never silently lowers it after peer loss.
 
-The ordered build units are:
+The ordered milestones below are not single builder units. **The first bounded unit is
+Nine/Ten's existing broker Mac isolation and distribution verification**: run the harness
+without administrative access; verify the installed service against the distribution anchor;
+prove one harmless scoped request succeeds, while replace/read/elevate attempts from both
+agent and harness are denied. This establishes a boundary only, not admitted genesis or
+ordinary-install readiness. It includes no automated critical key creation. Next prove Seven's
+bounded local setup route and adequacy before automating critical preparation; integrate
+pairing/genesis and recovery after that. Each subunit uses its targeted owner checks, without
+a new whole-design review requirement.
 
-1. **Bootstrap custodian and supervised preparation — Ten/Nine/Seven.** Install the separate OS identity, reviewed local supervisor and vault recovery adapter; prepare candidate genesis through existing owners.
+The milestones are:
+
+1. **Isolated custodian and supervised preparation — Ten/Nine/Seven.** Install the separate OS identity, reviewed local supervisor and vault recovery adapter; prepare candidate genesis through existing owners.
    Exit: a fresh one-machine host prepares/restores once; agent and harness bypass attempts, missing supervisor, stale backup and out-of-root paths refuse with preserved work.
-2. **Verified pairing and genesis admission — Eleven/One/Two/Four.** Ship the phone code surface and independently witnessed approval, pin genesis, and append the initial grants and exact conversation binding.
+2. **Verified pairing and genesis admission — Eleven/One/Two/Four.** Ship protected account selection and phone confirmation with the `R/GP/E/GE/A0/O0` record chain, pin runtime genesis, and append the initial grants and exact conversation binding.
    Exit: real phone confirmation admits once; forwarded/expired code, wrong identity, changed digest, replay and interrupted publication never self-bind; either lost device has a working recovery route.
 3. **Role and first subscription grant — Four/One with the role slice and cap owner.** Connect existing role answers to verified standing; prepare the first request and consume P-02's yes through the existing grant and spend owners.
    Exit: one onboarding conversation records the role and usable limits without repeated in-role prompts; absent binding, wrong account, expired/withdrawn approval and cap overflow cannot activate paid use.

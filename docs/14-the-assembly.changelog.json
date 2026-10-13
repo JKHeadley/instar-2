@@ -1,5 +1,22 @@
 [
   {
+    "revision": 23,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 162,
+      "note": "Independent bootstrap review: two authority gaps and three implementation/UX notes"
+    },
+    "changes": [
+      {
+        "what": "Connect preparation to the concrete genesis chain and split milestones from the first broker isolation unit.",
+        "why": "Close initial identity and authority without circular grants, extra approval classes or new stores.",
+        "ref": "PR 162; reviews/install-bootstrap-design-1013.md; astra-install-bootstrap-design-1013-review.md"
+      }
+    ]
+  },
+  {
     "revision": 22,
     "date": "2026-10-13",
     "status": "draft",

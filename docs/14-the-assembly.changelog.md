@@ -4,6 +4,10 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 23 · 2026-10-13 · draft — operator review on PR #162; Independent bootstrap review: two authority gaps and three implementation/UX notes
+
+- **Connect preparation to the concrete genesis chain and split milestones from the first broker isolation unit.** — Close initial identity and authority without circular grants, extra approval classes or new stores. _(PR 162; reviews/install-bootstrap-design-1013.md; astra-install-bootstrap-design-1013-review.md)_
+
 ## Revision 22 · 2026-10-13 · draft — install-bootstrap-design-1013: desk selects verified binding before the existing P-02 yes, 2026-10-13
 
 - **Define supervised ordinary installation, evidence ordering, explicit overrides and four bounded build units.** — A fresh installation needs an authenticated initial operator and independently held approval anchor before ordinary subscription admission. _(install-bootstrap-design-1013 brief; install-firstgrant-1013 finding; reviews/install-bootstrap-design-1013.md)_

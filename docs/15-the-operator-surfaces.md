@@ -160,17 +160,50 @@ verification material into a separate protected identity; a caller's claimed UID
 root possession is not a recorded operator act. The agent and harness receive neither that
 session nor elevation credentials. This is the initial out-of-band trust channel.
 
-The installer shows a short-lived code and a complete link to the custodian's verified
-surface. On that surface the person authenticates their existing platform account directly
-with its service, checks the matching code and installation, and confirms once. This can
-be done on a phone; no signing-key, repository or grant-file setup is required. The code
-selects the pending installation, not the operator. The custodian verifies the provider's
-account evidence and binds its stable subject to the OS-authorized enrollment session;
-chat text, a forwarded code or an agent-supplied identity assertion cannot do this. The
-registered adapter must prove the intended account and conversation, including cross-device
-session binding, before offering confirmation. Authentication state stays outside the agent.
-A provider unable to prove that association is unsupported for pairing, even if it supports
-ordinary chat. The surface remains available for diagnosis and choosing a supported adapter.
+One supported enrollment flow is **Telegram authentication on the phone, selected by a
+protected confirmation in the Mac installation session**:
+
+1. The broker creates a pending installation and expiring enrollment session. Eleven opens
+   its complete HTTPS link on the phone. The release supplies the registered Telegram Login
+   client and reachable HTTPS origin through the existing surface; no per-person bot or
+   repository registration is part of this flow. A missing configured surface is a setup
+   hold, not a localhost link or a request that the person build a service.
+2. The person authenticates with Telegram. The broker's registered login adapter verifies
+   the provider-signed ID token (signature, issuer, audience, expiry and its session nonce);
+   the authentication request and callback are bound to the broker's pending session. It
+   retains the stable issuer/subject and signed Telegram user id, never substitutes a display
+   name. The person opens the proposed bot DM from that same account. The broker fetches the
+   DM event directly over authenticated TLS from Telegram, checks its sender against that
+   signed user id, and retains bot identity, private conversation id and event capture.
+   The DM event is channel-attested; the signed login and protected selection below supply
+   the independent identity/enrollment evidence. A claimed chat id is insufficient.
+3. **On the Mac, the installing person chooses “Use this account for this installation” in
+   the protected installer UI**, after it displays the authenticated account, DM and machine.
+   OS reauthentication authorizes that exact selection digest. The broker checks the OS
+   authorization result, original installation session and signed installer's authenticated
+   local IPC peer; neither a caller-supplied UID nor an untrusted browser callback can invoke
+   this act. Its durable enrollment record `E` binds installation, session, account subject,
+   conversation, evidence captures, custodian identity and expiry. This is the act selecting
+   THIS account; successful provider login alone selects nobody. Only one subject can be
+   selected per pending enrollment; replacement invalidates the old challenge and candidate.
+4. Back on the phone, the broker admits confirmation only from its authenticated session
+   for `E`'s exact subject and conversation, and only for the displayed candidate and request
+   digest. It checks the Mac selection, provider evidence, session freshness, unconsumed
+   challenge, unchanged installation and empty genesis before signing. The short code only
+   helps match screens. A second account with a copied code and a valid provider login lacks
+   the protected selection and is refused; it cannot replace the selected subject, confirm
+   its request, or obtain a grant. Replaying a completed identical act returns its receipt.
+
+The verifier is Nine's independently administered broker, using the OS authorization channel
+and Telegram's signing keys obtained through its authenticated provider endpoint, not keys
+supplied by the harness. One verifies the broker's captured enrollment/confirmation evidence
+against the verification material installed through Ten's protected distribution channel.
+The phone reaches Eleven through certificate-validated HTTPS; routing carries no enrollment
+authority. This extends the existing surface, not a second approval service. The provider
+contract is [Telegram Login](https://core.telegram.org/bots/telegram-login) and the conversation
+capture uses the [Bot API](https://core.telegram.org/bots/api#getupdates). Subsequent approval,
+revocation and recovery actions remain phone-complete; the initial OS installation and
+account-selection act are explicitly Mac preparation, not a claim of phone-only installation.
 
 Before confirmation, the authenticated stable account is included in the candidate org-intent
 and genesis; any changed subject regenerates the rendering and digest, never edits signed bytes.
@@ -194,8 +227,8 @@ identity requires an independently verified supersession, not an edit or new fir
 Revocation and stop stay available through the independent surface during repair. Recovery
 restores control, not evidence of an unknown earlier send; the P-08 loss limit stays visible.
 
-**Value — acceptance of the surface.** A fresh person completes pairing with the displayed
-code and one clear confirmation on a phone, then continues onboarding without a desk.
+**Value — acceptance of the surface.** A fresh person selects the authenticated account in the protected Mac
+installer, confirms the displayed scope on the phone, then continues onboarding without a desk.
 The fixture pair is a current authenticated confirmation versus a copied code under another
 session, wrong account, changed installation, expired challenge or replay. The real-surface
 proof must cover phishing/forwarding, accessibility, interruption and both device-loss cases.
