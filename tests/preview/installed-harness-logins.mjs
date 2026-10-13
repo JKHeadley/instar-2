@@ -45,7 +45,9 @@ export function installHarnessLogin({ root, options, verify }) {
   const index = logins.findIndex(item => read(item.profile).reference === profile.reference);
   if (index < 0) logins.push(row); else logins[index] = row;
   if (logins.length > 8) throw Error('preview: at most eight installed harness logins');
-  const next = { ...prior, logins, ...(options['usage-file'] ? { usageFile: options['usage-file'] } : {}) };
+  // A fresh authenticated admission must supersede a cached preparation exclusion, even
+  // when custody recovered without changing any non-secret source record.
+  const next = { ...prior, admissionRevision: (prior.admissionRevision ?? 0) + 1, logins, ...(options['usage-file'] ? { usageFile: options['usage-file'] } : {}) };
   // Reuse the manifest validator for distinct accounts/directories and all path constraints.
   const configuration = loadHarnessLogins({ ...optionsOf(options, logins[0]), 'login-pool': inventoryPath(root) },
     path => path === inventoryPath(root) ? JSON.stringify(next) : readFileSync(path, 'utf8'));
@@ -67,7 +69,7 @@ export function prepareInstalledHarnessLogins({ root, options, doorway, build, n
   const source = inventory(root);
   const fingerprints = source.logins.map(row => [row.profile, row.activation, row.authority, row.toolsActivation, row.sessionActivation]
     .filter(Boolean).map(path => { try { return hash(readFileSync(path, 'utf8')); } catch { return null; } }));
-  const key = hash({ build, logins: source.logins, fingerprints, model: options.model, tools: options.tools ?? 'default',
+  const key = hash({ build, admissionRevision: source.admissionRevision, logins: source.logins, fingerprints, model: options.model, tools: options.tools ?? 'default',
     thresholdPercent: source.thresholdPercent ?? 95, usageFile: source.usageFile });
   const directory = join(root, 'harness-login-builds', key), manifestPath = join(directory, 'pool.json');
   if (!existsSync(manifestPath)) {

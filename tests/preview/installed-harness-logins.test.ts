@@ -124,3 +124,37 @@ it('imports an existing reviewed manifest as predecessor evidence instead of req
   expect(next.previousManifest).toBe(path);
   expect(next.logins).toHaveLength(2);
 });
+
+it('successful re-admission prepares a previously unavailable member without resetting membership or history', () => {
+  const f = fixture(); f.install(f.logins[0]); f.install(f.logins[1]);
+  f.authenticated.delete('member-b');
+  const before = f.prepare(); expect(read(before).logins[1].unavailable).toBeDefined();
+  const identity = read(join(f.root, 'harness-logins.json')).identity;
+  f.authenticated.add('member-b'); f.install(f.logins[1]);
+  const after = f.prepare(); expect(after).not.toBe(before);
+  expect(read(after).logins[1].unavailable).toBeUndefined();
+  expect(read(after).previousManifest).toBe(before);
+  expect(read(join(f.root, 'harness-logins.json')).identity).toBe(identity);
+  f.verify(read(after).logins[1], read(f.logins[1].profile), read(read(after).logins[1].activation));
+});
+
+it('prepares policy successors under each existing exact grant, and excludes a successor that its own grant does not cover', () => {
+  const f = fixture(); f.install(f.logins[0]); f.install(f.logins[1]);
+  const original = f.logins.map(row => read(row.activation));
+  const oldDigest = `sha256:${'0'.repeat(64)}`;
+  for (const row of f.logins) writeFileSync(row.activation, JSON.stringify({ ...read(row.activation), invocationPolicyDigest: oldDigest }));
+  const prepared = read(f.prepare());
+  for (const [index, row] of prepared.logins.entries()) {
+    const activation = read(row.activation);
+    expect(activation.previousInvocationPolicyDigest).toBe(oldDigest);
+    expect(activation.invocationPolicyDigest).toBe(original[index].invocationPolicyDigest);
+    expect(activation.observedAt).toBe(original[index].observedAt);
+    expect(activation.expiresAt).toBe(original[index].expiresAt);
+    expect(activation.predecessor.reference).toBe(original[index].reference);
+    expect(read(row.authority)).toEqual(read(f.logins[index].authority));
+  }
+  const authority = read(f.logins[1].authority);
+  authority.grants[0].scope.invocationPolicyDigest = oldDigest;
+  writeFileSync(f.logins[1].authority, JSON.stringify(sealAuthorityRecord(authority, authoritySealKey(OFFLINE_STORAGE_KEY))));
+  expect(read(f.prepare('build-b')).logins[1].unavailable).toBeDefined();
+});
