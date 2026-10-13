@@ -4,7 +4,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { appendFileSync, chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 // @ts-expect-error The physical host remains JavaScript.
 import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, hostQuery, cpuMilliseconds, LIMIT_FILE, LIMIT_FILE_TEXT, limitedFileArgv, HOST_BOUNDS, startIdentity } from '../../scripts/resource-owner.mjs';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
@@ -752,32 +752,51 @@ held.forEach(fd => closeSync(fd)); process.stdout.write(JSON.stringify({ args: p
 });
 
 it('admits every launch through its Six allocation: a Six capacity refusal waits, spawning nothing, and the returned debit admits the next', { timeout: 30000 }, async () => {
-  const root = dir(), marks = join(root, 'marks');
-  const hold = script(root, 'hold.mjs', `import { appendFileSync } from 'node:fs'; appendFileSync(process.argv[2], 'start\\n');
-setTimeout(() => { appendFileSync(process.argv[2], 'end\\n'); process.stdout.write('ok'); }, 600);`);
+  const root = dir(), marks = join(root, 'marks'), release = join(root, 'release');
+  // Delay startup past the old 300 ms assertion without burning CPU. Completion is a handshake,
+  // so neither host load nor a late observer can erase the state this test needs to inspect.
+  const hold = script(root, 'hold.mjs', `import { appendFileSync, existsSync } from 'node:fs';
+await new Promise(resolve => setTimeout(resolve, 350));
+appendFileSync(process.argv[2], 'start\\n');
+const timer = setInterval(() => { if (!existsSync(process.argv[3])) return;
+  clearInterval(timer); appendFileSync(process.argv[2], 'end\\n'); process.stdout.write('ok'); }, 20);`);
+  const lines = (path: string) => existsSync(path) ? readFileSync(path, 'utf8').trim().split('\n') : [];
   // The Six installation domain holds one launch slot; the owner's local slot count would admit three.
   const allocation = six(root, ceilings({ aggregate: { launches: 1 } }));
   const owner = createResourceOwner(ceilings());
   await owner.attach({ ledgerPath: join(root, 'owned-launches.json'), allocation });
-  const both = [owner.execute(input(root, hold, [marks]), 'answer'), owner.execute(input(root, hold, [marks]), 'review')];
-  await settle(300);
-  // Only one launch started: the other is waiting on the Six domain, not spawned.
-  expect(readFileSync(marks, 'utf8').trim().split('\n')).toEqual(['start']);
-  expect(owner.snapshot().waiting).toHaveLength(1);
-  expect(owner.snapshot().allocation.lastRefusal).toMatch(/capacity exhausted/u);
+  const both = [owner.execute(input(root, hold, [marks, release]), 'answer'), owner.execute(input(root, hold, [marks, release]), 'review')];
+  try {
+    await vi.waitFor(() => {
+      expect(lines(marks)).toEqual(['start']);
+      expect(owner.snapshot().waiting).toHaveLength(1);
+      expect(owner.snapshot().allocation.lastRefusal).toMatch(/capacity exhausted/u);
+    }, { timeout: 10000, interval: 20 });
+  } finally {
+    writeFileSync(release, 'go');
+    await Promise.all(both);
+  }
   const results = await Promise.all(both);
   expect(results.map((r: { stdout: string }) => r.stdout)).toEqual(['ok', 'ok']);
   // Strictly serial under the Six ceiling, and every debit returned once.
-  expect(readFileSync(marks, 'utf8').trim().split('\n')).toEqual(['start', 'end', 'start', 'end']);
+  expect(lines(marks)).toEqual(['start', 'end', 'start', 'end']);
   expect(results.every((r: { resources: { allocation: { state: string } } }) => r.resources.allocation.state === 'returned')).toBe(true);
   expect(allocation.open()).toEqual([]);
-  // The other side: a roomy domain admits both at once.
-  const roomyRoot = dir(), roomyMarks = join(roomyRoot, 'marks');
+  // The other side: a roomy domain admits both at once, before either is allowed to finish.
+  const roomyRoot = dir(), roomyMarks = join(roomyRoot, 'marks'), roomyRelease = join(roomyRoot, 'release');
   const roomy = createResourceOwner(ceilings());
   await roomy.attach({ ledgerPath: join(roomyRoot, 'owned-launches.json'), allocation: six(roomyRoot) });
   const hold2 = script(roomyRoot, 'hold.mjs', readFileSync(hold, 'utf8'));
-  await Promise.all([roomy.execute(input(roomyRoot, hold2, [roomyMarks]), 'answer'), roomy.execute(input(roomyRoot, hold2, [roomyMarks]), 'review')]);
-  expect(readFileSync(roomyMarks, 'utf8').trim().split('\n').slice(0, 2)).toEqual(['start', 'start']);
+  const concurrent = [roomy.execute(input(roomyRoot, hold2, [roomyMarks, roomyRelease]), 'answer'),
+    roomy.execute(input(roomyRoot, hold2, [roomyMarks, roomyRelease]), 'review')];
+  try {
+    await vi.waitFor(() => expect(lines(roomyMarks)).toEqual(['start', 'start']), { timeout: 10000, interval: 20 });
+  } finally {
+    writeFileSync(roomyRelease, 'go');
+    await Promise.all(concurrent);
+  }
+  expect((await Promise.all(concurrent)).map((r: { stdout: string }) => r.stdout)).toEqual(['ok', 'ok']);
+  expect(lines(roomyMarks)).toEqual(['start', 'start', 'end', 'end']);
 });
 
 it('keeps the Six debit reserved while cleanup is unresolved, across restart, and returns it once recovery observes the survivor gone', { timeout: 30000 }, async () => {
