@@ -886,15 +886,22 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       return snapshot();
     },
     async execute(input, work = 'answer') {
-      const stopReason = input.stopped?.();
+      const stopReason = input.stopped?.('admission');
       if (stopReason) return { code: null, signal: null, cancellationReason: typeof stopReason === 'string' ? stopReason : 'stopped', limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() };
       const lease = await admit(work, input.timeout, input.stopped);
       if (!lease) {
-        const stopped = input.stopped?.();
+        const stopped = input.stopped?.('admission');
         return { code: null, signal: null, cancellationReason: stopped ? typeof stopped === 'string' ? stopped : 'stopped' : null, limited: true,
           localLimit: stopped ? null : 'capacity', stdout: '', stdoutBytes: new Uint8Array() };
       }
-      try { return await run(input, lease, await processLimit()); }
+      try {
+        const uidProcesses = await processLimit();
+        // A queued admission never inherits the running call's unreadability allowance.
+        const stopped = input.stopped?.('admission');
+        if (stopped) return { code: null, signal: null, cancellationReason: typeof stopped === 'string' ? stopped : 'stopped',
+          limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() };
+        return await run(input, lease, uidProcesses);
+      }
       finally { counters.completed++; release(lease); }
     },
     /**

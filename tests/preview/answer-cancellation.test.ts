@@ -44,3 +44,9 @@ it('the launcher passes the bounded probe to its physical IO and retains strict 
   expect(source).toContain('stopped: cancelled, work');
   expect(source).toContain("if (toolTurn && !toolsActive()) throw Error('preview: tool activation withdrawn')");
 });
+
+it('unreadable authority refuses a new admission without borrowing the running-call allowance', () => {
+  const poll = cancellationProbe({ stop: () => false, activation: () => 'records-unreadable', now: () => 0 });
+  expect(poll('admission')).toBe('records-unreadable');
+  expect(poll()).toBe(false);
+});

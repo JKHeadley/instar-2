@@ -3,13 +3,14 @@
  * withdrawal or stop wins on the very next poll, even during that allowance. */
 export function cancellationProbe({ stop, activation, tools, now }) {
   let unreadableSince = null, reads = 0;
-  return () => {
+  return phase => {
     const stopped = stop();
     if (stopped) return stopped;
     const states = [activation(), ...(tools ? [tools()] : [])];
     const withdrawn = states.find(state => state !== null && state !== 'records-unreadable');
     if (withdrawn) return withdrawn;
     if (!states.includes('records-unreadable')) { unreadableSince = null; reads = 0; return false; }
+    if (phase === 'admission') return 'records-unreadable';
     unreadableSince ??= now();
     reads++;
     return reads >= 9 || now() - unreadableSince >= 200 ? 'records-unreadable' : false;
