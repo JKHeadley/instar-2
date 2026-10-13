@@ -19,7 +19,7 @@ Bug evidence: reproducer=tests/preview/journal-agent-resources.test.ts
 Hook bypass: none; core.hooksPath is unset and the common hooks directory has sample files only.
 Convergence: none
 Decision: train-20-repair-140439-assertions | Repair stale consumers of the reviewed acknowledgement contract; retain exact counts, targets, no-duplicate and replication checks, and add fake-clock cases at 6999 and 7000 ms. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-20-repair-140439-PROGRESS.md
-Verification: Targeted and cheap-check outcomes are recorded in the local handoff report. Studio runs the full suite; this submission claims no fresh full-suite or live-user acceptance.
+Verification: Four two-machine tests and 25 acknowledgement timing tests pass. The resource test exits during unchanged WSL launcher startup, as it did before the repair; the new HTTP assertions require the Studio run. The delegated desk rehash refreshed one preview owner-reference pin; build-register replay regenerated seven generated files from 4fa29f385dfc46123541668c7e49a092430c13d2. Final cheap-check outcomes are recorded in the local handoff report. Studio runs the full suite; this submission claims no fresh full-suite or live-user acceptance.
 
 ## Closing block
 
