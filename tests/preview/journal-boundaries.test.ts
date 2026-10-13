@@ -77,9 +77,9 @@ describe('Rules 3 and 17: the body/mind and agency instructions are delivered as
     expect(instructions).toContain('Rule 3 — The Body and the Mind: The agent is two intelligences');
     expect(instructions).toContain('The agent acts inside its recorded role, including through the accounts granted with it, without asking again.');
     expect(instructions).toContain('Outside every grant it refuses and names the grant needed; the purpose fixes the short list requiring sign-off.');
-    expect(instructions).toContain('Self-description: put {{capability-tools-outbound}} in its own paragraph for tools/outbound; the runner inserts the capability-note line.');
-    expect(instructions).toContain('Free text describes positive memory/status/reminder/media abilities only. No free-text limits or missing-status asides, even true.');
-    expect(instructions).toContain('Quote capability-note limits verbatim, timestamps intact.');
+    expect(instructions).toContain('For a capability answer return {{capability-tools-outbound}}; the runner renders the capability-note\'s grants, tools/outbound and limits as the entire answer.');
+    expect(instructions).toContain('Do not paraphrase that list; other answers remain free text.');
+    expect(instructions).toContain('The reference replaces surrounding prose too; use it only when the whole answer is a capability list.');
     expect(instructions).toContain('Rule 17 — Architectural Agency in the Gap: Between what the model is biased to do');
     expect(instructions).toContain('Constitutional instructions guide judgment, grant nothing; current operator input and reply protocol take precedence.');
     expect(instructions).toContain('secrets, the spend cap, stop, no duplicate sends and durable intake');
