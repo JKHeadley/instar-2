@@ -681,7 +681,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       const gateTimer = setTimeout(() => { if (!lease.running) fail('capacity'); }, GATE_TIMEOUT_MS);
       void openGate().catch(() => fail('capacity'));
       const timer = setTimeout(() => fail('timeout'), input.timeout);
-      const stopTimer = input.stopped ? setInterval(() => { if (input.stopped()) fail(null, 'stopped'); }, 25) : undefined;
+      const stopTimer = input.stopped ? setInterval(() => { const reason = input.stopped(); if (reason) fail(null, typeof reason === 'string' ? reason : 'stopped'); }, 25) : undefined;
       let settleTimer, settled = false;
       child.on('error', () => { clearTimeout(timer); clearTimeout(gateTimer); clearInterval(stopTimer); clearTimeout(settleTimer); retainOutput(); resolve({ code: null, signal: null, cancellationReason: 'spawn-error', rawOutput, rawError: rawError(), limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); });
       child.stdin.on('error', () => fail(null, 'stdin-error'));
@@ -886,11 +886,12 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       return snapshot();
     },
     async execute(input, work = 'answer') {
-      if (input.stopped?.()) return { code: null, signal: null, cancellationReason: 'stopped', limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() };
+      const stopReason = input.stopped?.();
+      if (stopReason) return { code: null, signal: null, cancellationReason: typeof stopReason === 'string' ? stopReason : 'stopped', limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() };
       const lease = await admit(work, input.timeout, input.stopped);
       if (!lease) {
-        const stopped = Boolean(input.stopped?.());
-        return { code: null, signal: null, cancellationReason: stopped ? 'stopped' : null, limited: true,
+        const stopped = input.stopped?.();
+        return { code: null, signal: null, cancellationReason: stopped ? typeof stopped === 'string' ? stopped : 'stopped' : null, limited: true,
           localLimit: stopped ? null : 'capacity', stdout: '', stdoutBytes: new Uint8Array() };
       }
       try { return await run(input, lease, await processLimit()); }

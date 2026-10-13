@@ -26,7 +26,7 @@ export function subscriptionCallOutcome(result, promptBytes, elapsedMs, maxToken
   // excerpt also covers malformed answers and crashes between physical and logical recording.
   const diagnostic = {
     signal: typeof result.signal === 'string' && /^SIG[A-Z0-9]{1,16}$/u.test(result.signal) ? result.signal : null,
-    cancellationReason: ['stopped', 'stdin-error', 'gate-error', 'spawn-error', 'physical-error'].includes(result.cancellationReason)
+    cancellationReason: ['stopped', 'worker-stop', 'stop-file', 'journal-stop', 'activation-not-live', 'tools-grant-not-live', 'records-unreadable', 'stdin-error', 'gate-error', 'spawn-error', 'physical-error'].includes(result.cancellationReason)
       ? result.cancellationReason : null,
     limited: Boolean(result.limited),
     rawOutputExcerpt: boundedExcerpt(result.rawOutput ?? result.stdout ?? '', scrub, result.rawError ? 3072 : 4096),
