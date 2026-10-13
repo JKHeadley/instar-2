@@ -35,7 +35,9 @@ it('learns a corrected answer from the actual sent reply while preserving the qu
       }, send: async (input: { text: string }) => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} };
     let worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'When was the review?')]); await worker.drain();
-    worker.intake([update(2, 'No, that’s wrong, it was Tuesday.')]); await worker.drain();
+    worker.intake([update(2, 'No, that’s wrong, it was Tuesday.')]);
+    // Exercise the independent summary path before the answer path.
+    await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory).toMatchObject([{ mode: 'correct', in: 'reply', quote: 'The review was Monday.',
       replacement: 'it was Tuesday.' }]);
     expect(sends).toHaveLength(2);
@@ -81,7 +83,9 @@ it.each(['Monday.', 'Wednesday.'])('learns the complete short answer %s and drai
       }, send: async (input: { text: string }) => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} };
     let worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'When was the review?')]); await worker.drain();
-    worker.intake([update(2, 'No, that’s wrong, it was Tuesday.')]); await worker.drain();
+    worker.intake([update(2, 'No, that’s wrong, it was Tuesday.')]);
+    // Exercise the independent summary path before the answer path.
+    await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory).toMatchObject([{ mode: 'correct', in: 'reply', quote: answer,
       replacement: 'it was Tuesday.' }]);
     expect(sends).toHaveLength(2);
@@ -177,7 +181,8 @@ it('keeps the existing source-fact correction distinct from an answer correction
       }, send: async () => 1, checkOutbound: () => {} };
     const worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'The visit was Monday.')]); await worker.drain();
-    worker.intake([update(2, 'Actually, the visit was Tuesday.')]); await worker.drain();
+    worker.intake([update(2, 'Actually, the visit was Tuesday.')]);
+    await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory).toMatchObject([{ mode: 'correct', quote: 'The visit was Monday.',
       replacement: 'the visit was Tuesday.' }]);
     expect(journal.view.memory[0]?.in).toBeUndefined();

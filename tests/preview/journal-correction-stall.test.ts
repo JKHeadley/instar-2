@@ -107,7 +107,7 @@ it('answers a cancel whose own summary span cannot be prepared, withdraws its re
     const clock = { now: start + 20 * 60_000 };
     let w = world(root, { bigSummary: true, decides: true }, clock);
     await liveShape(w);
-    w.worker.intake([update(7, ra3)]); await w.worker.drain();
+    w.worker.intake([update(7, ra3)]); await w.worker.summarizeIfNeeded(true); await w.worker.drain();
     const cancel = turnOf(w, ra3);
     // The real preflight refused the span that ends at the cancel: no call was made for it and no summary covers it.
     expect(summaryCalls(w)).not.toContain('summary:7');
@@ -156,7 +156,7 @@ it('decides a later cancel while the frontier is stuck on an earlier answered tu
     const clock = { now: start + 20 * 60_000 };
     const w = await stuckFrontier(root, clock, true);
     const before = summaryCalls(w).length;
-    w.worker.intake([update(9, ra3b)]); await w.worker.drain();
+    w.worker.intake([update(9, ra3b)]); await w.worker.summarizeIfNeeded(true); await w.worker.drain();
     expect(summaryCalls(w)).toHaveLength(before);
     // The live state: the refusal is held on the earlier, already answered turn that starts the span (6230388).
     expect(turnOf(w, gardenLog(4))).toMatchObject({ held: 'summary oversized turn' });
@@ -183,7 +183,7 @@ it('records an undecidable cancel, preserves its independent answer, and every r
   try {
     const clock = { now: start + 20 * 60_000 };
     const w = await stuckFrontier(root, clock, false);
-    w.worker.intake([update(9, ra3b)]); await w.worker.drain();
+    w.worker.intake([update(9, ra3b)]); await w.worker.summarizeIfNeeded(true); await w.worker.drain();
     const cancel = turnOf(w, ra3b);
     expect(cancel.memoryUndecided).toBe(true);
     expect(cancel.held).toBeUndefined();
@@ -213,7 +213,7 @@ it('still decides the cancel by the summary when the summary prompt has room (no
   try {
     const w = world(root, { bigSummary: false, decides: true });
     await liveShape(w);
-    w.worker.intake([update(7, ra3)]); await w.worker.drain();
+    w.worker.intake([update(7, ra3)]); await w.worker.summarizeIfNeeded(true); await w.worker.drain();
     const cancel = turnOf(w, ra3);
     expect(cancel.memoryUndecided).toBeUndefined();
     expect(w.journal.view.summaries.some(summary => summary.memoryFor?.includes(cancel.id))).toBe(true);
@@ -235,7 +235,8 @@ it('recovers a root the old build left stalled: one drain after restart settles 
     w.journal.close();
     w = world(root, { bigSummary: true, decides: true }, clock, false);
     await w.worker.drain();
-    expect(turnOf(w, ra3b)).toMatchObject({ memoryUndecided: true });
+    // The old speculative hold is released without waiting for a summary failure.
+    expect(turnOf(w, ra3b).memoryUndecided).toBeUndefined();
     expect(turnOf(w, ra3b).held).toBeUndefined();
     expect(w.sent.filter(text => text.includes('Cancelled request'))).toHaveLength(1);
     w.journal.close();

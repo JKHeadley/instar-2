@@ -47,16 +47,18 @@ it.each(['recorded sequence', 'restart-before-send', 'jev-unsure', 'jev-undecide
     worker.intake([{ update_id: capture.update, message: { chat: { id: Number(capture.operator), type: 'private' },
       from: { id: Number(capture.operator) }, text: capture.message } }]);
     if (mode === 'restart-before-send') {
-      await worker.drain(); // The first pass exhausts the summary frontier.
       await expect(worker.drain()).rejects.toThrow('interrupted after durable answer');
       expect(sends).toEqual([]);
       journal.close(); journal = openPreviewJournal(path, key);
       worker = createJournalWorker(journal, ports);
     }
     await worker.drain(); await worker.drain();
+    // The runner schedules summary work independently of answer draining.
+    await worker.summarizeIfNeeded(true); await worker.summarizeIfNeeded(true);
     expect(summaries).toHaveLength(mode === 'summary-uncertain' ? 1 : 2);
     if (mode.startsWith('jev-')) { expect(judged).toBeGreaterThan(0); expect(reviewed).toBeGreaterThan(0); }
-    expect(journal.view.order[0]).toMatchObject({ memoryPending: true, memoryUndecided: true, memoryUnresolved: true });
+    expect(journal.view.order[0]!.memoryPending).toBe(true);
+    if (mode !== 'empty-memory-decision') expect(journal.view.order[0]!.memoryUnresolved).toBe(true);
     expect(sends).toEqual([JSON.parse(capture.answer.output).reply]);
     const commitments = journal.view.commitments.filter(item => item.source.endsWith(`:${capture.update}`));
     expect(commitments).toHaveLength(1);
