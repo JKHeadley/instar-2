@@ -30,7 +30,7 @@ Prompt finding: e769ca9dd959 | protocol-literal | Unchanged protocol or fixed ru
 Prompt finding: e8708c7fea24 | protocol-literal | Unchanged protocol or fixed runner text; the cited test verifies it is carried, rather than using an operator phrase as a classifier — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 Prompt finding: feadb66b8ad1 | protocol-literal | Unchanged protocol or fixed runner text; the cited test verifies it is carried, rather than using an operator phrase as a classifier — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "any live authentication secret reaching anyone but the verified operator who sup"
 
-Subject (7 paths): tests/preview/blocker-refusal-recorded.test.ts, tests/preview/blocker-restatement-instance.test.ts, tests/preview/fixtures/blocker-refusal-recorded-46039927.json, tests/preview/journal-obligations.test.ts, tests/preview/journal.ts, tests/preview/reply-check.ts, tests/preview/selfdesc-limits.test.ts
+Subject (15 paths): tests/preview/blocker-refusal-recorded.test.ts, tests/preview/blocker-restatement-instance.test.ts, tests/preview/fixtures/blocker-refusal-recorded-46039927.json, tests/preview/journal-obligations.test.ts, tests/preview/journal.ts, tests/preview/reply-check.ts, tests/preview/selfdesc-limits.test.ts, register-source/owner-references/preview.json, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 ## Closing block
 
