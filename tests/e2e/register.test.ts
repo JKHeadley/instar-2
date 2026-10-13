@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync, cpSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync, cpSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { setImmediate as yieldImmediate } from 'node:timers';
 import { join, resolve } from 'node:path';
@@ -442,9 +442,13 @@ describe('compiled register build adapter lifecycle', () => {
         expect(readFileSync(join(root, 'out', path), 'utf8')).toBe(readFileSync(join(committed, 'out', path), 'utf8'));
       // The separately shipped wiring command also scans the pin, never an
       // expanded live-file graph. Its valid control must work before perturbing it.
+      // A clean checkout needs installed compiler dependencies to build its core.
+      symlinkSync(resolve('node_modules'), join(root, 'node_modules'), 'dir');
+      expect(existsSync(join(root, 'dist/index.js'))).toBe(false);
       cpSync(join(root, 'out'), join(root, 'generated'), { recursive: true });
       const wiring = () => spawnSync(process.execPath, [resolve('scripts/check-register-wiring.mjs')], { cwd: root, encoding: 'utf8' });
       const checked = wiring(); expect(checked.status, checked.stderr).toBe(0);
+      expect(existsSync(join(root, 'dist/index.js'))).toBe(true);
       writeFileSync(join(root, 'src/rungraph/ambient.ts'), "export * from './records.js';");
       const untracked = wiring(); expect(untracked.status).not.toBe(0); expect(untracked.stderr).toContain('roster differs from committed graph');
     } finally { rmSync(directory, { recursive: true, force: true }); }
