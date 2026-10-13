@@ -2844,6 +2844,44 @@ records and invented constraints are not excused by the longer quote allowance.
 `refusal-withheld.test.ts` replays recorded update 6233134 and checks both sides
 of admission, review and send boundaries.
 
+The shared answer-path design is in [Part Eight, the shared answer path](../../docs/12-the-effect-doorway.md#the-shared-answer-path).
+It assigns the journal worker one product-owned intake-to-first-response target of
+10 seconds and intake-to-answer target of 30 seconds, including queue and transport.
+It replaces serial advisory escalation with one bounded full-context question batch;
+any auxiliary signals run concurrently. Named work-state, credential, authority and
+durability holds remain. Independent answers do not wait for speculative memory work.
+`REPLY_TIME_BUDGET` and that common deadline are design obligations, not installed
+behavior. The current review sequence below still uses its separate 60-second budget.
+Implementation and complete before/after acceptance remain owned by
+`answer-path-family-1013`; the five prerequisite repairs are combined here.
+
+`answer-path-family.test.ts` replays the exact writer, Jev, review and revision
+outputs for updates 6233124, 6233134 and 6233129 through the current journal and
+review boundary. It asserts the remaining behavior before redesign, including the
+old false objections after evidence admission. It does not label those objections
+as a fresh model judgment of the changed packet. Provider durations and transport
+are injected; local admission overhead is excluded. The fixture preserves exact
+outputs from all eight exported walk files, source hashes, frame numbers and byte
+offsets; overlapping frames and the split file were checked for equality. Its timing
+inventory covers all 15 exported input turns. Receipt times are not browser paint.
+
+| Update / fault | Recorded intake-to-terminal | Combined repairs, injected path | Protected condition and avoidable wait |
+|---|---:|---:|---|
+| 6233124 / 2 | 40.614 s, notice | 48.810 s, notice | No admitted schedule: the promise must not pass. The unchanged old output also fails the new relative-time format re-ask. Serial review and generic notice wording are not required. |
+| 6233134 / 3 | 55.014 s, notice | 53.762 s, notice | Initial refusal has no blocker record. Its revision now admits the 522-byte governed claim; replaying the old missing-record verdict still holds. The reviewer needs the admitted evidence and a new judgment. |
+| 6233129 / 5 | 57.017 s, answer | 45.341 s, answer | The schedule is recorded and now included in the first review packet. The unchanged old objection still drives revision and another review. |
+| 46039931 / answer later | Reported 62–81 s reservation delay | 0 ms reservation delay | `deferral-confirm-delay.test.ts` retains the real unresolved summary shapes and the admitted loop, with an injected 70 s pending summary. Independent answer reservation and delivery precede summary completion. |
+
+The paired prerequisite tests are `reminder-relative.test.ts` (including explicitly
+constructed resolution responses), `refusal-withheld.test.ts` (including explicitly
+controlled evidence-aware review), `deferral-confirm-delay.test.ts`,
+`ack-timing-userwalk.test.ts` and `status-truth-live.test.ts`. They distinguish recorded
+outputs from controlled changed responses and preserve invalid-record, stop, cap,
+correction and duplicate-send neighbors. No fresh provider or Telegram call is made.
+Full path acceptance still requires all recorded turns through the implemented
+deadline and review sequence, first-response and answer stage measurements before
+and after, and real-surface proof; this diagnostic suite is not that completion claim.
+
 Jev checks the eight measured message questions in one batch. A clear pass sends
 the candidate. A violation, uncertain score, or unavailable Jev invokes one
 subscription review with the candidate, original operator message, the complete

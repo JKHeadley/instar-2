@@ -807,6 +807,76 @@ silence a healthy channel; missing valid authority is not an advisory outage. An
 ordinary owner uses the separately authorized infrastructure/repair surface specified by
 six/eleven, never a second agent voice borrowing stale authority.
 
+### The shared answer path
+
+**Value — engineering design: one answer, one time budget.** The conversation owner
+owns the path from durable intake to the transport receipt. The product's versioned
+`REPLY_TIME_BUDGET` policy belongs beside the journal worker's acknowledgement policy
+in `tests/preview/journal.ts`, under the installed configuration digest. Its initial
+targets are 10,000 ms from intake to the first visible response and 30,000 ms from
+intake to the answer. These are engineering targets, not constitutional numbers.
+Three seconds of each target are reserved for admission and transport. Queueing,
+drafting, review, repair and delivery all consume the same elapsed time; no child
+starts a fresh answer window. The existing durable intake time is its origin.
+The worker enforces remaining time at admission and supplies the remaining deadline
+to provider, review and transport ports. Those ports enforce their own cancellation
+and retain uncertain charged work. Recovery uses the original intake and current
+clock evidence, never a new window. This policy is a design obligation; the current
+sixty-second review-only allowance does not implement it.
+
+| Stage | Work and release condition |
+|---|---|
+| Intake and queue | Retain the authenticated request before acknowledgement. Arm the existing single acknowledgement early enough for its transport reserve. Queued and active work use their respective truthful fixed text. An earlier answer suppresses it. |
+| Ground and draft | Assemble current standing, recorded delivery outcomes, scheduled work and relevant memory. Apply an admitted correction before an answer that depends on it. A speculative or undecided memory judgment runs separately and cannot delay an independent answer. |
+| Admit declarations | Admit a promise with its owner and dependency, a reminder with its resolved time and authority, and a settled blocker with its lawful avenues and evidence. Failed admission stays recorded. The answer may explain the failure but cannot claim success. |
+| Review | Give the exact candidate and its evidence to one full-context batch of independent questions. Questions share the remaining allowance; they do not trigger a Jev-then-subscription chain. Any retained auxiliary signal runs concurrently within that allowance and has no separate veto or extra budget. |
+| Repair and send | Use at most one repair when time and call credits remain. Revalidate only the claims and required conditions affected by that repair. Deliver an otherwise authorized answer with surviving advisory flags in the record. Apply the final payload's credential, standing, stop, ownership, resource and durable-cause checks immediately before its single dispatch claim. |
+
+**Value — evidence belongs beside the claim.** Every reviewer receives the same
+candidate digest, original request, bounded conversation and current admitted
+evidence: scheduled reminders with source, time and zone; commitments with owner and
+dependency; blockers with lawful avenues, constraint and recheck time; correction
+admission; and delivered outcomes distinguishing an answer, a holding notice and an
+unknown send. A scheduled action is not a delivered result. An absent record is
+distinct from evidence omitted by a packet bound. Such an omission is recorded and
+cannot establish the protected claim. A rejected declaration's diagnostic remains
+visible. An old verdict about missing evidence is retained as history; an evidence
+change requires a judgment on the new candidate and packet, never relabelling that
+old verdict as a pass. Independent questions are batched to avoid an additional
+model call for each concern. No second store, classifier or sender is needed.
+
+**Value — required holds protect a condition, not a reviewer sequence.** The
+following conditions retain their governing checks. A deadline cannot waive them.
+
+| Required condition | Governing source and behavior |
+|---|---|
+| Untracked promise | Rules 6 and 83: do not claim future work without its admitted commitment, owner and dependency; a matching admitted reminder also supplies scheduled work evidence. |
+| Unsupported settled blocker | Rules 20, 23 and 99: require the recorded investigation and recheck. Outside-standing avenues cite the real governing constraint; they require no forbidden attempt. Invented constraints remain invalid. |
+| Unrecorded correction-success claim | Rule 85 and purpose constraint 3: admit the correction before claiming it was applied, and before an answer using that correction. Preserve the original and rejected proposal. |
+| Send without authority or durable cause | Purpose's least-revelation, standing and irreversible-effect rules, and Rule 4: retain exact credentials, audience, authority, stop, ownership, budget and durability checks. Missing required operation supervision is not an advisory outage. |
+
+Other review objections are signals. At the remaining-time boundary the worker
+records them and delivers the lawful candidate, without substituting a holding
+notice for style, coherence or an unavailable advisory opinion. If a required claim
+cannot be repaired, withhold that claim and give an honest, coherent answer to the
+remaining request where possible. A whole-answer hold needs its named protected
+condition. A slow provider, transport or required dependency may still miss a
+target: record the miss and continue or end the retained work honestly under its
+existing bounds. An acknowledgement or failure notice never counts as the requested
+answer. No deadline fabricates a result, grants standing, repeats an uncertain
+send, clears charged exposure or drops intake.
+
+**Value — measure the whole path and preserve ownership.** Existing phase records
+report intake-to-reservation, drafting, review/repair and transport, plus first
+response and full-answer receipts separately. API acceptance is not browser paint;
+the live surface proof measures visibility separately. The same conversation owner
+enforces the budget on one or several machines; a successor retains intake, grant,
+fence, work and dispatch identities and remaining time. Local timers are disposable.
+The design introduces no new cross-machine state. Its paired proof replays recorded
+turns with injected stage delays and exercises holds, advisory outage, expired
+budgets, late results, changed evidence, restart and exactly one final dispatch.
+The replay inventory and implementation status are in `tests/preview/README.md`.
+
 **Rule — outbound policies act on structured evidence.** **Checks: P8-NF-40/41**.
 System notices aggregate into the declared alerts destination; no per-item conversation is
 created. A request for internal repair action cites the failed self-heal/ExhaustionRecord,

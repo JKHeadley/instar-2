@@ -1,5 +1,21 @@
 [
   {
+    "revision": 11,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Desk accepted deep process review change 1; answer-path-family-1013 owns the shared answer path."
+    },
+    "changes": [
+      {
+        "what": "Specify the shared answer stages, one intake-based product time budget, concurrent evidence-bearing review questions and rule-bound holds.",
+        "why": "Recorded walk faults 2, 3 and 5 and the answer-later delay distinguish required work records from avoidable serial review and speculative memory waits.",
+        "ref": "reviews/answer-path-family-1013-change-review.md; tests/preview/answer-path-family.test.ts"
+      }
+    ]
+  },
+  {
     "revision": 10,
     "date": "2026-10-03",
     "status": "draft",
