@@ -8,7 +8,7 @@ Affected rules: 1, 26, 37, 49, 69, 74, 90, 101, 102, 111, 113, 116
 Affected floors: secrets — existing isolated custody readers unchanged; spend cap — unchanged; stop — unchanged; no duplicate sends — unchanged; durable intake — unchanged.
 Operator questions: none
 Suggested tier: critical
-Declared tier: routine
+Declared tier: ordinary
 Tier rationale: Generated evidence refresh only; no source, declaration, policy, entry population or runtime behavior changes.
 Side effects: Seven generated views advance their source commit and generation digest together. The checker inspects the previously committed launcher repair instead of its predecessor.
 Undo and recovery: Revert this generated refresh to reproduce the stale-source refusal. Regenerate with the existing build-register replay command to recover; no durable runtime state changes.
