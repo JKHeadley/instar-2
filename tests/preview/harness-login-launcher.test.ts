@@ -10,11 +10,11 @@ import { encoded } from './stage2-provider.js';
 import { openPreviewJournal } from './journal.js';
 import { harnessLoginPath, storeHarnessLogin } from './harness-user.mjs';
 
-it.each(['pool', 'legacy', 'installed', 'fresh', 'missing'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
+it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'imported'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
   const world = successiveWorld(), directory = world.directory, root = join(directory, 'pool-runner');
   const absolute = relative => pathToFileURL(join(process.cwd(), relative)).href;
   const log = join(directory, 'telegram.log'), updates = join(directory, 'updates.json'), calls = join(directory, 'calls.jsonl');
-  const pooled = mode !== 'legacy', automatic = ['installed', 'fresh', 'missing'].includes(mode);
+  const pooled = mode !== 'legacy', automatic = ['installed', 'fresh', 'missing', 'imported'].includes(mode);
   const logins = (pooled ? ['serving-a', 'serving-b'] : ['serving-b']).map(name => {
     const profile = { ...offlineProfile, reference: name, activationReference: `${name}-activation`, expectedAccount: `${name}@example.invalid`,
       home: `/offline/${name}/home`, configDirectory: `/offline/${name}/config`, workingDirectory: `/offline/${name}/work` };
@@ -98,10 +98,11 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     // Primary account activation uses its own authority too, even before the pool is built.
     args.push('--authority-record', logins[0].authority);
     if (automatic) {
-      for (const row of logins) {
+      for (const row of (mode === 'imported' ? logins.slice(0, 1) : logins)) {
         const installArgs = args.map(value => value === 'run' ? 'install-login' : value);
         for (const [flag, value] of [['--login-profile', row.profile], ['--activation-record', row.activation], ['--authority-record', row.authority]])
           installArgs[installArgs.indexOf(flag) + 1] = value;
+        if (mode === 'imported') installArgs.push('--login-pool', manifest);
         const installed = spawnSync(process.execPath, installArgs, { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env });
         expect(installed.status, installed.stderr).toBe(0);
       }
@@ -130,7 +131,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       throw Error(first.stderr + JSON.stringify(detail));
     }
     const rows = readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse);
-    expect(rows[0].account).toBe(['pool', 'installed', 'missing'].includes(mode) ? 'serving-a' : 'serving-b');
+    expect(rows[0].account).toBe(['pool', 'installed', 'missing', 'imported'].includes(mode) ? 'serving-a' : 'serving-b');
     expect(rows.slice(1).every(row => row.account === (mode === 'missing' ? 'serving-a' : 'serving-b'))).toBe(true);
     expect(rows.length).toBeGreaterThan(1);
     if (pooled) {
@@ -149,7 +150,11 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     if (mode === 'missing') expect(sends.filter(row => row.text.includes('removed from selection'))).toHaveLength(1);
     expect(sends.some(row => row.text.includes('second approved login answered'))).toBe(true);
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, undefined, undefined, true);
-    expect(journal.view.order[0].modelState).toBe(['pool', 'installed'].includes(mode) ? 'rejected' : 'complete'); journal.close();
+    expect(journal.view.order[0].modelState).toBe(['pool', 'installed', 'imported'].includes(mode) ? 'rejected' : 'complete');
+    expect(journal.view.order.map(turn => turn.update)).toEqual([1, 2, 3]);
+    expect(journal.view.order.every(turn => turn.sent !== undefined)).toBe(true);
+    expect(new Set(journal.view.order.map(turn => turn.sent)).size).toBe(3);
+    journal.close();
     const statusArgs = args.map(value => value === 'run' ? 'status' : value);
     const status = spawnSync(process.execPath, statusArgs, { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env });
     expect(status.status, status.stderr).toBe(0);

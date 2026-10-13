@@ -4,12 +4,17 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { durablePreviewWrite } from './durable-write.js';
-import { publishSetupRecord } from '../../scripts/onboarding-state.mjs';
 import { encoded } from './stage2-provider.js';
 import { loadHarnessLogins } from './harness-login-pool.mjs';
 
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const read = path => JSON.parse(readFileSync(path, 'utf8'));
+// The caller holds the root's writer lease, the same owner that serializes pool state.
+const keepRecord = (path, value) => {
+  if (existsSync(path)) {
+    if (JSON.stringify(read(path)) !== JSON.stringify(value)) throw Error('preview: immutable login build record differs');
+  } else durablePreviewWrite(path, value);
+};
 const inventoryPath = root => join(root, 'harness-logins.json');
 const rowOf = options => ({ profile: options['login-profile'], activation: options['activation-record'],
   authority: options['authority-record'] ?? join(dirname(options['activation-record']), 'activation-authority.json'),
@@ -36,7 +41,7 @@ export function installHarnessLogin({ root, options, verify }) {
   const prior = existsSync(inventoryPath(root)) ? inventory(root) : { version: 1, logins: [] };
   const imported = options['login-pool'] ? loadHarnessLogins(options) : null;
   const logins = imported ? read(options['login-pool']).logins : [...prior.logins];
-  if (imported) for (const entry of imported.entries) verify(entry, entry.profile);
+  if (imported) for (const entry of imported.entries) verify({ ...entry, profile: entry.profilePath }, entry.profile);
   const index = logins.findIndex(item => read(item.profile).reference === profile.reference);
   if (index < 0) logins.push(row); else logins[index] = row;
   if (logins.length > 8) throw Error('preview: at most eight installed harness logins');
@@ -87,8 +92,7 @@ export function prepareInstalledHarnessLogins({ root, options, doorway, build, n
           .filter(Boolean).map(path => ({ path, digest: hash(read(path)) })) };
         for (const [name, value] of Object.entries(records)) {
           const target = join(directory, `${index}-${name}.json`);
-          const installed = publishSetupRecord(target, value);
-          if (JSON.stringify(installed) !== JSON.stringify(value)) throw Error('preview: immutable login build record differs');
+          keepRecord(target, value);
           prepared[name] = target;
         }
         return prepared;
@@ -102,7 +106,7 @@ export function prepareInstalledHarnessLogins({ root, options, doorway, build, n
     const manifest = { version: 1, thresholdPercent: source.thresholdPercent ?? 95, logins,
       ...(source.usageFile ? { usageFile: source.usageFile } : {}),
       ...(source.preparedManifest ? { previousManifest: source.preparedManifest } : {}) };
-    publishSetupRecord(manifestPath, manifest);
+    keepRecord(manifestPath, manifest);
   }
   if (source.preparedManifest !== manifestPath)
     durablePreviewWrite(inventoryPath(root), { ...source, preparedManifest: manifestPath });
