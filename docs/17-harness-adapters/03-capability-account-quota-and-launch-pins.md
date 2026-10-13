@@ -68,7 +68,7 @@ admitted operation and, where the runtime reads credentials only at start, a rep
 
 **Rule — the bootstrap custodian is independently administered on one machine.** The
 purpose's independent-safeguard and single-machine rules, Rules 28/100, P-01 and P-02;
-**checks: P13-NF-13/40, P9-NF-51–55 and P10-NF-10–16/34/35**. The custodian is Nine's
+**checks: P13-NF-13/40, P9-NF-51–55 and P10-NF-17–21/31–34/36**. The custodian is Nine's
 existing protection broker, installed by Ten under a dedicated operator-controlled OS
 service identity. The installation record names its actual identity, administrators,
 verification-key reference, recovery holder and policy digest. Agent and harness identities
@@ -91,13 +91,15 @@ that declared limit and the operator-assertion label required by its mapping. No
 verified provider identity is invented for Codex.
 
 **Rule — recovery material has an independent home.** Rules 7/26/79/100 and P-01;
-**checks: P10-NF-34/35**. During the same authenticated setup, the custodian places an
+**checks: P10-NF-34/36**. During the same authenticated setup, the custodian places an
 encrypted recovery package in the person's selected operator-only recovery vault, outside
 the installation machine, and verifies a restore challenge before setup completes. The
 package retains installation identity, approved org-intent/genesis anchor, custodian key
 recovery and revocation/version references. P-01 names the actual vault service/account and
 its normal account-recovery route; neither agent nor harness has that account's credential,
-session, delegated access or recovery path. The product adapter performs backup and restore;
+session, delegated access or recovery path. The custodian updates the independently retained version/revocation witness when those
+subjects change, so restore can test currency rather than trust an old package.
+The product adapter performs backup and restore;
 the person does not copy keys, hand-write records or keep the sole copy on their phone.
 A vault that loses access with the same single device does not meet this contract. This is
 an operator recovery holder, not an agent peer or a dependency on a second running machine.

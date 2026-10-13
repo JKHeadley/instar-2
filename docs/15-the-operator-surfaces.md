@@ -185,7 +185,7 @@ Role agreement and subscription selection continue in the same onboarding conver
 Credentials go directly to the custodian's secure surface, never into that conversation.
 
 **Rule — recovery does not depend on keeping the pairing phone.** Rules 79/100, P-01/P-02
-and the purpose's single-machine rule; **checks: P11-NF-19/23 and P10-NF-34/35** exercise
+and the purpose's single-machine rule; **checks: P11-NF-13/19 and P10-NF-34/36** exercise
 phone loss and installation-machine loss separately. A replacement device uses the named
 platform's normal account recovery, then the custodian verifies that same stable account
 and reissues an expiring challenge. The [custody recovery contract](17-harness-adapters/03-capability-account-quota-and-launch-pins.md#installation-custody-and-recovery)

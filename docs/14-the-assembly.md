@@ -233,7 +233,7 @@ facts cannot become an authority merely because its executable used to pass.
 
 **Rule — one-line installation composes the existing owners.** The purpose's brief
 onboarding, independent safeguards, single-machine and durable-cause rules; Rules 18/28/38/
-49/78/98/100/104/116 and P-01/P-02/P-05/P-08. **Checks: P10-NF-04–09/34/35/40,
+49/78/98/100/104/116 and P-01/P-02/P-05/P-08. **Checks: P10-NF-04–09/34/36/40,
 P10-SI-11/12 and P11-NF-16/17** include the sequence below. Ten runs an installer under the
 operator's authenticated administration session, with immutable release inputs verified
 through the independently installed distribution trust root. It cannot use the proposed

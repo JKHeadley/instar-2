@@ -44,6 +44,10 @@ Decision: install-bootstrap-D5 | Use the existing five owner documents, append-o
 
 Review the first-supervisor and trust-root boundary together: the operator-controlled installation service must not borrow its proposed agent's grant or login to establish itself. Confirm that the surface authenticates the intended account/session, not just possession of the code. Confirm that recovery restores control without rolling back revocations or inventing lost causal history. These are the main substantive implementation obligations this design exposes.
 
+## Publication validation
+
+The repository publication was regenerated from committed source with the existing build-register replay path. The owner-manifest helper refreshed the intake document hash; the desk repin chain changed no inventory or executable. Generated outputs are shape-only evidence and grant no runtime authority. Check references for custody use Ten’s isolation, key-lifecycle and restore fixtures, not worker-lifecycle fixtures.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route through existing genesis, grants, binding, broker, supervisor and assembly owners. Separate OS custody prevents self-issued authority, independent backup prevents single-device lockout, and a local setup model prevents the first-subscription supervision cycle. The start guard is independently authenticated installation authority; the end guard is actual admitted login and first exchange; limits retain all five floors. This unit supplies design and does not claim unattended runtime success.
