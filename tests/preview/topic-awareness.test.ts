@@ -112,8 +112,8 @@ it('keeps private-chat packet bytes from afa6be39 apart from the reviewed memory
     expect(value.audience.conversation).toBeUndefined();
     expect(value.datedPending.every((item: object) => !('conversation' in item) && !('sourceLabel' in item))).toBe(true);
     expect(value.memoryDecision).toContain('mode:"remember"');
-    // c010fd84 consolidated the scope guidance to preserve the recall packet budget.
-    expect(value.memoryDecision).toContain('Conversation is journaled across topics and restarts.');
+    // deferral-not-memory compresses scope wording; the historical packet digest below is unchanged.
+    expect(value.memoryDecision).toContain('Journal persists across topics/restarts.');
     expect(value.memoryDecision).toContain(MEMORY_ITEM_SHAPE);
     // f589c692 shortened this one field. Restore its afa6be39 wording from the
     // immutable live capture, retaining the original digest for every other byte.
