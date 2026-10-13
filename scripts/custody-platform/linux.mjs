@@ -53,6 +53,13 @@ function account(name) {
   }
   return { name, uid, gid };
 }
+export function brokerProcessObservation(status, uid) {
+  const ids = /^Uid:\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$/m.exec(status);
+  return Boolean(ids && ids.slice(1).every(value => Number(value) === uid)
+    && /^NoNewPrivs:\s+1$/m.test(status)
+    && ['Inh', 'Prm', 'Eff', 'Bnd', 'Amb'].every(kind => new RegExp(`^Cap${kind}:\\s+0+$`, 'm').test(status)));
+}
+function observedBroker(pid, uid) { return brokerProcessObservation(readFileSync(`/proc/${pid}/status`, 'utf8'), uid); }
 function durableFile(path, bytes, mode) {
   const fd = openSync(path, 'wx', mode);
   try { writeFileSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); }
@@ -110,7 +117,8 @@ export function linuxCustodyPlatform({ base, broker, agent, harness, trustAnchor
       signature: readFileSync(join(base, 'manifest.sig')), files }, releaseAnchor(), 'linux');
   };
   const verifyInstalled = () => {
-    rootRequired(); protectedPath(node); const rows = identities(), release = load();
+    rootRequired(); protectedPath(node); protectedPath(realpathSync('/usr/bin/setpriv'));
+    const rows = identities(), release = load();
     if (release.manifest.entry !== 'entry.mjs') throw Error('custody: distribution entry differs');
     for (const directory of ['private', 'run']) {
       const s = lstatSync(join(base, directory));
@@ -120,7 +128,7 @@ export function linuxCustodyPlatform({ base, broker, agent, harness, trustAnchor
     protectedPath(join(base, 'broker.service'));
     if (readFileSync(join(base, 'broker.service'), 'utf8') !== systemdUnit({ base, node, broker }))
       throw Error('custody: service definition differs');
-    return { digest: release.digest, identities: rows, serviceManager: existsSync('/run/systemd/system') ? 'systemd' : 'foreground' };
+    return { digest: release.digest, identities: rows, startup: 'foreground', systemdUnit: join(base, 'broker.service') };
   };
   return custodyPlatform({
     install(material) {
@@ -165,7 +173,7 @@ export function linuxCustodyPlatform({ base, broker, agent, harness, trustAnchor
       for (let attempt = 0; attempt < 50; attempt++) {
         try {
           const response = await requestSocket(socket, { operation: 'status' });
-          if (response.state === 'running' && response.pid === child.pid && response.uid === owner.uid) return { pid: child.pid, uid: owner.uid };
+          if (response.state === 'running' && response.pid === child.pid && response.uid === owner.uid && observedBroker(child.pid, owner.uid)) return { pid: child.pid, uid: owner.uid };
         } catch { /* bounded startup observation */ }
         if (child.exitCode !== null || child.signalCode !== null) break;
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -182,7 +190,8 @@ export function linuxCustodyPlatform({ base, broker, agent, harness, trustAnchor
       if (!child || child.exitCode !== null || child.signalCode !== null) return { state: 'stopped' };
       try {
         const live = await requestSocket(socket, { operation: 'status' });
-        if (live.state !== 'running' || live.pid !== child.pid || live.uid !== verified.identities[0].uid) return { state: 'refused' };
+        if (live.state !== 'running' || live.pid !== child.pid || live.uid !== verified.identities[0].uid
+          || !observedBroker(child.pid, verified.identities[0].uid)) return { state: 'refused' };
         return { ...live, digest: verified.digest };
       } catch { return { state: 'refused' }; }
     },

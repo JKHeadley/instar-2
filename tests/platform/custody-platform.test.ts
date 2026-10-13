@@ -12,7 +12,7 @@ import { linuxFixture } from './custody/linux-fixture.js';
 // @ts-expect-error Host distribution verifier is outside the pure core.
 import { verifyDistribution } from '../../scripts/custody-platform/distribution.mjs';
 // @ts-expect-error Host lifecycle adapter is outside the pure core.
-import { linuxCustodyPlatform, requestSocket, systemdUnit } from '../../scripts/custody-platform/linux.mjs';
+import { linuxCustodyPlatform, requestSocket, systemdUnit, brokerProcessObservation } from '../../scripts/custody-platform/linux.mjs';
 // @ts-expect-error OS-neutral lifecycle adapter is outside the pure core.
 import { custodyPlatform } from '../../scripts/custody-platform/interface.mjs';
 // @ts-expect-error macOS host adapter stays outside the pure core.
@@ -82,6 +82,17 @@ describe('OS-neutral distribution verification', () => {
     expect(await platform.status()).toEqual({ state: 'stopped' }); await platform.stop();
     expect(calls).toEqual(['install', 'verify', 'stop']);
     if (process.platform !== 'darwin') await expect(platform.start()).rejects.toThrow('must run on macOS');
+  });
+  it('checks UID and capability posture against a real captured Linux kernel record', () => {
+    // Captured verbatim from /proc/self/status in a Node process on this WSL host,
+    // 2026-10-13; no reconstructed sample and no credential or environment bytes.
+    const status = readFileSync('tests/platform/custody/linux-process-status.txt', 'utf8');
+    expect(brokerProcessObservation(status, 1000)).toBe(true);
+    expect(brokerProcessObservation(status, 0)).toBe(false);
+    expect(brokerProcessObservation(status.replace(/^Uid:.*$/m, ''), 1000)).toBe(false);
+    expect(brokerProcessObservation(status.replace(/NoNewPrivs:\s+1/, 'NoNewPrivs: 0'), 1000)).toBe(false);
+    for (const kind of ['Inh', 'Prm', 'Eff', 'Bnd', 'Amb'])
+      expect(brokerProcessObservation(status.replace(new RegExp(`^Cap${kind}:.*$`, 'm'), `Cap${kind}: 0000000000000001`), 1000)).toBe(false);
   });
   it('renders a systemd service with a separate user, no capabilities and bounded resources', () => {
     const unit = systemdUnit({ base: '/opt/instar-custody', broker: 'custodian', node: '/usr/bin/node' });

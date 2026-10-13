@@ -65,10 +65,13 @@ must not spawn unmanaged children. This API's `start()`/`stop()` manages its own
 foreground process, not a separately installed systemd instance; `status()` refuses
 to label a foreign PID as its own running instance.
 
-Without systemd (including this session's container/WSL environment), `start()` uses
+For hosts without systemd (including WSL/container installations that do not enable
+it), the same foreground `start()` path uses
 `setpriv` to clear supplementary groups and capabilities, set `no_new_privs`, and
 exec the verified entrypoint as the broker UID/GID. The environment is rebuilt without
-`NODE_OPTIONS` or inherited credentials. Readiness has a finite retry count. `stop()`
+`NODE_OPTIONS` or inherited credentials. Readiness has a finite retry count and verifies the kernel UID, empty capabilities
+and no_new_privs state of the recorded child in /proc; it does not trust a status
+message alone. `stop()`
 sends TERM to its recorded child PID, waits, and escalates to KILL for that same PID
 only after two seconds. It never kills by name or process group. A non-systemd host
 needs an independent service supervisor for persistence across administrator-session
