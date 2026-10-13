@@ -13,13 +13,18 @@ const shape = (kind: string) => shapes.otherShapes.find(row => row.kind === kind
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
-it.each(['recorded sequence', 'jev-unsure', 'jev-undecided', 'summary-uncertain', 'summary-writer', 'empty-memory-decision'])(
+it.each(['recorded sequence', 'restart-before-send', 'jev-unsure', 'jev-undecided', 'summary-uncertain', 'summary-writer', 'empty-memory-decision'])(
   'replays 46039931 with %s: preserves the answer and exactly one scheduled commitment', async mode => {
   const root = mkdtempSync(join(tmpdir(), 'deferral-not-memory-')); dirs.push(root);
   const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(39);
+  let interrupted = false;
   let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: capture.bot, chat: capture.operator,
     operator: capture.operator, grant: 'grant:fixture', configurationDigest: 'sha256:fixture',
-    expires: capture.at + 86400000, maxCalls: 30, maxReplies: 20, maxTurns: 20, maxBytes: 65536, cursor: 0 });
+    expires: capture.at + 86400000, maxCalls: 30, maxReplies: 20, maxTurns: 20, maxBytes: 65536, cursor: 0 }, stage => {
+    if (mode === 'restart-before-send' && stage === 'after:answer' && !interrupted) {
+      interrupted = true; throw Error('interrupted after durable answer');
+    }
+  });
   const sends: string[] = [], summaries: string[] = []; let reviewed = 0, judged = 0;
   const ports = { now: () => capture.at, stopped: () => false, checkOutbound: () => {},
     prepareModel: (input: Parameters<typeof prepareJournalEnvelope>[0]) => prepareJournalEnvelope(input, 'fixture', 'grant:fixture', capture.at),
@@ -41,6 +46,13 @@ it.each(['recorded sequence', 'jev-unsure', 'jev-undecided', 'summary-uncertain'
     let worker = createJournalWorker(journal, ports);
     worker.intake([{ update_id: capture.update, message: { chat: { id: Number(capture.operator), type: 'private' },
       from: { id: Number(capture.operator) }, text: capture.message } }]);
+    if (mode === 'restart-before-send') {
+      await worker.drain(); // The first pass exhausts the summary frontier.
+      await expect(worker.drain()).rejects.toThrow('interrupted after durable answer');
+      expect(sends).toEqual([]);
+      journal.close(); journal = openPreviewJournal(path, key);
+      worker = createJournalWorker(journal, ports);
+    }
     await worker.drain(); await worker.drain();
     expect(summaries).toHaveLength(mode === 'summary-uncertain' ? 1 : 2);
     if (mode.startsWith('jev-')) { expect(judged).toBeGreaterThan(0); expect(reviewed).toBeGreaterThan(0); }
