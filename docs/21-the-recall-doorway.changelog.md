@@ -4,6 +4,10 @@ _Generated from `21-the-recall-doorway.changelog.json` by `scripts/render-change
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 9 · 2026-10-13 · draft — train-21 release-train brief: docs take pinned main text exactly while retaining both histories.
+
+- **Use the reviewed main document text at 7ef8f158d4129a4cf90cf3c546701f32e348fdd3.** — The train brief explicitly assigns document text to pinned main; retain the live base history and incoming history without erasure. _(reviews/train-21-change-review.md; pinned train-21 task brief)_
+
 ## Revision 8 · 2026-10-03 · draft — Unit review of w4-memlearn-s round 1 (Astra, VERDICT: NO): two must-fixes repaired at source. No constitution change.
 
 - **Section 16 offers the memoryFailure report after any answer to the operator, including a full-history one, as the packet's lowest-priority guidance that yields first under byte pressure; section 12 P21-NF-25 and section 13 P21-NEG-32 follow.** — A full-history "I don't know" states no wrong value, so the correction signal could not cover it and the operator's reminder was silently lost (Purpose constraint 2, Rule 85). _(lanes/w4-memlearn-s-PROGRESS.md (Pipeline repair); tests/preview/memory-learning.test.ts)_

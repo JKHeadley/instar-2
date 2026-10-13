@@ -4,6 +4,10 @@ _Generated from `09-the-run-graph.changelog.json` by `scripts/render-changelog.m
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 6 · 2026-10-13 · draft — train-21 release-train brief: docs take pinned main text exactly while retaining both histories.
+
+- **Use the reviewed main document text at 7ef8f158d4129a4cf90cf3c546701f32e348fdd3.** — The train brief explicitly assigns document text to pinned main; retain the live base history and incoming history without erasure. _(reviews/train-21-change-review.md; pinned train-21 task brief)_
+
 ## Revision 5 · 2026-10-09 · draft — Operator direction via observer #202: remove the preview framing (w4-agentready).
 
 - **The accepted-reply projection renders the accepted answer without the preview label.** — Present Instar as the agent while preserving acceptance, grounding, escaping and size checks. _(w4-agentready; observer #202)_

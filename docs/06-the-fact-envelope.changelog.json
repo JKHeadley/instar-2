@@ -1,5 +1,21 @@
 [
   {
+    "revision": 13,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "train-21 release-train brief: docs take pinned main text exactly while retaining both histories."
+    },
+    "changes": [
+      {
+        "what": "Use the reviewed main document text at 7ef8f158d4129a4cf90cf3c546701f32e348fdd3.",
+        "why": "The train brief explicitly assigns document text to pinned main; retain the live base history and incoming history without erasure.",
+        "ref": "reviews/train-21-change-review.md; pinned train-21 task brief"
+      }
+    ]
+  },
+  {
     "revision": 12,
     "date": "2026-10-13",
     "status": "draft",
@@ -42,7 +58,7 @@
     },
     "changes": [
       {
-        "what": "The admission boundary's decidesAlone declaration is restated per rung under the amended closed list: ruled-three for the secret-shape scan, governed-state for the remaining rungs \u2014 superseding the pre-amendment yes-for-one-rung wording.",
+        "what": "The admission boundary's decidesAlone declaration is restated per rung under the amended closed list: ruled-three for the secret-shape scan, governed-state for the remaining rungs — superseding the pre-amendment yes-for-one-rung wording.",
         "why": "The kind-2 amendment restructured the value space; leaving the flagship blocking-site declaration on a value the closed list no longer carries would refuse under part three's own machinery.",
         "ref": "part three, amendment one"
       },
@@ -107,7 +123,7 @@
     "cause": {
       "kind": "review",
       "pr": 16,
-      "note": "review desk round 6 (final) \u2014 internal confirmation: zero findings, converged; the external reviewer's five minor items folded editorially"
+      "note": "review desk round 6 (final) — internal confirmation: zero findings, converged; the external reviewer's five minor items folded editorially"
     },
     "changes": [
       {
@@ -121,7 +137,7 @@
         "ref": "review desk round 6, external finding 2"
       },
       {
-        "what": "The admission ladder's two ports are named \u2014 authorAndAppend constructs, verifyAndAdmit verifies \u2014 sharing decoders, reasons, and rungs.",
+        "what": "The admission ladder's two ports are named — authorAndAppend constructs, verifyAndAdmit verifies — sharing decoders, reasons, and rungs.",
         "why": "Local append and replication receipt trust and generate different fields; naming the split prevents an implementer conflating them.",
         "ref": "review desk round 6, external finding 3"
       },
@@ -148,7 +164,7 @@
     "cause": {
       "kind": "review",
       "pr": 16,
-      "note": "review desk round 5 \u2014 internal: zero design findings, converged; external dropped to minor; residuals folded"
+      "note": "review desk round 5 — internal: zero design findings, converged; external dropped to minor; residuals folded"
     },
     "changes": [
       {
@@ -162,7 +178,7 @@
         "ref": "review desk round 5, external finding 2"
       },
       {
-        "what": "A host that does not sign review events yields only channel-attested records, which cannot anchor a protected artifact \u2014 a refusal, not a downgrade; at-rest access control for replicated stores is explicitly part ten's requirement; the causal frontier is declared exactly once (the cone is the predecessors closure); provisional marks are homed in the fact-store register row; a lifecycle table walks every state a standing-gated fact can occupy.",
+        "what": "A host that does not sign review events yields only channel-attested records, which cannot anchor a protected artifact — a refusal, not a downgrade; at-rest access control for replicated stores is explicitly part ten's requirement; the causal frontier is declared exactly once (the cone is the predecessors closure); provisional marks are homed in the fact-store register row; a lifecycle table walks every state a standing-gated fact can occupy.",
         "why": "Round-5 external findings 3-5 and the internal round's two precision pins.",
         "ref": "review desk round 5"
       }
@@ -179,7 +195,7 @@
     "cause": {
       "kind": "review",
       "pr": 16,
-      "note": "review desk round 4 \u2014 first quiet internal round (all round-3 closures verified); residual lifecycle + external refinements folded"
+      "note": "review desk round 4 — first quiet internal round (all round-3 closures verified); residual lifecycle + external refinements folded"
     },
     "changes": [
       {
@@ -193,7 +209,7 @@
         "ref": "review desk round 4, external findings 1 and 4"
       },
       {
-        "what": "predecessors carries a compact causal frontier (one (epoch, position) pair per machine lineage \u2014 bounded by machine count); the crash-only failure model with the compromised-key Byzantine case is stated; a happy-path walkthrough precedes the ladder.",
+        "what": "predecessors carries a compact causal frontier (one (epoch, position) pair per machine lineage — bounded by machine count); the crash-only failure model with the compromised-key Byzantine case is stated; a happy-path walkthrough precedes the ladder.",
         "why": "Per-fact causal metadata must not grow with history; substrate assumptions were semantic, not implementation detail.",
         "ref": "review desk round 4, external findings 2, 3, 5"
       }
@@ -210,11 +226,11 @@
     "cause": {
       "kind": "review",
       "pr": 16,
-      "note": "review desk round 3 \u2014 all round-2 closures verified; remaining findings localized to the standing machinery"
+      "note": "review desk round 3 — all round-2 closures verified; remaining findings localized to the standing machinery"
     },
     "changes": [
       {
-        "what": "Rung 9 standing is a deterministic function of the fact's declared causal cone \u2014 identical verdict on every replica; an out-of-cone revocation routes to reconciliation, never an ingest refusal; causal references resolve before standing so an unresolved grant holds instead of terminally refusing.",
+        "what": "Rung 9 standing is a deterministic function of the fact's declared causal cone — identical verdict on every replica; an out-of-cone revocation routes to reconciliation, never an ingest refusal; causal references resolve before standing so an unresolved grant holds instead of terminally refusing.",
         "why": "Two honest replicas must never disagree about admissibility, and an ordering accident must not quarantine an honest stream.",
         "ref": "review desk round 3, internal D1/D2"
       },
@@ -236,7 +252,7 @@
     "cause": {
       "kind": "review",
       "pr": 16,
-      "note": "review desk round 2 \u2014 all round-1 closures verified; the high cluster: time base, genesis, key lifecycle"
+      "note": "review desk round 2 — all round-1 closures verified; the high cluster: time base, genesis, key lifecycle"
     },
     "changes": [
       {
@@ -262,7 +278,7 @@
     "cause": {
       "kind": "review",
       "pr": 16,
-      "note": "review desk round 1 \u2014 external GPT-tier reviewer plus security, adversarial, scalability, rules-conformance: ~80 findings; full rewrite"
+      "note": "review desk round 1 — external GPT-tier reviewer plus security, adversarial, scalability, rules-conformance: ~80 findings; full rewrite"
     },
     "changes": [
       {

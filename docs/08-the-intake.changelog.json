@@ -1,5 +1,21 @@
 [
   {
+    "revision": 10,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "train-21 release-train brief: docs take pinned main text exactly while retaining both histories."
+    },
+    "changes": [
+      {
+        "what": "Use the reviewed main document text at 7ef8f158d4129a4cf90cf3c546701f32e348fdd3.",
+        "why": "The train brief explicitly assigns document text to pinned main; retain the live base history and incoming history without erasure.",
+        "ref": "reviews/train-21-change-review.md; pinned train-21 task brief"
+      }
+    ]
+  },
+  {
     "revision": 9,
     "date": "2026-10-13",
     "status": "draft",

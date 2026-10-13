@@ -4,6 +4,10 @@ _Generated from `06-the-fact-envelope.changelog.json` by `scripts/render-changel
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 13 · 2026-10-13 · draft — train-21 release-train brief: docs take pinned main text exactly while retaining both histories.
+
+- **Use the reviewed main document text at 7ef8f158d4129a4cf90cf3c546701f32e348fdd3.** — The train brief explicitly assigns document text to pinned main; retain the live base history and incoming history without erasure. _(reviews/train-21-change-review.md; pinned train-21 task brief)_
+
 ## Revision 12 · 2026-10-13 · draft — operator review on PR #162; Independent bootstrap review: two authority gaps and three implementation/UX notes
 
 - **Specify the finite enrollment seed, exact first Authorization and runtime genesis/version record sequence.** — Close initial identity and authority without circular grants, extra approval classes or new stores. _(PR 162; reviews/install-bootstrap-design-1013.md; astra-install-bootstrap-design-1013-review.md)_

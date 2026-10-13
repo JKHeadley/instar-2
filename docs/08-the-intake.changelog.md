@@ -4,6 +4,10 @@ _Generated from `08-the-intake.changelog.json` by `scripts/render-changelog.mjs`
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 10 · 2026-10-13 · draft — train-21 release-train brief: docs take pinned main text exactly while retaining both histories.
+
+- **Use the reviewed main document text at 7ef8f158d4129a4cf90cf3c546701f32e348fdd3.** — The train brief explicitly assigns document text to pinned main; retain the live base history and incoming history without erasure. _(reviews/train-21-change-review.md; pinned train-21 task brief)_
+
 ## Revision 9 · 2026-10-13 · draft — install-bootstrap-design-1013: desk selects verified binding before the existing P-02 yes, 2026-10-13
 
 - **Bind the verified installing operator before accepting the first P-02 subscription approval.** — A fresh installation needs an authenticated initial operator and independently held approval anchor before ordinary subscription admission. _(install-bootstrap-design-1013 brief; install-firstgrant-1013 finding; reviews/install-bootstrap-design-1013.md)_

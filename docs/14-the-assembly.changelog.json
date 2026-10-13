@@ -1,70 +1,22 @@
 [
   {
-    "revision": 27,
-    "date": "2026-10-09",
+    "revision": 28,
+    "date": "2026-10-13",
     "status": "draft",
     "cause": {
       "kind": "conversation",
-      "note": "Operator direction via observer #202: remove the preview framing (w4-agentready)."
+      "note": "train-21 release-train brief: docs take pinned main text exactly while retaining both histories."
     },
     "changes": [
       {
-        "what": "The accepted-reply projection renders the accepted answer without the preview label.",
-        "why": "Present Instar as the agent while preserving acceptance, grounding, escaping and size checks.",
-        "ref": "w4-agentready; observer #202"
+        "what": "Use the reviewed main document text at 7ef8f158d4129a4cf90cf3c546701f32e348fdd3.",
+        "why": "The train brief explicitly assigns document text to pinned main; retain the live base history and incoming history without erasure.",
+        "ref": "reviews/train-21-change-review.md; pinned train-21 task brief"
       }
     ]
   },
   {
-    "revision": 26,
-    "date": "2026-10-03",
-    "status": "draft",
-    "cause": {
-      "kind": "draft",
-      "note": "Unit w4-persist (plan row #400): operator re-grounding, Justin 10:45 PDT 2026-10-03 via observer #149, and message 121996 (the 'handicapped' fresh-per-turn result rejected): a persistent workspace per conversation and a kept harness session subordinate to the journal, satisfying the full-tool ruling's MF5. No constitution change."
-    },
-    "changes": [
-      {
-        "what": "Operator question 2: a conversation keeps its private workspace, bounded by its fixed-size volume and the root's count of kept workspaces, and a harness session that is only a cache of the journal, replaced whenever a journal fact, the authority or the harness changes.",
-        "why": "A fresh, empty workspace and a discarded session every turn left the agent unable to keep a file or a project between messages; persistence is added under the same boundary and floors.",
-        "ref": "lanes/w4-persist-PROGRESS.md; lanes/astra-fulltool-ruling.md (MF5); LIVE-PATH-PLAN.md row #400"
-      }
-    ]
-  },
-  {
-    "revision": 25,
-    "date": "2026-10-03",
-    "status": "draft",
-    "cause": {
-      "kind": "draft",
-      "note": "Unit w4-toolsfull (plan row #395): operator direction, Justin, topic 102965 message 121996, 10:15 PDT 2026-10-03, recorded as a Rule 104 standing grant: tools on by default with the full Claude Code tool set, consequential effects through the effect doorway, every subagent a Rule 114 edge. No constitution change."
-    },
-    "changes": [
-      {
-        "what": "Operator question 2: the preview's tools are on by default under the operator's recorded grant, run under Part Thirteen's demonstrated boundary, and send every consequential effect to the effect doorway.",
-        "why": "The full tool set replaces the scoped first slice; the statement that the boundary is not §4 confinement and waives no floor is unchanged.",
-        "ref": "lanes/w4-toolsfull-PROGRESS.md; lanes/astra-fulltool-ruling.md (MF2-MF7 floors); LIVE-PATH-PLAN.md row #395"
-      }
-    ]
-  },
-  {
-    "revision": 24,
-    "date": "2026-10-03",
-    "status": "draft",
-    "cause": {
-      "kind": "draft",
-      "note": "Unit w4-toolsreal: the full-tool ruling's replacement text, adapted to the reuse route (Justin 2026-10-02 00:43, topic 102965 message 121912; desk decision 2026-10-01 17:49, message 121586). No constitution change."
-    },
-    "changes": [
-      {
-        "what": "Operator question 2 states that the preview's ordinary scoped tools are supported ordinary work under Part Thirteen's demonstrated boundary (admission hook, harness sandbox, clean environment), which is not §4 confinement and grants no governed or protected status.",
-        "why": "Replaces the proposed full-tool exception the ruling rejected (MF2, MF3); no preview label waives a floor.",
-        "ref": "lanes/astra-fulltool-ruling.md (replacement text); lanes/w4-toolsreuse-PROGRESS.md (proven configuration); lanes/w4-toolsreal-PROGRESS.md; LIVE-PATH-PLAN.md rows #358, #363, #367"
-      }
-    ]
-  },
-  {
-    "revision": 23,
+    "revision": 27,
     "date": "2026-10-13",
     "status": "draft",
     "cause": {
@@ -81,7 +33,7 @@
     ]
   },
   {
-    "revision": 22,
+    "revision": 26,
     "date": "2026-10-13",
     "status": "draft",
     "cause": {
@@ -93,6 +45,70 @@
         "what": "Define supervised ordinary installation, evidence ordering, explicit overrides and four bounded build units.",
         "why": "A fresh installation needs an authenticated initial operator and independently held approval anchor before ordinary subscription admission.",
         "ref": "install-bootstrap-design-1013 brief; install-firstgrant-1013 finding; reviews/install-bootstrap-design-1013.md"
+      }
+    ]
+  },
+  {
+    "revision": 25,
+    "date": "2026-10-09",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator direction via observer #202: remove the preview framing (w4-agentready)."
+    },
+    "changes": [
+      {
+        "what": "The accepted-reply projection renders the accepted answer without the preview label.",
+        "why": "Present Instar as the agent while preserving acceptance, grounding, escaping and size checks.",
+        "ref": "w4-agentready; observer #202"
+      }
+    ]
+  },
+  {
+    "revision": 24,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-persist (plan row #400): operator re-grounding, Justin 10:45 PDT 2026-10-03 via observer #149, and message 121996 (the 'handicapped' fresh-per-turn result rejected): a persistent workspace per conversation and a kept harness session subordinate to the journal, satisfying the full-tool ruling's MF5. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "Operator question 2: a conversation keeps its private workspace, bounded by its fixed-size volume and the root's count of kept workspaces, and a harness session that is only a cache of the journal, replaced whenever a journal fact, the authority or the harness changes.",
+        "why": "A fresh, empty workspace and a discarded session every turn left the agent unable to keep a file or a project between messages; persistence is added under the same boundary and floors.",
+        "ref": "lanes/w4-persist-PROGRESS.md; lanes/astra-fulltool-ruling.md (MF5); LIVE-PATH-PLAN.md row #400"
+      }
+    ]
+  },
+  {
+    "revision": 23,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-toolsfull (plan row #395): operator direction, Justin, topic 102965 message 121996, 10:15 PDT 2026-10-03, recorded as a Rule 104 standing grant: tools on by default with the full Claude Code tool set, consequential effects through the effect doorway, every subagent a Rule 114 edge. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "Operator question 2: the preview's tools are on by default under the operator's recorded grant, run under Part Thirteen's demonstrated boundary, and send every consequential effect to the effect doorway.",
+        "why": "The full tool set replaces the scoped first slice; the statement that the boundary is not §4 confinement and waives no floor is unchanged.",
+        "ref": "lanes/w4-toolsfull-PROGRESS.md; lanes/astra-fulltool-ruling.md (MF2-MF7 floors); LIVE-PATH-PLAN.md row #395"
+      }
+    ]
+  },
+  {
+    "revision": 22,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-toolsreal: the full-tool ruling's replacement text, adapted to the reuse route (Justin 2026-10-02 00:43, topic 102965 message 121912; desk decision 2026-10-01 17:49, message 121586). No constitution change."
+    },
+    "changes": [
+      {
+        "what": "Operator question 2 states that the preview's ordinary scoped tools are supported ordinary work under Part Thirteen's demonstrated boundary (admission hook, harness sandbox, clean environment), which is not §4 confinement and grants no governed or protected status.",
+        "why": "Replaces the proposed full-tool exception the ruling rejected (MF2, MF3); no preview label waives a floor.",
+        "ref": "lanes/astra-fulltool-ruling.md (replacement text); lanes/w4-toolsreuse-PROGRESS.md (proven configuration); lanes/w4-toolsreal-PROGRESS.md; LIVE-PATH-PLAN.md rows #358, #363, #367"
       }
     ]
   },

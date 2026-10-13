@@ -1,0 +1,35 @@
+# Change review — train-21 pinned main and Linux custody broker
+
+Subject base: 0de16e3cdaea380ac746793123a51382aeb9830b
+Review state: open
+Reviewed content: none
+Outcome: Combine pinned main's reviewed installation design with the reviewed OS-neutral custody interface and bounded Linux adapter on the accepted live train-18 base.
+Affected rules: Purpose independent safeguard custody; Rules 1, 4, 26, 30, 34, 36, 37, 42, 49, 55, 60, 66, 70, 74, 90, 91, 95, 101, 102, 111, 112, 113, 116.
+Affected floors: secrets — retain signed distribution, protected release anchor and separate identities; spend cap — no provider calls added; stop — exact-PID bounded termination retained; no duplicate sends — no send path changed; durable intake — no intake path changed.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Integrates an independently administered custody boundary and its kernel resource limits; privileged installation remains a separate unrun proof on this host.
+Side effects: Document bodies present pinned main text as directed; prior and incoming history remain recorded. Linux foreground start requires protected prlimit/setpriv and a root-owned anchor; bounds are per-process, with a dedicated-UID task ceiling, not an aggregate cgroup. macOS wrapper remains delegated to the existing lifecycle. No installation, systemd activation, credential import, live provider or user-message operation is performed by this merge. Generated register output is rebuilt from committed combined sources.
+Undo and recovery: Revert this integration while retaining the train-18 base and durable runtime records. No installed state is migrated. The broker remains administrator-managed; its stop targets only its recorded process. Reverting the resource repair reopens its reviewed failure and cannot be claimed protected.
+Multi-machine posture: Deliberately machine-local OS custody and kernel limits on each installed host. Existing conversation ownership, replicated journal and send fences are unchanged. WSL validation does not establish macOS or privileged cross-identity conformance.
+Layer below: Read both constitutional documents in full from pinned main; inspected both member reviews and the desk-chain report. Source changes are exactly the broker unit; main contributes document changes. Broker tests exercise the existing mediated custody reader and actual kernel record shapes. Existing live-base source is preserved; no model-facing implementation or interpretation is changed.
+Bug class: integration
+Bug evidence: reproducer=tests/platform/custody-platform.test.ts
+Hook bypass: none; core.hooksPath checked unset and the shared hooks directory contains only sample hooks. Ordinary merges and commits only.
+Convergence: none
+Prompt review: No prompt, output parser, model judgment or reply path changes relative to the live base. Existing journal tests are rerun as train checks; no new model trial or autonomous installation is claimed.
+Decision: train-21-head-main | Merge exactly 7ef8f158d4129a4cf90cf3c546701f32e348fdd3; reviewed design is reviews/install-bootstrap-design-1013.md. Take its existing document bodies exactly as the brief directs. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-21-PROGRESS.md
+Decision: train-21-head-broker | Merge exactly a094644f276f4deab1bd4df8b45fa72f7859656f; preserve reviews/install-broker-linux-1013-change-review.md and reviews/install-broker-linux-1013-resource-repair-change-review.md. Member report: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-broker-linux-1013-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-21-PROGRESS.md
+Decision: train-21-desk-A | Preserve all live-base and broker code. Main changes document text only; overlapping histories are retained as append-only versions and rendered by the existing tool. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-21-PROGRESS.md
+Decision: train-21-desk-B | Start at exact live base 0de16e3cdaea380ac746793123a51382aeb9830b and retain it as ancestry; do not use train-19/train-20 or newer member tips. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-21-PROGRESS.md
+Decision: train-21-desk-C | No genuine product conflict and no head omitted. Resolve generated conflicts temporarily to the live base, then regenerate through committed-source replay instead of hand merging. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-21-PROGRESS.md
+Decision: train-21-desk-D | Run bounded foreground targeted checks; disclose unchanged WSL launcher/provider checks and missing Studio paths separately. Privileged Linux and macOS isolation remain unrun. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-21-PROGRESS.md
+Decision: train-21-history | Preserve every live-base revision as the unchanged tail. Append incoming distinct history entries with unused revision numbers, then record the explicit pinned-main text selection as a new version. This satisfies Rule 90 without dropping either history's content. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-21-PROGRESS.md
+Decision: train-21-publication | Use the downloaded desk repin/build/rehash/replay chain; refresh the rungraph document hash to match the directed main text and retain the context-floor guard. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-21-PROGRESS.md
+Skip: tests/platform/custody-platform.test.ts:144 | scope=Linux prlimit and proc resource checks require Linux; other platform cases remain portable
+Skip: tests/platform/custody-platform.test.ts:185 | scope=Linux UID zero is exempt from RLIMIT_NPROC; the one-fork denial requires a non-root test identity
+
+simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges plus the existing desk publication chain and direct-consumer tests. No new production mechanism is added beyond the reviewed unit. Signed release bytes and independent account ownership guard start; kernel UID/capability/limit readback guards running status; kernel rlimits and exact-PID stop bound execution. Missing or invalid evidence stays refused. Real same-user process/socket and kernel probes are not proof of privileged identity separation or an unattended protected installation.
+80/20: Targeted changed tests and direct importers, explicit journal and subscription checks, pinned READY tests and static/register checks; no full suite, load burner or extra base worktree. Independent acceptance belongs to the desk.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

@@ -4,6 +4,10 @@ _Generated from `19-scheduled-work.changelog.json` by `scripts/render-changelog.
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 12 · 2026-10-13 · draft — train-21 release-train brief: docs take pinned main text exactly while retaining both histories.
+
+- **Use the reviewed main document text at 7ef8f158d4129a4cf90cf3c546701f32e348fdd3.** — The train brief explicitly assigns document text to pinned main; retain the live base history and incoming history without erasure. _(reviews/train-21-change-review.md; pinned train-21 task brief)_
+
 ## Revision 11 · 2026-10-03 · draft — Integration cint-L45 pipeline repair, review round 2 (Astra, VERDICT NO; plan row #443): a session keeps the effect policy and its shell's network at the checkpoint (purpose revision 12). No constitution change.
 
 - **§5 full-tool-set Rule: a session's network reads keep the installed effect policy; the effect owner admits a consequential tool by the four tests under the current policy and its grants (an irreversible one only within the closed operation set) rather than by exact registration; and the confined shell reaches the network through the step's own egress checkpoint, which closes with the step.** — Review round 2 found the session route bypassing the installed policy on reads, refusing granted ordinary operations, and removing shell network ability a checkpoint can govern. _(lanes/astra-cint-L45-review.md (round 2, MF1-MF3); lanes/cint-L45-PROGRESS.md (Pipeline repair))_
