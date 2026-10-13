@@ -1,6 +1,6 @@
 // Rule 42: one closed classification of a Telegram sendMessage reply. A definite provider
 // rejection is `refused`; anything that might have delivered is `unknown`; only a receipt
-// naming this chat, thread and text (only trailing space/LF removal allowed) is `accepted`.
+// naming exactly this chat, thread and text is `accepted`.
 // Neither non-success is delivery. See reviews/receipt-trailing-space-1013-change-review.md.
 // The bridge's own closed failure stages (src/assembly/telegram-bot-api-bridge.mjs). Kept in the
 // recorded reason so a lost send can be diagnosed; anything else is dropped, never echoed.
@@ -18,14 +18,6 @@ function transportReason(reply) {
   const errors = reply.transportErrors.slice(0, 8).filter(error => TRANSPORT_CODES.has(error?.code))
     .map(error => `${error.code}${TRANSPORT_SYSCALLS.has(error.syscall) ? `/${error.syscall}` : ''}`);
   return errors.length ? ` (${[...new Set(errors)].join(', ')})` : '';
-}
-// Telegram's TDLib fix_formatted_text removes terminal U+0020/U+000A after parsing entities.
-// Compare in one direction only: an exact echo or the complete removal of that suffix.
-// No Unicode trim(), leading/interior cleanup, entity decoding, or normalization of the receipt.
-// Keep the signed intent unchanged; this never revisits an already UNKNOWN dispatch.
-function textMatches(actual, expected) {
-  if (typeof actual !== 'string' || typeof expected !== 'string' || actual.length === 0) return false;
-  return actual === expected || actual === expected.replace(/[ \n]+$/u, '');
 }
 function textDifference(actual, expected) {
   if (typeof actual !== 'string' || typeof expected !== 'string')
@@ -59,7 +51,7 @@ export function classifyTelegramSend(reply, { chat, expectedText, thread, forum 
   if (!(thread === undefined ? !forum || result?.message_thread_id === undefined || result?.message_thread_id === 1
     : result?.message_thread_id === thread)) fields.push('thread');
   if (!Number.isSafeInteger(result?.message_id) || result.message_id <= 0) fields.push('message_id');
-  if (!textMatches(result?.text, expectedText)) fields.push('text');
+  if (result?.text !== expectedText) fields.push('text');
   if (!fields.length) return { kind: 'accepted', message: result.message_id };
   // Fits the existing settlement/journal reason bound; no new log, raw receipt or retry path.
   return { kind: 'unknown', reason: (`receipt differs from intent: ${fields.join(',')}${fields.includes('text')
