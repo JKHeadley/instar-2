@@ -8,18 +8,19 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, PER_RULE_PASS } from './successive-fixture.js';
+import { REPLY_ACKNOWLEDGEMENT, QUEUED_REPLY_ACKNOWLEDGEMENT } from './journal.js';
 
 const TOKEN = 'ghp_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8';
 
-it.each([0, 8200, 10200])('PREVIEW-HOST-RESOURCE-FUNNEL records resources, custody and fixed slow acknowledgement (elapsed=%sms)', async elapsed => {
-  const acknowledgementDue = elapsed >= 10000;
+it.each([0, 6999, 7000, 8200, 10200])('PREVIEW-HOST-RESOURCE-FUNNEL records resources, custody and fixed slow acknowledgement (elapsed=%sms)', async elapsed => {
+  const acknowledgementDue = elapsed >= 7000;
   const world = successiveWorld(), root = join(world.directory, 'resource-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
   const provider = join(world.directory, 'provider.mjs'), loader = join(world.directory, 'loader.mjs');
   const cli = join(world.directory, 'fake-cli.mjs'), prompts = join(world.directory, 'prompts.jsonl');
   const fakeClock = join(world.directory, 'clock.mjs'), workerModule = join(world.directory, 'worker.mjs');
-  // Cover immediate, the former eight-second threshold, and the current ten-second threshold.
+  // Cover immediate, both sides of the seven-second deadline, and the former deadlines.
   // Wall time and acknowledgement timers are controlled. Resource deadlines retain the real monotonic clock.
   writeFileSync(fakeClock, `import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 const state = ${JSON.stringify(join(world.directory, 'fixture-time'))};
@@ -119,9 +120,14 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     expect(sent).toContain('Noted.');
     expect(sent).not.toContain(TOKEN);
     const sends = readFileSync(`${log}.sends`, 'utf8').trim().split('\n').map(line => JSON.parse(line));
-    expect(sends.filter(row => row.text === 'Checking that now.')).toHaveLength(acknowledgementDue ? 2 : 0);
-    // Both messages arrived together; the second also waited through the slow first turn.
-    expect(new Set(sends.filter(row => row.text === 'Checking that now.').map(row => row.reply_parameters.message_id)).size).toBe(acknowledgementDue ? 2 : 0);
+    const acknowledgements = sends.filter(row => [REPLY_ACKNOWLEDGEMENT, QUEUED_REPLY_ACKNOWLEDGEMENT].includes(row.text));
+    // Both messages arrived together: one is being answered and the other waits behind it.
+    expect(acknowledgements.map(row => ({ text: row.text, replyTo: row.reply_parameters.message_id })).sort((a, b) => a.replyTo - b.replyTo))
+      .toEqual(acknowledgementDue ? [
+        { text: REPLY_ACKNOWLEDGEMENT, replyTo: 1 },
+        { text: QUEUED_REPLY_ACKNOWLEDGEMENT, replyTo: 2 },
+      ] : []);
+    expect(sends.some(row => row.text === 'Checking that now.')).toBe(false);
     expect(sends.at(-1).text).toContain('Noted.');
     expect(sends.filter(row => row.text.includes('Noted.')), JSON.stringify(sends)).toHaveLength(2);
     // The model never received the secret; it saw the stored reference instead.

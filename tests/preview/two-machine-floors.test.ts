@@ -16,7 +16,7 @@ import { message, pause, started, twoMachines, until } from './two-machine-world
 it('the peer is lost in the middle of a turn: the next model call and the send both wait, and the turn finishes once when the peer is back', async () => {
   const t = await twoMachines();
   const modelCalls = () => { try { return readFileSync(join(t.world.directory, 'model.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)); } catch { return []; } };
-  const acknowledgements = () => t.sends().filter(call => call.text === 'Checking that now.');
+  const acknowledgements = () => t.sends().filter(call => call.text === REPLY_ACKNOWLEDGEMENT);
   const answers = () => t.sends().filter(call => call.text.split('\n\n')[0] === 'Juniper is the marker.');
   // A slow model on the owner, so the test can take the peer away while the answer is being produced.
   const studio = t.harness.startRunner(t.rootOf('studio'), 'studio', 100000, ['--machine-posture', 'multi-machine', '--conversation-authority', t.url,
@@ -36,7 +36,7 @@ it('the peer is lost in the middle of a turn: the next model call and the send b
   expect((await t.view()).claims).toBe(0);
   expect(studio.child.exitCode).toBe(null);
   const back = t.start('laptop');
-  // Answer readiness does not end the wait: the ten-second acknowledgement also waits for
+  // Answer readiness does not end the wait: the seven-second acknowledgement also waits for
   // replication, then precedes the answer once the peer and reply review recover.
   await until('the turn finishes', () => answers().length > 0, 90000);
   expect(acknowledgements()).toHaveLength(1);
