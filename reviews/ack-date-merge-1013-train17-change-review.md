@@ -19,7 +19,7 @@ Bug evidence: reproducer=tests/preview/reply-acknowledgement-timing.test.ts
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains only samples.
 Convergence: none
 Prompt review: No prompt, parser, model decision or product change; recorded replay fixtures remain unchanged.
-Decision: ack-date-merge-train17 | Preserve the ordinary conflict-free merge and add this record to cover the merge commit under Rule 74; use the existing clock repair without reimplementing it. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ack-date-merge-1013-PROGRESS.md
+Decision: ack-date-merge-train17 | Preserve the ordinary conflict-free merge and add this record to cover the merge commit under Rule 74; use the existing clock repair without reimplementing it. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-17-repair-040057-PROGRESS.md
 
 ## Closing block
 
