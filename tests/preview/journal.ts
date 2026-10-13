@@ -6284,8 +6284,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // A cue only schedules the existing capped model judgment; it never creates a preference.
   const preferenceCue = (turn: Turn) => fromOperator(turn)
     && /^(?:\s*(?:please\s+)?(?:always|never|stop|don['’]t|do not|no|use|give|make|keep|be|more|less)\b[^\n]*\b(?:answer|answers|reply|replies|respond|response|format|bullet|brief|concise|verbose|tone|style)\b|\s*(?:please\s+)?shorter\b|\s*(?:please\s+)?(?:more|less)\s+detail\b|\s*(?:i(?:['’]d| would)?\s+)?prefer\b|\s*(?:from now on|going forward)\b[^\n]*\b(?:answer|reply|respond|format|bullet|tone|style)\b|\s*(?:no|fewer|more)\s+bullet\b)/iu.test(turn.text);
+  // A validated mutation from either decision path is authoritative for this request.
+  const appliedMemory = (turn: Turn) => journal.view.memory.some(change => change.trigger === turn.id);
   const pendingMemory = (answerDependency = false) => journal.view.order.find(turn =>
-    (!answerDependency || turn.editOf || turn.held === 'memory correction pending' && turn.memoryPending && !turn.memoryUnresolved) && remembered(turn) && fromOperator(turn) && !turn.memoryUndecided
+    (!answerDependency || turn.editOf || turn.held === 'memory correction pending' && turn.memoryPending && !turn.memoryUnresolved)
+    && remembered(turn) && fromOperator(turn) && !turn.memoryUndecided && !appliedMemory(turn)
     && turn.noticeClass !== 'too-long-input' && Buffer.byteLength(turn.text) <= journal.view.limits.maxBytes
     && (turn.editOf || memoryCue(turn) || preferenceCue(turn) || turn.memoryPending)
 
@@ -10119,11 +10122,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // memory decision is never dropped.
         const overCapRetry = journal.view.summaryFormatFailures.some(failed => failed.overCap && failed.through === through);
         const closable = overCapRetry ? [] : openFor(through, 50).map(({ id, note, turn: source }) => ({ id, sourceLabel: turnLabel(source!), in: note.in, quote: note.quote }));
-        const strictTrigger = journal.view.order.find(item => remembered(item) && fromOperator(item) && !item.memoryUndecided
+        const strictTrigger = journal.view.order.find(item => remembered(item) && fromOperator(item) && !item.memoryUndecided && !appliedMemory(item)
           && (item.editOf || memoryCue(item) || preferenceCue(item) || item.memoryPending || item.held === 'memory correction pending')
 
           && item.update > previous && item.update <= through);
-        const trigger = strictTrigger ?? journal.view.order.filter(item => remembered(item) && fromOperator(item) && !sizeRefused(item)
+        const trigger = strictTrigger ?? journal.view.order.filter(item => remembered(item) && fromOperator(item) && !sizeRefused(item) && !appliedMemory(item)
           && item.update > previous && item.update <= through
           && !/^\s*(?:hi|hello|hey)(?:\s+(?:again|there))?[.!?]?\s*$/iu.test(item.text)).at(-1);
         const older = trigger ? journal.view.order.filter(item => remembered(item) && fromOperator(item) && item.update < trigger.update) : [];
@@ -10494,6 +10497,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if ((journal.view.retracted?.length ?? 0) !== retractedAtBuild) {
         journal.append({ kind: 'summary-failed', through, state: 'complete', reason: SUMMARY_RETRACTED_REASON,
           ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
+          ...(!ports.replyCheck && typeof summary !== 'string' ? { usage: summary.usage } : {}), at: ports.now() });
+        return;
+      }
+      // An answer may admit this request while the summary's model/review is awaited.
+      // Rebuild from the recorded decision rather than apply a second interpretation.
+      if (trigger && appliedMemory(trigger)) {
+        journal.append({ kind: 'summary-failed', through, state: 'complete', reason: 'memory request already applied',
           ...(!ports.replyCheck && typeof summary !== 'string' ? { usage: summary.usage } : {}), at: ports.now() });
         return;
       }

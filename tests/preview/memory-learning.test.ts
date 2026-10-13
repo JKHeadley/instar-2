@@ -300,7 +300,7 @@ describe('Part 21 §16 (P21-NF-25, P21-NEG-31): an operator correction of a fact
       summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }),
       send: async (input: { update: number }) => input.update, model: async input => model(input) });
     for (const [index, text] of messages.entries()) { worker.intake([update(index + 1, text)]); await worker.drain(); }
-    return { journal, close: () => { journal.close(); rmSync(dir, { recursive: true, force: true }); } };
+    return { journal, worker, close: () => { journal.close(); rmSync(dir, { recursive: true, force: true }); } };
   };
 
   it('records the agent\'s own wrong statement, corrected by the operator, as a failure (the in:"reply" shape)', async () => {
@@ -315,6 +315,7 @@ describe('Part 21 §16 (P21-NF-25, P21-NEG-31): an operator correction of a fact
       return JSON.stringify({ reply: 'Thanks, I will use Tuesday.', memory: [] });
     }, ['When was the review?', 'No, that’s wrong, it was Tuesday.']);
     try {
+      await r.worker.summarizeIfNeeded(true);
       const failures = memoryFailures(r.journal.view, operator(r.journal.view));
       expect(failures).toHaveLength(1);
       expect(failures[0]).toMatchObject({ signal: 'operator-correction', asked: { update: 1, question: 'When was the review?' },

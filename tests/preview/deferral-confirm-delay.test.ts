@@ -128,3 +128,41 @@ it('does not join an already running summary when reserving the recorded deferra
     expect(sends).toEqual(['Noted.', JSON.parse(capture.answer.output).reply]);
   } finally { journal.close(); }
 });
+
+it.each([false, true])('keeps one admitted preference when a summary overlaps the answer: %s', async overlaps => {
+  const root = mkdtempSync(join(tmpdir(), 'deferral-one-memory-')); roots.push(root);
+  const now = capture.at;
+  const journal = openPreviewJournal(join(root, 'journal'), new Uint8Array(32).fill(94), { kind: 'genesis',
+    bot: capture.bot, chat: capture.operator, operator: capture.operator, grant: 'grant:fixture', configurationDigest: 'sha256:fixture',
+    expires: now + 86400000, maxCalls: 30, maxReplies: 20, maxTurns: 20, maxBytes: 65536, cursor: 0 });
+  let finish: () => void = () => {};
+  let started: () => void = () => {};
+  const ready = new Promise<void>(resolve => { started = resolve; });
+  let sends = 0;
+  const packets: { memoryRequest?: { id: string } }[] = [];
+  try {
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {},
+      model: async input => {
+        if (!input.id.startsWith('summary:')) return JSON.stringify({ reply: 'Noted.',
+          memory: [{ mode: 'prefer', source: input.id, quote: 'I prefer short replies' }] });
+        const packet = JSON.parse(input.context); packets.push(packet);
+        if (overlaps && packets.length === 1) {
+          const pending = new Promise<void>(resolve => { finish = resolve; }); started(); await pending;
+        }
+        return JSON.stringify({ summary: 'The operator prefers short replies.', people: [], questions: [],
+          memory: packet.memoryRequest ? [{ mode: 'prefer', source: packet.memoryRequest.id, quote: 'I prefer short replies.' }] : [] });
+      }, send: async () => ++sends });
+    worker.intake([{ update_id: capture.update, message: { chat: { id: Number(capture.operator), type: 'private' },
+      from: { id: Number(capture.operator) }, text: 'I prefer short replies.' } }]);
+    const summary = overlaps ? worker.summarizeIfNeeded(true) : undefined;
+    if (overlaps) await ready;
+    await worker.drain(); finish(); await summary;
+    if (overlaps) expect(journal.view.lastSummaryFailure?.reason).toBe('memory request already applied');
+    expect(journal.view.memory.map(change => change.quote)).toEqual(['I prefer short replies']);
+    const calls = packets.length;
+    await worker.summarizeIfNeeded(true);
+    expect(packets.slice(calls).every(packet => packet.memoryRequest === undefined)).toBe(true);
+    expect(journal.view.memory.map(change => change.quote)).toEqual(['I prefer short replies']);
+    expect(sends).toBe(1);
+  } finally { journal.close(); }
+});
