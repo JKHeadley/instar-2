@@ -180,7 +180,9 @@ it('recovers a journal the live build already wedged, and replays the release fr
     w.journal.append({ kind: 'hold', id: correction.id, reason: 'memory correction pending', at: start });
     w.journal.append({ kind: 'hold', id: correction.id, reason: REASON, at: start });
     expect(correction.held).toBe(REASON);
-    for (let again = 0; again < 6; again++) await w.worker.drain();
+    for (let again = 0; again < 6; again++) {
+      await w.worker.summarizeIfNeeded(true); await w.worker.drain();
+    }
     expect(w.journal.view.order.filter(turn => turn.sent === undefined)).toEqual([]);
     const held = w.journal.view.order.map(turn => [turn.update, turn.held ?? null]);
     w.journal.close();

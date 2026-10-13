@@ -33,7 +33,8 @@ const run = async (pushback: string, decision: (packet: { memoryCandidates?: { i
   let worker = createJournalWorker(journal, ports);
   worker.intake([update(1, 'What is 17 × 3?')]); await worker.drain();
   const memoryBefore = JSON.stringify(journal.view.memory);
-  worker.intake([update(2, pushback)]); await worker.drain(); await worker.drain();
+  worker.intake([update(2, pushback)]); await worker.drain();
+  await worker.summarizeIfNeeded(); await worker.summarizeIfNeeded(); await worker.drain();
   const first = { sends: [...sends], summaries: [...summaries], turn: { ...journal.view.order[1]! },
     memoryChanged: JSON.stringify(journal.view.memory) !== memoryBefore };
   journal.close();

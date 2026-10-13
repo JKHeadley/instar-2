@@ -148,7 +148,10 @@ it('the real runner records each sentinel trigger and its effect, and status rea
   expect(live.context.episode).toMatchObject({ kind: 'respawn', status: 'recovered' });
   expect(live.events.map(event => event.event)).toContain('grounding-verified');
   expect(live.recordedTicks.context).toBeGreaterThanOrEqual(1);
-  expect(out.sends).toBeGreaterThanOrEqual(2);
+  const current = out.view.order.find(turn => turn.text === 'What should I plant this week?');
+  expect(current.sent).toBeDefined();
+  // The earlier turn may have the installation-policy outage asserted above; only delivered replies count.
+  expect(out.sends).toBe(1 + Number(held.sent !== undefined));
 }, 60000);
 
 it('the off-switch keeps every sentinel out of the live loop', async () => {

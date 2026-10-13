@@ -47,7 +47,8 @@ it('reserves the recorded deferral and its next turn before slow unsettled memor
     expect(summaryCalls).toBe(0);
     expect(timers.size).toBe(0);
     expect(journal.view.order[0]!.memoryUnresolved).toBe(true);
-    await worker.summarizeIfNeeded(true); await worker.summarizeIfNeeded(true);
+    // The live runner uses the unforced background pass, including for short chats.
+    await worker.summarizeIfNeeded(); await worker.summarizeIfNeeded();
     expect(summaryCalls).toBeGreaterThan(0);
     expect(journal.view.memory).toEqual([]);
     journal.close(); journal = openPreviewJournal(path, key);

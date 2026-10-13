@@ -54,7 +54,7 @@ it.each(['recorded sequence', 'restart-before-send', 'jev-unsure', 'jev-undecide
     }
     await worker.drain(); await worker.drain();
     // The runner schedules summary work independently of answer draining.
-    await worker.summarizeIfNeeded(true); await worker.summarizeIfNeeded(true);
+    await worker.summarizeIfNeeded(); await worker.summarizeIfNeeded();
     expect(summaries).toHaveLength(mode === 'summary-uncertain' ? 1 : 2);
     if (mode.startsWith('jev-')) { expect(judged).toBeGreaterThan(0); expect(reviewed).toBeGreaterThan(0); }
     expect(journal.view.order[0]!.memoryPending).toBe(true);

@@ -63,7 +63,8 @@ it.each(['first', 'repeat'] as const)('keeps one restated item and withholds bot
     expect(journal.view.commitments).toHaveLength(2);
     expect(journal.view.commitments[0]!.quote).toBe(first);
     expect(journal.view.commitments[1]!.quote).toBe(changed);
-    await say(nextId++, 'Actually my gym locker code is 4412, not 3310.');
+    worker.intake([update(nextId++, 'Actually my gym locker code is 4412, not 3310.')]);
+    await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory).toMatchObject([{ mode: 'correct', quote: targetQuote }]);
     const corrected = worker.probe('What is my gym locker code?');
     expect('reason' in corrected).toBe(false);

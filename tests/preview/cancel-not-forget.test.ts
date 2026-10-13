@@ -123,6 +123,7 @@ async function replay(answer: (input: Input) => string, name: string,
     expect(openRequests(w.journal.view).map(item => item.quote)).toEqual([FEEDER, PLUMBER]);
     clock.now += 60_000;
     w.worker.intake([update(recorded('ra3').update, CANCEL, clock.now)]);
+    await w.worker.summarizeIfNeeded(true); await w.worker.summarizeIfNeeded(true);
     await w.worker.drain(); await w.worker.drain();
     await check(w, clock);
     w.journal.close();
@@ -215,7 +216,8 @@ it('completes an explicit forget of the request once its cancellation is recorde
       clock.now += 60_000;
     }
     clock.now += 60_000;
-    worker.intake([update(recorded('ra3').update, both, clock.now)]); await worker.drain(); await worker.drain();
+    worker.intake([update(recorded('ra3').update, both, clock.now)]); await worker.summarizeIfNeeded(true); await worker.summarizeIfNeeded(true);
+    await worker.drain(); await worker.drain();
     expect(summaryReplayed).toBe(true);
     expect(journal.view.reminderCancels).toHaveLength(1);
     expect(openRequests(journal.view).map(item => item.quote)).toEqual([PLUMBER]);
@@ -259,7 +261,8 @@ it('still applies a summary forget of a fact that carries no open request', asyn
     worker.intake([update(1, FACT, clock.now)]); await worker.drain();
     factId = journal.view.order[0]!.id;
     clock.now += 60_000;
-    worker.intake([update(2, FORGET, clock.now)]); await worker.drain(); await worker.drain();
+    worker.intake([update(2, FORGET, clock.now)]); await worker.summarizeIfNeeded(true); await worker.summarizeIfNeeded(true);
+    await worker.drain(); await worker.drain();
     expect(journal.view.memory).toEqual([expect.objectContaining({ mode: 'forget', source: factId, quote: FACT })]);
     expect(activeDated(journal.view)).toHaveLength(0);
     journal.close();
@@ -310,7 +313,8 @@ it('retains held forget summary passages and linked replies', async () => {
     }
     await worker.summarizeIfNeeded(true);
     clock.now += 60_000;
-    worker.intake([update(recorded('ra3').update, both, clock.now)]); await worker.drain(); await worker.drain();
+    worker.intake([update(recorded('ra3').update, both, clock.now)]); await worker.summarizeIfNeeded(true); await worker.summarizeIfNeeded(true);
+    await worker.drain(); await worker.drain();
     expect(summaryReplayed).toBe(true);
     const probe = worker.probe('What do you remember?');
     expect('context' in probe && probe.context.includes(passage), 'forgotten paraphrase must not remain in later context').toBe(false);
@@ -364,7 +368,8 @@ it('does not erase a second open request carried by the same source', async () =
     worker.intake([update(recorded('ra1').update, combined, clock.now)]); await worker.drain();
     expect(openRequests(journal.view).map(item => item.quote)).toEqual([FEEDER, PLUMBER]);
     clock.now += 120000;
-    worker.intake([update(recorded('ra3').update, both, clock.now)]); await worker.drain(); await worker.drain();
+    worker.intake([update(recorded('ra3').update, both, clock.now)]); await worker.summarizeIfNeeded(true); await worker.summarizeIfNeeded(true);
+    await worker.drain(); await worker.drain();
     expect(journal.view.reminderCancels).toHaveLength(1);
     expect(openRequests(journal.view).map(item => item.quote)).toEqual([PLUMBER]);
     // The broad forget is kept, not applied, and the operator is told so; it never claims the forget completed.
@@ -406,7 +411,8 @@ it('names every still-open request whose text it did not forget when a turn hold
     clock.now += 60_000;
     await worker.summarizeIfNeeded(true);
     clock.now += 60_000;
-    worker.intake([update(recorded('ra3').update, ask, clock.now)]); await worker.drain(); await worker.drain();
+    worker.intake([update(recorded('ra3').update, ask, clock.now)]); await worker.summarizeIfNeeded(true); await worker.summarizeIfNeeded(true);
+    await worker.drain(); await worker.drain();
     expect(replayed).toBe(true);
     expect(openRequests(journal.view)).toHaveLength(3);
     expect(journal.view.memory.filter(change => change.mode === 'forget')).toEqual([]);

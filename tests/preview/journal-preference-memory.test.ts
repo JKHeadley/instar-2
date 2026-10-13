@@ -39,19 +39,19 @@ it('keeps a direct reply preference in every later packet, then supersedes and f
   try {
     let journal = openPreviewJournal(path, key, genesis);
     let worker = createJournalWorker(journal, ports);
-    worker.intake([update(1, 'Shorter please.')]); await worker.drain();
+    worker.intake([update(1, 'Shorter please.')]); await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory).toMatchObject([{ mode: 'prefer', quote: 'Shorter please.' }]);
     const first = JSON.parse(seen.at(-1)!);
     expect(first.preferences).toEqual([{ text: 'Shorter please.', source: journal.view.order[0]!.id }]);
     journal.close();
     journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
-    worker.intake([update(2, 'Use detailed answers instead of shorter replies.')]); await worker.drain();
+    worker.intake([update(2, 'Use detailed answers instead of shorter replies.')]); await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'correct']);
     const second = JSON.parse(seen.at(-1)!);
     expect(second.preferences).toEqual([{ text: 'Use detailed answers instead of shorter replies.', source: journal.view.order[1]!.id }]);
     journal.close();
     journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
-    worker.intake([update(3, 'Forget my answer style preference.')]); await worker.drain();
+    worker.intake([update(3, 'Forget my answer style preference.')]); await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'correct', 'forget']);
     worker.intake([update(4, 'How was your day?')]); await worker.drain();
     expect(JSON.parse(seen.at(-1)!).preferences).toBeUndefined();
@@ -93,7 +93,7 @@ it('applies more detail and shorter answers as reversible reply instructions aft
     expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('The current operator message takes precedence');
     let journal = openPreviewJournal(path, key, genesis);
     let worker = createJournalWorker(journal, ports);
-    worker.intake([update(1, 'More detail.')]); await worker.drain();
+    worker.intake([update(1, 'More detail.')]); await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory, JSON.stringify({ holds: journal.view.order.map(item => item.held),
       summaries: journal.view.summaries.length, calls: journal.view.calls })).toMatchObject([{ mode: 'prefer', quote: 'More detail.' }]);
     expect(journal.view.memory[0]).not.toHaveProperty('replies');
@@ -105,14 +105,14 @@ it('applies more detail and shorter answers as reversible reply instructions aft
     worker.intake([update(2, 'Explain the change.')]); await worker.drain();
     expect(journal.view.order[1]?.sent).toBe(1);
     expect(packets.at(-1)?.preferences).toEqual([{ text: 'More detail.', source: journal.view.order[0]!.id }]);
-    worker.intake([update(3, 'Shorter answers.')]); await worker.drain();
+    worker.intake([update(3, 'Shorter answers.')]); await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'correct']);
     journal.close();
 
     journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
     worker.intake([update(4, 'Explain the change.')]); await worker.drain();
     expect(packets.at(-1)?.preferences).toEqual([{ text: 'Shorter answers.', source: journal.view.order[2]!.id }]);
-    worker.intake([update(5, 'Forget my answer length preference.')]); await worker.drain();
+    worker.intake([update(5, 'Forget my answer length preference.')]); await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'correct', 'forget']);
     journal.close();
 
@@ -142,10 +142,13 @@ it('rejects nonempty old-reply or summary metadata on a new preference', async (
       worker.intake([update(1, 'Please answer with detail.')]); await worker.drain();
       expect(journal.view.order[0]?.sent).toBe(1);
       await worker.summarizeIfNeeded(true);
-      worker.intake([update(2, 'More detail.')]); await worker.drain();
+      worker.intake([update(2, 'More detail.')]); await worker.summarizeIfNeeded(true); await worker.drain();
       expect(journal.view.memory).toEqual([]);
-      expect(journal.view.order[1]).toMatchObject({ memoryPending: true, held: 'memory correction pending' });
-      expect(journal.view.order[1]?.sent).toBeUndefined();
+      expect(journal.view.order[1]?.memoryPending).toBe(true);
+      expect(journal.view.order[1]?.held).toBeUndefined();
+      expect(journal.view.lastSummaryFailure?.failureClass).toBe('malformed');
+      expect(journal.view.order[1]?.intent).toBe('I reviewed your memory request.');
+      expect(journal.view.order[1]?.sent).toBe(1);
       journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
@@ -165,7 +168,7 @@ it('keeps the two-term guard for an unrelated factual correction', async () => {
         return 'Understood.';
       }, send: async () => 1, checkOutbound: () => {} });
     worker.intake([update(1, 'Larchwood')]); await worker.drain();
-    worker.intake([update(2, 'Actually Larchwood is Oakwood.')]); await worker.drain();
+    worker.intake([update(2, 'Actually Larchwood is Oakwood.')]); await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory).toEqual([]);
     expect(journal.view.order[1]?.memoryPending).toBe(true);
     journal.close();
@@ -245,7 +248,7 @@ it('keeps a faithful preference summary and its source reply while still withhol
         }
         return input.question === 'Shorter please.' ? 'I will keep your answer and commitment.' : 'Understood.';
       }, send: async () => 1, checkOutbound: () => {} });
-    worker.intake([update(1, 'Shorter please.')]); await worker.drain();
+    worker.intake([update(1, 'Shorter please.')]); await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory).toMatchObject([{ mode: 'prefer', quote: 'Shorter please.' }]);
     expect(journal.view.order[0]?.sent).toBe(1);
     let next = worker.probe('What did I ask?');
@@ -256,7 +259,7 @@ it('keeps a faithful preference summary and its source reply while still withhol
     expect(JSON.stringify(packet)).toContain('I will keep your answer and commitment.');
 
     worker.intake([update(2, 'My locker code is 3310.')]); await worker.drain();
-    worker.intake([update(3, 'Forget my locker code.')]); await worker.drain();
+    worker.intake([update(3, 'Forget my locker code.')]); await worker.summarizeIfNeeded(true); await worker.drain();
     next = worker.probe('What is my locker code?');
     if ('reason' in next) throw Error(next.reason);
     packet = JSON.parse(next.context);
@@ -289,16 +292,16 @@ it('retires one of two same-source preferences and rejects a stale target', asyn
         }
         return 'Understood.';
       }, send: async () => 1, checkOutbound: () => {} });
-    worker.intake([update(1, 'Always use short answers. Never use bullet lists. The room is blue.')]); await worker.drain();
+    worker.intake([update(1, 'Always use short answers. Never use bullet lists. The room is blue.')]); await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'prefer']);
-    worker.intake([update(2, 'Forget my short-answer preference.')]); await worker.drain();
+    worker.intake([update(2, 'Forget my short-answer preference.')]); await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'prefer', 'forget']);
     let next = worker.probe('How should you answer?');
     if ('reason' in next) throw Error(next.reason);
     expect(JSON.parse(next.context).preferences).toEqual([{ text: 'Never use bullet lists.', source: journal.view.order[0]!.id }]);
-    worker.intake([update(3, 'Actually, the room is green.')]); await worker.drain();
+    worker.intake([update(3, 'Actually, the room is green.')]); await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'prefer', 'forget', 'correct']);
-    worker.intake([update(4, 'Use detailed answers.')]); await worker.drain();
+    worker.intake([update(4, 'Use detailed answers.')]); await worker.summarizeIfNeeded(true); await worker.drain();
     expect(journal.view.memory).toHaveLength(4);
     expect(journal.view.order[3]?.memoryPending).toBe(true);
     next = worker.probe('How should you answer now?');
@@ -326,12 +329,12 @@ it('renders an explicit reinstatement of the same preference after removal', asy
         }
         return 'Understood.';
       }, send: async () => 1, checkOutbound: () => {} });
-    worker.intake([update(1, 'Shorter please.')]); await worker.drain();
-    worker.intake([update(2, 'Forget my answer style preference.')]); await worker.drain();
+    worker.intake([update(1, 'Shorter please.')]); await worker.summarizeIfNeeded(true); await worker.drain();
+    worker.intake([update(2, 'Forget my answer style preference.')]); await worker.summarizeIfNeeded(true); await worker.drain();
     let next = worker.probe('What style?');
     if ('reason' in next) throw Error(next.reason);
     expect(JSON.parse(next.context).preferences).toBeUndefined();
-    worker.intake([update(3, 'Shorter please.')]); await worker.drain();
+    worker.intake([update(3, 'Shorter please.')]); await worker.summarizeIfNeeded(true); await worker.drain();
     expect(requests.at(-1)).toBe('Shorter please.');
     expect(journal.view.memory.map(item => item.mode)).toEqual(['prefer', 'forget', 'prefer']);
     next = worker.probe('What style now?');

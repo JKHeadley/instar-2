@@ -122,6 +122,7 @@ async function replay(answer: (input: Input) => unknown, name: string,
     for (const text of [FEEDER, PLUMBER]) { w.worker.intake([update(id++, text)]); await w.worker.drain(); }
     expect(openRequests(w.journal.view).map(item => item.quote)).toEqual([FEEDER, PLUMBER]);
     w.worker.intake([update(id, CANCEL)]);
+    await w.worker.summarizeIfNeeded(true); await w.worker.summarizeIfNeeded(true);
     await w.worker.drain(); await w.worker.drain();
     const turn = w.journal.view.order.find(item => item.text === CANCEL)!;
     // The live collapse upstream reproduces: the recorded summaries leave the memory question undecided.

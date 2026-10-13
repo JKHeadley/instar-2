@@ -45,7 +45,7 @@ function world() {
   return { get journal() { return journal; }, get worker() { return worker; }, ports, packets, sends,
     allow: (value: boolean) => { allowed = value; }, revokeDuringAnswer: () => { changeBeforeSend = true; },
     reopen: () => { journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports); },
-    turn: async (id: number, text: string, topic = 1) => { worker.intake([raw(id, text, topic)]); await worker.drain(); } };
+    turn: async (id: number, text: string, topic = 1) => { worker.intake([raw(id, text, topic)]); await worker.drain(); await worker.summarizeIfNeeded(); } };
 }
 
 it('saves in topic 3, recalls in topic 1 and after restart, lists it and forgets it without duplicate sends', async () => {

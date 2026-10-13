@@ -268,7 +268,8 @@ it.each(['forget', 'correct'] as const)('links only the confirmed pair across re
     expect(w.journal.view.personMerges).toEqual([]);
     await w.say(n, 'Are Sam and Sam Ortiz the same person?');
     expect(w.journal.view.personMerges).toEqual([]);
-    await w.say(n + 1, 'Actually, Sam and Sam Ortiz are the same person.');
+    w.worker.intake([update(n + 1, 'Actually, Sam and Sam Ortiz are the same person.')]);
+    await w.worker.summarizeIfNeeded(); await w.worker.drain();
     expect(w.journal.view.people.some(note => note.source === `telegram:12345678:update:${n}`)).toBe(true);
     expect(w.journal.view.people.some(note => note.source === `telegram:12345678:update:${n + 1}`)).toBe(true);
     expect(w.journal.view.personMerges).toMatchObject([{ left: 0, right: 1,
