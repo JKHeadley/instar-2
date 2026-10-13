@@ -906,7 +906,7 @@ export interface ObligationWork { attempts: number; last: number; lastSlot: numb
   withheld?: { text: string; at: number; by: string; objection: string } }
 /** Declarations an answer proposed that failed admission. A refused deferral, blocker or recheck forces the full
  * contextual review (`refusedObligation`); a refused fulfillment claim is only counted. */
-export interface RejectedObligations { loops?: number; blocker?: true; rechecks?: true;
+export interface RejectedObligations { loops?: number; blocker?: true; blockerReason?: string; rechecks?: true;
   /** Fulfillment claims the one support rule refused, kept visible instead of dropped (Rules 2, 10). */
   fulfills?: number }
 interface CommitmentSource { id: number; source: string; quote: string }
@@ -1166,7 +1166,7 @@ export type JournalRecord =
      * #104): admitted by the same checks as an answer's blocker, only when the answer admitted none. */
     blocker?: ProposedBlocker;
     /** Exact admission refusal, retained through replay so a review PASS cannot erase it. */
-    rejectedBlocker?: true; usage?: ModelUsage; at: number }
+    rejectedBlocker?: true; blockerReason?: string; usage?: ModelUsage; at: number }
   /** One bounded held-class review of the revised text, inside the same call cap; no result is UNKNOWN, never repeated. */
   | { kind: 'reply-revision-review-reserve'; id: string; remainder?: string; correctionCandidate?: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-revision-review'; id: string; verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string;
@@ -1382,7 +1382,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   answerAt?: number; checkDoneAt?: number;
   reviewCandidate?: string; reviewMentionedDates?: string[];
   revisionReserved?: true; revisionReservedAt?: number; revisionObjections?: string[];
-  revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; dispositions?: ObjectionDisposition[]; blocker?: ProposedBlocker; rejectedBlocker?: true };
+  revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; dispositions?: ObjectionDisposition[]; blocker?: ProposedBlocker; rejectedBlocker?: true; blockerReason?: string };
   release?: ReplyRelease; heldReview?: ReplyHeld;
   revisionReviewReserved?: true;
   /** Exact claim-trimmed candidate using the existing revision-review operation. */
@@ -2039,7 +2039,9 @@ export const declaredObligations = (view: JournalView, id: string, now: number) 
   // only tool calls it made across all of them, whatever route its final call took.
   const toolAttempts = turn?.toolAttempts;
   return { blocker: turn?.answerBlocker ?? turn?.revision?.blocker ?? null, settled, loops: turn?.answerLoops ?? [],
-    ...(turn?.answerRejected ? { rejected: turn.answerRejected } : {}), capabilities: previewCapabilities(turn?.toolRouted === true),
+    ...(turn?.revision?.rejectedBlocker
+      ? { rejected: { ...turn.answerRejected, blocker: true, blockerReason: turn.revision.blockerReason } }
+      : turn?.answerRejected ? { rejected: turn.answerRejected } : {}), capabilities: previewCapabilities(turn?.toolRouted === true),
     ...(toolAttempts ? { toolAttempts: turn?.toolAttemptsOmitted
       ? { meaning: TOOL_ATTEMPTS_PARTIAL_MEANING, calls: toolAttempts, omitted: turn.toolAttemptsOmitted }
       : { meaning: TOOL_ATTEMPTS_MEANING, calls: toolAttempts } } : {}) };
@@ -2152,11 +2154,22 @@ function validAssessment(avenues: unknown, constraint: unknown): boolean {
     && typeof constraint === 'string' && Object.hasOwn(CONSTRAINT_EVIDENCE, constraint)
     && list.some(item => CONSTRAINT_EVIDENCE[constraint as GoverningConstraint]!.includes(item.evidence));
 }
-function validBlocker(value: unknown, at: number): value is ProposedBlocker {
+/** A fixed diagnostic names the failed check without copying potentially sensitive model text. */
+function blockerRejection(value: unknown, at: number): string | undefined {
   const blocker = value as ProposedBlocker | null;
-  return !!blocker && (blocker.kind === 'cannot-do' || blocker.kind === 'needs-human') && boundedText(blocker.claim, 8, 500)
-    && validAssessment(blocker.avenues, blocker.constraint) && boundedText(blocker.outsideAction, 3, 300)
-    && recheckInRange(blocker.recheckAt, at) && Object.keys(blocker).length === 6;
+  if (!blocker || (blocker.kind !== 'cannot-do' && blocker.kind !== 'needs-human')) return 'invalid blocker kind';
+  // Exact quotes share the reply's existing finite byte budget; a lawful refusal can be a long sentence.
+  if (!boundedText(blocker.claim, 8, PREVIEW_REPLY_BOUND_BYTES))
+    return `claim needs at least 8 characters and at most ${PREVIEW_REPLY_BOUND_BYTES} UTF-8 bytes`;
+  if (typeof blocker.constraint !== 'string' || !Object.hasOwn(CONSTRAINT_EVIDENCE, blocker.constraint)) return 'unknown governing constraint';
+  if (!validAssessment(blocker.avenues, blocker.constraint)) return 'invalid avenues or unsupported constraint evidence';
+  if (!boundedText(blocker.outsideAction, 3, 300)) return 'outside action needs at least 3 characters and at most 300 UTF-8 bytes';
+  if (!recheckInRange(blocker.recheckAt, at)) return 'recheck must be in the future and within 90 days';
+  if (Object.keys(blocker).length !== 6) return 'unexpected blocker fields';
+  return undefined;
+}
+function validBlocker(value: unknown, at: number): value is ProposedBlocker {
+  return blockerRejection(value, at) === undefined;
 }
 const validBlockerAssessment = (value: unknown): value is BlockerAssessment => {
   const assessment = value as BlockerAssessment | null;
@@ -4406,13 +4419,15 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       || row.dispositions !== undefined && (row.state !== 'complete' || !validDispositions(row.dispositions, turn.revisionObjections ?? []))
       || row.rejectedBlocker !== undefined && (row.rejectedBlocker !== true || row.state !== 'complete'
         || row.blocker !== undefined || turn.answerBlocker !== undefined)
+      || row.blockerReason !== undefined && (!row.rejectedBlocker || !boundedText(row.blockerReason, 1, 120))
       || row.blocker !== undefined && (row.state !== 'complete' || turn.answerBlocker !== undefined
         || !validBlocker(row.blocker, turn.reservedAt ?? row.at) || !row.text!.includes(row.blocker.claim)))
       throw Error('preview journal: revision result order');
     turn.revision = { state: row.state, ...(row.text === undefined ? {} : { text: row.text }),
       ...(row.dispositions === undefined ? {} : { dispositions: row.dispositions.map(item => ({ ...item })) }),
       ...(row.blocker === undefined ? {} : { blocker: row.blocker }),
-      ...(row.rejectedBlocker ? { rejectedBlocker: true } : {}) };
+      ...(row.rejectedBlocker ? { rejectedBlocker: true } : {}),
+      ...(row.blockerReason === undefined ? {} : { blockerReason: row.blockerReason }) };
     if (row.state !== 'uncertain') settleTokens(view, `revision:${row.id}`, row.usage);
     return;
   }
@@ -4639,10 +4654,11 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (row.blockerRechecks !== undefined) { if (!validRechecks(view, row.blockerRechecks)) throw Error('preview journal: invalid blocker recheck');
       turn.answerRechecks = row.blockerRechecks; }
     if (row.rejected !== undefined) {
-      const { loops = 0, blocker, rechecks, fulfills = 0 } = row.rejected;
+      const { loops = 0, blocker, blockerReason, rechecks, fulfills = 0 } = row.rejected;
       if (!Number.isSafeInteger(loops) || loops < 0 || loops > 50 || blocker !== undefined && blocker !== true || rechecks !== undefined && rechecks !== true
         || !Number.isSafeInteger(fulfills) || fulfills < 0 || fulfills > AGENT_PROMISE_LIMIT
-        || Object.keys(row.rejected).some(key => key !== 'loops' && key !== 'blocker' && key !== 'rechecks' && key !== 'fulfills')
+        || Object.keys(row.rejected).some(key => key !== 'loops' && key !== 'blocker' && key !== 'blockerReason' && key !== 'rechecks' && key !== 'fulfills')
+        || blockerReason !== undefined && (!blocker || !boundedText(blockerReason, 1, 120))
         || loops + (blocker ? 1 : 0) + (rechecks ? 1 : 0) + fulfills === 0) throw Error('preview journal: invalid rejected obligations');
       turn.answerRejected = row.rejected; view.rejectedObligations += loops + (blocker ? 1 : 0) + (rechecks ? 1 : 0) + fulfills;
     }
@@ -8868,7 +8884,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 journal.append({ kind: 'reply-revision', id: turn.id,
                   state: outcome.state === 'complete' && !text ? 'failed' : outcome.state, ...(text ? { text } : {}),
                   ...(answered ? { dispositions: answered } : {}), ...(proposed?.blocker ? { blocker: proposed.blocker } : {}),
-                  ...(proposed?.rejected?.blocker ? { rejectedBlocker: true } : {}),
+                  ...(proposed?.rejected?.blocker ? { rejectedBlocker: true, blockerReason: proposed.rejected.blockerReason } : {}),
                   ...(outcome.usage ? { usage: outcome.usage } : {}), at: revisionAt });
               }
               if (turn.revision?.state === 'complete' && turn.revision.text) {
@@ -9632,7 +9648,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (candidates.length === 1) blocker.constraint = candidates[0]!;
       }
       if (validBlocker(blocker, decidedFrom) && reply.includes(blocker.claim)) result.blocker = blocker;
-      else result.rejected = { ...result.rejected, blocker: true };
+      else result.rejected = { ...result.rejected, blocker: true,
+        blockerReason: blockerRejection(blocker, decidedFrom) ?? 'claim is not an exact clause of the reply' };
     }
     if (Array.isArray(parsed.blockerRechecks) && parsed.blockerRechecks.length) {
       const offered = new Set((packet.blockers ?? []).map(item => item.id));
