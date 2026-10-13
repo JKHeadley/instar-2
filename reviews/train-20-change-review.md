@@ -762,3 +762,5 @@ simplestRobustRoute: This is the simplest robust route: ordinary merges of revie
 VERDICT: author submission; independent review belongs to the desk
 
 Generation: repin found no stale inventory sources; owner rehash refreshed two hashes, committed before explicit register replay at source head. The build requires an exact commit id; prior attempts using the previous recorded source or symbolic HEAD refused without writing output.
+
+Decision: train-20-budget | Combined status review exceeds its fixed review margin by 138 bytes. Shorten only self_state_claim prose, retaining its record sources, delivery versus holding/due semantics, as-of versus startup distinction and supported/unaddressed non-breach. Leave the 22959-byte prompt guard and 2540-byte review constant unchanged. Replay captured status and other judgment shapes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-20-PROGRESS.md
