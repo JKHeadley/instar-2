@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { ANSWER_INSTRUCTIONS, CAPABILITY_SENTENCE_LABEL, capabilitySentence, capabilityBriefing, SELF_DESCRIPTION, SELF_IDENTITY, SIGN_OFF, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, CAPABILITY_SENTENCE_LABEL, capabilitySentence, capabilityBriefing, SELF_DESCRIPTION, SELF_IDENTITY, SIGN_OFF, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 import { readAnswer } from './answer-reading.js';
 import { governingConstraints, previewCapabilities, settledConstraintWording, type BlockerNote, type JournalView } from './journal.js';
 
@@ -55,7 +55,8 @@ const currentInstructions = (text: string) => {
     expect(text.split(before)).toHaveLength(2);
     text = text.replace(before, after);
   }
-  return text;
+  // Preserve the historical captures; the literal-copy repair adds one shared instruction.
+  return text.replace('For a later-action promise', `${LITERAL_COPY_INSTRUCTIONS}\nFor a later-action promise`);
 };
 
 // Adapt only presentation: captured model outputs, capability descriptions and limits remain exact.

@@ -4,13 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { createHash } from 'node:crypto';
-import { ANSWER_INSTRUCTIONS, capabilitySentence, SELF_DESCRIPTION, SELF_IDENTITY } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, capabilitySentence, SELF_DESCRIPTION, SELF_IDENTITY } from './briefing.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { readAnswer } from './answer-reading.js';
 
 const evidence = JSON.parse(readFileSync(new URL('./fixtures/train-12-capability-2026-10-12.json', import.meta.url), 'utf8'));
-// Historical prompts remain immutable; only the self-description protocol changed.
-const currentInstructions = (text: string) => text.replace(text.split('\n').find(line => line.startsWith(SELF_IDENTITY))!, SELF_DESCRIPTION);
+// Historical prompts remain immutable; translate self-description and add literal-copy guidance.
+const currentInstructions = (text: string) => text.replace(text.split('\n').find(line => line.startsWith(SELF_IDENTITY))!, SELF_DESCRIPTION)
+  .replace('For a later-action promise', `${LITERAL_COPY_INSTRUCTIONS}\nFor a later-action promise`);
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 
 // Replay the shipped second reading stage too: readAnswer serializes structured

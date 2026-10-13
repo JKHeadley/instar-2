@@ -146,7 +146,10 @@ it('the owner machine is lost: the other machine takes over WITH the history, ho
 }, 240000);
 
 it.each([0, 1500])('an owner that stalls past its term and comes back is stale: it sends nothing, retires, and is wanted back as the standby (%i ms transport return)', async sendDelayMs => {
-  const t = await twoMachines();
+  // The slow synchronous send fixture also delays lease-renewal timers. Use the
+  // authority's shipped 30-second term so takeover is caused by SIGSTOP below,
+  // not by the receipt-gap injection during setup. The takeover wait stays bounded.
+  const t = await twoMachines(30000);
   const studio = t.harness.startRunner(t.rootOf('studio'), 'studio', 100000, ['--machine-posture', 'multi-machine', '--conversation-authority', t.url,
     '--replica-listen', `127.0.0.1:${t.ports.studio}`, '--replica-peer', `http://127.0.0.1:${t.ports.laptop}`, '--owner-machine', 'studio',
     '--journal-lineage', 'seed'], { ...t.envOf('studio'), INSTAR_PREVIEW_CUTOVER_SEND_DELAY_MS: String(sendDelayMs) });
@@ -166,11 +169,20 @@ it.each([0, 1500])('an owner that stalls past its term and comes back is stale: 
   // Wait for the same receipt/copy boundary as the owner-loss scenario above, not a delay.
   await until('the owner recorded the receipts before stalling', async () =>
     (await t.status('studio'))?.sendOutcomes?.accepted === sendsBefore.length);
-  await until('the standby holds the completed exchange before stalling', () => {
-    const copy = JSON.parse(readFileSync(join(t.rootOf('laptop'), 'replica', 'copy-state.json'), 'utf8'));
-    return copy.machine === 'studio' && copy.epoch === 1
-      && copy.size === statSync(join(t.rootOf('studio'), 'journal.encrypted')).size;
-  });
+  // These small journals append without compaction. Wait for the fixed prefix that
+  // contains the receipts; later maintenance writes need not stop for replication to catch up.
+  const completedSize = statSync(join(t.rootOf('studio'), 'journal.encrypted')).size;
+  try {
+    await until('the standby holds the completed exchange before stalling', () => {
+      const copy = JSON.parse(readFileSync(join(t.rootOf('laptop'), 'replica', 'copy-state.json'), 'utf8'));
+      return copy.machine === 'studio' && copy.epoch === 1 && copy.size >= completedSize;
+    });
+  } catch (error) {
+    process.stderr.write(`receipt prefix ${completedSize}; copy ${readFileSync(join(t.rootOf('laptop'), 'replica', 'copy-state.json'), 'utf8')}`
+      + `\nowner: ${studio.output.stderr}\nstandby: ${laptop.output.stderr}\n`);
+    throw error;
+  }
+  expect((await t.view())).toMatchObject({ epoch: 1, holder: { machine: 'studio' } });
   // The owner stalls (SIGSTOP by exact PID) for longer than its term; the standby takes over with the history.
   studio.child.kill('SIGSTOP');
   await until('the standby takes over', () => laptop.output.stderr.includes('owner: epoch 2; history adopted'), 60000);

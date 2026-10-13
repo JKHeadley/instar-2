@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { SOURCE_PINS, deskStatusSource, sourcePacket } from './briefing.js';
+import { LITERAL_COPY_INSTRUCTIONS, SOURCE_PINS, deskStatusSource, sourcePacket } from './briefing.js';
 import { disciplineSource } from './retrospective.js';
 import { readRuns, selfStateBrief, selfStateSource } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -93,6 +93,7 @@ async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0) {
     const deskText = answer === undefined ? '' : ((JSON.parse(answer.context) as
       { sources?: { id: string; text: string }[] }).sources ?? []).find(item => item.id === 'desk-status')?.text ?? '';
     const result = { sent: turn.sent !== undefined, held: turn.held, notice: turn.noticeClass,
+      literalCopyGuidance: answer?.prepared.includes(LITERAL_COPY_INSTRUCTIONS) ?? false,
       answerTotal: total(answer), summaryTotal: total(summary), reviewTotal,
       deskCut: deskText.includes('[cut for space'),
       keys: answer === undefined ? [] : Object.keys(JSON.parse(answer.context) as object),
@@ -111,6 +112,7 @@ it('keeps the always-sent prompt parts inside what the measured floor allows, wi
   const floor = PREVIEW_MIN_SERVABLE_CONTEXT_BYTES;
   const measured = await firstTurn(floor);
   expect(measured.sent).toBe(true);
+  expect(measured.literalCopyGuidance).toBe(true);
   expect(measured.held).toBeUndefined();
   expect(measured.notice).toBeUndefined();
   expect(measured.answerTotal).not.toBeNull();

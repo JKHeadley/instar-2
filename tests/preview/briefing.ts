@@ -235,7 +235,10 @@ export function verifyMindRules(readSource: (path: string) => string): void {
 /** The answer protocol for decisions only the answering model can read by meaning (Rule 10) and
  * for a reply after a context compaction (Rule 110). It rides beside the mind-held rules in the
  * trusted instruction message; the packet carries only the data (`continuity`, commitment ids). */
+export const LITERAL_COPY_INSTRUCTIONS = 'When quoting or copying literal text, copy directly from its source, not your reasoning or an earlier paraphrase. '
+  + 'Compare every character with the source before answering; do not repeatedly retype the text in reasoning.';
 export const ANSWER_PROTOCOL = [
+  LITERAL_COPY_INSTRUCTIONS,
   'For a later-action promise return JSON reply and promises:[{quote:exact reply sentence,when?:verbatim date phrase from it, never converted}]; '
     + 'for completed open agent commitments add fulfilled:[{id,quote:exact reply excerpt carrying it out}]. Conditional or quoted examples are not promises.',
   'With packet.continuity, context was compacted through continuity.through; only the summary covers it. continuity.lastInbound names the previous message. '

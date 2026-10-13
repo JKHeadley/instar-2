@@ -31,13 +31,13 @@ afterEach(async () => {
   }
 });
 
-export async function twoMachines() {
+export async function twoMachines(termMs = 6000) {
   const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile);
   const { botId, chatId } = world.configuration, conversation = `telegram/bot-${botId}/chat-${chatId}`;
   harness.setUpdates([]);
   const authorityProcess = spawn(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
     'tests/preview/conversation-authority-server.mjs', '--path', join(world.directory, 'authority', 'log.jsonl'), '--bot-id', botId,
-    '--chat-id', chatId, '--host', '127.0.0.1', '--port', '0', '--term-ms', '6000'],
+    '--chat-id', chatId, '--host', '127.0.0.1', '--port', '0', '--term-ms', String(termMs)],
   { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_AUTHORITY_SECRET: SECRET }, stdio: ['ignore', 'pipe', 'pipe'] });
   started.push(authorityProcess);
   const listening = await new Promise((done, fail) => { let text = '';

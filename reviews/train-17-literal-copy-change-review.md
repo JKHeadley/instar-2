@@ -1,0 +1,39 @@
+# Change review — train-17 literal-copy repair
+
+Subject base: d81dc38ca42978aaaf5a9743ee7d15f8668a8db0
+Review state: open
+Reviewed content: none
+Outcome: Improve literal-copy fidelity after a real forum answer substituted one character; retain the actual failure and three fresh correct replays. Make the supplied slow-transport stale-owner scenario reach its intended stall boundary before lease expiry.
+Affected rules: Purpose coherence and agency; Rules 10, 12, 26, 31, 34, 36, 37, 47, 49, 58, 63, 70, 74, 95, 101, 102, 111, 112, 113, 116.
+Affected floors: secrets — existing outbound checks unchanged; spend cap — production reservations unchanged, fresh replays bounded to three one-turn calls; stop — existing gates unchanged; no duplicate sends — durable restart and stale-owner fencing asserted; durable intake — encrypted journal and peer receipt requirements unchanged.
+Operator questions: none
+Suggested tier: significant
+Declared tier: ordinary
+Tier rationale: Two general answer-instruction sentences and targeted regression evidence. No authority, tool availability, parser, journal format or deterministic reply gate changes.
+Side effects: The shared answer protocol now asks the model to copy literal text from its source and compare characters instead of retranscribing its own reasoning. It applies across harnesses and restarts, while summary/review calls remain unchanged. Existing capability capture comparison helpers admit only this added guidance; their original bytes are preserved. Default prompt floor remains sufficient. The stale-owner scenario uses the shipped 30-second lease term rather than its shortened six-second fixture term: its synchronous send-delay injection otherwise expires the lease before SIGSTOP. It asserts epoch-one ownership before the stall and waits for a fixed receipt prefix. Other scenarios retain six seconds; no production lease is changed.
+Undo and recovery: Revert the source and test commits and regenerate the register from that source. No migration, live-root edits or deployment rollback is needed.
+Multi-machine posture: No new state or runtime ownership/replication change. The real local two-runner fault test still requires replicated receipts before suspension, stale-owner retirement and exactly one successor answer; immediate and slow transport returns exercise the boundary.
+Layer below: Read retained forum journal update 715675751 and Telegram message 347: original literal ends d28a, delivered answer ends d38a; the check correctly failed. Read journal-envelope answerCall, both answer readers and the durable worker send path. Read journal shipper acknowledged-prefix semantics, lease renewal timers, synchronous send fixture and authority default. Failure stderr proves premature epoch-two takeover before the deliberate SIGSTOP under the shortened test term. Inspected actual prompt-size floor and immutable capability captures.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/literal-copy.test.ts
+Hook bypass: none; core.hooksPath unset and common hooks directory contains only sample hooks; ordinary git commit.
+Convergence: none
+Decision: train-17-literal-source | Use general source-grounded copy instructions, leaving interpretation with the model and all floors in their checkpoints. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-17-repair-PROGRESS.md
+Decision: train-17-literal-captures | Retain the actual mismatched input/output and all three fresh replay outputs; preserve historical evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-17-repair-PROGRESS.md
+Decision: train-17-literal-pins | Update exact instruction comparison helpers and verify the fixed prompt floor without increasing it. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-17-repair-PROGRESS.md
+Decision: train-17-local-deps | Use local packages from the exact matching lockfile; fix the dependency environment rather than unrelated test sources. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-17-repair-PROGRESS.md
+Decision: train-17-stall-premise | Use the shipped authority term for the synchronous slow-return scenario, prove ownership before SIGSTOP and accepted receipts at takeover, retaining the fixed receipt-prefix and failure diagnostics. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-17-repair-PROGRESS.md
+Prompt review: General copying guidance contains no incident string or canned answer. Three bounded claude-sonnet-5 calls replayed the actual recorded input with only the final instruction delta; each returned the requested literal. Both output forms pass the real reader and worker. group-carry replays recorded summary/uncertain/Jev/reply-review/delivered/empty shapes with the new instructions. Prompt-budget test passes without raising its floor. This is measured replay evidence, not a deterministic guarantee or new deployed live conversation.
+Prompt finding: 034c5250da92 | quoted-evidence | Existing captured capability/protocol wording is compared with current source, not used as a trigger or required answer — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "run without another yes. the operator can tighten or revoke trust through setup-"
+Prompt finding: 45e37ea2e9e9 | quoted-evidence | Existing captured capability/protocol wording is compared with current source, not used as a trigger or required answer — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
+Prompt finding: 4b98dc2a1b9f | quoted-evidence | Existing captured capability/protocol wording is compared with current source, not used as a trigger or required answer — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "tools: full claude code set"
+Prompt finding: 6af48f94b789 | quoted-evidence | Existing captured capability/protocol wording is compared with current source, not used as a trigger or required answer — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "sends remain outside the one-machine closed set. the effect doorway reports any "
+Prompt finding: 95e349aaf4ac | quoted-evidence | Existing captured capability/protocol wording is compared with current source, not used as a trigger or required answer — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "via the doorway's four tests; standing grants need no new approval."
+Prompt finding: b00ed403060a | quoted-evidence | Existing captured capability/protocol wording is compared with current source, not used as a trigger or required answer — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
+
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: correct the existing answer instructions and preserve the source of the observed mistake, with no classifier, automatic text replacement, extra model call or new gate. The test repair restores the shipped authority term so a synchronous delay does not preempt the deliberate stall, and waits for the fixed durable receipt prefix through existing replication. Existing admission, secrets, caps, stop, ownership and send-settlement checkpoints remain the guards. Three fresh isolated model replays and worker/restart tests provide evidence; no autonomous deployment claim.
+80/20: Run the five affected test files, the supplied stale-owner cases, typecheck/build and cheap architecture/register/review gates; the Studio pipeline owns the full suite. No full suite or CPU load run.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
