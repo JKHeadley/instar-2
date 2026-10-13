@@ -1,5 +1,21 @@
 [
   {
+    "revision": 10,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-doorway: the effect doorway wired onto the live answer and work path by the purpose's four consequential-effect tests (Justin 2026-10-03 10:15, topic 102965 message 121996, and his 10:45 re-grounding). No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§3 gains the live-path tool rule: ordinary in-workspace tool work is admitted without a doorway call; a tool call that could be consequential is classified against the four tests from its registered or worst reachable classification and admitted only when every held test is answered (closed set for irreversible effects, a recorded grant for resource, policy-sensitive and scope); a refusal names the held tests and what would admit it, rides below the answer, and every decision is durable, journaled and counted in status.",
+        "why": "The observer's audit found the doorway was not on the live path; the operator's direction is full ability with only consequential effects going to the doorway, enforced by the constitution's own definition.",
+        "ref": "lanes/w4-doorway-PROGRESS.md; LIVE-PATH-PLAN.md rows #399-#400"
+      }
+    ]
+  },
+  {
     "revision": 9,
     "date": "2026-10-10",
     "status": "draft",
@@ -114,9 +130,7 @@
       {
         "what": "Consume the installation profile's accepted closed local-durable operation set without a peer dependency, while retaining replicated(1) whenever a second machine is enrolled or an operation demands replication.",
         "why": "Eight must enforce both supported installation shapes without automatic fallback or a per-operation handwritten operator list.",
-        "commits": [
-          "1b5ac4c"
-        ]
+        "commits": ["1b5ac4c"]
       }
     ]
   },
@@ -132,9 +146,7 @@
       {
         "what": "Bind one unresolved-accounting answer use to a separately admitted reply operation with its own dispatch claim and no second model call.",
         "why": "Output availability must produce one executable reply while the original provider liability remains pending and unrepeated.",
-        "commits": [
-          "f106575"
-        ]
+        "commits": ["f106575"]
       }
     ]
   },
@@ -150,9 +162,7 @@
       {
         "what": "Bind local-durable dispatch to the pending purpose proposal and exact P-08 operation policy, and separate provider output availability from liability release.",
         "why": "The peerless profile must state the full loss model and preserve unknown charge, retained exposure, and no-repeat semantics.",
-        "commits": [
-          "1b960e7"
-        ]
+        "commits": ["1b960e7"]
       }
     ]
   },
@@ -168,25 +178,7 @@
       {
         "what": "Initial Part Eight design.",
         "why": "Define the governed boundary for external effects and their settlement.",
-        "commits": [
-          "25f0870e1272f1987cac584801f4ec2c5aa29ad2"
-        ]
-      }
-    ]
-  },
-  {
-    "revision": 10,
-    "date": "2026-10-03",
-    "status": "draft",
-    "cause": {
-      "kind": "draft",
-      "note": "Unit w4-doorway: the effect doorway wired onto the live answer and work path by the purpose's four consequential-effect tests (Justin 2026-10-03 10:15, topic 102965 message 121996, and his 10:45 re-grounding). No constitution change."
-    },
-    "changes": [
-      {
-        "what": "§3 gains the live-path tool rule: ordinary in-workspace tool work is admitted without a doorway call; a tool call that could be consequential is classified against the four tests from its registered or worst reachable classification and admitted only when every held test is answered (closed set for irreversible effects, a recorded grant for resource, policy-sensitive and scope); a refusal names the held tests and what would admit it, rides below the answer, and every decision is durable, journaled and counted in status.",
-        "why": "The observer's audit found the doorway was not on the live path; the operator's direction is full ability with only consequential effects going to the doorway, enforced by the constitution's own definition.",
-        "ref": "lanes/w4-doorway-PROGRESS.md; LIVE-PATH-PLAN.md rows #399-#400"
+        "commits": ["25f0870e1272f1987cac584801f4ec2c5aa29ad2"]
       }
     ]
   }

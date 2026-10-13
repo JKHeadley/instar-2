@@ -1,52 +1,21 @@
 [
   {
-    "revision": 3,
-    "date": "2026-10-10",
+    "revision": 9,
+    "date": "2026-10-13",
     "status": "draft",
     "cause": {
       "kind": "conversation",
-      "note": "Justin, docs-align-1010: align design parts with PR #154; final-head code-owner approval pending."
+      "note": "train-22 operator merge brief: docs take reviewed main text exactly; retain accepted live-base history."
     },
     "changes": [
       {
-        "what": "Remove per-kind recovery approval and inherited ships-dark defaults for supported role-covered recovery; preserve continuity, ownership, resource and no-repeat floors.",
-        "why": "The purpose requires role-covered capabilities by default and reserves sign-off for its fixed list.",
+        "what": "Reconcile document text to reviewed main while retaining every live-base version.",
+        "why": "The train-22 brief explicitly selects main documentation at the merge boundary.",
         "commits": [
-          "fc0e3c20"
+          "7ef8f158d4129a4cf90cf3c546701f32e348fdd3",
+          "0de16e3cdaea380ac746793123a51382aeb9830b"
         ],
-        "ref": "docs/00-the-purpose.md; reviews/docs-align-1010-change-review.md"
-      }
-    ]
-  },
-  {
-    "revision": 2,
-    "date": "2026-09-28",
-    "status": "approved",
-    "cause": {
-      "kind": "conversation",
-      "note": "Operator's standing direction in topic 52075 at 09:09 PDT 2026-09-28 ('For the 2.0 work the only thing I need to approve are changes to the constitution'): design parts need no separate operator approval; this part is approved as written."
-    },
-    "changes": [
-      {
-        "what": "Mark the design approved as written.",
-        "why": "Only changes to the constitution require the operator; design parts implement it and are approved on the operator's standing direction.",
-        "ref": "topic-52075-2026-09-28T16:09Z"
-      }
-    ]
-  },
-  {
-    "revision": 1,
-    "date": "2026-09-11",
-    "status": "draft",
-    "cause": {
-      "kind": "draft",
-      "note": "Initial design"
-    },
-    "changes": [
-      {
-        "what": "Initial Part Fourteen design: the sentinel and watchdog holders.",
-        "why": "Define the registered holders that detect stopped work and recover through the effect doorway.",
-        "ref": "d0692ad3"
+        "ref": "reviews/train-22-change-review.md; train-22-main"
       }
     ]
   },
@@ -147,6 +116,57 @@
         "what": "Section 13 gains fixtures P14-NF-70 to P14-NF-75; section 14 records the four 1.x mechanisms' disposition; the index and purpose name the family.",
         "why": "Every new rule names executable checks with a positive neighbor, and every inherited duty has a disposition.",
         "ref": "lanes/w4-guidance-PROGRESS.md"
+      }
+    ]
+  },
+  {
+    "revision": 3,
+    "date": "2026-10-10",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, docs-align-1010: align design parts with PR #154; final-head code-owner approval pending."
+    },
+    "changes": [
+      {
+        "what": "Remove per-kind recovery approval and inherited ships-dark defaults for supported role-covered recovery; preserve continuity, ownership, resource and no-repeat floors.",
+        "why": "The purpose requires role-covered capabilities by default and reserves sign-off for its fixed list.",
+        "commits": [
+          "fc0e3c20"
+        ],
+        "ref": "docs/00-the-purpose.md; reviews/docs-align-1010-change-review.md"
+      }
+    ]
+  },
+  {
+    "revision": 2,
+    "date": "2026-09-28",
+    "status": "approved",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator's standing direction in topic 52075 at 09:09 PDT 2026-09-28 ('For the 2.0 work the only thing I need to approve are changes to the constitution'): design parts need no separate operator approval; this part is approved as written."
+    },
+    "changes": [
+      {
+        "what": "Mark the design approved as written.",
+        "why": "Only changes to the constitution require the operator; design parts implement it and are approved on the operator's standing direction.",
+        "ref": "topic-52075-2026-09-28T16:09Z"
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-11",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Initial design"
+    },
+    "changes": [
+      {
+        "what": "Initial Part Fourteen design: the sentinel and watchdog holders.",
+        "why": "Define the registered holders that detect stopped work and recover through the effect doorway.",
+        "ref": "d0692ad3"
       }
     ]
   }

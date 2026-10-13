@@ -1,5 +1,41 @@
 [
   {
+    "revision": 6,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "train-22 operator merge brief: docs take reviewed main text exactly; retain accepted live-base history."
+    },
+    "changes": [
+      {
+        "what": "Reconcile document text to reviewed main while retaining every live-base version.",
+        "why": "The train-22 brief explicitly selects main documentation at the merge boundary.",
+        "commits": [
+          "7ef8f158d4129a4cf90cf3c546701f32e348fdd3",
+          "0de16e3cdaea380ac746793123a51382aeb9830b"
+        ],
+        "ref": "reviews/train-22-change-review.md; train-22-main"
+      }
+    ]
+  },
+  {
+    "revision": 5,
+    "date": "2026-10-09",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator direction via observer #202: remove the preview framing (w4-agentready)."
+    },
+    "changes": [
+      {
+        "what": "The accepted-reply projection renders the accepted answer without the preview label.",
+        "why": "Present Instar as the agent while preserving acceptance, grounding, escaping and size checks.",
+        "ref": "w4-agentready; observer #202"
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-09-23",
     "status": "draft",
@@ -66,22 +102,6 @@
         "commits": [
           "a30c8bfd2589e439227462d20c8aff99389def79"
         ]
-      }
-    ]
-  },
-  {
-    "revision": 5,
-    "date": "2026-10-09",
-    "status": "draft",
-    "cause": {
-      "kind": "conversation",
-      "note": "Operator direction via observer #202: remove the preview framing (w4-agentready)."
-    },
-    "changes": [
-      {
-        "what": "The accepted-reply projection renders the accepted answer without the preview label.",
-        "why": "Present Instar as the agent while preserving acceptance, grounding, escaping and size checks.",
-        "ref": "w4-agentready; observer #202"
       }
     ]
   }

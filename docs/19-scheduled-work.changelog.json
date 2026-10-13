@@ -1,33 +1,21 @@
 [
   {
-    "revision": 2,
-    "date": "2026-09-28",
-    "status": "approved",
-    "cause": {
-      "kind": "conversation",
-      "note": "Operator's standing direction in topic 52075 at 09:09 PDT 2026-09-28 ('For the 2.0 work the only thing I need to approve are changes to the constitution'): design parts need no separate operator approval; this part is approved as written."
-    },
-    "changes": [
-      {
-        "what": "Mark the design approved as written.",
-        "why": "Only changes to the constitution require the operator; design parts implement it and are approved on the operator's standing direction.",
-        "ref": "topic-52075-2026-09-28T16:09Z"
-      }
-    ]
-  },
-  {
-    "revision": 1,
-    "date": "2026-09-11",
+    "revision": 12,
+    "date": "2026-10-13",
     "status": "draft",
     "cause": {
-      "kind": "draft",
-      "note": "Initial design"
+      "kind": "conversation",
+      "note": "train-22 operator merge brief: docs take reviewed main text exactly; retain accepted live-base history."
     },
     "changes": [
       {
-        "what": "Initial Part Fifteen design: scheduled and recurring work.",
-        "why": "Define how scheduled and recurring work is admitted and run.",
-        "ref": "fafd73e1"
+        "what": "Reconcile document text to reviewed main while retaining every live-base version.",
+        "why": "The train-22 brief explicitly selects main documentation at the merge boundary.",
+        "commits": [
+          "7ef8f158d4129a4cf90cf3c546701f32e348fdd3",
+          "0de16e3cdaea380ac746793123a51382aeb9830b"
+        ],
+        "ref": "reviews/train-22-change-review.md; train-22-main"
       }
     ]
   },
@@ -212,6 +200,38 @@
         "what": "§5 gains the rule that every delegated session, including one started inside a turn, has its Rule 114 run edge, that subprocesses stay owned by their enclosing execution, and that the preview's tool turn delegates nothing.",
         "why": "Replaces the proposed in-turn subagent exemption the ruling rejected (MF6).",
         "ref": "lanes/astra-fulltool-ruling.md (replacement text); lanes/w4-toolsreuse-PROGRESS.md (proven configuration); lanes/w4-toolsreal-PROGRESS.md; LIVE-PATH-PLAN.md rows #358, #363, #367"
+      }
+    ]
+  },
+  {
+    "revision": 2,
+    "date": "2026-09-28",
+    "status": "approved",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator's standing direction in topic 52075 at 09:09 PDT 2026-09-28 ('For the 2.0 work the only thing I need to approve are changes to the constitution'): design parts need no separate operator approval; this part is approved as written."
+    },
+    "changes": [
+      {
+        "what": "Mark the design approved as written.",
+        "why": "Only changes to the constitution require the operator; design parts implement it and are approved on the operator's standing direction.",
+        "ref": "topic-52075-2026-09-28T16:09Z"
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-11",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Initial design"
+    },
+    "changes": [
+      {
+        "what": "Initial Part Fifteen design: scheduled and recurring work.",
+        "why": "Define how scheduled and recurring work is admitted and run.",
+        "ref": "fafd73e1"
       }
     ]
   }
