@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:ab4e24ef6b5d42282ddda70e75bf23fd2444a5ef4860b530b820d7f5d2719f10",
-  "commit": "25524c681dc23628843c0f6c4577e9d1be74277f",
+  "generation": "sha256:3baaf9b5acedfb8d82bf3eaf7bce159b17bf3a2ea6c068cd9bacdb8ff9e7ea03",
+  "commit": "6b1e0aa92e5cb8c0a30cccc1fa957b24c1c7f1e8",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -33,7 +33,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "Ask me questions or ask for a draft here. Send photos, audio or files; I save them encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -41,7 +41,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "Ask me to remember, correct or forget a fact. Our messages and memory are saved encrypted on this machine, across restarts."
       },
       {
         "id": "preview-owned-obligations",
@@ -49,7 +49,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "I keep your standing instructions and work on open promises, saving results for your next message."
       },
       {
         "id": "preview-requested-actions",
@@ -57,7 +57,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "Ask me to remind you here at a set time, once, daily or on weekdays until you cancel; you do not need to message again."
       },
       {
         "id": "preview-status-command",
@@ -65,7 +65,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "Ask \"status\" or \"how are you doing\" for a summary of my saved activity, without another model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -73,7 +73,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "I can mention a saved date coming up within 48 hours in my next reply, once."
       },
       {
         "id": "preview.coherence-check",
@@ -171,7 +171,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "Ask me questions or ask for a draft here. Send photos, audio or files; I save them encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -179,7 +179,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "Ask me to remember, correct or forget a fact. Our messages and memory are saved encrypted on this machine, across restarts."
       },
       {
         "id": "preview-owned-obligations",
@@ -187,7 +187,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "I keep your standing instructions and work on open promises, saving results for your next message."
       },
       {
         "id": "preview-requested-actions",
@@ -195,7 +195,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "Ask me to remind you here at a set time, once, daily or on weekdays until you cancel; you do not need to message again."
       },
       {
         "id": "preview-status-command",
@@ -203,7 +203,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "Ask \"status\" or \"how are you doing\" for a summary of my saved activity, without another model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -211,7 +211,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "I can mention a saved date coming up within 48 hours in my next reply, once."
       },
       {
         "id": "preview.coherence-check",
@@ -309,7 +309,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "Ask me questions or ask for a draft here. Send photos, audio or files; I save them encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -317,7 +317,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "Ask me to remember, correct or forget a fact. Our messages and memory are saved encrypted on this machine, across restarts."
       },
       {
         "id": "preview-owned-obligations",
@@ -325,7 +325,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "I keep your standing instructions and work on open promises, saving results for your next message."
       },
       {
         "id": "preview-requested-actions",
@@ -333,7 +333,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "Ask me to remind you here at a set time, once, daily or on weekdays until you cancel; you do not need to message again."
       },
       {
         "id": "preview-status-command",
@@ -341,7 +341,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "Ask \"status\" or \"how are you doing\" for a summary of my saved activity, without another model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -349,7 +349,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "I can mention a saved date coming up within 48 hours in my next reply, once."
       },
       {
         "id": "preview.coherence-check",
@@ -447,7 +447,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "Ask me questions or ask for a draft here. Send photos, audio or files; I save them encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -455,7 +455,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "Ask me to remember, correct or forget a fact. Our messages and memory are saved encrypted on this machine, across restarts."
       },
       {
         "id": "preview-owned-obligations",
@@ -463,7 +463,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "I keep your standing instructions and work on open promises, saving results for your next message."
       },
       {
         "id": "preview-requested-actions",
@@ -471,7 +471,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "Ask me to remind you here at a set time, once, daily or on weekdays until you cancel; you do not need to message again."
       },
       {
         "id": "preview-status-command",
@@ -479,7 +479,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "Ask \"status\" or \"how are you doing\" for a summary of my saved activity, without another model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -487,7 +487,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "I can mention a saved date coming up within 48 hours in my next reply, once."
       },
       {
         "id": "preview.coherence-check",
@@ -585,7 +585,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "Ask me questions or ask for a draft here. Send photos, audio or files; I save them encrypted with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -593,7 +593,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "Ask me to remember, correct or forget a fact. Our messages and memory are saved encrypted on this machine, across restarts."
       },
       {
         "id": "preview-owned-obligations",
@@ -601,7 +601,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "I keep your standing instructions and work on open promises, saving results for your next message."
       },
       {
         "id": "preview-requested-actions",
@@ -609,7 +609,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "Ask me to remind you here at a set time, once, daily or on weekdays until you cancel; you do not need to message again."
       },
       {
         "id": "preview-status-command",
@@ -617,7 +617,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "Ask \"status\" or \"how are you doing\" for a summary of my saved activity, without another model call."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -625,7 +625,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "I can mention a saved date coming up within 48 hours in my next reply, once."
       },
       {
         "id": "preview.coherence-check",

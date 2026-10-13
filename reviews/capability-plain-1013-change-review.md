@@ -36,6 +36,8 @@ Decision: CP-5 | Shorten capability prose to retain governing constraints at the
 
 Evidence: Recorded 6233122 fails the old wording assertions and passes the new plain-language replay. Model-reader → renderer → review → one journal send is exercised, with repeated drain and no network send. Eight focused files (99 tests) pass, including the unchanged context floor. Other recorded summary/uncertain/Jev/review/delivered/empty shapes retain their bytes. Existing K11 v3-rendered judge passed the plain answer and failed an unsupported private-account grant; final tightened wording is rejudged before READY.
 
+Publication: Generated register outputs refreshed from source commit 6b1e0aa9; the two changed preview proof artifacts carry current owner-reference hashes. The final pushed head runs importer tests, the READY pinned tests, architecture/lint and register checks.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: change descriptions at their existing source and keep marker rendering, generated availability, provenance and review. Start: supplied inventory and tool state. End: exact note wording reviewed before sending. No new state, gate, classifier or authority. Offline recorded replay is not a claim of new live model judgment or live deployment.
