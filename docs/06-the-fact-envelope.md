@@ -369,10 +369,88 @@ plane suggests: a small genesis segment carries the first facts — the machine 
 version and the org-intent-grounded standing grants — and the standing rung's ground for *those*
 facts is verification against the org-intent document's own approval anchor (`approvedIn`), not
 against the projection they create. "Independently verified" is given a concrete meaning: the
-genesis segment's content hash is pinned in the governed repository beside the org-intent
-document, and the host-verification material needed to check that anchor is distributed
+genesis segment's content hash is pinned beside the org-intent document (in the governed
+repository for repository-governed intent, or in the independently sealed runtime genesis
+package for the fresh-install path below), and the verification material for that anchor is distributed
 out-of-band with the installation — a residual trust root this document names rather than hides,
 exactly as the secret-scan residual is named. Everything after genesis resolves normally.
+
+**Rule — fresh installation has an independently approved genesis.** The purpose's
+independent-safeguard and durable-cause rules, Rules 28/29/90/100 and P-01;
+**check:** the fresh-install cases in [assembly section 2](14-the-assembly.md#fresh-installation).
+Before a channel is bound, [Eleven's protected account selection and phone confirmation](15-the-operator-surfaces.md#fresh-install-pairing)
+join the authenticated installation session to the intended account. Nine's custodian is
+outside the agent's and harness user's administration; [Seventeen names its recovery](17-harness-adapters/03-capability-account-quota-and-launch-pins.md#installation-custody-and-recovery).
+Preparation, enrollment and installation authority have distinct records in the existing
+owner history. The following names are example record ids, not new types or stores:
+
+1. **Release anchor `R`, release org-intent `OR`, preparation grant `GP`.** Ten verifies the
+   distribution signature against the independently installed release root and the approved
+   release's org-intent/version chain. `OR.approvedIn` names its host review approval and its
+   `landedIn` is the real release repository merge, generated from git. One decodes `GP`
+   from `OR`: a finite delegate grant to the installation service for preparation in the
+   OS-authorized session only. It permits Seven's bounded local setup route, not operator
+   selection, agent activation or subscription approval. The release also fixes the genesis
+   admission rule: an authenticated installing human may approve exactly one initial intent
+   for a still-empty installation, through Eleven's protected enrollment act. This is
+   authority from the release bootstrap, not a permission the service can enlarge.
+2. **Enrollment `E` and seed grant `GE`.** The custodian checks the OS-selected account and
+   conversation evidence specified by Eleven and records the verified human principal `P`.
+   Under the release's genesis rule, One's org-intent decoder materializes `GE` from `OR`
+   with `grantor: org-intent { documentVersion: OR.id, approvedIn: OR.approvedIn }`, grantee
+   `P`, standing `delegate`, a finite expiry and the sole registered action of approving
+   this installation's first org-intent. Its scope fixes installation, enrollment `E` and
+   empty-history base `B0`. `E` resolves the release's installing-human slot; it is not an
+   approval type or an ordinary message creating standing. Two checks this seed out-of-band
+   against `R`, `OR` and authenticated `E`, never against the operator projection it will
+   create. A different account, installation, existing genesis or expiry cannot yield `GE`.
+3. **First authorization `A0`.** The phone confirmation is an ordinary `Authorization`:
+   `kind: approval`, `approver: P`, `under: GE.id`, `requestedBy: installation-service`,
+   `action`: that registered first-intent action scoped to the installation,
+   `artifact: hash(O0.content)`, `base: B0`, and `explicitYes`: the broker-verified exact
+   confirmation capture. `requestDigest` is recomputed from One's canonical request fields
+   and is the digest the person confirmed. `O0.content` includes the account/conversation,
+   initial operator scope, installation, machine key-set version, enrollment reference,
+   P-01/P-08 choices and candidate genesis payload digest. The payload contains proposed
+   initial grant/key facts with preallocated record ids; it excludes approval envelopes
+   and the final seal so no content hash contains itself. The broker signs only after
+   checking `GE`, `E`, freshness and the unchanged complete subject. `GP` never authorizes
+   `A0`; neither does the initial operator grant that `A0` will create.
+4. **Runtime org-intent `O0` and sealed genesis `S0`.** This installation's org-intent is
+   **runtime-governed**, not a new GitHub repository. The installer fills
+   `O0.approvedIn = A0.id`, `base = B0`, `supersedes = []`, `landedIn = null`, and `since`
+   with the genesis admission fact id. The custodian retains the final genesis content
+   hash and `O0` together as the out-of-band pin; its protected installation channel supplies
+   verification material. There is no invented merge locator or per-install GitHub tap.
+   Two's genesis exception admits only this exact bundle after checking `R`/`OR`, `GP`,
+   `E`, `GE`, `A0`, key set and seal out-of-band. **Normal Authorization field, explicit-yes,
+   content, base and live `under` checks begin with `A0`**, using the independently checked
+   `GE` seed as their input, not a bypass of One's decoder. The only exceptional standing
+   ground is those release/enrollment seed facts. The version decoder receives that admitted
+   causal context; an ordinary empty-context decode cannot construct the first version.
+5. **Operator grant `GO` and binding `C0`.** One decodes `GO` from `O0` with grantee `P`,
+   standing `operator`, the confirmed initial scope and
+   `grantor: org-intent { documentVersion: O0.id, approvedIn: A0.id }`. Two admits it and
+   Four records `C0` for the exact authenticated account/DM under `GO`. All post-genesis
+   authorizations, starting with role/subscription approval `A1.under = GO.id`, resolve
+   standing from ordinary admitted history. Replay retains the original seed and approval
+   time; expiry of `GE` bars a new use, not reconstruction of an earlier valid `A0`.
+
+The positive case has one `E → GE → A0 → O0 → GO → C0` chain under `R`, with finite preparation
+under `GP`. Negative neighbors remove or swap each source: unsigned release, service selecting
+`P`, copied code, `A0.under = GP.id` or `GO.id`, moved `B0`, altered org-intent/payload, missing
+explicit yes, fake repository landing or a second genesis all refuse with preserved evidence.
+These are required implementation cases through One/Two/Ten, not passing runtime tests here.
+No new approval class or parallel authority database is introduced.
+
+Later role and subscription grants use
+the ordinary signed history and approval decoder. A repeated confirmation returns the same
+record; changed bytes under the same identity conflict. Startup compares the installed
+anchor and admitted genesis with the custodian's retained copy: missing, mismatched or
+unverifiable material holds dependent authority and exposes independent recovery. It never
+regenerates an operator identity over missing history. Test unapproved candidate, changed
+org-intent, replay, interrupted append and agent-supplied key against a restart that admits
+exactly the same approved genesis once.
 
 **The happy path, before the refusals.** One ordinary append-and-replicate, with the terms in
 their places: (1) a doorway hands the boundary a candidate fact — principal verified, provenance
@@ -642,8 +720,10 @@ downgrade.
 **Honest scope for runtime-governed things.** Part one carried an open question: dashboard and
 runtime artifacts have no approval anchor outside the agent's write authority yet. A runtime
 `approvedIn` is therefore an `Authorization` whose provenance must be a verified operator action —
-which the admission ladder can check — but the deeper anchor question stays open and carried to
-parts nine and eleven, as part one recorded. This part does not pretend to close it.
+which the admission ladder can check. The fresh-installation route above specifies that anchor
+through Nine's independent broker and Eleven's authenticated enrollment; implementation must
+prove that boundary before claiming protection. Other runtime artifacts still carry the deeper
+anchor question to parts nine and eleven, as part one recorded.
 
 **Rule — history is a lookup.** Rule 90; rule 7. **Check:** each field checkable at a stated
 moment: `approvedIn` and `base` are resolved **once, at append** — the host's signed delivery is

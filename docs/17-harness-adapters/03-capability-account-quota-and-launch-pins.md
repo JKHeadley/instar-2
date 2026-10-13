@@ -64,4 +64,54 @@ credential value. Account identity is proved by the provider or credential custo
 credential slot label does not prove who occupies it. A credential or account change is a new
 admitted operation and, where the runtime reads credentials only at start, a replacement worker.
 
+### Installation custody and recovery
+
+**Rule — the bootstrap custodian is independently administered on one machine.** The
+purpose's independent-safeguard and single-machine rules, Rules 28/100, P-01 and P-02;
+**checks: P13-NF-13/40, P9-NF-51–55 and P10-NF-17–21/31–34/36**. The custodian is Nine's
+existing protection broker, installed by Ten under a dedicated operator-controlled OS
+service identity. The installation record names its actual identity, administrators,
+verification-key reference, recovery holder and policy digest. Agent and harness identities
+are nonadministrative: no write or rename of its files or parents, service/configuration
+replacement, debugger/process-memory access, inherited secret handle, sudo/elevation,
+container administration or recovery credential may reach the custodian. Its fixed interface
+accepts requests and returns scoped receipts, never arbitrary execution or key export.
+Ten tests those paths with the complete credential sets of both identities before admission.
+A second process or private directory under the harness user is insufficient. Files can live
+under an installer-owned installation root with separately owned subtrees; root containment
+alone proves neither separation nor custody. Host administrator compromise is P-01's named
+residual, not a capability granted to the agent.
+
+The same custodian keeps the first signing/verification material and subscription credentials
+in distinct scopes. The installer records only SecretRefs in Ten's manifest and account
+inventory. Before login admission it checks the initial grant, current custody evidence,
+actual provider/custodian account identity and runtime acceptance. A successful login exit
+or directory label is insufficient; a runtime that cannot observe account identity retains
+that declared limit and the operator-assertion label required by its mapping. No claim of
+verified provider identity is invented for Codex.
+
+**Rule — recovery material has an independent home.** Rules 7/26/79/100 and P-01;
+**checks: P10-NF-34/36**. During the same authenticated setup, the custodian places an
+encrypted recovery package in the person's selected operator-only recovery vault, outside
+the installation machine, and verifies a restore challenge before setup completes. The
+package retains installation identity, approved org-intent/genesis anchor, custodian key
+recovery and revocation/version references. P-01 names the actual vault service/account and
+its normal account-recovery route; neither agent nor harness has that account's credential,
+session, delegated access or recovery path. The custodian updates the independently retained version/revocation witness when those
+subjects change, so restore can test currency rather than trust an old package.
+The product adapter performs backup and restore;
+the person does not copy keys, hand-write records or keep the sole copy on their phone.
+A vault that loses access with the same single device does not meet this contract. This is
+an operator recovery holder, not an agent peer or a dependency on a second running machine.
+
+After device loss the recovered operator authenticates on another device, restores through
+the custodian, revokes lost-device authority and revalidates current anchors, versions and
+bindings before use. A stale backup or conflicting version holds affected authority for
+independent repair rather than rolling revocations back. Missing or unreadable backup is
+visible at setup and on the existing custody probe cadence. Loss of agent history still has
+P-08's accepted consequences: recovering control does not reconstruct unknown effects or
+permit their repetition. Recovery tests remove each device separately and verify that the
+agent credential set can neither recover nor replace the anchor.
+
+
 ---
