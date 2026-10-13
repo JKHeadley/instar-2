@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
 // @ts-expect-error The effect doorway runs as plain JavaScript in the harness.
-import { CONSEQUENTIAL_TESTS, SIGN_OFF_TESTS, SIGN_OFF_WORDS } from './effect-doorway.mjs';
+import { CONSEQUENTIAL_TESTS, SIGN_OFF_TESTS } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
 
 export const SUCCESSIVE_CONTEXT_VERSION = 'successive-context-v1';
@@ -53,7 +53,7 @@ export function toolsBriefing(mcp?: number) {
     + 'via the doorway\'s four tests; standing grants need no new approval.';
 }
 export const TOOLS_BRIEFING = toolsBriefing();
-export const TOOLS_LIMITS = 'Limits: a sent credential is vaulted on arrival (you see its SecretRef), not tool-readable.';
+export const TOOLS_LIMITS = 'Limits: passwords or keys you send are stored securely on arrival; my tools cannot read them back.';
 /** Rules 18, 84, 103, 104: authority conditions describe how an ability is used,
  * not a blanket inability or a fresh approval requirement for work already granted. */
 export const SELF_IDENTITY = 'You are an Instar 2.0 agent with lasting memory and values.';
@@ -70,11 +70,19 @@ export const SIGN_OFF = 'Fresh sign-off is only for resources above named limits
 export const CAPABILITY_SENTENCE_LABEL = 'Tools/outbound sentence (quote verbatim): ';
 export function capabilitySentence(limits: { tools?: boolean; mcp?: number }): string {
   if (!limits.tools) return 'I have no tools, browsing or code execution here, and cannot act outside this chat; I can answer later-time requests only as listed in my capability record.';
-  const tools = toolsBriefing(limits.mcp).split('; ')[1];
-  const checkNames: Record<string, string> = { irreversible: 'reversibility', resources: 'resource limits', scope: 'granted scope', policySensitive: 'sensitivity' };
+  const accounts = limits.mcp === undefined ? 'I cannot confirm which account connections are configured; check connections before relying on account access.'
+    : limits.mcp === 0 ? 'No accounts are connected, so I cannot access your signed-in accounts. To enable that, connect an account and give permission for the work.'
+    : `${limits.mcp} account connections are configured; that does not prove that an account is signed in. I can only use what their tools expose, with permission.`;
+  const checkNames: Record<string, string> = { irreversible: 'whether it can be undone', resources: 'your resource limits', scope: 'your permissions', policySensitive: 'sensitive matters' };
   const checks = (CONSEQUENTIAL_TESTS as string[]).map(key => checkNames[key]).join(', ');
-  const signOff = (SIGN_OFF_TESTS as string[]).map(key => SIGN_OFF_WORDS[key] as string).join('; ').replaceAll('’', "'");
-  return `I can use ${GRANTED_TOOL_NAMES}; ` + tools + '. Network writes and outside sends go through the effect doorway\'s four checks (' + checks + ') and durability requirements. Standing grants need no new approval; checks can still refuse, and outside-role work needs the matching grant. Fresh sign-off is required only when ' + signOff + '.';
+  const signOffNames: Record<string, string> = { resources: 'it may spend money or resources above your limit',
+    irreversibleOutsideRole: 'it cannot be undone and is outside my role', publicInPersonName: 'it speaks publicly in your name',
+    widensAuthority: 'it widens my permissions', policySensitive: 'it touches something you marked sensitive' };
+  const signOff = (SIGN_OFF_TESTS as string[]).map(key => signOffNames[key]).join('; ');
+  return `I can use files, run commands, look up information on the web and delegate parts of a task to other agents. ${accounts} `
+    + `Before changing a website or sending a message elsewhere, I check ${checks} and save the required records. `
+    + 'Work you have already allowed needs no new approval; these checks can still stop an action, and work outside my role needs the matching permission. '
+    + `I ask for fresh approval only when ${signOff}.`;
 }
 export function capabilityBriefing(readSource: (path: string) => string,
   limits: { providerAttempts: number; expiresAt: number; tools?: boolean; mcp?: number }, launcher = CAPABILITY_LAUNCHER) {
@@ -83,7 +91,7 @@ export function capabilityBriefing(readSource: (path: string) => string,
   // as its blocker avenue evidence (fixtures/live-declarations-2026-09-28.json) and journal-awareness pins it.
   // The summaries' share of the attempt cap is the self-state source's ("answers, summaries and reply reviews share
   // them"), sent with every packet; the expiry stays here because the self-description is judged against this note.
-  const trial = `This installation allows at most ${limits.providerAttempts} model attempts, ending at epoch ms ${limits.expiresAt}. `
+  const trial = `This installation allows at most ${limits.providerAttempts} model attempts, ending ${new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(limits.expiresAt)} UTC. `
     + 'Charges, and unconfirmed calls or deliveries, are recorded unknown. '
     + 'Production safeguards are incomplete.' + (limits.tools ? '' : ' ' + SIGN_OFF);
   const sentence = capabilitySentence(limits);
@@ -105,15 +113,21 @@ export function capabilityBriefing(readSource: (path: string) => string,
   const available = features.filter(f => f.availability === 'available');
   const off = features.filter(f => f.availability === 'switched-off');
   const journalChat = launcher === CAPABILITY_LAUNCHER && available.some(f => f.id === 'preview-conversation');
-  const offName = (f: BriefedFeature) => f.id === 'telegram-conversation-adapter' && journalChat
-    ? `${f.id} (separate core adapter; this chat uses the Telegram bot)` : f.id;
+  // Display names only: availability still comes exclusively from the generated inventory.
+  const offLabels: Record<string, string> = {
+    'rungraph-core': 'the separate background-work coordinator',
+    'slack-conversation-adapter': 'Slack conversations',
+    'slack-ordinary-reply': 'Slack replies',
+    'telegram-conversation-adapter': journalChat ? 'the separate Telegram connection (this bot chat works)' : 'Telegram conversations',
+  };
+  const offName = (f: BriefedFeature) => offLabels[f.id] ?? f.id;
   return { generation, commit, renderedCapabilitySha256, text: [
     // cint-L27: the header's "one-line summaries from this installation's register; current state in the status
     // reply" went to pay for the lookup sentence; the register-tooling and status-command lines below state both.
     SELF_IDENTITY,
     'Capabilities:', ...available.filter(f => f.userFacing).map(item), `${CAPABILITY_SENTENCE_LABEL}${sentence}`,
     'Internal:', ...available.filter(f => !f.userFacing).map(item),
-    ...off.length ? [`Code switched off here: ${off.map(offName).join(', ')}.`] : [],
+    ...off.length ? [`Not enabled here: ${off.map(offName).join(', ')}. Setup must enable these before they can be used; any needed account connection and permission still apply.`] : [],
     // Live 2026-10-02 (room two, build e26a8c1b): this line used to end "and no scheduled work, nudges or other
     // unprompted messages", which denies `preview-requested-actions` listed two lines above it. The reply to
     // "Remind me today at 1:25 am" opened "I can't actually do this one - I have no scheduler" and then carried

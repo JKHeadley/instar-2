@@ -1,0 +1,57 @@
+{
+  "source": "Proof room 2 root preview-trial-root/proofroom2-ps-20261011-020358; train-18 frozen reader runner-frozen-train-18-0de16e3c (0de16e3cdaea380ac746793123a51382aeb9830b); copied before read, authenticated physical one-based frames including genesis; encrypted journal SHA256 845ff010c4253f149a1e4643315e06d15aecc2ce1c740d41bf5a15bbcf17b0e7, 1277 frames. Fault provenance: lanes/user-walk-1013-PROGRESS.md. Non-evidence strings over 6000 characters carry explicit removed-character markers; model outputs, review verdicts, delivered text, and report-named context fields remain whole. No credentials exported.",
+  "update": 6233122,
+  "question": "What can you help me with day to day, and what can't you actually do yet?",
+  "reserveFrame": 350,
+  "capabilityNote": {
+    "id": "capability-note",
+    "provenance": {
+      "commit": "25524c681dc23628843c0f6c4577e9d1be74277f",
+      "excerptSha256": "sha256:cb36f56fc0397ba89aabd25d087a4845c39bee406aa652483920494a1b4fe336",
+      "generation": "sha256:ab4e24ef6b5d42282ddda70e75bf23fd2444a5ef4860b530b820d7f5d2719f10",
+      "launcher": "tests/preview/journal-agent.mjs",
+      "path": "generated/capabilities.json",
+      "renderedCapabilitySha256": "sha256:2c5aaf568a810b40400cfcc01b6adbdde5f3bcc02babaa650ec62cdc56bae219"
+    },
+    "text": "You are an Instar 2.0 agent with lasting memory and values.\nCapabilities:\n- answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.\n- an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.\n- keeps standing instructions and works the promises its replies leave open, holding results for the next message.\n- an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.\n- \"status\" and \"how are you doing\" are answered from the journal without a model call.\n- a saved date within 48 hours can get one short mention in the next reply.\nTools/outbound sentence (quote verbatim): I can use files, shell, web reads, nested subagents; no MCP server, so no logged-in account access. Network writes and outside sends go through the effect doorway's four checks (reversibility, resource limits, granted scope, sensitivity) and durability requirements. Standing grants need no new approval; checks can still refuse, and outside-role work needs the matching grant. Fresh sign-off is required only when it may commit money or a resource above the level the person named; it cannot be undone and falls outside the recorded role; it speaks publicly in the person's name; it widens the agent's own role or authority; it touches a matter the person marked sensitive.\nInternal:\n- saves inbound Telegram files with bounded effect admission; refused downloads retain the original message.\n- binds each supported harness and model doorway to certified code; the rest are marked unproven.\n- captures and receipts or holds every inbound message before any work; an uncertain arrival is kept.\n- checks each reply against remembered earlier turns without a model call.\n- keeps a faithfulness-checked rolling summary of earlier turns.\n- off unless launched with it; independently checks each business step and changes nothing.\n- generates the register, rule book, glossary and this briefing from the declarations in code.\nCode switched off here: rungraph-core, slack-conversation-adapter, slack-ordinary-reply, telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot).\nLimits: a sent credential is vaulted on arrival (you see its SecretRef), not tool-readable.\nThis installation allows at most 1000 model attempts, ending at epoch ms 1794519600000. Charges, and unconfirmed calls or deliveries, are recorded unknown. Production safeguards are incomplete."
+  },
+  "modelFrame": 354,
+  "modelOutput": "{\"reasoning\":\"This is a direct capability question — the operator is asking what I can do and can't do. Per the capability instruction: \\\"For a capability answer return {{capability-tools-outbound}}; the runner renders the capability-note's grants, tools/outbound and limits as the entire answer. Do not paraphrase that list; other answers remain free text. The reference replaces surrounding prose too; use it only when the whole answer is a capability list.\\\" This question asks exactly for a capability rundown (what I can help with day to day, what I can't do yet) — this matches the capability-note's purpose. I should use the {{capability-tools-outbound}} placeholder as the entire answer, per instructions not to paraphrase. No tool calls needed since this is answered from the capability-note source already provided in context, not a web/journal lookup. No memory/dated/directive fields apply.\",\"answer\":\"{{capability-tools-outbound}}\"}",
+  "answerFrame": 356,
+  "answer": "Capabilities:\n- answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.\n- an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.\n- keeps standing instructions and works the promises its replies leave open, holding results for the next message.\n- an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.\n- \"status\" and \"how are you doing\" are answered from the journal without a model call.\n- a saved date within 48 hours can get one short mention in the next reply.\n\nI can use files, shell, web reads, nested subagents; no MCP server, so no logged-in account access. Network writes and outside sends go through the effect doorway's four checks (reversibility, resource limits, granted scope, sensitivity) and durability requirements. Standing grants need no new approval; checks can still refuse, and outside-role work needs the matching grant. Fresh sign-off is required only when it may commit money or a resource above the level the person named; it cannot be undone and falls outside the recorded role; it speaks publicly in the person's name; it widens the agent's own role or authority; it touches a matter the person marked sensitive.\n\nCode switched off here: rungraph-core, slack-conversation-adapter, slack-ordinary-reply, telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot).\nLimits: a sent credential is vaulted on arrival (you see its SecretRef), not tool-readable.\nThis installation allows at most 1000 model attempts, ending at epoch ms 1794519600000. Charges, and unconfirmed calls or deliveries, are recorded unknown. Production safeguards are incomplete.",
+  "reviewFrame": 372,
+  "review": {
+    "verdict": "pass",
+    "ruleIds": [],
+    "confidence": null,
+    "latencyMs": 8344,
+    "reason": "unrecorded_blocker: Reply only restates capability-note limits descriptively; no new final cannot-do claim beyond recorded capabilities.; self_state_claim: Capabilities, limits, and switched-off code match the capability-note and self-state sources verbatim.; breaks_preference: No active operator preference is shown, and the reply directly answers the operator's capability question.",
+    "findings": [
+      {
+        "rule": "unrecorded_blocker",
+        "verdict": "pass",
+        "reason": "Reply only restates capability-note limits descriptively; no new final cannot-do claim beyond recorded capabilities."
+      },
+      {
+        "rule": "self_state_claim",
+        "verdict": "pass",
+        "reason": "Capabilities, limits, and switched-off code match the capability-note and self-state sources verbatim."
+      },
+      {
+        "rule": "breaks_preference",
+        "verdict": "pass",
+        "reason": "No active operator preference is shown, and the reply directly answers the operator's capability question."
+      }
+    ],
+    "usage": {
+      "inputTokens": 15269,
+      "outputTokens": 392,
+      "charge": null,
+      "inputComplete": true
+    },
+    "path": "subscription",
+    "candidateDigest": "c4a6c73bd8d3233d7bdcb937d4e2d77c6ac9439392309c53eed47402286d5a53"
+  },
+  "intentFrame": 373,
+  "sentFrame": 375
+}
