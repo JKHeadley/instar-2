@@ -292,7 +292,8 @@ it('replays all recorded model shapes through carried recall after the disclosur
   for (const shape of captured.otherShapes) {
     const w = await world();
     appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false); w.source.close();
-    let allowed = false, calls = 0, replayed = false, membershipReads = 0;
+    let allowed = false, calls = 0, membershipReads = 0;
+    const modelInputs: { context: string; prepared?: unknown }[] = [];
     const read = membership((method, _body, value) => method === 'getChatMemberCount' && !allowed ? 3 : value);
     const audience = createGroupAudienceCache(() => now, () => async (method, body) => {
       membershipReads++; return read(method, body);
@@ -304,21 +305,7 @@ it('replays all recorded model shapes through carried recall after the disclosur
       prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', genesis.grant, now, genesis.maxBytes),
       model: async input => {
         calls++;
-        const packet = JSON.parse(input.context);
-        expect(packet.predecessorMemory.entries.length, shape.id).toBeGreaterThan(0);
-        expect(packet.memoryDecision, shape.id).toContain('Conversation is journaled');
-        expect(packet.memoryDecision, shape.id).toContain('mode:"remember"');
-        expect(packet.memoryDecision, shape.id).toContain(MEMORY_ITEM_SHAPE);
-        expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
-          .toContain(SELF_IDENTITY);
-        expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
-          .toContain('telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot)');
-        expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
-          .toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }));
-        const envelope = JSON.parse(String(input.prepared));
-        expect(envelope.messages.find((message: { role: string }) => message.role === 'instructions').content, shape.id)
-          .toContain(SELF_DESCRIPTION);
-        replayed = true;
+        modelInputs.push(input);
         return shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw) as { state: 'uncertain' } : shape.raw;
       },
       send: async input => { sends.push(input.expectedText); return sends.length; }, checkOutbound: () => {} });
@@ -330,7 +317,23 @@ it('replays all recorded model shapes through carried recall after the disclosur
     await worker.drain();
     expect(membershipReads - beforeReads, shape.id).toBe(6);
     expect(calls, shape.id).toBe(1);
-    expect(replayed, shape.id).toBe(true);
+    // Keep assertion failures outside the model port's unknown-outcome handler.
+    expect(modelInputs, shape.id).toHaveLength(1);
+    const input = modelInputs[0]!;
+    const packet = JSON.parse(input.context);
+    expect(packet.predecessorMemory.entries.length, shape.id).toBeGreaterThan(0);
+    expect(packet.memoryDecision, shape.id).toContain('Journal persists across topics/restarts');
+    expect(packet.memoryDecision, shape.id).toContain('mode:"remember"');
+    expect(packet.memoryDecision, shape.id).toContain(MEMORY_ITEM_SHAPE);
+    expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
+      .toContain(SELF_IDENTITY);
+    expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
+      .toContain('telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot)');
+    expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
+      .toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }));
+    const envelope = JSON.parse(String(input.prepared));
+    expect(envelope.messages.find((message: { role: string }) => message.role === 'instructions').content, shape.id)
+      .toContain(SELF_DESCRIPTION);
     expect(sends.every(text => text.trim().length > 0), shape.id).toBe(true);
     w.destination.close();
   }

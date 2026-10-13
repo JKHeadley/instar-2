@@ -178,7 +178,7 @@ it('decides a later cancel while the frontier is stuck on an earlier answered tu
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60000);
 
-it('records an undecidable cancel as undecided with the plain notice, and every request it did not withdraw still fires', async () => {
+it('records an undecidable cancel, preserves its independent answer, and every request it did not withdraw still fires', async () => {
   const root = tmp('undecided');
   try {
     const clock = { now: start + 20 * 60_000 };
@@ -187,7 +187,9 @@ it('records an undecidable cancel as undecided with the plain notice, and every 
     const cancel = turnOf(w, ra3b);
     expect(cancel.memoryUndecided).toBe(true);
     expect(cancel.held).toBeUndefined();
-    expect(w.sent.at(-1)).toContain(MEMORY_UNDECIDED_REPLY);
+    expect(cancel.memoryUnresolved).toBe(true);
+    expect(w.sent.at(-1)).toContain('Okay.');
+    expect(w.sent.at(-1)).not.toContain(MEMORY_UNDECIDED_REPLY);
     expect(w.sent.at(-1)).not.toContain('Cancelled request');
     w.worker.intake([update(10, walk)]); await w.worker.drain();
     expect(turnOf(w, walk).intent).toBeDefined();

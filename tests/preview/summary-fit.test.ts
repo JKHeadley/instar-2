@@ -335,7 +335,7 @@ it('answers an operator message that arrives mid catch-up while the pass is stil
 }, 120000);
 
 for (const [label, answer, reply] of [['decided by its answer', decidingAnswer, 'Done, the bird feeder reminder is cancelled.'],
-  ['left undecided by its answer', undecidedAnswer, MEMORY_UNDECIDED_REPLY]] as const)
+  ['left undecided by its answer', undecidedAnswer, 'Okay.']] as const)
   it(`answers a correction sent while the frontier is far behind without waiting for the catch-up (${label})`, async () => {
     const root = tmp('behind');
     try {
@@ -353,6 +353,10 @@ for (const [label, answer, reply] of [['decided by its answer', decidingAnswer, 
       expect(asked.sent).toBeDefined();
       expect(w.calls.at(-1)).not.toMatch(/^summary:/u);
       expect(asked.intent).toBe(reply);
+      if (answer === undecidedAnswer) {
+        expect(asked.memoryUnresolved).toBe(true);
+        expect(asked.intent).not.toBe(MEMORY_UNDECIDED_REPLY);
+      }
       // The background catch-up continues afterwards, unforced, and is never asked to decide the settled request.
       await w.worker.summarizeIfNeeded();
       expect(frames(w.calls)).toHaveLength(8);

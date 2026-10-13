@@ -281,10 +281,9 @@ it('refuses an unquoted cancellation, says so, names what still stands, and stil
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60000);
 
-/** The notice still belongs to the case it was written for: an answer that records no reminder decision at
- * all leaves the memory question genuinely unrecorded, so the fixed notice is still sent -- and the
- * requests it may have withdrawn are released once that reply goes out, never held for the day. */
-it('still sends the fixed notice when the answer records no decision, and releases the requests anyway', async () => {
+/** A missing memory decision does not replace an independent answer. The unresolved state stays
+ * recorded, and requests it did not withdraw are released after the reply, never held for the day. */
+it('preserves the independent answer with no memory decision, and releases the requests anyway', async () => {
   const root = tmp('notice');
   try {
     const clock = { now: START };
@@ -295,7 +294,9 @@ it('still sends the fixed notice when the answer records no decision, and releas
     expect(cancel.memoryUndecided).toBe(true);
     expect(cancel.memoryPending).toBe(true);
     expect(cancel.reminderDecided).toBeUndefined();
-    expect(w.sent.at(-1)!).toContain(MEMORY_UNDECIDED_REPLY);
+    expect(cancel.memoryUnresolved).toBe(true);
+    expect(w.sent.at(-1)!).toContain('Okay.');
+    expect(w.sent.at(-1)!).not.toContain(MEMORY_UNDECIDED_REPLY);
     expect(openRequests(w.journal.view)).toHaveLength(2);
     // Live, these two never fired. The hold ends when the withdrawal's own reply goes out.
     clock.now = DUE_650;

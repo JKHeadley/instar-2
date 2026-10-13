@@ -29,21 +29,18 @@ for (const recorded of fixture.cases) it(`replays real update ${recorded.update}
   let journal = openPreviewJournal(path, key, genesis);
   const sent: string[] = [];
   let packetRuns = 0;
+  const packets: { memoryDecision: string }[] = [];
+  const persistedTexts: (string | undefined)[] = [];
   const standing = toolPreparation(() => true);
   const worker = () => createJournalWorker(journal, {
     now: () => now, stopped: () => false, toolRoute: standing.active,
     preparePacket: prepare => { packetRuns++; return standing.run(prepare); },
     prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', genesis.grant, now, genesis.maxBytes),
     model: async input => {
-      const packet = JSON.parse(input.context) as { memoryDecision: string };
-      // Replay immutable outputs with current remember guidance and the identity checked above.
-      expect(packet.memoryDecision).toContain('Conversation is journaled');
-      expect(packet.memoryDecision).toContain('Keep attribution');
-      expect(packet.memoryDecision).toContain('Otherwise memory:[]');
-      expect(packet.memoryDecision).toContain('mode:"remember"');
+      packets.push(JSON.parse(input.context) as { memoryDecision: string });
       // The real storage boundary, before even the answer call: reopen the actual encrypted file.
       const persisted = openPreviewJournal(path, key, undefined, undefined, true);
-      try { expect(persisted.view.turns.get(recorded.id)?.text).toBe(recorded.text); }
+      try { persistedTexts.push(persisted.view.turns.get(recorded.id)?.text); }
       finally { persisted.close(); }
       const reading = readAnswer(recorded.output, { wrapped: 'accept', evidence: [recorded.id] });
       if (!reading.ok) throw Error(reading.shape);
@@ -52,6 +49,14 @@ for (const recorded of fixture.cases) it(`replays real update ${recorded.update}
   });
   try {
     const first = worker(); first.intake([JSON.parse(recorded.raw)]); await first.drain();
+    // Assert outside the model port: thrown assertions there become unknown model outcomes.
+    expect(packets).toHaveLength(1);
+    const packet = packets[0]!;
+    expect(packet.memoryDecision).toContain('Journal persists across topics/restarts');
+    expect(packet.memoryDecision).toContain('Preserve attribution');
+    expect(packet.memoryDecision).toContain('Else memory:[]');
+    expect(packet.memoryDecision).toContain('mode:"remember"');
+    expect(persistedTexts).toEqual([recorded.text]);
     expect(sent).toHaveLength(1);
     expect(packetRuns).toBeGreaterThan(0);
     expect(journal.view.operatorRequests).toHaveLength(0);
