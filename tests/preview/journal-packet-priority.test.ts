@@ -38,7 +38,9 @@ const p95 = (values: number[]) => values.sort((a, b) => a - b)[Math.ceil(values.
 //   step 1000 ->   7 probes,  3.9 s, LOSES person-before-correction
 // 400 keeps every drop kind and every boundary crossing the case asserts, sits two measured steps clear of the
 // coverage cliff at 1000, and leaves about 8x time headroom. Coverage is not loosened; only the probe count is.
-const PRIORITY_SWEEP_STEP = 400;
+// deferral-not-memory: shorter guidance shifts the byte boundaries; 200-byte sampling
+// retains every asserted transition without changing the packet cap or priority assertions.
+const PRIORITY_SWEEP_STEP = 200;
 
 it('retains higher-priority memory at the byte boundary and records every lower-priority drop', () => {
   const path = root();
