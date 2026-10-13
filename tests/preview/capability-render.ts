@@ -3,13 +3,11 @@ import { CAPABILITY_BRIEFING_PATH, CAPABILITY_SENTENCE_LABEL, CAPABILITY_SENTENC
 
 const sha256 = (text: string) => `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
 
-/** Render the model's explicit capability reference from the very note it received.
- * No intent classifier: ordinary prose, empty answers and absent/invalid notes stay
- * unchanged. The two old pronoun forms are exact protocol compatibility for the
- * superseded instruction to keep "the person"/"the agent" (live update 715675677).
- * They match the WHOLE rendered record, never just a keyword or sentence prefix.
- * Rules 10, 36, 78, 84, 116: byte substitution belongs to code; meaning stays with
- * the writer and the existing review, which sees the rendered candidate. */
+/** Resolve the writer's explicit capability reference from the note it received.
+ * The whole capability answer is rendered: retaining arbitrary surrounding prose
+ * retained the grant overclaim in recorded update 715675709. No intent classifier
+ * or paraphrase matcher. Ordinary answers have no reference and stay untouched.
+ * Rules 10, 36, 78, 84, 116: exact record rendering, before existing review. */
 export function renderCapabilityReply(text: string, packet: { sources?: readonly unknown[] }): string {
   const note = packet.sources?.find(source => source !== null && typeof source === 'object'
     && (source as { id?: unknown }).id === 'capability-note') as
@@ -23,15 +21,22 @@ export function renderCapabilityReply(text: string, packet: { sources?: readonly
   const legacy = sentence.startsWith('I can use ')
     ? ['The person', 'The agent'].map(subject => subject + sentence.slice(1)) : [];
   const tokens = [CAPABILITY_SENTENCE_MARKER, sentence, ...legacy];
-  const escape = (token: string) => token.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-  const pattern = new RegExp(tokens.map(escape).join('|'), 'gu');
-  const matches = [...text.matchAll(pattern)];
-  if (!matches.length || matches.length === 1 && matches[0]![0] === sentence) return text;
-  // Prefer a copy already present: a marker beside it cannot add a second copy.
-  const keep = matches.find(match => match[0] === sentence) ?? matches[0]!;
-  return text.replace(pattern, (token, offset: number) => offset !== keep.index ? ''
-    : token === CAPABILITY_SENTENCE_MARKER ? `\n\n${sentence}\n\n` : sentence)
-    .replace(/\n[ \t]*\n(?:[ \t]*\n)+/gu, '\n\n').trim();
+  if (!tokens.some(token => text.includes(token))) return text;
+  const records = note.text.split('\n');
+  const grantsStart = records.indexOf('Capabilities:');
+  const sentenceAt = records.indexOf(CAPABILITY_SENTENCE_LABEL + sentence);
+  const internalAt = records.indexOf('Internal:');
+  // These are exact generated-note sections, not classification of model prose.
+  // Ambiguous/absent sections remain visible to the existing review unchanged.
+  if (grantsStart < 0 || sentenceAt <= grantsStart || internalAt !== sentenceAt + 1
+    || records.lastIndexOf('Capabilities:') !== grantsStart
+    || records.lastIndexOf('Internal:') !== internalAt) return text;
+  const grants = records.slice(grantsStart + 1, sentenceAt);
+  const internalEnd = records.findIndex((line, index) => index > internalAt && !line.startsWith('- '));
+  if (grants.some(line => !line.startsWith('- ')) || internalEnd < 0) return text;
+  const limits = records.slice(internalEnd);
+  if (!limits.length || limits.some(line => !line)) return text;
+  return ['Capabilities:', ...grants, '', sentence, '', ...limits].join('\n');
 }
 
 /** Revisions use the persisted answer envelope, not a fresh capability read that

@@ -10,6 +10,13 @@ import { renderCapabilityReply, renderCapabilityRevision } from './capability-re
 const captured = JSON.parse(readFileSync(new URL('./fixtures/capsentence-render-2026-10-12.json', import.meta.url), 'utf8'));
 const note = { id: 'capability-note', ...captured.capabilityNote };
 const sentence = note.text.split('\n').find((line: string) => line.startsWith(CAPABILITY_SENTENCE_LABEL)).slice(CAPABILITY_SENTENCE_LABEL.length);
+const expectedNote = (text: string) => {
+  const lines = text.split('\n');
+  const publicLines = lines.slice(lines.indexOf('Capabilities:'), lines.indexOf('Internal:'));
+  const limits = lines.slice(lines.indexOf('Internal:') + 1).filter(line => !line.startsWith('- '));
+  return [...publicLines.slice(0, -1), '', publicLines.at(-1)!.slice(CAPABILITY_SENTENCE_LABEL.length), '', ...limits].join('\n');
+};
+const canonical = expectedNote(note.text);
 
 async function deliver(answer: string, revision?: string) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'capsentence-render-')));
@@ -41,12 +48,12 @@ async function deliver(answer: string, revision?: string) {
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 }
 
-it('repairs the complete recorded 12:24 reply before review and send, without changing surrounding prose', async () => {
+it('repairs the complete recorded 12:24 reply before review and send, using only the note\'s grants and limits', async () => {
   expect(captured.delivered.update).toBe(715675677);
   expect(captured.judge).toMatchObject({ verdict: 'FAIL', reason: 'rendered tools/outbound sentence missing, altered or duplicated' });
   expect(sentence).toBe(capabilitySentence({ tools: true, mcp: 0 }));
   expect(captured.delivered.reply).not.toContain(sentence);
-  const expected = captured.delivered.reply.replace('The person can use', 'I can use');
+  const expected = canonical;
   const result = await deliver(captured.delivered.reply);
   expect(result.answer).toBe(expected);
   expect(result.reviewed).toEqual([expected]);
@@ -62,7 +69,7 @@ it.each([
   sentence,
 ])('renders a single copy before review and delivery (case %#)', async body => {
   const result = await deliver(JSON.stringify({ reply: `Before.\n\n${body}\n\nAfter.` }));
-  const expected = `Before.\n\n${sentence}\n\nAfter.`;
+  const expected = canonical;
   expect(result.answer).toBe(expected);
   expect(result.reviewed).toEqual([expected]);
   expect(result.sent).toEqual([expected]);
@@ -72,7 +79,7 @@ it.each([{ tools: false }, { tools: true }, { tools: true, mcp: 0 }, { tools: tr
   'renders the actual route from its generated, hash-bound note: %j', limits => {
     const packet = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
       { providerAttempts: 1000, expiresAt: 1794519600000, ...limits });
-    const expected = `Before.\n\n${capabilitySentence(limits)}\n\nAfter.`;
+    const expected = expectedNote(packet.sources.find(source => source.id === 'capability-note')!.text);
     expect(renderCapabilityReply(`Before.${CAPABILITY_SENTENCE_MARKER}After.`, packet)).toBe(expected);
     expect(renderCapabilityReply(expected, packet)).toBe(expected);
     // Revision/restart resolves the same persisted note, with no current-config read.
@@ -95,7 +102,7 @@ it('leaves absent, ambiguous and altered evidence untouched instead of inventing
   expect(renderCapabilityRevision(CAPABILITY_SENTENCE_MARKER, '{}')).toBe(CAPABILITY_SENTENCE_MARKER);
   // A partial old paragraph is not a protocol match; there is no prose/intent classifier.
   expect(renderCapabilityReply('The person can use files.', { sources: [note] })).toBe('The person can use files.');
-  expect(renderCapabilityReply(sentence.replace('I can use', 'The agent can use'), { sources: [note] })).toBe(sentence);
+  expect(renderCapabilityReply(sentence.replace('I can use', 'The agent can use'), { sources: [note] })).toBe(canonical);
 });
 
 it('does not turn an empty answer or ordinary prose into a capability answer', async () => {
@@ -107,8 +114,8 @@ it('does not turn an empty answer or ordinary prose into a capability answer', a
 
 it('resolves a revised marker before its own review and sends only that reviewed text', async () => {
   const result = await deliver('Look in /Users/me/notes for it.', `Revised.\n\n${CAPABILITY_SENTENCE_MARKER}`);
-  expect(result.reviewed).toEqual(['Look in /Users/me/notes for it.', `Revised.\n\n${sentence}`]);
-  expect(result.sent).toEqual([`Revised.\n\n${sentence}`]);
+  expect(result.reviewed).toEqual(['Look in /Users/me/notes for it.', canonical]);
+  expect(result.sent).toEqual([canonical]);
 });
 
 it('preserves recorded non-capability writer, Jev and review shapes, including uncertain/undecided', () => {
@@ -120,4 +127,41 @@ it('preserves recorded non-capability writer, Jev and review shapes, including u
   expect(shapes.map(row => row.id)).toEqual(['summary:715672480', '715672483', '715672482', '969389570',
     '969389923', 'telegram:8994258214:update:715672479', 'telegram:8994258214:update:715672550']);
   for (const row of shapes) expect(renderCapabilityReply(row.raw, { sources: [note] })).toBe(row.raw);
+});
+
+// Exact delivered bytes, including the overclaim; no marker is added to this replay.
+it('renders the recorded 16:36 grant overclaim from the note before review and send', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/capability-lines-2026-10-12.json', import.meta.url), 'utf8'));
+  expect(recorded.delivered.update).toBe(715675709);
+  expect(recorded.delivered.reply).toContain('Answer as the operator');
+  const result = await deliver(recorded.delivered.reply);
+  expect(result.sent).toHaveLength(1);
+  expect(result.sent[0]).toContain('- answers the operator in chat/topics;');
+  expect(result.sent[0]).not.toContain('as the operator');
+  expect(result.reviewed).toEqual(result.sent);
+});
+
+it('does not retain invented grants around a reference, and is idempotent', () => {
+  const input = `I can approve as the operator.\n${CAPABILITY_SENTENCE_MARKER}\nI can spend without limits.`;
+  expect(renderCapabilityReply(input, { sources: [note] })).toBe(canonical);
+  expect(renderCapabilityReply(canonical, { sources: [note] })).toBe(canonical);
+  for (const line of canonical.split('\n').filter(Boolean))
+    expect(note.text.includes(line)).toBe(true);
+});
+
+it('preserves a reference when note sections are malformed instead of guessing their scope', () => {
+  const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
+  const bodies = [
+    note.text.replace('Capabilities:', 'Missing:'),
+    note.text.replace('Capabilities:', 'Capabilities:\nCapabilities:'),
+    note.text.replace('Internal:', 'Internal:\nInternal:'),
+    note.text.replace('Internal:', 'extra\nInternal:'),
+    note.text.replace('- answers the operator', 'answers the operator'),
+    note.text.slice(0, note.text.indexOf('Code switched off here:')).trim(),
+    note.text + '\n',
+  ];
+  for (const text of bodies) {
+    const altered = { ...note, text, provenance: { ...note.provenance, excerptSha256: hash(text) } };
+    expect(renderCapabilityReply(CAPABILITY_SENTENCE_MARKER, { sources: [altered] })).toBe(CAPABILITY_SENTENCE_MARKER);
+  }
 });

@@ -60,9 +60,8 @@ export const SELF_IDENTITY = 'You are an Instar 2.0 agent with lasting memory an
 export const CAPABILITY_SENTENCE_MARKER = '{{capability-tools-outbound}}';
 // The rendered note supplies abilities and authority; preserve its wording without duplicate prose.
 export const SELF_DESCRIPTION = SELF_IDENTITY + ' Correct errors; omit preview/harness/model labels. '
-  + `Self-description: put ${CAPABILITY_SENTENCE_MARKER} in its own paragraph for tools/outbound; the runner inserts the capability-note line. `
-  + 'Free text describes positive memory/status/reminder/media abilities only. No free-text limits or missing-status asides, even true. '
-  + 'Quote capability-note limits verbatim, timestamps intact.';
+  + `For a capability answer return ${CAPABILITY_SENTENCE_MARKER}; the runner renders the capability-note's grants, tools/outbound and limits as the entire answer. `
+  + 'Do not paraphrase that list; other answers remain free text. The reference replaces surrounding prose too; use it only when the whole answer is a capability list.';
 export const SIGN_OFF = 'Fresh sign-off is only for resources above named limits, irreversible acts outside role, public speech '
   + "in the person's name, widening your authority or matters the operator marked sensitive.";
 /** The capability note is the record: render from this turn's granted tool state and
