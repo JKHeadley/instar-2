@@ -77,6 +77,8 @@ Decision: train-20-replay | Extend act-first historical question translation to 
 
 Decision: train-20-pins | Credential-label review test asserts that capabilities, credentialRegister and history remain named sources instead of pinning the retired connective wording; keep public-metadata and Jev-boundary checks intact. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-20-PROGRESS.md
 
+Decision: train-20-hold-corpus | Align the remaining hold-rate fixture with the reviewed independent-answer path: unresolved forget asks for its missing target, leaves memory pending and unchanged, and does not claim a mutation. The explicit invalid-memory held neighbor remains intact. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-20-PROGRESS.md
+
 simplestRobustRoute: This is the simplest robust route: ordinary merges of reviewed repairs, the requested ordinary revert and existing repin/build/rehash/register replay. No new machinery. Verified intake, existing bounded model/recovery work, current ownership and grant checks, durable dispatch and stop remain the start, end-state and limit guards. Captured replay proves integration; live acceptance belongs to the desk.
 80/20: Required changed tests, direct consumers and explicit journal/launcher families in foreground chunks; no full suite or convergence claim.
 VERDICT: author submission; independent review belongs to the desk

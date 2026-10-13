@@ -83,7 +83,7 @@ it('measures first-attempt held replies on a mixed conversation corpus', async (
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
-it('holds an unresolved direct forget request before answering', async () => {
+it('answers an unresolved direct forget request without claiming a memory mutation', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-hold-forget-')));
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis',
     bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:offline',
@@ -92,12 +92,15 @@ it('holds an unresolved direct forget request before answering', async () => {
   const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
     model: async input => input.id.startsWith('summary:')
       ? '{"summary":"A forget request has no known target.","people":[],"memory":[],"memoryDisposition":"unresolved"}'
-      : '{"reply":"I forgot it."}',
+      : '{"reply":"Which old address do you mean?"}',
     send: async () => 1, checkOutbound: () => {} });
   try {
     worker.intake([update(1, 'Forget my old address.')]); await worker.drain();
-    expect(journal.view.order[0]?.held).toBe('memory correction pending');
-    expect(journal.view.order[0]?.intent).toBeUndefined();
+    await worker.summarizeIfNeeded();
+    expect(journal.view.order[0]?.held).toBeUndefined();
+    expect(journal.view.order[0]?.intent).toBe('Which old address do you mean?');
+    expect(journal.view.order[0]?.memoryPending).toBe(true);
+    expect(journal.view.summaryFailures.size).toBeGreaterThan(0);
     expect(journal.view.memory).toEqual([]);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
