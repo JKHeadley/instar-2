@@ -13,7 +13,7 @@ const shape = (kind: string) => shapes.otherShapes.find(row => row.kind === kind
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
-it.each(['recorded sequence', 'jev-unsure', 'jev-undecided', 'summary-uncertain', 'empty-memory-decision'])(
+it.each(['recorded sequence', 'jev-unsure', 'jev-undecided', 'summary-uncertain', 'summary-writer', 'empty-memory-decision'])(
   'replays 46039931 with %s: preserves the answer and exactly one scheduled commitment', async mode => {
   const root = mkdtempSync(join(tmpdir(), 'deferral-not-memory-')); dirs.push(root);
   const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(39);
@@ -32,7 +32,8 @@ it.each(['recorded sequence', 'jev-unsure', 'jev-undecided', 'summary-uncertain'
         const row = capture.summaries[summaries.length];
         if (!row) throw Error('unexpected third summary attempt');
         summaries.push(row.output);
-        return mode === 'summary-uncertain' ? JSON.parse(shape('summary-uncertain').raw) : row.output;
+        return mode === 'summary-uncertain' ? JSON.parse(shape('summary-uncertain').raw)
+          : mode === 'summary-writer' ? shape('summary-writer').raw : row.output;
       }
       return mode === 'empty-memory-decision' ? JSON.stringify({ ...JSON.parse(capture.answer.output), memory: [] }) : capture.answer.output;
     }, send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return sends.length; } };
