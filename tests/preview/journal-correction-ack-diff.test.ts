@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+// Accepted-summary acknowledgement cases settle their model judgment before answering.
 // Fixtures substitute the model and Jev (int11's faithfulness check runs before a summary commits).
 import { createJournalWorker, openPreviewJournal, withoutCorrectedHistory } from './journal-test-worker.js';
 
@@ -31,7 +32,7 @@ it('names a validated correction old to new once, and withholds its old clause f
     let journal = openPreviewJournal(path, key, genesis);
     let worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'The cedar trail starts at East Pier.')]); await worker.drain();
-    worker.intake([update(2, 'Actually, the cedar trail starts at West Pier.')]); await worker.drain();
+    worker.intake([update(2, 'Actually, the cedar trail starts at West Pier.')]); await worker.summarizeIfNeeded(); await worker.drain();
     expect(sends[1]).toBe('Changed The cedar trail starts at East Pier. → the cedar trail starts at West Pier.');
     expect(sends[1]?.includes('\n')).toBe(false);
     journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
@@ -69,25 +70,25 @@ it('acknowledges accepted forgetting without repeating the old quote, while a no
         return input.question === 'Forget my gym locker code.' ? 'I forgot 3310.' : 'Okay.';
       }, send: async (input: { text: string }) => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} });
     worker.intake([update(1, 'My gym locker code is 3310.')]); await worker.drain();
-    worker.intake([update(2, 'Forget my gym locker code.')]); await worker.drain();
+    worker.intake([update(2, 'Forget my gym locker code.')]); await worker.summarizeIfNeeded(); await worker.drain();
     expect(sends[1]).toBe('Forgot the requested information.');
     expect(sends[1]).not.toContain('3310');
     worker.intake([update(3, 'How is the weather?')]); await worker.drain();
     expect(sends[2]).toBe('Okay.');
     worker.intake([update(4, 'The archive access phrase is silver crane.')]); await worker.drain();
-    worker.intake([update(5, 'Forget the archive access phrase.')]); await worker.drain();
+    worker.intake([update(5, 'Forget the archive access phrase.')]); await worker.summarizeIfNeeded(); await worker.drain();
     expect(sends[4]).toBe('Forgot the requested information.');
     expect(sends[4]).not.toContain('silver crane');
     worker.intake([update(6, 'My locker combination is 7744.')]); await worker.drain();
-    worker.intake([update(7, 'Forget my locker combination.')]); await worker.drain();
+    worker.intake([update(7, 'Forget my locker combination.')]); await worker.summarizeIfNeeded(); await worker.drain();
     expect(sends[6]).toBe('Forgot the requested information.');
     expect(sends[6]).not.toContain('7744');
     worker.intake([update(8, 'silver crane is my archive access phrase.')]); await worker.drain();
-    worker.intake([update(9, 'Forget my archive access phrase.')]); await worker.drain();
+    worker.intake([update(9, 'Forget my archive access phrase.')]); await worker.summarizeIfNeeded(); await worker.drain();
     expect(sends[8]).toBe('Forgot the requested information.');
     expect(sends[8]).not.toContain('silver crane');
     worker.intake([update(10, 'My locker combination: 7744.')]); await worker.drain();
-    worker.intake([update(11, 'Forget my locker combination.')]); await worker.drain();
+    worker.intake([update(11, 'Forget my locker combination.')]); await worker.summarizeIfNeeded(); await worker.drain();
     expect(sends[10]).toBe('Forgot the requested information.');
     expect(sends[10]).not.toContain('7744');
     expect(journal.view.memory).toHaveLength(5);
