@@ -25,6 +25,8 @@ Prompt review: No new prompt wording, parser, classifier or model route. Carry t
 Prompt finding: 849db3a6296a | protocol-literal | Unchanged fixed memory inventory response, not an intent classifier.
 Prompt finding: e8708c7fea24 | protocol-literal | Unchanged source-label provenance guidance, not a fixture-specific decision.
 
+Publication evidence: The final register replay binds repair source 78a61795bb8ea60c123d658b4e74b27a9ab43d78 with generation sha256:0d9d31101066d1a1fcc768d51cb52363f0b530e45026de5e4206b7aaf0f057c1. Default-context-floor passed 6/6; measured text-only answer 22,518 bytes against unchanged 22,959 guard. Memory-correction passed 28/28 after the bounded startup repair. The initial register run overlapped that test edit and correctly refused the temporarily stale artifact pin; final register validation runs on the committed stable tree.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest route: ordinary merge of the reviewed unit unchanged, followed by the established desk generation and checks. No new runtime mechanism. Authenticated durable intake, existing mutation validation and durable reply receipts hold the start and end conditions; existing secrets, spend and stop checks hold the limits. Recorded-output replay is builder evidence; deployment and fresh unattended live acceptance remain desk-owned.
