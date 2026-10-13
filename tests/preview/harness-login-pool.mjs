@@ -44,7 +44,7 @@ export function resolveHarnessManifest(manifest, path, inherited) {
  * Paths are absolute; each entry has its own sealed authority and (when tools are on) tools grant.
  * The primary remains the installation/renewal anchor; selection never changes installation policy. */
 export function loadHarnessLogins(options, readText = read) {
-  const primary = { profile: options['login-profile'], activation: options['activation-record'],
+  let primary = { profile: options['login-profile'], activation: options['activation-record'],
     authority: options['authority-record'], toolsActivation: options['tools-activation'],
     sessionActivation: options['session-work-activation'] };
   const path = options['login-pool'];
@@ -52,6 +52,7 @@ export function loadHarnessLogins(options, readText = read) {
   const rawManifest = bytes === null ? null : JSON.parse(bytes);
   const { manifest, relocation } = rawManifest === null ? { manifest: null }
     : resolveHarnessManifest(rawManifest, path, options.recordRelocation);
+  if (relocation) primary = relocateHarnessRecords({ logins: [primary] }, relocation.from, relocation.to).logins[0];
   if (bytes !== null && (!manifest || manifest.version !== 1 || !Array.isArray(manifest.logins)
     || manifest.logins.length < 1 || manifest.logins.length > 8)) fail('manifest is malformed');
   if (manifest && (options['harness-user'] === undefined))

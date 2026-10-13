@@ -29,3 +29,5 @@ simplestRobustRoute: This is the simplest robust route: re-derive local paths at
 VERDICT: author submission; no independent convergence verdict claimed
 
 Publication: Register replay from source af4a2e67714b3585b88614cfbd49b211b5a828dc produced generation sha256:6f5c3c7f5823b5854a00d7d5ea979ff9ccbb7b3d4e4ab3ffe3018f8a59c89ca1. This record covers the source and its generated publication.
+
+Consumer review: Status passes raw primary paths from the retained manifest into the loader. The loader now resolves those paths through the same relocation map before comparing them, and both move tests exercise that exact consumer shape.

@@ -294,6 +294,10 @@ it.each(['rename', 'copy'])('prepared installation survives a real %s with selec
   expect(after.select().index).toBe(1);
   expect(after.state).toEqual(state); expect(after.notices()).toEqual(notices);
   expect(loadHarnessLogins(launch(destination).options).identity).toBe(configuration.identity);
+  // Status reads the raw retained manifest before calling the same loader.
+  const movedOptions = launch(destination).options, raw = read(movedOptions['login-pool']);
+  expect(loadHarnessLogins({ ...f.options(raw.logins[0]), 'login-pool': movedOptions['login-pool'] }).identity)
+    .toBe(configuration.identity);
   if (move === 'copy') {
     // The copied root must not silently borrow records from the original, even while it exists.
     expect(poolAt(f.root).select().index).toBe(1);
