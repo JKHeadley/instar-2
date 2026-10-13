@@ -760,3 +760,5 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing source-attribution in
 simplestRobustRoute: This is the simplest robust route: ordinary merges of reviewed repairs, the requested ordinary revert and existing repin/build/rehash/register replay. No new machinery. Verified intake, existing bounded model/recovery work, current ownership and grant checks, durable dispatch and stop remain the start, end-state and limit guards. Captured replay proves integration; live acceptance belongs to the desk.
 80/20: Required changed tests, direct consumers and explicit journal/launcher families in foreground chunks; no full suite or convergence claim.
 VERDICT: author submission; independent review belongs to the desk
+
+Generation: repin found no stale inventory sources; owner rehash refreshed two hashes, committed before explicit register replay at source head. The build requires an exact commit id; prior attempts using the previous recorded source or symbolic HEAD refused without writing output.
