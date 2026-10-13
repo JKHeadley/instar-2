@@ -179,11 +179,15 @@ it('refuses the same decision when its quote is not the operator\'s words, says 
   });
 }, 60000);
 
-it('still sends the fixed notice when the answer reads no withdrawal and records no memory decision', async () => {
-  // Neither memory nor cancelReminders: nothing about this message was decided, so the notice stands.
-  await replay(() => ({ reply: ANSWER.reply }), 'none', async w => {
+it('keeps the independent reply when no withdrawal or memory mutation was proposed', async () => {
+  // Neither memory nor cancelReminders: no effect was proposed or admitted. The memory
+  // question stays unresolved; the reply takes normal review instead of a fixed notice.
+  const independent = 'I have your message.';
+  await replay(() => ({ reply: independent }), 'none', async w => {
     expect(w.journal.view.reminderCancels).toHaveLength(0);
-    expect(w.sent.at(-1)!.startsWith(MEMORY_UNDECIDED_REPLY)).toBe(true);
+    expect(w.sent.at(-1)).toContain(independent);
+    expect(w.sent.at(-1)).not.toContain(MEMORY_UNDECIDED_REPLY);
+    expect(openRequests(w.journal.view).map(item => item.quote)).toEqual([FEEDER, PLUMBER]);
   });
 }, 60000);
 

@@ -63,13 +63,13 @@ it('answers an uncued pushback with the model reply when its memory target is un
   expect(replay.memoryChanged).toBe(false);
 }, 10000);
 
-it('still holds a cued request whose memory target is unresolved', async () => {
+it('keeps a cued request unresolved without replacing its independent answer', async () => {
   const { first, replay } = await run('Actually, forget the thing I said.', () => standGround);
-  expect(first.sends.some(text => text.includes("It's 51"))).toBe(false);
-  expect(first.turn.memoryPending).toBe(true);
-  expect(first.sends.slice(1).every(text => text.includes(MEMORY_UNDECIDED_REPLY))).toBe(true);
+  expect(first.sends[1]).toContain(JSON.parse(standGround).reply);
+  expect(first.turn).toMatchObject({ memoryPending: true, memoryUndecided: true, memoryUnresolved: true });
+  expect(first.sends[1]).not.toContain(MEMORY_UNDECIDED_REPLY);
   expect(first.memoryChanged).toBe(false);
-  expect(replay.sends.some(text => text.includes("It's 51"))).toBe(false);
+  expect(replay.sends).toEqual(first.sends);
   expect(replay.memoryChanged).toBe(false);
 }, 10000);
 

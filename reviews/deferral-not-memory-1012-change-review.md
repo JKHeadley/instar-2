@@ -1,0 +1,34 @@
+# Change review — keep valid answers independent of unsettled memory
+
+Subject base: 7cabecf1c7d33ecae3628b36923edbff61666d3e
+Review state: open
+Reviewed content: none
+Outcome: The recorded deferral answer for update 46039931 reaches the operator with its one quoted commitment. An unresolved memory question with no proposed mutation no longer replaces the independent answer. Rejected mutations retain the existing honest failure path.
+Affected rules: Purpose 2/3 and least revelation; Rules 4/8/10/26/35/36/41/42/55/57/58/63/70/74/75/83/86/89/95/101/102/111/113/116.
+Affected floors: secrets — existing exact secret checks and outbound checks still precede send; spend cap — existing summary and reply reservations and retry bounds remain; stop — original model and send gates remain; no duplicate sends — durable intent and receipt survive restart; durable intake — encrypted accepted input and undecided state remain retained.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Reply selection changes operator-visible delivery and admission of commitments; the live-found sequence and negative mutation neighbors must replay through the real journal worker.
+Side effects: Valid replies now take ordinary reply review rather than the exact infrastructure-notice exemption. The optional answer-row distinction survives replay; it admits no memory mutation. Existing rows and send receipts remain readable. A malformed or nonempty mutation proposal retains its existing failure path. No cue heuristics, authority, model route, effect registration, or retry limits change.
+Undo and recovery: Revert the source change and regenerate register publications. The optional field is additive on the existing answer row; old readers ignore it and keep their old selection behavior. Committed intents and receipts remain authoritative and prevent replaying a sent answer. No new queue or migration.
+Multi-machine posture: Uses the existing shared journal and owner-gated worker. The distinction is persisted with the answer, not held only in process memory. Reservation, replication, ownership and send deduplication remain unchanged. Replay files are isolated machine-local test artifacts.
+Layer below: Complete model outputs in the desk's read-only proof-room-4 export show two unresolved summary outputs with missing people, then a valid deferral answer and openLoops declaration. The old reply selector overwrote that answer; sentObligations could no longer find its quote. The replay uses those complete bytes in a fresh journal; truncated source prompts and the absent full prefix are not represented as a faithful whole-root replay.
+Bug class: user-facing
+Bug evidence: reproducer=tests/preview/deferral-not-memory.test.ts; live=tests/preview/fixtures/deferral-not-memory-2026-10-12.json
+Hook bypass: none; core.hooksPath is unset and the common hooks directory contains sample files only. Plain commits.
+Convergence: none
+Prompt review: The memory decision guidance keeps the independent answer and asks for at most one honest failure line only when the operator explicitly requested a save. It does not infer intent from a new keyword rule or copy a fixture phrase. Recorded writer/uncertain/Jev/review/delivered/empty shapes are replay evidence, not a claim that a fresh model was invoked on the edited guidance.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged fixed memory inventory response, not an intent classifier.
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged source-label provenance guidance, not a fixture-specific decision.
+Decision: independent-answer | Separate a valid answer with no proposed memory mutation from the unresolved memory judgment; persist the distinction so restart cannot erase the answer or its loop. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/deferral-not-memory-1012-PROGRESS.md
+Decision: bounded-existing-recovery | Retain the existing background summary recovery, attempt caps, durable send settlement and commitment scheduler instead of introducing another queue or retry mechanism. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/deferral-not-memory-1012-PROGRESS.md
+Deferral: tests/preview/fixtures/deferral-not-memory-2026-10-12.json:12 | not-a-deferral=Recorded model output under test, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-not-memory-2026-10-12.json:16 | not-a-deferral=Recorded model output under test, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-not-memory-2026-10-12.json:21 | not-a-deferral=Recorded model output whose commitment the regression verifies is scheduled.
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route through existing answer, memory and obligation mechanisms. The one optional persisted distinction prevents a restart from collapsing an unresolved question back into a refused mutation. A selection-only change without that distinction would either keep replacing valid answers or suppress the honest failed-save notice. No new classifier, queue, model call or scheduler. Start guards are authenticated durable intake; end guards are exact quoted commitment admission and durable send receipts; caps, stop and secrets retain their original checks. Captured-output worker replay is demonstrated; deployment and unattended fresh-model acceptance remain desk-owned and are not claimed here.
+80/20: Targeted changed tests and direct journal consumers, typecheck, architecture, lint, register and change-review checks. The full suite and independent landing review belong to the desk. No live root write, serving login or Telegram send.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
