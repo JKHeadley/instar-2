@@ -2832,6 +2832,18 @@ change revision review, unavailable-review handling, or model/send audience chec
 `operator-group-cascade.test.ts` replays recorded update 969390381 and tests both
 routes, each question's unsure/positive boundary, restart and the existing floors.
 
+A refusal grounded in an existing role or authority limit uses the existing blocker
+record: lawful avenues can be `outside-standing` or `inapplicable`, with capability
+evidence and a named governing constraint. No unauthorized attempt is required.
+Its exact quoted claim may occupy the existing 4096-byte reply budget; all other
+blocker validation, including the future recheck of standing, remains in force.
+A rejected declaration carries a fixed `blockerReason` in the answer or revision
+record and the reviewer context. An explicit rejected blocker with no current
+admitted record stays held even if review passes or is unavailable. Missing
+records and invented constraints are not excused by the longer quote allowance.
+`refusal-withheld.test.ts` replays recorded update 6233134 and checks both sides
+of admission, review and send boundaries.
+
 Jev checks the eight measured message questions in one batch. A clear pass sends
 the candidate. A violation, uncertain score, or unavailable Jev invokes one
 subscription review with the candidate, original operator message, the complete

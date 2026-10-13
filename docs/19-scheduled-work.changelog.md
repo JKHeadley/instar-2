@@ -4,6 +4,10 @@ _Generated from `19-scheduled-work.changelog.json` by `scripts/render-changelog.
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 13 · 2026-10-13 · draft — train-19 adopts origin/main design text exactly as required by the release-train brief.
+
+- **Align the governed document and indexed sections with the merged main design text.** — The release train takes main design text exactly while preserving live history in this sibling changelog. This is a design-text integration, not a runtime behavior change. _(reviews/train-19-change-review.md; origin/main 7ef8f158d4129a4cf90cf3c546701f32e348fdd3)_
+
 ## Revision 12 · 2026-10-13 · draft — train-21 release-train brief: docs take pinned main text exactly while retaining both histories.
 
 - **Use the reviewed main document text at 7ef8f158d4129a4cf90cf3c546701f32e348fdd3.** — The train brief explicitly assigns document text to pinned main; retain the live base history and incoming history without erasure. _(reviews/train-21-change-review.md; pinned train-21 task brief)_

@@ -129,6 +129,18 @@ it('keeps private-chat packet bytes from afa6be39 apart from the reviewed memory
     historical.capability = historical.capability.replace(
       /Summary covers earlier turns;.*?Cite sourceLabel; disclose unknown sources\./u,
       "Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say \"I don't know from this journal\", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown.");
+    // Relative reminder admission adds an original-clock binding and reviewed date guidance.
+    // Restore just those fields from the immutable train-18 capture; all other bytes retain the old pin.
+    expect(historical.datedClock).toEqual({ at: JSON.parse(journal.view.order.at(-1)!.raw).message.date * 1000,
+      zone: 'America/Los_Angeles' });
+    expect(historical.datedDecision).toContain('at:datedClock.at,zone:datedClock.zone');
+    expect(historical.datedDecision).toContain('ambiguity:clarifying question');
+    const dates = JSON.parse(readFileSync(new URL('./fixtures/reminder-relative-1013.json', import.meta.url), 'utf8'));
+    const reservation = dates.frames.find((row: { frame: number }) => row.frame === 400);
+    const recordedPacket = JSON.parse(JSON.parse(reservation.prompt).messages
+      .find((message: { role: string }) => message.role === 'context').content).packet;
+    historical.datedDecision = recordedPacket.datedDecision;
+    delete historical.datedClock;
     expect(createHash('sha256').update(JSON.stringify(historical)).digest('hex')).toBe('4f9861f1b198353ff376439dfdfdeb783be92d17167ca2b056d34613f4a04736');
   } finally { journal.close(); }
 });

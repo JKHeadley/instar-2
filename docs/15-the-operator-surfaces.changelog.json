@@ -115,7 +115,7 @@
     },
     "changes": [
       {
-        "what": "Include the bounded Slack reply in the fixed profile’s operator-accepted operation set.",
+        "what": "Include the bounded Slack reply in the fixed profile\u2019s operator-accepted operation set.",
         "why": "The operator-facing dependency verdict must describe the same closed set and permanent-machine-loss model as the purpose.",
         "ref": "astra-slack-closedset-ruling.md, Exact minimal governing edits and approval procedure (2026-09-24); approval PENDING"
       }
