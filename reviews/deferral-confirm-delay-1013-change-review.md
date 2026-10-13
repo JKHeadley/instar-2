@@ -25,6 +25,8 @@ Prompt review: No prompt or parser changes. Existing captured writer, uncertain,
 Prompt finding: 849db3a6296a | protocol-literal | Unchanged fixed memory inventory response, not an intent classifier.
 Prompt finding: e8708c7fea24 | protocol-literal | Unchanged source-label provenance guidance, not a fixture-specific decision.
 
+Publication evidence: The desk rehash and repin tools changed zero pins. The existing register replay generator used source 6a170b6e46e32b27bcc19c1121da8eb05d26c923 and produced generation sha256:9f455505c427163f247facfb77eae507b92930ede000455cd38dbd2f0b6739f8. Seven generated publications refresh source/generation metadata only; they are included in this review and grant no new authority.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest route: narrow the existing pre-answer dependency test and retain the existing independent-answer distinction at the post-answer hold. All mutation validation, journal application and send settlement remain in place. Existing summary scheduling owns unsettled memory work. No new runtime component or timer. Start guards are authenticated durable intake; end guards are validated memory application and durable reply receipts; secrets, caps and stop retain their existing checks. Captured-output worker replay is evidence for this submission; live deployment and unattended fresh-model acceptance remain with the desk.
