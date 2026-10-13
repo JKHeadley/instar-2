@@ -1,21 +1,19 @@
-# Test files that exercise a macOS-only mechanism (seatbelt sandbox-exec, launchd, plutil, hdiutil,
-# BSD stat -f) or gate tests on darwin. INSTAR_TEST_PLATFORM_SPLIT=exclude-macos runs everything
-# else; only-macos runs exactly these. tests/platform/macos-only.test.ts keeps this list equal to
-# the detection in tests/platform/macos-only.mjs (`node tests/platform/macos-only.mjs` prints it).
-tests/assembly/fixed-installation-live.test.ts
-tests/assembly/fixed-worker-monitor-native.test.ts
-tests/assembly/process-inventory.test.ts
-tests/integration/host-watch.test.ts
-tests/integration/native-loop-live.test.ts
-tests/preview/group-carry-cli.test.ts
-tests/preview/native-harness-contract.test.ts
-tests/preview/native-loop-replay.test.ts
-tests/preview/native-loop.test.ts
-tests/preview/self-host-cli-profile.test.ts
-tests/preview/self-host-flat-live.test.ts
-tests/preview/self-host-tools.test.ts
-tests/preview/self-host.test.ts
-tests/preview/session-admission.test.ts
-tests/preview/session-volume.test.ts
-tests/preview/tool-paths.test.ts
-tests/types/shipped-clients.test.ts
+# Test files reaching macOS mechanisms; generated detection is checked by macos-only.test.ts.
+# Mixed files retain portable cases in the unsplit run; extracted policy/composition/keygen tests run on Linux.
+tests/assembly/fixed-installation-live.test.ts  # gates tests on darwin
+tests/assembly/fixed-worker-monitor-native.test.ts  # spawns a macOS-only tool
+tests/assembly/process-inventory.test.ts  # gates tests on darwin
+tests/integration/native-loop-live.test.ts  # spawns a macOS-only tool (via tests/preview/native-loop.mjs)
+tests/preview/group-carry-cli.test.ts  # gates tests on darwin
+tests/preview/native-harness-contract.test.ts  # spawns a macOS-only tool (via tests/preview/self-host-harness.mjs)
+tests/preview/native-loop-replay.test.ts  # spawns a macOS-only tool (via tests/preview/native-loop.mjs)
+tests/preview/native-loop.test.ts  # spawns a macOS-only tool (via tests/preview/native-loop.mjs)
+tests/preview/self-host-cli-profile.test.ts  # spawns a macOS-only tool (via tests/preview/self-host-harness.mjs)
+tests/preview/self-host-flat-live.test.ts  # spawns a macOS-only tool (via tests/preview/self-host-harness.mjs)
+tests/preview/self-host-tools.test.ts  # spawns a macOS-only tool (via tests/preview/self-host-harness.mjs)
+tests/preview/self-host.test.ts  # spawns a macOS-only tool (via tests/preview/self-host-harness.mjs)
+tests/preview/session-admission.test.ts  # spawns a macOS-only tool
+tests/preview/session-volume.test.ts  # gates tests on darwin
+tests/preview/tool-paths.test.ts  # spawns a macOS-only tool
+tests/preview/tool-persist.test.ts  # gates tests on a macOS-only tool
+tests/preview/tool-turn.test.ts  # gates tests on a macOS-only tool

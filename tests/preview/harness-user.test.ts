@@ -282,7 +282,11 @@ describe('the login custody and the runner\'s /private/tmp entries', () => {
     symlinkSync('/etc/hosts', join(base, 'link'));
     expect(sweptEntryHeld(join(base, 'itw-0123456789ab'), base)).toBe(true);
     // Another device than the base's (as a mounted volume is): not what the sweep closes.
-    expect(sweptEntryHeld(join(base, 'itw-0123456789ab'), '/dev')).toBe(false);
+    const otherDevice = ['/', '/dev', '/proc'].find(path => {
+      try { return lstatSync(path).dev !== lstatSync(base).dev; } catch { return false; }
+    });
+    expect(otherDevice, 'fixture needs a verified different device').toBeDefined();
+    expect(sweptEntryHeld(join(base, 'itw-0123456789ab'), otherDevice!)).toBe(false);
     expect(sweptEntryHeld(join(base, 'itw-0123456789ab'), base, process.getuid!() + 1)).toBe(false);
     expect(sweptEntryHeld(join(base, 'link'), base)).toBe(false);
     expect(sweptEntryHeld(join(base, 'gone'), base)).toBe(false);
