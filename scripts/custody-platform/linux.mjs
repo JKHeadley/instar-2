@@ -59,7 +59,27 @@ export function brokerProcessObservation(status, uid) {
     && /^NoNewPrivs:\s+1$/m.test(status)
     && ['Inh', 'Prm', 'Eff', 'Bnd', 'Amb'].every(kind => new RegExp(`^Cap${kind}:\\s+0+$`, 'm').test(status)));
 }
-function observedBroker(pid, uid) { return brokerProcessObservation(readFileSync(`/proc/${pid}/status`, 'utf8'), uid); }
+// Rule 60: hard rlimits survive exec/fork and cannot be raised after setpriv drops
+// all capabilities. NPROC counts threads across the dedicated broker UID. AS caps
+// each address space (including mappings), DATA also bounds anonymous allocations.
+const addressSpaceBytes = 1024 * 1024 * 1024, dataBytes = 256 * 1024 * 1024, tasks = 16;
+export function boundedBrokerCommand(executable, args) {
+  return { executable: '/usr/bin/prlimit', args: [
+    `--as=${addressSpaceBytes}:${addressSpaceBytes}`, `--data=${dataBytes}:${dataBytes}`,
+    `--nproc=${tasks}:${tasks}`, '--core=0:0', '--', executable, ...args,
+  ] };
+}
+export function brokerResourceObservation(limits) {
+  return [['Max address space', addressSpaceBytes, 'bytes'], ['Max data size', dataBytes, 'bytes'],
+    ['Max processes', tasks, 'processes'], ['Max core file size', 0, 'bytes']].every(([name, ceiling, unit]) => {
+    const row = new RegExp(`^${name}\\s+(\\d+)\\s+(\\d+)\\s+${unit}\\s*$`, 'm').exec(limits);
+    return Boolean(row && Number(row[1]) <= Number(row[2]) && Number(row[2]) <= ceiling);
+  });
+}
+function observedBroker(pid, uid) {
+  return brokerProcessObservation(readFileSync(`/proc/${pid}/status`, 'utf8'), uid)
+    && brokerResourceObservation(readFileSync(`/proc/${pid}/limits`, 'utf8'));
+}
 function durableFile(path, bytes, mode) {
   const fd = openSync(path, 'wx', mode);
   try { writeFileSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); }
@@ -118,6 +138,7 @@ export function linuxCustodyPlatform({ base, broker, agent, harness, trustAnchor
   };
   const verifyInstalled = () => {
     rootRequired(); protectedPath(node); protectedPath(realpathSync('/usr/bin/setpriv'));
+    protectedPath(realpathSync('/usr/bin/prlimit'));
     const rows = identities(), release = load();
     if (release.manifest.entry !== 'entry.mjs') throw Error('custody: distribution entry differs');
     for (const directory of ['private', 'run']) {
@@ -163,9 +184,12 @@ export function linuxCustodyPlatform({ base, broker, agent, harness, trustAnchor
       const checked = verifyInstalled(), owner = checked.identities[0];
       // Root drops all supplementary groups via setpriv before exec. No shell, no
       // inherited NODE_OPTIONS, credentials or ambient capabilities. Works without systemd.
-      child = spawn('/usr/bin/setpriv', ['--reuid', String(owner.uid), '--regid', String(owner.gid), '--clear-groups',
+      // Establish soft AND hard resource ceilings before any distribution code runs.
+      // prlimit and setpriv exec in place, retaining the exact observed/stopped PID.
+      const launch = boundedBrokerCommand('/usr/bin/setpriv', ['--reuid', String(owner.uid), '--regid', String(owner.gid), '--clear-groups',
         '--no-new-privs', '--inh-caps=-all', '--ambient-caps=-all', '--bounding-set=-all',
-        node, join(base, 'release/entry.mjs'), socket], { cwd: join(base, 'release'),
+        node, join(base, 'release/entry.mjs'), socket]);
+      child = spawn(launch.executable, launch.args, { cwd: join(base, 'release'),
         env: { PATH: '/usr/bin:/bin', HOME: '/nonexistent', NODE_ENV: 'production' }, stdio: ['ignore', 'ignore', 'ignore'] });
       exit = once(child, 'exit');
       // An error still has a listener even when exec fails before polling begins.

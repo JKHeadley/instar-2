@@ -67,11 +67,22 @@ to label a foreign PID as its own running instance.
 
 For hosts without systemd (including WSL/container installations that do not enable
 it), the same foreground `start()` path uses
-`setpriv` to clear supplementary groups and capabilities, set `no_new_privs`, and
-exec the verified entrypoint as the broker UID/GID. The environment is rebuilt without
+`prlimit` to set hard and soft limits before `setpriv` clears supplementary groups and capabilities, sets `no_new_privs`, and
+execs the verified entrypoint as the broker UID/GID. The environment is rebuilt without
 `NODE_OPTIONS` or inherited credentials. Readiness has a finite retry count and verifies the kernel UID, empty capabilities
-and no_new_privs state of the recorded child in /proc; it does not trust a status
-message alone. `stop()`
+and no_new_privs state of the recorded child in /proc; it also requires finite soft and
+hard resource limits at or below the launch ceilings. A status message alone is insufficient.
+The foreground ceilings are 1 GiB of address space per process, 256 MiB of data/anonymous
+allocations per process, 16 tasks across the dedicated broker UID, and zero core-dump
+bytes (Rule 60). The address-space bound includes file mappings; the task bound includes
+threads and descendants. These are rlimits, not the systemd unit's aggregate 256 MiB
+memory cgroup: the conservative total address-space envelope is 16 GiB across 16
+separate processes. The administrator must provision that envelope; a supplied broker
+must fit the limits. The hard limits survive exec/fork and the unprivileged broker cannot
+raise them. Missing `prlimit`, failed limit setup or unverifiable kernel limits refuse
+readiness; there is no unbounded fallback. Existing installations receive these limits
+on their next start through this adapter without changing installed distribution bytes.
+`stop()`
 sends TERM to its recorded child PID, waits, and escalates to KILL for that same PID
 only after two seconds. It never kills by name or process group. A non-systemd host
 needs an independent service supervisor for persistence across administrator-session
@@ -97,7 +108,7 @@ This always runs signature/tamper tests and a real socket/process request agains
 the existing custody reader. A same-user process is explicitly not identity-isolation
 evidence. The real identity cases are NOT RUN unless invoked on Linux as root with
 `INSTAR_CUSTODY_ROOT_TEST=1`. The root run needs `useradd`, `userdel`, `getent`, `id`,
-`setpriv`, root-owned `/usr/bin/node`, and permission to create/delete temporary users,
+`setpriv`, `prlimit`, root-owned `/usr/bin/node`, and permission to create/delete temporary users,
 change file owners, clear groups and change UIDs. The fixture creates three unique
 locked accounts and a root-owned temporary tree, uses only a public canary, and
 removes them in cleanup. It never uses a real login or live agent root.
@@ -114,6 +125,17 @@ of wrong scopes/bounds/extra authority fields, broker access to its private cana
 and agent/harness denial of read, overwrite, replacement, UID elevation and service
 file administration. They also prove exact-process stop and refusal of changed
 installed bytes before restart.
+
+On Linux small Python 3 probes use the actual foreground limit wrapper and read
+the child's kernel limits, including missing/unlimited/over-ceiling negative neighbors.
+They request a mapping larger than the address-space ceiling
+(without touching memory), and lower only their own process ceiling to zero before
+attempting one fork. These are small kernel-enforcement proofs, not load tests or
+cross-identity installation evidence. The unprivileged socket test runs separately
+without the wrapper: its UID is shared with the test runner, whose threads can already
+exhaust the 16-task ceiling. The privileged conformance path uses a dedicated broker
+UID and verifies the limits at readiness. The process-denial probe requires a non-root
+UID because Linux exempts UID 0 from `RLIMIT_NPROC`.
 
 ## macOS sibling
 

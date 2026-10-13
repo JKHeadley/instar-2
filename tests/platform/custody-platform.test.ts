@@ -12,7 +12,7 @@ import { linuxFixture } from './custody/linux-fixture.js';
 // @ts-expect-error Host distribution verifier is outside the pure core.
 import { verifyDistribution } from '../../scripts/custody-platform/distribution.mjs';
 // @ts-expect-error Host lifecycle adapter is outside the pure core.
-import { linuxCustodyPlatform, requestSocket, systemdUnit, brokerProcessObservation } from '../../scripts/custody-platform/linux.mjs';
+import { linuxCustodyPlatform, requestSocket, systemdUnit, brokerProcessObservation, boundedBrokerCommand, brokerResourceObservation } from '../../scripts/custody-platform/linux.mjs';
 // @ts-expect-error OS-neutral lifecycle adapter is outside the pure core.
 import { custodyPlatform } from '../../scripts/custody-platform/interface.mjs';
 // @ts-expect-error macOS host adapter stays outside the pure core.
@@ -113,16 +113,21 @@ it('runs the existing custody reader through the real Linux socket (same-user pr
       const target = join(root, name); mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, bytes);
     }
     const socket = join(root, 'probe.sock');
-    child = spawn(process.execPath, [join(root, 'entry.mjs'), socket], { stdio: ['ignore', 'ignore', 'pipe'], env: { PATH: '/usr/bin:/bin' } });
+    // The unprivileged runner shares its UID with Vitest's threads; only the
+    // root fixture has a dedicated broker UID. Kernel probes below need no threads.
+    const launch = rootProbe
+      ? boundedBrokerCommand(process.execPath, [join(root, 'entry.mjs'), socket])
+      : { executable: process.execPath, args: [join(root, 'entry.mjs'), socket] };
+    child = spawn(launch.executable, launch.args, { stdio: ['ignore', 'ignore', 'pipe'], env: { PATH: '/usr/bin:/bin' } });
     exited = once(child, 'exit');
     let errors = ''; child.stderr!.on('data', bytes => { errors += bytes; });
     let status;
     for (let attempt = 0; attempt < 50; attempt++) {
       try { status = await requestSocket(socket, { operation: 'status' }); break; } catch {}
-      if (child.exitCode !== null) throw Error(`probe exited: ${errors}`);
+      if (child.exitCode !== null || child.signalCode !== null) throw Error(`probe exited (${child.exitCode ?? child.signalCode}): ${errors}`);
       await new Promise(resolve => setTimeout(resolve, 50));
     }
-    expect(status).toEqual({ state: 'running', pid: child.pid, uid: process.getuid!() });
+    expect(status, `socket=${socket}; stderr=${errors}`).toEqual({ state: 'running', pid: child.pid, uid: process.getuid!() });
     expect(await requestSocket(socket, { operation: 'read', scope: 'probe', maxBytes: 128 }))
       .toEqual({ state: 'allowed', bytes: ['Instar custody isolation challenge'], observations: 1 });
     for (const request of [{ operation: 'read', scope: 'keys', maxBytes: 128 },
@@ -134,6 +139,70 @@ it('runs the existing custody reader through the real Linux socket (same-user pr
     if (child && child.exitCode === null && child.signalCode === null) { child.kill('SIGTERM'); await exited; }
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+describe.skipIf(process.platform !== 'linux')('foreground kernel resource enforcement', () => {
+  it('refuses an oversized mapping and raising hard bounds, without allocating host memory', () => {
+    const prefix = rootProbe ? ['--no-new-privs', '--inh-caps=-all', '--ambient-caps=-all',
+      '--bounding-set=-all', '/usr/bin/python3'] : [];
+    const launch = boundedBrokerCommand(rootProbe ? '/usr/bin/setpriv' : '/usr/bin/python3', [...prefix, '-c', `
+import errno, mmap, resource
+for kind in (resource.RLIMIT_AS, resource.RLIMIT_DATA, resource.RLIMIT_NPROC, resource.RLIMIT_CORE):
+    soft, hard = resource.getrlimit(kind)
+    assert soft == hard and hard != resource.RLIM_INFINITY
+    try:
+        resource.setrlimit(kind, (soft, hard + 1))
+    except (ValueError, PermissionError):
+        pass
+    else:
+        raise AssertionError('hard bound was raised')
+try:
+    mmap.mmap(-1, 1024 * 1024 * 1024)
+except OSError as error:
+    assert error.errno == errno.ENOMEM
+else:
+    raise AssertionError('oversized mapping admitted')
+print('kernel memory denial and immutable hard bounds')
+print(open('/proc/self/limits').read())
+`]);
+    const result = spawnSync(launch.executable, launch.args, { encoding: 'utf8', timeout: 5000 });
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('kernel memory denial and immutable hard bounds');
+    // Real kernel bytes from the admitted process, with negative neighbors.
+    const limits = result.stdout;
+    expect(brokerResourceObservation(limits)).toBe(true);
+    for (const name of ['Max address space', 'Max data size', 'Max processes', 'Max core file size']) {
+      const row = new RegExp(`^${name}.*$`, 'm');
+      expect(brokerResourceObservation(limits.replace(row, ''))).toBe(false);
+      expect(brokerResourceObservation(limits.replace(row, line => line.replace(/\d+/g, 'unlimited')))).toBe(false);
+      expect(brokerResourceObservation(limits.replace(row, line => line.replace(/\d+/g, '999999999999')))).toBe(false);
+      expect(brokerResourceObservation(limits.replace(row, line => line.replace(/\d+\s+\d+/, '1 0')))).toBe(false);
+    }
+    expect(brokerResourceObservation(readFileSync('/proc/self/limits', 'utf8'))).toBe(false);
+
+  });
+  it.skipIf(rootProbe)('refuses one fork at a safely lowered process ceiling', () => {
+    const launch = boundedBrokerCommand('/usr/bin/python3', ['-c', `
+import errno, os, resource
+assert resource.getrlimit(resource.RLIMIT_NPROC) == (16, 16)
+resource.setrlimit(resource.RLIMIT_NPROC, (0, 0))
+try:
+    pid = os.fork()
+except OSError as error:
+    assert error.errno == errno.EAGAIN
+    print('kernel process denial')
+else:
+    if pid == 0:
+        os._exit(0)
+    os.waitpid(pid, 0)
+    raise AssertionError('fork admitted')
+`]);
+    const result = spawnSync(launch.executable, launch.args, { encoding: 'utf8', timeout: 5000 });
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe('kernel process denial');
+  });
 });
 
 it('records the real host privilege limitation without claiming cross-user denials', () => {
