@@ -14,7 +14,8 @@
 //   - per process: CPU time and open handles (RLIMIT_CPU, RLIMIT_NOFILE, soft and
 //     hard), inherited by every descendant, including one that leaves the group;
 //   - per user ID: RLIMIT_NPROC, lowered to the user's process count at launch plus
-//     the launch's process ceiling (subject: the user ID, reported as `uidProcesses`).
+//     the launch's process allowance (Linux counts threads, with a minimum 16-task
+//     allowance for one Node runtime; subject and unit reported in `uidProcesses`).
 // Enforced on observation (`sampled`): the tree's memory and process count against its
 // ceiling, and the aggregate; the tree's total handles are not observed (`unsupported`).
 //
@@ -99,7 +100,7 @@ const UNKNOWN = Symbol('unknown');
 // since it was read made that fork fail: a sent message read UNKNOWN). The shell's own variables (PWD, SHLVL, OLDPWD) are
 // removed by env(1), which execs in place, unless the caller supplied them.
 const SHELL_VARIABLES = Object.freeze(['PWD', 'SHLVL', 'OLDPWD']);
-const LIMIT_SCRIPT = [
+const LIMIT_BODY = [
   'if [ "$5" = gate ]; then read -r go <&3 || exit 125; [ "$go" = go ] || exit 125; exec 3<&-; fi',
   'lim() {',
   '  s=$(ulimit -S "$1") || exit 125',
@@ -110,6 +111,10 @@ const LIMIT_SCRIPT = [
   'lim -n "$1"; lim -t "$2"; if [ -n "$3" ]; then lim -u "$3"; fi',
   'u=; for v in $4; do u="$u -u $v"; done; shift 5',
   'exec /usr/bin/env $u "$@"'].join('\n');
+
+// /bin/sh is dash on Debian/Ubuntu and has no ulimit -u. Exec bash in place
+// on both supported hosts; -p ignores BASH_ENV and imported shell functions.
+const LIMIT_SCRIPT = `exec /bin/bash -p -c '${LIMIT_BODY.replaceAll("'", "'\\''")}' instar-limit "$@"`;
 
 /** The same shim as a file, for a caller whose first argument is a fixed label (the Telegram bridge keeps
  * its request at argv[1]): the file drops the label, then runs LIMIT_SCRIPT unchanged. */
@@ -123,6 +128,22 @@ export function limitedFileArgv({ label, executable, args, handles, cpuSeconds, 
 export function limitedArgv({ executable, args, handles, cpuSeconds, processLimit, env, gated }) {
   return ['-c', LIMIT_SCRIPT, 'instar-launch', String(handles), String(cpuSeconds), processLimit === null ? '' : String(processLimit),
     SHELL_VARIABLES.filter(name => env?.[name] === undefined).join(' '), gated ? 'gate' : '', executable, ...args];
+}
+
+/** RLIMIT_NPROC counts threads on Linux, processes on macOS. Keep its census
+ * and finite allowance in those units. Six and the sampled tree process ceiling
+ * are unchanged. A minimum 16-task allowance lets one Node runtime start on Linux;
+ * it is shared by its threads and children, not an extra per-descendant allowance.
+ * Like every UID rlimit this is not a per-tree reservation, and a PID namespace
+ * hiding other same-UID tasks can make it conservatively refuse earlier. */
+export const processCensusArgs = (uid, host = platform()) => ['-U', String(uid), '-o', host === 'linux' ? 'nlwp=' : 'pid='];
+export const processHeadroom = (count, host = platform()) => host === 'linux' ? Math.max(16, count) : count;
+export function processCensusCount(text, host = platform()) {
+  if (text === null) return null;
+  const rows = text.trim().split(/\s+/u).map(Number);
+  if (!rows.length || rows.some(n => !Number.isSafeInteger(n) || n <= 0)) return null;
+  const count = host === 'linux' ? rows.reduce((sum, n) => sum + n, 0) : rows.length;
+  return Number.isSafeInteger(count) ? count : null;
 }
 
 const plainCompare = (left, right) => {
@@ -175,7 +196,7 @@ export const HOST_BOUNDS = Object.freeze({ aggregateLaunches: 'hard', sixAllocat
   aggregateProcesses: 'sampled', treeMembership: 'working-area-joined', treeProcesses: 'sampled', treeHandles: 'unsupported',
   uidProcesses: 'hard', confinement: 'blocked-install-held',
   reason: 'no unprivileged per-tree kernel confinement on this host: memory and tree process counts are enforced on a complete '
-    + 'current-user census joined by recorded incarnation, group, ancestry and private working area; RLIMIT_NPROC bounds the user ID; '
+    + 'current-user census joined by recorded incarnation, group, ancestry and private working area; RLIMIT_NPROC bounds the user ID (threads on Linux, processes on macOS); '
     + 'the working-area join is observation, not confinement, and a Six memory debit is an accounting reservation, not a kernel one',
   residual: 'a descendant that leaves its group, its parent and the private working area before any census is not joined, '
     + 'unless its launch runs under its own sandbox profile (`membership: sandbox`: the sandbox join reaches it); '
@@ -540,14 +561,14 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     const text = await query('/bin/ps', ['-o', 'lstart=', '-p', String(pid)]);
     return text === null ? UNKNOWN : startIdentity(text) || null;
   }
-  /** The kernel process limit of the user ID: its current process count plus the launch ceiling.
+  /** The kernel process limit of the user ID: its current task count plus the finite launch allowance.
    * Its subject is the user ID (every process of that user counts), never the launched tree. */
   async function processLimit() {
     const uid = typeof process.getuid === 'function' ? process.getuid() : null;
     if (uid === null || uid === 0) return { state: 'unavailable', subject: null, limit: null };
-    const listed = pids(await query('/bin/ps', ['-U', String(uid), '-o', 'pid=']));
-    return listed === null || listed.length === 0 ? { state: 'unavailable', subject: null, limit: null }
-      : { state: 'hard', subject: `uid:${uid}`, limit: listed.length + ceilings.launch.processCount };
+    const count = processCensusCount(await query('/bin/ps', processCensusArgs(uid)));
+    return count === null ? { state: 'unavailable', subject: null, limit: null }
+      : { state: 'hard', subject: `uid:${uid}`, limit: count + processHeadroom(ceilings.launch.processCount), unit: platform() === 'linux' ? 'threads' : 'processes' };
   }
   /** This launch's live members in one census (recorded incarnations, group, ancestry and working
    * area); `null` when the census failed or was partial: absence is then unproven. */
@@ -824,7 +845,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     }
   }
   async function observeInherited() {
-    const text = await query('/bin/sh', ['-c', 'ulimit -S -n; ulimit -H -n; ulimit -S -t; ulimit -H -t; ulimit -S -u; ulimit -H -u']);
+    const text = await query('/bin/sh', ['-c', "exec /bin/bash -p -c 'ulimit -S -n; ulimit -H -n; ulimit -S -t; ulimit -H -t; ulimit -S -u; ulimit -H -u'"]);
     const values = text?.trim().split('\n').map(v => v.trim() === 'unlimited' ? 'unlimited' : Number(v));
     if (!values || values.length !== 6 || values.some(v => v !== 'unlimited' && !Number.isSafeInteger(v))) {
       inherited = { state: 'unknown' }; return inherited;
