@@ -23,7 +23,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/status-command.test.ts",
-        "hash": "sha256:e33f1b404a49e98531ef21261b2166b0398ce8f9ffde0ec70340e140cee0d46c"
+        "hash": "sha256:cef5ff5d49406ab058b97e02ba78036de2f243e26a892a3a1ee8597e43e8196b"
       }
     },
     {
