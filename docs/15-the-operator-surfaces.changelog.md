@@ -4,10 +4,13 @@ _Generated from `15-the-operator-surfaces.changelog.json` by `scripts/render-cha
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
-## Revision 8 · 2026-10-03 · draft — Unit w4-dashboard (plan row #439): the first operator dashboard slice. No constitution change.
+## Revision 9 · 2026-10-13 · draft — operator review on PR #162; Independent bootstrap review: two authority gaps and three implementation/UX notes
 
-- **Section 2: the operator dashboard is a page of the registered approval surface, opened only by its enrolled passkey through a sign-in typed apart from every act; it shows status, waiting requests with direct links, recent messages, allowance and the stop, completes no authority, renders an untrusted bounded snapshot with its age, and is held by eleven floors with negative controls.** — Rule 81 had no dashboard to check (Q81 NEEDS-FEATURE); the operator needs one phone-reachable place to see what the agent is doing without a second source of truth or a new authority path. _(lanes/w4-dashboard-PROGRESS.md; LIVE-PATH-PLAN.md row #439)_
-- **P11-NF-52: a missed negative control, or agent data shown without the passkey session, also fails; the eleven floors with every control detected are the positive neighbor.** — A floor check that cannot fail, or a dashboard reachable without the credential, would pass the old wording. _(lanes/w4-dashboard-PROGRESS.md; scripts/check-dashboard-floors.mjs)_
+- **Specify protected Mac selection of the provider-authenticated phone account and copied-code refusal.** — Close initial identity and authority without circular grants, extra approval classes or new stores. _(PR 162; reviews/install-bootstrap-design-1013.md; astra-install-bootstrap-design-1013-review.md)_
+
+## Revision 8 · 2026-10-13 · draft — install-bootstrap-design-1013: desk selects verified binding before the existing P-02 yes, 2026-10-13
+
+- **Define authenticated mobile pairing and device-loss recovery through the existing custodian surface.** — A fresh installation needs an authenticated initial operator and independently held approval anchor before ordinary subscription admission. _(install-bootstrap-design-1013 brief; install-firstgrant-1013 finding; reviews/install-bootstrap-design-1013.md)_
 
 ## Revision 7 · 2026-09-29 · approved — Operator Justin (verified) approved the exact amendment wording with 'Yes' at 18:57 PDT 2026-09-29 in topic 102965 (message 2227093), relayed to the desk by the topic session and observer note #91: 'Instar may accept a recorded, one-use approval of an exact, unexpired request from an operator account held with a named service that the agent cannot use or administer, without a separate device signature or independent approval verifier, while independently enforced safeguards remain independently administered.' His 18:08 yes adopted the approval design (plan rows #91, #93).
 

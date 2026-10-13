@@ -4,6 +4,14 @@ _Generated from `06-the-fact-envelope.changelog.json` by `scripts/render-changel
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 12 · 2026-10-13 · draft — operator review on PR #162; Independent bootstrap review: two authority gaps and three implementation/UX notes
+
+- **Specify the finite enrollment seed, exact first Authorization and runtime genesis/version record sequence.** — Close initial identity and authority without circular grants, extra approval classes or new stores. _(PR 162; reviews/install-bootstrap-design-1013.md; astra-install-bootstrap-design-1013-review.md)_
+
+## Revision 11 · 2026-10-13 · draft — install-bootstrap-design-1013: desk selects verified binding before the existing P-02 yes, 2026-10-13
+
+- **Specify independently approved installation genesis and reuse existing grant admission.** — A fresh installation needs an authenticated initial operator and independently held approval anchor before ordinary subscription admission. _(install-bootstrap-design-1013 brief; install-firstgrant-1013 finding; reviews/install-bootstrap-design-1013.md)_
+
 ## Revision 10 · 2026-09-04 · draft — part-three bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
 
 - **The admission boundary's decidesAlone declaration is restated per rung under the amended closed list: ruled-three for the secret-shape scan, governed-state for the remaining rungs — superseding the pre-amendment yes-for-one-rung wording.** — The kind-2 amendment restructured the value space; leaving the flagship blocking-site declaration on a value the closed list no longer carries would refuse under part three's own machinery. _(part three, amendment one)_
