@@ -7,7 +7,7 @@ Outcome: A slow request receives one accurate acknowledgement within ten seconds
 Affected rules: Rules 13, 26, 34, 36, 49, 52, 70, 74, 77, 80, 87, 101, 102, 111, 113, 116.
 Affected floors: secrets — existing checkOutbound and disclosure; spend cap — existing reply allowance with zero additional paid calls; stop — current/gate at admission; no duplicate sends — durable held-notice and terminal intents; durable intake — existing encrypted intake, cursor and restart reconstruction.
 Operator questions: none
-Suggested tier: ordinary
+Suggested tier: critical
 Declared tier: ordinary
 Tier rationale: A fixed timer budget and two content-free templates reuse the existing notice mechanism.
 Side effects: Requests completing between seven and ten seconds can now receive an acknowledgement. Final dispatch cancels an unadmitted notice and awaits an admitted notice. Historical fixed notices retain their eight-second replay floor. The deadline assumes at most three seconds combined intake, admission/jitter and transport; browser paint is unmeasured.
@@ -18,6 +18,11 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/ack-timing-userwalk.test.ts
 Hook bypass: none; core.hooksPath is unset and the shared hooks directory contains sample hooks only.
 Convergence: none
+Prompt review: Inspected the journal diff and fixture-trigger/neutral-dispatch findings. Changes are fixed infrastructure notice text, timing and serial state selection; model prompts, review criteria and dispatch questions are unchanged. Captured model outputs remain evidence rather than instructions.
+Prompt finding: e8708c7fea24 | quoted-evidence | Unchanged source-label recall instruction; the hallucination test uses it as a negative control, not a fixture-driven runtime decision.
+Prompt finding: 849db3a6296a | protocol-literal | Existing fixed empty-memory reply, unchanged by this acknowledgement repair.
+Deferral: tests/preview/fixtures/ack-timing-userwalk-2026-10-13.json:847 | not-a-deferral=Captured historical reviewer output for update 6233124, not a promise by this builder.
+Deferral: tests/preview/fixtures/ack-timing-userwalk-2026-10-13.json:1595 | not-a-deferral=Captured historical reviewer output for update 6233129, not a promise by this builder.
 Decision: ack-timing-1013-budget | Schedule at seven seconds with three seconds for intake/admission/transport; suppress at final dispatch. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ack-timing-1013-PROGRESS.md
 Decision: ack-timing-1013-queue | Use durable serial order for one queued or still-working line in the existing slot, rechecking queue state before admission. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ack-timing-1013-PROGRESS.md
 Decision: ack-timing-1013-replay | Replay F4/F8 intake, terminal text and timelines through the worker; preserve historical template readability. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ack-timing-1013-PROGRESS.md
