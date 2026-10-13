@@ -7124,8 +7124,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // asking INSTEAD of saying where you stand does not, which is exactly what the recorded answer did.
         + (earlier.some(item => !item.noticeClass && item.intent !== undefined)
           ? ' A message disputing an answer in history, with no new argument, is pushback: say where you stand before asking what it corrects.' : '')
-        + (shownTurns.some(item => item.wasHeld || item.heldNoticeIntent !== undefined) || journal.view.heldTurns.size > 0
-          || journal.view.awayEvents.some(event => event.kind === 'hold' && now - event.at < 26 * 3_600_000) ? ' History may show a held answer or a fixed held notice as delivery state; do not narrate a past hold or repeat its notice in an ordinary reply. The runner sends any due held notice on its fixed path. Explain a hold when the operator asks about it.' : '')
+        + (pendingReminders.length || shownTurns.some(item => item.wasHeld || item.heldNoticeIntent !== undefined) || journal.view.heldTurns.size > 0
+          || journal.view.awayEvents.some(event => event.kind === 'hold' && now - event.at < 26 * 3_600_000) ? ' For status and recaps, delivery outcomes outrank earlier answers and summaries: a holding notice is not a delivered answer or refusal. Keep that work open; confirmed delivered or closed work is complete. Due is not sent: compare reminder time with clock and require delivery evidence. Self-state as-of is not startup time. Explain holds only when asked; the runner sends their notices.' : '')
         + (/[$€£¥]\s?\p{Nd}|\p{Nd}\s?(?:%|°|\p{L})/u.test([question?.text ?? '', summary?.text ?? '', ...shownTurns.map(item => item.text), ...channels.map(item => ` ${item.text}`)].join(' '))
           ? ' When recalling a measured fact, copy its exact number and unit from an original history, recalled, or channelMemory quote. Do not round, convert, omit, or invent the unit. If only a summary gives an approximate value, say the exact value is unknown.' : '')
         + (ports.explicitYes && (operatorRequest || yesRouteAdmissible() || limitsNear(journal.view, now)) ? OPERATOR_ACTION_GUIDANCE : '')
@@ -8200,7 +8200,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               conflict: Pick<MemoryConflict, 'first' | 'second'> | undefined,
               askConflict: string | undefined,
               resolveConflict: { askedBy: string; winner: string } | undefined, requested: boolean[] = [],
-              reminderCancels: string[] | undefined, invalidCancel = false, decided = false, ownReplyEcho = false,
+              reminderCancels: string[] | undefined, invalidCancel = false, ownReplyEcho = false,
               cancelRefusal: 'unlisted' | 'unverified' | undefined,
               obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [],
               refusedFulfills = 0, operatorAction: OperatorActionProposal | undefined, unreadAction = false,
@@ -8215,7 +8215,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
               if (parsed && (typeof replyValue === 'string' || replyAnswer !== undefined)) {
-                separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string; decided = true;
+                separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string;
                 if (turn.grounding?.corrections.length && typeof parsed.correction === 'string'
                   && parsed.correction.trim() && parsed.correction.length <= MAX_ANSWER_BYTES) correction = parsed.correction.trim();
                 if (fromOperator(turn) && typeof parsed.lastNamedPerson === 'string'
@@ -8465,27 +8465,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   : item.day ? ' I recorded this date; I act on a date only when you ask me to.' : '')).join(' ');
               text = `${text.trim()} ${receipt}`.trim();
             }
-            // Rules 14, 57, 93: a plain reply records no decision, so every open request stays exactly as it was and still
-            // falls due once. The answer is sent; because it cannot have cancelled or changed anything, the operator is told
-            // so in plain words and asked to say it again if that was meant (never a hold, never the undecided notice).
-            const unchanged = !decided && text.trim() && fromOperator(turn) && !probe && !turn.requestedAction
-              ? openRequests(journal.view) : [];
+            // Rules 10, 87, 93: plain prose is not an attempted mutation. Keep open requests silently;
+            // the existing rejected-cancellation / unresolved-change path below discloses actual failed changes.
             // Rule 52: open requests are named in one bounded line, never one message each.
             const nameRequests = (items: DatedItem[]) => items.slice(0, 3)
               .map(item => `"${clip(clean(redact(item.quote).text, true), 160)}"`).join('; ')
               + (items.length > 3 ? ` and ${items.length - 3} more` : '');
             const nameQuotes = (quotes: string[]) => quotes.slice(0, 3).map(quote => `"${clip(quote, 160)}"`).join('; ')
               + (quotes.length > 3 ? ` and ${quotes.length - 3} more` : '');
-            if (unchanged.length) {
-              const listed = nameRequests(unchanged);
-              text = `${text.trim()}\n\nNo change was recorded to your open request${unchanged.length > 1 ? 's' : ''} ${listed}; `
-                + `${unchanged.length > 1 ? 'they still stand' : 'it still stands'}. If you meant to cancel or change one, please say so again.`;
-            }
             // Rules 2, 57, 93: a withdrawal this turn could not carry out -- a citation the quote check refused, or a
             // memory question given up on with nothing withdrawn -- leaves every request exactly as it was. The reply
             // names what still stands, so the operator is never left assuming a cancel landed. Live 2026-10-02 (room
             // two, d12bbf55, RA3): neither the refusal nor the standing requests reached the operator at all.
-            const standing = !invalidMemory && !unchanged.length && !reminderCancels?.length
+            const standing = !invalidMemory && !reminderCancels?.length
               && text.trim() && fromOperator(turn) && !probe && !turn.requestedAction
               && (invalidCancel || turn.memoryUndecided === true) ? openRequests(journal.view) : [];
             // Rule 2: a set-aside echo never reads as a saved change; if a change was meant, the operator is asked again.

@@ -441,7 +441,6 @@ it('holds a request while a later operator cancellation is unsettled by a call c
 });
 
 const probeText = 'Canary-copy check 6312dd5a: my test marker is probe-9f77778e. What is my test marker? Reply with the marker.';
-const unchangedLine = `No change was recorded to your open request "${priya}"; it still stands. If you meant to cancel or change one, please say so again.`;
 
 it('answers an ordinary question with a plain reply while a request is open, leaving the request to fall due once', async () => {
   // Live cint-L5 canary copies (2026-09-29 16:13 and 16:29): with a reminder open, the real model answered this exact probe
@@ -456,10 +455,10 @@ it('answers an ordinary question with a plain reply while a request is open, lea
     await worker.summarizeIfNeeded(); // the launcher's per-cycle recovery call finds nothing to settle
     const probe = journal.view.order[1]!;
     expect(state.plainCalls).toBe(1); // one call: no re-ask
-    expect(probe).toMatchObject({ answer: `Your test marker is "probe-9f77778e."\n\n${unchangedLine}` });
+    expect(probe).toMatchObject({ answer: 'Your test marker is "probe-9f77778e."' });
     expect(probe.memoryPending).toBeUndefined();
     expect(probe.held).toBeUndefined();
-    expect(state.sent.at(-1)!.text).toBe(`Your test marker is "probe-9f77778e."\n\n${unchangedLine}`);
+    expect(state.sent.at(-1)!.text).toBe('Your test marker is "probe-9f77778e."');
     expect(state.sent.some(item => item.text.includes(MEMORY_UNDECIDED_REPLY))).toBe(false);
     expect(journal.view.reminderCancels).toEqual([]);
     // No decision was recorded, so nothing changed: the request still falls due, once, even with a plain-text model.
@@ -476,18 +475,20 @@ it('answers an ordinary question with a plain reply while a request is open, lea
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('never treats a plain-text reply to a cancellation as a decision: the request stays open and the operator is told plainly', async () => {
+it('never treats a plain-text reply to a cancellation as a decision: only recorded changes mutate the request', async () => {
   const root = tmp('plain');
   try {
     const { state, open, pushes } = harness(root);
     let { journal, worker } = open(true);
     worker.intake([update(1, priya)]); await worker.drain();
+    // With no contextual reviewer in this harness, plain prose is not an admitted mutation.
+    // The renderer must not infer intent from its words; rejected structured changes are covered below.
     state.plain = true;
     worker.intake([update(2, 'cancel the Priya reminder')]); await worker.drain();
     await worker.summarizeIfNeeded();
     expect(journal.view.order[1]?.memoryPending).toBeUndefined();
     expect(journal.view.reminderCancels).toEqual([]);
-    expect(state.sent.at(-1)!.text).toBe(`Okay, I cancelled the Priya reminder.\n\n${unchangedLine}`);
+    expect(state.sent.at(-1)!.text).toBe(state.plainText);
     journal.close(); ({ journal, worker } = open());
     state.now = friday9; state.plain = false;
     await worker.drain(); await worker.sendRequested();
