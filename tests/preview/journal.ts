@@ -5603,6 +5603,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const acknowledgementsInFlight = new Map<Turn, Promise<void>>();
   const cancelAcknowledgement = (turn: Turn) => { acknowledgementTimers.get(turn)?.(); acknowledgementTimers.delete(turn); };
   let working = false, workingSince = 0, ordinaryFailedSince: number | null = null;
+  let activeTurn: Turn | undefined;
   /** Every live send consumes its durable signed intent; a refusal or unknown outcome is recorded, never
    * retried. The one exception is the transport's own proof that it never made the network call: nothing
    * reached Telegram, so that exact intent is dispatched once more (the no-duplicate floor is untouched —
@@ -7685,7 +7686,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * No per-send model review. Existing disclosure, secret, stop and durable send checks still apply. */
   const replyIsQueued = (turn: Turn) => !turn.reserved
     && journal.view.order.slice(0, journal.view.order.indexOf(turn))
-      .some(item => item.accepted && item.intent === undefined && item.held === undefined && item.limited === undefined);
+      .some(item => item === activeTurn
+        || (item.accepted && item.intent === undefined && item.held === undefined && item.limited === undefined));
   const acknowledgeReply = (turn: Turn, callbackEnteredAt?: number): Promise<void> => {
     const inFlight = acknowledgementsInFlight.get(turn);
     if (inFlight) return inFlight;
@@ -7702,7 +7704,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       recordPhaseTiming(journal.append, `held-notice:${turn.id}`, 'acknowledgement', {
         scheduledDueAt: turn.at + REPLY_ACKNOWLEDGEMENT_AFTER_MS, timerCallback: callbackEnteredAt !== undefined,
         ...(callbackEnteredAt === undefined ? {} : { callbackEnteredAt }) }, ports.now());
-      // The serial worker's durable order is the evidence; no inference about the user's intent.
+      // Durable order plus the turn actually occupying the worker, including awaited transport.
       const queued = replyIsQueued(turn);
       const text = queued ? QUEUED_REPLY_ACKNOWLEDGEMENT : REPLY_ACKNOWLEDGEMENT;
       ports.checkOutbound(text);
@@ -7827,10 +7829,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const audienceHolds = await disclosure();
       completeApprovals();
       // A split reply left part-way by a restart continues before anything new is answered.
-      for (const turn of journal.view.order) if (turn.replyParts?.length) await sendReplyParts(turn);
+      for (const turn of journal.view.order) if (turn.replyParts?.length) {
+        activeTurn = turn;
+        await sendReplyParts(turn);
+      }
+      activeTurn = undefined;
       if (due) scheduleRequests();
       let blockedEarlier = false;
       for (const turn of journal.view.order) {
+        activeTurn = turn;
         if (!turn.accepted || turn.editOf || turn.sent || turn.intent) continue;
         if ((turn.requestedAction !== undefined) !== due) continue;
         // Past the ordinary turn allowance only the minimal responder answers (Rule 15).
@@ -9122,6 +9129,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // The rest of a split reply follows at once, before any later reply.
         if (parts.length) await sendReplyParts(turn);
       }
+      activeTurn = undefined;
       await noticeUnknownReplies();
       if (!audienceHolds) await noticeDisclosureHolds();
       // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
@@ -9131,6 +9139,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (!due && pendingMemory()?.editOf) settleBehind();
       if (!due && pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
     } finally {
+      activeTurn = undefined;
       try { await Promise.all(acknowledgementsInFlight.values()); } finally {
         acknowledgementsInFlight.clear();
         for (const turn of acknowledgementTimers.keys()) cancelAcknowledgement(turn);

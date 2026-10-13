@@ -14,6 +14,106 @@ const captured = JSON.parse(readFileSync(new URL('./fixtures/reply-acknowledgeme
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 afterEach(() => vi.useRealTimers());
 
+it.each([0, 2500].flatMap(transportMs => [false, true].map(unknown => ({ transportMs, unknown }))))(
+  'queue state includes final transport ($transportMs ms, unknown=$unknown) but not historical sends',
+  async ({ transportMs, unknown }) => {
+    const [first, second] = captured.cases.slice(2);
+    vi.useFakeTimers({ now: first!.at });
+    const root = mkdtempSync(join(tmpdir(), 'ack-transport-'));
+    const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(71);
+    let journal = openPreviewJournal(path, key, {
+      kind: 'genesis', bot: '8820318295', chat: '-1004290919884', operator: '7812716706', forum: true,
+      grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: first!.at + 86400000,
+      maxCalls: 20, maxReplies: 20, maxTurns: 10, maxBytes: 262144, cursor: 0 });
+    const sent: { update: number; text: string }[] = [], started: number[] = [];
+    const ports: PreviewPorts = { now: () => Date.now(), stopped: () => false, groupDisclosure: async () => true,
+      checkOutbound: () => {}, model: async input => {
+        const sample = input.id.endsWith(String(first!.update)) ? first! : second!;
+        started.push(Date.now() - first!.at);
+        await wait(sample === first ? 6500 : 20000);
+        const parsed = readAnswer(sample.answer, { wrapped: 'refuse' });
+        if (!parsed.ok) throw Error('recorded output invalid'); return parsed.value;
+      }, send: async input => {
+        if (input.expectedText === first!.reply) {
+          if (transportMs) await wait(transportMs);
+          if (unknown) throw Error('transport outcome unknown');
+        }
+        sent.push({ update: input.update, text: input.expectedText }); return 100 + sent.length;
+      } };
+    try {
+      let worker = createJournalWorker(journal, ports);
+      worker.intake([first!.raw, second!.raw]);
+      const drain = worker.drain();
+      await vi.advanceTimersByTimeAsync(7000);
+      expect(journal.view.order[0]!.intent).toBeDefined();
+      expect(journal.view.order[1]!.reserved).toBe(transportMs === 0);
+      const notice = sent.find(row => row.update === second!.update)?.text;
+      await vi.advanceTimersByTimeAsync(30000); await drain;
+      expect(notice).toBe(transportMs === 0 ? REPLY_ACKNOWLEDGEMENT : QUEUED_REPLY_ACKNOWLEDGEMENT);
+      expect(started).toEqual([0, 6500 + transportMs]);
+      expect(journal.view.order[0]!.sent !== undefined).toBe(!unknown);
+      // Completed and UNKNOWN intents are history, not a worker still awaiting transport.
+      // Check both the same worker and a reopened journal, without resending either old answer.
+      for (const restart of [false, true]) {
+        if (restart) { journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports); }
+        const update = second!.update + (restart ? 2 : 1);
+        worker.intake([{ ...second!.raw, update_id: update,
+          message: { ...second!.raw.message!, message_id: second!.raw.message!.message_id! + (restart ? 2 : 1) } }]);
+        const next = worker.drain();
+        await vi.advanceTimersByTimeAsync(7000);
+        expect(sent.find(row => row.update === update)?.text).toBe(REPLY_ACKNOWLEDGEMENT);
+        await vi.advanceTimersByTimeAsync(20000); await next;
+      }
+      expect(sent.filter(row => row.update === first!.update && row.text === first!.reply)).toHaveLength(unknown ? 0 : 1);
+      expect(sent.filter(row => row.update === second!.update && row.text === second!.reply)).toHaveLength(1);
+    } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+  });
+
+it.each([false, true])('queue state includes remaining reply parts, resumed=%s', async restart => {
+  const [first, second] = captured.cases.slice(2);
+  const splitCapture = JSON.parse(readFileSync(new URL('./fixtures/status-reply-split-live-2026-10-03.json', import.meta.url), 'utf8')) as {
+    statusAnswers: { update: number; answer: string }[] };
+  const long = splitCapture.statusAnswers.find(row => row.update === 6232050)!.answer;
+  vi.useFakeTimers({ now: first!.at });
+  const root = mkdtempSync(join(tmpdir(), 'ack-parts-')), path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(71);
+  let journal = openPreviewJournal(path, key, {
+    kind: 'genesis', bot: '8820318295', chat: '-1004290919884', operator: '7812716706', forum: true,
+    grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: first!.at + 86400000,
+    maxCalls: 20, maxReplies: 20, maxTurns: 10, maxBytes: 262144, cursor: 0 });
+  let stopped = false;
+  const sent: { update: number; text: string }[] = [];
+  const ports: PreviewPorts = { now: () => Date.now(), stopped: () => stopped, groupDisclosure: async () => true,
+    checkOutbound: () => {}, model: async input => {
+      const isFirst = input.id.endsWith(String(first!.update));
+      await wait(isFirst ? 6500 : 20000); return isFirst ? long : second!.reply;
+    }, send: async input => {
+      if (input.target?.startsWith('reply-part:')) await wait(2500);
+      if (restart && input.update === first!.update && input.target?.startsWith('reply:')) stopped = true;
+      sent.push({ update: input.update, text: input.expectedText }); return 100 + sent.length;
+    } };
+  try {
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([first!.raw, second!.raw]);
+    let drain = worker.drain();
+    if (restart) {
+      const rejected = expect(drain).rejects.toThrow('preview stopped');
+      await vi.advanceTimersByTimeAsync(6500); await rejected;
+      expect(journal.view.order[0]!.replyParts![0]!.started).toBeFalsy();
+      journal.close(); journal = openPreviewJournal(path, key); stopped = false;
+      worker = createJournalWorker(journal, ports); drain = worker.drain();
+      await vi.advanceTimersByTimeAsync(500);
+    } else await vi.advanceTimersByTimeAsync(7000);
+    expect(journal.view.order[0]!.sent).toBeDefined();
+    expect(journal.view.order[0]!.replyParts![0]!.sent).toBeUndefined();
+    expect(journal.view.order[1]!.reserved).toBe(false);
+    const notice = sent.find(row => row.update === second!.update)?.text;
+    await vi.advanceTimersByTimeAsync(30000); await drain;
+    expect(notice).toBe(QUEUED_REPLY_ACKNOWLEDGEMENT);
+    expect(journal.view.order[0]!.replyParts!.every(part => part.sent !== undefined)).toBe(true);
+    expect(sent.at(-1)).toEqual({ update: second!.update, text: second!.reply });
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
 for (const sample of captured.cases.slice(0, 3)) it(`real recorded timing ${sample.update}: fixed ack starts within the receipt budget, never after final send dispatch`, async () => {
   vi.useFakeTimers(); vi.setSystemTime(sample.at);
   const root = mkdtempSync(join(tmpdir(), 'ack-timing-'));
