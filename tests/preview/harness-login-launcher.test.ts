@@ -152,8 +152,15 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, undefined, undefined, true);
     expect(journal.view.order[0].modelState).toBe(['pool', 'installed', 'imported'].includes(mode) ? 'rejected' : 'complete');
     expect(journal.view.order.map(turn => turn.update)).toEqual([1, 2, 3]);
-    expect(journal.view.order.every(turn => turn.sent !== undefined)).toBe(true);
-    expect(new Set(journal.view.order.map(turn => turn.sent)).size).toBe(3);
+    const completed = journal.view.order.filter(turn => turn.modelState === 'complete');
+    expect(completed.every(turn => turn.sent !== undefined)).toBe(true);
+    expect(new Set(completed.map(turn => turn.sent)).size).toBe(completed.length);
+    const failed = journal.view.order.filter(turn => turn.modelState !== 'complete');
+    if (['pool', 'installed', 'imported'].includes(mode)) {
+      expect(failed).toHaveLength(1); expect(failed[0].update).toBe(1);
+      expect(failed[0].failureClass).toBe('capacity'); expect(failed[0].sent).toBeUndefined();
+      expect(failed[0].raw).toContain('Please say hello.'); // Retained failed work, never replayed as another attempt.
+    } else { expect(failed).toHaveLength(0); expect(completed).toHaveLength(3); }
     journal.close();
     const statusArgs = args.map(value => value === 'run' ? 'status' : value);
     const status = spawnSync(process.execPath, statusArgs, { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env });
