@@ -154,7 +154,7 @@ it('fences an uncertain limited answer and later releases the capped answer once
     const packet = JSON.parse(before.context);
     expect(packet.history[0]).toMatchObject({ answer: null, outcome: 'answer pending', limitedAnswer: true,
       limitedAnswerOutcome: 'limited answer (calls allowance) delivery UNKNOWN' });
-    expect(packet.capability).toContain('do not narrate a past hold or repeat its notice');
+    expect(packet.capability).toContain('Explain holds only when asked; the runner sends their notices.');
     await resumed.drain(); await resumed.drain();
     expect({ sends, replies: second.view.replies, answerSent: second.view.order[0]?.sent }).toEqual({ sends: 2, replies: 1, answerSent: 15 });
     const after = resumed.probe('next');
