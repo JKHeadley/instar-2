@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { durablePreviewWrite } from './durable-write.js';
 import { encoded } from './stage2-provider.js';
-import { loadHarnessLogins } from './harness-login-pool.mjs';
+import { harnessBuildRoot, relocateHarnessRecords, resolveHarnessManifest, loadHarnessLogins } from './harness-login-pool.mjs';
 
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const read = path => JSON.parse(readFileSync(path, 'utf8'));
@@ -23,6 +23,7 @@ const rowOf = options => ({ profile: options['login-profile'], activation: optio
   ...(options['usage-account'] ? { usageAccount: options['usage-account'] } : {}) });
 const optionsOf = (options, row) => ({ ...options, 'login-profile': row.profile, 'activation-record': row.activation,
   'authority-record': row.authority, 'tools-activation': row.toolsActivation, 'session-work-activation': row.sessionActivation });
+const localInventory = (root, source) => relocateHarnessRecords(source, source.recordRoot ?? harnessBuildRoot(source.preparedManifest), root);
 const inventory = root => {
   const value = read(inventoryPath(root));
   if (value.version !== 1 || !Array.isArray(value.logins) || !value.logins.length || value.logins.length > 8)
@@ -38,7 +39,7 @@ export function installHarnessLogin({ root, options, verify }) {
     if (row[key] !== undefined && !isAbsolute(row[key])) throw Error('preview: installed login paths must be absolute');
   const profile = read(row.profile);
   verify(row, profile); // Existing custody/activation/authority checks, before recording admission.
-  const prior = existsSync(inventoryPath(root)) ? inventory(root) : { version: 1, logins: [] };
+  const prior = existsSync(inventoryPath(root)) ? localInventory(root, inventory(root)) : { version: 1, logins: [] };
   const imported = options['login-pool'] ? loadHarnessLogins(options) : null;
   const logins = imported ? imported.entries.map(({ profile, profilePath, options: _options, index: _index, ...entry }) =>
     ({ ...entry, profile: profilePath, admittedProfile: profile })) : [...prior.logins];
@@ -49,7 +50,7 @@ export function installHarnessLogin({ root, options, verify }) {
   if (logins.length > 8) throw Error('preview: at most eight installed harness logins');
   // A fresh authenticated admission must supersede a cached preparation exclusion, even
   // when custody recovered without changing any non-secret source record.
-  const next = { ...prior, admissionRevision: (prior.admissionRevision ?? 0) + 1, logins,
+  const next = { ...prior, recordRoot: root, admissionRevision: (prior.admissionRevision ?? 0) + 1, logins,
     ...(imported ? { thresholdPercent: imported.threshold, usageFile: imported.usageFile } : {}),
     ...(options['usage-file'] !== undefined ? { usageFile: options['usage-file'] } : {}) };
   // Reuse the manifest validator for distinct accounts/directories and all path constraints.
@@ -70,56 +71,76 @@ export function installHarnessLogin({ root, options, verify }) {
  * build policy pin with a predecessor. The member's OWN sealed authority must resolve each
  * resulting route. No successor grant is manufactured or copied from a different account. */
 export function prepareInstalledHarnessLogins({ root, options, doorway, build, now, verify }) {
-  const source = inventory(root);
-  const fingerprints = source.logins.map(row => [row.profile, row.activation, row.authority, row.toolsActivation, row.sessionActivation]
+  const source = inventory(root), local = localInventory(root, source);
+  const fingerprints = local.logins.map(row => [row.profile, row.activation, row.authority, row.toolsActivation, row.sessionActivation]
     .filter(Boolean).map(path => { try { return hash(readFileSync(path, 'utf8')); } catch { return null; } }));
   const key = hash({ build, admissionRevision: source.admissionRevision, logins: source.logins, fingerprints, model: options.model, tools: options.tools ?? 'default',
     thresholdPercent: source.thresholdPercent ?? 95, usageFile: source.usageFile });
   const directory = join(root, 'harness-login-builds', key), manifestPath = join(directory, 'pool.json');
-  if (!existsSync(manifestPath)) {
-    if (source.preparedManifest === manifestPath) throw Error('preview: prepared login manifest lost; retained records require recovery');
-    mkdirSync(directory, { recursive: true, mode: 0o700 });
-    const logins = source.logins.map((row, index) => {
-      try {
-        const profile = Object.freeze(read(row.profile));
-        const successor = (path, framing) => {
-          const bytes = readFileSync(path, 'utf8'), current = JSON.parse(bytes);
-          const digest = encoded(doorway.policyFor(options.model, framing)).hash;
-          const next = current.invocationPolicyDigest === digest ? current : { ...current,
-            invocationPolicyDigest: digest, previousInvocationPolicyDigest: current.invocationPolicyDigest,
-            reviewedHead: String(build).slice(0, 1024),
-            predecessor: { reference: current.reference, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}` } };
-          doorway.validateActivation(next, profile, options.model, now, framing, current.expiresAt);
-          return next;
-        };
-        const activation = successor(row.activation, doorway.conversationFraming);
-        const tools = options.tools === 'off' ? null : row.toolsActivation ? successor(row.toolsActivation, doorway.toolsFraming)
-          : { ...activation, invocationPolicyDigest: encoded(doorway.policyFor(options.model, doorway.toolsFraming)).hash };
-        const authority = read(row.authority);
-        verify(row, profile, activation, tools); // Includes independent sealed authority resolution.
-        const records = { activation, authority, ...(tools ? { toolsActivation: tools } : {}) };
-        const prepared = { ...row, admittedProfile: profile, sources: [row.profile, row.activation, row.authority, row.toolsActivation, row.sessionActivation]
-          .filter(Boolean).map(path => ({ path, digest: hash(read(path)) })) };
-        for (const [name, value] of Object.entries(records)) {
-          const target = join(directory, `${index}-${name}.json`);
-          keepRecord(target, value);
-          prepared[name] = target;
-        }
-        return prepared;
-      } catch (error) {
-        if (index === 0) throw error;
-        // Keep its index/profile identity; launch records the exclusion once. Never erase holds
-        // or reinterpret history by renumbering the remaining members.
-        return { ...row, unavailable: 'build records or authentication unavailable' };
+  const cached = existsSync(manifestPath) ? resolveHarnessManifest(read(manifestPath), manifestPath).manifest : null;
+  if (cached && (cached.version !== 1 || cached.logins?.length !== local.logins.length))
+    throw Error('preview: prepared login manifest differs from admitted logins');
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const logins = local.logins.map((row, index) => {
+    const retained = cached?.logins[index];
+    if (retained) {
+      const expected = { ...row, activation: join(directory, `${index}-activation.json`),
+        authority: join(directory, `${index}-authority.json`),
+        ...(options.tools !== 'off' ? { toolsActivation: join(directory, `${index}-toolsActivation.json`) } : {}) };
+      for (const name of ['profile', 'activation', 'authority', 'toolsActivation', 'sessionActivation'])
+        if (retained[name] !== (retained.unavailable ? row : expected)[name])
+          throw Error('preview: prepared login record does not belong to admitted login');
+      if (retained.admittedProfile && row.admittedProfile && hash(retained.admittedProfile) !== hash(row.admittedProfile))
+        throw Error('preview: prepared login profile differs from admission');
+      if (retained.unavailable) return retained;
+    }
+    try {
+      const profile = Object.freeze(read(row.profile));
+      if (row.admittedProfile && hash(profile) !== hash(row.admittedProfile))
+        throw Error('preview: installed login profile differs from admission');
+      const successor = (path, framing) => {
+        const bytes = readFileSync(path, 'utf8'), current = JSON.parse(bytes);
+        const digest = encoded(doorway.policyFor(options.model, framing)).hash;
+        const next = current.invocationPolicyDigest === digest ? current : { ...current,
+          invocationPolicyDigest: digest, previousInvocationPolicyDigest: current.invocationPolicyDigest,
+          reviewedHead: String(build).slice(0, 1024),
+          predecessor: { reference: current.reference, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}` } };
+        doorway.validateActivation(next, profile, options.model, now, framing, current.expiresAt);
+        return next;
+      };
+      const activation = successor(row.activation, doorway.conversationFraming);
+      const tools = options.tools === 'off' ? null : row.toolsActivation ? successor(row.toolsActivation, doorway.toolsFraming)
+        : { ...activation, invocationPolicyDigest: encoded(doorway.policyFor(options.model, doorway.toolsFraming)).hash };
+      const authority = read(row.authority);
+      verify(row, profile, activation, tools); // Includes independent sealed authority resolution.
+      const records = { activation, authority, ...(tools ? { toolsActivation: tools } : {}) };
+      const prepared = { ...row, admittedProfile: profile, sources: [row.profile, row.activation, row.authority, row.toolsActivation, row.sessionActivation]
+        .filter(Boolean).map(path => ({ path, digest: hash(read(path)) })) };
+      if (retained && hash(retained.sources) !== hash(prepared.sources))
+        throw Error('preview: prepared login sources differ from admission');
+      for (const [name, value] of Object.entries(records)) {
+        const target = join(directory, `${index}-${name}.json`);
+        keepRecord(target, value);
+        prepared[name] = target;
       }
-    });
-    const manifest = { version: 1, thresholdPercent: source.thresholdPercent ?? 95, logins,
-      ...(source.usageFile ? { usageFile: source.usageFile } : {}),
-      ...(source.preparedManifest ? { previousManifest: source.preparedManifest } : {}) };
-    keepRecord(manifestPath, manifest);
+      return prepared;
+    } catch (error) {
+      if (index === 0) throw error;
+      // Keep its index/profile identity; launch records the exclusion once. Never erase holds
+      // or reinterpret history by renumbering the remaining members.
+      return { ...row, unavailable: 'build records or authentication unavailable' };
+    }
+  });
+  const manifest = { version: 1, recordRoot: root, thresholdPercent: source.thresholdPercent ?? 95, logins,
+    ...(local.usageFile ? { usageFile: local.usageFile } : {}),
+    ...(local.preparedManifest && local.preparedManifest !== manifestPath ? { previousManifest: local.preparedManifest,
+      previousRecordRoot: source.recordRoot ?? harnessBuildRoot(source.preparedManifest) ?? root } : {}) };
+  if (!cached) keepRecord(manifestPath, manifest);
+  if (local.preparedManifest !== manifestPath || !source.recordRoot) {
+    const recordRoot = source.recordRoot ?? harnessBuildRoot(source.preparedManifest) ?? root;
+    durablePreviewWrite(inventoryPath(root), { ...source, recordRoot,
+      preparedManifest: join(recordRoot, 'harness-login-builds', key, 'pool.json') });
   }
-  if (source.preparedManifest !== manifestPath)
-    durablePreviewWrite(inventoryPath(root), { ...source, preparedManifest: manifestPath });
   return manifestPath;
 }
 
@@ -129,11 +150,11 @@ export function installedHarnessLaunch({ root, options, prepare }) {
   if (options['login-profile'] !== undefined || options['login-pool'] !== undefined)
     return { options, mode: options['login-pool'] ? 'explicit-pool' : 'explicit-profile' };
   if (!existsSync(inventoryPath(root))) return { options, mode: 'legacy-single' };
-  const source = inventory(root), primary = source.logins[0];
+  const source = localInventory(root, inventory(root)), primary = source.logins[0];
   const selected = optionsOf(options, primary);
   if (source.logins.length === 1) return { options: selected, mode: 'single-installed' };
   const manifestPath = prepare(selected);
-  const manifest = read(manifestPath);
+  const { manifest } = resolveHarnessManifest(read(manifestPath), manifestPath);
   return { options: { ...optionsOf(options, manifest.logins[0]), 'login-pool': manifestPath }, mode: 'installed-pool' };
 }
 

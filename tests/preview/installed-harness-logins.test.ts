@@ -1,7 +1,7 @@
 // @ts-nocheck -- installation host composition, real validators and sealed synthetic grants.
 import { afterEach, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin } from './installed-harness-logins.mjs';
 import { createHarnessLoginPool, loadHarnessLogins } from './harness-login-pool.mjs';
@@ -270,4 +270,96 @@ it('verifies imported v1 predecessor identity after a secondary profile disappea
   const changed = { ...read(path), logins: [...f.logins].reverse() };
   writeFileSync(path, JSON.stringify(changed));
   expect(() => loadHarnessLogins(selected.options)).toThrow(/predecessor members differ/);
+});
+
+// Real filesystem regression for the 2026-10-13 canary rename failure; custody is synthetic.
+it.each(['rename', 'copy'])('prepared installation survives a real %s with selection and notice identity intact', move => {
+  const f = fixture(); f.install(f.logins[0]); f.install(f.logins[1]);
+  const launch = root => installedHarnessLaunch({ root, options: { model: f.world.model, 'harness-user': 'offline' },
+    prepare: options => prepareInstalledHarnessLogins({ root, options, doorway: f.doorway,
+      build: 'build-a', now: Date.now(), verify: f.verify }) });
+  const configuration = loadHarnessLogins(launch(f.root).options);
+  const poolAt = root => createHarnessLoginPool({ configuration: loadHarnessLogins(launch(root).options),
+    statePath: join(root, 'harness-login-pool.json'), now: () => Date.now(), validate: entry => {
+      verifyPreparedHarnessLogin(entry);
+      f.verify({ ...entry, profile: entry.profilePath }, entry.profile, read(entry.activation), read(entry.toolsActivation));
+    } });
+  const before = poolAt(f.root);
+  before.observe(before.select(), { failure: { failureClass: 'limit', resetAt: null } });
+  expect(before.select().index).toBe(1);
+  const state = before.state, notices = before.notices();
+  const destination = join(f.world.directory, 'moved-installation');
+  if (move === 'rename') renameSync(f.root, destination); else cpSync(f.root, destination, { recursive: true });
+  const after = poolAt(destination);
+  expect(after.select().index).toBe(1);
+  expect(after.state).toEqual(state); expect(after.notices()).toEqual(notices);
+  expect(loadHarnessLogins(launch(destination).options).identity).toBe(configuration.identity);
+  if (move === 'copy') {
+    // The copied root must not silently borrow records from the original, even while it exists.
+    expect(poolAt(f.root).select().index).toBe(1);
+    const selected = loadHarnessLogins(launch(destination).options);
+    expect(selected.entries.every(row => row.activation.startsWith(destination + '/'))).toBe(true);
+    rmSync(join(destination, 'member-a-activation.json'));
+    expect(() => launch(destination)).toThrow();
+    expect(() => poolAt(f.root).select()).not.toThrow();
+  }
+});
+
+it.each(['activation', 'directory'])('repairs missing prepared %s from admitted source records', missing => {
+  const f = fixture(); f.install(f.logins[0]); f.install(f.logins[1]);
+  const path = f.prepare(), manifest = read(path);
+  rmSync(missing === 'directory' ? join(path, '..') : manifest.logins[0].activation, { recursive: true });
+  expect(f.prepare()).toBe(path);
+  const repaired = read(path);
+  f.verify(repaired.logins[0], read(repaired.logins[0].profile), read(repaired.logins[0].activation), read(repaired.logins[0].toolsActivation));
+});
+
+
+it.each(['same-build', 'next-build', 'imported'])('loads vanished-root legacy absolute records on %s and preserves v1 notices', mode => {
+  const f = fixture();
+  if (mode === 'imported') {
+    const path = join(f.root, 'old-pool.json');
+    writeFileSync(path, JSON.stringify({ version: 1, logins: f.logins }));
+    installHarnessLogin({ root: f.root, options: { ...f.options(f.logins[0]), 'login-pool': path }, verify: f.verify });
+  } else { f.install(f.logins[0]); f.install(f.logins[1]); }
+  const preparedPath = f.prepare(), manifest = read(preparedPath);
+  // Exact old family format: absolute paths, without newly added root metadata.
+  delete manifest.recordRoot; delete manifest.previousRecordRoot;
+  writeFileSync(preparedPath, JSON.stringify(manifest));
+  const inventoryPath = join(f.root, 'harness-logins.json'), inventory = read(inventoryPath);
+  delete inventory.recordRoot; writeFileSync(inventoryPath, JSON.stringify(inventory));
+  const before = loadHarnessLogins({ ...f.options(manifest.logins[0]), 'login-pool': preparedPath });
+  const pool = createHarnessLoginPool({ configuration: before, statePath: join(f.root, 'harness-login-pool.json'),
+    now: () => Date.now(), validate: verifyPreparedHarnessLogin });
+  pool.observe(pool.select(), { failure: { failureClass: 'limit', resetAt: null } }); pool.select();
+  writeFileSync(join(f.root, 'harness-login-pool.json'), JSON.stringify({ ...pool.state, identity: before.legacyIdentity }));
+  const root = join(f.world.directory, 'renamed'); renameSync(f.root, root);
+  const selected = installedHarnessLaunch({ root, options: { model: f.world.model, 'harness-user': 'offline' },
+    prepare: options => prepareInstalledHarnessLogins({ root, options, doorway: f.doorway,
+      build: mode === 'same-build' ? 'build-a' : 'build-b', now: Date.now(), verify: f.verify }) });
+  const next = loadHarnessLogins(selected.options);
+  expect(next.legacyIdentities).toContain(before.legacyIdentity);
+  const after = createHarnessLoginPool({ configuration: next, statePath: join(root, 'harness-login-pool.json'),
+    now: () => Date.now(), validate: verifyPreparedHarnessLogin });
+  expect(after.select().index).toBe(1);
+  expect(after.state.holds).toEqual(pool.state.holds); expect(after.state.switches).toEqual(pool.state.switches);
+  expect(after.state.noticeIdentity).toBe(before.legacyIdentity);
+  for (const row of next.entries) f.verify(row, row.profile, read(row.activation), read(row.toolsActivation));
+});
+
+it.each(['foreign-path', 'foreign-record', 'tampered-record', 'profile', 'sources'])('refuses %s instead of blessing or replacing it during preparation', fault => {
+  const f = fixture(); f.install(f.logins[0]); f.install(f.logins[1]);
+  const path = f.prepare(), manifest = read(path), target = manifest.logins[0].activation;
+  if (fault === 'foreign-path') {
+    manifest.logins[0].authority = manifest.logins[1].authority;
+    writeFileSync(path, JSON.stringify(manifest));
+  } else if (fault === 'foreign-record') writeFileSync(target, readFileSync(manifest.logins[1].activation));
+  else if (fault === 'tampered-record') writeFileSync(target, JSON.stringify({ ...read(target), observedAccount: 'foreign@example.invalid' }));
+  else if (fault === 'profile') writeFileSync(f.logins[0].profile, JSON.stringify({ ...read(f.logins[0].profile), reference: 'foreign' }));
+  else {
+    manifest.logins[0].sources[0].digest = 'changed'; writeFileSync(path, JSON.stringify(manifest));
+  }
+  const bytes = readFileSync(target, 'utf8');
+  expect(() => f.prepare()).toThrow(/differ|does not belong/);
+  expect(readFileSync(target, 'utf8')).toBe(bytes);
 });

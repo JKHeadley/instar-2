@@ -3,13 +3,42 @@
 // Tokens remain in harness-user custody. This module consumes the adapter's typed failure only.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { durablePreviewWrite } from './durable-write.js';
 import { harnessLoginPath } from './harness-user.mjs';
 
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const read = path => readFileSync(path, 'utf8');
 const fail = reason => { throw Error(`preview: harness login pool ${reason}`); };
+
+// Only installation-local file references move. Custody/profile contents (including harness
+// homes) are independently admitted facts, never rewritten by a directory relocation.
+export const harnessBuildRoot = path => typeof path === 'string'
+  ? /^(.*)\/harness-login-builds\/[a-f0-9]{64}\/(?:pool|0-activation)\.json$/u.exec(path)?.[1] : undefined;
+export function relocateHarnessRecords(value, from, to) {
+  const relocate = path => {
+    if (typeof path !== 'string' || !from || from === to) return path;
+    const suffix = relative(from, path);
+    return suffix !== '..' && !suffix.startsWith('../') && !isAbsolute(suffix) ? join(to, suffix) : path;
+  };
+  const row = entry => ({ ...entry, ...Object.fromEntries(
+    ['profile', 'activation', 'authority', 'toolsActivation', 'sessionActivation'].filter(key => entry[key] !== undefined)
+      .map(key => [key, relocate(entry[key])])),
+    ...(entry.sources ? { sources: entry.sources.map(source => ({ ...source, path: relocate(source.path) })) } : {}) });
+  return { ...value, logins: value.logins?.map(row),
+    ...Object.fromEntries(['preparedManifest', 'previousManifest', 'usageFile'].filter(key => value[key] !== undefined)
+      .map(key => [key, relocate(value[key])])) };
+}
+export function resolveHarnessManifest(manifest, path, inherited) {
+  if (!manifest || !Array.isArray(manifest.logins)) return { manifest };
+  if (manifest.recordRoot !== undefined && (typeof manifest.recordRoot !== 'string' || !isAbsolute(manifest.recordRoot)))
+    fail('record root must be absolute');
+  const root = harnessBuildRoot(path);
+  const origin = manifest.recordRoot ?? (root && basename(dirname(path)) === basename(dirname(manifest.logins?.[0]?.activation ?? ''))
+    ? harnessBuildRoot(manifest.logins?.[0]?.activation) : undefined);
+  const relocation = root && origin ? { from: origin, to: root } : inherited;
+  return { manifest: relocation ? relocateHarnessRecords(manifest, relocation.from, relocation.to) : manifest, relocation };
+}
 
 /** --login-pool is an ordered manifest including the primary --login-profile/--activation-record.
  * Paths are absolute; each entry has its own sealed authority and (when tools are on) tools grant.
@@ -20,7 +49,9 @@ export function loadHarnessLogins(options, readText = read) {
     sessionActivation: options['session-work-activation'] };
   const path = options['login-pool'];
   const bytes = path === undefined ? null : readText(path);
-  const manifest = bytes === null ? null : JSON.parse(bytes);
+  const rawManifest = bytes === null ? null : JSON.parse(bytes);
+  const { manifest, relocation } = rawManifest === null ? { manifest: null }
+    : resolveHarnessManifest(rawManifest, path, options.recordRelocation);
   if (bytes !== null && (!manifest || manifest.version !== 1 || !Array.isArray(manifest.logins)
     || manifest.logins.length < 1 || manifest.logins.length > 8)) fail('manifest is malformed');
   if (manifest && (options['harness-user'] === undefined))
@@ -56,17 +87,21 @@ export function loadHarnessLogins(options, readText = read) {
   const identity = hash(entries.map(({ profile }) => Object.fromEntries(
     ['reference', 'expectedAccount', 'organization', 'plan', 'home', 'configDirectory', 'workingDirectory']
       .map(key => [key, profile[key]]))));
-  const legacyIdentity = hash({ entries: entries.map(({ profile, activation, authority, toolsActivation, sessionActivation, usageAccount }) =>
-    ({ profile, activation, authority, toolsActivation, sessionActivation, usageAccount })), threshold });
+  const legacyIdentity = hash({ entries: entries.map(({ profile }, index) => {
+    const { activation, authority, toolsActivation, sessionActivation, usageAccount } = rawManifest?.logins[index] ?? primary;
+    return { profile, activation, authority, toolsActivation, sessionActivation, usageAccount };
+  }), threshold });
   const legacyIdentities = [legacyIdentity];
   if (manifest?.previousManifest !== undefined) {
     if (typeof manifest.previousManifest !== 'string' || !isAbsolute(manifest.previousManifest) || options.previousManifest)
       fail('predecessor manifest must be one absolute retained manifest');
     const previous = JSON.parse(readText(manifest.previousManifest));
-    const first = previous.logins?.[0];
+    const previousRelocation = manifest.previousRecordRoot && harnessBuildRoot(path)
+      ? { from: manifest.previousRecordRoot, to: harnessBuildRoot(path) } : relocation;
+    const first = resolveHarnessManifest(previous, manifest.previousManifest, previousRelocation).manifest?.logins?.[0];
     if (!first) fail('predecessor manifest is malformed');
     // Only one predecessor is needed for v1 adoption; ignore its own predecessor link.
-    const prior = loadHarnessLogins({ ...options, previousManifest: true, 'login-pool': manifest.previousManifest,
+    const prior = loadHarnessLogins({ ...options, previousManifest: true, recordRelocation: previousRelocation, 'login-pool': manifest.previousManifest,
       'login-profile': first.profile, 'activation-record': first.activation, 'authority-record': first.authority,
       'tools-activation': first.toolsActivation, 'session-work-activation': first.sessionActivation },
     path => {
