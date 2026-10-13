@@ -25,6 +25,8 @@ Decision: capability-lines-contextual-repair | Replay the unmodified recorded ov
 
 Evidence: Seven preservation assertions failed on the original renderer; all 20 renderer tests now pass. The 715675709 delivered overclaim enters review unchanged; a supplied self_state_claim verdict and marker revision produce the canonical note and one send. This proves journal wiring with recorded input, not live model judgment. The note comes from 715675677; the original 715675709 prompt is unavailable. Recorded summary, uncertain, Jev undecided/unsure, review, delivered and empty shapes retain their bytes. Mixed tools-plus-arithmetic neighbors cover literal and both legacy subjects through rendering, persisted-prompt revision, review and delivery. Journal boundaries (23) and context floor (6) also pass.
 
+Publication: Refreshed the seven generated register outputs with build-register --replay from source commit 91d0766ebba1f78636c9f941727992553f77b00c. Owner manifests and grounding inventory needed zero pin changes. Declaration wording is unchanged.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: restrict the existing whole-answer branch to its explicit marker and retain local legacy substitution. Existing full-context review repairs semantic overclaims. Start: verified note and explicit scope. End: preserved adjacent answers or explicitly rendered list, reviewed before one send. Floors, permissions and budgets are unchanged; no new stage, state or classifier. Evidence is offline replay, not an unattended live-use claim.
