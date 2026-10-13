@@ -1164,7 +1164,9 @@ export type JournalRecord =
     dispositions?: ObjectionDisposition[];
     /** The investigation record the correction declares for a cannot-do claim its answer left unrecorded (plan
      * #104): admitted by the same checks as an answer's blocker, only when the answer admitted none. */
-    blocker?: ProposedBlocker; usage?: ModelUsage; at: number }
+    blocker?: ProposedBlocker;
+    /** Exact admission refusal, retained through replay so a review PASS cannot erase it. */
+    rejectedBlocker?: true; usage?: ModelUsage; at: number }
   /** One bounded held-class review of the revised text, inside the same call cap; no result is UNKNOWN, never repeated. */
   | { kind: 'reply-revision-review-reserve'; id: string; remainder?: string; correctionCandidate?: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-revision-review'; id: string; verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string;
@@ -1380,7 +1382,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   answerAt?: number; checkDoneAt?: number;
   reviewCandidate?: string; reviewMentionedDates?: string[];
   revisionReserved?: true; revisionReservedAt?: number; revisionObjections?: string[];
-  revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; dispositions?: ObjectionDisposition[]; blocker?: ProposedBlocker };
+  revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; dispositions?: ObjectionDisposition[]; blocker?: ProposedBlocker; rejectedBlocker?: true };
   release?: ReplyRelease; heldReview?: ReplyHeld;
   revisionReviewReserved?: true;
   /** Exact claim-trimmed candidate using the existing revision-review operation. */
@@ -4402,12 +4404,15 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (!turn.revisionReserved || turn.revision !== undefined || turn.intent !== undefined
       || (row.state === 'complete') !== (typeof row.text === 'string' && row.text.length > 0)
       || row.dispositions !== undefined && (row.state !== 'complete' || !validDispositions(row.dispositions, turn.revisionObjections ?? []))
+      || row.rejectedBlocker !== undefined && (row.rejectedBlocker !== true || row.state !== 'complete'
+        || row.blocker !== undefined || turn.answerBlocker !== undefined)
       || row.blocker !== undefined && (row.state !== 'complete' || turn.answerBlocker !== undefined
         || !validBlocker(row.blocker, turn.reservedAt ?? row.at) || !row.text!.includes(row.blocker.claim)))
       throw Error('preview journal: revision result order');
     turn.revision = { state: row.state, ...(row.text === undefined ? {} : { text: row.text }),
       ...(row.dispositions === undefined ? {} : { dispositions: row.dispositions.map(item => ({ ...item })) }),
-      ...(row.blocker === undefined ? {} : { blocker: row.blocker }) };
+      ...(row.blocker === undefined ? {} : { blocker: row.blocker }),
+      ...(row.rejectedBlocker ? { rejectedBlocker: true } : {}) };
     if (row.state !== 'uncertain') settleTokens(view, `revision:${row.id}`, row.usage);
     return;
   }
@@ -8778,6 +8783,22 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             }
             decision = checked.outcome; capRefused = checked.capRefused === true;
           }
+          // D4: an explicitly declared but refused blocker with no current record cannot be cleared
+          // by a capability-note PASS (or an unavailable reviewer). This is exact enforcement of
+          // admission state, not classification of reply prose. Reuse the existing one correction
+          // and holding path; matching a nonempty settled set remains the contextual review's job.
+          const lacksBlockerRecord = (rejected: boolean | undefined) => {
+            const declared = declaredObligations(journal.view, turn.id, ports.now());
+            return Boolean(rejected && !declared.blocker && !declared.settled.length);
+          };
+          const missingBlockerRecord = lacksBlockerRecord(turn.answerRejected?.blocker);
+          if (!credentialShape && decision !== 'violation' && missingBlockerRecord) {
+            const reason = 'The declared blocker was refused and no current blocker records it. Correct its constraint/evidence pairing and retain its recheck date.';
+            if (turn.replyChecks?.at(-1)?.reason !== reason) journal.append({ kind: 'reply-check', id: turn.id,
+              result: { verdict: 'violation', ruleIds: ['unrecorded_blocker'], confidence: null,
+                path: 'holding', latencyMs: 0, candidateDigest, reason }, at: ports.now() });
+            decision = 'violation';
+          }
           // Held classes, never released as advisory signals: Rule 86's secrets exception (Jev's credential
           // flag with no review verdict, or a review naming a credential), and build 4's obligation floor
           // (Rules 6, 20, 21, 23): a review naming an untracked deferral or an unevidenced cannot-do claim,
@@ -8840,13 +8861,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 // Plan #104: a real capability limit stated without its investigation record is corrected by
                 // declaring that record, not by hiding the limit. It is admitted exactly as an answer's blocker
                 // (same checks, quoted in the corrected text), only when the answer admitted none; anything
-                // else is dropped and the corrected text is judged without it.
+                // else stays visibly refused when the corrected candidate is selected.
                 const revisionAt = ports.now();
-                const proposedBlocker = text && turn.answerBlocker === undefined && outcome.blocker !== undefined
-                  ? obligationsFrom({ blocker: outcome.blocker }, turn, text, '{}', revisionAt).blocker : undefined;
+                const proposed = text && turn.answerBlocker === undefined && outcome.blocker !== undefined
+                  ? obligationsFrom({ blocker: outcome.blocker }, turn, text, '{}', revisionAt) : undefined;
                 journal.append({ kind: 'reply-revision', id: turn.id,
                   state: outcome.state === 'complete' && !text ? 'failed' : outcome.state, ...(text ? { text } : {}),
-                  ...(answered ? { dispositions: answered } : {}), ...(proposedBlocker ? { blocker: proposedBlocker } : {}),
+                  ...(answered ? { dispositions: answered } : {}), ...(proposed?.blocker ? { blocker: proposed.blocker } : {}),
+                  ...(proposed?.rejected?.blocker ? { rejectedBlocker: true } : {}),
                   ...(outcome.usage ? { usage: outcome.usage } : {}), at: revisionAt });
               }
               if (turn.revision?.state === 'complete' && turn.revision.text) {
@@ -8863,7 +8885,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // Claim excision changes the answer's meaning. Reuse the one revision-review slot to judge
             // the exact remainder with full context; never infer coherence from nonempty text. If that slot
             // already reviewed a different rewrite, keep the holding notice rather than reuse its verdict.
-            let withheld: ClaimWithheld | undefined, scoped: string | undefined, nothingLeft = false;
+            let withheld: ClaimWithheld | undefined, scoped: string | undefined, nothingLeft = missingBlockerRecord;
             if (revised === undefined && (!turn.revisionReviewReserved || turn.revisionReviewRemainder !== undefined) && holding && !audienceUnreviewed && !credentialHeldClass(turn, candidateDigest)) {
               const named = reviewHoldingFindings(turn, candidateDigest);
               const stripped = (actionHeader === undefined ? reply : reply.slice(actionHeader.length + 1))
@@ -8910,8 +8932,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 } catch { result = { verdict: 'unavailable', ruleIds: [] }; }
                 journal.append({ kind: 'reply-revision-review', id: turn.id, ...result, at: ports.now() });
               }
+              // Rules 42/57/99: PASS cannot release a revised declaration whose admission still
+              // failed. A rewrite that withdraws the declaration stays on the contextual route.
+              // Scoped excision is a different candidate, judged by its own contextual review.
+              const missingRevisionRecord = scoped === undefined && lacksBlockerRecord(turn.revision?.rejectedBlocker);
+              if (missingRevisionRecord) nothingLeft = true;
               const check = turn.revisionReview;
-              if (!(check?.verdict === 'pass' || check?.verdict === 'violation'
+              if (missingRevisionRecord || !(check?.verdict === 'pass' || check?.verdict === 'violation'
                 && !check.ruleIds.some(rule => REVIEW_HOLDING_RULES.includes(rule) || (scoped !== undefined || keepCurrentAnswer) && rule === 'incoherent_remainder'
                   || keepCurrentAnswer && rule === 'raw_path'))) revised = undefined;
               if (scoped !== undefined) {
@@ -9595,6 +9622,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const blocker = { kind: value.kind, claim: value.claim, avenues: Array.isArray(value.avenues)
         ? value.avenues.map(item => ({ avenue: item?.avenue, disposition: item?.disposition, evidence: item?.evidence })) : value.avenues,
         constraint: value.constraint, outsideAction: value.outsideAction, recheckAt: dayEpoch(value.recheck, zone) };
+      // Rules 4, 20, 99, 116: repair only the constraint/evidence pairing, and only when the existing
+      // table has exactly one valid answer. Full validation of every other field still applies. Unknown
+      // constraint names are not typos we may interpret; ambiguous evidence stays refused for the mind.
+      if (!validBlocker(blocker, decidedFrom) && typeof blocker.constraint === 'string'
+        && Object.hasOwn(CONSTRAINT_EVIDENCE, blocker.constraint)) {
+        const candidates = Object.keys(CONSTRAINT_EVIDENCE).filter(constraint =>
+          validBlocker({ ...blocker, constraint }, decidedFrom));
+        if (candidates.length === 1) blocker.constraint = candidates[0]!;
+      }
       if (validBlocker(blocker, decidedFrom) && reply.includes(blocker.claim)) result.blocker = blocker;
       else result.rejected = { ...result.rejected, blocker: true };
     }

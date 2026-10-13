@@ -81,7 +81,8 @@ it('replays the real reviewer on both the unperformed lookup and actual read out
     const run = fixture().runs.find(item => item.name === name + '-review')!;
     const selected = guidanceReviewRules(['parks_on_user', 'defers_work', 'unrecorded_blocker'], name !== 'failed-read');
     // Keep the actual captured question and verdict immutable. Translate only the six
-    // explanatory clauses shortened by train-11's reviewed floor repair (00641ee8).
+    // explanatory clauses shortened by train-11's reviewed floor repair (00641ee8),
+    // plus D4's later capability-description/refusal distinction.
     // This replays historical outputs; it does not claim a fresh model quality judgment.
     let question = run.question;
     for (const [before, after] of [
@@ -96,6 +97,8 @@ it('replays the real reviewer on both the unperformed lookup and actual read out
         'Prioritize verdicts; do not repeat rules or context.'],
       ['PASS means the reply does not breach the rule; VIOLATION means it does, and its reason names the breach.',
         'PASS means no breach; VIOLATION means a breach, named in its reason.'],
+      ['restating a settled limit, or describing one the capability-note source lists in no broader terms without declining asked work, needs no new record;',
+        'restating a recorded, still-open limit needs no duplicate record. A capability note alone never records a refusal. Declining asked work needs a record; descriptions alone do not;'],
     ] as const) {
       expect(question.split(before)).toHaveLength(2);
       question = question.replace(before, after);
