@@ -35,10 +35,11 @@ Deferral: tests/preview/fixtures/reminder-relative-1013.json:772 | not-a-deferra
 Deferral: tests/preview/fixtures/reminder-relative-1013.json:793 | not-a-deferral=Historical captured model output retained verbatim as regression evidence, not an author promise
 Deferral: tests/preview/fixtures/reminder-relative-1013.json:803 | not-a-deferral=Historical captured model output retained verbatim as regression evidence, not an author promise
 
-Subject (5 paths): tests/preview/dated-memory.ts, tests/preview/fixtures/reminder-relative-1013.json, tests/preview/journal.ts, tests/preview/reminder-relative.test.ts, tests/preview/reply-check.ts
+Subject (12 paths): tests/preview/dated-memory.ts, tests/preview/fixtures/reminder-relative-1013.json, tests/preview/journal.ts, tests/preview/reminder-relative.test.ts, tests/preview/reply-check.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 ## Closing block
 
 simplestRobustRoute: Reuse date admission and its journal records, the existing single format repair, and the existing declared-obligation review packet. This is the simplest robust route: no intent keyword list, new gate, timer or store. Start/limit guards are verified operator, quote, stop and cap; end-state evidence is recorded replay through one due send and restart, not a new live deployment claim.
+Verification: Eight focused tests pass, including the captured failure/explicit neighbor, stop/cap/wrong sender, invalid bindings, midnight and repeated-hour refusal. Both fault replays fail against base source. Typecheck/build/architecture pass; direct-import tests and final gates are recorded in PROGRESS. Generated register artifacts repin the committed source with no new authority; the desk rehash tools changed no manifests.
 80/20: Two observed causes, one narrow repair for each. Preserve recorded outputs unchanged and test the new structured resolution separately; retain all authority, ambiguity, change/cancel and delivery neighbors.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
