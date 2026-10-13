@@ -45,3 +45,5 @@ Deferral: tests/preview/fixtures/reminder-relative-1013.json:329 | not-a-deferra
 Deferral: tests/preview/fixtures/reminder-relative-1013.json:772 | not-a-deferral=Historical captured model output retained verbatim as regression evidence, not an author promise
 Deferral: tests/preview/fixtures/reminder-relative-1013.json:793 | not-a-deferral=Historical captured model output retained verbatim as regression evidence, not an author promise
 Deferral: tests/preview/fixtures/reminder-relative-1013.json:803 | not-a-deferral=Historical captured model output retained verbatim as regression evidence, not an author promise
+
+Publication: Existing desk chain refreshed zero inventory or owner hashes. Register replay binds merged source b0aa961e1fd4689ca9b2239be3a1d95cfca39970, 289 entries, 116 rules and 34 terms. Every parent changelog entry survives after ignoring only revision; train-21 arrays remain exact suffixes. Broker paths have zero diff against the prior train-21 head.
