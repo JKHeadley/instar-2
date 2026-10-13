@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { createHash } from 'node:crypto';
-import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, capabilitySentence, SELF_DESCRIPTION, SELF_IDENTITY } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, CAPABILITY_SENTENCE_LABEL, SELF_DESCRIPTION, SELF_IDENTITY } from './briefing.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { readAnswer } from './answer-reading.js';
 
@@ -12,6 +12,7 @@ const evidence = JSON.parse(readFileSync(new URL('./fixtures/train-12-capability
 // Historical prompts remain immutable; translate self-description and add literal-copy guidance.
 const currentInstructions = (text: string) => text.replace(text.split('\n').find(line => line.startsWith(SELF_IDENTITY))!, SELF_DESCRIPTION)
   .replace('For a later-action promise', `${LITERAL_COPY_INSTRUCTIONS}\nFor a later-action promise`);
+const recordedSentence = (run: { capabilityNote: { text: string } }) => run.capabilityNote.text.split('\n').find(line => line.startsWith(CAPABILITY_SENTENCE_LABEL))!.slice(CAPABILITY_SENTENCE_LABEL.length);
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 
 // Replay the shipped second reading stage too: readAnswer serializes structured
@@ -39,10 +40,10 @@ async function rendered(value: string, question: string) {
 it('retains live paraphrase and malformed-key failures beside the fixed-sample rendered replays', async () => {
   expect(evidence.original.update).toBe(715675606);
   expect(evidence.original.judge).toMatchObject({ verdict: 'FAIL', reason: 'rendered tools/outbound sentence missing, altered or duplicated' });
-  expect(evidence.original.answer.split('\n')).not.toContain(capabilitySentence(evidence.original.limits));
+  expect(evidence.original.answer.split('\n')).not.toContain(recordedSentence(evidence.original));
   expect(evidence.negativeReplay.update).toBe(715675606);
   expect(evidence.negativeReplay.judge).toMatchObject({ verdict: 'FAIL', reason: 'rendered tools/outbound sentence missing, altered or duplicated' });
-  expect(evidence.negativeReplay.answer.split('\n')).not.toContain(capabilitySentence(evidence.negativeReplay.limits));
+  expect(evidence.negativeReplay.answer.split('\n')).not.toContain(recordedSentence(evidence.negativeReplay));
   expect(currentInstructions(evidence.liveReplay.instructions)).toBe(ANSWER_INSTRUCTIONS);
   expect(evidence.liveReplay.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(currentInstructions(evidence.instructions)).toBe(ANSWER_INSTRUCTIONS);
@@ -58,7 +59,7 @@ it('retains live paraphrase and malformed-key failures beside the fixed-sample r
     if (!reading.ok) throw Error(reading.defect);
     expect(reading.value).toBe(run.readerValue ?? run.answer);
     expect(await rendered(reading.value, evidence.question)).toBe(run.answer);
-    expect(run.answer.split('\n').filter((line: string) => line === capabilitySentence(run.limits))).toHaveLength(run.run === 75 ? 0 : 1);
+    expect(run.answer.split('\n').filter((line: string) => line === recordedSentence(run))).toHaveLength(run.run === 75 ? 0 : 1);
     expect(run.judge).toMatchObject({ verdict: run.run === 75 ? 'FAIL' : 'PASS', rubric: 'k11a-rubric-v3-rendered' });
   }
   const structured = evidence.runs.find((run: { run: number }) => run.run === 73);
@@ -71,7 +72,7 @@ it('retains live paraphrase and malformed-key failures beside the fixed-sample r
   for (const run of [evidence.original, evidence.negativeReplay, ...evidence.runs, evidence.liveReplay]) {
     const note = run.capabilityNote;
     expect(note.provenance.excerptSha256).toBe(hash(note.text));
-    expect(note.provenance.renderedCapabilitySha256).toBe(hash(capabilitySentence(run.limits)));
+    expect(note.provenance.renderedCapabilitySha256).toBe(hash(recordedSentence(run)));
     expect(run.judge.digest).toBe(hash(JSON.stringify({ v: run.judge.rubric,
       note: note.text, reply: run.answer, provenance: note.provenance })));
   }

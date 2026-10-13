@@ -24,7 +24,7 @@ it('replays the real capability marker and preserves its recorded failure eviden
   expect(answer).toContain('look up');
   expect(answer).toContain('No accounts are connected');
   expect(answer).toContain('connect an account');
-  expect(answer).toContain('November 12, 2026 at 19:00 UTC');
+  expect(answer).toContain('November 12, 2026 at 21:40 UTC');
   expect(answer).not.toMatch(/SecretRef|epoch ms|effect doorway|MCP|adapter|rungraph/);
   expect(answer).toContain('1000 model attempts');
   const note = current.sources.find(s => s.id === 'capability-note')!;
@@ -42,8 +42,8 @@ it('does not turn missing, unknown or configured connections into account author
   const unknown = renderCapabilityReply(marker, packet({ mcp: undefined }));
   const configured = renderCapabilityReply(marker, packet({ mcp: 2 }));
   expect(absent).toContain('No accounts are connected');
-  expect(unknown).toContain('cannot confirm which account connections');
-  expect(configured).toContain('2 account connections are configured');
+  expect(unknown).toContain('cannot confirm which tool connections');
+  expect(configured).toContain('2 tool connections are configured');
   expect(configured).toContain('does not prove that an account is signed in');
   for (const answer of [absent, unknown, configured]) {
     expect(answer).toContain('permission');
@@ -58,4 +58,45 @@ it('does not turn missing, unknown or configured connections into account author
   expect(noTools).toContain('no tools, browsing or code execution');
   expect(noTools).not.toContain('look up');
   expect(noTools).toContain('remind');
+});
+
+it('delivers the recorded model output through reading, rendering and journal review exactly once', async () => {
+  const { mkdtempSync, realpathSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { createJournalWorker, openPreviewJournal } = await import('./journal.js');
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'capability-plain-')));
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(52), {
+    kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
+    configurationDigest: 'sha256:offline', expires: limits.expiresAt,
+    maxCalls: 8, maxReplies: 4, maxTurns: 4, maxBytes: 131072, cursor: 0 });
+  const current = packet(), sent: string[] = [], reviewed: string[] = [];
+  try {
+    const worker = createJournalWorker(journal, { now: () => 1791907116665, stopped: () => false,
+      sources: () => current.sources,
+      model: async () => {
+        const reading = readAnswer(recorded.modelOutput, { wrapped: 'accept' });
+        if (!reading.ok) throw Error(reading.defect);
+        return reading.value;
+      },
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      checkOutbound: () => {}, send: async input => { sent.push(input.expectedText); return sent.length; },
+      replyCheck: { elapsedMs: () => 100, jev: async () => ({ value: null, latencyMs: 1 }),
+        escalate: async text => { reviewed.push(text); return recorded.review; } } });
+    worker.intake([{ update_id: recorded.update, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: recorded.question } }]);
+    await worker.drain(); await worker.drain();
+    const expected = renderCapabilityReply(marker, current);
+    expect(reviewed).toEqual([expected]);
+    expect(sent).toEqual([expected]);
+    // Replay proves the review/send wiring, not a fresh model judgment of the new prose.
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('preserves recorded non-capability shapes under the new note, including empty and uncertain answers', () => {
+  const { otherShapes } = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8'));
+  expect(otherShapes.map((row: { kind: string }) => row.kind)).toEqual(['summary-writer', 'summary-uncertain', 'jev-undecided',
+    'jev-unsure', 'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
+  for (const row of otherShapes) expect(renderCapabilityReply(row.raw, packet())).toBe(row.raw);
 });

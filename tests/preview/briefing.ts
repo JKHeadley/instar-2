@@ -70,16 +70,16 @@ export const SIGN_OFF = 'Fresh sign-off is only for resources above named limits
 export const CAPABILITY_SENTENCE_LABEL = 'Tools/outbound sentence (quote verbatim): ';
 export function capabilitySentence(limits: { tools?: boolean; mcp?: number }): string {
   if (!limits.tools) return 'I have no tools, browsing or code execution here, and cannot act outside this chat; I can answer later-time requests only as listed in my capability record.';
-  const accounts = limits.mcp === undefined ? 'I cannot confirm which account connections are configured; check connections before relying on account access.'
+  const accounts = limits.mcp === undefined ? 'I cannot confirm which tool connections are configured; check connections before relying on account access.'
     : limits.mcp === 0 ? 'No accounts are connected, so I cannot access your signed-in accounts. To enable that, connect an account and give permission for the work.'
-    : `${limits.mcp} account connections are configured; that does not prove that an account is signed in. I can only use what their tools expose, with permission.`;
+    : `${limits.mcp} tool connections are configured; that does not prove that an account is signed in. I can only use what their tools expose, with permission.`;
   const checkNames: Record<string, string> = { irreversible: 'whether it can be undone', resources: 'your resource limits', scope: 'your permissions', policySensitive: 'sensitive matters' };
   const checks = (CONSEQUENTIAL_TESTS as string[]).map(key => checkNames[key]).join(', ');
   const signOffNames: Record<string, string> = { resources: 'it may spend money or resources above your limit',
     irreversibleOutsideRole: 'it cannot be undone and is outside my role', publicInPersonName: 'it speaks publicly in your name',
     widensAuthority: 'it widens my permissions', policySensitive: 'it touches something you marked sensitive' };
   const signOff = (SIGN_OFF_TESTS as string[]).map(key => signOffNames[key]).join('; ');
-  return `I can use files, run commands, look up information on the web and delegate parts of a task to other agents. ${accounts} `
+  return `I can use files, run commands, look up information on the web and delegate parts of a task to other agents, who can delegate in turn. ${accounts} `
     + `Before changing a website or sending a message elsewhere, I check ${checks} and save the required records. `
     + 'Work you have already allowed needs no new approval; these checks can still stop an action, and work outside my role needs the matching permission. '
     + `I ask for fresh approval only when ${signOff}.`;

@@ -201,9 +201,9 @@ it('tells the agent and the operator exactly which tools exist and where outward
   // The rendered tools/outbound paragraph joins the can-do list; the custody and runtime limits follow it.
   const toolsSentence = CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true });
   expect(withTools).toContain(`Capabilities:\n${toolsSentence}`);
-  expect(withTools).toContain('I can use files, shell, web reads, nested subagents; MCP servers: unknown.');
-  expect(withTools).toContain("four checks (reversibility, resource limits, granted scope, sensitivity) and durability requirements.");
-  expect(withTools).toContain('Standing grants need no new approval; checks can still refuse, and outside-role work needs the matching grant.');
+  expect(withTools).toContain('I can use files, run commands, look up information on the web and delegate parts of a task to other agents, who can delegate in turn.');
+  expect(withTools).toContain("whether it can be undone, your resource limits, your permissions, sensitive matters and save the required records.");
+  expect(withTools).toContain('Work you have already allowed needs no new approval; these checks can still stop an action, and work outside my role needs the matching permission.');
   expect(withTools).toContain(TOOLS_LIMITS);
   // It describes the capability, never a hand-picked list: the whole set is offered and each call is decided at the hook.
   expect(TOOLS_BRIEFING).toMatch(/^tools: full Claude Code set \(files, shell, web reads, nested subagents\); MCP servers: unknown;/u);
@@ -211,7 +211,7 @@ it('tells the agent and the operator exactly which tools exist and where outward
   // Outward writes and sends are an ability behind the doorway and the operator's grant, never a blanket denial.
   expect(TOOLS_BRIEFING).toContain('network writes and outside sends via the doorway\'s four tests; standing grants need no new approval');
   expect(withTools).not.toMatch(/no account writes|standing block|no vault/u);
-  expect(TOOLS_LIMITS).toMatch(/^Limits: a sent credential is vaulted on arrival \(you see its SecretRef\), not tool-readable\.$/u);
+  expect(TOOLS_LIMITS).toBe('Limits: passwords or keys you send are stored securely on arrival; my tools cannot read them back.');
   // The MCP wording says what the root configures now: both sides of the count, and a configured server is never claimed
   // as logged-in account access (review round 1, finding 4; selfdesc-abilities covers the unknown count too).
   expect(toolsBriefing(0)).toContain('no MCP server, so no logged-in account access');
@@ -219,7 +219,7 @@ it('tells the agent and the operator exactly which tools exist and where outward
   expect(capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1, tools: true, mcp: 0 }).text)
     .toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }));
   // The attempt cap and the expiry stay in the note: the note is what the self-description is held to.
-  expect(withTools).toContain('at most 50 model attempts, ending at epoch ms 1.');
+  expect(withTools).toContain('at most 50 model attempts, ending January 1, 1970 at 00:00 UTC.');
   expect(withTools).not.toContain('no tools, browsing, running code');
   const without = capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1 }).text;
   expect(without).toContain('Nothing unlisted is available: no tools, browsing, running code');

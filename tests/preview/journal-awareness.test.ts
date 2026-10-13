@@ -64,8 +64,8 @@ it('puts a current, labelled desk report into every turn packet within the conte
       expect(JSON.parse(input.context).capability).toContain('capability-note source');
       const note = (JSON.parse(input.context).sources as { id: string; text: string }[]).find(s => s.id === 'capability-note')!.text;
       expect(note).toContain('no tools');
-      expect(note).toContain('- an encrypted local journal');
-      expect(note).toContain('survives restarts');
+      expect(note).toContain('- Ask me to remember, correct or forget a fact.');
+      expect(note).toContain('across restarts');
       expect(note).toContain('correct or forget');
       // Hold guidance rides only while a held item is visible; held-reply-notice.test.ts proves the held side.
       expect(JSON.parse(input.context).capability).not.toContain('runner sends any due held notice on its fixed path');

@@ -22,7 +22,7 @@ The journal runner's capability briefing is generated from these lines and the f
   Details: only the verified operator is admitted; a forum journal serves all topics of one configured group, including General, with topic-specific recent history and harness sessions. Forum packets identify the current topic (General, its recorded name, or topic number); shared facts carry their source topic so the agent can attribute them across topics. Private-chat packets retain their existing format. Unknown send outcomes are never resent.
 - `preview-durable-memory`: Ask me to remember, correct or forget a fact. Our messages and memory are saved encrypted on this machine, across restarts.
   Details: keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory.
-- `preview-status-command`: Ask "status" or "how are you doing" for a report from my saved activity, without another model call.
+- `preview-status-command`: Ask "status" or "how are you doing" for a summary of my saved activity, without another model call.
   Details: the exact messages status and how are you doing are answered from the durable journal without generating an answer.
 - `preview-upcoming-date-mention`: I can mention a saved date coming up within 48 hours in my next reply, once.
   Details: when a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; the mention is remembered across restarts.
