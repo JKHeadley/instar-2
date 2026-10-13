@@ -4,6 +4,10 @@ _Generated from `18-sentinel-holders.changelog.json` by `scripts/render-changelo
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 9 · 2026-10-13 · draft — train-19 adopts origin/main design text exactly as required by the release-train brief.
+
+- **Align the governed document and indexed sections with the merged main design text.** — The release train takes main design text exactly while preserving live history in this sibling changelog. This is a design-text integration, not a runtime behavior change. _(reviews/train-19-change-review.md; origin/main 7ef8f158d4129a4cf90cf3c546701f32e348fdd3)_
+
 ## Revision 8 · 2026-10-03 · draft — cint-L43 pipeline repair (plan row #420): the body names the rewrite review without the history marker rule 91 bans. No constitution change.
 
 - **Sections 13 and 16 call the review of the agent's discreet rewrite the rewrite review (four occurrences); the meaning is unchanged.** — The governed-document checker refused the word "revision" in the design body as a history marker (rule 91; P13-NF-02), though it named a review round, not a document history. _(lanes/cint-L43-PROGRESS.md (Pipeline repair); tests/harness-adapters/foundation.test.ts)_

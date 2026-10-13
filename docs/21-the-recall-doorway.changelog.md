@@ -4,6 +4,10 @@ _Generated from `21-the-recall-doorway.changelog.json` by `scripts/render-change
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 9 · 2026-10-13 · draft — train-19 adopts origin/main design text exactly as required by the release-train brief.
+
+- **Align the governed document and indexed sections with the merged main design text.** — The release train takes main design text exactly while preserving live history in this sibling changelog. This is a design-text integration, not a runtime behavior change. _(reviews/train-19-change-review.md; origin/main 7ef8f158d4129a4cf90cf3c546701f32e348fdd3)_
+
 ## Revision 8 · 2026-10-03 · draft — Unit review of w4-memlearn-s round 1 (Astra, VERDICT: NO): two must-fixes repaired at source. No constitution change.
 
 - **Section 16 offers the memoryFailure report after any answer to the operator, including a full-history one, as the packet's lowest-priority guidance that yields first under byte pressure; section 12 P21-NF-25 and section 13 P21-NEG-32 follow.** — A full-history "I don't know" states no wrong value, so the correction signal could not cover it and the operator's reminder was silently lost (Purpose constraint 2, Rule 85). _(lanes/w4-memlearn-s-PROGRESS.md (Pipeline repair); tests/preview/memory-learning.test.ts)_
