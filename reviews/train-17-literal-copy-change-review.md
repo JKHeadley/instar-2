@@ -32,6 +32,8 @@ Prompt finding: 95e349aaf4ac | quoted-evidence | Existing captured capability/pr
 Prompt finding: b00ed403060a | quoted-evidence | Existing captured capability/protocol wording is compared with current source, not used as a trigger or required answer — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
 
 
+Register publication: Replayed generated/ from committed source 5bedaf6072bf705e26ed3a5fa4788a73aaa0ae21; generation sha256:e07050a5954d526ce2e80eed2b77ae825cb6cfb26677ee8f5429eca2ea5d4ac2. Delegated owner rehash and inventory repin produced zero changes; no pin was hand-edited.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: correct the existing answer instructions and preserve the source of the observed mistake, with no classifier, automatic text replacement, extra model call or new gate. The test repair restores the shipped authority term so a synchronous delay does not preempt the deliberate stall, and waits for the fixed durable receipt prefix through existing replication. Existing admission, secrets, caps, stop, ownership and send-settlement checkpoints remain the guards. Three fresh isolated model replays and worker/restart tests provide evidence; no autonomous deployment claim.
