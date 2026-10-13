@@ -24,6 +24,8 @@ it('replays the real capability marker and preserves its recorded failure eviden
   expect(answer).toContain('look up');
   expect(answer).toContain('No accounts are connected');
   expect(answer).toContain('connect an account');
+  expect(answer).toContain('Not enabled here: the separate work coordinator, Slack conversations, Slack replies, another Telegram connection (this bot chat works).');
+  expect(answer).not.toContain('Enable these in setup');
   expect(answer).toContain('November 12, 2026 at 21:40 UTC');
   expect(answer).not.toMatch(/SecretRef|epoch ms|effect doorway|MCP|adapter|rungraph/);
   expect(answer).toContain('1000 model attempts');

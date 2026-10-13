@@ -127,7 +127,7 @@ export function capabilityBriefing(readSource: (path: string) => string,
     SELF_IDENTITY,
     'Capabilities:', ...available.filter(f => f.userFacing).map(item), `${CAPABILITY_SENTENCE_LABEL}${sentence}`,
     'Internal:', ...available.filter(f => !f.userFacing).map(item),
-    ...off.length ? [`Not enabled here: ${off.map(offName).join(', ')}. Enable these in setup; connect any needed accounts and grant permission.`] : [],
+    ...off.length ? [`Not enabled here: ${off.map(offName).join(', ')}.`] : [],
     // Live 2026-10-02 (room two, build e26a8c1b): this line used to end "and no scheduled work, nudges or other
     // unprompted messages", which denies `preview-requested-actions` listed two lines above it. The reply to
     // "Remind me today at 1:25 am" opened "I can't actually do this one - I have no scheduler" and then carried

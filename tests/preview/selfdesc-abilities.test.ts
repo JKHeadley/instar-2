@@ -45,7 +45,7 @@ const plainRecordedNote = (text: string) => {
     CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }))
     .replace('Limits: a sent credential is vaulted on arrival (you see its SecretRef), not tool-readable.', TOOLS_LIMITS)
     .replace('Code switched off here: rungraph-core, slack-conversation-adapter, slack-ordinary-reply, telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot).',
-      'Not enabled here: the separate work coordinator, Slack conversations, Slack replies, another Telegram connection (this bot chat works). Enable these in setup; connect any needed accounts and grant permission.')
+      'Not enabled here: the separate work coordinator, Slack conversations, Slack replies, another Telegram connection (this bot chat works).')
     .replace(/ending at epoch ms (\d+)/u, (_match, ms) => 'ending ' + new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(Number(ms)) + ' UTC');
 };
 const renderedNote = (text: string) => currentChannelNote(text).replace(`- ${toolsBriefing(0)}`, CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }))
