@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, SELF_DESCRIPTION } from './briefing.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { readAnswer } from './answer-reading.js';
@@ -13,14 +13,23 @@ import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-
 // This checks copying fidelity; it does not claim a deterministic guarantee from prose.
 const capture = JSON.parse(readFileSync(new URL('./fixtures/literal-copy-715675751.json', import.meta.url), 'utf8'));
 
-it('retains the delivered one-character error and binds the fresh replays to the shipped instructions', () => {
+it('retains the delivered error and captured copying guidance while replay uses current capability guidance', () => {
   expect(capture.original.update).toBe(715675751);
   expect(capture.original.sent).toBe(347);
   expect(capture.original.question).toContain('probe-7d09d28a');
   expect(capture.original.answer).toContain('probe-7d09d38a');
   expect(capture.original.answer).not.toContain('probe-7d09d28a');
   expect(capture.original.answerReason).toContain('probe-7d09d38a');
-  expect(capture.instructions).toBe(ANSWER_INSTRUCTIONS);
+  // These model runs predate train-18's whole-answer capability reference. Keep
+  // the capture intact; only that separately tested instruction differs. This
+  // is recorded-output replay under today's prompt, not a fresh provider trial.
+  const historicalSelfDescription = 'You are an Instar 2.0 agent with lasting memory and values. Correct errors; omit preview/harness/model labels. '
+    + 'Self-description: put {{capability-tools-outbound}} in its own paragraph for tools/outbound; the runner inserts the capability-note line. '
+    + 'Free text describes positive memory/status/reminder/media abilities only. No free-text limits or missing-status asides, even true. '
+    + 'Quote capability-note limits verbatim, timestamps intact.';
+  expect(capture.instructions.split('\n')).toContain(historicalSelfDescription);
+  expect(capture.instructions).toContain(LITERAL_COPY_INSTRUCTIONS);
+  expect(capture.instructions.replace(historicalSelfDescription, SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(LITERAL_COPY_INSTRUCTIONS).not.toContain('probe');
   expect(capture.runs).toHaveLength(3);
