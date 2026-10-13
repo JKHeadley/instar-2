@@ -28,6 +28,10 @@ Decision: capability-lines-recorded-replay | Replay exact delivered 715675709 by
 
 Evidence: The unmodified 715675709 delivered reply fails the regression on base and passes after implementation through actual offline journal answer/review/send. Its exact tools/outbound sentence is the existing protocol reference, so the replay adds no marker. All emitted grants and limits come from the note; output contains answers the operator and never as the operator. Exactly-once insertion, idempotence, revision rendering, unrelated answers and malformed-note neighbors are covered. No live delivery or independent judgment claim.
 
+Publication: Regenerated the seven register publications in replay mode from source commit ae53af1cc9dbb13cd1be9a33b4f18e45fd84efa2. Only publication provenance advances; capability declarations and wording are unchanged.
+
+Validation: Renderer 18 cases, journal boundary 23 cases and default-context floor 6 cases pass. Typecheck, build and architecture pass. Direct-import and final gate results are recorded in the desk handoff report.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: extend the existing reference renderer to the entire capability answer. A marker substitution that retains surrounding prose cannot eliminate the recorded grant overclaim there. The deliberate tradeoff is canonical note framing for referenced answers; mixed or ordinary answers remain model prose under existing review. Start: explicit reference plus validated note. End: note-derived public grants and limits reviewed and delivered once. Limits: no additional authority, model call, store or gate; malformed evidence is preserved. Offline recorded-case replay exercises the shipped journal path, not a new live delivery.
