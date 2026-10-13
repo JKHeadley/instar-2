@@ -22,11 +22,23 @@ it.each(['inline', 'file'])('applies all six soft/hard limits through /bin/sh (%
 });
 
 it('never raises tighter inherited ceilings', () => {
-  const inner = limitedArgv({ ...limits, executable: '/bin/bash', args: ['-p', '-c', readLimits], gated: false });
-  const outer = limitedArgv({ ...limits, handles: 48, cpuSeconds: 3, processLimit: 96,
+  // NPROC covers the whole UID. The nested shim must still fork to read its
+  // inherited limits, so a fixed 96 can exhaust a busy host before the probe runs.
+  const count = processCensusCount(execFileSync('/bin/ps', processCensusArgs(process.getuid!()), { encoding: 'utf8' }));
+  expect(count).toBeGreaterThan(0);
+  const inherited = execFileSync('/bin/bash', ['-p', '-c', 'ulimit -S -u; ulimit -H -u'], { encoding: 'utf8', env })
+    .trim().split('\n').map(value => value === 'unlimited' ? Infinity : Number(value));
+  const innerProcesses = Math.min(count + 512, ...inherited);
+  const outerProcesses = Math.min(count + 256, innerProcesses - 1);
+  expect(Number.isSafeInteger(innerProcesses)).toBe(true);
+  expect(outerProcesses, 'UID needs fork headroom beneath its inherited NPROC ceilings').toBeGreaterThan(count + 32);
+  expect(innerProcesses).toBeGreaterThan(outerProcesses);
+  const inner = limitedArgv({ ...limits, processLimit: innerProcesses,
+    executable: '/bin/bash', args: ['-p', '-c', readLimits], gated: false });
+  const outer = limitedArgv({ ...limits, handles: 48, cpuSeconds: 3, processLimit: outerProcesses,
     executable: '/bin/sh', args: inner, gated: false });
   expect(execFileSync('/bin/sh', outer, { encoding: 'utf8', env }).trim().split('\n').map(Number))
-    .toEqual([48, 48, 3, 3, 96, 96]);
+    .toEqual([48, 48, 3, 3, outerProcesses, outerProcesses]);
 });
 
 it('ignores BASH_ENV and preserves literal argv without executing it', () => {
