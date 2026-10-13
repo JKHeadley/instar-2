@@ -1883,7 +1883,8 @@ async function main() {
       if (!reading.ok) {
         recordShape(shapesPath, role, 'decision', 'malformed', reading.shape);
         // The defect is content-free protocol text; the format re-ask names it so the model can correct exactly that.
-        return { state: 'complete', failureClass: 'malformed', defect: reading.defect, usage: result.usage };
+        return { state: 'complete', failureClass: 'malformed', defect: reading.defect,
+          ...(/^(obligation|work-repair):/u.test(id) ? { rawOutput: result.bytes } : {}), usage: result.usage };
       }
       if (reading.shape !== 'bare') recordShape(shapesPath, role, 'decision', 'tolerated', reading.shape);
       // Rule 2: an object task's answer the runner had to read out of JSON text is a visible deviation, not a silent one.
@@ -2020,7 +2021,7 @@ async function main() {
           const outcome = await sessionWork.port.run({ operation: id.replaceAll(':', '-'), question, context: packet,
             authority: sessionWork.authority });
           if (outcome.state === 'complete') return { state: 'complete', text: outcome.text, usage: { inputTokens: null, outputTokens: null, charge: null } };
-          if (outcome.state === 'failed') return { state: 'complete', failureClass: 'malformed' };
+          if (outcome.state === 'failed') return { state: 'complete', failureClass: 'rejected' };
           return { state: 'uncertain' };
         } }),
       // Rule 44: an installed update rides operator packets until a sent answer's recorded prompt carried it.

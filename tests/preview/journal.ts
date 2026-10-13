@@ -894,6 +894,8 @@ export const loopRevisitMs = (view: JournalView): number => view.genesis.loopRev
 export type ObligationOutcome = 'report' | 'continue' | 'waiting' | 'still-blocked' | 'cleared' | 'failed' | 'uncertain';
 export interface ObligationWork { attempts: number; last: number; lastSlot: number; inFlight?: number;
   outcome?: ObligationOutcome; note?: string; waitsOn?: 'operator' | 'external';
+  /** Same-slot format repair is reserved once; counts survive journal replay and snapshots. */
+  repairSlot?: number; formatFailures?: number; failedAttempts?: number; failureClass?: 'malformed';
   /** How many journal turns existed when the latest result was recorded: later turns are what arrived since. */
   turnsSeen?: number;
   /** `boundTo` is the reply whose durable intent carries the result (it is never attached again); `delivered` is set
@@ -1183,7 +1185,7 @@ export type JournalRecord =
 
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   /** Rules 8, 22, 92, 99, 102: one scheduled piece of work on a due obligation, started at most once per slot. */
-  | { kind: 'obligation-start'; obligation: string; slot: number; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'obligation-start'; obligation: string; slot: number; repair?: true; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   /** Rules 60, 114: one delegated-session edge, or that same edge's settled close. The edge is
    * recorded before the child session exists and the close on every path out, so a delegation is
    * never a session nobody owns. Its loss detector is replay: an obligation-result whose step ran
@@ -1191,7 +1193,7 @@ export type JournalRecord =
    * in the journal. The edge reserves the step's whole model-call liability against the call cap
    * (retained, like a tool turn's); otherwise the obligation's own result carries the state. */
   | { kind: 'session-work'; record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkEffect; at: number }
-  | { kind: 'obligation-result'; obligation: string; slot: number; outcome: ObligationOutcome; report?: string; note?: string;
+  | { kind: 'obligation-result'; obligation: string; slot: number; outcome: ObligationOutcome; failureClass?: 'malformed'; report?: string; note?: string;
     assessment?: BlockerAssessment;
     waitsOn?: 'operator' | 'external'; recheckAt?: number; usage?: ModelUsage; at: number }
   | { kind: 'intent'; id: string; text: string; correctionDeferred?: true; body?: string; chat: string; thread?: number; update: number; grant: string; mentionedDates?: string[]; promises?: AgentPromise[];
@@ -2195,8 +2197,12 @@ const pendingReport = (work: ObligationWork | undefined) => work?.report !== und
 const attachableReport = (work: ObligationWork | undefined) => pendingReport(work) && work!.report!.boundTo === undefined;
 /** An attempt that supplied no account of the work: `uncertain` was interrupted, `failed` is a provider failure
  * or a malformed answer, and neither decided anything. What such a step was given to answer is therefore neither
- * answered nor consumed, and its retry waits the revisit cadence instead of running again at once. */
+ * answered nor consumed. Known format misses get only the bounded accelerated retries below. */
 const noAccount = (outcome: ObligationOutcome | undefined) => outcome === 'uncertain' || outcome === 'failed';
+export const OBLIGATION_FORMAT_RETRY_MS = 2 * 60_000, OBLIGATION_FORMAT_RETRIES = 2;
+/** Only known format misses accelerate; the lifetime cap cannot reset on a restart or a good result. */
+const workRetryDelay = (work: ObligationWork, revisit: number) => work.failureClass === 'malformed'
+  && (work.formatFailures ?? 0) <= OBLIGATION_FORMAT_RETRIES ? Math.min(revisit, OBLIGATION_FORMAT_RETRY_MS) : revisit;
 /** Rules 8, 22, 46, 92, 99, 102: each open agent-owned obligation that the agent can act on without anyone else,
  * with the slot its next scheduled work step is due. Derived from durable state only; the verified operator's own
  * message (or the agent's reply to it) is the authority, so a probe or another sender's message never schedules work. */
@@ -2205,7 +2211,7 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
   const items: ReturnType<typeof obligationSchedule> = [];
   const revisit = loopRevisitMs(view);
   const next = (key: string, first: number) => { const work = view.obligationWork[key];
-    return Math.max(first, work ? work.last + revisit : first); };
+    return Math.max(first, work ? work.last + workRetryDelay(work, revisit) : first); };
   view.commitments.forEach((note, id) => {
     const source = view.turns.get(note.source), key = `commitment:${id}`, work = view.obligationWork[key];
     if (!commitmentOpen(view, id) || !source || !operatorTurn(view, source) || !(note.owner === 'agent' || note.agentPromise)) return;
@@ -2231,7 +2237,7 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
     // nothing on the revisit cadence): left as a finished result, it was attached and withheld again on every reply
     // and never drained.
     const rework = work?.withheld !== undefined && work.inFlight === undefined && !pendingReport(work)
-      ? Math.max(work.lastSlot + 1, noAccount(work.outcome) ? work.last + revisit : work.withheld.at) : undefined;
+      ? Math.max(work.lastSlot + 1, noAccount(work.outcome) ? work.last + workRetryDelay(work, revisit) : work.withheld.at) : undefined;
     // A started step stays scheduled whatever dependency its predecessor left, so interrupted-start recovery owns it.
     if (work?.inFlight === undefined && first === undefined && resume === undefined && rework === undefined && !pendingReport(work)) return;
     items.push({ key, kind: 'commitment', id, slot: work?.inFlight ?? rework ?? resume ?? next(key, first ?? Infinity), inFlight: work?.inFlight !== undefined,
@@ -2269,6 +2275,15 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
   const kind = workTarget(view, row.obligation), work = view.obligationWork[row.obligation];
   const tokenKey = `obligation:${row.obligation}:${row.slot}`;
   if (row.kind === 'obligation-start') {
+    if (row.repair) {
+      if (!kind || !work || work.inFlight !== row.slot || work.repairSlot === row.slot || !obligationCapacity(view))
+        throw Error('preview journal: obligation repair order or cap');
+      settleTokens(view, tokenKey, row.usage);
+      reserveTokens(view, tokenKey, 'answer', row.maxInputTokens ?? view.limits.maxBytes, row.maxOutputTokens ?? subscriptionOutputMaximum);
+      view.calls++;
+      work.repairSlot = row.slot;
+      return;
+    }
     if (!kind || !Number.isSafeInteger(row.slot) || row.slot > row.at || work?.inFlight !== undefined || pendingReport(work)
       || work !== undefined && row.slot <= work.lastSlot) throw Error('preview journal: repeated obligation work');
     reserveTokens(view, tokenKey, 'answer', row.maxInputTokens ?? view.limits.maxBytes, row.maxOutputTokens ?? subscriptionOutputMaximum);
@@ -2280,6 +2295,7 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
     : ['report', 'continue', 'waiting', 'failed', 'uncertain'];
   const reports = row.outcome === 'report' || row.outcome === 'cleared';
   if (!kind || !work || work.inFlight !== row.slot || !outcomes.includes(row.outcome)
+    || row.failureClass !== undefined && (row.failureClass !== 'malformed' || row.outcome !== 'failed')
     || reports !== (row.report !== undefined) || row.report !== undefined && !boundedText(row.report, 1, 1500)
     || row.note !== undefined && (!boundedText(row.note, 1, 500) || row.outcome !== 'continue' && row.outcome !== 'waiting')
     || (row.outcome === 'waiting') !== (row.waitsOn === 'operator' || row.waitsOn === 'external')
@@ -2290,9 +2306,12 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
   settleTokens(view, tokenKey, row.usage);
   // Each result is the current account: a dependency or note from an earlier result never outlives it. An uncertain
   // result is no account at all, so a waiting dependency (its need and what the operator sent since) is carried over.
-  const { inFlight: _done, waitsOn: _waits, note: _note, withheld, ...rest } = work;
+  const { inFlight: _done, waitsOn: _waits, note: _note, withheld, failureClass: _failure, ...rest } = work;
   const carried = row.outcome === 'uncertain' && work.waitsOn !== undefined;
   view.obligationWork[row.obligation] = { ...rest, last: row.at, outcome: row.outcome,
+    failedAttempts: (work.failedAttempts ?? (work.outcome === 'failed' ? 1 : 0)) + (row.outcome === 'failed' ? 1 : 0),
+    formatFailures: (work.formatFailures ?? 0) + (row.failureClass === 'malformed' ? 1 : 0),
+    ...(row.failureClass ? { failureClass: row.failureClass } : {}),
     // The withheld result and its objection stay the work's input until a step actually answers them: an attempt that
     // accounted for nothing (interrupted, or a provider failure or malformed answer) supplied no correction, so
     // consuming them there would drop both the rejected result and the objection from every later packet.
@@ -2752,7 +2771,7 @@ export function capacityRefused(view: JournalView, row: JournalRecord): boolean 
     || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
     || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'index-reserve' || row.kind === 'reply-review-reserve'
       || row.kind === 'held-notice-review-reserve' || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry' || row.kind === 'lookup'
-      || row.kind === 'answer-replace' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve' || row.kind === 'retro-duty-reserve')
+      || row.kind === 'answer-replace' || row.kind === 'obligation-start' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve' || row.kind === 'retro-duty-reserve')
       && view.calls >= view.limits.maxCalls)
     || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
     || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies);
@@ -5417,7 +5436,8 @@ export interface PreviewPorts {
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
     usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage;
       /** Exact zero-token provider quota refusal, carried separately from semantic rejection. */ capacity?: ModelCapacity;
-      /** A malformed answer's exact protocol defect (answer-reading.ts), named in the one format re-ask. */ defect?: string}
+      /** A malformed answer's exact protocol defect (answer-reading.ts), named in the one format re-ask. */ defect?: string;
+      /** Rejected work output, kept only for the same step's bounded format repair. */ rawOutput?: string}
     | {state:'uncertain'; usage?: ModelUsage}>;
   /** Rule 42: a message id (accepted), null (UNKNOWN) or a closed outcome. Rule 89: `provenance`
    * is the journal's signature over exactly `target`, `chat`, `thread` and `text`. */
@@ -10825,14 +10845,42 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         answer = session ? await ports.sessionWork!({ question, context, id })
           : await ports.model({ question, context, id, ...(prepared === undefined ? {} : { prepared }) });
       } catch { settle({ outcome: 'uncertain' }); return true; }
-      const usage = typeof answer !== 'string' && 'usage' in answer && answer.usage ? { usage: answer.usage } : {};
+      const usageOf = (value: typeof answer) => typeof value !== 'string' && value.usage ? { usage: value.usage } : {};
+      const textOf = (value: typeof answer) => typeof value === 'string' ? value : 'text' in value ? value.text
+        : 'rawOutput' in value ? value.rawOutput : undefined;
+      const malformed = (value: typeof answer) => typeof value !== 'string' && 'failureClass' in value
+        ? value.state === 'complete' && value.failureClass === 'malformed'
+        : typeof value === 'string' || 'text' in value
+          ? obligationDecision(textOf(value)!, item.kind, ports.now(), zone).outcome === 'failed' : false;
+      if (malformed(answer) && textOf(answer) !== undefined && !halted() && obligationCapacity(journal.view)) {
+        // One formatting-only call: a distinct id excludes both scoped tools and delegated sessions. No effect is repeated.
+        const repairId = `work-repair:${item.key}:${item.slot}`;
+        const repairContext = JSON.stringify({ ...JSON.parse(context) as Record<string, unknown>,
+          previousOutput: clean(redact(textOf(answer)!).text, true) });
+        if (Buffer.byteLength(repairContext) <= journal.view.limits.maxBytes) {
+          const repairQuestion = question + ' Your previous output in previousOutput did not match the requested object. '
+            + 'Return one valid object for this obligation using the same facts. You have no tools in this formatting step; do not claim new actions.';
+          let repairPrepared: string | undefined, preparedRepair = true;
+          try { repairPrepared = ports.prepareModel?.({ question: repairQuestion, context: repairContext, id: repairId }); }
+          catch { preparedRepair = false; } // The original format failure still settles when an envelope cannot fit.
+          if (preparedRepair && !halted()) {
+            journal.append({ kind: 'obligation-start', obligation: item.key, slot: item.slot, repair: true,
+              ...usageOf(answer), maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
+            try { answer = await ports.model({ question: repairQuestion, context: repairContext, id: repairId,
+              ...(repairPrepared === undefined ? {} : { prepared: repairPrepared }) }); }
+            catch { settle({ outcome: 'uncertain' }); return true; }
+          }
+        }
+      }
+      const usage = usageOf(answer);
       if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') { settle({ outcome: 'uncertain', ...usage }); return true; }
-      if (typeof answer !== 'string' && 'failureClass' in answer) { settle({ outcome: 'failed', ...usage }); return true; }
-      // Rules 4, 10, 86: whether the report is the finished work is the work step's own full-context judgment (its
-      // packet carries yourReply and the question says repeating it is not the work); no text overlap overrides it.
-      const decided = obligationDecision(typeof answer === 'string' ? answer : answer.text, item.kind, ports.now(), zone);
+      if (typeof answer !== 'string' && 'failureClass' in answer) {
+        settle({ outcome: 'failed', ...(malformed(answer) ? { failureClass: 'malformed' as const } : {}), ...usage }); return true;
+      }
+      // The same field checks apply to the original and repaired object. Meaning remains the model's decision.
+      const decided = obligationDecision(textOf(answer)!, item.kind, ports.now(), zone);
       // A renewal records the constraint wording this step was shown, so the wall is current evidence while it holds.
-      settle({ ...decided, ...(decided.assessment ? { assessment: { ...decided.assessment,
+      settle({ ...decided, ...(decided.outcome === 'failed' ? { failureClass: 'malformed' as const } : {}), ...(decided.assessment ? { assessment: { ...decided.assessment,
         wording: governingConstraints(tools)[decided.assessment.constraint] } } : {}), ...usage });
       return true;
     } finally { working = false; }
