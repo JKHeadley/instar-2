@@ -13,7 +13,7 @@ Tier rationale: A fixed timer budget and two content-free templates reuse the ex
 Side effects: Requests completing between seven and ten seconds can now receive an acknowledgement. Final dispatch cancels an unadmitted notice and awaits an admitted notice. Historical fixed notices retain their eight-second replay floor. The deadline assumes at most three seconds combined intake, admission/jitter and transport; browser paint is unmeasured.
 Undo and recovery: Revert runtime scheduling while retaining replay acceptance for newly admitted templates. Older readers must not open journals containing new template bytes. Unknown notice sends stay fenced on restart.
 Multi-machine posture: Machine-local timer, deliberately; durable notice and reply intents remain in the existing owned conversation journal and send doorway.
-Layer below: Inspected disclosure, provenance, reply anchor, admission callback, UNKNOWN fence, final dispatch cancellation/await, journal replay and allowance checks. F4/F8 frames show intake plus ten seconds before transport, and serialized second requests. The separate memory serialization cause belongs to deferral-confirm-delay-1013.
+Layer below: Regenerated the existing register from the committed source to refresh wiring pins. Inspected disclosure, provenance, reply anchor, admission callback, UNKNOWN fence, final dispatch cancellation/await, journal replay and allowance checks. F4/F8 frames show intake plus ten seconds before transport, and serialized second requests. The separate memory serialization cause belongs to deferral-confirm-delay-1013.
 Bug class: integration
 Bug evidence: reproducer=tests/preview/ack-timing-userwalk.test.ts
 Hook bypass: none; core.hooksPath is unset and the shared hooks directory contains sample hooks only.
@@ -22,7 +22,7 @@ Decision: ack-timing-1013-budget | Schedule at seven seconds with three seconds 
 Decision: ack-timing-1013-queue | Use durable serial order for one queued or still-working line in the existing slot, rechecking queue state before admission. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ack-timing-1013-PROGRESS.md
 Decision: ack-timing-1013-replay | Replay F4/F8 intake, terminal text and timelines through the worker; preserve historical template readability. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ack-timing-1013-PROGRESS.md
 
-Subject (5 paths): tests/preview/journal.ts; tests/preview/reply-acknowledgement.test.ts; tests/preview/reply-acknowledgement-timing.test.ts; tests/preview/ack-timing-userwalk.test.ts; tests/preview/fixtures/ack-timing-userwalk-2026-10-13.json
+Subject (12 paths): tests/preview/journal.ts; tests/preview/reply-acknowledgement.test.ts; tests/preview/reply-acknowledgement-timing.test.ts; tests/preview/ack-timing-userwalk.test.ts; tests/preview/fixtures/ack-timing-userwalk-2026-10-13.json; generated/capabilities.json; generated/capabilities.md; generated/coverage.md; generated/glossary.md; generated/register.json; generated/rules.md; generated/source.json
 
 ## Closing block
 

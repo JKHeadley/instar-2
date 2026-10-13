@@ -69,3 +69,34 @@ async function replay(updates: number[], extraTransport = 0) {
 for (const update of [6233120, 6233121, 6233124, 6233129]) it(`F8 ${update}: receipt by ten seconds with recorded jitter and transport`, async () => replay([update]));
 for (const pair of [[6233125, 6233126], [6233132, 6233133]]) it(`F4 ${pair.join('/')}: accurate queue notice, ordered final results`, async () => replay(pair));
 it('F8 worst observed intake/jitter with an additional 750ms transport delay stays inside the target', async () => replay([6233129], 750));
+
+it('rechecks a queued line when its request starts during delayed admission', async () => {
+  const turns = [samples.find(s => s.update === 6233125)!, samples.find(s => s.update === 6233126)!];
+  const at = turns[0]!.intake.at;
+  vi.useFakeTimers(); vi.setSystemTime(at);
+  const root = mkdtempSync(join(tmpdir(), 'ack-queue-admission-'));
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(80), {
+    kind: 'genesis', bot: '8989505249', chat: '7812716706', operator: '7812716706', grant: 'grant:preview',
+    configurationDigest: 'sha256:recorded', expires: at + 86400000, maxCalls: 20, maxReplies: 20, maxTurns: 10, maxBytes: 262144, cursor: 0 });
+  const sent: string[] = [];
+  const worker = createJournalWorker(journal, { now: () => Date.now(), stopped: () => false, checkOutbound: () => {},
+    sendAdmits: true,
+    model: async input => {
+      const first = input.id === turns[0]!.intake.id;
+      await wait(first ? 8000 : 20000); return turns[first ? 0 : 1]!.intent.text!;
+    },
+    send: async input => {
+      if (input.expectedText === QUEUED_REPLY_ACKNOWLEDGEMENT) await wait(3000);
+      if (input.current && !input.current()) return { kind: 'refused', reason: 'notice changed before admission' };
+      input.admit?.(); sent.push(input.expectedText); return sent.length + 100;
+    } });
+  try {
+    worker.intake(turns.map(s => JSON.parse(s.intake.raw!))); const drain = worker.drain();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(journal.view.order[1]?.reserved).toBe(true);
+    expect(journal.view.order[1]?.heldNoticeIntent).toBeUndefined();
+    await worker.minimal();
+    await vi.advanceTimersByTimeAsync(30000); await drain;
+    expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT, turns[0]!.intent.text, REPLY_ACKNOWLEDGEMENT, turns[1]!.intent.text]);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
