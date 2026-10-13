@@ -59,7 +59,11 @@ it('answers a verified operator from dated bounded memory, marks corrections, co
       'Sam reads the morning report.',
       'Actually Sam keeps the cedar map in the green drawer.',
       'Forget that Sam reads the morning report.',
-    ].entries()) { worker.intake([update(index + 1, text)]); await worker.drain(); }
+    ].entries()) {
+      worker.intake([update(index + 1, text)]);
+      if (index >= 2) await worker.summarizeIfNeeded();
+      await worker.drain();
+    }
     expect(journal.view.memory.map(item => item.mode)).toEqual(['correct', 'forget']);
     journal.close();
     journal = openPreviewJournal(path, key);
@@ -106,7 +110,11 @@ it.each([
     for (const [index, message] of [
       'Sam keeps the cedar map in the blue drawer.',
       'Actually Sam keeps the cedar map in the green drawer.', scenario.third,
-    ].entries()) { worker.intake([update(index + 1, message)]); await worker.drain(); }
+    ].entries()) {
+      worker.intake([update(index + 1, message)]);
+      if (index >= 1) await worker.summarizeIfNeeded();
+      await worker.drain();
+    }
     expect(journal.view.memory).toHaveLength(2);
     expect(journal.view.memory[1]?.mode).toBe(scenario.mode);
     journal.close();
