@@ -170,7 +170,16 @@ if (header?.login !== undefined) env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR = '
 // interactive one stays in this group instead, the terminal's foreground, or it could not read the terminal; the tree walk
 // and the tracking still find every descendant.
 const descriptors = handoff ? [header.login === undefined ? 'ignore' : 'pipe', header.mcp === undefined ? 'ignore' : 'pipe'] : [];
-child = spawn(executable, args, { env, detached: !tty, stdio: tty ? [1, 'inherit', 'inherit', ...descriptors]
+// Node's "pipe" is a socket pair on Linux: open("/dev/fd/4") on it fails with
+// ENXIO. The CLI opens the MCP path, so bridge only that descriptor to a real
+// anonymous pipe. Bash execs the installed harness in place; the bounded writer
+// shares its process group. No secret enters argv, environment or a disk file.
+const pipeMcp = process.platform === 'linux' && header?.mcp !== undefined;
+const dropShellEnv = ['PWD', 'SHLVL', 'OLDPWD'].filter(name => env[name] === undefined).flatMap(name => ['-u', name]);
+const launchExecutable = pipeMcp ? '/bin/bash' : executable;
+const launchArgs = pipeMcp ? ['-p', '-c', 'exec 4< <(exec 3<&-; exec /bin/cat <&4); exec /usr/bin/env "$@"',
+  'instar-mcp-pipe', ...dropShellEnv, executable, ...args] : args;
+child = spawn(launchExecutable, launchArgs, { env, detached: !tty, stdio: tty ? [1, 'inherit', 'inherit', ...descriptors]
   : handoff ? ['pipe', 'inherit', 'inherit', ...descriptors] : 'inherit' });
 if (handoff) {
   // Each hand-off is written once and closed; a harness that never reads one only loses a pipe (EPIPE is ignored).
