@@ -15,7 +15,7 @@ Undo and recovery: Revert this merge and its publication before deployment, pres
 Multi-machine posture: Existing conversation ownership, replication and send fencing remain. Broker custody stays deliberately machine-local per installed host. No new peer dependency or durable store.
 Layer below: Read the constitution from origin/main, prior train-19/train-20 integration reviews, Rule 90 suffix validation and changelog renderer. Compared both parent histories and inspected the broker unit reviews. No runner, live root or installed service is changed.
 Bug class: integration
-Bug evidence: reproducer=tests/platform/custody-platform.test.ts
+Bug evidence: reproducer=tests/preview/refusal-withheld.test.ts
 Hook bypass: none; core.hooksPath is unset and the shared hooks directory contains sample files only.
 Convergence: none
 Prompt review: Incoming live train-19 changes are retained unchanged; targeted captured refusal and reminder replays cover recorded summary, Jev, review and delivered reply shapes. No fresh provider call or live installation acceptance is claimed.
@@ -23,9 +23,6 @@ Decision: train-21-merge-live | Merge origin/train-19 ac3bd4d8874495f8b66b571837
 Decision: train-21-merge-history | Preserve train-21 arrays as an exact suffix. Deduplicate incoming entries only when every field other than revision matches; prepend distinct entries in incoming order with sequential unused revisions. Render Markdown with the repository renderer. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-21-merge-live-1013-PROGRESS.md
 Decision: train-21-merge-publication | Retain the prior generated publication temporarily, then run the existing repin/build/owner-rehash/register-replay chain from committed merged source; never hand-merge generated output. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-21-merge-live-1013-PROGRESS.md
 
-simplestRobustRoute: This is the simplest robust route: ordinary merge, semantic union of changelog entries and existing generators. No new production machinery. Verified durable intake and custody guard start; durable dispatch and contextual review guard completion; existing resource, spend and stop bounds remain. Captured replay is integration evidence, not unattended live acceptance.
-80/20: Foreground targeted changed tests and direct consumers, static checks and pinned READY checks; host-only checks belong to the Studio gate.
-VERDICT: author submission; independent review belongs to the desk
 Prompt finding: e8708c7fea24 | protocol-literal | Unchanged attribution instruction; the cited recall test checks that it reaches the packet. This repair adds no phrase-based judgment.
 Prompt finding: 849db3a6296a | protocol-literal | Unchanged fixed memory-inventory response; the cited test checks its existing renderer, not a classifier introduced by this change.
 Prompt finding: 5b486d8bd247 | protocol-literal | Existing tested instruction/protocol wording, not an expected answer or an intent keyword test — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "prioritize verdicts; do not repeat rules or context."
@@ -47,3 +44,7 @@ Deferral: tests/preview/fixtures/reminder-relative-1013.json:793 | not-a-deferra
 Deferral: tests/preview/fixtures/reminder-relative-1013.json:803 | not-a-deferral=Historical captured model output retained verbatim as regression evidence, not an author promise
 
 Publication: Existing desk chain refreshed zero inventory or owner hashes. Register replay binds merged source b0aa961e1fd4689ca9b2239be3a1d95cfca39970, 289 entries, 116 rules and 34 terms. Every parent changelog entry survives after ignoring only revision; train-21 arrays remain exact suffixes. Broker paths have zero diff against the prior train-21 head.
+
+simplestRobustRoute: This is the simplest robust route: ordinary merge, semantic union of changelog entries and existing generators. No new production machinery. Verified durable intake and custody guard start; durable dispatch and contextual review guard completion; existing resource, spend and stop bounds remain. Captured replay is integration evidence, not unattended live acceptance.
+80/20: Foreground targeted changed tests and direct consumers, static checks and pinned READY checks; host-only checks belong to the Studio gate.
+VERDICT: author submission; independent review belongs to the desk
