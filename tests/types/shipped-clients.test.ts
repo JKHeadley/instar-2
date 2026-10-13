@@ -151,9 +151,9 @@ it('R105 derives the parity matrix from the register declarations and refuses a 
   expect(details(sources, [...doorways, 'new-doorway'])).toContain('registered doorway new-doorway has no native harness tuple');
   // The committed declarations carry no other finding.
   expect(clean).toEqual([]);
-// Bounded but heavy: each of the nine drift cases re-hashes the whole composition closure (typescript.js included), about 8 s
-// alone; under a loaded full suite it passed the 10 s default, so it gets its own ceiling.
-}, 60_000);
+// Each drift case hashes the composition closure, including the compiler. Use the suite's
+// bounded 90 s timeout: the Linux portable gate measured 62.4 s, beyond the former 60 s override.
+});
 
 it('R105 decides a certified composition on the host that can decide it: the build it needs, and the platform it names', () => {
   const harness = 'src/assembly/harness.declarations.json';
