@@ -35,6 +35,8 @@ Tests cover exact matching and non-exact whitespace neighbors, identity fields, 
 
 Subject (9 paths): tests/preview/telegram-send-outcome.mjs, tests/preview/receipt-trailing-space.test.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
+The generated register pins bind the committed diagnostics-only classifier; generated changes are source-commit and generation metadata only.
+
 ## Closing block
 
 simplestRobustRoute: Use the existing reason field to diagnose UNKNOWN while retaining train-19's exact comparator. No new capture store, retry, normalization or gate. Start guards are signed intent and owner admission; end guards remain exact receipt predicates; limit guards are the existing 200-character reason and transport/journal bounds. No live-provider completion claim is made.
