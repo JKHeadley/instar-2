@@ -15,7 +15,7 @@ Undo and recovery: Revert this merge and publication before deployment if needed
 Multi-machine posture: Existing shared conversation ownership and durable-send fences remain. Pool record paths resolve within each machine's current installation; external credential custody remains external. Kernel limits and prepared records remain deliberately machine-local, with no peer dependency added.
 Layer below: Read purpose and rules from origin/main in full, the train-19 and train-20 merge records, all three train-22 member records, changelog validation and Rule 90 suffix enforcement. Compared both parent histories and automatic product merges. Source pins derive from actual merged bytes.
 Bug class: integration
-Bug evidence: reproducer=tests/e2e/register.test.ts
+Bug evidence: reproducer=tests/preview/refusal-withheld.test.ts
 Hook bypass: none; core.hooksPath unset and common hooks directory has sample hooks only, checked before committing.
 Convergence: none
 Prompt review: No new prompt or verdict policy authored. Incoming train-19 recorded refusal/reminder and act-first fixtures exercise real summary uncertain, Jev uncertain/undecided, reply-review and delivered/empty shapes. No live provider calls or live acceptance claimed; desk owns live use.
