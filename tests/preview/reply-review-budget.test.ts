@@ -34,6 +34,12 @@ it('replays the historical over-cap forum review and its real bounded-prompt rep
   // replay evidence, not a fresh model judgment of the current prompt.
   let question = fixture.replay.question;
   for (const [before, after] of [
+    // Admitted reminder evidence; keep historical captures and verdicts unchanged.
+    ["loops the deferrals, judgments and promises it will track, rejected",
+      "loops the deferrals, judgments and promises it will track, dated this turn's admitted reminders (operator quote, day/time, zone), rejected"],
+    ["A deferral the loops do not record is defers_work.",
+      "An unresolved date or unrecorded scheduling claim is no admitted reminder."],
+
     ['an illustrative or quoted literal explicitly requested or supplied by the verified operator is not a breach merely because it appears in the reply.',
       'an illustrative or quoted literal the verified operator explicitly requested or supplied is not itself a breach.'],
     ['every live authentication secret that reaches anyone other than the verified operator who supplied it in this same private chat.',
