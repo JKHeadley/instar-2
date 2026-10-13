@@ -4020,8 +4020,8 @@ never signs in, copies credentials, creates grants or inherits authority from an
 `install-login` prepares conversation, tools and sealed authority records for every admitted login using
 one shared preparation step. `prepare-logins` runs that step at update time; an automatic launch also
 prepares a changed build. Records live in `<root>/harness-login-builds/`, derived from the running code,
-policy and source records. The conversation successor preserves the previous account observation and
-expiry. A changed policy must still resolve under that member's own sealed authority; the preparation
+policy and source records. Conversation and explicit tools successors preserve their previous account observation, expiry and
+predecessor evidence. A changed policy must still resolve under that member's own sealed authority; the preparation
 cannot widen an exact grant to cover a new policy. Default tools records resolve the member's own tools
 grant. The original records remain withdrawal handles, checked together with the prepared records.
 
@@ -4030,12 +4030,14 @@ automatically. With one installed login, it supplies the same single-login optio
 selection state. With no installation inventory, the existing launch path is unchanged. An explicit
 `--login-profile` without `--login-pool` remains the single-login override; the run log records that choice.
 A secondary member with missing, withdrawn or unauthenticated records is excluded with one durable,
-reply-deduplicated notice. Its index, holds and history stay recorded; other members can continue.
+reply-deduplicated notice. Its admitted non-secret profile, index, holds and history stay recorded; a missing profile can
+represent history and verify a predecessor but cannot authorize dispatch. Other members can continue.
 The primary still has to validate as the installation anchor. No call is retried by this preparation.
 
 Existing installations can pass their reviewed `--login-pool` to `install-login` together with the
 matching primary options. It admits the list in its existing order and retains that manifest as the
-predecessor. Subsequent builds produce their manifests automatically. Adding or changing members once
+predecessor, including its quota source and threshold. An explicit `--usage-file` overrides the imported
+source; 95 percent applies only when the source omits its threshold. Subsequent builds produce their manifests automatically. Adding or changing members once
 pool selection state exists refuses for an explicit membership migration; it never resets selection.
 
 An explicit `--login-pool /ABSOLUTE/runner-logins.json` remains supported. Its first entry must match

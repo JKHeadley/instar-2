@@ -1,5 +1,5 @@
 // Machine-local installation inventory. Records contain paths and account observations only;
-// sign-in and sealed authority remain with their existing owners (Rules 18, 28, 44, 100, 113).
+// sign-in and sealed authority remain with their existing owners (Rules 15, 18, 28, 44, 45, 77, 100, 113).
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
@@ -40,14 +40,18 @@ export function installHarnessLogin({ root, options, verify }) {
   verify(row, profile); // Existing custody/activation/authority checks, before recording admission.
   const prior = existsSync(inventoryPath(root)) ? inventory(root) : { version: 1, logins: [] };
   const imported = options['login-pool'] ? loadHarnessLogins(options) : null;
-  const logins = imported ? read(options['login-pool']).logins : [...prior.logins];
+  const logins = imported ? imported.entries.map(({ profile, profilePath, options: _options, index: _index, ...entry }) =>
+    ({ ...entry, profile: profilePath, admittedProfile: profile })) : [...prior.logins];
   if (imported) for (const entry of imported.entries) verify({ ...entry, profile: entry.profilePath }, entry.profile);
-  const index = logins.findIndex(item => read(item.profile).reference === profile.reference);
-  if (index < 0) logins.push(row); else logins[index] = row;
+  const index = logins.findIndex(item => (item.admittedProfile ?? read(item.profile)).reference === profile.reference);
+  const admitted = { ...row, admittedProfile: profile };
+  if (index < 0) logins.push(admitted); else logins[index] = admitted;
   if (logins.length > 8) throw Error('preview: at most eight installed harness logins');
   // A fresh authenticated admission must supersede a cached preparation exclusion, even
   // when custody recovered without changing any non-secret source record.
-  const next = { ...prior, admissionRevision: (prior.admissionRevision ?? 0) + 1, logins, ...(options['usage-file'] ? { usageFile: options['usage-file'] } : {}) };
+  const next = { ...prior, admissionRevision: (prior.admissionRevision ?? 0) + 1, logins,
+    ...(imported ? { thresholdPercent: imported.threshold, usageFile: imported.usageFile } : {}),
+    ...(options['usage-file'] !== undefined ? { usageFile: options['usage-file'] } : {}) };
   // Reuse the manifest validator for distinct accounts/directories and all path constraints.
   const configuration = loadHarnessLogins({ ...optionsOf(options, logins[0]), 'login-pool': inventoryPath(root) },
     path => path === inventoryPath(root) ? JSON.stringify(next) : readFileSync(path, 'utf8'));
@@ -78,19 +82,23 @@ export function prepareInstalledHarnessLogins({ root, options, doorway, build, n
     const logins = source.logins.map((row, index) => {
       try {
         const profile = Object.freeze(read(row.profile));
-        const bytes = readFileSync(row.activation, 'utf8'), current = JSON.parse(bytes);
-        const policy = doorway.policyFor(options.model, doorway.conversationFraming), digest = encoded(policy).hash;
-        const activation = current.invocationPolicyDigest === digest ? current : { ...current,
-          invocationPolicyDigest: digest, previousInvocationPolicyDigest: current.invocationPolicyDigest,
-          reviewedHead: String(build).slice(0, 1024),
-          predecessor: { reference: current.reference, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}` } };
-        doorway.validateActivation(activation, profile, options.model, now, doorway.conversationFraming, current.expiresAt);
-        const tools = options.tools === 'off' ? null : row.toolsActivation ? read(row.toolsActivation)
+        const successor = (path, framing) => {
+          const bytes = readFileSync(path, 'utf8'), current = JSON.parse(bytes);
+          const digest = encoded(doorway.policyFor(options.model, framing)).hash;
+          const next = current.invocationPolicyDigest === digest ? current : { ...current,
+            invocationPolicyDigest: digest, previousInvocationPolicyDigest: current.invocationPolicyDigest,
+            reviewedHead: String(build).slice(0, 1024),
+            predecessor: { reference: current.reference, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}` } };
+          doorway.validateActivation(next, profile, options.model, now, framing, current.expiresAt);
+          return next;
+        };
+        const activation = successor(row.activation, doorway.conversationFraming);
+        const tools = options.tools === 'off' ? null : row.toolsActivation ? successor(row.toolsActivation, doorway.toolsFraming)
           : { ...activation, invocationPolicyDigest: encoded(doorway.policyFor(options.model, doorway.toolsFraming)).hash };
         const authority = read(row.authority);
         verify(row, profile, activation, tools); // Includes independent sealed authority resolution.
         const records = { activation, authority, ...(tools ? { toolsActivation: tools } : {}) };
-        const prepared = { ...row, sources: [row.profile, row.activation, row.authority, row.toolsActivation, row.sessionActivation]
+        const prepared = { ...row, admittedProfile: profile, sources: [row.profile, row.activation, row.authority, row.toolsActivation, row.sessionActivation]
           .filter(Boolean).map(path => ({ path, digest: hash(read(path)) })) };
         for (const [name, value] of Object.entries(records)) {
           const target = join(directory, `${index}-${name}.json`);

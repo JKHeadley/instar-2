@@ -10,11 +10,12 @@ import { encoded } from './stage2-provider.js';
 import { openPreviewJournal } from './journal.js';
 import { harnessLoginPath, storeHarnessLogin } from './harness-user.mjs';
 
-it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'imported'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
+it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', 'imported'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
   const world = successiveWorld(), directory = world.directory, root = join(directory, 'pool-runner');
   const absolute = relative => pathToFileURL(join(process.cwd(), relative)).href;
   const log = join(directory, 'telegram.log'), updates = join(directory, 'updates.json'), calls = join(directory, 'calls.jsonl');
-  const pooled = mode !== 'legacy', automatic = ['installed', 'fresh', 'missing', 'imported'].includes(mode);
+  const missing = ['missing', 'missing-profile'].includes(mode);
+  const pooled = mode !== 'legacy', automatic = ['installed', 'fresh', 'missing', 'missing-profile', 'imported'].includes(mode);
   const logins = (pooled ? ['serving-a', 'serving-b'] : ['serving-b']).map(name => {
     const profile = { ...offlineProfile, reference: name, activationReference: `${name}-activation`, expectedAccount: `${name}@example.invalid`,
       home: `/offline/${name}/home`, configDirectory: `/offline/${name}/config`, workingDirectory: `/offline/${name}/work` };
@@ -60,7 +61,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     configDirectory:command.env.CLAUDE_CONFIG_DIR,projectsDirectory:command.env.CLAUDE_CONFIG_DIR+'/projects'});
   else {
    appendFileSync(${JSON.stringify(calls)},JSON.stringify({account,home:command.env.HOME,config:command.env.CLAUDE_CONFIG_DIR,evidence:JSON.parse(JSON.parse(command.stdin).messages[1].content).bindings.evidence})+'\\n');
-   if(account==='serving-a' && ${JSON.stringify(mode !== 'missing')}){stdout=captured;code=1;}
+   if(account==='serving-a' && ${JSON.stringify(!missing)}){stdout=captured;code=1;}
    else stdout=JSON.stringify({type:'result',subtype:'success',is_error:false,result:JSON.stringify({reasoning:'The operator asked an ordinary question.',answer:'The second approved login answered.'}),
     session_id:'offline-b',usage:{input_tokens:10,output_tokens:20,cache_creation_input_tokens:0,cache_read_input_tokens:0}});
   }
@@ -108,9 +109,9 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       }
       const registry = JSON.parse(readFileSync(join(root, 'harness-logins.json'), 'utf8'));
       expect(registry.logins.map(row => row.profile)).toEqual(logins.map(row => row.profile));
-      if (mode === 'missing') {
+      if (missing) {
         const prepared = JSON.parse(readFileSync(registry.preparedManifest, 'utf8'));
-        rmSync(prepared.logins[1].activation);
+        rmSync(mode === 'missing-profile' ? logins[1].profile : prepared.logins[1].activation);
       }
       if (mode === 'fresh') {
         const usageFile = join(directory, 'usage.json');
@@ -131,12 +132,12 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       throw Error(first.stderr + JSON.stringify(detail));
     }
     const rows = readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse);
-    expect(rows[0].account).toBe(['pool', 'installed', 'missing', 'imported'].includes(mode) ? 'serving-a' : 'serving-b');
-    expect(rows.slice(1).every(row => row.account === (mode === 'missing' ? 'serving-a' : 'serving-b'))).toBe(true);
+    expect(rows[0].account).toBe(['pool', 'installed', 'missing', 'missing-profile', 'imported'].includes(mode) ? 'serving-a' : 'serving-b');
+    expect(rows.slice(1).every(row => row.account === (missing ? 'serving-a' : 'serving-b'))).toBe(true);
     expect(rows.length).toBeGreaterThan(1);
     if (pooled) {
       const state = JSON.parse(readFileSync(join(root, 'harness-login-pool.json'), 'utf8'));
-      expect(state.active).toBe(mode === 'missing' ? 0 : 1); expect(state.switches).toHaveLength(mode === 'missing' ? 0 : 1);
+      expect(state.active).toBe(missing ? 0 : 1); expect(state.switches).toHaveLength(missing ? 0 : 1);
       if (mode === 'fresh') expect(state.switches[0].reason).toBe('usage-threshold');
     } else {
       expect(existsSync(join(root, 'harness-login-pool.json'))).toBe(false);
@@ -146,8 +147,8 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     const diagnostic = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, undefined, undefined, true);
     const detail = {modelCalls:diagnostic.view.modelCalls, calls:diagnostic.view.calls, limits:diagnostic.view.limits, turns:diagnostic.view.order.map(turn => ({ id: turn.id, held: turn.held, failure: turn.failureClass, state: turn.modelState, answer: turn.answer, notices: turn.answerNotices, reserved:turn.reserved, accepted:turn.accepted }))};
     diagnostic.close();
-    expect(sends.filter(row => row.text.includes('next approved login')), JSON.stringify({ sends, detail, rows, stdout:first.stdout, stderr:first.stderr })).toHaveLength(pooled && mode !== 'missing' ? 1 : 0);
-    if (mode === 'missing') expect(sends.filter(row => row.text.includes('removed from selection'))).toHaveLength(1);
+    expect(sends.filter(row => row.text.includes('next approved login')), JSON.stringify({ sends, detail, rows, stdout:first.stdout, stderr:first.stderr })).toHaveLength(pooled && !missing ? 1 : 0);
+    if (missing) expect(sends.filter(row => row.text.includes('removed from selection'))).toHaveLength(1);
     expect(sends.some(row => row.text.includes('second approved login answered'))).toBe(true);
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, undefined, undefined, true);
     expect(journal.view.order[0].modelState).toBe(['pool', 'installed', 'imported'].includes(mode) ? 'rejected' : 'complete');
@@ -168,7 +169,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     const report = JSON.parse(status.stdout);
     if (pooled) {
       expect(report.harnessLoginPool.members).toEqual(['serving-a', 'serving-b']);
-      expect(report.harnessLoginPool.active).toBe(mode === 'missing' ? 0 : 1);
+      expect(report.harnessLoginPool.active).toBe(missing ? 0 : 1);
       expect(report.harnessLoginPool.status).toContain(mode === 'fresh' ? 'switches at 95%' : 'switching only after a typed limit reply');
     } else expect(report.harnessLoginPool).toBeNull();
     const before = readFileSync(calls, 'utf8');

@@ -1,9 +1,10 @@
 // @ts-nocheck -- installation host composition, real validators and sealed synthetic grants.
 import { afterEach, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin } from './installed-harness-logins.mjs';
-import { loadHarnessLogins } from './harness-login-pool.mjs';
+import { createHarnessLoginPool, loadHarnessLogins } from './harness-login-pool.mjs';
 import { successiveWorld, offlineProfile, offlineActivationAuthority, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
 import { authoritySealKey, resolveActivationAuthority, sealAuthorityRecord } from './activation-authority.js';
 import { subscriptionDoorway, DEFAULT_SUBSCRIPTION_DOORWAY } from '../../src/assembly/production-provider.js';
@@ -123,6 +124,8 @@ it('imports an existing reviewed manifest as predecessor evidence instead of req
   const next = read(f.prepare());
   expect(next.previousManifest).toBe(path);
   expect(next.logins).toHaveLength(2);
+  expect(next.thresholdPercent).toBe(95);
+  expect(next.usageFile).toBeUndefined();
 });
 
 it('successful re-admission prepares a previously unavailable member without resetting membership or history', () => {
@@ -157,4 +160,114 @@ it('prepares policy successors under each existing exact grant, and excludes a s
   authority.grants[0].scope.invocationPolicyDigest = oldDigest;
   writeFileSync(f.logins[1].authority, JSON.stringify(sealAuthorityRecord(authority, authoritySealKey(OFFLINE_STORAGE_KEY))));
   expect(read(f.prepare('build-b')).logins[1].unavailable).toBeDefined();
+});
+
+
+it('keeps a missing secondary profile only as history across preparation and predecessor verification', () => {
+  const f = fixture(); f.install(f.logins[0]); f.install(f.logins[1]);
+  const launch = () => installedHarnessLaunch({ root: f.root, options: { model: f.world.model, 'harness-user': 'offline' }, prepare: () => f.prepare() });
+  const first = loadHarnessLogins(launch().options);
+  const statePath = join(f.root, 'harness-login-pool.json');
+  const settings = { statePath, now: () => Date.now(), validate: verifyPreparedHarnessLogin };
+  const pool = createHarnessLoginPool({ ...settings, configuration: first });
+  pool.observe(pool.select(), { failure: { failureClass: 'limit', resetAt: null } });
+  expect(pool.select().index).toBe(1);
+  const before = pool.state;
+  // Exercise v1 adoption as well as build-independent membership; old notice keys must survive.
+  writeFileSync(statePath, JSON.stringify({ ...before, identity: first.legacyIdentity, holds: {} }));
+  rmSync(f.logins[1].profile);
+  const nextOptions = launch().options, next = loadHarnessLogins(nextOptions);
+  expect(next.identity).toBe(first.identity);
+  expect(next.legacyIdentities).toContain(first.legacyIdentity);
+  expect(next.entries[1].profile).toEqual(first.entries[1].profile);
+  expect(() => verifyPreparedHarnessLogin(next.entries[1])).toThrow(/unavailable/);
+  const reopened = createHarnessLoginPool({ ...settings, configuration: next,
+    unavailable: new Map([[1, 'missing profile']]) });
+  expect(reopened.select().index).toBe(0);
+  expect(reopened.state.switches[0]).toEqual(before.switches[0]);
+  expect(reopened.state.noticeIdentity).toBe(first.legacyIdentity);
+  expect(reopened.state.active).toBe(0);
+  // A dispatchable member must still be read from disk, never from retained evidence.
+  rmSync(f.logins[0].profile);
+  expect(() => loadHarnessLogins(nextOptions)).toThrow(/ENOENT/);
+});
+
+it('retains admitted secondary identity even when its profile disappears before first preparation', () => {
+  const f = fixture(); f.install(f.logins[0]); f.install(f.logins[1]);
+  rmSync(f.logins[1].profile);
+  const selected = installedHarnessLaunch({ root: f.root, options: { model: f.world.model, 'harness-user': 'offline' }, prepare: () => f.prepare() });
+  expect(loadHarnessLogins(selected.options).entries[1].profile.reference).toBe('member-b');
+});
+
+it('prepares explicit tools successors under each own class grant and refuses uncovered successors', () => {
+  const f = fixture();
+  const current = f.logins.map(row => ({ ...read(row.activation),
+    invocationPolicyDigest: encoded(f.doorway.policyFor(f.world.model, f.doorway.toolsFraming)).hash }));
+  for (const [index, row] of f.logins.entries()) {
+    row.toolsActivation = join(f.root, `tools-${index}.json`);
+    writeFileSync(row.toolsActivation, JSON.stringify(current[index]));
+    installHarnessLogin({ root: f.root, options: { ...f.options(row), 'tools-activation': row.toolsActivation }, verify: f.verify });
+  }
+  expect(read(f.prepare()).logins.every(row => !row.unavailable)).toBe(true);
+  const oldDigest = `sha256:${'0'.repeat(64)}`;
+  for (const row of f.logins) writeFileSync(row.toolsActivation, JSON.stringify({ ...read(row.toolsActivation), invocationPolicyDigest: oldDigest }));
+  const prepared = read(f.prepare('build-b'));
+  for (const [index, row] of prepared.logins.entries()) {
+    const tools = read(row.toolsActivation);
+    expect(tools.invocationPolicyDigest).toBe(current[index].invocationPolicyDigest);
+    expect(tools.previousInvocationPolicyDigest).toBe(oldDigest);
+    expect(tools.observedAt).toBe(current[index].observedAt);
+    expect(tools.expiresAt).toBe(current[index].expiresAt);
+    expect(tools.predecessor.reference).toBe(current[index].reference);
+    expect(tools.predecessor.digest).toBe(`sha256:${createHash('sha256').update(readFileSync(f.logins[index].toolsActivation)).digest('hex')}`);
+    f.verify(row, read(row.profile), read(row.activation), tools);
+  }
+  for (const index of [1, 0]) {
+    const row = f.logins[index], authority = read(row.authority);
+    authority.grants = authority.grants.filter(grant => !grant.scope.invocationPolicyClass);
+    writeFileSync(row.authority, JSON.stringify(sealAuthorityRecord(authority, authoritySealKey(OFFLINE_STORAGE_KEY))));
+    if (index === 1) expect(read(f.prepare('build-c')).logins[1].unavailable).toBeDefined();
+    else expect(() => f.prepare('build-d')).toThrow(/grant/);
+  }
+});
+
+it.each([false, true])('imports quota source and threshold with explicit usage override=%s', override => {
+  const f = fixture(), path = join(f.root, 'old-quota-pool.json');
+  const usageFile = join(f.root, 'usage.json'), replacement = join(f.root, 'replacement-usage.json');
+  writeFileSync(path, JSON.stringify({ version: 1, logins: f.logins, usageFile, thresholdPercent: 80 }));
+  installHarnessLogin({ root: f.root, options: { ...f.options(f.logins[0]), 'login-pool': path,
+    ...(override ? { 'usage-file': replacement } : {}) }, verify: f.verify });
+  const next = read(f.prepare());
+  expect(next.thresholdPercent).toBe(80);
+  expect(next.usageFile).toBe(override ? replacement : usageFile);
+  const at = Date.now(), profile = read(f.logins[0].profile);
+  const reading = utilizationPct => ({ version: 1, accounts: [{ email: profile.expectedAccount,
+    configHome: profile.configDirectory, lastQuota: { measuredAt: new Date(at).toISOString(),
+      fiveHour: { utilizationPct, resetsAt: new Date(at + 600000).toISOString() } } }] });
+  writeFileSync(usageFile, JSON.stringify(reading(99)));
+  writeFileSync(next.usageFile, JSON.stringify(reading(79)));
+  const selected = installedHarnessLaunch({ root: f.root, options: { model: f.world.model, 'harness-user': 'offline' }, prepare: () => f.prepare() });
+  const pool = createHarnessLoginPool({ configuration: loadHarnessLogins(selected.options),
+    statePath: join(f.root, 'harness-login-pool.json'), now: () => at, validate: verifyPreparedHarnessLogin });
+  expect(pool.select().index).toBe(0);
+  writeFileSync(next.usageFile, JSON.stringify(reading(85)));
+  expect(pool.select().index).toBe(1);
+  expect(pool.state.switches[0].reason).toBe('usage-threshold');
+});
+
+
+it('verifies imported v1 predecessor identity after a secondary profile disappears', () => {
+  const f = fixture(), path = join(f.root, 'old-pool.json');
+  writeFileSync(path, JSON.stringify({ version: 1, logins: f.logins }));
+  const before = loadHarnessLogins({ ...f.options(f.logins[0]), 'login-pool': path });
+  installHarnessLogin({ root: f.root, options: { ...f.options(f.logins[0]), 'login-pool': path }, verify: f.verify });
+  rmSync(f.logins[1].profile);
+  const selected = installedHarnessLaunch({ root: f.root, options: { model: f.world.model, 'harness-user': 'offline' }, prepare: () => f.prepare() });
+  const next = loadHarnessLogins(selected.options);
+  expect(next.identity).toBe(before.identity);
+  expect(next.legacyIdentities).toContain(before.legacyIdentity);
+  // The retained witness cannot bless a different predecessor member or order.
+  const changed = { ...read(path), logins: [...f.logins].reverse() };
+  writeFileSync(path, JSON.stringify(changed));
+  expect(() => loadHarnessLogins(selected.options)).toThrow(/predecessor members differ/);
 });

@@ -444,3 +444,17 @@ it('a threshold observed while A is in flight affects only the next dispatch, wi
   expect(pool.state.switches).toHaveLength(1);
   expect(pool.state.switches[0].reason).toBe('usage-threshold');
 });
+
+
+it('retained admission profiles cannot replace live profiles for dispatchable members', () => {
+  const f = fixture();
+  const retained = { ...f.manifest, logins: f.manifest.logins.map(row => ({ ...row,
+    admittedProfile: JSON.parse(readFileSync(row.profile, 'utf8')) })) };
+  writeFileSync(f.options['login-pool'], JSON.stringify(retained));
+  expect(loadHarnessLogins(f.options).identity).toBe(f.configuration.identity);
+  rmSync(retained.logins[1].profile);
+  expect(() => loadHarnessLogins(f.options)).toThrow(/ENOENT/);
+  retained.logins[1].unavailable = 'profile missing';
+  writeFileSync(f.options['login-pool'], JSON.stringify(retained));
+  expect(loadHarnessLogins(f.options).identity).toBe(f.configuration.identity);
+});

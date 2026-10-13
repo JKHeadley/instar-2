@@ -35,7 +35,10 @@ export function loadHarnessLogins(options, readText = read) {
       if (row[key] !== undefined && (typeof row[key] !== 'string' || !isAbsolute(row[key]))) fail('grant paths must be absolute');
     if (row.usageAccount !== undefined && (typeof row.usageAccount !== 'string' || !/^[a-z0-9-]{1,128}$/u.test(row.usageAccount)))
       fail('usage account id is malformed');
-    const profile = Object.freeze(JSON.parse(readText(row.profile)));
+    // Retained admission evidence represents an excluded member and verifies predecessors.
+    // Dispatchable members still require the live profile and all existing admission checks.
+    const profile = Object.freeze((row.unavailable || options.previousManifest) && row.admittedProfile
+      ? row.admittedProfile : JSON.parse(readText(row.profile)));
     if (manifest || options['harness-user'] !== undefined) harnessLoginPath(profile);
     return Object.freeze({ ...row, profilePath: row.profile, profile,
       // A manifest entry cannot inherit the primary account's authority implicitly.
@@ -66,7 +69,16 @@ export function loadHarnessLogins(options, readText = read) {
     const prior = loadHarnessLogins({ ...options, previousManifest: true, 'login-pool': manifest.previousManifest,
       'login-profile': first.profile, 'activation-record': first.activation, 'authority-record': first.authority,
       'tools-activation': first.toolsActivation, 'session-work-activation': first.sessionActivation },
-    path => path === manifest.previousManifest ? JSON.stringify({ ...previous, previousManifest: undefined }) : readText(path));
+    path => {
+      if (path === manifest.previousManifest) return JSON.stringify({ ...previous, previousManifest: undefined });
+      try { return readText(path); } catch (error) {
+        // Imported v1 manifests predate snapshots. Retain the admitted profile only for a
+        // missing predecessor path; the legacy hash must still match the durable state.
+        const retained = entries.find(entry => entry.unavailable && entry.profilePath === path && entry.admittedProfile);
+        if (error?.code !== 'ENOENT' || !retained) throw error;
+        return JSON.stringify(retained.admittedProfile);
+      }
+    });
     if (prior.identity !== identity) fail('predecessor members differ; explicit membership migration required');
     legacyIdentities.push(prior.legacyIdentity);
   }
