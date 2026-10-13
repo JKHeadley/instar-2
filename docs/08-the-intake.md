@@ -76,6 +76,25 @@ the operator's platform identities, so the operator's own conversations are boun
 first message; a pairing act on a verified surface (a signed invite or a PIN-confirmed code —
 the minimal shape is fixed here, the full surface is part eleven's) binds a new conversation;
 and an unbound conversation is simply served at requester level, honestly, indefinitely.
+**Rule — the installer's verified act precedes its first chat approval.** Rules 28/29/98/104;
+**checks: P4-NF-04/05 and P11-NF-16/17** include the fresh-install neighbors. Four consumes
+Two's independently anchored org-intent grant and Eleven's pairing evidence, binding the
+exact authenticated platform account and conversation to that operator. It records the
+custodian, installation, scope, evidence reference and superseded binding where present
+through the existing grant history. The terminal's local user name, a pairing code alone,
+first chat message, subscription login and role-setup receipt confer no standing.
+
+Only after this binding is current may an exact first subscription request receive P-02's
+one-use explicit yes in the bound chat, or its GitHub route when P-05 requires that route.
+The request names installation, account, allowed runtime/use, custody reference, resource
+bounds, base and expiry; it never asks the person to author a grant. One's approval decoder
+checks the approver's existing delegating standing and consumes the reply id once. This
+`account-assented` evidence is not relabeled independently verified and cannot bootstrap
+or replace the binding that admitted it. Wrong account, absent binding, expired request,
+withdrawn acceptance and repeated reply refuse authority while preserving safe input;
+a current matching reply completes one grant. Unbound input remains requester input.
+
+
 The binding's lifecycle is explicit facts, not folklore: **cardinality is one** — a conversation
 has at most one binding, naming one operator principal (a shared inbox or group chat binds one
 principal; every other participant is a requester); **transfer is supersession** — a new binding

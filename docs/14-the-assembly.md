@@ -229,6 +229,112 @@ facts cannot become an authority merely because its executable used to pass.
 
 ---
 
+### Fresh installation
+
+**Rule — one-line installation composes the existing owners.** The purpose's brief
+onboarding, independent safeguards, single-machine and durable-cause rules; Rules 18/28/38/
+49/78/98/100/104/116 and P-01/P-02/P-05/P-08. **Checks: P10-NF-04–09/34/36/40,
+P10-SI-11/12 and P11-NF-16/17** include the sequence below. Ten runs an installer under the
+operator's authenticated administration session, with immutable release inputs verified
+through the independently installed distribution trust root. It cannot use the proposed
+agent's own key as proof that its installer is trusted. Eleven supplies the confirmation,
+One decodes grants, Two admits genesis and subsequent facts, Four binds the conversation,
+Seven supervises critical steps, Nine witnesses protection, and Ten admits the runtime.
+No desk seal, preview waiver, manual grant file or second installer authority store participates.
+
+**Rule — supervision starts before critical preparation.** Rule 38 and section 12's
+manual-preparation boundary; **check: P10-SI-11/12**. The authenticated operator installation
+session admits a finite setup manifest under its own administration authority, independent
+of the agent being created. Its installation-service org-intent and finite setup grant are
+part of the independently approved release bootstrap, decoded by One and verified by Two
+against the distribution anchor; they permit only preparation for that OS-authorized session,
+not choosing its operator, activating its agent or approving its subscription. The separate
+finite human enrollment seed and first approval follow [Two's concrete record sequence](06-the-fact-envelope.md#admission--the-one-boundary-a-fact-can-enter-through);
+the service cannot use its preparation grant as that seed. Placing these
+already approved inputs follows section 12's manual-placement contract. Seven then starts its
+bounded supervisor using an installer-supplied,
+locally executable model under finite resource reservations; its exact model/adapter artifacts
+are in that reviewed manifest. This local route needs no subscription credential, paid call
+or agent grant. Seven's own call admission remains nonrecursive. It validates each critical
+step, including key creation, backup, signing and genesis append. A missing or inadequate
+supervisor is a visible, resumable hold before that step, never a preview Rule-38 waiver or
+an unsupervised bootstrap presented as manual placement. This small setup route prevents the
+circular demand for an admitted subscription before the act that first authorizes one.
+Its real host/resource and judgment adequacy proof is an implementation prerequisite.
+
+**Value — the install sequence and implementation boundary.** The status labels describe
+component availability, not ordinary-install readiness. The role slice is in the installation
+track (`origin/train-18`, `0de16e3cdaea380ac746793123a51382aeb9830b`); desk composition is not
+an available general installer. Each stage preserves its input/checkpoint and resumes from
+existing owner records, with finite retries and a stop that survives restart.
+
+| Step | Status | Record, consumer and completion evidence |
+|---|---|---|
+| Genesis material created | **to build** | Supervised custodian prepares one installation identity, machine key set, org-intent candidate and recovery package. Nothing is an approved anchor yet. Two later admits only the digest approved in pairing. |
+| Pairing/binding | **to build** | Eleven's provider authentication, protected Mac account selection and phone confirmation establish enrollment; the custodian seals the exact org-intent/genesis subject and P-01/P-08 choices. One/Two admit initial standing, then Four records the authenticated account/conversation binding. Repeating the act yields the same records. |
+| Role agreement | **exists** | Slice 1 (`bin/instar2.mjs setup`, `scripts/onboarding.mjs` on the installation track) records role, starting trust, monthly choice and sensitive matters durably. Connecting its input to the verified conversation/standing decoders is to build; its terminal receipt alone is not binding, activation or an enforced monthly cap. |
+| First subscription request answered by P-02 yes | **to build** | Four prepares the exact account/installation/runtime/custody/resource request under current initial standing. The bound operator replies once; One's approval decoder produces the scoped grant, Two records it, and existing cap authority installs the agreed spend bounds before paid use. |
+| Login admitted | **exists but desk-only** | `install-login` / `prepare-logins` in the preview's `installed-harness-logins.mjs` verify already granted logins. Ordinary composition must replace desk-sealed authority with the preceding grant, root-contained custodian/profile references, fresh account evidence and Ten's current AssemblyAdmission. No copied preview waiver. |
+| First exchange | **exists but desk-only** | Existing runner/intake/effect paths produce an exchange under preview preparation. The installed launcher must consume the same admitted records, preserve input before acknowledgement, claim/send once, and record actual delivery and a grounded reply across restart. A listening process is not completion. |
+
+**Rule — installed evidence is complete before a login becomes usable.** Rules 26/28/38/63/
+100 and P-08; **checks: P10-NF-04–09/40**. AssemblyManifest links installation identity,
+independently approved org-intent/genesis, current binding and role/subscription grants,
+P-01 custody/recovery, the P-08 acceptance, finite money/resource/repair bounds, supervisor,
+account/runtime pins and current register generation. AssemblyAdmission records actual
+isolation, custody, replay and port evidence, not just those references. A grant alone is
+not login admission. Before any paid provider call, the cap owner must enforce the recorded
+choice and retain unknown-charge reservations. Before any send, Eight requires the whole
+durable cause and Six's current owner/one-use claim. Missing/stale evidence inhibits only
+dependent use, preserving input, stop, diagnosis and the independently admitted repair surface.
+An interrupted stage never discards an accepted input or repeats an uncertain external effect.
+
+**Rule — safeguards are on by default; overrides remain explicit and scoped.** The purpose's
+independent-safeguard rule, Rules 73/94/98/101/103 and section 2's override contract;
+**checks: P10-NF-07 and P9-NF-52**. A developer installation uses the same default.
+The documented account-access override is the purpose's recorded acceptance naming the
+account and installation: it is revocable and every affected account-assented approval
+carries the shared-access disclosure. It cannot create a binding or let the agent administer
+the custodian. A developer departure from another rule requires that rule's prior,
+independently authenticated Rule-94 waiver, with exact scope and a visible unprotected
+posture where protection is absent. Neither route grants the agent administration of the
+custodian or trades away secrets, spend cap, stop, no duplicate sends or durable intake.
+A flag, developer label, local file or silence is not
+an override. Ordinary installation requires neither exception and inherits no preview waiver.
+
+**Value — verification and build order.** This is the simplest robust route: add the missing
+bootstrap and composition at the existing owners, with one separately administered custodian.
+The OS boundary prevents the agent minting its own anchor; the independent recovery package
+prevents one lost device destroying operator access; the local setup supervisor removes the
+first-login cycle. These are implementation obligations, not new policy classes. The
+single-machine path requires no peer; enrolled peers receive authority/history through Two,
+while private custody handles and host isolation remain machine-local. Enrolling a peer
+retains P-08's replicated default and never silently lowers it after peer loss.
+
+The ordered milestones below are not single builder units. **The first bounded unit is
+Nine/Ten's existing broker Mac isolation and distribution verification**: run the harness
+without administrative access; verify the installed service against the distribution anchor;
+prove one harmless scoped request succeeds, while replace/read/elevate attempts from both
+agent and harness are denied. This establishes a boundary only, not admitted genesis or
+ordinary-install readiness. It includes no automated critical key creation. Next prove Seven's
+bounded local setup route and adequacy before automating critical preparation; integrate
+pairing/genesis and recovery after that. Each subunit uses its targeted owner checks, without
+a new whole-design review requirement.
+
+The milestones are:
+
+1. **Isolated custodian and supervised preparation — Ten/Nine/Seven.** Install the separate OS identity, reviewed local supervisor and vault recovery adapter; prepare candidate genesis through existing owners.
+   Exit: a fresh one-machine host prepares/restores once; agent and harness bypass attempts, missing supervisor, stale backup and out-of-root paths refuse with preserved work.
+2. **Verified pairing and genesis admission — Eleven/One/Two/Four.** Ship protected account selection and phone confirmation with the `R/GP/E/GE/A0/O0` record chain, pin runtime genesis, and append the initial grants and exact conversation binding.
+   Exit: real phone confirmation admits once; forwarded/expired code, wrong identity, changed digest, replay and interrupted publication never self-bind; either lost device has a working recovery route.
+3. **Role and first subscription grant — Four/One with the role slice and cap owner.** Connect existing role answers to verified standing; prepare the first request and consume P-02's yes through the existing grant and spend owners.
+   Exit: one onboarding conversation records the role and usable limits without repeated in-role prompts; absent binding, wrong account, expired/withdrawn approval and cap overflow cannot activate paid use.
+4. **Ordinary login admission and first exchange — Ten and the conversation/effect owners.** Reuse login preparation, replace desk-only authority, generate the launcher from admission and complete real conversation through durable intake.
+   Exit: intended account/runtime replies and recalls across restart; missing custody, wrong account, stop, failed login and uncertain send retain their proper outcomes without duplicate sends or a desk intervention.
+
+---
+
+
 ## 3. Native harness and the shared worker contract
 
 **Rule — a harness is a worker client, not another work engine.** Rules 29, 30, 47,
