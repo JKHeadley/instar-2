@@ -5,8 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { readAnswer } from './answer-reading.js';
 import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
-import type { ConversationState } from '../../src/assembly/production-conversation-session.js';
-import { createConversationSessionPort } from '../../src/assembly/production-conversation-session.js';
+import { createConversationTopicsPort, type ConversationTopicsState } from '../../src/assembly/conversation-topics.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
 import { createJournalWorker, openPreviewJournal, ModelNotStarted, ModelDisclosureRefused,
@@ -16,6 +15,7 @@ import { createJournalWorker, openPreviewJournal, ModelNotStarted, ModelDisclosu
 const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
 const signature = 'async ({ id, prepared, question, context: packet }) => {';
 const body = host.split(`      model: ${signature}`)[1]!.split('\n      summaryCheck:')[0]!.trimEnd().replace(/,$/u, '');
+const topicBody = host.split('topicOf: operation => {')[1]!.split('\n          },')[0]!;
 const optionsBody = host.split('const conversationSessionOf = options => {')[1]!.split('\nconst sessionWorkOf')[0]!;
 const mode = Function(`return options => {${optionsBody.replace(/;\s*$/u, '')}`)() as (options: Record<string, string>) => boolean;
 const roots: string[] = [];
@@ -34,10 +34,11 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authority =
   let now = 1000, launches = 0, calls = 0, fallback = 0, stopped = false, edges = 0;
   let destination = '', answer = JSON.stringify({ reply: 'A useful answer.', memory: [] });
   const files = new Map<string, string>(), delivered: string[] = [], sent: string[] = [];
-  let state: ConversationState | null = null;
-  const adapt = (config: Omit<import('../../src/assembly/production-conversation-session.js').ConversationSessionConfig, 'store' | 'createAdapter'> & Pick<import('../../src/assembly/production-session-work.js').SessionWorkConfig, 'createDriver'>) => createConversationSessionPort({ ...config,
+  let state: ConversationTopicsState | null = null;
+  const adapt = (config: Omit<import('../../src/assembly/production-conversation-session.js').ConversationSessionConfig, 'store' | 'createAdapter'> & Pick<import('../../src/assembly/production-session-work.js').SessionWorkConfig, 'createDriver'>) => createConversationTopicsPort({ ...config, maxSessions: 2, idleMs: 5000,
+    topicOf: Function('journal', `return operation => {${topicBody}}`)(journal) as (operation: string) => string,
     store: { load: () => state, save: next => { state = structuredClone(next); } },
-    createAdapter: resolveDelivery => createSessionConversationAdapter({ createDriver: config.createDriver, io: config.io, resolveDelivery }) });
+    createAdapter: (_topic, resolveDelivery) => createSessionConversationAdapter({ createDriver: config.createDriver, io: config.io, resolveDelivery }) });
   const config: Parameters<typeof adapt>[0] = { conversation: 'operator', allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => authority,
     createDriver: resolve => ({ owner: 'part-eight', launch: () => { launches++; return f.success('session:123:1'); },
       deliver: input => { if (checkIntake) expect(journal.view.order.some(turn => (turn.id === input.intake || `${turn.id}:format-retry` === input.intake && turn.answerRetried) && turn.reserved)).toBe(true);
@@ -59,11 +60,12 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authority =
     () => { throw Error('unexpected tools fallback'); }, async () => { fallback++; return { state: 'complete', value: answer, usage }; },
     (input: unknown) => input, ModelDisclosureRefused, createModelLaunchBoundary(), enabled,
     { get port() { return { ...port, run: intercept ?? port.run }; }, authority }, ModelNotStarted, readAnswer, () => {}, '/unused') as PreviewPorts['model'];
+  let prepare: ((input: unknown) => string) | undefined;
   const worker = createJournalWorker(journal, { now: () => now, stopped: () => stopped,
-    prepareModel: input => JSON.stringify({ ...input, responseContract: "decision-envelope-marker" }), model,
+    prepareModel: input => prepare ? prepare(input) : JSON.stringify({ ...input, responseContract: "decision-envelope-marker" }), model,
     send: async input => { sent.push(input.expectedText); return sent.length; },
     checkOutbound: text => { if (text.includes('SECRET')) throw Error('credential'); } });
-  return { journal, worker, model, port, sent, delivered,
+  return { journal, worker, model, port, sent, delivered, prepare: (next: typeof prepare) => { prepare = next; },
     replay: async () => {
       await port.close();
       journal.close();
@@ -77,7 +79,7 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authority =
       } finally { reopened.close(); }
     },
     intercept: (run: typeof intercept) => { intercept = run; },
-    restart: () => { port = value(adapt(config)); }, state: () => structuredClone(state!), edges: () => edges, counts: () => ({ launches, calls, fallback }),
+    restart: () => { port = value(adapt(config)); }, state: () => structuredClone(state!.topics.main!), topics: () => structuredClone(state!.topics), edges: () => edges, counts: () => ({ launches, calls, fallback }),
     answer: (text: string) => { answer = text; }, stop: () => { stopped = true; },
     close: async () => { await port.close(); journal.close(); } };
 }
@@ -134,9 +136,10 @@ it('keeps the outbound credential wall and durable stop in front of delivery', a
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/conversation-session-userwalk-2026-10-13.json', import.meta.url), 'utf8')) as {
   records: { frame: number; id: string; output: string }[] };
 it.each(recorded.records)('reads the real user-walk output at frame $frame through the session result path', async row => {
-  const f = fixture(true, false);
+  const f = fixture(true, false, 200, 'existing-role', row.id.split(':')[1]!);
   try {
     f.answer(row.output);
+    f.worker.intake([update(Number(row.id.split(':').at(-1)), 'Recorded question')]);
     const result = await f.model({ id: row.id, question: 'Return the recorded answer shape', context: '{}', prepared: '{}' });
     expect(result).toMatchObject({ state: 'complete', usage });
     expect(typeof result).toBe('object');
@@ -152,7 +155,8 @@ it.each(recorded.records)('reads the real user-walk output at frame $frame throu
 it('the journal refuses the whole session reservation before launch when the parent cap cannot hold it', async () => {
   const f = fixture(true, false, 9);
   try {
-    const result = await f.model({ id: 'telegram:7654321:update:1', question: 'hello', context: '{}', prepared: '{}' });
+    f.worker.intake([update(1, 'hello')]);
+    const result = await f.model({ id: 'telegram:12345678:update:1', question: 'hello', context: '{}', prepared: '{}' });
     expect(result).toEqual({ state: 'uncertain' });
     expect(f.counts()).toEqual({ launches: 0, calls: 0, fallback: 0 });
     expect(f.journal.view.calls).toBe(0);
@@ -164,7 +168,8 @@ it('a refused parent reservation never turns into an unreserved launch on a late
   const f = fixture(true, false, 9);
   try {
     for (const n of [1, 2]) {
-      const result = await f.model({ id: `telegram:7654321:update:${n}`, question: 'hello', context: '{}', prepared: '{}' });
+      f.worker.intake([update(n, 'hello')]);
+      const result = await f.model({ id: `telegram:12345678:update:${n}`, question: 'hello', context: '{}', prepared: '{}' });
       expect(result).toEqual({ state: 'uncertain' });
     }
     expect(f.counts()).toEqual({ launches: 0, calls: 0, fallback: 0 });
@@ -277,5 +282,69 @@ it('a successful format repair runs as a child and sends once across journal reo
       'telegram:12345678:update:1', 'telegram:12345678:update:1:format-retry']);
     expect(f.counts().calls).toBe(2);
     expect(await f.replay()).toBe(1); expect(f.sent).toHaveLength(1);
+  } finally { await f.close(); }
+});
+
+const admissionRecords = JSON.parse(readFileSync(new URL('./fixtures/repair-admission-rewalk-2026-10-14.json', import.meta.url), 'utf8')) as {
+  records: { case: string; frame: number; operation: string; question: string; originalPrepared: string; retryPrepared: string }[] };
+it.each(admissionRecords.records)('admits the exact rewalk $case packets (repair frame $frame) through the topic coordinator and sends once', async row => {
+  const f = fixture(true, true, 200, 'existing-role', row.operation.split(':')[1]!);
+  try {
+    let packets = 0;
+    f.prepare(() => packets++ === 0 ? row.originalPrepared : row.retryPrepared);
+    // The recorded repair was refused before worker execution. Simulate its answer;
+    // the admission and repair packets, not a claimed live repair output, are replayed.
+    f.answer('not a decision');
+    const run = f.port.run.bind(f.port);
+    f.intercept(async request => {
+      if (request.operation === `${row.operation}:format-retry`) {
+        expect(request.question).toBe(row.retryPrepared);
+        f.answer(JSON.stringify({ reply: 'The repaired answer.', memory: [] }));
+      } else expect(request.question).toBe(row.originalPrepared);
+      return run(request);
+    });
+    f.worker.intake([update(Number(row.operation.split(':').at(-1)), row.question)]);
+    await f.worker.drain();
+    expect(packets).toBe(2);
+    expect(f.delivered).toHaveLength(2);
+    expect(f.delivered[0]).toContain(row.originalPrepared);
+    expect(f.delivered[1]).toContain(row.retryPrepared);
+    expect(f.sent).toEqual(['The repaired answer.']);
+    const inputs = f.state().inputs;
+    expect(inputs.map(input => input.request.operation)).toEqual([row.operation, `${row.operation}:format-retry`]);
+    expect(inputs[0]!.digest).not.toBe(inputs[1]!.digest);
+    expect(f.journal.view.turns.get(row.operation)?.sent).toBe(1);
+    expect(f.journal.view.turns.has(`${row.operation}:format-retry`)).toBe(false);
+    await expect(f.port.run({ ...inputs[0]!.request, question: 'changed bytes' })).rejects.toThrow(/conflicts/);
+    await expect(f.port.run({ ...inputs[1]!.request, context: 'changed bytes' })).rejects.toThrow(/conflicts/);
+    expect(() => f.journal.append({ kind: 'format-retry', id: row.operation, role: 'answer', state: 'complete',
+      failureClass: 'malformed', prompt: row.retryPrepared, at: 1002 })).toThrow(/retry order/);
+    f.restart();
+    await f.worker.drain();
+    expect(await f.port.run(inputs[1]!.request)).toMatchObject({ state: 'complete' });
+    expect(f.counts().calls).toBe(2);
+    expect(await f.replay()).toBe(1);
+    expect(f.sent).toEqual(['The repaired answer.']);
+  } finally { await f.close(); }
+});
+
+it('refuses unreserved or invented suffixes and inherits only the reserved parent topic', async () => {
+  const f = fixture();
+  try {
+    const operation = 'telegram:12345678:update:1';
+    const request = { operation: `${operation}:format-retry`, question: 'repair', context: '{}', authority: 'existing-role' };
+    await expect(f.port.run(request)).rejects.toThrow(/not durably admitted/);
+    f.worker.intake([{ ...update(1, 'Question'), message: { ...update(1, 'Question').message, message_thread_id: 7 } }]);
+    await expect(f.port.run(request)).rejects.toThrow(/not durably admitted/);
+    f.journal.append({ kind: 'reserve', id: operation, prompt: 'original', at: 1000 });
+    await expect(f.port.run(request)).rejects.toThrow(/not durably admitted/);
+    f.journal.append({ kind: 'format-retry', id: operation, role: 'answer', state: 'complete',
+      failureClass: 'malformed', prompt: 'repair', at: 1001 });
+    for (const suffix of [':format-retry-2', ':format-retry:format-retry', ':other'])
+      await expect(f.port.run({ ...request, operation: operation + suffix })).rejects.toThrow(/not durably admitted/);
+    expect(f.counts().calls).toBe(0);
+    expect(await f.port.run(request)).toMatchObject({ state: 'complete' });
+    expect(Object.keys(f.topics())).toEqual(['7']);
+    expect(f.topics()['7']!.inputs[0]!.request.operation).toBe(request.operation);
   } finally { await f.close(); }
 });
