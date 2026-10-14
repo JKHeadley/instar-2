@@ -3,7 +3,9 @@
 **Status: draft, awaiting approval. Governed.**
 
 **Value — work belongs to the record, not the worker.** A session can disappear while its
-assignment remains. This design makes the assignment, its next step, its children, and its
+assignment remains. The conversation lives in a full session with tools and connected
+accounts admitted under its role. Its history, assignments and promises belong to the agent
+and survive replacement of that session. This design makes the assignment, its next step, its children, and its
 unanswered obligations reconstructable. A replacement worker receives those records and checks
 what happened before continuing. No automatic check enforces this preference itself; the Rules
 below specify the observable behavior it chooses.
@@ -72,6 +74,143 @@ placements. There is no mandatory orchestrator tier. P5-NF-06 enforces the chose
 
 ## 2. Durable assignments, steps, and transitions
 
+### 2.1 A conversation, an assignment, and a worker have different lifetimes
+
+**Rule — a conversation is the common history of its work, not an immortal run.**
+Rules 46, 47, 68, 83, 93, 96, and 114. **Check:** P5-NF-03/04/13/44/45/56 must exercise
+several inputs on one assignment, several assignments in one conversation, and a replacement
+session that sees both completed history and outstanding work. Four owns the conversation
+binding and admitted inputs. Five owns assignments and their input-to-work links. Ten's harness
+adapter owns worker identity and delivery observations. None substitutes for another.
+
+| Identity | Lifetime and meaning | What does not create a new one |
+|---|---|---|
+| Conversation binding | The continuing topic and its admitted, audience-scoped history, including messages in both directions and references to work | A new message, new assignment, compaction, worker exit, or machine handoff |
+| Run | One bounded assignment with an owner, exit test, budget and durable result destination; may need many messages and sessions | A clarification, progress reply, tool result, compaction, or replacement worker |
+| Run step / operation | One bounded action, with a stable cause, input digest, reservation and outcome | Redelivery, observation after a crash, or a late response |
+| Worker incarnation | One admitted execution context for a session behind the common harness contract | Another input delivered while that context remains valid |
+| Input delivery | One exact admitted input delivered to an incarnation, with its consumption evidence | A repeated transport receipt for that same delivery |
+
+**Value — the simplest robust route is a conversation with ordinary bounded runs.** Keep the
+existing conversation binding, fact store, run state machine, resource admission and adapter
+ports. Add input attachment to a run and complete the already-designed grounding and delegation
+paths. Do not build a second conversation graph, an always-running root for the whole lifetime
+of a topic, or a scheduler inside Five. Those mechanisms are unnecessary for retaining common
+history and would create a second answer to ownership, budget and completion questions. The
+mind chooses whether a message continues an assignment; exact admission checks enforce the
+result. This engineering default is held by the existing Rule 116 independent review.
+
+**Rule — every accepted input has a durable work disposition.** Rules 10, 28, 29, 46,
+68, and 83. **Check:** P5-NF-04/05/09/13/56 covers each of these dispositions and a crash
+before and after its append. After Four durably accepts an input, the current conversation
+owner records either its opening of a new run, its attachment to an existing nonterminal run,
+or its routing as a control/result under that record's existing owner. Before that choice,
+Four's accepted input remains queued and owned; no acknowledgment depends on choosing a run.
+A turn in which the session interprets a new input is itself bounded by Six's session allowance,
+and any paid call has its own durable input cause and Eight admission. Classification cannot
+spend or act invisibly while it decides where the work belongs.
+
+An attachment is an admitted `RunTransition` kind, not a new inbox or transcript. It names the
+input fact, target run, expected head, current binding, recorded intent/standing resolution,
+and reason for associating the work. It preserves pending operations, current work state,
+exit test and budget. The binding plus admitted input id is its deduplication key: replay
+returns the same disposition; another target or changed content requires explicit reconciliation,
+not two independent obligations. Attachment may update the head while a step is pending; the
+later outcome still resolves that exact admitted step and is conditionally appended against
+the current head. A stale outcome proposal is re-read and reconciled, never re-dispatched.
+
+The model interprets a follow-up using the shared history and open-work index. Code must not
+use words such as “also” or a timeout as a run-boundary rule. A clarification joins the current
+assignment when its recorded meaning fits. A new independent request opens another run. A
+changed scope or exit test requires an explicit standing-covered change as below; attaching
+text is not permission to widen either. A message asking for several independently bounded
+results can open one assignment and delegate, or link separately owned assignments, with one
+primary intake disposition referencing them all. A terminal run stays terminal: a follow-up
+can open a new related assignment that reads the same history. An idle conversation with no
+unfinished assignment needs no filler run, synthetic success, or budget-consuming heartbeat.
+
+**Rule — a session can serve successive runs without owning their truth.** Rules 30, 60,
+63, 68, 75, 96, and 115. **Check:** P5-NF-10/14/15/44/47/56 runs the same conversation
+contract with each supported adapter. One fenced foreground session per conversation is the
+single-machine engineering default; nested delegated sessions remain legal. New ordinary
+inputs queue durably while the worker is busy and are delivered at a recorded turn boundary;
+stop uses the independent fast path. Where an adapter supports verified in-turn delivery, it
+may deliver earlier under the same intake, consumption and authority contract. Receipt of a
+message, acknowledgment, consumption, answer production and answer delivery remain separate facts.
+
+The worker's model and tool calls are attributed to the current run/step and its session
+reservation; a call doing input interpretation names the admitted input until attachment.
+Input interpretation spend is charged once to the installation allowance and linked to its
+assignment when resolved, never omitted or double-debited. A switched assignment does not
+refresh the session or installation cap. A replaced session must reserve its own live
+resources while preserving prior spend and uncertain reservations. No worker is granted a
+conversation-wide permission to spend, send or use accounts merely by staying alive.
+A completed turn is not a completed run; producing text is not delivering it. The run closes
+only under section 4. Other open runs and promises remain in the next turn's context.
+
+**Rule — dependencies constrain work, not the entire conversation.** Rules 14, 15, 60,
+63, 68, and 97. **Check:** P5-NF-07/11/12/15/49 tests an uncertain tool or send alongside
+an unrelated incoming question. Sequential steps within one run use the existing settled-
+predecessor rule. Input attachment, stop and read-only observations may still be recorded.
+A different run can use the same conversation and session only with separately admitted
+capacity, current grounding and authority, and no dependency on repeating or assuming the
+uncertain operation. Its admission must inspect the conversation's unresolved operation
+references; changing the run id cannot bypass an unresolved effect or free its reservation.
+If independence cannot be established, the proposed work remains owned and waiting while
+communication about the wait uses its separately admitted route. Section 8's exact accepted-
+answer reply path remains available without pretending unknown provider accounting settled.
+
+**Rule — tools and sub-work retain their real causes.** Rules 41, 58, 60, 75, 100, and
+114. **Check:** P5-NF-07/14/30/35/59/60 joins each model call, tool proposal, doorway outcome,
+child result and reply to its exact run and input cause. A tool call is an ordinary step;
+its connector identity, granted account scope and operation record stay with Four/Eight and
+the custodian. The graph stores references, never account credentials. Repeated model turns
+within a session retain individual usage records. A bounded external operation retains its
+own identity even if the harness groups several tools in one turn. Internal computation
+needs no artificial delegation edge. Sub-work assigned to another session or agent does:
+section 6's durable edge precedes launch, including for harness-native subagents. Adapters
+must expose that start to admission; a transcript discovered afterward is not a launch grant.
+
+### 2.2 Implementation boundaries for a continuing conversation
+
+**Rule — the design's requirements and implementation evidence stay distinct.** Rules 26,
+34, 49, 69, 111, and 116. **Check:** P5-NF-01/56/58 compares the following consumer gaps
+with the public ports and actual initialization. These are build obligations, not claims that
+the live conversation already uses Five. The inspected foundation at `ac3bd4d8` has:
+
+| Existing mechanism to retain | Required consumer work |
+|---|---|
+| `src/rungraph/records.ts`, `service.ts`: immutable openings derived from a cause; conditional signed transitions; durable admission witnesses | Admit repeated inputs to one assignment. Add the attachment transition and its schema/version, preserving v1 readings and replay identities. Four must route queued inputs rather than always open a root. |
+| `graph.ts`: stable operation keys, pending outcomes, stop inhibition and evidence-bound closure | Keep the linear action chain per run. Bind outcomes to the admitted step across input attachments; let independent runs share conversation history without making every pending liability a global chat hold. |
+| `SessionGrounding` v2 and `GroundingReadPort`: clock, worker context, delivered captures and consumption proof | Implement covered summaries, compaction accounting and conversation-scoped history. `validateGrounding` presently refuses multiple machine lineages and history above a message-count threshold; that count is not Rule 96's token coverage contract. |
+| `delegation.ts`: bounded recursive edges, subset grants, result collection and cancellation | Supply a production `DelegatedRunAuthority`, admit non-root Run identities from accepted edges, and route late results to a durable parent. A production parent cannot delegate merely because the standalone contract suite passes. |
+| `accepted-reply.ts`: one exact accepted answer can open a separately admitted reply run while provider charge remains unresolved | Retain its no-repeat and held-exposure semantics. Eight/sixteen must identify replies by their logical reply obligation, not make a conversation's whole history a single-use send token. |
+| `src/awareness`: start/resume/compaction hooks, own-work index and receipt-verified recovery | Reuse delivery and sentinel paths, but make Five validate exact coverage. A trimmed awareness block is useful context, not evidence that full-history grounding occurred. |
+| Step-1 session composition in `src/assembly/production-conversation-session.ts` at `f4a6b091`: repeated inputs, one cumulative allowance and bounded reconnect through the session driver | Keep its admitted driver and accounting approach. Its host journal, in-process input set and session edge are not Five's durable input disposition or child admission; migration must supply those owner joins. |
+
+**Value — assignment boundaries, not message boundaries, are the default.** No constitutional
+line requires a fresh run or a fresh session for every inbound message, one shared machine
+segment for all history, a full restart for every tool call, or a permanent run for every
+conversation. Those restrictions are excluded from the conversation design. Full grounding
+is required at start, resume and compaction; an ordinary live input can extend a verified
+same-incarnation context with its exact new suffix and current work/governance changes. It
+must not cause another complete-history read solely because a tool step finished. A gap,
+changed incarnation, compaction or changed required context triggers the full grounding path.
+The checks in section 8 verify both the valid delta and the missing-context neighbor.
+
+**Rule — existing records are adopted without manufacturing evidence.** Rules 7, 44, 45,
+90, and 96. **Check:** P5-NF-02/04/45/51/52/56 restarts at each adoption boundary. The
+conversation journal remains the history authority in plan step 1. At step 5, preserve its
+original input ids, capture digests, order, delivery outcomes and uncertainty, with explicit
+source-to-fact mappings; switch every history consumer at one declared cutoff only after
+an equal-frontier coverage comparison. A lost acknowledgment reuses that mapping. Do not
+rewrite old per-message run ids into a new run or infer old consumption, authority or delivery
+receipts from text. Existing runs remain readable and retain their obligations. A receiving
+run may take unfinished work only with a recorded accepted transfer; otherwise it remains with
+its original run. New record versions apply to new attachments/grounding, not silent edits to
+signed history. No second permanent inbox, summary database or promise store belongs in Five.
+
+
 **Rule — closed construction and shared history apply here too.** Rules 7, 28, 90, and 113.
 **Check:** P5-NF-02 runs compile-negative construction fixtures, decoder failures, schema
 migration fixtures, and canonical-byte comparisons for every stored type in section 1. No
@@ -90,7 +229,7 @@ creates the same assignment once.
 
 | `Run` opening field | Meaning |
 |---|---|
-| `id`, `opening` | Globally unique run identity and the intake or delegation fact that caused it. Root creation deduplicates by that cause, not by a session name. |
+| `id`, `opening` | Globally unique assignment identity and its admitted opening cause. Root creation deduplicates by that cause; child creation by the accepted delegation edge. Neither is a session name or the identity of every later input attached to the run. |
 | `intent`, `directives` | References to the admitted `Intent` and its `under` lineage. A delegation preserves the originating lineage and adds the recipient's applicable directives. |
 | `owner` | The accountable verified agent or system principal under recorded standing. A worker, process id, or machine name cannot fill this field. |
 | `scope`, `authority` | Assigned scope and references to the grants and authority resolution supplied through part four. These are evidence of the basis at creation, not perpetual permission. |
@@ -131,7 +270,7 @@ hold under part two's replication contract, never count as satisfied.
 
 **Rule — transitions are records with preconditions.** Rules 31, 33, 63, 68, and 97.
 **Check:** P5-NF-05/08/09. `RunTransition` contains `id`, run id, expected predecessor(s),
-triggering fact, transition kind, responsible principal, admitted standing and part-six
+triggering fact (including an attached input), transition kind, responsible principal, admitted standing and part-six
 ownership references, register generation, clock measurement, affected step or edge, outcome
 and evidence references, and the resulting blocked-on/wake obligation. All fields are
 immutable. Reconciliation may join several predecessor proposals only with the standing-covered
@@ -151,6 +290,13 @@ CPU use has been observed. Worker liveness is separately evidenced by part six.
 | `halted` | `ready`/`waiting`/`recovering` only on a recorded, authorized resume that addresses the halt cause; `closing` on a valid cancellation or unreachable proposal. No automatic timer clears an operator stop. |
 | `closing` | `completed`, `unreachable`, or `cancelled` once section 4's settlement requirements hold; `waiting` if closure needs observation; `halted` while a stop applies. |
 | `completed`, `unreachable`, `cancelled` | No fresh execution in this run. Late evidence, corrections, result delivery, and dispute records remain appendable; follow-on work has a new run id with its own authority. |
+
+**Rule — an input attachment preserves the execution state.** **Check:** P5-NF-04/05/08/09
+accepts an attachment in any nonterminal state without clearing its pending work, stop, budget
+or exit evidence. It is a same-state transition, not an execution admission. A terminal run
+accepts only historical links and observations; new work uses a related run. Concurrent
+attachments are reconciled against the current head with the same input identity. They
+cannot make two successors executable.
 
 **Rule — incompatible concurrent transitions expose a conflict and inhibit execution.**
 **Check:** P5-NF-09 permutes concurrent transitions and injects late segments. Identical semantic requests
@@ -188,7 +334,8 @@ notification to the old worker is not an alternative authority mechanism.
 114. **Check:** P5-NF-07/11/12 kills the worker at each numbered boundary:
 
 1. Part four preserves and admits intent with an owner and blocked-on state.
-2. Run admission records the run or finds its existing creation from the same cause.
+2. Run admission records the input disposition: creates/finds its assignment by opening
+   cause, or attaches it to existing work under section 2.1. A crash leaves the input owned.
 3. Part-six ownership and resource admission validate the expected run predecessor, stop
    state, current grants, current generation, and proposed step; no external action occurs yet.
 4. If a worker starts or resumes, the grounding reader records section 8's actual read.
@@ -259,7 +406,7 @@ erase a recorded answer or release capacity: eight's settlement remains independ
 and any dependent work must satisfy the run's pending obligations and its own admission.
 
 
-PREVIEW-S2 adds the fixed `acceptedReplyPreviewText` projection over owner-validated same-store
+The preview-only helper provides the fixed `acceptedReplyPreviewText` projection over owner-validated same-store
 facts. It reads the signed acceptance's decoded Decision, requires conclusion subject
 `preview-stage2-answer`, predicate `answer-text` and a nonempty string value, and prefixes
 `PREVIEW — experimental test agent; production safeguards incomplete.` plus one newline.
@@ -416,8 +563,9 @@ or tools cannot change the answer.
 
 **Rule — work-window boundaries preserve responsibility.** Rules 8, 68, 83, 92, and 97.
 **Check:** P5-NF-17/22/25. A posted boundary review automatically creates a due continuation
-obligation for any remaining authorized work, through the same deduplicated opening path.
-The new window can run only within live authority, remaining resource allowances, and an
+obligation for any remaining authorized work in the same run. A new assignment is created
+only when the boundary review actually names new work, through the deduplicated opening path.
+The next window can run only within live authority, remaining resource allowances, and an
 uninhibited stop state. A scheduling ceiling delays execution visibly; it never acts as an
 exit test or silently grants a fresh budget. If the exit test passes, no filler run is created.
 A completed result or necessary-action notice may satisfy the cadence; routine churn remains
@@ -640,14 +788,24 @@ a harness resume, and every post-compaction continuation. It takes a fresh clock
 and reads the recorded conversation history and current run graph before enabling its next
 ordinary action. Emergency stop keeps part four's fast path and never waits for this read.
 
+**Rule — a live input extends context without pretending a start occurred.** Rules 47 and 96.
+**Check:** P5-NF-44/45/47/56 compares a consumed same-incarnation suffix with a missing,
+duplicate or changed delivery. Ten records the delivered input/suffix against the last
+verified grounding frontier and context incarnation. Five checks conversation scope, new
+input ids, current directives, required briefing classes, pending work and ownership. A
+valid extension supports the next step without another whole-history read; it is not reused
+after a reset, resume or compaction. Merely writing text to a terminal proves no consumption.
+
 **Rule — coverage is explicit enough to test, not merely a hash called “grounded.”**
 **Check:** P5-NF-44/45. `SessionGrounding` contains immutable id, run/step, worker and harness instance,
-start reason, fresh start clock, previous activity clock reference and derived elapsed-time
+context incarnation, start reason, fresh start clock, previous activity clock reference and derived elapsed-time
 measurement, authenticated principal and intake reference, conversation binding/directive
 references, register generation, history frontier and known-lineage set, coverage threshold,
 covered message ranges, exact read capture digests, rolling-summary references and their
 covered ranges/freshness, last inbound id at this read, pre-pause inbound id when resuming,
-and the run's pending operations, children, and unresolved receipts. The reader records what
+and references to all open work in the conversation, including pending operations, children,
+promises, due work and unresolved receipts. Promise contents remain with their owning store;
+Five reads their references and cannot close a promise by ending a session. The reader records what
 it actually loaded into the worker, not only what a history index says exists. Across machines,
 elapsed-time derivation uses part one’s explicit cross-instance measurement operation and
 records clock uncertainty; incomparable clocks yield an unknown gap requiring observation,
@@ -665,6 +823,50 @@ claimed covered by the earlier receipt. If grounding evidence is incomplete, ord
 waits on an owned repair obligation. The independently grounded minimal plane remains able
 to receive, explain the limitation, and stop work; there is no global wait for this run's
 history repair.
+
+**Rule — rolling summaries account for history and never replace it as evidence.**
+Rules 7, 41, 47, 58, 75, 96, and 110. **Check:** P5-NF-44/45/46/47/51/52/56 tests exact
+coverage and its gapped, stale, corrected and interrupted neighbors. The history owner writes
+summary captures to Two's existing store. Each summary record identifies the conversation,
+audience scope, exact source frontier and message/capture ranges, its own capture and digest,
+creation clock, summarizing call and usage, and the assessment of fidelity/uncertainty.
+Five references those records; it does not operate a second summarizer. Summary production is
+owned, metered background work through the existing scheduler and judgment doorway, with a
+registered freshness cadence. A model's uncertain or undecided assessment is retained as
+such, not converted to approval because a summary has bytes. Semantic fidelity uses the
+existing judgment/review path; a range check alone proves only coverage.
+
+Grounding partitions the selected conversation frontier into a full recent suffix and
+explicitly covered older ranges; assistant replies and relevant tool/child outcomes are
+included, not only inbound text. The threshold is measured in the selected adapter's declared
+token estimate, with the estimator/version recorded, rather than a number of messages. The
+history reader uses the binding and causal frontier across all known machine lineages;
+it cannot treat the entire store as one conversation or sort competing authority by time.
+The current fenced conversation owner records its delivery order, preserving causal references
+and labelled concurrency; ambiguous authority remains inhibited. This supports a one-machine
+append order without requiring that machine to own history forever.
+
+A correction or late source within a summarized range invalidates its coverage until a new
+summary or full-source read accounts for it. A complete fresh summary plus full suffix may
+proceed; if a summary is stale, missing or not accepted, use the full range when it fits the
+declared context bound, otherwise retain intake and an owned repair obligation. No silent
+last-N skim. Original messages and captures remain retrievable under their standing and
+retention rules; summary prose cannot authorize an effect, settle a charge, prove a delivery,
+close a promise, or substitute for an operation receipt. Startup and scheduled comparisons
+between the authoritative frontier, summary coverage and delivered manifest expose loss.
+
+**Rule — compaction checkpoints precede renewed ordinary work.** Rules 47, 68, 96, and 110.
+**Check:** P5-NF-11/13/44/46/47/56 kills the worker before and after context consumption.
+On a compaction signal, Ten records the last consumed inbound id, its capture, the last
+verified context frontier and pending delivery ids; Five's run/operation/child facts already
+hold the unfinished work. If the signal was missed, a changed context incarnation forces
+re-grounding before another ordinary action. A new incarnation reads the current clock,
+current required briefing classes, full history/covered summaries and current open work.
+Ten's exact consumption witness binds that packet to the incarnation; Five records the
+new grounding. A checkpoint or harness resume token alone never proves this read.
+An input accepted during the pause stays in the durable inbox and is delivered once after
+reconciliation, without replacing the saved pre-pause id. A missing pre-pause capture is
+an explicit loss/repair state, not a reason to guess the question or restart its effects.
 
 **Rule — the first post-compaction reply accounts for the last inbound before the pause.**
 **Check:** P4-NF-11 and P5-NF-46. `ContinuityAccounting` contains immutable id, grounding reference,
@@ -731,14 +933,14 @@ for user communication never grants mutation authority.
 
 | Seam | Producer | Consumer | Authoritative record | Transition order | Fail direction | Closure owner |
 |---|---|---|---|---|---|---|
-| S1: intake to work | Part four | Run admission | Intake/admission fact, owner, blocked-on state, and run opening causally bound to it | Preserve → resolve → admit intent → create/find run by cause → schedule | Close authority on invalid input; preserve or hold intake; no lost acknowledged intent | Four closes intake admission; five closes assignment and its receipts |
+| S1: intake to work | Part four | Run admission | Intake/admission fact, owner, blocked-on state, and run opening causally bound to it | Preserve → resolve → admit intent → create/find assignment or attach input → schedule | Close authority on invalid input; preserve or hold intake; no lost acknowledged intent | Four closes intake admission; five closes assignment and its receipts |
 | S2: ownership and resumption | Six's leases/recovery; five supplies pending run state | Run/session admission and eight's effect admission | Six's ownership/fencing record; five's transition head; eight's operation outcome, each for its own question | Durable work → current ownership → expected-head/resource/stop admission → actual-start grounding → step intent → action → outcome → advance; recovery observes pending keys first | Close execution on stale/lost/contested ownership; preserve observations; minimal communication stays independently available | Six closes recovery/fencing attempts; five closes work; eight settles effects |
 | S3: resource and repeats | Five's budget/step requests; six's allocation and loop machinery | All run/child admissions | Budget allocation and charge facts under six's admission, linked to five's ancestor budgets | Reserve within ancestors → admit action → meter/settle → release only proved unused capacity; wake through bounded loop | Close new allocation/retry; keep unresolved maximum charge and visible repair | Six closes allocations/loop attempts; five owns remaining assignment and exhausted-capacity decision |
 | S4: delegation over transport | Parent run and transport adapter; remote receiving intake | Remote run; parent collection | Contract/offer, recipient acceptance/mapping, delivery witnesses, child terminal, collection receipt | Edge durable → send → receiver intake/admission → worker consumes → child outcome/result durable → parent collects → receipt | Close unverified/out-of-scope execution; queue or preserve uncertain delivery; never promote an ack | Five owns edge and collection; receiving agent owns accepted child; six owns adapter delivery/recovery |
 | S5: judgment and refined ask | Five's pending step; seven's request/attempt/answer; six's admission | Eight's model dispatch, then five's acceptance; four's classification | Seven's request/attempt/receipt and part-one Outcome/Result/Decision; six's operation/spend reservation; five's RunTransition acceptance; eight's settlement | Adopt section 3: persist step/request → own → validate/ground → persist attempt/operation → fenced durable spend reserve → effect dispatch → record receipt/Outcome/answer → conditional acceptance → advance; later effect separately admitted | No dispatch on stale/unreserved operation or unresolved prior execution/charge; doorway default stays within floor; stop/stale predecessor blocks acceptance | Seven closes question/answer; six owns ownership/reservation/recovery and credit release; eight settles effect; five owns run acceptance/wait; four closes classification |
 | S6: effects | Five's admitted proposal | Eight's effect doorway; five consumes result | Eight's operation record, `Result`, `Outcome`, authorization validation and verification obligation | Step intent durable at demanded level → eight validates current scope/base/lease → effect → eight records outcome → five consumes once | Close unsafe/stale mutation; uncertainty routes to observation; user communication applies its own declared consumer direction | Eight settles operation and schedules verification; five advances work; nine grades evidence |
 | S7: authorization lifecycle | Four's routed request; eleven's verified response; four's decoder | Five's wait and eight's effect validation | Exact request digest and part-one `Authorization` or preserved decline/expiry; run wait transition | Request durable → owned wait → surface response through intake → exact match/current validation → eligibility → effect re-validation | Silence never yes; expired/declined receipt drains; conflict inhibits action | Eleven owns response surface, four owns authority decoding/standing candidates, five owns wait/receipts, eight owns final eligibility |
-| S8: grounding and continuity | Four's history substrate, three's generated briefing, harness read receipt | Five's actual-start gate and reply accounting | `SessionGrounding`, `ContinuityAccounting`, original inbound and reply fact | Fresh clock/history/current graph → delivered-context receipt → ordinary work; compaction accounting → first reply send | Close affected ordinary execution on ungrounded input; independently grounded repair/stop remains available | Five owns grounding/accounting; ten realizes consumption; nine reviews substantive adequacy |
+| S8: grounding and continuity | Four's history substrate, three's generated briefing, harness read receipt | Five's actual-start gate and reply accounting | `SessionGrounding`, `ContinuityAccounting`, original inbound and reply fact | Fresh clock/history/current graph → delivered-context receipt (or verified live-input extension) → ordinary work; compaction accounting → first reply send | Close affected ordinary execution on ungrounded input; independently grounded repair/stop remains available | Five owns grounding/accounting; ten realizes consumption; nine reviews substantive adequacy |
 | S9: evidence and exit | Checks/judgments/effect observations and nine's verification | Run exit admission; nine's grading | Exit-test result, `Evidence`, `ExhaustionRecord`, settlement manifest, canonical `RunExit` | Capture/record → check subject/freshness/taint → settle obligations → terminal transition → independent review | Close unsupported success/unreachable claims; retain contested results and recheck obligation | Five owns run closure; nine owns evidence adequacy, probes, grading, and semantic review |
 | S10: history and register | Two's fact/capture/read ports; three's generation/declarations | Every run decoder, fold, and gate | Signed facts and entering-force generation records; disposable views carry horizon/taint | Verify generation/evidence → decode → append → fold → pinned rebuild comparison | Close authority on stale generation or corrupt required scope; labelled read views and unaffected scopes remain available | Two owns fact admission/reconciliation; three owns generation/graph; five owns declared run projections |
 | S11: conversation service and surfaces | Four's input; five's durable conversation route and result/attention obligations | Six's serving admission, ten's harness, eleven's surfaces, eight's send | Binding, current conversation ownership, admitted run, outbound operation/receipt | Intake preserved → owner forwards/queues → admitted worker → durable reply → governed send → delivery evidence | Close unauthorized starts/sends; keep pull-visible backlog and the separate minimal communication plane; never claim an unreachable peer silent | Five owns run/route/receipt; six owns transport and one-owner admission; eleven owns minimal-plane live reachability |
@@ -755,6 +957,35 @@ claim that this graph can conjure capacity during loss of the minimal plane itse
 ---
 
 ## 10. Four failure traces, worked through the seams
+
+**Rule — a many-turn conversation is one recoverable history.** Rules 46, 47, 68, 96,
+and 114. **Check:** P5-NF-04/11/13/30/35/44/45/46/47/56 exercises this walk through the
+real conversation composition, alongside the four fault traces. These are required build
+acceptance cases; a document checker passing them as prose is not runtime proof.
+
+1. Input A asks for a report. Four preserves it; Five opens R with an exit test and allocation;
+   session W consumes its grounded conversation context. A duplicate of A finds R.
+2. R reads a source through a bounded tool step. Input B clarifies the date range while W is
+   busy; B stays queued until consumption, then attaches to R under the current head without
+   replacing A, resetting resources or closing the pending tool. Another unrelated question
+   can open Q, sharing this history and receiving its own authority/resource admission.
+3. R delegates comparison C through a durable edge. W compacts before C answers. R and C
+   stay open; the checkpoint keeps B as the last consumed inbound. Input D, arriving during
+   the pause, remains pending and cannot be claimed read by the saved checkpoint.
+4. W is lost. W2 obtains ownership and reconciles pending operation and delivery keys before
+   fresh grounding. It consumes the same required briefing classes, current work and summaries
+   covering every older range plus the full recent suffix. If the prior delivery of D is
+   uncertain, it observes/reconciles rather than blindly typing D again. Native resume state
+   may help reconstruction but never authorizes repeating a tool or send.
+5. C's result reaches R's durable destination while W is absent. W2 collects it once under the
+   original edge; a duplicate receipt cannot create another child or completion. Its first
+   post-compaction reply discloses compaction and records whether B was addressed, superseded
+   or still pending, while separately accounting for D when D is consumed.
+6. R's report and reply have separate production/delivery evidence. An uncertain send keeps
+   its key and settlement obligation; a new session cannot resend it as a new answer. R
+   closes only on its exit evidence and settled children/effects. Q or a remaining promise
+   can still be open. With none left, the conversation is idle and remains available for a
+   future input, without an immortal assignment or an automatic paid continuation.
 
 **Rule — fault traces test causes and records, not just final labels.** Rules 26, 31,
 33, 42, 63, 68, and 114. **Check:** P5-NF-50 runs each trace below for a local child and
@@ -794,7 +1025,7 @@ qualify. The facts retain the history when a view is rebuilt or trimmed.
 
 | Entry | Inputs and merge classes | Retention and tested agreement |
 |---|---|---|
-| `run-view` | Run openings and incompatible transition heads: exclusive-singleton; causal continuation chains; observations: set-union; stop inhibition: set-union until a causally valid resume. Part-two taint/correction handling applies before this fold. | Active detail can leave after settled terminal/receipt obligations. Immutable identity, content digests, unresolved conflicts, and replay keys remain in a compact index. Pinned rebuild against spine, including late terminal observations, P5-NF-51/52. |
+| `run-view` | Input dispositions keyed by conversation/input and attached to assignments; run openings and incompatible transition heads: exclusive-singleton; causal continuation chains; observations: set-union; stop inhibition: set-union until a causally valid resume. Part-two taint/correction handling applies before this fold. | Active detail can leave after settled terminal/receipt obligations. Immutable identity, content digests, unresolved conflicts, and replay keys remain in a compact index. Pinned rebuild against spine, including late terminal observations, P5-NF-51/52. |
 | `delegation-view` | Edge/recipient mapping/terminal collection: exclusive-singleton; progress and delivery witnesses: set-union; incompatible statements become Conflict. | Keep dedup tombstones and contract mappings; trim payload detail only when captured references remain resolvable or honestly unavailable. Agreement with run and receipt facts, P5-NF-35/52. |
 | `run-due-view` | Wake/receipt/recheck obligations: set-union with explicit closure causes; due time derived from facts, compared with clock only by the scheduler outside the pure fold. | A due obligation disappears only on its closure fact; rebuild repairs lost in-memory wake notifications, P5-NF-13/53. |
 | `run-budget-view` | Allocations: exclusive-singleton; disjoint charges/reservations: cap-checked aggregate; observations: set-union. | Keep unsettled maximum exposure and lifetime charged totals. Oversubscription records aggregate violation and closes new admission; agreement with six's actual resource admission, P5-NF-14/15. Detection alone is not cap prevention. |
@@ -933,7 +1164,7 @@ these significant features; no code or runtime test result is claimed by this de
 | P5-NF-01 | build / arch | Missing ownership entry, duplicate owner of a type, imported private realization, or a cross-part duty without a seam/disposition | 1/30/49/69/114: one owner, complete boundaries |
 | P5-NF-02 | compile / decode | Open constructor, missing schema version, unknown local version, changed canonical bytes without versioning, secret-valued field, or immutable identity mismatch silently accepted | 7/28/90/100/113: trusted types and stable history |
 | P5-NF-03 | decode | Run opening lacks owner, scope, exit test, budget, cadence, wake or explicit blocked-on state | 8/83/92/97: no ownerless assignment |
-| P5-NF-04 | lifecycle | Kill after accepted intake and before run creation loses the assignment or creates two roots for one cause | 46/68/83: accepted work survives |
+| P5-NF-04 | lifecycle | Kill between intake, input disposition and worker delivery loses work, creates two roots for one cause, or attaches an input to two assignments without reconciliation | 46/68/83: accepted work survives |
 | P5-NF-05 | test | State changed without a transition, wrong expected predecessor admitted, or immutable run opening overwritten | 31/33/68: causal durable work |
 | P5-NF-06 | decode / test | Cycle, two owning parents, nonexistent dependency counted satisfied, or configured graph bound exceeded | 55/60/114: bounded recursive agency |
 | P5-NF-07 | test | Dispatch/effect before durable step identity or before demanded durability; new operation key used to bypass unresolved work | 24/26/63/114: no invisible operation |
@@ -974,7 +1205,7 @@ these significant features; no code or runtime test result is claimed by this de
 | P5-NF-42 | test | Closed-run tombstone lost, queue overflow silently sheds accepted work, or replay grants a new execution budget | 46/60/114: bounded custody without loss |
 | P5-NF-43 | test | Peer concurrence without worker delivery, declared deadline, minimum response opportunity and bounded clock uncertainty, or concurrence used as Authorization/result | 98; P4-NF-23: heard silence only |
 | P5-NF-44 | lifecycle | Delayed start reuses intake clock/history or resumes without fresh directives/graph reads | 93/96: actual-start grounding |
-| P5-NF-45 | test | History coverage gap, stale summary, unavailable capture, threshold skim, or post-frontier inbound claimed already read | 26/96: full recoverable history |
+| P5-NF-45 | test | Wrong conversation, missing lineage/reply/tool range, history coverage gap, stale or unassessed summary, unavailable capture, threshold skim, or post-frontier inbound claimed already read | 26/96: full recoverable history |
 | P5-NF-46 | lifecycle | First post-compaction reply lacks disclosure, pre-pause inbound id or honest accounted disposition | 110; P4-NF-11: provable continuity accounting |
 | P5-NF-47 | contract | Compaction omits a required start briefing class or silently pins obsolete governing content | 47/84/90: context parity |
 | P5-NF-48 | build | Imported/exported cross-part interaction absent from the six-field seam table or has no closure owner | 33/45/69/95/114: behavior beyond type ownership |
@@ -1002,7 +1233,8 @@ one definition. Existing terms in parts one through four retain their definition
 
 | Term | Kind | Definition |
 |---|---|---|
-| durable run | noun | An owned assignment recorded independently of every worker that may execute it. |
+| durable run | noun | An owned bounded assignment recorded independently of every worker that may execute it; many inputs can concern it, and many runs can share a conversation. |
+| input attachment | noun | The durable association of an admitted conversation input with an existing assignment, preserving that assignment's authority, limits and pending work. |
 | run graph | noun | Runs and their owning delegation edges plus non-owning dependencies, acyclic and reconstructable from admitted facts. |
 | run step | noun | One bounded proposed action with a stable logical identity and an admitted expected predecessor. |
 | transition head | noun | The causally justified current run transition, or an explicit set of incompatible contenders whose conflict prevents clean execution. |
@@ -1023,24 +1255,39 @@ one definition. Existing terms in parts one through four retain their definition
 
 ## 15. Decisions that belong to the operator
 
-**Value — preserve uncertainty even when it delays a result.** No automatic check chooses
-the right patience for a person's work. The proposed policy keeps unknown effects, unresolved
-remote cancellation, and unsettled maximum spend visible rather than declaring completion or
-replaying blindly. The operator question is whether that availability cost is acceptable;
-technical implementation must still satisfy the existing no-unknown-retry and authority rules.
-A new policy cannot silently weaken those constitutional constraints.
+**Rule — connected-account authority has one unresolved constitutional question.**
+Rules 49 and 103; the purpose's decision-gap rule. **Check:** P5-NF-01/58 records this as
+an operator question, not an executable exception. The purpose says a single-machine
+installation may dispatch irreversible effects `local-durable` “only for the fixed
+profile's closed set: its installed paid provider call, its reply-only Telegram
+`ordinary-reply` send, and its text-only, reply-only Slack `ordinary-reply` send in one
+workspace to the bound operator's pre-bound DM or thread.” It also says “An Instar agent
+with only one available machine must still be fully functional” and “Everything else inside
+the agent's role is ordinary, including sending messages and using the accounts that go with
+the role.” An in-role irreversible email or account mutation outside that closed set exposes
+this conflict. No graph mapping resolves it, and this design grants no such exception.
+The operator question is whether to amend the fixed-profile wording to cover those in-role
+operations with their exact durable cause and safeguards. The connected-account irreversible
+dispatch portion of plan step 4 stops at this boundary pending that decision; conversation,
+reversible bounded tools, grounding, delegation records and history do not require an amendment.
 
-**Value — finite starting limits and review deadlines need an accepted policy.** No automatic
-check chooses optimal node/depth/fan-out limits, retry count, or the calendar ceiling for
-semantic holding gaps. Section 3 proposes initial limits and section 12 proposes 2026-10-05.
-The operator question is whether those starting values fit the intended workload. Testable
-constraints and measured exhaustion remain mandatory whichever finite values are selected.
+**Value — engineering defaults belong to the builder and are measured.** One owning parent,
+a single foreground conversation owner, sequential steps within a run, finite graph limits,
+and input attachment instead of a run per message are engineering defaults under Rules 102
+and 116. They do not need a fresh operator decision. The operator retains deployment resource,
+trust and durability policy; no turn or replacement renews an allocation. Unknown effects
+retain their evidence and reservations under the existing rules, without asking whether to
+weaken that floor. Calendar ceilings are declared maturation obligations under Rules 72/73,
+not permission to report an expired implementation live.
 
-**Value — the shape of delegation favors one accountable return path.** No automatic check
-proves a single owning parent is the best topology. The proposal supports many dependencies
-but exactly one owning edge per child, with explicit accepted transfer. The operator question
-is whether shared ownership is ever a product requirement; if it is, it needs an explicit
-joint-accountability design rather than several parents each assuming another collected.
+**Value — the joint design review has three concrete interface questions.** The conversation
+and effect owners must choose the logical reply obligation shared by acknowledgments, answer
+parts and corrected replies; an entire conversation must not be the one-use key. The history
+and awareness owners must name the summary producer, token estimator and consumption witness
+that meet section 8 without treating a trimmed briefing as full coverage. The session and
+delegation owners must bind every native subagent start to the same public child-admission
+port. These are engineering questions with dispositions above, not additional operator
+approval requests. Until each consumer is built and evidenced, its coverage remains declared.
 
 **Rule — approval is separate from technical completion.** Rules 65, 82, 90, and 109.
 **Check:** P5-NF-58 keeps design checks distinct from runtime evidence; the existing governed

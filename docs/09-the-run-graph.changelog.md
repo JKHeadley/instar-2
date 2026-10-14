@@ -4,6 +4,12 @@ _Generated from `09-the-run-graph.changelog.json` by `scripts/render-changelog.m
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-10-13 · draft — design-rungraph-conversation-1013: operator-directed continuing conversation design in actual-agent-plan-1013
+
+- **Define conversation-scoped history, bounded assignments spanning inputs, durable input attachment and replaceable session execution.** — Continuing conversations need common history and surviving work without per-message isolation or a perpetual root; retain stop, spend, no-repeat and durable-intake floors. _(design-rungraph-conversation-1013-brief.txt; actual-agent-plan-1013.md sections b/d; Rules 47/68/96/114/116)_
+- **Specify summary coverage, live-input extension, compaction accounting, adoption boundaries and the production delegation joins; separate built evidence from required behavior.** — The root-only implementation and full-history threshold hold do not implement the continuing-session contract; reuse the established facts, awareness and admission ports. _(src-carry-table-1013.md at train-19 ac3bd4d8; session-mouth-copy-1013 f4a6b091)_
+- **Remove per-message lifetime assumptions and redundant operator questions for engineering defaults; identify the fixed-profile connected-account conflict explicitly.** — Rule 116 requires the simplest robust route; only the constitutional authority conflict needs the operator, and no run mapping can silently waive it. _(docs/00-the-purpose.md fixed single-machine profile and role rules; design-rungraph-conversation-1013 joint-review submission)_
+
 ## Revision 4 · 2026-09-23 · draft — PREVIEW-S2 design as amended by astra-preview-s2-bytecap.md; reviewed landing remains desk-owned
 
 - **Document the exact signed-Decision PREVIEW projection and unchanged raw-answer alternative.** — Use one accepted answer without releasing UNKNOWN provider obligations or broadening the existing Eight definitions. _(PREVIEW-S2 / ROUND 2)_

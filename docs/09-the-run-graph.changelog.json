@@ -1,5 +1,31 @@
 [
   {
+    "revision": 5,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "design-rungraph-conversation-1013: operator-directed continuing conversation design in actual-agent-plan-1013"
+    },
+    "changes": [
+      {
+        "what": "Define conversation-scoped history, bounded assignments spanning inputs, durable input attachment and replaceable session execution.",
+        "why": "Continuing conversations need common history and surviving work without per-message isolation or a perpetual root; retain stop, spend, no-repeat and durable-intake floors.",
+        "ref": "design-rungraph-conversation-1013-brief.txt; actual-agent-plan-1013.md sections b/d; Rules 47/68/96/114/116"
+      },
+      {
+        "what": "Specify summary coverage, live-input extension, compaction accounting, adoption boundaries and the production delegation joins; separate built evidence from required behavior.",
+        "why": "The root-only implementation and full-history threshold hold do not implement the continuing-session contract; reuse the established facts, awareness and admission ports.",
+        "ref": "src-carry-table-1013.md at train-19 ac3bd4d8; session-mouth-copy-1013 f4a6b091"
+      },
+      {
+        "what": "Remove per-message lifetime assumptions and redundant operator questions for engineering defaults; identify the fixed-profile connected-account conflict explicitly.",
+        "why": "Rule 116 requires the simplest robust route; only the constitutional authority conflict needs the operator, and no run mapping can silently waive it.",
+        "ref": "docs/00-the-purpose.md fixed single-machine profile and role rules; design-rungraph-conversation-1013 joint-review submission"
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-09-23",
     "status": "draft",
