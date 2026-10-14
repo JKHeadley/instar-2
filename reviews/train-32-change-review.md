@@ -42,6 +42,14 @@ Deferral: tests/preview/journal-conversation-session.test.ts:440 | not-a-deferra
 Deferral: tests/preview/journal-conversation-session.test.ts:441 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
 Deferral: tests/preview/journal-conversation-session.test.ts:446 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
 
+Deferral: tests/preview/journal-conversation-session.test.ts:399 | not-a-deferral=Executable delayed-result regression and its deferred fixture variable, not postponed work.
+Deferral: tests/preview/journal-conversation-session.test.ts:442 | not-a-deferral=Executable delayed-result regression and its deferred fixture variable, not postponed work.
+Deferral: tests/preview/journal-conversation-session.test.ts:443 | not-a-deferral=Executable delayed-result regression and its deferred fixture variable, not postponed work.
+Deferral: tests/preview/journal-conversation-session.test.ts:444 | not-a-deferral=Executable delayed-result regression and its deferred fixture variable, not postponed work.
+Deferral: tests/preview/journal-conversation-session.test.ts:445 | not-a-deferral=Executable delayed-result regression and its deferred fixture variable, not postponed work.
+Deferral: tests/preview/journal-conversation-session.test.ts:447 | not-a-deferral=Executable delayed-result regression and its deferred fixture variable, not postponed work.
+Deferral: tests/preview/journal-conversation-session.test.ts:452 | not-a-deferral=Executable delayed-result regression and its deferred fixture variable, not postponed work.
+
 simplestRobustRoute: This is the simplest robust route: two ordinary exact-head merges, append-only changelog reconciliation and existing desk regeneration. No new product machinery. Existing verified intake and grants guard start, receipts guard completion, and shared spend, lifetime and stop bound execution. Recorded replay is not unattended live acceptance.
 80/20: Changed tests, direct consumers and named floor/journal checks in bounded foreground batches; Studio owns the full gate.
 VERDICT: author submission; independent review belongs to the desk
