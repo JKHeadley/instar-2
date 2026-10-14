@@ -1,0 +1,24 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "conversation-host-store.createConversationHostStore",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "yes",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Retains memory without compaction or deletion (the register growth category is unbounded); host admission separately caps retained rows and refuses further input. Machine-local encrypted host custody under the existing conversation owner fence. Accepted input and outcomes are retained up to 4096 rows with 64 pending and bounded input bytes; capacity refusal never deletes memory. Exact local process identities cannot be adopted on another machine. The outer journal retains its existing replication policy; this snapshot introduces no peer transfer."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      60
+    ],
+    "holds": []
+  }
+]

@@ -4,7 +4,7 @@ Subject base: 4a5a9628dd33ef4a6409ad1f4eccee6bcbc47e33
 Review state: open
 Reviewed content: none
 Outcome: Replace step 1's private worker calls and volatile input tracking with the versioned public five-method port, durable host queue/cursors, fresh process admission, normalized reply/turn-end evidence and bounded continuation under one retained allowance.
-Affected rules: Rules 1, 2, 4, 5, 26, 29, 30, 34, 36, 42, 46, 49, 55, 60, 63, 68, 74, 75, 96, 101, 102, 105, 111, 113, 114, 115, 116.
+Affected rules: Rules 1, 2, 4, 5, 7, 26, 29, 30, 32, 34, 36, 42, 46, 49, 55, 60, 63, 68, 74, 75, 96, 101, 102, 105, 111, 113, 114, 115, 116.
 Affected floors: secrets — encrypted host snapshot uses existing custody key outside worker scope; spend cap — parent liability is retained and every model dispatch durably charges it before forwarding; stop — existing independent stop closes dispatch and exact claim/incarnation control retires the worker; no duplicate sends — no new sender and unresolved input is never replayed; durable intake — accepted inputs, outcomes and cursors survive atomic snapshot reopen.
 Operator questions: none
 Suggested tier: critical
@@ -28,6 +28,8 @@ Decision: step1b-host-1013-grants | Revalidate changed signed activation and ref
 Decision: step1b-host-1013-certificate | Mark the changed macOS composition unproven rather than falsely transplant its prior certificate; the desk owns the real proof. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1b-host-1013-PROGRESS.md
 
 Decision: step1b-host-1013-parent-lifetime | Renew only process lifetime; every process deadline stays beneath the already admitted parent lifetime, and current time/prior outcomes are delivered from host records. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1b-host-1013-PROGRESS.md
+
+Decision: step1b-host-1013-store-declarations | Declare bounded retained host memory and accumulating machine-local hook copies beside their actual writers, then regenerate source wiring. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1b-host-1013-PROGRESS.md
 
 simplestRobustRoute: Reuse the admitted physical driver, model/tool checkpoint, journal reservation and host work tick behind the existing versioned port. The added owner snapshot prevents busy-input loss and replay across restart; durable model charges prevent replenishing in-flight exposure; exact process generations prevent reusing dead identity. No second scheduler, sender, grant store or provider loop is added. Start guards remain current ownership, signed activation, resource admission and durable parent liability; end guards require correlated reply/turn end; stop/spend/custody limits remain mandatory. No unattended live completion is claimed.
 80/20: Target fake-worker lifecycle, physical-driver receipts, durable store reopen and real local admission forwarding, then direct importers and static gates. The desk's real copy walk and macOS certificate remain the acceptance boundary specified by the brief.
