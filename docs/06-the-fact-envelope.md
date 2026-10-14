@@ -381,6 +381,10 @@ independent-safeguard and durable-cause rules, Rules 28/29/90/100 and P-01;
 Before a channel is bound, [Eleven's protected account selection and phone confirmation](15-the-operator-surfaces.md#fresh-install-pairing)
 join the authenticated installation session to the intended account. Nine's custodian is
 outside the agent's and harness user's administration; [Seventeen names its recovery](17-harness-adapters/03-capability-account-quota-and-launch-pins.md#installation-custody-and-recovery).
+The protected act, separate broker identity and verification store have the same guarantees
+on macOS and Linux; [Ten's platform mechanisms](14-the-assembly.md#installation-platforms)
+and Seventeen's custody contract name both implementations, including headless Linux.
+The OS supplies evidence to these existing owners, never an alternate genesis authority.
 Preparation, enrollment and installation authority have distinct records in the existing
 owner history. The following names are example record ids, not new types or stores:
 
