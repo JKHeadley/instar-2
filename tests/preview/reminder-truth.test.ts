@@ -15,10 +15,10 @@ const make = (record: typeof records[number], output = record.outputs.at(-1)!, f
   let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '8968100844', chat: '7812716706', operator: '7812716706',
     grant: 'grant:reminder-truth', configurationDigest: 'sha256:reminder-truth', expires: record.intakeAt + lifetime,
     maxCalls: 30, maxReplies: 20, maxTurns: 20, maxBytes: 24000, cursor: 0 });
-  const state = { now: record.intakeAt, output, stopped: false, dueCalls: 0, sent: [] as string[] };
+  const state = { now: record.intakeAt, output, stopped: false, dueCalls: 0, dueOutput: 'Put the library book by the door now.' as string | { state: 'uncertain' }, sent: [] as string[] };
   const ports = { now: () => state.now, stopped: () => state.stopped, timeZone: zone,
     model: async (input: { id: string }) => {
-      if (input.id.startsWith('requested-action:')) { state.dueCalls++; return 'Put the library book by the door now.'; }
+      if (input.id.startsWith('requested-action:')) { state.dueCalls++; return state.dueOutput; }
       return state.output;
     }, send: async (input: { text: string }) => { state.sent.push(input.text); return fail ? null : state.sent.length; }, checkOutbound: () => {} };
   let worker = createJournalWorker(journal, ports);
@@ -103,4 +103,45 @@ it.each([840342802, 840342792])('replays the recorded Portland clock request %s 
 it('does not interpret a Portland clock in another configured zone or an ambiguous clock', () => {
   expect(parseDatedItem('x', 'today at 4:40 pm, Portland time', 'today at 4:40 pm, Portland time', records[0]!.intakeAt, 'UTC').ambiguity).toBeDefined();
   expect(parseDatedItem('x', 'today at 4:40, Portland time', 'today at 4:40, Portland time', records[0]!.intakeAt, zone).ambiguity).toBe('AM or PM unspecified');
+});
+
+it.each([
+  { when: 'in one minute or an hour', remind: true, refusal: true },
+  { when: 'in 2400000000 hours', remind: true, refusal: true },
+  { when: 'in one minute', remind: false, refusal: false },
+])('does not grant an ambiguous, out-of-range or unrequested duration: $when / $remind', async row => {
+  const record = records.find(item => item.update === 840342823)!;
+  const request = `The book goes by the door ${row.when}.`;
+  const h = make({ ...record, request }, JSON.stringify({ reply: 'I will remind you later.', memory: [],
+    dated: [{ quote: request, when: row.when, remind: row.remind }] }));
+  try {
+    h.intake(); h.state.now += 120_000; await h.worker.drain();
+    expect(openRequests(h.journal.view)).toEqual([]); expect(h.state.dueCalls).toBe(0);
+    if (row.refusal) {
+      expect(h.state.sent[0]).toContain('I did not schedule');
+      expect(h.state.sent[0]).not.toContain('I will remind you later.');
+    }
+  } finally { h.close(); }
+});
+
+it('drives late admission through real recorded summary, Jev, review, delivered and empty shapes once', async () => {
+  const captured = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json',
+    import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] };
+  expect(captured.otherShapes.map(row => row.id)).toEqual(['summary:715672480', '715672483', '715672482', '969389570',
+    '969389923', 'telegram:8994258214:update:715672479', 'telegram:8994258214:update:715672550']);
+  for (const shape of captured.otherShapes) {
+    const record = records.find(row => row.update === 840342823)!, h = make(record);
+    try {
+      h.state.dueOutput = shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw) as { state: 'uncertain' } : shape.raw;
+      h.intake(); h.state.now = record.answerAt; await h.worker.drain();
+      expect(h.state.sent[0], shape.id).toContain('This reminder is late');
+      expect(h.state.dueCalls, shape.id).toBe(1);
+      expect(h.journal.view.order.filter(turn => turn.requestedAction), shape.id).toHaveLength(1);
+      expect(h.state.sent.every(text => text.trim().length > 0), shape.id).toBe(true);
+      const count = h.state.sent.length;
+      h.reopen(); await h.worker.sendRequested(); await h.worker.drain();
+      expect(h.state.dueCalls, shape.id).toBe(1);
+      expect(h.state.sent, shape.id).toHaveLength(count);
+    } finally { h.close(); }
+  }
 });
