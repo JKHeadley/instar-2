@@ -3,6 +3,7 @@ import { boundary, ensure, take } from './boundary.js';
 import type { AssemblyDecodeContext, HarnessObservation } from './contracts.js';
 import type { NativeHarnessDriverPort } from './harness.js';
 import type { Result } from '../index.js';
+import type { SubscriptionToolTurn } from './production-provider.js';
 
 /** Operator-own-use sessions with the harness's full tool set. `unconfined` makes no confinement claim;
  * `admitted` launches every session with the tool admission hook, so each tool call passes it before dispatch. */
@@ -56,6 +57,8 @@ export interface ProductionSessionConfig {
   readonly modelGate?: (claim: string) => string;
   /** The exact model the session runs, when a reviewed grant names one; absent, the CLI's own default. */
   readonly model?: string;
+  /** Host-prepared, credential-free connector launch records for this admitted claim. */
+  readonly connectors?: (claim: string) => SubscriptionToolTurn['mcp'];
   /** The command the pane runs the harness through, when it runs as its own identity (the harness-user bridge): its
    * words go before `executable` in the pane's clean environment. The first is an absolute path. Absent: the harness
    * itself. */
@@ -105,6 +108,22 @@ export function admissionArgs(framework: SessionFramework, admission: NonNullabl
   }
   const hook = (command: string) => `[{matcher='*',hooks=[{type='command',command='${command}',timeout=${admission.timeoutSeconds}}]}]`;
   return ['-c', `hooks.PreToolUse=${hook(pre)}`, '-c', `hooks.PostToolUse=${hook(post)}`];
+}
+/** Both session workers consume the same prepared connector set as the per-call provider. */
+export function sessionConnectorArgs(framework: SessionFramework, mcp: SubscriptionToolTurn['mcp']): readonly string[] {
+  if (!mcp) return framework === 'claude-code' ? ['--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}'] : [];
+  const { servers, launch } = mcp;
+  ensure(launch !== undefined && servers.length > 0 && Object.keys(launch).length === servers.length
+    && servers.every(name => /^[A-Za-z0-9_-]{1,64}$/u.test(name) && Object.hasOwn(launch, name)),
+  'session requires exact prepared connector launch records');
+  if (framework === 'claude-code') return ['--strict-mcp-config', '--mcp-config', mcp.config];
+  return servers.flatMap(name => {
+    const server = launch![name]!;
+    const fields = [`command=${JSON.stringify(server.command)}`, `args=${JSON.stringify(server.args ?? [])}`];
+    if (server.cwd !== undefined) fields.push(`cwd=${JSON.stringify(server.cwd)}`);
+    fields.push(`env={${Object.entries(server.env ?? {}).map(([key, value]) => `${JSON.stringify(key)}=${JSON.stringify(value)}`).join(',')}}`);
+    return ['-c', `mcp_servers.${name}={${fields.join(',')}}`];
+  });
 }
 const modelPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/u;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -172,6 +191,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
   ensure(config.operatorOwnUse === true && (config.confinement === 'unconfined' || config.confinement === 'admitted'),
     'explicit operator-own-use mode required');
   const admitted = config.confinement === 'admitted';
+  ensure(config.connectors === undefined || admitted, 'connectors require admitted session');
   ensure(admitted === (config.toolAdmission !== undefined), 'an admitted session requires its admission hook, and only it');
   ensure(admitted === (config.modelGate !== undefined), 'an admitted session requires its model-dispatch checkpoint, and only it');
   if (config.toolAdmission) ensure(typeof config.toolAdmission.command === 'function'
@@ -296,6 +316,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     // One settings object carries every Claude hook: the admission hook and, when configured, the lifecycle hooks.
     if (config.toolAdmission) args.push(...admissionArgs(config.framework, config.toolAdmission, claim, lifecycleHooks ?? {}));
     else if (lifecycleHooks) args.push('--settings', JSON.stringify({ hooks: lifecycleHooks }));
+    if (admitted && config.connectors) args.push(...sessionConnectorArgs(config.framework, config.connectors(claim)));
     const gate = config.modelGate ? modelGateLaunch(config.framework, config.modelGate(claim)) : null;
     if (gate) args.push(...gate.args);
     const harnessEnv = [...(admitted && config.framework === 'claude-code' ? ADMITTED_CLAUDE_ENV : []), ...(gate?.env ?? [])];
