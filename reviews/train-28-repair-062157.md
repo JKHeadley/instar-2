@@ -51,3 +51,5 @@ simplestRobustRoute: This is the simplest route: reuse accepted host repair e238
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Pin refresh: The delegated desk rehash tool binds PREVIEW-CONVERSATION-RESULT-COLLECTION to its separate coordinator collection regression. The chain script found no changed grounding-inventory entries. Architecture passes with no exceptions.
+
+Register replay: Generated from committed source 910a6c0ad46e5595325956ebd212898e2147397d, generation sha256:fb3cc2d7745140070fd3e2e7a446ab8abbb48ef121ead78b070dc8c473baf8e4; 291 entries, 116 rules, 48 shape-only warnings. This is source publication, not live proof.
