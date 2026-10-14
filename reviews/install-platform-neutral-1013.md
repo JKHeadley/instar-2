@@ -1,5 +1,12 @@
 # Review guide — installation on macOS and Linux
 
+Subject base: 7ef8f158d4129a4cf90cf3c546701f32e348fdd3
+Review state: open
+Reviewed content: none
+Bug class: none
+Tier rationale: Significant installation design; this metadata repair retains the original design base and claims no independent convergence of intervening runtime work, which has its own records.
+Prompt review: Original design adds no model wording. The cumulative range also carries previously reviewed runtime work; its prompt dispositions and integration evidence remain in the member and train records.
+
 Read [the platform guarantees](../docs/14-the-assembly.md#installation-platforms), [the build units](../docs/14-the-assembly.md#fresh-installation), [the protected local act](../docs/15-the-operator-surfaces.md#fresh-install-pairing), and [custody/recovery](../docs/17-harness-adapters/03-capability-account-quota-and-launch-pins.md#installation-custody-and-recovery).
 
 Outcome: a fresh-install design with no Mac prerequisite, concrete macOS and Linux bindings, and named Linux implementation commitments. Design only; no runtime or model-facing change.
@@ -13,7 +20,7 @@ Undo and recovery: supersede these design bindings through the existing changelo
 Multi-machine posture: single-machine on either OS without a peer; private custody and OS checks stay host-local; shared authority/history and P-08 replication demands remain unchanged.
 Layer below: purpose and rules read in full; PR 162 enrollment and genesis; existing One/Two/Four/Nine/Ten/Eleven/Seventeen owner boundaries. No OS requirement exists in the constitution: the purpose's single-machine rule is at lines 139–144; Rule 30 at rules line 216 covers harnesses, not operating systems.
 Hook bypass: none
-Convergence: none; author submission for independent review.
+Convergence: none
 
 ## Fixed authority contract
 
@@ -39,4 +46,5 @@ Those are channel-specific requirements, not a requirement that all of Instar ru
 Confirm the constitution and numbered authority sequence are unchanged; compare the four enrollment steps for unchanged actors, order and evidence; verify each build row names the common interface and both OS implementations. The allow/refuse pairs remain real implementation exit conditions, not stub tests or claimed live evidence.
 
 simplestRobustRoute: This is the simplest robust route: preserve existing owner contracts and add only concrete OS bindings and their evidence obligations, preventing a silent Mac dependency without new authority machinery.
+80/20: Preserve the design guide; repair missing review metadata and rely on the member and train records for intervening runtime evidence.
 VERDICT: author submission; independent review pending
