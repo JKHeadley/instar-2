@@ -46,10 +46,11 @@ Subject (13 paths): register-source/owner-references/preview.json, scripts/conve
 
 ## Closing block
 
-simplestRobustRoute: This is the simplest route: reuse accepted host repair e23846b7 and reserved-child lookup 2e40cac9, expose collection through the existing coordinator and bind new topics to the installation deadline. Existing admission, packet, stop, allowance and receipt checkpoints hold the floors. Targeted shipped-closure tests prove unattended completion with substituted physical dependencies, not live installation acceptance.
-80/20: Address the four reproduced integration failures and original parser assertion at source, retain accepted regressions, and verify targeted tests plus required gates. Studio owns full-suite and live acceptance; no full suite or certificate is fabricated.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Pin refresh: The delegated desk rehash tool binds PREVIEW-CONVERSATION-RESULT-COLLECTION to its separate coordinator collection regression. The chain script found no changed grounding-inventory entries. Architecture passes with no exceptions.
 
 Register replay: Generated from committed source 910a6c0ad46e5595325956ebd212898e2147397d, generation sha256:fb3cc2d7745140070fd3e2e7a446ab8abbb48ef121ead78b070dc8c473baf8e4; 291 entries, 116 rules, 48 shape-only warnings. This is source publication, not live proof.
+
+simplestRobustRoute: This is the simplest route: reuse accepted host repair e23846b7 and reserved-child lookup 2e40cac9, expose collection through the existing coordinator and bind new topics to the installation deadline. Existing admission, packet, stop, allowance and receipt checkpoints hold the floors. Targeted shipped-closure tests prove unattended completion with substituted physical dependencies, not live installation acceptance.
+80/20: Address the four reproduced integration failures and original parser assertion at source, retain accepted regressions, and verify targeted tests plus required gates. Studio owns full-suite and live acceptance; no full suite or certificate is fabricated.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
