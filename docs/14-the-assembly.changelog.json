@@ -1,5 +1,27 @@
 [
   {
+    "revision": 24,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin / design-adapter-contract-1013 brief and actual-agent-plan-1013, 2026-10-13; joint design review pending."
+    },
+    "changes": [
+      {
+        "what": "Align the owning public worker-port design with the continuing-session contract, including admitted control and typed reply/turn observations.",
+        "why": "One public contract must be consistent at its Ten owner and Thirteen implementations; neither private driver APIs nor a first-input-only launch can carry subsequent conversation turns.",
+        "commits": [
+          "7ef8f158",
+          "ac3bd4d8",
+          "4a5a9628",
+          "2dc2d45a"
+        ],
+        "ref": "reviews/design-adapter-contract-1013.md; operator brief .instar/lanes/design-adapter-contract-1013-brief.txt and plan .instar/lanes/actual-agent-plan-1013.md (read-only Studio inputs)"
+      }
+    ]
+  },
+  {
     "revision": 23,
     "date": "2026-10-13",
     "status": "draft",

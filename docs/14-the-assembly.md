@@ -340,20 +340,39 @@ The milestones are:
 **Rule — a harness is a worker client, not another work engine.** Rules 29, 30, 47,
 59, 68, 84, 96, 110, 115; **checks: P10-NF-03/10/11/12**. HarnessAdapterPort exposes:
 
+The versioned public conversation contract is specified in
+[Part Thirteen sections 2–8](17-harness-adapters.md). The conversation lives in the full session;
+its durable work, identity, authority and history remain with the core owners. This is the one
+worker contract for conversation and scheduled work, not an additional driver beside it.
+
 | Method | Input and narrowly claimed output |
 |---|---|
-| describe | Exact harness artifact/platform → supported context, output, interruption, custody and observation modes with conformance evidence. No grant or launch. |
-| launch | HarnessLaunchSpec and eight's admitted process operation with six's one-use claim → HarnessObservation of actual launch or unresolved attempt. |
-| deliver | Admitted intake reference, immutable input digest and target incarnation through an admitted delivery operation → observation of acknowledgment, refusal or uncertainty. No direct anonymous keystroke method. |
-| observe | Exact launch/delivery identity and admitted query → lifecycle/consumption evidence; absent process alone cannot settle an external effect. |
+| describe | Exact artifact/platform/route → supported input, context, output, control, tool/account and metering capabilities with conformance evidence. Grants nothing. |
+| launch | Immutable HarnessLaunchSpec, current admission and one-use claim → actual launch/new incarnation or uncertainty. Restore may use an opaque resume reference or rebuild from owner history, never replay input implicitly. |
+| deliver | Required per-input ContextDeliverySpecification, current operation/claim and exact launch/incarnation → accepted, busy-not-dispatched, refused-not-dispatched or uncertain. Later messages retain their own intake, step and context instead of reusing the first input. |
+| observe | Exact worker/delivery, durable cursor and bounded batch → ordered lifecycle, consumption, reply-content, turn-end and usage observations with explicit gaps. Does not actuate recovery. |
+| control | Exact worker and admitted interrupt/close/compact request → control observation or uncertainty. Emergency stop authenticates through its independent local authority; ordinary control still uses Eight/Six. |
 
-Stop, close and compaction commands that change worker state are registered process operations
-through eight, not extra unauthenticated methods. Provider/library reconnect or continuation
-uses six's loop. HarnessLaunchSpec contains id/schema, run/step, current principal and
-incarnation, harness/artifact digest, machine, exact working scope, admitted process identity,
-resource and port-handle references, minimal scrubbed environment, context/input manifest and
-requested consumption mode. No process id is a durable run id. The launcher binds process id
-to start identity and incarnation, so a reused process id never identifies the old worker.
+Worker-facing I/O is asynchronous and deadline-bounded. Stop, close and compaction remain
+registered process operations, not anonymous keystrokes or private adapter methods. Stop closes
+dispatch before waiting for termination. Six owns finite reconnect/recovery; Five owns grounding,
+work continuation and run completion. The common host owns the durable busy-input queue and
+records observations before advancing its cursor. Eight owns outbound reply identities and sends;
+a reply observation is content, never evidence of a send.
+
+HarnessLaunchSpec retains id/schema, admitted work, principal, incarnation, adapter/artifact,
+machine, working scope, resources, scoped port/custody references and scrubbed configuration.
+Its launch-time input is not a restriction on later deliveries. Each immutable current-context
+record binds the current work/input/digest and actual grounding manifest to that original worker.
+Tool/account bindings name current grants and mediated endpoints, never raw credentials. Every
+model attempt, including compaction and delegation, consumes the remaining attributed reservation.
+No process id or vendor conversation id becomes the durable run identity; each actual new process
+has a new incarnation even when its conversation and work continue.
+
+These extensions require a versioned implementation and fresh conformance; the existing
+TypeScript port's presence is not evidence that every operation above has landed. Runtime flags,
+protocol events and transcript decoding belong inside adapter packages. Application consumers
+cannot select different semantics by vendor name. Native uses the same public ports and evidence.
 
 **Rule — the fixed launch executor is supplied to Eight.** **Check: P10-SI-36**, with
 P10-NF-10/17/18/19/40, consumes Eight §4a's `native-confined-launch` operation. Ten binds

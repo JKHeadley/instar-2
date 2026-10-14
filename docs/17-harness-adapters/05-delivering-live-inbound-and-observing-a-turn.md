@@ -1,45 +1,55 @@
 ## 5. Delivering live inbound and observing a turn
 
-**Rule — inbound is durable before delivery.** Rules 29, 31, 63, 68 and 69; **checks:
-P13-NF-19/20/24**. A live inbound message first enters Part Four, receives its stable source and
-conversation identity, and becomes durable candidate work for Part Five; it is not yet a pending
-ordinary `RunStep`. For a surviving worker, the assembly calls `ground()` for that candidate. Its
-injected reader performs the fresh read and derives the exact new input and context bytes, has Part
-Eight admit that exact delivery and Part Six issue the current fence-bound one-use claim, then
-appends and resolves Ten's granted immutable context-delivery specification binding the operation,
-claim, bytes, step, input, launch, and unchanged incarnation. Admission does not invoke delivery.
-The guarded driver only then invokes `deliver` once and observes consumption of that claim. `deliver`
-receives only the owner-decoded current-context reference, intake reference, immutable digest,
-target launch, and target incarnation. After witnessed consumption, Five appends grounding and a
-separate `transition(start)` admits the step. The adapter cannot invent an anonymous keystroke
-path, accept a message only into process memory, mutate the launch, or clear durable custody
-because a write call returned. This same-incarnation positive is non-executable until
-   the dated 08:48Z addenda in `seam-response-assembly-followup.md` and
-   `seam-response-rungraph-followup.md`, recorded as GRANTED in `SEAM-LEDGER.md` row 45, land.
+**Rule — one durable queue owns busy input.** Rules 14/29/46/55/60/63/68/95;
+checks P13-NF-19–24/42. Four accepts each verified input durably with stable source identity and
+conversation order. The common conversation coordinator takes the next pending input when the
+worker is available and its current-context preparation is admitted. It serializes active turns;
+there is no adapter-private inbox with a second definition of accepted. The durable queue has
+finite admission/resource bounds and an age probe. At capacity, retain already accepted work
+and apply source backpressure without acknowledging unretained input. No queue truncation drops
+the oldest message. Reachability's reserved path and stop remain available.
 
-**Rule — delivery stages never collapse.** Rules 26, 42, 63 and 69; **checks:
-P13-NF-20/21/23/24**. The adapter separately reports refusal, uncertain dispatch, input accepted by
-the runtime, context consumed by the model boundary, output observed, and any later independently
-witnessed delivery. An operating-system write, PTY success, terminal echo, prompt disappearance,
-provider request start, or transport acknowledgment proves only its actual stage. `deliver`
-returning without error is not `context-consumed`. A lost answer leaves the original operation
-pending with its maximum possible exposure until observation closes it.
+`busy-not-dispatched` means no byte was submitted for this attempt and no asynchronous submission
+is scheduled. It returns custody to the same pending queue item; the coordinator retries only
+through Six's bounded policy and Eight's safe attempt rules. A transport timeout is `uncertain`,
+not busy. A semantic refusal retains its input and reason; it is not a dropped or completed
+message. The default is to queue while a turn runs, not interrupt it. An explicit interrupt is a
+separate control request. Repeated source delivery resolves to the existing intake/digest; a
+conflicting digest is preserved as a conflict. The adapter never merges messages or presses
+Enter on a visually retained composer hoping to submit later.
 
-**Rule — busy-session input is serialized by durable identity.** Rules 55, 60, 63 and 68;
-**checks: P13-NF-19/20/22/24**. If the harness cannot accept another input during an active model
-exchange, the adapter refuses or leaves the admitted input queued under its existing operation and
-step identity. It does not type into a composer, overwrite a pending draft, concatenate two
-messages, or claim future automatic submission. A capable harness may accept more than one input
-only when its conformance evidence preserves order and maps every acceptance and consumption event
-to the exact immutable input. When the receiver lacks capacity, the adapter holds or refuses new
-input instead of overfilling it. This backpressure uses Part Six resources and loops rather than an
-unbounded process-local queue.
+**Rule — delivery and observation identify the current turn.** Rules 26/29/42/63/68;
+checks P13-NF-19/20/21/23/24. Every attempt names the current intake, context delivery, candidate
+work, operation, original launch and incarnation. The second message has a different intake and
+delivery even when it reuses the same process. A request for another conversation or stale
+incarnation refuses before dispatch. Repeating the exact accepted request returns its recorded
+receipt; it does not submit twice. Uncertain submission stays owned until observation establishes
+what happened and that no delayed submission remains possible.
 
-**Rule — turn evidence is bound to existing work identity.** Rules 26, 49, 68 and 69; **checks:
-P13-NF-21/23/31/32**. A turn is not a new core record here. It is the adapter's correlated span of
-observations for one admitted `RunStep`, launch incarnation, input digest, and any Seven/Eight
-attempts and operations it causes. Runtime event ids, stream positions, and opaque conversation
-handles are recorded as source evidence on `HarnessObservation`. They do not replace the owning
-step, request, or operation identity.
+A conversation turn is the span from one admitted input to its correlated terminal outcome;
+it may contain many model exchanges and tool calls. It is not a new authority record. Five
+owns its work references, and Ten's delivery plus observations provide its correlation. Runtime
+acceptance, model-context consumption, tool completion, reply candidate, turn end and outward
+send are distinct events. A reply can be ready while child work remains pending; the work owner
+records that status rather than declaring the run complete.
 
----
+**Rule — the conversation host receives usable reply content.** Rules 26/42/68/87/89;
+checks P13-NF-21/31/32/34. `observe` returns a reply observation with the exact captured UTF-8
+text (or a resolvable capture reference), media references if supported, role/channel,
+input/delivery, output identity/digest and completeness. Diagnostic text, tool output and
+intermediate reasoning do not become the person's reply. An adapter may use a structured event
+or an authenticated per-turn result artifact; that extraction belongs inside the adapter.
+Two identical reads of a worker-writable file alone prove neither turn end nor authenticity.
+
+Turn end reports `completed`, `interrupted`, `failed` or `uncertain`, with reply references,
+pending child/effect references and usage evidence. A completed turn with no reply is explicitly
+`no-reply`, never an empty sent bubble or proof the person's request was answered. Missing,
+malformed or truncated content is marked incomplete. The host records a recoverable outcome;
+it cannot rerun an uncertain tool-bearing turn merely to obtain prettier text.
+
+Eight alone dispatches outward replies using their stable semantic identity and current audience
+standing. The session produces the answer; it does not separately send the same answer through
+a bot or connector. Receipt uncertainty is observed, not resent. Channel splitting, acknowledgements
+and progress messages belong to the conversation/outbound owners, under their own identities and
+budgets. The adapter does not truncate an answer to Telegram's transport size or claim delivery
+when it only emitted text.

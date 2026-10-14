@@ -2,17 +2,16 @@
 
 # Part thirteen — the session harness adapters
 
-**Value — purpose.** A Claude Code or Codex process should be a replaceable worker for durable
-work, not the place where work becomes true. This part specifies the adapter packages that let
-those real harnesses launch, receive admitted input, continue after a cut, expose honest evidence,
-and stop without escaping the same authority, effect, verification, and recovery doors used by
-every other worker. It also fixes the shape that Gemini, Grok, and later runtimes must satisfy.
-No automatic check decides whether the supported modes are useful enough or whether their
-confinement cost is acceptable; the operator retains those judgments.
+**Value — purpose.** A continuing full-tool session is where the agent converses and works.
+Claude Code, Codex and Instar's native harness are replaceable workers behind one public
+contract. Instar retains durable intake, history, identity, work, authority and effect evidence
+outside the worker, so changing the worker cannot change who the agent is or lose what it owes.
+The contract covers first and further input, reply content and turn end, busy input, restore,
+compaction, stop, scoped tools and connected accounts, and complete metering.
 
 **Rule — reading convention and evidence discipline.** Rules 26, 49, 69, 91, 96, 110 and 115;
 **checks: P13-NF-01/02** and `node scripts/check-governed-docs.mjs docs`. Every paragraph, list,
-and table belongs to its enclosing Rule or Value block. This part defines no new core type. A
+and table belongs to its enclosing Rule or Value block. Ten owns the public contract extensions; this part defines their adapter behavior. A
 contract check is a required future execution, not evidence that an implementation exists or ran.
 Consumers re-resolve claims against current signed history. A holder is live only after fresh
 running proof. Measured means recorded execution on named hardware and workload, never a target,
@@ -47,9 +46,9 @@ This document is split into one file per section so each renders on GitHub and c
 6. [Resume, continuation, and compaction](17-harness-adapters/06-resume-continuation-and-compaction.md)
 7. [Honest liveness, progress, and completion](17-harness-adapters/07-honest-liveness-progress-and-completion.md)
 8. [Interruption, kill, and recovery](17-harness-adapters/08-interruption-kill-and-recovery.md)
-9. [Claude Code, Codex, and future runtime mappings](17-harness-adapters/09-claude-code-codex-and-future-runtime-mappings.md)
-10. [What Instar 1.x does today and what carries forward](17-harness-adapters/10-what-instar-1-x-does-today-and-what-carries-forward.md)
+9. [Claude Code, Codex, native and future runtime mappings](17-harness-adapters/09-claude-code-codex-and-future-runtime-mappings.md)
+10. [Reuse, implementation boundaries and simplification](17-harness-adapters/10-what-instar-1-x-does-today-and-what-carries-forward.md)
 11. [Non-functional checks and activation](17-harness-adapters/11-non-functional-checks-and-activation.md)
 12. [Negative contract fixtures](17-harness-adapters/12-negative-contract-fixtures.md)
-13. [Inherited duties and disposition](17-harness-adapters/13-inherited-duties-and-disposition.md)
+13. [Inherited duties and implementation units](17-harness-adapters/13-inherited-duties-and-disposition.md)
 14. [Operator decisions and honest limits](17-harness-adapters/14-operator-decisions-and-honest-limits.md)

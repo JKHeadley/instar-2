@@ -1,38 +1,34 @@
 ## 11. Non-functional checks and activation
 
-**Rule — activation is tuple-specific and evidence-gated.** Rules 34, 37, 49, 62, 72, 73 and
-115; **checks: P13-NF-02/07/35/43/44/45/47/48/49/50/51/52**. Each check below runs at unit, integration, and
-end-to-end lifecycle tier where the row applies. Unit tests exercise decoder and decision
-boundaries with real dependencies. Integration tests traverse the public Parts Four through Ten
-ports. End-to-end tests start the production assembly, real adapter artifact, real worker, and
-required external witness. Wiring tests reject null, no-op, private, or test-only bindings. An
-artifact/model-doorway/platform/mode tuple remains declared until its complete suite executes, held until the owning
-bars pass, and held-reviewed only after independent review at the exact generation. The switch
-from advisory or observation-only to governed worker mode is a new `AssemblyAdmission`, never an
-environment flag interpreted by the adapter. Because landed Ten cannot yet bind a conformance
-record or admission to the model doorway/route member, the route-specific parity and activation
-positives remain non-executable until `seam-response-judgment.md` lands and the dated 07:52Z
-addendum in `seam-response-assembly-followup.md`, recorded as GRANTED in `SEAM-LEDGER.md` row 42,
-lands.
+**Rule — a design and a live worker are different evidence.** Rules 26/30/34/36/62/65/72/73/115;
+checks P13-NF-02/07/43–48. The next section is the contract suite to implement. Its presence does
+not certify an adapter. Unit cases exercise decision boundaries with real captured protocol
+shapes; integration cases cross the public owner ports; lifecycle cases boot the production
+composition with actual workers and verify the person-facing exchange. Wiring checks reject
+null, no-op, test-only and private-core bindings. Each supported adapter/route/platform/mode runs
+the same semantic cases. Incompatible tuples name the precise limit, never borrow another
+route's or harness's result. Native additionally develops, tests and installs a real local
+capability through those same public ports under Rule 115.
 
-**Rule — resource and timing evidence includes failures.** Rules 13, 39, 60, 61 and 64;
-**checks: P13-NF-09/22/29/35/37/47/48**. Conformance records named hardware, operating system,
-runtime artifact, account class, workload, sample population, clocks, failures, timeouts,
-distribution, memory, CPU, file descriptors, queue depth, input/output bytes, model tokens, money,
-attempt count, observation lag, launch time, grounding time, turn latency, stop latency, and
-recovery time. Each queue, poller, disposable projection, and loop has a finite size, cadence,
-retention, and exhaustion outcome. Signed facts remain permanent. Capture bytes follow Part Two's
-closed tombstone reasons, operator standing, delay, and protected-reference checks; routine age
-does not remove them. Open recovery, authorization, conflict, judgment, or effect uncertainty pins
-its evidence. At capture capacity the adapter refuses new affected capture work while preserving
-existing pinned and unpinned facts and bytes. An unpinned capture is merely eligible for an
-otherwise lawful tombstone; it is not eligible for age deletion. A target or estimate is labelled
-as such and cannot satisfy a measured gate. A timeout remains a timed-out sample rather than
-disappearing from the population.
+The real walk includes a first answer, a follow-up requiring earlier context, another input while
+busy, tools and a connected-account read inside the recorded role, compaction, lost vendor
+history, a stop during work, a budget boundary, duplicate intake and an uncertain send. Real
+recorded empty replies, malformed/partial output, uncertain/undecided review outcomes and
+context-summary shapes supplement the walk wherever the implementation changes model-facing
+behavior. Parsers replay actual captured bytes. Stubs alone cannot earn live activation.
 
-**Rule — negative fixtures are executable contracts.** Rules 34, 37, 49 and 59; **checks:
-P13-NF-01–52**. The next table is the complete Part Thirteen check list. Every negative is paired
-with a realistic positive neighbor through the same public path. A declared fixture without a
-check-run record at the named tuple and generation proves nothing.
+**Rule — limits and failure evidence are measured honestly.** Rules 13/39/46/55/60/61/64/75;
+checks P13-NF-09/22/29/35/37/42/47/48/50. Every queue, observation batch, capture spool, process,
+turn, model/tool loop and recovery episode has finite bounds and an explicit exhaustion outcome.
+A bound pauses or concludes an attempt honestly; it cannot erase unfinished work. Required
+captures retain their owner-defined custody and lawful removal rules; age alone does not delete
+knowledge or evidence. At storage pressure preserve existing captures and stop admitting work
+whose required evidence cannot be retained. The loss detector names missing input, cursor gaps,
+missing captures, stale summaries, stalled pending work and unresolved effect exposure.
 
----
+Measure launch/turn/stop/recovery latency, oldest queued input, gaps, unknown effects, memory,
+processes, capture bytes, tokens and spend with subject, clock and workload. Include timeouts and
+failures rather than reporting successful-only averages. Test slow probes and backpressure by
+injected latency or clocks, not by burning CPU on a shared proof host. Ordinary work cannot use
+reserved reachability capacity. Evidence that a limit holds is separate from evidence that the
+agent is useful: purpose constraint 6 requires a judged real conversation.

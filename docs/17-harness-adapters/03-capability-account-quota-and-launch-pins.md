@@ -1,70 +1,57 @@
 ## 3. Capability, account, quota, and launch pins
 
-**Rule — capability is a fresh observation, not a configured promise.** Rules 13, 26, 41, 62,
-75 and 95; **checks: P13-NF-04/09/10**. The adapter reports whether the executable is running,
-which admitted account identity it can actually use, which model and reasoning settings the
-runtime accepted, and which provider quota windows it can observe. A reasoning setting is the
-registered provider or harness control that changes the amount or style of model reasoning; it is
-not Part One's `Profile`. A harness configuration is a named vendor-runtime configuration bundle
-whose exact arguments and nonsecret environment mapping are owned and resolved by Ten. Each report
-names its source,
-subject, artifact, machine, observed clock, freshness horizon, completeness limits, and capture or
-receipt reference using existing `Measurement`, `HarnessObservation`, conformance fields, and the
-requested Ten-owned capability report. A file, process label, configured account slot, provider
-display name, or adapter self-report alone
-is not authority. Missing, stale, partial, or permanently unavailable quota is `unknown`, never
-zero, full headroom, or an inferred reset.
+**Rule — the worker receives capabilities, not credentials or authority to grant them.**
+Purpose independent safeguards, role onboarding and least revelation; Rules 28/29/63/75/78/84/100;
+checks P13-NF-09–13/18/40/47. Ten binds the exact executable, working scope, confinement, model
+route, account-custody references and finite resources before launch. Seven resolves model,
+reasoning and billing-route choices. Thirteen translates these into runtime settings and records
+what the runtime accepted. A raw model/account string in a message cannot silently change them.
+Changed bytes or mismatched identity require fresh admission, not relabelling an old result.
 
-**Rule — consumers re-resolve every reported subject.** Rules 26, 28, 41, 49 and 69; **checks:
-P13-NF-09/10/40**. Placement, admission, display, and recovery resolve current account, model,
-reasoning setting, provider billing route, quota, grant, register generation, and artifact status
-from signed history and the owning service. A provider billing route is the registered subscription
-or metered account path against which usage and quota are attributed. Consumers compare that
-result with the adapter observation. A mismatch inhibits the affected launch or next action and
-records the conflict. It never lets the adapter's own `accountId`, model string, or
-`supported: true` field override the current record.
+A connected-account binding contains the registered tool/connector identity, public description
+and argument schema, the standing-grant reference, allowed account and scope, custodian endpoint
+handle and current generation. No credential enters the prompt, environment capture, transcript,
+error, fixture or worker-readable configuration. The custodian proves account identity at use
+or records the precise observation limit. A login directory name is not that proof. The worker's
+briefing and tool catalogue are generated from the bindings actually installed, including limits
+and the named grant needed for unavailable scope. An empty connector list is a capability gap,
+not a safety default permitted by the role rule.
 
-**Rule — model, runtime configuration, reasoning, and account choices are exact launch subjects.** Rules 41,
-56, 63, 75 and 96; **checks: P13-NF-11/12/13**. The Seven-owned model route, account selection,
-named harness configuration, and allowed reasoning setting are not fields of constitutional `Profile`.
-Seven's requested route resolver supplies the exact provider, model, reasoning setting, and billing
-route. Ten's requested runtime-configuration resolver binds that selection to an approved account
-and credential-custody reference, harness configuration, and exact argument/environment mapping;
-the resulting references and resolved fields enter the expanded `HarnessLaunchSpec`. The adapter
-records the resolved runtime arguments, nonsecret environment digest, and runtime acceptance
-evidence. The current landed launch schema cannot express those pins, so the route positive is
-non-executable until `seam-response-judgment.md` lands and the launch/configuration positive is
-non-executable until `seam-response-assembly-followup.md` lands. A raw model string
-from input cannot reach the launcher. An unavailable pin refuses or follows an explicitly admitted
-policy owned by the earlier part; the adapter never silently substitutes a model, reasoning
-setting, account, provider billing route, harness configuration, or runtime while keeping the old
-label. Constitutional `Profile` remains available only to classify the consequences of the
-feature or operation.
+**Rule — every tool invocation crosses the same admission boundary.** Purpose durable cause,
+standing role and sign-off rules; Rules 4/29/38/42/55/60/63/66/75/114;
+checks P13-NF-06/13/18/23/40/41/47. The runtime proposes a tool id, exact arguments and call id,
+correlated to the active delivery and run/step. The host resolves the registered action and
+current grant; it checks stop, ownership, limits, disclosure and applicable sign-off. It records
+the required causal prefix before execution. Only then can the independent executor run it.
+The normalized result returns its exact call identity, captured output and observed outcome.
+Unknown occurrence stays unknown. Hook approval alone proves no physical confinement.
 
-**Rule — a real model call crosses the public effect doorway.** Rules 31, 42, 55, 63, 68 and 75;
-**checks: P13-NF-16/23/43/44/47**. Seven prepares and records the canonical bytes actually to be
-submitted under its owner-resolved route. Eight admits the corresponding versioned provider-call
-payload; Six reserves and consumes one claim; Ten's guarded executor verifies the submitted bytes
-and digest before exactly one provider invocation. Seven records the provider receipt and actual
-usage observations with the exact provider, account, and billing-route attribution; Eight records
-the operation observation, Nine supplies the independent assessment, Eight settles from that
-assessment, and Six applies accounting. The model-attempt lineage remains correlated to the
-`HarnessObservation` and exact complete adapter tuple. A test-only provider, direct provider-client-library call, or
-adapter-local receipt cannot satisfy the production boundary. Seven's preparation/receipt half is
-non-executable until `seam-response-judgment.md` lands. Eight's provider-effect half is
-non-executable until `seam-response-effects-followup.md` lands.
+Built-in shell, file, browser, network, connector and helper paths must obey this boundary, not
+only externally listed tools. Approved reversible local work uses its bounded local durable path;
+irreversible work uses Eight's required durability and settlement. MCP is a transport to an
+admitted tool service, never a source of authority. Direct account credentials and alternate
+provider/network routes remain inaccessible. A helper uses the same bounded parent-child work
+contract and result destination under Rule 114, not an invisible vendor background worker.
 
-**Rule — credentials remain references and custody stays outside the worker.** Rules 28, 63
-and 100; **checks: P13-NF-13/40**. The requested Ten runtime configuration and expanded
-`HarnessLaunchSpec` carry only `SecretRef` and approved custodian references where credentials are
-required; the landed schema cannot yet express that account binding and therefore keeps the mode
-unsupported. Adapter descriptions, arguments, environment
-digests, observations, captures, errors, conformance fixtures, and operator views contain no
-credential value. Account identity is proved by the provider or credential custodian at use. A
-credential slot label does not prove who occupies it. A credential or account change is a new
-admitted operation and, where the runtime reads credentials only at start, a replacement worker.
+**Rule — metering spans the whole conversation's work.** Rules 4/13/41/55/60/61/75;
+checks P13-NF-09/16/23/27/40/47. Every model attempt, including tool-loop turns, delegated calls,
+resume, summaries and compaction, has component/run/delivery attribution and actual token/charge
+evidence or a written provider exception with retained maximum exposure. Six reserves an
+enforceable finite upper bound before dispatch and accounts once by attempt identity. Another
+message, a replacement worker or a model switch cannot replenish that reservation. Calls beyond
+the remaining bound refuse before dispatch; unfinished work remains recorded for a separately
+admitted continuation. Unknown usage is never zero and does not release the reservation.
+
+Provider quota is separate from the local spend cap. Windows carry their actual duration,
+source and freshness; missing or stale windows remain unknown. Route/account replacement occurs
+at a closed turn boundary by default, uses the existing bounded recovery policy and charges the
+same work budget. An unreadable busy state cannot authorize an optimization that interrupts work.
+Revocation is checked at each dispatch, not merely at launch; stale cached capabilities confer
+no permission. New bindings are delivered at a safe boundary, with replacement only if the
+runtime cannot update them in place.
 
 ### Installation custody and recovery
+
 
 **Rule — the bootstrap custodian is independently administered on one machine.** The
 purpose's independent-safeguard and single-machine rules, Rules 28/100, P-01 and P-02;

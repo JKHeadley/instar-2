@@ -1,5 +1,27 @@
 [
   {
+    "revision": 4,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin / design-adapter-contract-1013 brief and actual-agent-plan-1013, 2026-10-13; joint design review pending."
+    },
+    "changes": [
+      {
+        "what": "Specify one continuing-session adapter contract with later input, durable busy custody, reply/terminal events, restore/control, scoped accounts/tools and metering; synthesize the fourteen sections and paired cases.",
+        "why": "The actual-agent plan requires Claude Code, Codex and native workers to carry a continuing conversation through the foundation; dated prerequisites and separate driver semantics do not provide that contract. Preserve independent custody, all five floors and the explicit one-machine irreversible-action constitutional question.",
+        "commits": [
+          "7ef8f158",
+          "ac3bd4d8",
+          "4a5a9628",
+          "2dc2d45a"
+        ],
+        "ref": "reviews/design-adapter-contract-1013.md; operator brief .instar/lanes/design-adapter-contract-1013-brief.txt and plan .instar/lanes/actual-agent-plan-1013.md (read-only Studio inputs)"
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-10-13",
     "status": "draft",

@@ -1,60 +1,41 @@
 ## 2. One adapter family and one conformance shape
 
-**Rule — every harness implements the same four-method port shape.** Rules 30, 59, 68 and
-115; **checks: P13-NF-03/04/06/07**. Each package implements the `describe`, `launch`, `deliver`,
-and `observe` method set exactly as Part Ten specifies; the description's requested owner reference
-is the explicit additive contract in section 1. Process stop, close, model change, account change,
-compaction control, launch, and live-input delivery use the requested registered Part Eight harness-
-operation payload. Those effect-positive paths are non-executable until
-`seam-response-effects-payloads.md` and `seam-response-effects-followup.md` land. Reconnect and continuation ride Part
-Six loops. Adding a runtime adds an adapter binding and conformance tuple, not a branch in Parts
-Four through Nine. An absent capability is returned as unsupported with a stable reason. It is
-never supplied by a family default or a different harness.
+**Rule — every worker implements the same versioned port.** Rules 29/30/42/59/63/68/115;
+checks P13-NF-03–08/19–25/36/38. Ten owns these extensions to `HarnessAdapterPort`; the table is
+a design contract, not a claim that its current TypeScript interface implements them. Methods
+that touch a worker return asynchronously within a declared deadline, so a slow process probe
+cannot block intake or stop. Failures preserve the original typed refusal and its input.
 
-**Rule — supported mode is a conjunction of witnessed capabilities.** Rules 26, 34, 42, 59,
-62 and 95; **checks: P13-NF-04/06/07**. `describe` reports the exact artifact digest, executable
-identity, runtime and protocol versions, named platform, confinement mode, compatible input and
-output modes, context-consumption witness, lifecycle witness, interruption operations, continuation
-mechanism, hidden provider/tool-path posture, account and quota observability, and current
-`AdapterConformance` references. The landed return fields already carry `artifact`, `platform`,
-the five mode lists, and one conformance reference. The extra subjects are read only by resolving
-the requested Ten-owned capability-report reference returned by `describe`; they are not informal
-extra properties on a concrete adapter. Until that additive field, record decoder, and public
-resolver in `design-harness-adapters-seam-request-part-ten.md` land, P13-NF-04 records the rich
-description as unsupported and no governed-worker mode may activate. Governed worker mode is
-supported only when every capability required by the admitted work is both declared and proved
-for that exact tuple. An explicitly admitted advisory mode may lack the stronger model-context-
-consumption witness and therefore may not be called a grounded governed worker. It must still
-satisfy every applicable Part Eight effect, Part Six metering/recovery, credential-custody,
-worker-isolation, and hidden-path confinement requirement. A mode with an unmediated provider,
-tool, MCP, connector, shell, filesystem, message, credential, or other effect path is
-unsupported; the advisory label grants no exception.
+| Method | Request | Result and boundary |
+|---|---|---|
+| `describe` | Exact installed adapter artifact and route binding | Capabilities and limitations with their evidence: start, subsequent input, context delivery, output, stop, resume, compaction, tool/account mediation and metering. Describes support; grants nothing. |
+| `launch` | Immutable `HarnessLaunchSpec`, admitted operation/claim, current fence, finite allocation; fresh or restore intent with optional opaque resume reference | Exact launch/incarnation observation, refusal before dispatch, or uncertainty. A restore says whether it used the vendor history or rebuilt context. Neither path automatically repeats an input. |
+| `deliver` | Required immutable `ContextDeliverySpecification`, identifying conversation, candidate work, intake/digest, launch/incarnation, current context and admitted operation/claim | `accepted`, `busy-not-dispatched`, `refused-not-dispatched`, or `uncertain`, with evidence. Acceptance is a runtime input event, not model consumption or delivery to the person. |
+| `observe` | Exact launch/incarnation, optional delivery, last durably recorded cursor and bounded batch size | Ordered normalized observations, next cursor, and explicit completeness/gap status. Includes reply content and turn end, not only liveness. Querying never launches, retries or kills. |
+| `control` | Exact launch/incarnation, action (`interrupt`, `close`, or `compact`), reason, authority and admitted operation/claim | Observed control result, refusal or uncertainty. Stop requests use the independently authenticated local stop path; ordinary recovery and compaction use Eight/Six admission. No arbitrary command field. |
 
-**Rule — parity is one suite applied to every complete tuple.** Rules 30, 34, 37, 49, 59 and 115;
-**checks: P13-NF-07/08/43/44/45/47**. One contract suite takes a `HarnessAdapterPort`, the exact
-harness package and artifact digest, one owner-resolved registered model doorway and route, one
-platform, one capability mode, and only public core ports. It runs identical semantic cases for
-every compatible complete tuple, including separate executions when one artifact/platform/mode is
-compatible with more than one registered model doorway. Harness-specific fixtures may provide
-protocol bytes and expected runtime events, but may not weaken the assertion. Every incompatible
-combination remains enumerated with its stable unsupported reason. A family label, shared base
-class, one model doorway's pass, or one mock result cannot establish parity for another complete
-tuple. The landed `AdapterConformance` record and activation consumer cannot represent or enforce
-that route distinction. Seven's owner-resolution arm is non-executable until
-`seam-response-judgment.md` lands. The route-bound conformance and activation arms are separately
-non-executable until the dated 07:52Z addendum in `seam-response-assembly-followup.md`, recorded as
-GRANTED in `SEAM-LEDGER.md` row 42, lands.
-After it lands, each conformance record carries the owner-resolved exact registered model-doorway
-declaration and Seven's current immutable model-route selection in its logical identity. Assembly
-admission re-resolves and matches those exact references to the exact currently resolved model
-adapter and route selection before consuming the result.
+`control` makes an existing responsibility callable through the public port. It is not another
+authority: the dispatcher authenticates emergency stop independently, and checks ordinary
+control against the current owner and exact action. An adapter-local `stop()` or `recoverContext()`
+must not be a second application entry point. Reconnect means resolving and observing the same
+incarnation. Resume or rebuild creates a new launch and incarnation when it creates a process;
+there is no separate resume API with different safety semantics.
 
-**Rule — exact package binding prevents runtime impersonation.** Rules 69 and 90;
-**checks: P13-NF-05/07**. The assembly resolves the declared executable to exact bytes and object
-identity before launch. The launched process and observer bind back to that artifact, platform,
-adapter declaration, and `AssemblyAdmission`. Searching for an executable through the operating
-system's configured search path, mutable aliases, auto-update, wrapper fallback, and a runtime that
-reports another runtime's name cannot silently change the binding.
-Changed bytes require a new conformance result and assembly admission for the affected scope.
+**Rule — every request binds current work, not the launch's first input.** Rules 26/29/63/96;
+checks P13-NF-14/17/19/20/21. The immutable launch identifies the worker and admitted environment.
+Each delivery independently identifies its intake, candidate step and context manifest. It may
+name a later step than the launch. Observations for that input carry that delivery reference,
+not copied launch-time input fields. One active input per worker is the engineering default;
+the host owns the durable queue. Input support is not an optional feature of a conforming
+conversation worker. A vendor unable to continue one process can implement the same conversation
+semantics by bounded, grounded replacement at a closed turn boundary.
 
----
+**Rule — version negotiation does not disguise partial support.** Rules 26/30/42/44/59/115;
+checks P13-NF-04/06/07/45/48. A complete tested tuple identifies adapter artifact, public port
+version, runtime/protocol, platform, model doorway/route and capability mode. Install and update
+resolve that tuple before use. A legacy first-input-only implementation cannot advertise this
+conversation contract. Optional mechanisms such as vendor resume or in-place compaction may be
+unsupported if the common grounded-rebuild path delivers the required behavior. Missing a
+required floor refuses the affected operation with its constitutional source and preserves work;
+calling it advisory or unconfined grants no exemption. Parity is the same suite and recorded
+conversation walk run on each tuple, not a family-level claim.
