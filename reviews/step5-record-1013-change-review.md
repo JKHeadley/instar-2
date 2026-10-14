@@ -28,5 +28,5 @@ Decision: record-migration-inventory | Preserve the journal as source; document 
 ## Closing block
 
 simplestRobustRoute: This is the simplest route: one verified read, disposable in-memory indexes, the existing semantic owner's work fold and the unchanged bounded recall ranking. No second durable store or index checkpoint protocol. A small identity-range tree skips repeated excluded captures without walking the whole history; a plain prefix scan cannot bound that replication case. Atomic publication prevents half-built context after an interruption. Source metadata and explicit refresh prevent an old read from claiming currency. Existing authority projections and outbound floors remain the guards. No unattended live-history migration is claimed; acceptance on a copy is desk-owned by the brief.
-80/20: Verify exact result equivalence, source isolation, interruption/reopen and resource floors before optimizing refresh or migrating history. The second-half migration remains the already-owned plan step.
+80/20: Verify exact result equivalence, source identity/count isolation, interruption/reopen and resource floors before optimizing refresh or migrating history. The second-half migration remains the already-owned plan step.
 VERDICT: author submission; no independent convergence claimed

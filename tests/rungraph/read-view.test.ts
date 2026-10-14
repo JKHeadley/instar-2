@@ -25,6 +25,8 @@ it('keeps waiting uncertain work open and refuses mismatched source or missing a
   const running = value(f.graph.transition(f.start(ready, ground)));
   value(f.graph.transition(f.observe(running)));
   const work = projection(f);
+  const source = value(f.store.read());
+  refused(work.fold(source.map((fact, i) => i ? fact : { ...fact, contentHash: f.ctx.genesis.hash })), 'differs');
   const view = value(rebuildConversationReadView(f.store, f.c, work));
   expect(view.work('binding:1')).toEqual([value(f.graph.read(f.id))]);
   expect(view.work('binding:1')[0]?.state).toBe('waiting');
