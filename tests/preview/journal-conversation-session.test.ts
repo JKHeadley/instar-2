@@ -21,11 +21,11 @@ const usage = { inputTokens: null, outputTokens: null, charge: null };
 const update = (id: number, text: string) => ({ update_id: id,
   message: { message_id: id, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
 
-function fixture(enabled = true, checkIntake = true) {
+function fixture(enabled = true, checkIntake = true, maxCalls = 200) {
   const root = mkdtempSync(join(tmpdir(), 'conversation-wiring-')); roots.push(root);
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
     kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
-    configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 200, maxReplies: 20,
+    configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls, maxReplies: 20,
     maxTurns: 30, maxBytes: 262144, cursor: 0 });
   const f = assemblyRuntimeFixture();
   let now = 1000, launches = 0, calls = 0, fallback = 0, stopped = false, edges = 0;
@@ -123,5 +123,16 @@ it.each(recorded.records)('reads the real user-walk output at frame $frame throu
     expect(answer.reply).toEqual(raw.reply); expect(answer.dated).toEqual(raw.dated);
     expect(answer.reasoning).toBeUndefined(); expect(result).toMatchObject({ reason: raw.reasoning });
     expect(f.counts()).toEqual({ launches: 1, calls: 1, fallback: 0 });
+  } finally { await f.close(); }
+});
+
+it('the journal refuses the whole session reservation before launch when the parent cap cannot hold it', async () => {
+  const f = fixture(true, false, 9);
+  try {
+    const result = await f.model({ id: 'telegram:7654321:update:1', question: 'hello', context: '{}', prepared: '{}' });
+    expect(result).toEqual({ state: 'uncertain' });
+    expect(f.counts()).toEqual({ launches: 0, calls: 0, fallback: 0 });
+    expect(f.journal.view.calls).toBe(0);
+    expect(f.sent).toEqual([]);
   } finally { await f.close(); }
 });
