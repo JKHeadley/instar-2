@@ -1,5 +1,21 @@
 [
   {
+    "revision": 14,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, 2026-10-13 20:00 PDT, owner ruling in amend-single-machine-1013-brief.txt: a single-machine agent is fully functional; replication requirements begin with a second enrolled machine. Exact-head owner Approve on the pull request remains pending."
+    },
+    "changes": [
+      {
+        "what": "Replace the closed provider/reply set with local-durable execution for every operation the granted role calls for; retain the complete cause before the effect, one-time accepted loss model, safety floors, effect uniqueness and no automatic fallback after peer loss.",
+        "why": "The closed set contradicts full single-machine functionality and excludes role-covered reminders, account actions and irreversible file writes. The general principle preserves the safeguards without a deployment-specific enumeration.",
+        "ref": "Justin, 2026-10-13 20:00 PDT, owner ruling in amend-single-machine-1013-brief.txt: a single-machine agent is fully functional; replication requirements begin with a second enrolled machine. Exact-head owner Approve on the pull request remains pending."
+      }
+    ]
+  },
+  {
     "revision": 13,
     "date": "2026-10-10",
     "status": "draft",
