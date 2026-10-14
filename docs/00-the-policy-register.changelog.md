@@ -4,6 +4,10 @@ _Generated from `00-the-policy-register.changelog.json` by `scripts/render-chang
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-10-13 · draft — Justin, 2026-10-13 20:00 PDT, owner ruling in amend-single-machine-1013-brief.txt: a single-machine agent is fully functional; replication requirements begin with a second enrolled machine. Exact-head owner Approve on the pull request remains pending.
+
+- **Align P-08 with role-wide single-machine operation: retain replica-count policy and the installation/profile causal-prefix and loss-model acceptance, without an operation-kind limit.** — The closed set contradicts full single-machine functionality and excludes role-covered reminders, account actions and irreversible file writes. The general principle preserves the safeguards without a deployment-specific enumeration. _(Justin, 2026-10-13 20:00 PDT, owner ruling in amend-single-machine-1013-brief.txt: a single-machine agent is fully functional; replication requirements begin with a second enrolled machine. Exact-head owner Approve on the pull request remains pending.)_
+
 ## Revision 6 · 2026-10-10 · draft — Justin, topic 102965, 2026-10-10 17:23 PDT: "Yes, I like this ... I approve the changes"; constitution-amendments-approved-2026-10-10.md, observer #239; final-head GitHub approval and merge pending.
 
 - **Align P-05 and P-06 with role grants recorded in one onboarding conversation, and replace the removed nothing-outward heading.** — A fixed reply-only start or separate public-ingress setup must not contradict the person’s chosen role and starting trust. _(Justin, topic 102965, 2026-10-10 17:23 PDT: "Yes, I like this ... I approve the changes"; constitution-amendments-approved-2026-10-10.md, observer #239; final-head GitHub approval and merge pending.)_
