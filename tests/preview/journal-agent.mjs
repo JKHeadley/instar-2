@@ -118,6 +118,9 @@ import { auditJournal } from './journal-audit.mjs';
 import { memoryReport } from './memory-export.js';
 
 import { createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
+import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
+import { lifecycleHookPath, installLifecycleHook } from '../../scripts/conversation-lifecycle-io.mjs';
+import { createConversationHostStore } from '../../scripts/conversation-host-store.mjs';
 import { createConversationSessionPort, CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
 import { createSessionWorkPort, SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
@@ -2117,6 +2120,7 @@ async function main() {
         try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
         if (conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id)) {
+          sessionWork?.select?.();
           if (!sessionWork?.port.available()) throw new ModelNotStarted();
           const outcome = await sessionWork.port.run({ operation: id, question: prepared, context: packet,
             authority: sessionWork.authority });
@@ -2454,7 +2458,7 @@ async function main() {
     if (sessionSetup !== null) {
       let selectedSession = loginConfiguration.entries[0], profile = selectedSession.profile;
       let sessionHarness = harness;
-      const sessionBytes = readFileSync(sessionSetup.activation, 'utf8'), sessionActivation = JSON.parse(sessionBytes);
+      let sessionBytes = readFileSync(sessionSetup.activation, 'utf8'), sessionActivation = JSON.parse(sessionBytes);
       sessionAdapter.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
       requireAuthority(options, sessionActivation, sessionSetup.activation, journal.view, wallNow());
       if (!activationMatchesJournal(journal.view, sessionActivation)) throw Error('preview: session work activation differs from journal');
@@ -2473,7 +2477,8 @@ async function main() {
         if (identity) grantVolume(project, identity.user, identity.runner);
       };
       const physicalFor = () => createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
-        home: profile.home, configHome: profile.configDirectory, cwd: project });
+        home: profile.home, configHome: profile.configDirectory, cwd: project,
+        ...(conversationSession && layout ? { lifecycleDirectory: join(layout.admission, 'lifecycle') } : {}) });
       let physical = physicalFor();
       const stoppedNow = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
         || wallNow() >= journal.view.expires || !active() || !sessionActive();
@@ -2486,12 +2491,27 @@ async function main() {
       const admissionBase = layout ? layout.admission : join(root, 'session-work-state', 'admission');
       const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
       sessionWork = { select() {
-        if (conversationSession) return; // A continuing session never rotates the identity underneath its transcript.
+        if (conversationSession) {
+          // A changed signed grant is revalidated at the turn boundary. Never keep dispatching
+          // under the old bytes; stoppedNow closes an active turn on withdrawal.
+          const current = readFileSync(sessionSetup.activation, 'utf8');
+          if (current !== sessionBytes) {
+            const record = JSON.parse(current);
+            sessionAdapter.validateActivation(record, profile, required(options, 'model'), wallNow(), journal.view.expires);
+            requireAuthority(options, record, sessionSetup.activation, journal.view, wallNow());
+            if (!activationMatchesJournal(journal.view, record)) throw Error('preview: refreshed session grant differs from journal');
+            sessionBytes = current; sessionActivation = record;
+          }
+          return;
+        }
         selectedSession = selectLogin('session'); profile = selectedSession.profile;
         sessionHarness = loginRuntimes.get(selectedSession.index)?.harness ?? harness;
         physical = physicalFor();
       }, get authority() { return `${conversationSession ? 'continuing conversation' : 'session work'} grant ${(loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}: ${conversationSession ? 'one bounded conversation' : 'one scheduled work step'} for the verified operator, `
-        + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? createConversationSessionPort : createSessionWorkPort)({
+        + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? config => createConversationSessionPort({ ...config,
+          store: createConversationHostStore(join(root, 'session-work-state', 'conversation.json'), key()),
+          createAdapter: resolveDelivery => createSessionConversationAdapter({ createDriver: config.createDriver, io: config.io, resolveDelivery })
+        }) : createSessionWorkPort)({
         ...(conversationSession ? { conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}` } : {}),
         createDriver: resolveIntake => {
           const create = () => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
@@ -2501,6 +2521,8 @@ async function main() {
           model: required(options, 'model'), context, io: physical, now: wallNow, stopped: stoppedNow, resolveIntake,
           maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
           readyTimeoutMs: 30000, protectedSessions: [],
+          ...(conversationSession ? { requireTurnHook: true, inboxDirectory: physical.inboxDirectory,
+            hookScript: layout ? lifecycleHookPath(harnessHookPath()) : fileURLToPath(new URL('../../scripts/session-hooks/stop.mjs', import.meta.url)) } : {}),
           ...(conversationSession ? { continuation: () => {
             const turn = journal.view.order.filter(item => item.accepted && item.prompt && item.sent !== undefined && item.intent).at(-1);
             if (!turn) throw Error('preview: durable conversation grounding unavailable');
@@ -2510,7 +2532,6 @@ async function main() {
           ...(layout ? { launchVia: [process.execPath, HARNESS_SESSION_BRIDGE, options['harness-user'],
             realpathSync(selectedSession.profilePath), '--'] } : {}) });
           let driver = create();
-          if (conversationSession) take(driver.stop()); // Reclaim this root's old worker after host recovery; journal intake is never replayed.
           // Each step is fresh and the port permits only one in flight. Rebuild only between steps;
           // the port keeps one shared step/call ceiling across all selected logins.
           return { owner: driver.owner, launch: input => { driver = create(); return driver.launch(input); },
@@ -2519,7 +2540,7 @@ async function main() {
               // Reuse the session adapter's existing typed rate-limit observation. The step remains
               // uncertain and is never replayed; a subsequent step/call selects another reviewed login.
               return observeHarnessSessionLimit(loginPool, selectedSession, observed);
-            }, stop: () => driver.stop() };
+            }, stop: target => driver.stop(target) };
         },
         io: { readResult: (path, maxBytes) => physical.readResult(path, maxBytes), clearResult: path => physical.clearResult(path),
           modelCalls: since => physical.modelCalls(framework, project, profile.configDirectory, since), wait: delay,
@@ -2527,8 +2548,11 @@ async function main() {
             const identity = sessionHarness ? sessionHarness.current() : null;
             mountVolume(identity);
             await closeStepEgress(claim);
-            if (identity) harnessSessionAdmission(root, identity.user);
-            const state = prepareSessionAdmission({ base: admissionBase, claim, workspace: project, maxCalls: sessionLimits.maxCallsPerStep,
+            if (identity) {
+              harnessSessionAdmission(root, identity.user);
+              if (conversationSession) { installLifecycleHook(harnessHookPath()); grantVolume(physical.inboxDirectory, identity.user, identity.runner); }
+            }
+            const state = prepareSessionAdmission({ base: admissionBase, claim, workspace: project, maxCalls: edge.budget.calls,
               gate: gate.base(claim), ...admissionConfig(), ...(identity ? { harness: { user: identity.user, runner: identity.runner } } : {}) });
             // The step's shell network checkpoint (egress-proxy.mjs): the confined shell's one network path, deciding every
             // request by the same effect doorway, under its request and byte bounds; stopped when the step's claim closes.
@@ -2547,7 +2571,8 @@ async function main() {
             }
             stepEgress.set(claim, (await attachEgress({ stateDirectory: state, ...(privateDirectory ? { privateDirectory } : {}), scratch: tmp,
               home: join(tmp, 'home') }, undefined, networkToolReads(), { check: heldVerdict(heldSecrets), span: () => heldSpan(heldSecrets) })).proxy);
-            gate.open(claim, { framework, allowance: sessionLimits.maxCallsPerStep, edge }); },
+            gate.open(claim, { framework, allowance: edge.budget.calls, edge,
+              ...(conversationSession ? { reserveCall: ordinal => sessionWork.port.reserveCall(claim, ordinal) } : {}) }); },
           admissionState: claim => gate.state(claim),
           closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {}); } },
         resources: { admit: async () => {

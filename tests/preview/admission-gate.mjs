@@ -196,6 +196,10 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
         state.refused = true; req.resume();
         return refuseModel(res, `instar: this step's reserved model-call allowance (${state.allowance}) is used; the call was not dispatched`);
       }
+      try { state.reserveCall?.(state.calls + 1); } catch {
+        state.refused = true; req.resume();
+        return refuseModel(res, 'instar: durable call reservation unavailable; nothing was dispatched');
+      }
       state.calls += 1;
     }
     const upstream = upstreams[state.framework];
@@ -217,10 +221,10 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     /** The model endpoint and admission root for one claim. */
     base(claim) { if (!claimPattern.test(claim)) throw Error('admission gate: exact claim required'); return `http://127.0.0.1:${port}/${secret}/${claim}`; },
     /** Opens a claim with its reserved allowance and the edge its delegations hang from; a new open starts from nothing. */
-    open(claim, { framework, allowance, edge }) {
+    open(claim, { framework, allowance, edge, reserveCall }) {
       if (!claimPattern.test(claim) || !upstreams[framework] || !Number.isSafeInteger(allowance) || allowance < 1 || !edge?.id)
         throw Error('admission gate: claim, framework, allowance and edge required');
-      claims.set(claim, { framework, allowance, edge, calls: 0, refused: false, closed: false, delegations: new Map(), effects: new Map() });
+      claims.set(claim, { framework, allowance, edge, reserveCall, calls: 0, refused: false, closed: false, delegations: new Map(), effects: new Map() });
     },
     /** Closes a claim: no further call or admission passes. Returns its final state. */
     close(claim) { const state = claims.get(claim); if (state) state.closed = true; return this.state(claim); },

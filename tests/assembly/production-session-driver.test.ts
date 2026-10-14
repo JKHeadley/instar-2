@@ -12,7 +12,7 @@ import type { SessionIO, SessionJournal } from '../../src/assembly/production-se
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const fixtureRoots: string[] = [];
 afterEach(() => { for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: Readonly<{ launchVia?: readonly string[] }> = {}) {
+function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: Readonly<{ launchVia?: readonly string[]; requireTurnHook?: boolean }> = {}) {
   const f = assemblyRuntimeFixture(); let now = 1000, stopped = false, pane = '❯ ', sends = 0;
   const root = mkdtempSync(join(tmpdir(), 'instar-session-test-')); fixtureRoots.push(root);
   const homes = { a: join(root, 'login-a'), b: join(root, 'login-b') };
@@ -531,4 +531,26 @@ it('runs the harness through the configured launch command (the harness-user bri
   expect(direct[direct.indexOf('/synthetic') - 1]).toMatch(/^INSTAR_SESSION_GROUNDING_FILE=/u);
   expect(() => fixture('claude-code', { launchVia: ['relative', '--'] })).toThrow(/exact launch command/u);
   expect(() => fixture('claude-code', { launchVia: [] })).toThrow(/exact launch command/u);
+});
+
+it('conversation mode rejects pane-idle completion and replays only its correlated Stop evidence', () => {
+  const f = fixture('claude-code', { requireTurnHook: true }), id = f.launch();
+  value(f.deliver(id)); f.changePane('answer\n❯ ');
+  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('launched');
+  expect(f.journal.sessions[0]?.turnDeadline).toBe(2000);
+  f.hook(1000);
+  const ended = value(f.driver.observe({ operation: 'observe', processIdentity: id }));
+  expect(ended.evidence).toContain('turn-closed:');
+  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id }))).toMatchObject({ evidence: ended.evidence });
+  value(f.driver.deliver({ operation: 'second', processIdentity: id, intake: 'second', digest: hash('hello'), incarnation: 'inc' }));
+  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('launched');
+});
+
+it('public control can retire only the admitted claim and incarnation, never another worker', () => {
+  const f = fixture(), id = f.launch();
+  expect(value(f.driver.stop({ claim: 'other', incarnation: 'inc' }))).toEqual([]);
+  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('launched');
+  expect(value(f.driver.stop({ claim: 'topic', incarnation: 'old-incarnation' }))).toEqual([]);
+  expect(value(f.driver.stop({ claim: 'topic', incarnation: 'inc', processIdentity: id }))).toHaveLength(1);
+  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('exit-observed');
 });

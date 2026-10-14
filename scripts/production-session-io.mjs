@@ -6,7 +6,7 @@ import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/homebrew/bin/tmux',
-  home, configHome, cwd }) {
+  home, configHome, cwd, lifecycleDirectory }) {
   for (const value of [stateDirectory, tmuxPath, home, configHome, cwd]) {
     if (typeof value !== 'string' || !value.startsWith('/')) throw Error('absolute session IO paths required');
   }
@@ -15,7 +15,8 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
   chmodSync(stateDirectory, 0o700);
   const file = join(stateDirectory, 'sessions.json');
   const lockFile = join(stateDirectory, 'sessions.lock');
-  const inboxDirectory = join(stateDirectory, 'inbox');
+  const inboxDirectory = lifecycleDirectory ?? join(stateDirectory, 'inbox');
+  if (!inboxDirectory.startsWith('/')) throw Error('absolute lifecycle inbox required');
   mkdirSync(inboxDirectory, { recursive: true, mode: 0o700 });
   if (!lstatSync(inboxDirectory).isDirectory()) throw Error('session inbox must be a real directory');
   const base = { sessions: [], deliveries: [], resumes: {} };

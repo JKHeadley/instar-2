@@ -114,20 +114,52 @@ measured bound proposal is in the R5 progress handoff.
 - `harness-doorway-parity`: binds each supported harness and model doorway to certified code; the rest are marked unproven.
   Details: binds each supported harness and model doorway to its certified code and runtime; the rest are marked unproven or unsupported.
 
-## Continuing conversation (step 1, proof-room option)
+## Continuing conversation (proof-room option)
 
-`production-conversation-session.ts` uses the existing admitted session driver for
-one bounded conversation across distinct journal inputs. `journal-agent.mjs` opts
-in with `--conversation-session on`; omission or `off` retains the current route.
-The existing session activation must match `subscriptionConversationSessionPolicy`
-in `production-provider.ts`; a scheduled-work policy is deliberately insufficient.
-No grant, login or installed runner is created by this option.
+`production-conversation-session.ts` is the common host over public
+`HarnessAdapterPort<2>` in `contracts.ts`: `describe`, `launch`, `deliver`,
+`observe`, `control`. Version 1 is the retained first-input compatibility arm;
+it does not advertise continuing-session conformance. `conversation-harness-adapter.ts`
+puts the existing admitted driver behind version 2. The host never selects a vendor.
+`journal-agent.mjs` opts in with `--conversation-session on` and the existing
+reviewed conversation activation; default behavior and scheduled work remain separate.
 
-The journal still admits input and owns memory, commitments, review and delivery.
-The port returns the model's result through the existing answer decoder; it never
-sends. The host calls `maintain()` on its work tick and `close()` on shutdown.
-One reservation spans all turns: at most 64 inputs, 128 calls and one hour, subject
-to the existing parent cap and tool admission checks. Unknown work is not replayed.
-Claude-specific policy and availability live in the provider adapter; Codex and
-native adapter parity remain the named follow-up units. This is not proof-room
-walk evidence, an after-send review implementation, or an intake/effect migration.
+The host owns accepted inputs, FIFO disposition, exact-identity deduplication,
+reply captures, observation cursors, process generations and cumulative call charges.
+Its injected store is atomic and durable before return. The physical composition uses
+`scripts/conversation-host-store.mjs`: an encrypted, fsynced, atomic snapshot under
+the existing custody key and conversation ownership fence, outside worker-readable scope.
+Corrupt or unreadable state refuses; it never becomes an empty queue. Admission applies
+backpressure at 64 pending inputs, 4096 retained inputs and 1 MiB per input, preserving
+all already accepted records. A queued input remains queued after a proved non-dispatch;
+a dispatched but unresolved input becomes uncertain on restart and is never replayed.
+A repeated exact input returns its recorded outcome; conflicting bytes refuse.
+
+Each OS process gets a fresh claim and incarnation, its own 64-input/one-hour ceiling,
+and only the unused portion of the original 128-call reservation. The model checkpoint
+persists each call charge before forwarding, including calls that produce no transcript.
+A new message, process, grant or host does not replenish that allowance. Unknown accounting
+retains exposure. An interrupted parent-reservation write requires reconciliation rather
+than charging twice or launching without its parent. Stop closes dispatch before exact
+claim/incarnation control; cleanup waits for late resource admission.
+
+The adapter returns distinct reply and turn-end observations from the bounded result
+capture and correlated Stop receipt. Repeated file bytes and pane-idle text cannot end a
+conversation turn. The installed lifecycle hook is copied beside the readable admitted
+hook; its inbox is shared only with the worker identity. A hook is worker lifecycle evidence,
+not proof of tool completion, reply delivery, or independent authenticity against a malicious
+worker. The existing tool and outward effect owners still decide those facts.
+
+At a process ceiling, exit or changed verified grant, the host retires the old process and
+admits a replacement, delivering the current journal-prepared history/clock/work packet.
+Vendor transcript resume is not required. Signed activation changes are revalidated at
+turn boundaries; withdrawal during a turn stops it. In-place compaction and foundation
+history migration remain owned by plan steps 5/6; no new grounding or account authority is
+invented here. The host calls `maintain()` on its existing tick and `close()` on shutdown.
+
+Codex and native workers implement `HarnessAdapterPort<2>` and return correlated bounded
+reply/turn-end batches with monotone delivery cursors, honest non-dispatch/uncertainty, and
+exact-target control. They use the same host queue, parent reservation, call checkpoint and
+current context. They do not implement a second queue or budget. Their real parity evidence
+belongs to `codex-worker-1013` and `native-harness-1013`; this option claims no live walk or
+macOS certificate. The journal continues to own intake, answer decoding, review and sends.

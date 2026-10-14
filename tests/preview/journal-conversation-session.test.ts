@@ -3,6 +3,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { readAnswer } from './answer-reading.js';
+import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
+import type { ConversationState } from '../../src/assembly/production-conversation-session.js';
 import { createConversationSessionPort } from '../../src/assembly/production-conversation-session.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
@@ -31,17 +33,21 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200) {
   let now = 1000, launches = 0, calls = 0, fallback = 0, stopped = false, edges = 0;
   let destination = '', answer = JSON.stringify({ reply: 'A useful answer.', memory: [] });
   const files = new Map<string, string>(), delivered: string[] = [], sent: string[] = [];
-  const port = value(createConversationSessionPort({ conversation: 'operator',
+  let state: ConversationState | null = null;
+  const adapt = (config: Omit<import('../../src/assembly/production-conversation-session.js').ConversationSessionConfig, 'store' | 'createAdapter'> & Pick<import('../../src/assembly/production-session-work.js').SessionWorkConfig, 'createDriver'>) => createConversationSessionPort({ ...config,
+    store: { load: () => state, save: next => { state = structuredClone(next); } },
+    createAdapter: resolveDelivery => createSessionConversationAdapter({ createDriver: config.createDriver, io: config.io, resolveDelivery }) });
+  const port = value(adapt({ conversation: 'operator',
     createDriver: resolve => ({ owner: 'part-eight', launch: () => { launches++; return f.success('session:123:1'); },
       deliver: input => { if (checkIntake) expect(journal.view.order.some(turn => turn.id === input.intake && turn.reserved)).toBe(true);
         delivered.push(resolve(input.intake, input.digest)); calls++; files.set(destination, answer); return f.success('accepted'); },
-      observe: () => f.success({ phase: 'output-observed', evidence: 'closed', detail: 'closed' }), stop: () => f.success(['123']) }),
+      observe: () => f.success({ phase: 'output-observed', evidence: 'turn-closed:fake:1', detail: 'closed' }), stop: () => f.success(['123']) }),
     io: { clearResult: path => { destination = path; files.delete(path); }, readResult: path => files.get(path) ?? null,
       wait: async ms => { now += ms; }, modelCalls: () => calls, prepareAdmission: () => {}, closeAdmission: () => {},
       admissionState: () => ({ refused: false, openDelegations: [] }) },
     resources: { admit: async () => ({ attach: async () => {}, release: async () => true }) },
     context: f.c, now: () => now, stopped: () => stopped,
-    append: record => { journal.append({ kind: 'session-work', record, at: now }); if (record.type === 'SessionWorkEdge') edges++; }, parent: 'runner', owner: 'machine',
+    append: record => { journal.append({ kind: 'session-work', record, at: now }); if (record.type === 'SessionWorkEdge' && !record.drawsOn) edges++; }, parent: 'runner', owner: 'machine',
     placement: 'local', transport: 'fake', workingScope: '/scope', resultDirectory: '/scope', artifact: 'worker',
     incarnation: 'one', deadlineMs: 10000, pollMs: 25, maxResultBytes: 65536, maxSteps: 8, maxCalls: 10 }));
   const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
@@ -134,5 +140,17 @@ it('the journal refuses the whole session reservation before launch when the par
     expect(f.counts()).toEqual({ launches: 0, calls: 0, fallback: 0 });
     expect(f.journal.view.calls).toBe(0);
     expect(f.sent).toEqual([]);
+  } finally { await f.close(); }
+});
+
+it('a refused parent reservation never turns into an unreserved launch on a later input', async () => {
+  const f = fixture(true, false, 9);
+  try {
+    for (const n of [1, 2]) {
+      const result = await f.model({ id: `telegram:7654321:update:${n}`, question: 'hello', context: '{}', prepared: '{}' });
+      expect(result).toEqual({ state: 'uncertain' });
+    }
+    expect(f.counts()).toEqual({ launches: 0, calls: 0, fallback: 0 });
+    expect(f.journal.view.calls).toBe(0);
   } finally { await f.close(); }
 });
