@@ -133,17 +133,26 @@ describe.each(Object.keys(DOORWAY_CONFORMANCE))('native compositions through doo
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 240000);
 
-  it('certifies the exact composition exercised by the native contract', () => {
+  it('reports the declared certification state of the exact native composition', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'native-contract-certificate-')));
     try {
-      // The certified tuple is this composition: its declared conformance digest is the running adapter's artifact, on this
-      // resolved runtime, and the adapter admits that conformance only because it matches its own running closure.
+      // The adapter must report the declared posture honestly. A supported claim must match
+      // its running bytes and runtime; an unproven declaration must remain unproven.
       const tuple = parityMatrix().harnessTuples.find(row => row.harness === SELF_HOST_HARNESS && row.doorway === id && row.mode === 'self-hosting');
       const described = createSelfHostHarness({ root, context: SELF_HOST_CONTEXT, stopped: () => false, now: () => NOW,
         log: openRecordLog(root, SELF_HOST_CONTEXT) }).adapter.describe();
-      expect(tuple).toMatchObject({ status: 'supported', conformance: [described.artifact], runtime: [currentRuntime()],
-        artifact: ['createSelfHostHarness@tests/preview/self-host-harness.mjs'] });
-      expect(described.conformance).toBe(`self-host:${tuple.conformance[0]}`);
+      expect(tuple).toBeDefined();
+      expect(['supported', 'unproven']).toContain(tuple.status);
+      if (tuple.status === 'supported') {
+        expect(tuple).toMatchObject({ conformance: [described.artifact], runtime: [currentRuntime()],
+          artifact: ['createSelfHostHarness@tests/preview/self-host-harness.mjs'] });
+        expect(described.conformance).toBe(`self-host:${tuple.conformance[0]}`);
+      } else {
+        // A passing captured-frame contract does not certify the desk-owned macOS composition.
+        expect(tuple.reason.length).toBeGreaterThanOrEqual(10);
+        expect(tuple.evidence).toBeUndefined();
+        expect(described.conformance).toBe(`self-host:unproven:${described.artifact}`);
+      }
       expect(described.platform).toBe(`${tuple.platform}-${process.arch}`);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
