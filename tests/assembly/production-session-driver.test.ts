@@ -587,3 +587,17 @@ it('public control can retire only the admitted claim and incarnation, never ano
   expect(value(f.driver.stop({ claim: 'topic', incarnation: 'inc', processIdentity: id }))).toHaveLength(1);
   expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('exit-observed');
 });
+
+it.each(['claude-code', 'codex-cli'] as const)('prepared connectors launch on the admitted %s worker with the hook intact', framework => {
+  const f = fixture(framework);
+  const driver = createProductionSessionDriver({ ...f.config, confinement: 'admitted',
+    toolAdmission: { command: (claim, phase) => `/node /repo/hook.mjs ${phase} /state/${claim}`, timeoutSeconds: 600 },
+    modelGate: claim => `http://127.0.0.1:4100/${'a'.repeat(32)}/${claim}`,
+    connectors: claim => { expect(claim).toBe('topic'); return { config: '/private/mcp.json', servers: ['mail'],
+      launch: { mail: { command: '/node', args: ['/mcp-launch.mjs', '/socket', 'mail', 'nonce', '/fake-connector'] } } }; } });
+  value(driver.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test', incarnation: 'inc', workingScope: '/work', handles: [] }));
+  const command = f.calls.find(row => row[0] === 'new-session')!;
+  expect(command.join(' ')).toContain('PreToolUse');
+  if (framework === 'claude-code') expect(command).toEqual(expect.arrayContaining(['--strict-mcp-config', '--mcp-config', '/private/mcp.json']));
+  else expect(command.join(' ')).toContain('mcp_servers.mail=');
+});
