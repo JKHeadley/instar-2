@@ -10,7 +10,7 @@ const digest = (text: string) => `sha256:${createHash('sha256').update(text).dig
 const tick = () => new Promise<void>(resolve => setTimeout(resolve, 1));
 async function until(test: () => boolean) { for (let i = 0; i < 500 && !test(); i++) await tick(); expect(test()).toBe(true); }
 
-function fixture(maxSessions = 2, maxCalls = 6) {
+function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16) {
   let state: ConversationTopicsState | null = null, now = 1000, live = 0, peak = 0, stopped = false, authorized = true, saveFails = false;
   const held = new Set<string>(), launches: { topic: string; worker: HarnessWorkerHandle }[] = [];
   const delivered: { topic: string; input: HarnessInputDelivery }[] = [], closed: string[] = [];
@@ -23,7 +23,7 @@ function fixture(maxSessions = 2, maxCalls = 6) {
     workingScope: '/scope', resultDirectory: '/scope/results', artifact: 'artifact', incarnation: 'boot',
     store: { load: () => structuredClone(state), save: next => { if (saveFails) throw Error('disk'); state = structuredClone(next); } },
     append: row => { edges.push(row); },
-    resources: { admit: async () => { live++; peak = Math.max(peak, live); return { attach: async () => {}, release: async () => { live--; return true; } }; } },
+    resources: { admit: async () => { if (live >= resourceCap) return null; live++; peak = Math.max(peak, live); return { attach: async () => {}, release: async () => { live--; return true; } }; } },
     io: { modelCalls: () => { throw Error('must not count another topic transcript'); }, wait: tick,
       readResult: () => null, clearResult: () => {}, prepareAdmission: () => {}, closeAdmission: () => {},
       admissionState: () => ({ refused: false, openDelegations: [] }) },
@@ -167,8 +167,7 @@ it('upgrades group custody in place: retires the old worker, splits queues and p
 });
 
 it('reclaims an idle topic when the installation resource ceiling is tighter than the topic cap', async () => {
-  const f = fixture(2), admit = f.config.resources.admit;
-  f.config.resources.admit = async () => f.counts().live >= 1 ? null : admit();
+  const f = fixture(2, 6, 1);
   await f.port.run(f.request('7:a'));
   expect(await f.port.run(f.request('8:b'))).toMatchObject({ state: 'complete' });
   expect(f.counts().peak).toBe(1); expect(f.launches.map(row => row.topic)).toEqual(['7', '8']);
