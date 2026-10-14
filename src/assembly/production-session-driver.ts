@@ -116,10 +116,19 @@ const digestOf = (text: string) => `sha256:${createHash('sha256').update(text).d
 const tail = (capture: string, lines = 12) => capture.split('\n').map(x => x.trim()).filter(Boolean).slice(-lines).join('\n');
 const literalTarget = (name: string) => `=${name}:`;
 
-/** 1.x classifier: a focused numbered menu wins over the prompt glyph. */
+/** A focused numbered menu wins over its prompt glyph, including a startup menu whose
+ * trailing theme preview fills the footer. A later real prompt supersedes old menu output. */
 export function classifyPaneReadiness(capture: string): 'ready' | 'menu' | 'not-ready' {
   const text = tail(capture, 6);
-  const options = text.split('\n').filter(line => /^\s*(?:[❯›>●○◉]\s*)?\d+[.)]\s/.test(line));
+  const visible = tail(capture, 80).split('\n');
+  const prompt = visible.map(line => /^[❯›>]\s*$/.test(line)).lastIndexOf(true);
+  const active = visible.slice(prompt + 1);
+  // Native 2.1.280 startup confirmations use unnumbered choices; their cursor is not input.
+  if (active.includes('Enter to confirm · Esc to cancel')
+    && active.some(line => /^[❯›]\s+(?:No, exit|Yes, I trust this folder|Yes, I accept)$/.test(line))
+    && (active.includes('Accessing workspace:') || active.includes('WARNING: Claude Code running in Bypass Permissions mode')))
+    return 'menu';
+  const options = active.filter(line => /^\s*(?:[❯›>●○◉]\s*)?\d+[.)]\s/.test(line));
   if (options.length >= 2 && options.some(line => /^\s*[❯›>●○◉]\s*\d+[.)]\s/.test(line))) return 'menu';
   if (/[❯›]/.test(text) || /(?:bypass permissions|shift\+tab to cycle|ctrl\+c to exit)/i.test(text)) return 'ready';
   return 'not-ready';
@@ -303,7 +312,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
       '-e', `CODEX_HOME=${config.configHome}`, '-e', `INSTAR_SESSION_NAME=${name}`,
       '-e', `INSTAR_SESSION_INBOX=${config.inboxDirectory ?? ''}`,
       '-e', `INSTAR_SESSION_GROUNDING_FILE=${config.compactGroundingFile ?? ''}`,
-      '--', '/usr/bin/env', '-i', 'PATH=/usr/bin:/bin:/opt/homebrew/bin', `HOME=${config.home}`,
+      '--', '/usr/bin/env', '-i', 'PATH=/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin', `HOME=${config.home}`,
       `CLAUDE_CONFIG_DIR=${config.configHome}`, `CODEX_HOME=${config.configHome}`,
       `INSTAR_SESSION_NAME=${name}`, `INSTAR_SESSION_INBOX=${config.inboxDirectory ?? ''}`,
       `INSTAR_SESSION_GROUNDING_FILE=${config.compactGroundingFile ?? ''}`, ...harnessEnv,

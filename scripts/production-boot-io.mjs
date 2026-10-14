@@ -8,6 +8,61 @@ import { homedir, userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { hostResources, limitedFileArgv } from './resource-owner.mjs';
 
+/** Read native nonsecret preferences without following links or replacing malformed state. */
+function readInteractiveConfig(path) {
+  let value = {};
+  try {
+    if (!lstatSync(path).isFile()) throw Error('interactive profile config must be a regular file');
+    value = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) { if (error?.code !== 'ENOENT') throw error; }
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw Error('interactive profile config must be an object');
+  return value;
+}
+function publishInteractiveConfig(path, previous, next) {
+  if (JSON.stringify(next) === JSON.stringify(previous)) return false;
+  const temporary = `${path}.${process.pid}.first-run.pending`;
+  const fd = openSync(temporary, 'wx', 0o600);
+  try {
+    try { writeFileSync(fd, JSON.stringify(next, null, 2) + '\n'); fsyncSync(fd); }
+    finally { closeSync(fd); }
+    renameSync(temporary, path);
+  } finally { if (existsSync(temporary)) unlinkSync(temporary); }
+  return true;
+}
+/** Claude Code adapter bootstrap, ported from 1.x ensureInteractiveReady. These are local
+ * first-run preferences, not authentication or Instar authority. Never write a login here.
+ * 2.1.280 moved permission-mode acknowledgement into user settings; the legacy config flag
+ * is ignored after migration. Installation and the interactive bridge share this upgrade. */
+export function prepareSubscriptionInteractive(configDirectory, workingDirectory) {
+  if (!isAbsolute(configDirectory) || !lstatSync(configDirectory).isDirectory())
+    throw Error('interactive profile requires its own existing config directory');
+  const path = join(configDirectory, '.claude.json'), settingsPath = join(configDirectory, 'settings.json');
+  const previous = readInteractiveConfig(path), settings = readInteractiveConfig(settingsPath);
+  const next = { ...previous, hasCompletedOnboarding: true, theme: previous.theme ?? 'dark' };
+  // Native workspace trust is keyed by the real cwd, not the profile's default work folder.
+  // This is the exact workspace already admitted by Instar, never a parent or all projects.
+  if (workingDirectory !== undefined) {
+    if (!isAbsolute(workingDirectory) || !lstatSync(workingDirectory).isDirectory())
+      throw Error('interactive profile requires its exact existing workspace');
+    const cwd = realpathSync(workingDirectory);
+    const projects = previous.projects ?? {};
+    if (!projects || typeof projects !== 'object' || Array.isArray(projects))
+      throw Error('interactive profile projects must be an object');
+    const project = projects[cwd] ?? {};
+    if (!project || typeof project !== 'object' || Array.isArray(project))
+      throw Error('interactive profile workspace must be an object');
+    next.projects = { ...projects, [cwd]: { ...project, hasTrustDialogAccepted: true } };
+  }
+  const changed = publishInteractiveConfig(path, previous, next);
+  const settingsChanged = publishInteractiveConfig(settingsPath, settings, { ...settings, skipDangerousModePermissionPrompt: true });
+  if (changed || settingsChanged) {
+    const directory = openSync(configDirectory, 'r');
+    try { fsyncSync(directory); } finally { closeSync(directory); }
+  }
+  return changed || settingsChanged;
+}
+
 /** The transport child's own bounds: per-process handles, and user-ID process headroom. */
 const TRANSPORT_LIMITS = Object.freeze({ handleCount: 256, processCount: 4 });
 /** The user ID's current process count plus the transport headroom, or null when it cannot be read.

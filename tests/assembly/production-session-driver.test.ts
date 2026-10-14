@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -90,6 +90,37 @@ it('ports byte bounded tmux chunks, menu precedence, and tail gated stuck signat
   expect(classifyPaneReadiness('❯ ')).toBe('ready');
   expect(classifyStuckSignature('conversation is too long\n' + 'normal work\n'.repeat(20))).toBeNull();
   expect(classifyStuckSignature('conversation is too long')).toBe('context-too-long');
+});
+
+it('reports the recorded first-run startup menu even when its syntax preview hides the options', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../fixtures/claude-first-run-2.1.280.json', import.meta.url), 'utf8'));
+  expect(recorded.updateId).toBe(840342689);
+  expect(classifyPaneReadiness(recorded.pane.capture)).toBe('menu');
+  expect(classifyPaneIdle(recorded.pane.capture, 'claude-code')).toBe(false);
+  const f = fixture(); f.changePane(recorded.pane.capture);
+  refused(f.driver.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test',
+    incarnation: 'inc', workingScope: '/work', handles: [] }), 'startup menu');
+  expect(f.sends).toBe(0);
+  // Old menu scrollback cannot suppress a later actual idle prompt.
+  expect(classifyPaneReadiness(recorded.pane.capture + '\n❯ \n? for shortcuts')).toBe('ready');
+  expect(classifyPaneIdle(recorded.pane.capture + '\n❯ \n? for shortcuts', 'claude-code')).toBe(true);
+});
+
+it.each(['workspace-trust', 'permission-mode'])('reports the recorded unnumbered %s startup menu without delivering input into it', name => {
+  const recorded = JSON.parse(readFileSync(new URL(`../fixtures/claude-${name}-2.1.280.json`, import.meta.url), 'utf8'));
+  expect(classifyPaneReadiness(recorded.pane.capture)).toBe('menu');
+  expect(classifyPaneIdle(recorded.pane.capture, 'claude-code')).toBe(false);
+  const f = fixture(); f.changePane(recorded.pane.capture);
+  refused(f.driver.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test',
+    incarnation: 'inc', workingScope: '/work', handles: [] }), 'startup menu');
+  expect(f.sends).toBe(0);
+  expect(classifyPaneReadiness(recorded.pane.capture + '\n❯ ')).toBe('ready');
+});
+
+it('accepts the genuine native idle-prompt neighbour captured after the live tool-bearing input', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../fixtures/claude-idle-2.1.280.json', import.meta.url), 'utf8'));
+  expect(recorded.updateId).toBe(840342692);
+  expect(classifyPaneReadiness(recorded.pane.capture)).toBe('ready');
 });
 
 it.each(['claude-code', 'codex-cli'] as const)('keeps focused menu refusal for %s and accepts numbered output above a prompt', framework => {
@@ -524,6 +555,8 @@ it('runs the harness through the configured launch command (the harness-user bri
   expect(pane.slice(at - via.length, at)).toEqual(via);
   // The bridge receives the same clean environment the harness would: it precedes the bridge, never follows it.
   expect(pane.slice(0, at - via.length)).toContain(`CLAUDE_CONFIG_DIR=${bridged.homes.a}`);
+  // Studio's Node is installed here; lifecycle hooks invoke node in this clean environment.
+  expect(pane.slice(0, at - via.length)).toContain('PATH=/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin');
   const plain = fixture();
   plain.launch();
   const direct = plain.calls.find(row => row[0] === 'new-session') ?? [];
