@@ -21,14 +21,18 @@ last claim and pending move. The pool registers the topic so loss of that snapsh
 cannot look like a first launch. A move records its source, destination and exact
 selection attempt before destination preflight or worker retirement. A delayed or
 recovered move rechecks fresh destination quota without adding a new attempt. Preflight
-failure leaves the idle worker intact. After exact retirement, the physical
+failure leaves the idle worker intact and undispatched input queued for maintenance
+under its original lifetime and stop. Retirement and custody errors remain visible.
+After exact retirement, the physical
 adapter copies only the recorded native transcript, never credentials. An
 identical copy is reusable; divergent, unsafe or missing bytes use the existing
 journal continuation. The source and divergent destination stay intact.
 
 Completed moves are idempotent by topic and sequence. A restart can finish a
 prepared move, including a crash after the pool's completion record but before
-the topic snapshot commit. The new process claim inherits the prior native handle
+the topic snapshot commit. An already recorded completion repairs the topic snapshot
+before current capacity is checked for further work. The new process claim inherits
+the prior native handle
 when available. Missing handles still require journal continuation; they cannot
 silently become a new conversation. Fresh native handles are retained before
 launch and published by the driver's existing reservation reconciliation.

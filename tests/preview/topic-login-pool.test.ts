@@ -142,7 +142,7 @@ it('leaves input durably queued while every account is full; the parent deadline
 it('healthy topics stay put and a failed destination preflight does not retire the old worker', async () => {
   const f = fixture(); await f.port.run(f.request('7:first')); await f.port.maintain(); expect(f.closes).toEqual([]);
   f.usage([f.quota(f.entries[0], 99), f.quota(f.entries[1], 10)]); f.failAdmit(true);
-  await expect(f.port.maintain()).rejects.toThrow('destination unavailable');
+  await f.port.maintain();
   expect(f.closes).toEqual([]); expect(f.pool.state.switches).toEqual([]);
   f.failAdmit(false); await f.port.maintain(); expect(f.closes).toHaveLength(1); await f.port.close();
 });
@@ -290,4 +290,68 @@ it('rechecks a pending destination after restart and retains input if that accou
   expect(f.pool.state.switches).toEqual([]); expect(f.deliveries).toHaveLength(1);
   expect(f.handoffFor('7').state.pending).toMatchObject({ from: 0, to: 1 });
   expect(f.pool.state.handoffAttempts).toHaveLength(1); await f.port.close();
+});
+
+it('queues an undispatched input on destination preflight failure and drains it once admission recovers', async () => {
+  const f = fixture(); await f.port.run(f.request('7:first'));
+  const before = f.state().topics['7'];
+  f.usage([f.quota(f.entries[0], 99), f.quota(f.entries[1], 10)]); f.failAdmit(true);
+  const request = f.request('7:second');
+  expect(await f.port.run(request)).toMatchObject({ state: 'queued' });
+  expect(f.state().topics['7'].inputs.at(-1)).toMatchObject({ state: 'queued', attempts: 0, delivery: null });
+  expect(f.state().topics['7'].claim).toBe(before.claim);
+  expect(f.closes).toEqual([]); expect(f.deliveries).toHaveLength(1);
+  await f.port.maintain(); expect(f.closes).toEqual([]);
+  f.failAdmit(false); await f.port.maintain();
+  expect(await f.port.run(request)).toMatchObject({ state: 'complete' });
+  expect(f.deliveries.map(row => row.login)).toEqual([0, 1]);
+  expect(f.pool.state.handoffAttempts).toHaveLength(1);
+  expect(f.state().topics['7'].edge.budget.deadline).toBe(before.edge.budget.deadline);
+  await f.port.maintain(); expect(f.deliveries).toHaveLength(2); await f.port.close();
+});
+
+it.each(['stop', 'deadline'])('preflight wait does not cross its original %s boundary', async boundary => {
+  const f = fixture(); await f.port.run(f.request('7:first'));
+  f.usage([f.quota(f.entries[0], 99), f.quota(f.entries[1], 10)]); f.failAdmit(true);
+  expect(await f.port.run(f.request('7:second'))).toMatchObject({ state: 'queued' });
+  if (boundary === 'stop') f.stop(); else f.advance(100001);
+  f.failAdmit(false); await f.port.maintain();
+  expect(f.deliveries).toHaveLength(1); expect(f.pool.state.handoffs ?? []).toHaveLength(0);
+});
+
+it('reconciles an already completed move even if destination capacity is now full', async () => {
+  const f = fixture(); await f.port.run(f.request('7:first'));
+  f.usage([f.quota(f.entries[0], 99), f.quota(f.entries[1], 10)]); f.failCommit(true);
+  await expect(f.port.maintain()).rejects.toThrow('crash at commit');
+  expect(f.pool.state.handoffs).toHaveLength(1);
+  f.failCommit(false); f.restart(); f.usage(f.entries.map(entry => f.quota(entry, 99)));
+  expect(await f.port.run(f.request('7:second'))).toMatchObject({ state: 'queued' });
+  expect(f.handoffFor('7').state).toMatchObject({ selected: 1, pending: null });
+  expect(f.pool.state.handoffs).toHaveLength(1); expect(f.pool.state.handoffAttempts).toHaveLength(1);
+  expect(f.deliveries).toHaveLength(1); await f.port.close();
+});
+
+it('rechecks a preflight-interrupted pending move and drains only after fresh destination capacity returns', async () => {
+  const f = fixture(); await f.port.run(f.request('7:first'));
+  f.usage([f.quota(f.entries[0], 99), f.quota(f.entries[1], 10)]); f.failAdmit(true);
+  expect(await f.port.run(f.request('7:second'))).toMatchObject({ state: 'queued' });
+  f.failAdmit(false); f.restart();
+  const full = f.quota(f.entries[1], 99);
+  full.lastQuota.fiveHour.resetsAt = full.lastQuota.sevenDay.resetsAt = new Date(1001000).toISOString();
+  f.usage([f.quota(f.entries[0], 99), full]); await f.port.maintain();
+  expect(f.deliveries).toHaveLength(1); expect(f.pool.state.handoffAttempts).toHaveLength(1);
+  expect(f.handoffFor('7').state.pending).toMatchObject({ from: 0, to: 1 });
+  f.advance(1001); f.usage([f.quota(f.entries[0], 99), f.quota(f.entries[1], 10)]);
+  await f.port.maintain();
+  expect(f.deliveries.map(row => row.login)).toEqual([0, 1]);
+  expect(f.pool.state.handoffAttempts).toHaveLength(1); expect(f.pool.state.handoffs).toHaveLength(1);
+  expect(await f.port.run(f.request('7:second'))).toMatchObject({ state: 'complete' });
+  expect(f.deliveries).toHaveLength(2); await f.port.close();
+});
+
+it('does not disguise transcript custody failure as a preflight wait', async () => {
+  const f = fixture(); await f.port.run(f.request('7:first'));
+  f.usage([f.quota(f.entries[0], 99), f.quota(f.entries[1], 10)]); f.failCopy(true);
+  expect(await f.port.run(f.request('7:second'))).toMatchObject({ state: 'uncertain', detail: 'crash at copy' });
+  expect(f.deliveries).toHaveLength(1); expect(f.closes).toHaveLength(1); await f.port.close();
 });

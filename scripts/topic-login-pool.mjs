@@ -16,6 +16,10 @@ export function createTopicLoginHandoff({ topic, pool, entries, store, physical,
   const current = () => entries[state.selected];
   return Object.freeze({ current,
     async prepareTurn({ claim, retire }) {
+      // A pool completion is durable before the topic snapshot. Reconcile that fact
+      // before selecting against current capacity; completion is not a fresh admission.
+      const completed = state.pending && (pool.state.handoffs ?? []).find(move => move.id === `${topic}:${state.sequence}`);
+      if (completed) save({ selected: state.pending.to, pending: null, continuity: completed.continuity });
       if (!state.pending) {
         const next = pool.selectSession(state.selected);
         if (!next) return false;
@@ -26,7 +30,9 @@ export function createTopicLoginHandoff({ topic, pool, entries, store, physical,
       }
       const move = state.pending, source = entries[move.from], target = entries[move.to];
       if (!pool.readySession(move.to)) return false; // Recheck a prepared destination after delays or restart.
-      await admit(target); // failed destination preflight leaves the old idle worker intact
+      // Admission has not dispatched work or begun retirement. Reuse the host's
+      // queued wait path; custody/copy/retirement failures below remain errors.
+      try { await admit(target); } catch { return false; }
       await retire();
       const io = physical(source), journal = io.load(), id = move.claim ? journal.resumes[move.claim] : null;
       const copy = id ? io.carryTranscript({ framework, id, project, source: source.profile.configDirectory,
