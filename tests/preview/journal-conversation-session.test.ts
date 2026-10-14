@@ -37,7 +37,7 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200) {
   const adapt = (config: Omit<import('../../src/assembly/production-conversation-session.js').ConversationSessionConfig, 'store' | 'createAdapter'> & Pick<import('../../src/assembly/production-session-work.js').SessionWorkConfig, 'createDriver'>) => createConversationSessionPort({ ...config,
     store: { load: () => state, save: next => { state = structuredClone(next); } },
     createAdapter: resolveDelivery => createSessionConversationAdapter({ createDriver: config.createDriver, io: config.io, resolveDelivery }) });
-  const port = value(adapt({ conversation: 'operator', allowanceDeadline: 9999999999999,
+  const port = value(adapt({ conversation: 'operator', allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => 'existing-role',
     createDriver: resolve => ({ owner: 'part-eight', launch: () => { launches++; return f.success('session:123:1'); },
       deliver: input => { if (checkIntake) expect(journal.view.order.some(turn => turn.id === input.intake && turn.reserved)).toBe(true);
         delivered.push(resolve(input.intake, input.digest)); calls++; files.set(destination, answer); return f.success('accepted'); },
@@ -153,4 +153,33 @@ it('a refused parent reservation never turns into an unreserved launch on a late
     expect(f.counts()).toEqual({ launches: 0, calls: 0, fallback: 0 });
     expect(f.journal.view.calls).toBe(0);
   } finally { await f.close(); }
+});
+
+it.each([false, true])('the shipped grant refresh validates changed bytes before opening authorization (login pool=%s)', pool => {
+  let bytes = JSON.stringify({ reference: 'same-grant', policy: 'old' });
+  const initial = bytes;
+  const selectBody = host.split('sessionWork = { select() {')[1]!.split('}, get authority()')[0]!;
+  const activeBody = host.split('const sessionActive = ')[1]!.split('\n')[0]!;
+  const getterBody = host.split('}, get authority() {')[1]!.split('}, port: take')[0]!;
+  const build = Function('readFileSync', 'initial', 'sessionAdapter', 'requireAuthority', 'sha256', 'pool', `
+    let sessionBytes = initial, sessionActivation = JSON.parse(initial);
+    const conversationSession = true, sessionSetup = { activation: '/grant' }, profile = {}, options = {},
+      journal = { view: { expires: 1000 } }, required = () => 'model', wallNow = () => 1,
+      activationMatchesJournal = () => true, loginPool = pool, selectedSession = { index: 0 },
+      loginRuntimes = new Map([[0, { live: () => false, sessionRecord: { reference: 'stale-pool-record' } }]]);
+    const sessionActive = ${activeBody}
+    const sessionWork = { select() {${selectBody}}, get authority() {${getterBody}} };
+    return { select: () => sessionWork.select(), active: sessionActive, authority: () => sessionWork.authority };
+  `);
+  const seen: unknown[] = [];
+  const route = build(() => bytes, initial, { validateActivation: (record: { policy: string }) => {
+    seen.push(record); if (record.policy === 'invalid') throw Error('invalid grant');
+  } }, () => {}, (text: string) => text, pool) as { select(): void; active(): boolean; authority(): string };
+  expect(route.active()).toBe(true); const before = route.authority();
+  bytes = JSON.stringify({ reference: 'same-grant', policy: 'new' });
+  expect(route.active()).toBe(false); route.select(); expect(route.active()).toBe(true);
+  expect(route.authority()).not.toBe(before); expect(route.authority()).not.toContain('stale-pool-record');
+  bytes = JSON.stringify({ reference: 'same-grant', policy: 'invalid' });
+  expect(() => route.select()).toThrow(/invalid grant/); expect(route.active()).toBe(false);
+  expect(seen).toHaveLength(2);
 });

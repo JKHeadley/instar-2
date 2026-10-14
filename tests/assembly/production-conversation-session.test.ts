@@ -11,7 +11,7 @@ import { value } from '../facts/fixtures.js';
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | 'maxSteps' | 'maxResultBytes'>> = {}) {
   const f = assemblyRuntimeFixture();
-  let clock = 1000, stopped = false, used: number | null = 0, dead = false, paused = false, finish = true;
+  let clock = 1000, stopped = false, authorized = true, authority = 'existing-role', used: number | null = 0, dead = false, paused = false, finish = true;
   let state: ConversationState | null = null, answer = '{"answer":"hello"}', active: ConversationDelivery | null = null;
   let stopOK = true, releaseOK = true, stops = 0, releases = 0, refused = false;
   const launches: ConversationWorker[] = [], delivered: ConversationDelivery[] = [];
@@ -36,7 +36,7 @@ function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | '
     control: async () => { stops++; return { state: stopOK ? 'closed' : 'uncertain', evidence: 'stop' }; },
   };
   const config: ConversationSessionConfig = {
-    conversation: 'operator-1', allowanceDeadline: 100000, store: { load: () => structuredClone(state), save: next => { state = structuredClone(next); } },
+    conversation: 'operator-1', allowanceDeadline: 100000, authorized: () => authorized, currentAuthority: () => authority, store: { load: () => structuredClone(state), save: next => { state = structuredClone(next); } },
     createAdapter: () => adapter,
     io: { clearResult: () => {}, readResult: () => null, modelCalls: () => used, wait: async ms => { clock += ms; },
       prepareAdmission: (_claim, edge) => { admissions.push(edge); }, closeAdmission: claim => { closed.push(claim); },
@@ -53,7 +53,7 @@ function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | '
     state: () => structuredClone(state!), restore: (next: ConversationState) => { state = structuredClone(next); },
     answer: (text: string) => { answer = text; }, calls: (n: number | null) => { used = n; }, refuse: () => { refused = true; },
     exit: () => { dead = true; }, pause: () => { paused = true; }, finish: (next: boolean) => { finish = next; },
-    stop: () => { stopped = true; }, advance: (ms: number) => { clock += ms; },
+    grant: (next: string) => { authority = next; }, authorize: (next: boolean) => { authorized = next; }, stop: () => { stopped = true; }, advance: (ms: number) => { clock += ms; },
     stopFailure: () => { stopOK = false; }, releaseFailure: () => { releaseOK = false; },
     counts: () => ({ stops, releases }), restart: () => value(createConversationSessionPort(config)),
   };
@@ -108,6 +108,7 @@ it.each(['exit', 'turns', 'deadline', 'authority'] as const)('continues across %
   const f = fixture({ maxSteps: reason === 'turns' ? 1 : 3 });
   await f.port.run(f.request('one'));
   if (reason === 'exit') f.exit(); if (reason === 'deadline') f.advance(2000);
+  if (reason === 'authority') f.grant('new-current-grant');
   const request = { ...f.request('two'), authority: reason === 'authority' ? 'new-current-grant' : 'existing-role' };
   expect(await f.port.run(request)).toMatchObject({ state: 'complete' });
   expect(f.launches).toHaveLength(2);
@@ -307,4 +308,40 @@ it.each(['gap', 'wrong-delivery', 'wrong-digest', 'oversize', 'open-child'] as c
   };
   expect((await f.port.run(f.request('one'))).state).toBe('uncertain');
   expect(f.state().inputs[0]!.request).toEqual(f.request('one')); await f.port.close();
+});
+
+it('idle grant withdrawal fences the old process but a validated renewal continues the same allowance', async () => {
+  const f = fixture(); await f.port.run(f.request('one'));
+  f.authorize(false); await f.port.maintain();
+  expect(f.port.available()).toBe(false); expect(f.state().worker).toBeNull();
+  expect(f.state().close).toBeNull();
+  await expect(f.port.run(f.request('held'))).rejects.toThrow(/unavailable/);
+  f.authorize(true); expect(f.port.available()).toBe(true);
+  expect(await f.port.run({ ...f.request('two'), authority: 'renewed-signed-bytes' })).toMatchObject({ state: 'complete' });
+  expect(f.admissions.map(edge => edge.budget.calls)).toEqual([6, 5]);
+  expect(f.launches[1]!.claim).not.toBe(f.launches[0]!.claim);
+  expect(f.edges.filter(edge => edge.type === 'SessionWorkEdge' && !edge.drawsOn)).toHaveLength(1);
+  await f.port.close();
+});
+
+it('mid-turn grant withdrawal refuses new model charges and preserves unresolved input without replay', async () => {
+  const f = fixture(); f.finish(false);
+  f.config.io.wait = async () => { f.authorize(false); };
+  expect(await f.port.run(f.request('one'))).toMatchObject({ state: 'uncertain', detail: 'conversation grant unavailable' });
+  expect(() => f.port.reserveCall(f.launches[0]!.claim, 1)).toThrow(/grant unavailable/);
+  await f.port.maintain(); f.authorize(true); f.finish(true);
+  expect(await f.port.run(f.request('two'))).toMatchObject({ state: 'complete' });
+  expect(await f.port.run(f.request('one'))).toMatchObject({ state: 'uncertain' });
+  expect(f.delivered.map(item => item.operation)).toEqual(['one', 'two']); await f.port.close();
+});
+
+it('a validated grant change fences old model calls immediately and replaces the idle worker on the host tick', async () => {
+  const f = fixture(); await f.port.run(f.request('one'));
+  const oldClaim = f.launches[0]!.claim;
+  f.grant('refreshed-signed-grant');
+  expect(() => f.port.reserveCall(oldClaim, 1)).toThrow(/superseded/);
+  await f.port.maintain(); expect(f.state().worker).toBeNull(); expect(f.state().close).toBeNull();
+  expect(await f.port.run(f.request('two'))).toMatchObject({ state: 'complete' });
+  expect(f.admissions[1]!.authority).toBe('refreshed-signed-grant');
+  expect(f.admissions[1]!.budget.calls).toBe(5); await f.port.close();
 });

@@ -43,6 +43,9 @@ export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'crea
   readonly conversation: string;
   /** The already-admitted parent lifetime; replacing a process cannot extend it. */
   readonly allowanceDeadline: number;
+  /** A withdrawn grant fences the worker without ending durable conversation custody. */
+  readonly authorized: () => boolean;
+  readonly currentAuthority: () => string;
   readonly store: ConversationSessionStore;
   readonly createAdapter: (resolve: (operation: string) => ConversationDelivery | undefined) => HarnessAdapterPort<2>;
 }
@@ -115,6 +118,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     const guard = () => {
       ensure(!closing && !config.stopped(), 'conversation stopped');
       ensure(config.now() < config.allowanceDeadline, 'parent lifetime exhausted');
+      ensure(config.authorized(), 'conversation grant unavailable');
+      ensure(!state.worker || state.authority === config.currentAuthority(), 'worker grant superseded');
     };
     const calls = () => {
       const used = state.edge ? config.io.modelCalls(state.edge.openedAt) : 0;
@@ -187,9 +192,9 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       persist({ worker }); await lease.attach(worker.launch); guard();
     };
     const work = async (id: string) => {
-      const request = row(id).request;
+      const request = { ...row(id).request, authority: config.currentAuthority() };
       try {
-        guard();
+        ensure(!closing && !config.stopped() && config.authorized(), 'conversation stopped or grant unavailable');
         let replaceNeeded = !state.worker || state.turns >= config.maxSteps || config.now() >= state.deadline || state.authority !== request.authority;
         if (state.worker && !replaceNeeded) {
           const observed = await adapter.observe({ ...state.worker, delivery: null, cursor: 0, limit: 2 });
@@ -261,7 +266,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       })().finally(() => { draining = null; });
       return draining;
     };
-    const available = () => !closing && !config.stopped() && config.now() < config.allowanceDeadline
+    const available = () => !closing && !config.stopped() && config.authorized() && config.now() < config.allowanceDeadline
       && state.inputs.length < 4096 && state.inputs.filter(input => input.state !== 'settled').length < 64;
     const run = async (request: SessionWorkRequest): Promise<SessionWorkOutcome> => {
       ensure(safeName.test(request.operation) && request.question.trim() && request.authority.trim(), 'conversation input identity required');
@@ -296,6 +301,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     };
     const maintain = async () => {
       if (config.stopped() || closing || config.now() >= config.allowanceDeadline) { await close(); return; }
+      if (!config.authorized() || state.worker && state.authority !== config.currentAuthority()) {
+        if (draining) await draining; await retire();
+        if (!config.authorized()) return;
+      }
       await drain();
       if (!draining && state.worker && (config.now() >= state.deadline || state.turns >= config.maxSteps)) await retire();
     };

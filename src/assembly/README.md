@@ -139,7 +139,10 @@ Each OS process gets a fresh claim and incarnation, its own 64-input/one-hour ce
 and only the unused portion of the original 128-call reservation. Every process deadline
 also stays below the already admitted parent lifetime; a process renewal cannot extend it. The model checkpoint
 persists each call charge before forwarding, including calls that produce no transcript.
-A new message, process, grant or host does not replenish that allowance. Unknown accounting
+A new message, process, grant or host does not replenish that allowance.
+Grant withdrawal fences the worker and pauses authorization while retaining conversation
+custody; a validated renewal on the host tick or next input can continue it. Operator stop
+remains terminal for this host. Changed signed grant bytes select a fresh admitted process. Unknown accounting
 retains exposure. An interrupted parent-reservation write requires reconciliation rather
 than charging twice or launching without its parent. Stop closes dispatch before exact
 claim/incarnation control; cleanup waits for late resource admission.
@@ -154,7 +157,7 @@ worker. The existing tool and outward effect owners still decide those facts.
 At a process ceiling, exit or changed verified grant, the host retires the old process and
 admits a replacement, delivering the current journal-prepared history/clock/work packet.
 Vendor transcript resume is not required. Signed activation changes are revalidated at
-turn boundaries; withdrawal during a turn stops it. In-place compaction and foundation
+the idle tick and turn boundaries; withdrawal during a turn stops it. In-place compaction and foundation
 history migration remain owned by plan steps 5/6; no new grounding or account authority is
 invented here. The host calls `maintain()` on its existing tick and `close()` on shutdown.
 

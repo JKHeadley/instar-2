@@ -2462,7 +2462,7 @@ async function main() {
       sessionAdapter.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
       requireAuthority(options, sessionActivation, sessionSetup.activation, journal.view, wallNow());
       if (!activationMatchesJournal(journal.view, sessionActivation)) throw Error('preview: session work activation differs from journal');
-      const sessionActive = () => { try { return loginPool ? loginRuntimes.get(selectedSession.index).live('session') : readFileSync(sessionSetup.activation, 'utf8') === sessionBytes; } catch { return false; } };
+      const sessionActive = () => { try { return loginPool && !conversationSession ? loginRuntimes.get(selectedSession.index).live('session') : readFileSync(sessionSetup.activation, 'utf8') === sessionBytes; } catch { return false; } };
       // Rule 60: the session's working scope is a persistent fixed-size volume (tool-turn.mjs attachSessionVolume), mounted
       // before the first step, so every file a step writes, however many, is bounded together. Run as the harness user
       // (--harness-user), the same volume mounts where that user can reach it (harness-user.mjs harnessSessionLayout),
@@ -2480,8 +2480,9 @@ async function main() {
         home: profile.home, configHome: profile.configDirectory, cwd: project,
         ...(conversationSession && layout ? { lifecycleDirectory: join(layout.admission, 'lifecycle') } : {}) });
       let physical = physicalFor();
-      const stoppedNow = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
-        || wallNow() >= journal.view.expires || !active() || !sessionActive();
+      const hostStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
+        || wallNow() >= journal.view.expires || !active();
+      const stoppedNow = () => hostStopped() || !sessionActive();
       // The step's preflights run as the identity its session will (harness-user: held, never the runner's, while unready).
       const admissionIO = () => createSubscriptionProviderIO({ repository: process.cwd(), stopped: stoppedNow, work: 'maintenance',
         runAs: runAsOf(sessionHarness) });
@@ -2507,12 +2508,12 @@ async function main() {
         selectedSession = selectLogin('session'); profile = selectedSession.profile;
         sessionHarness = loginRuntimes.get(selectedSession.index)?.harness ?? harness;
         physical = physicalFor();
-      }, get authority() { return `${conversationSession ? 'continuing conversation' : 'session work'} grant ${(loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}: ${conversationSession ? 'one bounded conversation' : 'one scheduled work step'} for the verified operator, `
+      }, get authority() { return `${conversationSession ? 'continuing conversation' : 'session work'} grant ${(conversationSession ? sessionActivation : loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}${conversationSession ? ` bytes ${sha256(sessionBytes)}` : ''}: ${conversationSession ? 'one bounded conversation' : 'one scheduled work step'} for the verified operator, `
         + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? config => createConversationSessionPort({ ...config,
           store: createConversationHostStore(join(root, 'session-work-state', 'conversation.json'), key()),
           createAdapter: resolveDelivery => createSessionConversationAdapter({ createDriver: config.createDriver, io: config.io, resolveDelivery })
         }) : createSessionWorkPort)({
-        ...(conversationSession ? { conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires } : {}),
+        ...(conversationSession ? { conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires, authorized: sessionActive, currentAuthority: () => sessionWork.authority } : {}),
         createDriver: resolveIntake => {
           const create = () => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
@@ -2576,14 +2577,14 @@ async function main() {
           admissionState: claim => gate.state(claim),
           closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {}); } },
         resources: { admit: async () => {
-          if (loginPool) loginRuntimes.get(selectedSession.index).check('session');
+          if (loginPool && !conversationSession) loginRuntimes.get(selectedSession.index).check('session');
           else sessionAdapter.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
           await doorway.session.admit({ profile, io: admissionIO(), deadline: wallNow() + 15000, now: wallNow });
           const held = await hostResources.hold('maintenance', { timeout: 30000, stopped: stoppedNow });
           return held === null ? null : { attach: child => held.attach({ pid: Number(child.split(':')[1]), cwd: project }),
             release: async () => (await held.release()).verified };
         } },
-        context, now: wallNow, stopped: stoppedNow,
+        context, now: wallNow, stopped: conversationSession ? hostStopped : stoppedNow,
         append: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
         parent: `launch:${conversationOf(g)}`, owner: ownerMachine, placement: `machine:${ownerMachine}`,
         transport: 'tmux session on this machine', workingScope: project, resultDirectory: project,
@@ -2782,7 +2783,10 @@ async function main() {
       if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
       sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: async () => {
         if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
-        if (conversationSession) await sessionWork?.port.maintain();
+        if (conversationSession) {
+          try { sessionWork?.select?.(); } catch { /* unchanged grant bytes keep authorization closed; custody remains */ }
+          await sessionWork?.port.maintain();
+        }
         await worker.drain();
         if (requested) await worker.sendRequested();
       },
