@@ -312,7 +312,7 @@ describe('P14-NF-77: a shared audience is released only on a completed review (u
       return { sends, escalations, turn: last };
     } finally { rmSync(root, { recursive: true, force: true }); }
   };
-  const HOLDING = 'I need to check that answer before I can send it.';
+  const HOLDING = "I couldn't produce an answer to that. Please rephrase or ask again.";
 
   it('a short exact quoted sentence is removed after a confirmed violation; the long sentence is the control', async () => {
     const short = await runGroup('Code: 5521.');
