@@ -35,7 +35,7 @@ export const sessionAdmissionCommand = ({ base, node = process.execPath, script 
  * read-only, once written.
  */
 export function prepareSessionAdmission({ base, claim, workspace, maxCalls, gate, maxWriteBytes = 1048576, operations = [], effectPolicy,
-  irreversibleTerm, harness = null, prepare = prepareHarnessState }) {
+  irreversibleTerm, mcpReads = [], harness = null, prepare = prepareHarnessState }) {
   if (typeof gate !== 'string' || !/^http:\/\/127\.0\.0\.1:[0-9]+\/[0-9a-f]{32}\/[A-Za-z0-9._-]+$/u.test(gate))
     throw Error('session admission: the host checkpoint address is required');
   const state = stateOf(base, claim);
@@ -47,7 +47,7 @@ export function prepareSessionAdmission({ base, claim, workspace, maxCalls, gate
   const shellProfile = join(realpathSync(state), 'shell.sb');
   writeFileSync(shellProfile, shellSandboxProfile({ workspace: real, tmp }), { mode: 0o600 });
   writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: real, tmp, maxCalls, maxWriteBytes,
-    gate, shellProfile, delegation: true, networkReads: true, operations: [...operations],
+    gate, shellProfile, mcpReads: [...mcpReads], delegation: true, networkReads: true, operations: [...operations],
     ...(effectPolicy === undefined ? {} : { effectPolicy }), ...(irreversibleTerm === undefined ? {} : { irreversibleTerm }) }), { mode: 0o600 });
   if (opened) opened.open([join(state, 'config.json'), shellProfile]);
   pruneSessionAdmission(base, claim);

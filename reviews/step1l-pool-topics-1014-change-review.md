@@ -1,0 +1,31 @@
+# Change review — per-topic continuing account pool
+
+Subject base: dcc74db4cb47aeff08e0ad7212dacabded2a3d6c
+Review state: open
+Reviewed content: none
+Outcome: Move each idle topic worker to an eligible reviewed account before its current account reaches a measured limit, retaining conversation history, queue identities and the installation allowance.
+Affected rules: Rules 1, 5, 26, 29, 30, 32, 34, 35, 42, 44, 46, 49, 55, 60, 61, 63, 68, 74, 75, 96, 101, 102, 111, 113, 116.
+Affected floors: secrets — encrypted topic custody and exact transcript copying without credentials; spend cap — unchanged atomic topic charges and one parent reservation; stop — existing host authority plus exact claim retirement; no duplicate sends — original intake identities and existing journal sender, no redispatch of settled input; durable intake — original persisted queues survive account moves and restart.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Changes account selection and replacement of concurrent workers, retaining admission, effect and resource enforcement.
+Side effects: The pool's original selection/limit logic gains the step1e prepared-attempt brake and sign-in repair records. Each topic has a small encrypted account-selection snapshot and a pool registration that detects its loss. A prepared destination is rechecked against fresh quota after a delay or restart, without consuming another attempt. The owner-reference pin for the expanded journal integration test is refreshed. A prepared move can retire one idle worker and copy its exact transcript. Unknown or divergent transcripts use existing journal continuation. A destination preflight failure leaves the idle worker intact. No prompt wording, semantic verdict parser, sender, login service or authority grant is added.
+Undo and recovery: Revert code while retaining all topic, pool and conversation custody. A prepared move resumes idempotently; missing or malformed custody refuses reconciliation rather than resetting account or allowance. Retain divergent transcripts unchanged. Old readers may ignore additive pool history fields but must not erase topic snapshots. Existing topic queue recovery marks unresolved dispatched work uncertain and never automatically repeats it.
+Multi-machine posture: Deliberately machine-local selection, physical process identities and transcript copying under the existing owning host fence. No peer, second writer or credential transfer is introduced.
+Layer below: Read the per-topic coordinator, durable conversation host, exact driver control, native resume lookup and reservation reconciliation, encrypted atomic host store, reviewed login-pool selection and matched quota/reset logic, and the runner's admission hook/shared reserveCall path. Preserve their contracts rather than transplanting global handoff state.
+Bug class: none
+Bug evidence: none
+Hook bypass: none; core.hooksPath is unset and the common hooks directory contains sample files only, checked on this branch.
+Convergence: none
+Prompt review: Existing conversation and recovery prompt wording and recorded-envelope parsers are unchanged. A new claim with prior topic history must enter the existing journal continuation if its native transcript cannot be used; it cannot masquerade as a first conversation. Actual pool replacements replay archived summary-writer 715672480, summary-uncertain 715672483, Jev-undecided 715672482, Jev-unsure 969389570, reply-review 969389923, delivered reply 715672479 and empty candidate 715672550 from the tracked proof-room/live captures; original bytes and consumer disposition survive replacement and restart. Existing recorded-shape journal replay tests also verify the final send/empty handling. No live/provider acceptance is claimed; the brief reserves that boundary to the desk.
+Decision: step1l-pool-topics-1014-boundary | Use the existing serialized host turn/idle boundary and exact retirement callback; reuse its queue and shared accounting instead of global handoff state. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1l-pool-topics-1014-PROGRESS.md
+Decision: step1l-pool-topics-1014-custody | Persist each topic's prepared move before effects, register its snapshot to detect loss, and deduplicate completion by topic and sequence across restart. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1l-pool-topics-1014-PROGRESS.md
+Decision: step1l-pool-topics-1014-resume | Carry exact native handles across replacement claims; keep divergent bytes untouched and require existing journal continuation when native history cannot be used. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1l-pool-topics-1014-PROGRESS.md
+Decision: step1l-pool-topics-1014-selection | Port step1e selection, quota/reset holds and five-attempt brake; bind driver, observation, admission and account grant reference to each topic's reviewed profile. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1l-pool-topics-1014-PROGRESS.md
+
+Generated register: regenerated from source commit 21b6c36f0e8095c62e8f53a50d3ea9dbe5fd6204, shape-only replay publication, not a runtime certificate.
+
+simplestRobustRoute: This is the simplest robust route through the existing host, pool and physical driver. One serialized boundary avoids interrupting another topic, one small encrypted record prevents a crash from forgetting the selected account, and idempotent completion prevents duplicate switch reporting. A new queue, sender, quota estimator or budget owner would duplicate existing enforced floors. Start guards remain current grants, ownership, preflight and resources; end guards remain correlated turn end and exact retirement; stop, deadline and shared spend limits remain intact. No unattended production-completion claim is made.
+80/20: Targeted host, driver, pool and shipped-wiring tests plus direct affected consumers, typecheck, architecture/register checks and the pinned READY gate. No full suite, live root, real login, Telegram walk or load burner is run on this host.
+VERDICT: author submission for desk review; no independent convergence or production acceptance claim

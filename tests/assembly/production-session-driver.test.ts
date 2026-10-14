@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -12,7 +12,7 @@ import type { SessionIO, SessionJournal } from '../../src/assembly/production-se
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const fixtureRoots: string[] = [];
 afterEach(() => { for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: Readonly<{ launchVia?: readonly string[] }> = {}) {
+function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: Readonly<{ launchVia?: readonly string[]; requireTurnHook?: boolean }> = {}) {
   const f = assemblyRuntimeFixture(); let now = 1000, stopped = false, pane = '❯ ', sends = 0;
   const root = mkdtempSync(join(tmpdir(), 'instar-session-test-')); fixtureRoots.push(root);
   const homes = { a: join(root, 'login-a'), b: join(root, 'login-b') };
@@ -90,6 +90,37 @@ it('ports byte bounded tmux chunks, menu precedence, and tail gated stuck signat
   expect(classifyPaneReadiness('❯ ')).toBe('ready');
   expect(classifyStuckSignature('conversation is too long\n' + 'normal work\n'.repeat(20))).toBeNull();
   expect(classifyStuckSignature('conversation is too long')).toBe('context-too-long');
+});
+
+it('reports the recorded first-run startup menu even when its syntax preview hides the options', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../fixtures/claude-first-run-2.1.280.json', import.meta.url), 'utf8'));
+  expect(recorded.updateId).toBe(840342689);
+  expect(classifyPaneReadiness(recorded.pane.capture)).toBe('menu');
+  expect(classifyPaneIdle(recorded.pane.capture, 'claude-code')).toBe(false);
+  const f = fixture(); f.changePane(recorded.pane.capture);
+  refused(f.driver.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test',
+    incarnation: 'inc', workingScope: '/work', handles: [] }), 'startup menu');
+  expect(f.sends).toBe(0);
+  // Old menu scrollback cannot suppress a later actual idle prompt.
+  expect(classifyPaneReadiness(recorded.pane.capture + '\n❯ \n? for shortcuts')).toBe('ready');
+  expect(classifyPaneIdle(recorded.pane.capture + '\n❯ \n? for shortcuts', 'claude-code')).toBe(true);
+});
+
+it.each(['workspace-trust', 'permission-mode'])('reports the recorded unnumbered %s startup menu without delivering input into it', name => {
+  const recorded = JSON.parse(readFileSync(new URL(`../fixtures/claude-${name}-2.1.280.json`, import.meta.url), 'utf8'));
+  expect(classifyPaneReadiness(recorded.pane.capture)).toBe('menu');
+  expect(classifyPaneIdle(recorded.pane.capture, 'claude-code')).toBe(false);
+  const f = fixture(); f.changePane(recorded.pane.capture);
+  refused(f.driver.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test',
+    incarnation: 'inc', workingScope: '/work', handles: [] }), 'startup menu');
+  expect(f.sends).toBe(0);
+  expect(classifyPaneReadiness(recorded.pane.capture + '\n❯ ')).toBe('ready');
+});
+
+it('accepts the genuine native idle-prompt neighbour captured after the live tool-bearing input', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../fixtures/claude-idle-2.1.280.json', import.meta.url), 'utf8'));
+  expect(recorded.updateId).toBe(840342692);
+  expect(classifyPaneReadiness(recorded.pane.capture)).toBe('ready');
 });
 
 it.each(['claude-code', 'codex-cli'] as const)('keeps focused menu refusal for %s and accepts numbered output above a prompt', framework => {
@@ -366,6 +397,7 @@ it('records a visible refusal and starts no fresh session when continuation is u
 
 it('also refuses a prior topic with no recorded native resume', () => {
   const f = fixture(); f.launch();
+  f.config.io.save({ ...f.journal, resumes: {} }); // Exercise a legacy journal lacking native handles.
   const driver = createProductionSessionDriver({ ...f.config, maxSessions: 2, continuation: undefined });
   refused(driver.launch({ operation: 'next', claim: 'topic', artifact: 'sha256:test',
     incarnation: 'next', workingScope: '/work', handles: [] }), 'continuation provider unavailable');
@@ -423,7 +455,8 @@ it('compacts an idle context wall once and then respawns through agent-owned con
   expect(f.calls.some(row => row[0] === 'kill-session' && row[2]?.endsWith(':'))).toBe(true);
   expect(f.journal.sessions.find(row => row.identity === next)?.continuation?.state).toBe('completed');
   expect(f.calls.filter(row => row[0] === 'new-session')).toHaveLength(2);
-  expect(f.journal.resumes.topic).toBeUndefined();
+  expect(f.journal.resumes.topic).toBe(f.journal.sessions.find(row => row.identity === next)?.resumeId);
+  expect(f.journal.resumes.topic).toMatch(/^[a-f0-9-]{36}$/u);
 });
 
 it('retains context-wall continuation intent across a cut immediately after kill', () => {
@@ -524,6 +557,8 @@ it('runs the harness through the configured launch command (the harness-user bri
   expect(pane.slice(at - via.length, at)).toEqual(via);
   // The bridge receives the same clean environment the harness would: it precedes the bridge, never follows it.
   expect(pane.slice(0, at - via.length)).toContain(`CLAUDE_CONFIG_DIR=${bridged.homes.a}`);
+  // Studio's Node is installed here; lifecycle hooks invoke node in this clean environment.
+  expect(pane.slice(0, at - via.length)).toContain('PATH=/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin');
   const plain = fixture();
   plain.launch();
   const direct = plain.calls.find(row => row[0] === 'new-session') ?? [];
@@ -531,4 +566,62 @@ it('runs the harness through the configured launch command (the harness-user bri
   expect(direct[direct.indexOf('/synthetic') - 1]).toMatch(/^INSTAR_SESSION_GROUNDING_FILE=/u);
   expect(() => fixture('claude-code', { launchVia: ['relative', '--'] })).toThrow(/exact launch command/u);
   expect(() => fixture('claude-code', { launchVia: [] })).toThrow(/exact launch command/u);
+});
+
+it('conversation mode rejects pane-idle completion and replays only its correlated Stop evidence', () => {
+  const f = fixture('claude-code', { requireTurnHook: true }), id = f.launch();
+  value(f.deliver(id)); f.changePane('answer\n❯ ');
+  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('launched');
+  expect(f.journal.sessions[0]?.turnDeadline).toBe(2000);
+  f.hook(1000);
+  const ended = value(f.driver.observe({ operation: 'observe', processIdentity: id }));
+  expect(ended.evidence).toContain('turn-closed:');
+  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id }))).toMatchObject({ evidence: ended.evidence });
+  value(f.driver.deliver({ operation: 'second', processIdentity: id, intake: 'second', digest: hash('hello'), incarnation: 'inc' }));
+  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('launched');
+});
+
+it('public control can retire only the admitted claim and incarnation, never another worker', () => {
+  const f = fixture(), id = f.launch();
+  expect(value(f.driver.stop({ claim: 'other', incarnation: 'inc' }))).toEqual([]);
+  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('launched');
+  expect(value(f.driver.stop({ claim: 'topic', incarnation: 'old-incarnation' }))).toEqual([]);
+  expect(value(f.driver.stop({ claim: 'topic', incarnation: 'inc', processIdentity: id }))).toHaveLength(1);
+  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('exit-observed');
+});
+
+it.each(['claude-code', 'codex-cli'] as const)('prepared connectors launch on the admitted %s worker with the hook intact', framework => {
+  const f = fixture(framework);
+  const driver = createProductionSessionDriver({ ...f.config, confinement: 'admitted',
+    toolAdmission: { command: (claim, phase) => `/node /repo/hook.mjs ${phase} /state/${claim}`, timeoutSeconds: 600 },
+    modelGate: claim => `http://127.0.0.1:4100/${'a'.repeat(32)}/${claim}`,
+    connectors: claim => { expect(claim).toBe('topic'); return { config: '/private/mcp.json', servers: ['mail'],
+      launch: { mail: { command: '/node', args: ['/mcp-launch.mjs', '/socket', 'mail', 'nonce', '/fake-connector'] } } }; } });
+  value(driver.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test', incarnation: 'inc', workingScope: '/work', handles: [] }));
+  const command = f.calls.find(row => row[0] === 'new-session')!;
+  expect(command.join(' ')).toContain('PreToolUse');
+  if (framework === 'claude-code') expect(command).toEqual(expect.arrayContaining(['--strict-mcp-config', '--mcp-config', '/private/mcp.json']));
+  else expect(command.join(' ')).toContain('mcp_servers.mail=');
+});
+
+
+it('retains a fresh native transcript handle without a lifecycle hook for later topic replacement', () => {
+  const f = fixture(), id = f.launch();
+  const launched = f.calls.find(row => row[0] === 'new-session')!;
+  const native = launched[launched.indexOf('--session-id') + 1];
+  expect(native).toMatch(/^[a-f0-9-]{36}$/u);
+  expect(f.journal.resumes.topic).toBe(native);
+  expect(f.journal.sessions.find(row => row.identity === id)?.resumeId).toBe(native);
+});
+
+it('a new topic claim with prior history requires continuation even without a native handle', () => {
+  const f = fixture();
+  const driver = createProductionSessionDriver({ ...f.config, continuationRequired: () => true });
+  const id = value(driver.launch({ operation: 'new-claim', claim: 'new-claim', artifact: 'sha256:test',
+    incarnation: 'next', workingScope: '/work', handles: [] }));
+  expect(f.journal.sessions.find(row => row.identity === id)?.continuation?.state).toBe('completed');
+  expect(f.calls.some(row => row.includes('--resume'))).toBe(false);
+  const missing = createProductionSessionDriver({ ...f.config, maxSessions: 2, continuationRequired: () => true, continuation: undefined });
+  refused(missing.launch({ operation: 'another', claim: 'another', artifact: 'sha256:test', incarnation: 'next', workingScope: '/work', handles: [] }),
+    'continuation provider unavailable');
 });

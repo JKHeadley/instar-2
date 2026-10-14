@@ -64,14 +64,15 @@ export function createToolEffectOwner({ decide, append, prepared, stopped, now }
     admit({ parent, tool, input, call }) {
       const operation = toolOperation(tool);
       let verdict;
-      try { verdict = decide(tool, input); } catch (error) { return { admitted: false, reason: `effect owner: the effect doorway could not decide (${String(error?.message ?? error)}); refused` }; }
+      try { verdict = decide(tool, input, parent); } catch (error) { return { admitted: false, reason: `effect owner: the effect doorway could not decide (${String(error?.message ?? error)}); refused` }; }
       const doorway = doorwayRecord(verdict);
       if (!verdict.admitted) return { admitted: false, reason: verdict.reason, doorway };
       if (stopped()) return { admitted: false, reason: 'effect owner: a stop is held', doorway };
       const payload = digest(canonical(input));
       const identity = digest(`${parent.child}\n${operation}\n${payload}${verdict.consequential ? '' : `\n${String(call)}`}`);
       if (prepared(identity)) return { admitted: false, reason: `effect owner: ${operation} with this exact input was already prepared (${identity}); never sent twice`, doorway };
-      try { append(sessionWorkEffect({ id: identity, edge: parent.id, operation, digest: payload, state: 'prepared', detail: 'admitted for dispatch', at: now() })); }
+      try { append(sessionWorkEffect({ id: identity, edge: parent.id, operation, digest: payload, state: 'prepared', detail: 'admitted for dispatch', at: now(),
+        ...(verdict.localCause === undefined ? {} : { cause: verdict.localCause }) })); }
       catch { return { admitted: false, reason: 'effect owner: the request could not be recorded before dispatch', doorway }; }
       return { admitted: true, reason: `${verdict.reason}; effect owner: ${operation} prepared as ${identity}`, identity, operation, digest: payload, doorway };
     },
@@ -157,6 +158,8 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
         return { decision: 'allow', reason: 'effect observed' };
       }
       if (state.effects.has(id)) return { decision: 'deny', reason: 'admission: this effect was already admitted' };
+      const outward = held ? held(JSON.stringify(call.tool_input ?? null)) : 'clear';
+      if (outward !== 'clear') return { decision: 'deny', reason: 'effect request failed the held-secret check' };
       const verdict = effects.admit({ parent: state.edge, tool, input: call.tool_input ?? null, call: id });
       const record = verdict.doorway ? { doorway: verdict.doorway } : {};
       if (!verdict.admitted) return { decision: 'deny', reason: verdict.reason, ...record };
@@ -196,6 +199,10 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
         state.refused = true; req.resume();
         return refuseModel(res, `instar: this step's reserved model-call allowance (${state.allowance}) is used; the call was not dispatched`);
       }
+      try { state.reserveCall?.(state.calls + 1); } catch {
+        state.refused = true; req.resume();
+        return refuseModel(res, 'instar: durable call reservation unavailable; nothing was dispatched');
+      }
       state.calls += 1;
     }
     const upstream = upstreams[state.framework];
@@ -217,10 +224,10 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     /** The model endpoint and admission root for one claim. */
     base(claim) { if (!claimPattern.test(claim)) throw Error('admission gate: exact claim required'); return `http://127.0.0.1:${port}/${secret}/${claim}`; },
     /** Opens a claim with its reserved allowance and the edge its delegations hang from; a new open starts from nothing. */
-    open(claim, { framework, allowance, edge }) {
+    open(claim, { framework, allowance, edge, reserveCall }) {
       if (!claimPattern.test(claim) || !upstreams[framework] || !Number.isSafeInteger(allowance) || allowance < 1 || !edge?.id)
         throw Error('admission gate: claim, framework, allowance and edge required');
-      claims.set(claim, { framework, allowance, edge, calls: 0, refused: false, closed: false, delegations: new Map(), effects: new Map() });
+      claims.set(claim, { framework, allowance, edge, reserveCall, calls: 0, refused: false, closed: false, delegations: new Map(), effects: new Map() });
     },
     /** Closes a claim: no further call or admission passes. Returns its final state. */
     close(claim) { const state = claims.get(claim); if (state) state.closed = true; return this.state(claim); },

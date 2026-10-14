@@ -1,0 +1,9 @@
+{
+  "source": "step1f-firstrun-1014-records/proof2/pane-captures.jsonl",
+  "pane": {
+    "at": 1791964203.568747,
+    "name": "instar20-d4f3a56ed96f46f6572f0430",
+    "capture": "\n────────────────────────────────────────────────────────────────────────────────────────────────────\n  WARNING: Claude Code running in Bypass Permissions mode\n\n  In Bypass Permissions mode, Claude Code will not ask for your approval before running\n  potentially dangerous commands.\n  This mode should only be used in a sandboxed container/VM that has restricted internet access\n  and can easily be restored if damaged.\n\n  By proceeding, you accept all responsibility for actions taken while running in Bypass\n  Permissions mode.\n\n  https://code.claude.com/docs/en/security\n\n  ❯ No, exit\n    Yes, I accept\n\n  Enter to confirm · Esc to cancel\n\n\n\n\n\n\n\n\n\n\n\n\n"
+  },
+  "updateId": 840342691
+}

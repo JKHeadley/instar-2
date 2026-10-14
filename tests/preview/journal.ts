@@ -390,7 +390,9 @@ export const replyBody = (turn: { intent?: string; continuity?: ContinuityAccoun
 /** The reply with the disclosure as its first sentence; strip the marker on older replies. */
 export const withDisclosure = (reply: string, disclosure: string) =>
   `${disclosure} ${reply.replace(/^PREVIEW — /u, '')}`;
-export const REPLY_ACKNOWLEDGEMENT_AFTER_MS = 10_000;
+// Ten seconds is the receipt target, not the timer delay. Reserve three seconds for
+// admission, timer jitter and transport (ack-timing-1013 measured 2.127s combined).
+export const REPLY_ACKNOWLEDGEMENT_AFTER_MS = 7_000;
 /** Reviewed once: content-free, no result, promise, private fact or claim of completed work. */
 export const REPLY_ACKNOWLEDGEMENT = 'Checking that now.';
 const LEGACY_REPLY_ACKNOWLEDGEMENT = "I'm working on your reply.";
@@ -493,6 +495,10 @@ export class ModelDisclosureRefused extends Error {
 export const MODEL_NOT_STARTED_HOLD = 'model not started';
 export class ModelNotStarted extends Error {
   constructor() { super(MODEL_NOT_STARTED_HOLD); }
+}
+/** Host custody still owns this operation; the ordinary tick collects it without replay. */
+export class ModelPending extends Error {
+  constructor() { super('model result pending in durable host custody'); }
 }
 export const MODEL_NOT_STARTED_REPLY = "I couldn't start my model right now. Your message is saved; please resend it to try again.";
 export const MODEL_CAPACITY_HOLD = 'provider usage limit; resend required';
@@ -1022,7 +1028,7 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 4;
+export const JOURNAL_GENERATION = 5;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -1043,7 +1049,7 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['phase-timing', '
   'memory-undecided', 'minimal-outage', 'model-call', 'model-uncertain', 'notice', 'obligation-result',
   'obligation-start', 'operator-result-intent', 'operator-result-sent', 'operator-review',
   'operator-review-closed', 'operator-yes', 'reminder-grant', 'reminder-intent', 'reminder-sent',
-  'reply-check', 'reply-jev-reserve', 'reply-part-sent', 'reply-part-start', 'reply-review-reserve',
+  'reply-review-after-send', 'reply-check', 'reply-jev-reserve', 'reply-part-sent', 'reply-part-start', 'reply-review-reserve',
   'reply-review-state', 'reply-revision', 'reply-revision-reserve', 'reply-revision-review',
   'reply-revision-review-reserve', 'requested-reminder-intent', 'requested-reminder-sent', 'reserve',
   'retract', 'retract-request', 'retract-request-sent', 'retro', 'retro-duty', 'retro-duty-reserve',
@@ -1154,6 +1160,8 @@ export type JournalRecord =
     covers?: string[]; acknowledgement?: true; deliveryUnknown?: true; provenance?: OutboundProvenance; at: number }
   | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; at: number }
 
+  // Non-additive: reservations/checks below may follow a sent reply; an older writer must refuse.
+  | { kind: 'reply-review-after-send'; id: string; at: number }
   | { kind: 'reply-jev-reserve'; id: string; retry?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; promptSha256?: string; mentionedDates?: string[]; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; diagnostics?: ReplyReviewDiagnostics; usage?: ModelUsage; at: number }
@@ -1376,7 +1384,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   deliveryNotice?: { lead: string; text: string; at: number; sent?: number };
   heldNoticeReviewReserved?: true; heldNoticeReview?: ReplyCheckResult;
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
-  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevRetried?: true; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
+  afterSendReview?: true; replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevRetried?: true; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
   answerMs?: number; sendMs?: number; answerReason?: string; answerCorrection?: string; correctionDeferred?: true;
   /** Stage boundaries projected from durable frames; absent evidence stays unknown. */
   answerAt?: number; checkDoneAt?: number;
@@ -2378,7 +2386,8 @@ export function validateSessionWorkRow(record: SessionWorkEdge | SessionWorkEdge
   const stamp = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
   if (record?.type === 'SessionWorkEffect') {
     if (record.schemaVersion !== 1 || ![record.id, record.edge, record.operation, record.digest, record.detail].every(value => text(value, 1024))
-      || !/^sha256:[0-9a-f]{64}$/u.test(record.id) || !['prepared', 'observed'].includes(record.state) || !stamp(record.at))
+      || !/^sha256:[0-9a-f]{64}$/u.test(record.id) || !['prepared', 'observed'].includes(record.state) || !stamp(record.at)
+      || record.cause !== undefined && !text(record.cause, 262144))
       throw Error('preview journal: session work effect incomplete');
     return;
   }
@@ -4290,8 +4299,8 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     const legacyText = /^(?:PREVIEW — )?I'm holding my answer to your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$/u.test(row.text);
     const countedText = new RegExp(`^(?:PREVIEW — )?I'm holding ${heldCount} ${heldCount === 1 ? 'answer' : 'answers'}, including your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$`, 'u').test(row.text);
     const acknowledgement = row.acknowledgement === true;
-    // Previously admitted fixed acknowledgements used an eight-second deadline; preserve their durable history.
-    const acknowledgementAfter = admission === 'replay' ? 8_000 : REPLY_ACKNOWLEDGEMENT_AFTER_MS;
+    // The same floor admits new seven-second notices and preserves older eight/ten-second history.
+    const acknowledgementAfter = REPLY_ACKNOWLEDGEMENT_AFTER_MS;
     if (acknowledgement && row.text === REPLY_ACKNOWLEDGEMENT && (row.at < turn.at + acknowledgementAfter || view.replies >= view.limits.maxReplies - 1))
       throw Error('preview journal: fixed acknowledgement no longer due');
     if (acknowledgement && (!operatorWriter(view, turn, true) || turn.requestedAction || turn.editOf
@@ -4383,12 +4392,18 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   const replyCandidate = turn.answer ?? (turn.noticeClass === 'unknown-answer' ? UNKNOWN_ANSWER_NOTICE
     : turn.noticeClass === 'too-long-input' ? TOO_LONG_INPUT_NOTICE : undefined);
 
+  if (row.kind === 'reply-review-after-send') {
+    if (turn.intent === undefined || turn.afterSendReview || turn.jevReserved || turn.reviewReserved)
+      throw Error('preview journal: retrospective review order');
+    turn.afterSendReview = true; return;
+  }
+  const reviewBeforeSend = turn.intent !== undefined && !turn.afterSendReview;
   if (row.kind === 'reply-jev-reserve') {
     const retryAllowed = row.retry === true && turn.jevReserved && !turn.jevRetried
       && turn.replyChecks?.filter(check => check.path === 'jev').length === 1
       && turn.replyChecks.find(check => check.path === 'jev')?.verdict === 'unavailable' && !turn.reviewReserved;
     if (replyCandidate === undefined || (row.retry ? !retryAllowed : turn.jevReserved)
-      || turn.intent !== undefined || view.jevChecks >= view.limits.maxReplies)
+      || reviewBeforeSend || view.jevChecks >= view.limits.maxReplies)
       throw Error('preview journal: Jev reservation order or cap');
     reserveTokens(view, `${row.retry ? 'jev-retry' : 'jev'}:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? jevOutputMaximum);
@@ -4397,7 +4412,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     view.jevChecks++; return;
   }
   if (row.kind === 'reply-review-reserve') {
-    if (replyCandidate === undefined || turn.reviewReserved || turn.intent !== undefined) throw Error('preview journal: review reservation order');
+    if (replyCandidate === undefined || turn.reviewReserved || reviewBeforeSend) throw Error('preview journal: review reservation order');
     if (row.promptSha256 && (!turn.prompt || row.promptSha256 !== createHash('sha256').update(turn.prompt).digest('hex')))
       throw Error('preview journal: reply review prompt reference differs');
     reserveTokens(view, `review:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
@@ -4458,7 +4473,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     return;
   }
   if (row.kind === 'reply-review-state') {
-    if (!turn.reviewReserved || turn.reviewState !== undefined || turn.intent !== undefined)
+    if (!turn.reviewReserved || turn.reviewState !== undefined || reviewBeforeSend)
       throw Error('preview journal: review state order');
     turn.reviewState = row.state;
     if (row.diagnostics) turn.reviewDiagnostics = row.diagnostics;
@@ -4532,7 +4547,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     view.calls++; return;
   }
   if (row.kind === 'reply-check') {
-    if (replyCandidate === undefined || turn.intent !== undefined) throw Error('preview journal: reply check order');
+    if (replyCandidate === undefined || reviewBeforeSend) throw Error('preview journal: reply check order');
     if (row.result.path === 'jev' && !turn.jevReserved) throw Error('preview journal: Jev call unreserved');
     if (row.result.path === 'subscription' && !turn.reviewReserved) throw Error('preview journal: review call unreserved');
     if (row.result.path === 'operator-echo' && (turn.jevReserved || turn.reviewReserved || row.result.verdict !== 'pass'))
@@ -5413,6 +5428,8 @@ export function concurrentWorkItem(input: { now: number; current: { owner: strin
 }
 
 export interface PreviewPorts {
+  /** Bound independent topic drains; omitted retains the serial compatibility path. */
+  topicConcurrency?: number;
   /** Current scoped authority and real group membership, checked afresh before every model or send port. */
   groupDisclosure?(): Promise<boolean>;
   now(): number; stopped(): boolean;
@@ -5456,6 +5473,11 @@ export interface PreviewPorts {
    * one-shot result settle the obligation through exactly one reader. Only long and scheduled work
    * is routed here; an operator answer is never delegated to a session. */
   sessionWork?(input: { question: string; context: string; id: string }): ReturnType<PreviewPorts['model']>;
+  /** Read an already reserved host result by identity, never invoke a model. Null means no
+   * host custody; ModelPending keeps the reservation open. The original packet accompanies
+   * the result so recovery uses the same answer consumer and grounding. */
+  collectModel?(id: string): Promise<{ context: string; prepared: string;
+    answer: Awaited<ReturnType<PreviewPorts['model']>> } | null>;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
     usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage;
       /** Exact zero-token provider quota refusal, carried separately from semantic rejection. */ capacity?: ModelCapacity;
@@ -5501,6 +5523,8 @@ export interface PreviewPorts {
     requestWindowMs?: number;
     /** Plan #389: the desk's current retraction proposal, read from the root by the host (propose-retract), or none. */
     retractProposal?(): RetractProposal | undefined };
+  /** Continuing conversations send first; model review is a durable signal for the next turn. */
+  replyReviewTiming?: 'before-send' | 'after-send';
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'> & { summaryReview?(state: string, through: number): Promise<{
     verdict: 'pass' | 'violation' | 'unavailable'; latencyMs: number; retryable?: true; usage?: ModelUsage }>;
     /** The mind's one revision of an objected draft (same model envelope as review). Absent: no revision round. */
@@ -5616,6 +5640,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const acknowledgementsInFlight = new Map<Turn, Promise<void>>();
   const cancelAcknowledgement = (turn: Turn) => { acknowledgementTimers.get(turn)?.(); acknowledgementTimers.delete(turn); };
   let working = false, workingSince = 0, ordinaryFailedSince: number | null = null;
+  let wakeTopicDrain: (() => void) | null = null;
   /** Every live send consumes its durable signed intent; a refusal or unknown outcome is recorded, never
    * retried. The one exception is the transport's own proof that it never made the network call: nothing
    * reached Telegram, so that exact intent is dispatched once more (the no-duplicate floor is untouched —
@@ -5789,6 +5814,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // A held page that moved the cursor may have more backlog behind it: the runner reads on at once.
     readAhead = held && journal.view.stop === null && journal.view.cursor > start
       && journal.view.waiting.length < MINIMAL_WAITING_UPDATES;
+    wakeTopicDrain?.();
     return journal.view.cursor;
   };
   /** Rules 79/82/98: the verified operator's press may decline a request or confirm the brake. It can
@@ -7816,6 +7842,51 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       catch { return; }
     }
   };
+  const reviewAfterSend = async (turn: Turn): Promise<void> => {
+    if (ports.replyReviewTiming !== 'after-send' || !ports.replyCheck || turn.intent === undefined
+      || turn.answer === undefined || halted()) return;
+    if (turn.afterSendReview) {
+      if (turn.checked === undefined) {
+        const review = turn.replyChecks?.at(-1);
+        // A durable terminal judgment only needs its coherence projection rebuilt. A Jev pass is terminal
+        // only when no contextual review was required; a reservation without a result is never replayed.
+        const terminal = review?.path === 'subscription' || review?.path === 'holding'
+          || review?.path === 'jev' && review.verdict === 'pass' && !turn.reviewReserved
+            && !confidentReplyNeedsReview(projectedReplyPrompt(turn.prompt));
+        if (!terminal) journal.append({ kind: 'reply-check', id: turn.id, result: {
+          verdict: 'unavailable', ruleIds: review?.ruleIds ?? [], confidence: null, path: 'holding', latencyMs: 0,
+          reason: 'retrospective review interrupted; no paid call replayed'
+            + (review ? `; recorded ${review.path} ${review.verdict}: ${review.reason ?? 'no reason recorded'}` : ''),
+        }, at: ports.now() });
+        checkCoherence();
+      }
+      return;
+    }
+    if (turn.jevReserved || turn.reviewReserved) return;
+    journal.append({ kind: 'reply-review-after-send', id: turn.id, at: ports.now() });
+    const text = turn.intent, candidateDigest = createHash('sha256').update(text).digest('hex');
+    const checkPorts = { ...ports.replyCheck, now: ports.now,
+      deadlineAt: ports.now() + REPLY_CHECK_BUDGET_MS,
+      reserveEscalation: (candidate: string, prompt?: string) => {
+        if (halted() || journal.view.calls >= journal.view.limits.maxCalls) return false;
+        journal.append({ kind: 'reply-review-reserve', id: turn.id, candidate,
+          ...(prompt === undefined ? {} : { prompt }), maxInputTokens: journal.view.limits.maxBytes,
+          maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); return true;
+      },
+      record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id,
+        result: { ...result, candidateDigest }, at: ports.now() }) };
+    // No replay of a paid call after a crash. Its durable reservation remains UNKNOWN.
+    if (journal.view.jevChecks >= journal.view.limits.maxReplies) {
+      await reviewReply(text, turn.id, checkPorts, [], projectedReplyPrompt(turn.prompt));
+    } else {
+      const shared = fromOperator(turn) ? disclosedApproval(journal.view) : undefined;
+      const facts = shared && approvalFacts(shared);
+      journal.append({ kind: 'reply-jev-reserve', id: turn.id,
+        maxInputTokens: Buffer.byteLength(jevRequestBody(text, facts)), maxOutputTokens: jevOutputMaximum, at: ports.now() });
+      await checkReply(text, turn.id, checkPorts, projectedReplyPrompt(turn.prompt), facts);
+    }
+    checkCoherence();
+  };
   /** Ordinary answers drain on every cycle. A requested action is proactive: it is created and answered only at
    * the due point `sendRequested()`, after a successful poll returned nothing new, so a queued withdrawal is
    * always read and settled first (Rules 57, 93). */
@@ -7838,9 +7909,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       completeApprovals();
       // A split reply left part-way by a restart continues before anything new is answered.
       for (const turn of journal.view.order) if (turn.replyParts?.length) await sendReplyParts(turn);
+      for (const turn of journal.view.order) await reviewAfterSend(turn);
       if (due) scheduleRequests();
+      const concurrency = ports.topicConcurrency ?? 1;
+      if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 16)
+        throw Error('preview: bounded topic concurrency required');
+      const drainTopic = async (topic: number | string | null) => {
       let blockedEarlier = false;
       for (const turn of journal.view.order) {
+        if (topic !== null && (turn.thread ?? 'main') !== topic) continue;
         if (!turn.accepted || turn.editOf || turn.sent || turn.intent) continue;
         if ((turn.requestedAction !== undefined) !== due) continue;
         // Past the ordinary turn allowance only the minimal responder answers (Rule 15).
@@ -7953,12 +8030,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             { role: 'user', content: redact(turn.text).text }] });
           journal.append({ kind: 'status-answer', id: turn.id, text: answer, prompt, at: ports.now() });
         }
-        if (turn.answer === undefined && !turn.reserved && !turn.noticeClass) {
+        let collected: Awaited<ReturnType<NonNullable<PreviewPorts['collectModel']>>> = null;
+        if (turn.reserved && turn.answer === undefined && turn.modelState === undefined && !turn.noticeClass && ports.collectModel) {
+          try { collected = await ports.collectModel(turn.id); }
+          catch { blockedEarlier = true; continue; } // pending or unreadable custody never authorizes replay
+          gate();
+          // A later format/lookup reservation has different bytes; an older host result
+          // cannot settle it. Keep that reservation UNKNOWN, never replay either one.
+          if (collected && collected.prepared !== turn.prompt) collected = null;
+        }
+        if (turn.answer === undefined && (!turn.reserved || collected) && !turn.noticeClass) {
           // Leave a shared-budget slot for a full-context review if Jev cannot pass.
-          if (journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
+          if (!collected && journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
           }
-          if (!turn.media) {
+          if (!collected && !turn.media) {
             const update = JSON.parse(turn.raw) as TelegramUpdate;
             const media = telegramInboundMedia(update.edited_message ?? update.message);
             if (media) {
@@ -7969,7 +8055,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               journal.append({ kind: 'media-custody', id: turn.id, result, at: ports.now() });
             }
           }
-          let selected = await prepareRecall(() => preparedFor(turn));
+          let selected: Awaited<ReturnType<typeof preparedFor>> = collected
+            ? { question: clean(redact(turn.text).text, true), context: collected.context, prepared: collected.prepared,
+              carried: turn.grounding?.corrections ?? [], dropped: turn.packetDropped ?? [], grounding: turn.grounding! }
+            : await prepareRecall(() => preparedFor(turn));
           if ('reason' in selected) {
             await summarizeIfNeeded(true);
             selected = await prepareRecall(() => preparedFor(turn));
@@ -7991,7 +8080,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             break;
           }
           if (!('reason' in selected)) {
-          if (journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
+          if (!collected && journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
           }
           const { question, carried, dropped, grounding } = selected;
@@ -8021,7 +8110,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             continue;
           }
           gate();
-          journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
+          if (!collected) journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
             corrections: carried, grounding, packetDropped: dropped, packetLimit: journal.view.limits.maxBytes,
             maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
 
@@ -8036,6 +8125,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               gate();
               result = await original.model(input);
             } catch (error) {
+              if (error instanceof ModelPending) blockedEarlier = true;
               if (error instanceof ModelDisclosureRefused || error instanceof ModelNotStarted)
                 journal.append({ kind: 'hold', id: turn.id,
                   reason: error instanceof ModelDisclosureRefused ? GROUP_DISCLOSURE_HOLD : MODEL_NOT_STARTED_HOLD,
@@ -8051,7 +8141,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             }
             return result;
           };
-          let answer = await attempt({ question, context, id: turn.id,
+          let answer = collected?.answer ?? await attempt({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) });
           if (answer === false) continue;
           // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
@@ -8693,7 +8783,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         };
         const { rules: linkRules, reason: linkReason } = usableRefs(reply);
 
-        if (ports.replyCheck) {
+        const retrospective = ports.replyReviewTiming === 'after-send' && turn.answer !== undefined && !turn.requestedAction;
+        if (ports.replyCheck && !retrospective) {
           const reviewed = turn.replyChecks?.at(-1);
           if (turn.reviewReserved && reviewed?.path === 'subscription' && (reviewed.verdict === 'pass' || reviewed.verdict === 'violation')
             && turn.reviewCandidate !== undefined && turn.reviewMentionedDates !== undefined
@@ -9019,7 +9110,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Failure leaves the answer byte-for-byte intact and requeues its grounded correction sources.
         let correctionDeferred = turn.answerCorrection !== undefined;
         const correction = boundedCorrection(turn.answerCorrection);
-        if (correction && !heldBack && speaker === 'agent' && ports.replyCheck && turn.prompt !== undefined) {
+        if (correction && !retrospective && !heldBack && speaker === 'agent' && ports.replyCheck && turn.prompt !== undefined) {
           const candidate = `${reply.trimEnd()}\n\n${correction}`;
           const deadline = (turn.jevReservedAt ?? turn.reviewReservedAt ?? turn.answerAt ?? ports.now()) + REPLY_CHECK_BUDGET_MS;
           const heldValues = (() => { try { return ports.heldSecrets?.() ?? []; } catch { return []; } })();
@@ -9137,7 +9228,30 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         } catch { /* exact intent stays UNKNOWN */ }
         // The rest of a split reply follows at once, before any later reply.
         if (parts.length) await sendReplyParts(turn);
+        if (retrospective) await reviewAfterSend(turn);
       }
+      };
+      if (concurrency === 1) await drainTopic(null);
+      else await new Promise<void>((resolve, reject) => {
+        const running = new Set<number | string>(), visited = new Map<number | string, number>();
+        let failure: unknown;
+        const pump = () => {
+          const latest = new Map<number | string, number>();
+          for (const turn of journal.view.order) if (turn.accepted)
+            latest.set(turn.thread ?? 'main', turn.update);
+          for (const [topic, frontier] of latest) {
+            if (failure || running.size >= concurrency) break;
+            if (running.has(topic) || (visited.get(topic) ?? -1) >= frontier) continue;
+            running.add(topic);
+            void drainTopic(topic).catch(error => { failure = error; }).finally(() => {
+              visited.set(topic, journal.view.order.filter(turn => (turn.thread ?? 'main') === topic).at(-1)?.update ?? frontier);
+              running.delete(topic); pump();
+            });
+          }
+          if (!running.size) { wakeTopicDrain = null; if (failure) reject(failure); else resolve(); }
+        };
+        wakeTopicDrain = pump; pump();
+      });
       await noticeUnknownReplies();
       if (!audienceHolds) await noticeDisclosureHolds();
       // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
@@ -9148,6 +9262,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (!due && pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
     } finally {
       try { await Promise.all(acknowledgementsInFlight.values()); } finally {
+        wakeTopicDrain = null;
         acknowledgementsInFlight.clear();
         for (const turn of acknowledgementTimers.keys()) cancelAcknowledgement(turn);
         working = false;
@@ -10560,6 +10675,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       let findings: CoherenceFinding[], failed = false;
       try { findings = checkCoherenceOf({ reply: sentText(turn)!, earlier }); } catch { findings = []; failed = true; }
       // Surviving pre-send objections reach the mind by the same note (Rules 14, 86).
+      if (turn.afterSendReview) {
+        const review = turn.replyChecks?.at(-1);
+        if (review && review.verdict !== 'pass') findings = [{ rule: 58,
+          check: `After-send review (advisory): ${review.verdict}; ${review.ruleIds.join(', ')}; ${review.reason ?? 'no reason recorded'}`,
+          excerpt: sentText(turn)!.slice(0, 90) }, ...findings].slice(0, COHERENCE_FINDING_LIMIT);
+      }
       if (turn.release) findings = [...releaseFindings(sentText(turn)!, turn.release), ...findings].slice(0, COHERENCE_FINDING_LIMIT);
       journal.append({ kind: 'coherence', id: turn.id, findings, ...(failed ? { failed: true as const } : {}), at: ports.now() });
     }

@@ -137,6 +137,14 @@
         "path": "tests/preview/media-understanding.test.ts",
         "hash": "sha256:b622d360f30989c17e9d7c550019ade5ad35f111c82028870789f1195d330c13"
       }
+    },
+    {
+      "id": "PREVIEW-CONVERSATION-RESULT-COLLECTION",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-conversation-session.test.ts",
+        "hash": "sha256:e5e34db98222a02e8212dbc6ee99473765fc9caf53b87cd7007f72b0d80c8452"
+      }
     }
   ],
   "probes": [],

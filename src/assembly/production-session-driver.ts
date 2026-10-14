@@ -3,6 +3,7 @@ import { boundary, ensure, take } from './boundary.js';
 import type { AssemblyDecodeContext, HarnessObservation } from './contracts.js';
 import type { NativeHarnessDriverPort } from './harness.js';
 import type { Result } from '../index.js';
+import type { SubscriptionToolTurn } from './production-provider.js';
 
 /** Operator-own-use sessions with the harness's full tool set. `unconfined` makes no confinement claim;
  * `admitted` launches every session with the tool admission hook, so each tool call passes it before dispatch. */
@@ -13,6 +14,7 @@ export interface SessionRecord {
   readonly recovery: 0 | 1; readonly turnDeadline: number | null; readonly turnStartedAt: number | null;
   readonly closedAt: number | null; readonly turnBaseline?: string; readonly turnReceiptIds?: readonly string[];
   readonly continuation?: SessionContinuation;
+  readonly turnCloseEvidence?: string | null;
 }
 export interface SessionContinuation {
   readonly text: string; readonly source: string; readonly state: 'prepared' | 'sending' | 'accepted' | 'completed';
@@ -47,6 +49,8 @@ export interface ProductionSessionConfig {
   readonly stopped: () => boolean; readonly resolveIntake: (id: string, digest: string) => string;
   readonly maxSessions: number; readonly turnDeadlineMs: number; readonly readyTimeoutMs: number;
   readonly protectedSessions: readonly string[]; readonly hookScript?: string;
+  /** Conversation replies require the authenticated lifecycle receipt, never pane heuristics. */
+  readonly requireTurnHook?: boolean;
   /** Required exactly in `admitted` mode: the PreToolUse/PostToolUse command for a session's claim (its own
    * admission state), and the hook timeout. The harness runs it before every tool call, its subagents' too. */
   readonly toolAdmission?: Readonly<{ command: (claim: string, phase: 'pre' | 'post') => string; timeoutSeconds: number }>;
@@ -56,12 +60,16 @@ export interface ProductionSessionConfig {
   readonly modelGate?: (claim: string) => string;
   /** The exact model the session runs, when a reviewed grant names one; absent, the CLI's own default. */
   readonly model?: string;
+  /** Host-prepared, credential-free connector launch records for this admitted claim. */
+  readonly connectors?: (claim: string) => SubscriptionToolTurn['mcp'];
   /** The command the pane runs the harness through, when it runs as its own identity (the harness-user bridge): its
    * words go before `executable` in the pane's clean environment. The first is an absolute path. Absent: the harness
    * itself. */
   readonly launchVia?: readonly string[];
   readonly inboxDirectory?: string; readonly compactGroundingFile?: string;
   /** Must reconstruct complete permitted context from agent-owned records, including both sides of prior turns. */
+  /** The topic host may carry history across a new admission claim. */
+  readonly continuationRequired?: () => boolean;
   readonly continuation?: ((input: Readonly<{ operation: string; claim: string; incarnation: string;
     reason: 'cache-miss' | 'context-wall' }>) => Readonly<{ text: string; source: string }>) | undefined;
 }
@@ -106,6 +114,22 @@ export function admissionArgs(framework: SessionFramework, admission: NonNullabl
   const hook = (command: string) => `[{matcher='*',hooks=[{type='command',command='${command}',timeout=${admission.timeoutSeconds}}]}]`;
   return ['-c', `hooks.PreToolUse=${hook(pre)}`, '-c', `hooks.PostToolUse=${hook(post)}`];
 }
+/** Both session workers consume the same prepared connector set as the per-call provider. */
+export function sessionConnectorArgs(framework: SessionFramework, mcp: SubscriptionToolTurn['mcp']): readonly string[] {
+  if (!mcp) return framework === 'claude-code' ? ['--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}'] : [];
+  const { servers, launch } = mcp;
+  ensure(launch !== undefined && servers.length > 0 && Object.keys(launch).length === servers.length
+    && servers.every(name => /^[A-Za-z0-9_-]{1,64}$/u.test(name) && Object.hasOwn(launch, name)),
+  'session requires exact prepared connector launch records');
+  if (framework === 'claude-code') return ['--strict-mcp-config', '--mcp-config', mcp.config];
+  return servers.flatMap(name => {
+    const server = launch![name]!;
+    const fields = [`command=${JSON.stringify(server.command)}`, `args=${JSON.stringify(server.args ?? [])}`];
+    if (server.cwd !== undefined) fields.push(`cwd=${JSON.stringify(server.cwd)}`);
+    fields.push(`env={${Object.entries(server.env ?? {}).map(([key, value]) => `${JSON.stringify(key)}=${JSON.stringify(value)}`).join(',')}}`);
+    return ['-c', `mcp_servers.${name}={${fields.join(',')}}`];
+  });
+}
 const modelPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/u;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const namePattern = /^instar20-[a-f0-9]{24}$/;
@@ -113,10 +137,19 @@ const digestOf = (text: string) => `sha256:${createHash('sha256').update(text).d
 const tail = (capture: string, lines = 12) => capture.split('\n').map(x => x.trim()).filter(Boolean).slice(-lines).join('\n');
 const literalTarget = (name: string) => `=${name}:`;
 
-/** 1.x classifier: a focused numbered menu wins over the prompt glyph. */
+/** A focused numbered menu wins over its prompt glyph, including a startup menu whose
+ * trailing theme preview fills the footer. A later real prompt supersedes old menu output. */
 export function classifyPaneReadiness(capture: string): 'ready' | 'menu' | 'not-ready' {
   const text = tail(capture, 6);
-  const options = text.split('\n').filter(line => /^\s*(?:[❯›>●○◉]\s*)?\d+[.)]\s/.test(line));
+  const visible = tail(capture, 80).split('\n');
+  const prompt = visible.map(line => /^[❯›>]\s*$/.test(line)).lastIndexOf(true);
+  const active = visible.slice(prompt + 1);
+  // Native 2.1.280 startup confirmations use unnumbered choices; their cursor is not input.
+  if (active.includes('Enter to confirm · Esc to cancel')
+    && active.some(line => /^[❯›]\s+(?:No, exit|Yes, I trust this folder|Yes, I accept)$/.test(line))
+    && (active.includes('Accessing workspace:') || active.includes('WARNING: Claude Code running in Bypass Permissions mode')))
+    return 'menu';
+  const options = active.filter(line => /^\s*(?:[❯›>●○◉]\s*)?\d+[.)]\s/.test(line));
   if (options.length >= 2 && options.some(line => /^\s*[❯›>●○◉]\s*\d+[.)]\s/.test(line))) return 'menu';
   if (/[❯›]/.test(text) || /(?:bypass permissions|shift\+tab to cycle|ctrl\+c to exit)/i.test(text)) return 'ready';
   return 'not-ready';
@@ -164,7 +197,7 @@ export function buildLiteralSendArgs(name: string, chunk: string): readonly stri
 }
 
 export function createProductionSessionDriver(config: ProductionSessionConfig): NativeHarnessDriverPort & Readonly<{
-  bootSweep(): Result<readonly string[]>; stop(): Result<readonly string[]>;
+  bootSweep(): Result<readonly string[]>; stop(input?: Readonly<{ claim: string; incarnation: string; processIdentity?: string }>): Result<readonly string[]>;
   recoverDelivery(input: Readonly<{ operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }>): Result<string>;
   saveResume(identity: string, sessionId: string): Result<string>;
   recoverContext(identity: string): Result<string>;
@@ -172,6 +205,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
   ensure(config.operatorOwnUse === true && (config.confinement === 'unconfined' || config.confinement === 'admitted'),
     'explicit operator-own-use mode required');
   const admitted = config.confinement === 'admitted';
+  ensure(config.connectors === undefined || admitted, 'connectors require admitted session');
   ensure(admitted === (config.toolAdmission !== undefined), 'an admitted session requires its admission hook, and only it');
   ensure(admitted === (config.modelGate !== undefined), 'an admitted session requires its model-dispatch checkpoint, and only it');
   if (config.toolAdmission) ensure(typeof config.toolAdmission.command === 'function'
@@ -188,7 +222,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
   ensure(config.launchVia === undefined || (config.launchVia[0]?.startsWith('/') === true
     && config.launchVia.every(word => typeof word === 'string' && word.length > 0)), 'exact launch command required');
   if (config.hookScript) ensure(config.hookScript.startsWith('/') && config.inboxDirectory?.startsWith('/')
-    && config.compactGroundingFile?.startsWith('/'), 'hook requires exact script, inbox, and compact grounding file');
+    && (config.compactGroundingFile === undefined || config.compactGroundingFile.startsWith('/')), 'hook requires exact script and inbox; compaction grounding must be absolute');
   const run = (args: readonly string[]) => {
     const result = config.io.tmux(args);
     ensure(result.code === 0, `tmux ${args[0]} failed`);
@@ -238,13 +272,14 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         turnDeadline: null, turnStartedAt: null, closedAt: null };
       const current = config.io.load();
       config.io.save({ ...replaceSession(current, session),
+        resumes: reservation.resumeId ? { ...current.resumes, [reservation.claim]: reservation.resumeId } : current.resumes,
         reservations: (current.reservations ?? []).filter(row => row.name !== reservation.name) });
     }
   };
   const armTurn = (session: SessionRecord, recovery = session.recovery): SessionRecord => {
     const started = config.now();
     const deadline = started + config.turnDeadlineMs;
-    const armed = { ...session, recovery, turnStartedAt: started, turnDeadline: deadline, closedAt: null,
+    const armed = { ...session, recovery, turnStartedAt: started, turnDeadline: deadline, closedAt: null, turnCloseEvidence: null,
       turnBaseline: digestOf(capture(session.name)),
       turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
         .flatMap(row => row.receiptId ? [row.receiptId] : []) };
@@ -278,20 +313,22 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const active = currentJournal.sessions.filter(row => alive(row.name));
     ensure(active.length + (currentJournal.reservations ?? []).length < config.maxSessions, 'concurrent session cap reached');
     const name = `instar20-${createHash('sha256').update(`${operation}:${incarnation}:${randomUUID()}`).digest('hex').slice(0, 24)}`;
-    const reservation: SessionReservation = { name, operation, claim, incarnation, resumeId, recovery,
+    const transcriptId = config.framework === 'claude-code' ? resumeId ?? randomUUID() : resumeId;
+    const reservation: SessionReservation = { name, operation, claim, incarnation, resumeId: transcriptId, recovery,
       startedAt: config.now(), ...(continuation ? { continuation } : {}) };
     config.io.save({ ...currentJournal, reservations: [...(currentJournal.reservations ?? []), reservation] });
     const model = config.model === undefined ? [] : ['--model', config.model];
     const args = config.framework === 'claude-code'
-      ? [resumeId ? '--resume' : '--session-id', resumeId ?? randomUUID(), ...sessionLaunchFlags('claude-code', admitted), ...model]
+      ? [resumeId ? '--resume' : '--session-id', transcriptId!, ...sessionLaunchFlags('claude-code', admitted), ...model]
       : [ ...(resumeId ? ['resume', resumeId] : []), ...sessionLaunchFlags('codex-cli', admitted), ...model];
     const lifecycleHooks = config.hookScript && config.framework === 'claude-code'
       ? { Stop: [{ hooks: [{ type: 'command', command: `node ${JSON.stringify(config.hookScript)}` }] }],
-        SessionStart: [{ matcher: 'compact', hooks: [{ type: 'command', command: `node ${JSON.stringify(config.hookScript)} compact` }] }] }
+        ...(config.compactGroundingFile ? { SessionStart: [{ matcher: 'compact', hooks: [{ type: 'command', command: `node ${JSON.stringify(config.hookScript)} compact` }] }] } : {}) }
       : null;
     // One settings object carries every Claude hook: the admission hook and, when configured, the lifecycle hooks.
     if (config.toolAdmission) args.push(...admissionArgs(config.framework, config.toolAdmission, claim, lifecycleHooks ?? {}));
     else if (lifecycleHooks) args.push('--settings', JSON.stringify({ hooks: lifecycleHooks }));
+    if (admitted && config.connectors) args.push(...sessionConnectorArgs(config.framework, config.connectors(claim)));
     const gate = config.modelGate ? modelGateLaunch(config.framework, config.modelGate(claim)) : null;
     if (gate) args.push(...gate.args);
     const harnessEnv = [...(admitted && config.framework === 'claude-code' ? ADMITTED_CLAUDE_ENV : []), ...(gate?.env ?? [])];
@@ -300,7 +337,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
       '-e', `CODEX_HOME=${config.configHome}`, '-e', `INSTAR_SESSION_NAME=${name}`,
       '-e', `INSTAR_SESSION_INBOX=${config.inboxDirectory ?? ''}`,
       '-e', `INSTAR_SESSION_GROUNDING_FILE=${config.compactGroundingFile ?? ''}`,
-      '--', '/usr/bin/env', '-i', 'PATH=/usr/bin:/bin:/opt/homebrew/bin', `HOME=${config.home}`,
+      '--', '/usr/bin/env', '-i', 'PATH=/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin', `HOME=${config.home}`,
       `CLAUDE_CONFIG_DIR=${config.configHome}`, `CODEX_HOME=${config.configHome}`,
       `INSTAR_SESSION_NAME=${name}`, `INSTAR_SESSION_INBOX=${config.inboxDirectory ?? ''}`,
       `INSTAR_SESSION_GROUNDING_FILE=${config.compactGroundingFile ?? ''}`, ...harnessEnv,
@@ -371,12 +408,15 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     }
     throw Error('continuation completion deadline exceeded');
   };
-  const stop = () => lockedBoundary('ProductionSessionStop', null, () => {
+  const stop = (target?: Readonly<{ claim: string; incarnation: string; processIdentity?: string }>) => lockedBoundary('ProductionSessionStop', target ?? null, () => {
     reconcileReservations();
     const killed: string[] = [];
     for (const session of config.io.load().sessions) {
+      if (target && (session.claim !== target.claim || session.incarnation !== target.incarnation
+        || target.processIdentity !== undefined && session.identity !== target.processIdentity)) continue;
       if (config.protectedSessions.includes(session.name)) continue;
-      if (alive(session.name)) { verifyLive(session); run(['kill-session', '-t', literalTarget(session.name)]); killed.push(session.name); }
+      if (alive(session.name)) { verifyLive(session); run(['kill-session', '-t', literalTarget(session.name)]);
+        ensure(!alive(session.name), 'session stop unconfirmed'); killed.push(session.name); }
     }
     return killed;
   });
@@ -409,7 +449,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           const resumeId = journal.resumes[input.claim] ?? null;
           ensure(!resumeId || uuid.test(resumeId), 'invalid recorded resume id');
           const hit = resumeId !== null && config.io.transcriptExists(config.framework, resumeId, config.cwd, config.configHome);
-          const needsContinuation = !hit && (resumeId !== null || journal.sessions.some(row => row.claim === input.claim));
+          const needsContinuation = !hit && (resumeId !== null || config.continuationRequired?.() === true || journal.sessions.some(row => row.claim === input.claim));
           const continuation = needsContinuation
             ? requireContinuation(input.operation, input.claim, input.incarnation, 'cache-miss') : undefined;
           const identity = spawn(input.operation, input.claim, input.incarnation, input.workingScope,
@@ -459,11 +499,14 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         if (!alive(session.name)) return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'tmux session exited' };
         verifyLive(session);
         const pane = capture(session.name);
+        if (config.requireTurnHook && session.turnCloseEvidence)
+          return { phase: 'output-observed' as const, evidence: session.turnCloseEvidence, detail: 'recorded Stop hook closed turn' };
         const hook = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
           && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
         if (hook && session.turnStartedAt !== null && hook.at >= session.turnStartedAt
           && session.turnDeadline !== null && hook.at <= config.now()) {
-          config.io.save(replaceSession(config.io.load(), closeTurn(session, hook.at)));
+          config.io.save(replaceSession(config.io.load(), { ...closeTurn(session, hook.at),
+            turnCloseEvidence: `turn-closed:${session.name}:${hook.at}` }));
           if (uuid.test(hook.sessionId)) {
             const journal = config.io.load();
             config.io.save({ ...journal, resumes: { ...journal.resumes, [session.claim]: hook.sessionId } });
@@ -482,7 +525,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           config.io.save(replaceSession(config.io.load(), { ...session, closedAt: config.now(), turnDeadline: null }));
         }
         if (stuck) return { phase: 'pause-observed' as const, evidence: session.identity, detail: stuck };
-        if (session.turnDeadline !== null && idle) {
+        if (session.turnDeadline !== null && idle && !config.requireTurnHook) {
           config.io.save(replaceSession(config.io.load(), closeTurn(session, config.now())));
           return { phase: 'output-observed' as const, evidence: `pane-idle:${session.name}:${config.now()}`,
             detail: 'idle prompt fallback; turn close not independently verified' };

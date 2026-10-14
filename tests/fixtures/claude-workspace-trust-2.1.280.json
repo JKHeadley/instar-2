@@ -1,0 +1,9 @@
+{
+  "source": "step1f-firstrun-1014-records/pane-captures.jsonl",
+  "pane": {
+    "at": 1791964099.910516,
+    "name": "instar20-05e415f2c71a59bb731d6729",
+    "capture": "\n────────────────────────────────────────────────────────────────────────────────────────────────────\n Accessing workspace:\n\n /private/tmp/its-15561a3132c7\n\n Quick safety check: Is this a project you created or one you trust? (Like your own code, a\n well-known open source project, or work from your team). If not, take a moment to review what's in\n this folder first.\n\n Claude Code'll be able to read, edit, and execute files here.\n\n Security guide\n\n ❯ No, exit\n   Yes, I trust this folder\n\n Enter to confirm · Esc to cancel\n\n\n\n\n\n\n\n\n\n\n\n\n"
+  },
+  "updateId": 840342690
+}

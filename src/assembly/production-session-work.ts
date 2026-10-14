@@ -32,6 +32,8 @@ export interface SessionWorkEffect {
   readonly type: 'SessionWorkEffect'; readonly schemaVersion: 1;
   readonly id: string; readonly edge: string; readonly operation: string; readonly digest: string;
   readonly state: 'prepared' | 'observed'; readonly detail: string; readonly at: number;
+  /** Complete local cause for a connected-account action; never credential values. */
+  readonly cause?: string;
 }
 /** The same edge's settled disposition. Every path through the run writes exactly one, after the
  * child session has been stopped, so `complete` is never written over a child still running. */
@@ -112,7 +114,7 @@ export interface SessionWorkLease {
 export interface SessionWorkConfig {
   /** The session driver this port delegates through, built with `resolveIntake` below. */
   readonly createDriver: (resolveIntake: (intake: string, digest: string) => string) => NativeHarnessDriverPort
-    & Readonly<{ stop(): Result<readonly string[]> }>;
+    & Readonly<{ stop(input?: Readonly<{ claim: string; incarnation: string; processIdentity?: string }>): Result<readonly string[]> }>;
   readonly io: SessionWorkIO;
   /** The host's one resource owner. `null` from `admit` is a capacity refusal. */
   readonly resources: Readonly<{ admit(): Promise<SessionWorkLease | null> }>;

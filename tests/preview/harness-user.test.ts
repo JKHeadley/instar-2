@@ -616,15 +616,20 @@ describe('a delegated session as the harness user', () => {
     expect(existsSync(join(state, 'config.json'))).toBe(true);
   });
   it('runs the pane\'s harness as the harness user in the launcher\'s terminal mode, the login only in the stdin hand-off', () => {
-    const profile = { reference: 'test-a', expectedAccount: 'a@example.invalid', organization: 'org', plan: 'max' };
+    const profile = { reference: 'test-a', expectedAccount: 'a@example.invalid', organization: 'org', plan: 'max',
+      configDirectory: fresh('interactive-profile') };
     const command = harnessSessionCommand({ user: '_instarharness', profile, executable: '/h/bin/claude-2.1.280', args: ['--session-id', 'x'],
-      env: { PATH: '/usr/bin:/bin', HOME: '/h/home', ANTHROPIC_BASE_URL: 'http://127.0.0.1:4000/g' }, login: () => 'sk-ant-oat01-synthetic-login' });
+      env: { PATH: '/usr/bin:/bin', HOME: '/h/home', ANTHROPIC_BASE_URL: 'http://127.0.0.1:4000/g' },
+      cwd: fresh('interactive-workspace'), login: () => 'sk-ant-oat01-synthetic-login' });
     expect(command.executable).toBe('/usr/bin/sudo');
     expect(command.args.slice(0, 6)).toEqual(['-n', '-u', '_instarharness', '/Users/Shared/instar-harness/bin/harness-launch', '--handoff', '--tty']);
     expect(command.args).toContain('ANTHROPIC_BASE_URL=http://127.0.0.1:4000/g');
     expect(command.args.slice(-3)).toEqual(['/h/bin/claude-2.1.280', '--session-id', 'x']);
     expect(JSON.stringify(command.args)).not.toContain('synthetic-login');
     expect(command.stdin).toBe(`${JSON.stringify({ login: 'sk-ant-oat01-synthetic-login' })}\n`);
+    expect(JSON.parse(readFileSync(join(profile.configDirectory, '.claude.json'), 'utf8')))
+      .toMatchObject({ hasCompletedOnboarding: true, theme: 'dark' });
+    expect(readFileSync(join(profile.configDirectory, '.claude.json'), 'utf8')).not.toContain('synthetic-login');
     expect(() => harnessSessionCommand({ user: '_instarharness', profile, executable: '/x', args: [], env: {},
       login: () => { throw Error('the login custody file is not the runner\'s alone'); } })).toThrow(/not the runner's alone/u);
   });
