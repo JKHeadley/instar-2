@@ -3,6 +3,8 @@ import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { replyReviewContext, replyRevisionQuestion, parseReplyRevision, HOLDING_REPLY, type ReplyRule } from './reply-check.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
 import { readAnswer } from './answer-reading.js';
 import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
 import { createConversationTopicsPort, type ConversationTopicsState } from '../../src/assembly/conversation-topics.js';
@@ -24,14 +26,14 @@ const usage = { inputTokens: null, outputTokens: null, charge: null };
 const update = (id: number, text: string) => ({ update_id: id,
   message: { message_id: id, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
 
-function fixture(enabled = true, checkIntake = true, maxCalls = 200, authority = 'existing-role', bot = '12345678') {
+function fixture(enabled = true, checkIntake = true, maxCalls = 200, authority = 'existing-role', bot = '12345678', review?: PreviewPorts['replyCheck'], initialNow = 1000) {
   const root = mkdtempSync(join(tmpdir(), 'conversation-wiring-')); roots.push(root);
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
     kind: 'genesis', bot, chat: '7654321', operator: '7654321', grant: 'grant:preview',
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls, maxReplies: 20,
     maxTurns: 30, maxBytes: 262144, cursor: 0 });
   const f = assemblyRuntimeFixture();
-  let now = 1000, launches = 0, calls = 0, fallback = 0, stopped = false, edges = 0;
+  let now = initialNow, launches = 0, calls = 0, fallback = 0, stopped = false, edges = 0;
   let destination = '', answer = JSON.stringify({ reply: 'A useful answer.', memory: [] });
   const files = new Map<string, string>(), delivered: string[] = [], sent: string[] = [];
   let state: ConversationTopicsState | null = null;
@@ -41,7 +43,7 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authority =
     createAdapter: (_topic, resolveDelivery) => createSessionConversationAdapter({ createDriver: config.createDriver, io: config.io, resolveDelivery }) });
   const config: Parameters<typeof adapt>[0] = { conversation: 'operator', allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => authority,
     createDriver: resolve => ({ owner: 'part-eight', launch: () => { launches++; return f.success('session:123:1'); },
-      deliver: input => { if (checkIntake) expect(journal.view.order.some(turn => (turn.id === input.intake || `${turn.id}:format-retry` === input.intake && turn.answerRetried) && turn.reserved)).toBe(true);
+      deliver: input => { if (checkIntake) expect(journal.view.order.some(turn => (turn.id === input.intake || `${turn.id}:format-retry` === input.intake && turn.answerRetried || `${turn.id}:reply-revision` === input.intake && turn.revisionReserved) && turn.reserved)).toBe(true);
         delivered.push(resolve(input.intake, input.digest)); calls++; files.set(destination, answer); return f.success('accepted'); },
       observe: () => f.success({ phase: 'output-observed', evidence: 'turn-closed:fake:1', detail: 'closed' }), stop: () => f.success(['123']) }),
     io: { clearResult: path => { destination = path; files.delete(path); }, readResult: path => files.get(path) ?? null,
@@ -60,9 +62,17 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authority =
     () => { throw Error('unexpected tools fallback'); }, async () => { fallback++; return { state: 'complete', value: answer, usage }; },
     (input: unknown) => input, ModelDisclosureRefused, createModelLaunchBoundary(), enabled,
     { get port() { return { ...port, run: intercept ?? port.run }; }, authority }, ModelNotStarted, readAnswer, () => {}, '/unused') as PreviewPorts['model'];
+  const revisionBody = host.split('        revise: async (')[1]!.split('\n        summaryReview:')[0]!.trimEnd().replace(/,$/u, '');
+  const revise = Function('replyReviewContext', 'credentialRegister', 'envelopeWriter', 'journal', 'wallNow',
+    'modelEnvelope', 'replyRevisionQuestion', 'invokeSubscription', 'recordedUsage', 'parseReplyRevision',
+    'conversationSession', 'requireGroupDisclosure', 'sessionWork', 'readAnswer', `return (async (${revisionBody});`)(
+    replyReviewContext, () => [], () => undefined, journal, () => now, (input: Parameters<typeof prepareJournalEnvelope>[0]) => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', now, 262144),
+    replyRevisionQuestion, async () => { throw Error('revision must use the continuing worker'); }, (input: unknown) => input,
+    parseReplyRevision, enabled, async () => {}, { get port() { return { ...port, run: intercept ?? port.run }; }, authority }, readAnswer);
   let prepare: ((input: unknown) => string) | undefined;
   const worker = createJournalWorker(journal, { now: () => now, stopped: () => stopped,
-    prepareModel: input => prepare ? prepare(input) : JSON.stringify({ ...input, responseContract: "decision-envelope-marker" }), model,
+    ...(review ? { replyCheck: { ...review, revise }, toolRoute: () => enabled } : {}),
+    prepareModel: input => prepare ? prepare(input) : review ? prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', now, 262144) : JSON.stringify({ ...input, responseContract: "decision-envelope-marker" }), model,
     send: async input => { sent.push(input.expectedText); return sent.length; },
     checkOutbound: text => { if (text.includes('SECRET')) throw Error('credential'); } });
   return { journal, worker, model, port, sent, delivered, prepare: (next: typeof prepare) => { prepare = next; },
@@ -367,5 +377,86 @@ it.each(recordedShapes.otherShapes)('executes a reserved repair carrying recorde
     expect(f.state().inputs.map(input => input.request.operation)).toEqual([`${operation}:format-retry`]);
     expect(f.journal.view.order).toHaveLength(1);
     expect(f.sent).toEqual([]);
+  } finally { await f.close(); }
+});
+
+const holdCapture = JSON.parse(readFileSync(new URL('./fixtures/hold-settles-2026-10-14.json', import.meta.url), 'utf8')) as {
+  cases: { id: string; nativeOutcome: { text: string }; reviews: { result: { verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; reason?: string } }[]; delivered: string }[];
+};
+for (const captured of holdCapture.cases.slice(0, 1)) for (const result of ['pass', 'held', 'uncertain', 'empty'] as const) {
+  it(`replays ${captured.id}: one worker revision settles as ${result}, with one parent send`, async () => {
+    let checks = 0;
+    const first = holdCapture.cases[0]!.reviews[0]!.result;
+    const f = fixture(true, true, 200, 'existing-role', '8968100844', {
+      elapsedMs: () => 0, jev: async () => { throw Error('use recorded full-context review'); },
+      // B07 originally passed: this neighbor applies the recorded B06 objection to the same false claim.
+      escalate: async () => ({ ...(checks++ === 0 || result === 'held' ? first : { verdict: 'pass' as const, ruleIds: [] }), latencyMs: 1, confidence: null }),
+    }, 1791981640000);
+    try {
+      f.answer(captured.nativeOutcome.text);
+      f.intercept(async request => {
+        if (request.operation.endsWith(':reply-revision')) {
+          expect(request.question).toContain(first.ruleIds[0]);
+          expect(request.deadlineAt).toBeGreaterThan(1000);
+          expect(request.question).not.toContain('You have attempted nothing outside this reply');
+          if (result === 'uncertain') return { state: 'uncertain', detail: 'recorded worker outcome unavailable', edge: 'recorded-edge', child: null };
+          f.answer(JSON.stringify({ reply: result === 'empty' ? '' : 'A revised answer with the checked source.',
+            dispositions: Object.fromEntries(first.ruleIds.map(rule => [rule, { decision: 'accept', reason: 'checked the admitted tool' }])) }));
+        }
+        return f.port.run(request);
+      });
+      f.worker.intake([update(Number(captured.id.split(':').at(-1)), 'Please look up the current information and cite your source.')]);
+      await f.worker.drain(); await f.worker.drain();
+      expect(f.journal.view.order[0]!.revisionReserved).toBe(true);
+      expect(f.sent).toEqual([result === 'pass' ? 'A revised answer with the checked source.' : HOLDING_REPLY]);
+      expect(f.sent[0]).not.toContain('I need to check that answer');
+      expect(f.delivered.filter(text => text.includes('Revise packet.candidateReply'))).toHaveLength(result === 'uncertain' ? 0 : 1);
+      await f.replay(); expect(f.sent).toHaveLength(1);
+    } finally { await f.close().catch(() => {}); }
+  });
+}
+
+it('replays the recorded B07 pass without inventing a revision or a deterministic semantic veto', async () => {
+  const captured = holdCapture.cases[1]!;
+  const f = fixture(true, true, 200, 'existing-role', '8968100844', { elapsedMs: () => 0,
+    jev: async () => { throw Error('recorded escalation'); },
+    escalate: async () => ({ ...captured.reviews.at(-1)!.result, latencyMs: 1, confidence: null }) }, 1791981640000);
+  try {
+    f.answer(captured.nativeOutcome.text);
+    f.worker.intake([update(840342779, 'Look up the hours.')]); await f.worker.drain();
+    expect(f.journal.view.order[0]!.revisionReserved).not.toBe(true);
+    expect(f.state().inputs.some(input => input.request.operation.endsWith(':reply-revision'))).toBe(false);
+    expect(f.delivered[0]).toContain('Live web search and fetch are available');
+  } finally { await f.close(); }
+});
+
+it.each(recordedShapes.otherShapes)('settles a revision returning recorded $kind ($id) without another revision', async sample => {
+  const captured = holdCapture.cases[0]!;
+  const first = captured.reviews[0]!.result;
+  const f = fixture(true, true, 200, 'existing-role', '8968100844', { elapsedMs: () => 0,
+    jev: async () => { throw Error('recorded review'); }, escalate: async () => ({ ...first, latencyMs: 1, confidence: null }) }, 1791981640000);
+  try {
+    f.answer(captured.nativeOutcome.text);
+    let revisions = 0;
+    f.intercept(async request => {
+      if (request.operation.endsWith(':reply-revision')) { revisions++; f.answer(sample.raw); }
+      return f.port.run(request);
+    });
+    f.worker.intake([update(840342778, 'Could you look up the weather and cite your source?')]);
+    await f.worker.drain(); await f.worker.drain();
+    expect(revisions).toBe(1); expect(f.sent).toEqual([HOLDING_REPLY]);
+    expect(f.journal.view.order[0]!.revisionReserved).toBe(true);
+    await f.replay(); expect(f.sent).toHaveLength(1);
+  } finally { await f.close().catch(() => {}); }
+});
+
+it('refuses a revision suffix without its durable reservation', async () => {
+  const f = fixture();
+  try {
+    f.worker.intake([update(1, 'Question')]);
+    f.journal.append({ kind: 'reserve', id: 'telegram:12345678:update:1', prompt: 'original', at: 1000 });
+    await expect(f.port.run({ operation: 'telegram:12345678:update:1:reply-revision', question: 'revise',
+      context: '{}', authority: 'existing-role' })).rejects.toThrow(/not durably admitted/);
+    expect(f.delivered).toEqual([]);
   } finally { await f.close(); }
 });

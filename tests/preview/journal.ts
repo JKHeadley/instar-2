@@ -21,7 +21,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { boundedCorrection, checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, REVIEW_INTERRUPTED_REASON, GROUP_REVIEW_FINAL_NOTICE, isGroupReviewFinalNotice, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, jevConfidentPass, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, confidentReplyNeedsReview, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
+import { boundedCorrection, checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, LEGACY_HOLDING_REPLY, REVIEW_INTERRUPTED_REASON, GROUP_REVIEW_FINAL_NOTICE, isGroupReviewFinalNotice, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, jevConfidentPass, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, confidentReplyNeedsReview, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { latestRecurringDay, nextRecurringDay, parseDatedItem, resolvedDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -5937,7 +5937,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Rules 26/110: journals retain the exact failure notice delivered before the wording upgrade.
         : [MEMORY_UNDECIDED_REPLY, "I couldn't record that memory change. Please send it again."]
           .includes(replyBody(before)?.replace(/^PREVIEW — /u, '') ?? '') ? 'memory-not-recorded notice delivered'
-          : replyBody(before)?.replace(/^PREVIEW — /u, '') === HOLDING_REPLY ? 'holding reply delivered' : undefined;
+          : [HOLDING_REPLY, LEGACY_HOLDING_REPLY].includes(replyBody(before)?.replace(/^PREVIEW — /u, '') ?? '') ? 'holding reply delivered' : undefined;
     const [disposition, reference]: [ContinuityAccount['disposition'], string] = edit ? ['superseded', `your edit #${edit.update}`]
       : notice !== undefined ? ['pending', `${notice} as Telegram message ${before.sent}, not an answer`]
         : before.sent !== undefined ? ['addressed', `Telegram message ${before.sent}`]
@@ -6687,7 +6687,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     && (item.failureClass !== undefined || item.modelState === 'rejected');
   const sizeRefused = (item: Turn) => item.noticeClass === 'too-long-input';
   const holdingText = (item: Turn, text: string) => replyBody(item)?.replace(/^PREVIEW — /u, '') === text;
-  const holdingReply = (item: Turn) => (holdingText(item, HOLDING_REPLY) || holdingText(item, CREDENTIAL_SHAPE_NOTICE))
+  const holdingReply = (item: Turn) => (holdingText(item, HOLDING_REPLY) || holdingText(item, LEGACY_HOLDING_REPLY) || holdingText(item, CREDENTIAL_SHAPE_NOTICE))
     && item.replyChecks?.some(check => check.verdict === 'violation') === true;
   const knownNonAnswer = (item: Turn) => item.noticeClass !== undefined || modelFailure(item) || holdingReply(item);
   const heldNoticeOutcome = (item: Turn) => {

@@ -2214,9 +2214,19 @@ async function main() {
           const context = replyReviewContext(originalPrompt, text, ruleIds, undefined, credentialRegister());
           // Rule 29: the revision input (the objected draft in its review context) is written by the runner.
           const writer = envelopeWriter(journal.systemWriter('reply-review', `${id}:reply-revision\n${context}`, wallNow()));
-          const prepared = modelEnvelope({ question: replyRevisionQuestion(objections, reason, findings), context, id: `${id}:reply-revision`,
+          const prepared = modelEnvelope({ question: replyRevisionQuestion(objections, reason, findings, conversationSession), context, id: `${id}:reply-revision`,
             ...(writer ? { writer } : {}) });
-          const result = await invokeSubscription(prepared, `${id}:reply-revision`, undefined, deadlineAt);
+          let result;
+          if (conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id)) {
+            await requireGroupDisclosure(journal.view);
+            sessionWork?.select?.();
+            const outcome = await sessionWork.port.run({ operation: `${id}:reply-revision`, question: prepared,
+              context, authority: sessionWork.authority, deadlineAt });
+            if (outcome.state !== 'complete') return { state: 'uncertain' };
+            const reading = readAnswer(outcome.text, { wrapped: 'accept', evidence: [id] });
+            if (!reading.ok) return { state: 'rejected' };
+            result = { state: 'complete', value: reading.value, usage: { inputTokens: null, outputTokens: null, charge: null } };
+          } else result = await invokeSubscription(prepared, `${id}:reply-revision`, undefined, deadlineAt);
           const usage = result.usage ? { usage: recordedUsage(result.usage) } : {};
           if (result.state === 'uncertain') return { state: 'uncertain', ...usage };
           if (result.state !== 'complete' || result.failureClass) return { state: 'rejected', ...usage };
@@ -2531,7 +2541,10 @@ async function main() {
             // The durable one-repair reservation is required; a suffix alone grants nothing.
             const parent = /^telegram:[0-9]+:update:[0-9]+:format-retry$/u.test(operation)
               ? journal.view.turns.get(operation.slice(0, -':format-retry'.length)) : undefined;
+            const revisionParent = /^telegram:[0-9]+:update:[0-9]+:reply-revision$/u.test(operation)
+              ? journal.view.turns.get(operation.slice(0, -':reply-revision'.length)) : undefined;
             const turn = journal.view.turns.get(operation)
+              ?? (revisionParent?.reserved && revisionParent.revisionReserved ? revisionParent : undefined)
               ?? (parent?.reserved && parent.answerRetried && parent.promptKind === 'format-retry' ? parent : undefined);
             if (!turn?.accepted) throw Error('preview: topic input is not durably admitted');
             return String(turn.thread ?? 'main');

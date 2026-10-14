@@ -141,6 +141,8 @@ export interface SessionWorkRequest {
    * names the child too: each step is a fresh session, never a continuation of an earlier one. */
   readonly operation: string;
   readonly question: string; readonly context: string;
+  /** A child revision may shorten, never extend, the parent lifetime. */
+  readonly deadlineAt?: number;
   /** The reviewed grant this child runs under, named in the edge. */
   readonly authority: string;
 }

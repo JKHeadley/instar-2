@@ -379,3 +379,17 @@ it('the activation policy names the same topic cap and one shared allowance as t
   expect(policy.limits).toMatchObject({ maxSessions: 2, idleMs: 300000, maxCallsPerStep: 128 });
   expect(policy.admission.allowance).toBe(128);
 });
+
+it('a revision deadline expires without dispatch, and cannot extend the parent deadline', async () => {
+  const f = fixture();
+  expect(await f.port.run({ ...f.request('expired'), deadlineAt: 1000 })).toMatchObject({ state: 'uncertain' });
+  expect(f.delivered).toHaveLength(0);
+  f.finish(false);
+  expect(await f.port.run({ ...f.request('short'), deadlineAt: 1100 })).toMatchObject({ state: 'uncertain' });
+  expect(f.delivered).toHaveLength(1);
+  expect(f.counts().stops).toBe(1);
+  const g = fixture(); g.finish(false);
+  expect(await g.port.run({ ...g.request('long'), deadlineAt: 999999 })).toMatchObject({ state: 'uncertain' });
+  expect(g.state().deadline).toBe(3000);
+  await f.port.close(); await g.port.close();
+});

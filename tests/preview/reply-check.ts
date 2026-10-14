@@ -155,7 +155,9 @@ export const GROUP_REVIEW_FINAL_NOTICE = "I couldn't complete the review this gr
 export const isGroupReviewFinalNotice = (text: string, expected: string): boolean =>
   text === expected && text === GROUP_REVIEW_FINAL_NOTICE;
 
-export const HOLDING_REPLY = 'I need to check that answer before I can send it.';
+export const LEGACY_HOLDING_REPLY = 'I need to check that answer before I can send it.';
+// The one revision is exhausted: this is a settled failure, never a promise of another check.
+export const HOLDING_REPLY = "I couldn't produce an answer to that. Please rephrase or ask again.";
 /** Every rule an unselected review judges on the operator's own chat; the audience question is added only by selection. */
 const rules = (Object.keys(REPLY_RULES) as ReplyRule[]).filter(id => !isAudienceRule(id) && id !== 'incoherent_remainder');
 const jevRules = rules.filter((id): id is JevRule => !isContextRule(id));
@@ -513,13 +515,13 @@ export interface ObjectionDisposition { objection: string; decision: ObjectionDe
 export const noDecisions = (objections: readonly string[]): ObjectionDisposition[] =>
   objections.map(objection => ({ objection, decision: 'no-decision' }));
 /** The mind's one response to the objections on its own draft. Objections are advisory; the answer stays. */
-export function replyRevisionQuestion(objections: readonly string[], reason?: string, findings?: readonly ReplyFinding[]): string {
+export function replyRevisionQuestion(objections: readonly string[], reason?: string, findings?: readonly ReplyFinding[], tools = false): string {
   const listed = Object.fromEntries(objections.flatMap(id => {
     const text = objectionText(id);
     const note = findings?.find(finding => finding.rule === id && finding.verdict === 'violation')?.reason;
     return text === undefined ? [] : [[id, note ? `${text} Reviewer: ${note.slice(0, 160)}` : text]];
   }));
-  return `Revise packet.candidateReply, your own draft reply to packet.operatorMessage, before it is sent. A pre-send review raised these objections: ${JSON.stringify(listed)}${reason ? `; reviewer note: ${JSON.stringify(reason.slice(0, 160))}` : ''}. Objections are signals, not verdicts: fix what is actually wrong, keep what is right, and still answer the operator's message fully. Do not add a correction about an earlier reply here: the runner carries that separately after this answer. Never reproduce a password, access key or other secret. Give dispositions one entry for every listed objection; a rejection needs its reason.${objections.some(id => id === 'unrecorded_blocker' || id === 'claims_blocked') ? REVISION_BLOCKER_GUIDE : ''} ${taskFields(`{"reply": the reply to send (revised, or unchanged when you reject every objection), "dispositions": {objection id: {"decision": "accept" or "reject", "reason": one short sentence}}${objections.some(id => id === 'unrecorded_blocker' || id === 'claims_blocked') ? ', "blocker": optional investigation record' : ''}}`)}`;
+  return `Revise packet.candidateReply, your own draft reply to packet.operatorMessage, before it is sent. A pre-send review raised these objections: ${JSON.stringify(listed)}${reason ? `; reviewer note: ${JSON.stringify(reason.slice(0, 160))}` : ''}. Objections are signals, not verdicts: fix what is actually wrong, keep what is right, and still answer the operator's message fully. Do not add a correction about an earlier reply here: the runner carries that separately after this answer. Never reproduce a password, access key or other secret. Give dispositions one entry for every listed objection; a rejection needs its reason.${objections.some(id => id === 'unrecorded_blocker' || id === 'claims_blocked') ? (tools ? REVISION_BLOCKER_GUIDE.replace('You have attempted nothing outside this reply, so never call an avenue tried.', 'Use the admitted tools when needed; only recorded tool calls count as attempts.') : REVISION_BLOCKER_GUIDE) : ''} ${taskFields(`{"reply": the reply to send (revised, or unchanged when you reject every objection), "dispositions": {objection id: {"decision": "accept" or "reject", "reason": one short sentence}}${objections.some(id => id === 'unrecorded_blocker' || id === 'claims_blocked') ? ', "blocker": optional investigation record' : ''}}`)}`;
 }
 /** Plan #104: a true capability limit is kept and recorded, never talked away. The shape is the answer's own
  * blocker declaration, admitted by the same runner checks. */
