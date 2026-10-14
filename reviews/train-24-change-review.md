@@ -26,9 +26,6 @@ Decision: train-24-desk-C | No product conflict occurred and no member is left o
 Decision: train-24-desk-D | Run targeted foreground checks on WSL and name host-dependent or absent Studio evidence separately; leave live installation and macOS certification to the Studio gate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-24-PROGRESS.md
 Decision: train-24-replay | Run the supplied Linux-adapted repin, build, owner rehash and register replay at exact e23846b7; no pins needed refreshing. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-24-PROGRESS.md
 
-simplestRobustRoute: This is the simplest route: the ordinary reviewed merge and existing desk generation chain, followed by targeted consumer checks. No train-specific machinery, policy, sender or store is added. Existing ownership, grant, custody and parent allowance guard the start; correlated collection and durable send intent guard completion; stop and resource limits remain enforced. No unattended live installation completion is claimed.
-80/20: Run changed tests, direct source importers and the explicitly required journal/register/floor checks in bounded foreground chunks; no full suite or second base worktree.
-VERDICT: author submission for independent Studio gate, not production acceptance
 Prompt finding: 849db3a6296a | protocol-literal | Existing memory-list and recall-source protocol text in the shared journal; this repair does not change either instruction.
 Prompt finding: e8708c7fea24 | protocol-literal | Existing memory-list and recall-source protocol text in the shared journal; this repair does not change either instruction.
 Deferral: tests/preview/journal-conversation-session.test.ts:206 | not-a-deferral=Executable queued-completion regression name or variable; no work is promised for later.
@@ -46,3 +43,13 @@ Deferral: tests/preview/journal-conversation-session.test.ts:252 | not-a-deferra
 Deferral: tests/preview/journal-conversation-session.test.ts:253 | not-a-deferral=Executable queued-completion regression name or variable; no work is promised for later.
 Deferral: tests/preview/journal-conversation-session.test.ts:254 | not-a-deferral=Executable queued-completion regression name or variable; no work is promised for later.
 Deferral: tests/preview/journal-conversation-session.test.ts:259 | not-a-deferral=Executable queued-completion regression name or variable; no work is promised for later.
+Prompt finding: 034c5250da92 | protocol-literal | Existing provider instructions asserted by their consumer tests; this merge changes policy selection for continuing sessions, not these instructions or their assertions. No copied test phrase is added as a classifier.
+Prompt finding: 450c79237a95 | protocol-literal | Existing provider instructions asserted by their consumer tests; this merge changes policy selection for continuing sessions, not these instructions or their assertions. No copied test phrase is added as a classifier.
+Prompt finding: 45e37ea2e9e9 | protocol-literal | Existing provider instructions asserted by their consumer tests; this merge changes policy selection for continuing sessions, not these instructions or their assertions. No copied test phrase is added as a classifier.
+Prompt finding: 6af48f94b789 | protocol-literal | Existing provider instructions asserted by their consumer tests; this merge changes policy selection for continuing sessions, not these instructions or their assertions. No copied test phrase is added as a classifier.
+Prompt finding: b00ed403060a | protocol-literal | Existing provider instructions asserted by their consumer tests; this merge changes policy selection for continuing sessions, not these instructions or their assertions. No copied test phrase is added as a classifier.
+Prompt finding: b1bb3946362d | protocol-literal | Existing provider instructions asserted by their consumer tests; this merge changes policy selection for continuing sessions, not these instructions or their assertions. No copied test phrase is added as a classifier.
+
+simplestRobustRoute: This is the simplest route: the ordinary reviewed merge and existing desk generation chain, followed by targeted consumer checks. No train-specific machinery, policy, sender or store is added. Existing ownership, grant, custody and parent allowance guard the start; correlated collection and durable send intent guard completion; stop and resource limits remain enforced. No unattended live installation completion is claimed.
+80/20: Run changed tests, direct source importers and the explicitly required journal/register/floor checks in bounded foreground chunks; no full suite or second base worktree.
+VERDICT: author submission for independent Studio gate, not production acceptance
