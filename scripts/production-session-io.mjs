@@ -1,7 +1,8 @@
 // Physical tmux and durable journal boundary for unconfined operator sessions.
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync, chmodSync, constants,
-  openSync, closeSync, fsyncSync, fstatSync, lstatSync, realpathSync, statSync, unlinkSync, readSync, rmSync } from 'node:fs';
+  openSync, closeSync, fsyncSync, fstatSync, lstatSync, realpathSync, statSync, unlinkSync, readSync, rmSync, linkSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -161,6 +162,51 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
         }
         return calls;
       } catch { return null; }
+    },
+    /** Adapter-owned transcript layout; only an exact copy may be reused. A divergent
+     * destination survives untouched and the caller grounds a new worker from the journal. */
+    carryTranscript({ framework, id, project, source, target }) {
+      if (framework !== 'claude-code') return 'unsupported';
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return 'missing';
+      const folder = project.replace(/[\/.]/g, '-');
+      const safeFolder = (base, create) => {
+        if (!base.startsWith('/') || realpathSync(base) !== base || !lstatSync(base).isDirectory()) throw Error('unsafe transcript home');
+        let at = base;
+        for (const part of ['projects', folder]) {
+          at = join(at, part);
+          if (create) try { mkdirSync(at, { mode: 0o700 }); } catch (error) { if (error?.code !== 'EEXIST') throw error; }
+          if (!lstatSync(at).isDirectory() || realpathSync(at) !== at) throw Error('unsafe transcript folder');
+        }
+        return at;
+      };
+      const readTranscript = path => {
+        const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+        try {
+          const info = fstatSync(fd);
+          if (!info.isFile() || info.nlink !== 1 || info.size > 64 * 1024 * 1024) throw Error('unsafe transcript');
+          const bytes = readFileSync(fd);
+          if (bytes.length !== info.size) throw Error('transcript changed');
+          return bytes;
+        } finally { closeSync(fd); }
+      };
+      let temporary;
+      try {
+        const bytes = readTranscript(join(safeFolder(source, false), `${id}.jsonl`));
+        const destination = join(safeFolder(target, true), `${id}.jsonl`);
+        try { return readTranscript(destination).equals(bytes) ? 'identical' : 'divergent'; }
+        catch (error) { if (error?.code !== 'ENOENT') return 'unavailable'; }
+        temporary = `${destination}.${randomUUID()}.tmp`;
+        const fd = openSync(temporary, 'wx', 0o600);
+        try { writeFileSync(fd, bytes); fsyncSync(fd); } finally { closeSync(fd); }
+        // No replacement, even if another writer created the destination after the read.
+        try { linkSync(temporary, destination); }
+        catch (error) { if (error?.code === 'EEXIST') return 'divergent'; throw error; }
+        unlinkSync(temporary); temporary = undefined;
+        const directory = openSync(dirname(destination), 'r');
+        try { fsyncSync(directory); } finally { closeSync(directory); }
+        return 'copied';
+      } catch { return 'unavailable'; }
+      finally { if (temporary) try { unlinkSync(temporary); } catch { /* Retain a failed temporary copy; never remove a destination. */ } }
     },
     transcriptExists(framework, id, project, directory) {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return false;

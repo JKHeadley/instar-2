@@ -1,0 +1,35 @@
+# Change review — continuing-session login pool
+
+Subject base: 4a5a9628dd33ef4a6409ad1f4eccee6bcbc47e33
+Review state: open
+Reviewed content: none
+Outcome: Move an idle continuing conversation to an approved login with measured room, carrying history and remaining allowance, and record an identity-bound sign-in repair item for the desk.
+Affected rules: Rules 2, 4, 7, 26, 30, 32, 46, 49, 52, 55, 60, 61, 63, 68, 74, 75, 87, 96, 101, 102, 111, 113, 116.
+Affected floors: secrets — copy only the exact transcript inside admitted homes, never credentials; spend cap — keep the same model checkpoint and cumulative reservation across the move; stop — check before each bounded capacity wait and before launch/delivery; no duplicate sends — no sender added and no previous intake replayed; durable intake — existing host journal and queue survive worker replacement.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Session identity, retained conversation history and call accounting cross a login boundary. The code remains inside the already opt-in continuing-session route and uses fake harnesses for this unit; the desk owns real-copy acceptance under the explicit brief.
+Side effects: A waiting session holds its existing lease until room, stop or its unchanged deadline. A failed transcript copy uses journal grounding and records that reduced continuity. The destination is admitted before stopping the idle source. A divergent destination is never overwritten. A repaired original 1.x account is not proof of repaired 2.0 harness-user custody; the desk procedure must verify the target profile.
+Undo and recovery: Revert this unit to restore fixed-login conversations. Additive handoffs and signinRepairs fields in the existing pool state can remain: the prior reader ignores them. No token, live runner, live journal or operator setting was changed. Unknown delivered work remains uncertain and is never replayed.
+Multi-machine posture: Machine-local deliberately: tmux identities, transcript homes, custody and usage readings belong to the owning host. The existing ownership check gates the session. No credential or browser-profile transfer across machines is added. Repair items name their originating machine.
+Layer below: Read 1.x SubscriptionPool and SessionRefresh (copy-before-resume and five refreshes per ten minutes), the subscription-signin skill, the existing 2.0 harness-login-pool quota decoder and reset holds, production-session-driver resume/cache-miss continuation, production-session-io transcript accounting, admission-gate cumulative calls, harness-user ACL/custody setup and journal-worker intake/drain behavior.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/continuing-login-pool.test.ts
+Hook bypass: none; core.hooksPath checked unset and the shared hooks directory inspected, containing sample hooks only.
+Convergence: none
+Decision: step1e-pool-1013-boundary | Add one optional prepareTurn port and keep the same claim, lease, queue and allowance; only a closed turn may move, with a fresh worker incarnation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1e-pool-1013-PROGRESS.md
+Decision: step1e-pool-1013-capacity | Reuse the per-message threshold and reset holds; require fresh readings in both destination windows and carry 1.x's durable five-per-ten-minute brake. No room waits under stop/deadline with bounded backoff. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1e-pool-1013-PROGRESS.md
+Decision: step1e-pool-1013-copy | Copy only the recorded transcript through the adapter with exclusive destination publication. Preserve divergent bytes and record journal fallback instead of resuming them. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1e-pool-1013-PROGRESS.md
+Decision: step1e-pool-1013-meter | Carry prior measured calls and subtract the destination baseline; do not count copied history twice or reopen the dispatch checkpoint. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1e-pool-1013-PROGRESS.md
+Decision: step1e-pool-1013-repair | Reuse identity-bound needs-reauth observations for one durable account/machine desk item; document the normal-browser 1.x repair and the required 2.0 custody binding without starting a repair. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1e-pool-1013-PROGRESS.md
+Decision: step1e-pool-1013-publication | Rebind the composition byte pin and regenerate the register for this source change; native contract host failures are reported separately, and the brief assigns real-copy acceptance to the Studio desk. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1e-pool-1013-PROGRESS.md
+Prompt review: No prompt or model-output parser changed. The existing cache-miss continuation is reused. Selection consumes measured quota and typed account state, never words in a user's message or a model's uncertainty. Existing recorded replay tests exercise summary, Jev, review and delivered-output shapes through pool selection and conversation wiring.
+
+Subject: src/assembly/harness.declarations.json, generated/, docs/continuing-login-pool.md, scripts/continuing-login-pool.mjs, scripts/production-session-io.mjs, src/assembly/README.md, src/assembly/production-conversation-session.ts, tests/preview/continuing-login-pool.test.ts, tests/preview/harness-login-pool.mjs, tests/preview/journal-agent.mjs, tests/preview/journal-conversation-session.test.ts
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: retain the host and admission, use the existing pool and driver, add a turn-boundary handoff and an adapter copy operation. The boundary prevents mid-turn loss; exclusive copy prevents overwriting divergent history; cumulative accounting prevents a move replenishing allowance. The one bounded repair item avoids building another browser automation system. Start guard is the completed prior turn plus approved destination; end evidence is copied or journal-grounded history before new delivery; stop, deadline, quota and allowance remain limits. No unattended live completion is claimed; the desk's copy walk is acceptance.
+80/20: Reuse proven selection, journal grounding, custody and sign-in procedure. Step1b-host-1013 owns the host queue and overall deadline continuation; merge at prepareTurn, worker incarnation and the small journal-agent session block. The unit does not replace that owner's lifecycle work.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

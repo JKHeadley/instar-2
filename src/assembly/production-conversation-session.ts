@@ -18,6 +18,11 @@ export interface ConversationSessionPort {
 export interface ConversationSessionConfig extends SessionWorkConfig {
   /** Stable within this admitted launch; never a per-message identity. */
   readonly conversation: string;
+  /** Called only before a turn, never while a delivered input is running. The host may
+   * move its worker without reopening admission or replenishing this conversation's budget.
+   * Waiting leaves the next input undelivered in the host's durable queue. */
+  readonly prepareTurn?: (input: Readonly<{ claim: string; child: string | null; openedAt: number | null }>)
+    => Promise<'ready' | 'replaced' | 'waiting'>;
 }
 
 const digest = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
@@ -79,7 +84,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     const seen = new Set<string>();
     const claim = `conversation-${slug(`${config.conversation}:${config.incarnation}`)}`;
     let edge: SessionWorkEdge | null = null, child: string | null = null, lease: SessionWorkLease | null = null;
-    let busy = false, closed = false, launched = false, count = 0;
+    let busy = false, closed = false, launched = false, count = 0, workerGeneration = 0;
+    const workerIncarnation = () => workerGeneration === 0 ? config.incarnation : `${config.incarnation}:login:${workerGeneration}`;
     let closing: Promise<SessionWorkEdgeClose | null> | null = null;
     let turnFinished: Promise<void> | null = null;
     let failure: string | null = null;
@@ -130,6 +136,19 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       turnFinished = new Promise<void>(resolve => { finishTurn = resolve; });
       const path = `${config.resultDirectory}/conversation-${slug(request.operation)}.json`;
       try {
+        if (edge !== null) ensure(request.authority === edge.authority, 'conversation authority changed');
+        let preparation: 'ready' | 'replaced' | 'waiting' = 'ready';
+        let waitMs = Math.max(config.pollMs, 1000);
+        const waitUntil = edge?.budget.deadline ?? config.now() + config.deadlineMs;
+        if (config.prepareTurn) do {
+          ensure(!closed && !config.stopped(), 'conversation stopped before login selection');
+          ensure(config.now() < waitUntil, 'conversation capacity wait reached deadline; input was not delivered');
+          preparation = await config.prepareTurn({ claim, child, openedAt: edge?.openedAt ?? null });
+          if (preparation === 'waiting') {
+            await config.io.wait(waitMs); waitMs = Math.min(waitMs * 2, 5000);
+          }
+        } while (preparation === 'waiting');
+        if (preparation === 'replaced') workerGeneration += 1;
         if (edge === null) {
           const openedAt = config.now();
           const opening: SessionWorkEdge = freeze({ type: 'SessionWorkEdge', schemaVersion: 1, id: `${claim}:edge`, parent: config.parent,
@@ -146,20 +165,21 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           ensure(!closed && !config.stopped(), 'conversation stopped before launch');
           launched = true;
           child = take(driver.launch({ operation: claim, claim, artifact: config.artifact,
-            incarnation: config.incarnation, workingScope: config.workingScope, handles: [] }));
+            incarnation: workerIncarnation(), workingScope: config.workingScope, handles: [] }));
           await lease.attach(child);
         } else {
           ensure(request.authority === edge.authority, 'conversation authority changed');
           ensure(!closed && !config.stopped() && config.now() < edge.budget.deadline,
             'conversation stopped or expired before reconnect');
           ensure(child !== null && lease !== null, 'conversation child or resource lease missing');
-          const observed = take(driver.observe({ operation: request.operation, processIdentity: child }));
+          const observed = preparation === 'replaced' ? { phase: 'exit-observed', detail: 'login replaced between turns' }
+            : take(driver.observe({ operation: request.operation, processIdentity: child }));
           if (observed.phase === 'exit-observed') {
             // Only between completed turns. The driver resumes its retained transcript or
             // rebuilds from agent-owned records before accepting the NEW intake. No replay
             // of the previous turn, no new admission and no replenished call allowance.
             child = take(driver.launch({ operation: claim, claim, artifact: config.artifact,
-              incarnation: config.incarnation, workingScope: config.workingScope, handles: [] }));
+              incarnation: workerIncarnation(), workingScope: config.workingScope, handles: [] }));
             await lease.attach(child);
           } else ensure(observed.phase !== 'pause-observed' && observed.phase !== 'uncertain',
             `conversation reconnect needs reconciliation: ${observed.detail}`);
@@ -173,7 +193,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         intakes.set(request.operation, text);
         ensure(child !== null, 'conversation child missing');
         take(driver.deliver({ operation: request.operation, processIdentity: child, intake: request.operation,
-          digest: digest(text), incarnation: config.incarnation }));
+          digest: digest(text), incarnation: workerIncarnation() }));
         let previous: string | null = null, turnClosed = false;
         for (;;) {
           ensure(!closed && !config.stopped(), 'conversation stopped during turn');

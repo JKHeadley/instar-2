@@ -21,7 +21,7 @@ const usage = { inputTokens: null, outputTokens: null, charge: null };
 const update = (id: number, text: string) => ({ update_id: id,
   message: { message_id: id, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
 
-function fixture(enabled = true, checkIntake = true, maxCalls = 200) {
+function fixture(enabled = true, checkIntake = true, maxCalls = 200, boundary: { prepareTurn?: () => Promise<'ready' | 'replaced' | 'waiting'>; wait?: () => Promise<void> } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'conversation-wiring-')); roots.push(root);
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
     kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
@@ -31,13 +31,13 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200) {
   let now = 1000, launches = 0, calls = 0, fallback = 0, stopped = false, edges = 0;
   let destination = '', answer = JSON.stringify({ reply: 'A useful answer.', memory: [] });
   const files = new Map<string, string>(), delivered: string[] = [], sent: string[] = [];
-  const port = value(createConversationSessionPort({ conversation: 'operator',
+  const port = value(createConversationSessionPort({ conversation: 'operator', ...boundary.prepareTurn ? { prepareTurn: boundary.prepareTurn } : {},
     createDriver: resolve => ({ owner: 'part-eight', launch: () => { launches++; return f.success('session:123:1'); },
       deliver: input => { if (checkIntake) expect(journal.view.order.some(turn => turn.id === input.intake && turn.reserved)).toBe(true);
         delivered.push(resolve(input.intake, input.digest)); calls++; files.set(destination, answer); return f.success('accepted'); },
       observe: () => f.success({ phase: 'output-observed', evidence: 'closed', detail: 'closed' }), stop: () => f.success(['123']) }),
     io: { clearResult: path => { destination = path; files.delete(path); }, readResult: path => files.get(path) ?? null,
-      wait: async ms => { now += ms; }, modelCalls: () => calls, prepareAdmission: () => {}, closeAdmission: () => {},
+      wait: async ms => { now += ms; await boundary.wait?.(); }, modelCalls: () => calls, prepareAdmission: () => {}, closeAdmission: () => {},
       admissionState: () => ({ refused: false, openDelegations: [] }) },
     resources: { admit: async () => ({ attach: async () => {}, release: async () => true }) },
     context: f.c, now: () => now, stopped: () => stopped,
@@ -135,4 +135,26 @@ it('the journal refuses the whole session reservation before launch when the par
     expect(f.journal.view.calls).toBe(0);
     expect(f.sent).toEqual([]);
   } finally { await f.close(); }
+});
+
+it('drains durable busy intake once across a completed-turn worker move', async () => {
+  let release!: () => void, started!: () => void, preparations = 0, firstWait = true;
+  const waiting = new Promise<void>(resolve => { started = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const f = fixture(true, true, 200, {
+    prepareTurn: async () => ++preparations === 2 ? 'replaced' : 'ready',
+    wait: async () => { if (firstWait) { firstWait = false; started(); await held; } },
+  });
+  try {
+    f.worker.intake([update(101, 'First queued question')]);
+    const draining = f.worker.drain(); await waiting;
+    f.worker.intake([update(102, 'Second queued question')]);
+    expect(f.journal.view.order).toHaveLength(2);
+    expect(f.delivered).toHaveLength(1); expect(preparations).toBe(1);
+    release(); await draining; await f.worker.drain();
+    expect(f.delivered).toHaveLength(2); expect(f.sent).toHaveLength(2);
+    expect(f.counts()).toEqual({ launches: 2, calls: 2, fallback: 0 });
+    expect(f.edges()).toBe(1);
+    await f.worker.drain(); expect(f.delivered).toHaveLength(2);
+  } finally { release(); await f.close(); }
 });

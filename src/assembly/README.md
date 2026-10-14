@@ -131,3 +131,7 @@ to the existing parent cap and tool admission checks. Unknown work is not replay
 Claude-specific policy and availability live in the provider adapter; Codex and
 native adapter parity remain the named follow-up units. This is not proof-room
 walk evidence, an after-send review implementation, or an intake/effect migration.
+
+The optional turn-boundary login pool port moves only an idle continuing worker,
+retaining its admission and allowance. Its physical transcript copy and desk
+sign-in repair handoff are described in [Continuing-session login pool](../../docs/continuing-login-pool.md).

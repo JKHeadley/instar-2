@@ -121,6 +121,7 @@ import { createProductionSessionDriver } from '../../src/assembly/production-ses
 import { createConversationSessionPort, CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
 import { createSessionWorkPort, SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
+import { createContinuingLoginHandoff } from '../../scripts/continuing-login-pool.mjs';
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 import { stepQuestions } from './step-check.js';
 import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, rerunsDue, retroAnswerBudget, standingGrantCandidates } from './retrospective.js';
@@ -2416,7 +2417,7 @@ async function main() {
           unavailable.set(entry.index, 'activation, authority or authentication unavailable');
         }
       }
-      loginPool = createHarnessLoginPool({ configuration: loginConfiguration, unavailable,
+      loginPool = createHarnessLoginPool({ configuration: loginConfiguration, unavailable, machine: ownerMachine,
         statePath: join(root, 'harness-login-pool.json'), now: wallNow,
         previouslyLaunched: () => harnessPoolPreviouslyLaunched(runsPath, [loginConfiguration.identity, ...loginConfiguration.legacyIdentities]),
         validate: (entry, tools) => { const runtime = loginRuntimes.get(entry.index); runtime.check(tools); runtime.harness.current(); } });
@@ -2452,10 +2453,10 @@ async function main() {
           append: appendWork, stopped: gateStopped, now: wallNow, prepared: identity => (journal.view.toolEffects ?? []).includes(identity) }) });
     }
     if (sessionSetup !== null) {
-      let selectedSession = loginConfiguration.entries[0], profile = selectedSession.profile;
-      let sessionHarness = harness;
+      let selectedSession = loginConfiguration.entries[conversationSession ? loginPool?.state.active ?? 0 : 0], profile = selectedSession.profile;
+      let sessionHarness = loginRuntimes.get(selectedSession.index)?.harness ?? harness;
       const sessionBytes = readFileSync(sessionSetup.activation, 'utf8'), sessionActivation = JSON.parse(sessionBytes);
-      sessionAdapter.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
+      sessionAdapter.validateActivation(sessionActivation, loginConfiguration.entries[0].profile, required(options, 'model'), wallNow(), journal.view.expires);
       requireAuthority(options, sessionActivation, sessionSetup.activation, journal.view, wallNow());
       if (!activationMatchesJournal(journal.view, sessionActivation)) throw Error('preview: session work activation differs from journal');
       const sessionActive = () => { try { return loginPool ? loginRuntimes.get(selectedSession.index).live('session') : readFileSync(sessionSetup.activation, 'utf8') === sessionBytes; } catch { return false; } };
@@ -2485,14 +2486,34 @@ async function main() {
       // shell command runs confined. The state lives beside the working scope, never inside it.
       const admissionBase = layout ? layout.admission : join(root, 'session-work-state', 'admission');
       const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
+      let stopForHandoff = () => { throw Error('conversation driver not installed'); };
+      const selectSession = next => {
+        selectedSession = next; profile = next.profile;
+        sessionHarness = loginRuntimes.get(next.index)?.harness ?? harness;
+        physical = physicalFor();
+      };
+      const handoff = conversationSession && loginPool ? createContinuingLoginHandoff({ pool: loginPool,
+        current: () => selectedSession, select: selectSession, stop: () => stopForHandoff(), project,
+        physical: () => ({ load: () => physical.load(), save: value => physical.save(value),
+          modelCalls: since => physical.modelCalls(framework, project, profile.configDirectory, since),
+          carryTranscript: input => physical.carryTranscript({ ...input, framework }) }),
+        admit: async next => {
+          loginRuntimes.get(next.index).check('session');
+          await doorway.session.admit({ profile: next.profile, io: createSubscriptionProviderIO({ repository: process.cwd(),
+            stopped: stoppedNow, work: 'maintenance', runAs: runAsOf(loginRuntimes.get(next.index).harness) }),
+            deadline: wallNow() + 15000, now: wallNow });
+        },
+        record: move => loginPool.recordHandoff(move),
+      }) : null;
       sessionWork = { select() {
-        if (conversationSession) return; // A continuing session never rotates the identity underneath its transcript.
+        if (conversationSession) return; // Its pool port selects only at a completed-turn boundary.
         selectedSession = selectLogin('session'); profile = selectedSession.profile;
         sessionHarness = loginRuntimes.get(selectedSession.index)?.harness ?? harness;
         physical = physicalFor();
-      }, get authority() { return `${conversationSession ? 'continuing conversation' : 'session work'} grant ${(loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}: ${conversationSession ? 'one bounded conversation' : 'one scheduled work step'} for the verified operator, `
+      }, get authority() { return `${conversationSession ? 'continuing conversation' : 'session work'} grant ${(conversationSession ? sessionActivation : loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}: ${conversationSession ? 'one bounded conversation' : 'one scheduled work step'} for the verified operator, `
         + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? createConversationSessionPort : createSessionWorkPort)({
-        ...(conversationSession ? { conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}` } : {}),
+        ...(conversationSession ? { conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`,
+          ...(handoff ? { prepareTurn: handoff.prepareTurn } : {}) } : {}),
         createDriver: resolveIntake => {
           const create = () => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
@@ -2510,6 +2531,7 @@ async function main() {
           ...(layout ? { launchVia: [process.execPath, HARNESS_SESSION_BRIDGE, options['harness-user'],
             realpathSync(selectedSession.profilePath), '--'] } : {}) });
           let driver = create();
+          stopForHandoff = () => { take(driver.stop()); };
           if (conversationSession) take(driver.stop()); // Reclaim this root's old worker after host recovery; journal intake is never replayed.
           // Each step is fresh and the port permits only one in flight. Rebuild only between steps;
           // the port keeps one shared step/call ceiling across all selected logins.
@@ -2522,7 +2544,7 @@ async function main() {
             }, stop: () => driver.stop() };
         },
         io: { readResult: (path, maxBytes) => physical.readResult(path, maxBytes), clearResult: path => physical.clearResult(path),
-          modelCalls: since => physical.modelCalls(framework, project, profile.configDirectory, since), wait: delay,
+          modelCalls: since => handoff ? handoff.modelCalls(since) : physical.modelCalls(framework, project, profile.configDirectory, since), wait: delay,
           prepareAdmission: async (claim, edge) => {
             const identity = sessionHarness ? sessionHarness.current() : null;
             mountVolume(identity);
@@ -2552,7 +2574,7 @@ async function main() {
           closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {}); } },
         resources: { admit: async () => {
           if (loginPool) loginRuntimes.get(selectedSession.index).check('session');
-          else sessionAdapter.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
+          else sessionAdapter.validateActivation(sessionActivation, loginConfiguration.entries[0].profile, required(options, 'model'), wallNow(), journal.view.expires);
           await doorway.session.admit({ profile, io: admissionIO(), deadline: wallNow() + 15000, now: wallNow });
           const held = await hostResources.hold('maintenance', { timeout: 30000, stopped: stoppedNow });
           return held === null ? null : { attach: child => held.attach({ pid: Number(child.split(':')[1]), cwd: project }),
