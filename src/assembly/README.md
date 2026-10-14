@@ -136,7 +136,8 @@ a dispatched but unresolved input becomes uncertain on restart and is never repl
 A repeated exact input returns its recorded outcome; conflicting bytes refuse.
 
 Each OS process gets a fresh claim and incarnation, its own 64-input/one-hour ceiling,
-and only the unused portion of the original 128-call reservation. The model checkpoint
+and only the unused portion of the original 128-call reservation. Every process deadline
+also stays below the already admitted parent lifetime; a process renewal cannot extend it. The model checkpoint
 persists each call charge before forwarding, including calls that produce no transcript.
 A new message, process, grant or host does not replenish that allowance. Unknown accounting
 retains exposure. An interrupted parent-reservation write requires reconciliation rather

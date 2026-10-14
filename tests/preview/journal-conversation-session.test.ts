@@ -37,7 +37,7 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200) {
   const adapt = (config: Omit<import('../../src/assembly/production-conversation-session.js').ConversationSessionConfig, 'store' | 'createAdapter'> & Pick<import('../../src/assembly/production-session-work.js').SessionWorkConfig, 'createDriver'>) => createConversationSessionPort({ ...config,
     store: { load: () => state, save: next => { state = structuredClone(next); } },
     createAdapter: resolveDelivery => createSessionConversationAdapter({ createDriver: config.createDriver, io: config.io, resolveDelivery }) });
-  const port = value(adapt({ conversation: 'operator',
+  const port = value(adapt({ conversation: 'operator', allowanceDeadline: 9999999999999,
     createDriver: resolve => ({ owner: 'part-eight', launch: () => { launches++; return f.success('session:123:1'); },
       deliver: input => { if (checkIntake) expect(journal.view.order.some(turn => turn.id === input.intake && turn.reserved)).toBe(true);
         delivered.push(resolve(input.intake, input.digest)); calls++; files.set(destination, answer); return f.success('accepted'); },

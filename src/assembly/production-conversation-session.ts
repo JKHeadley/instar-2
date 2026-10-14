@@ -41,6 +41,8 @@ export interface ConversationSessionStore {
 }
 export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'createDriver'> {
   readonly conversation: string;
+  /** The already-admitted parent lifetime; replacing a process cannot extend it. */
+  readonly allowanceDeadline: number;
   readonly store: ConversationSessionStore;
   readonly createAdapter: (resolve: (operation: string) => ConversationDelivery | undefined) => HarnessAdapterPort<2>;
 }
@@ -80,6 +82,7 @@ export function conversationSessionPrompt(request: Pick<SessionWorkRequest, 'que
 export function createConversationSessionPort(config: ConversationSessionConfig): Result<ConversationSessionPort> {
   return boundary('ProductionConversationSession', null, config.context, () => {
     ensure(safeName.test(config.conversation), 'exact conversation identity required');
+    ensure(Number.isSafeInteger(config.allowanceDeadline) && config.allowanceDeadline > 0, 'finite parent lifetime required');
     for (const [name, value, minimum, maximum] of [
       ['deadline', config.deadlineMs, 1, 3_600_000], ['poll', config.pollMs, 25, 5_000],
       ['result bytes', config.maxResultBytes, 1, 1_048_576], ['turns', config.maxSteps, 1, 64],
@@ -109,7 +112,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     let recovered = false;
     const outcome = (detail: string): SessionWorkOutcome => freeze({ state: 'uncertain', detail,
       edge: state.edge?.id ?? 'no-edge', child: state.worker?.launch ?? null });
-    const guard = () => ensure(!closing && !config.stopped(), 'conversation stopped');
+    const guard = () => {
+      ensure(!closing && !config.stopped(), 'conversation stopped');
+      ensure(config.now() < config.allowanceDeadline, 'parent lifetime exhausted');
+    };
     const calls = () => {
       const used = state.edge ? config.io.modelCalls(state.edge.openedAt) : 0;
       ensure(used !== null && Number.isSafeInteger(used) && used >= 0 && used <= config.maxCalls,
@@ -153,11 +159,11 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       const now = config.now(), epoch = state.epoch + 1;
       const claim = `conversation-${slug(config.conversation)}-${epoch}`;
       const incarnation = `${config.incarnation}:${epoch}`;
-      persist({ epoch, claim, incarnation, close: null, claimCalls: 0, authority: request.authority, deadline: now + config.deadlineMs, turns: 0 });
+      persist({ epoch, claim, incarnation, close: null, claimCalls: 0, authority: request.authority, deadline: Math.min(now + config.deadlineMs, config.allowanceDeadline), turns: 0 });
       if (!state.edge) {
         const edge: SessionWorkEdge = freeze({ type: 'SessionWorkEdge', schemaVersion: 1, id: `${claim}:edge`, parent: config.parent,
           child: claim, scope: config.workingScope, owner: config.owner, authority: request.authority,
-          budget: { steps: 1, deadline: now + config.deadlineMs, maxResultBytes: config.maxResultBytes, calls: config.maxCalls, tokens: null },
+          budget: { steps: 1, deadline: config.allowanceDeadline, maxResultBytes: config.maxResultBytes, calls: config.maxCalls, tokens: null },
           exitTest: CONVERSATION_SESSION_EXIT_TEST, placement: config.placement, transport: config.transport,
           resultDestination: config.resultDirectory, openedAt: now });
         // Persist reservation intent before append. An interrupted reservation is held for
@@ -255,7 +261,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       })().finally(() => { draining = null; });
       return draining;
     };
-    const available = () => !closing && !config.stopped()
+    const available = () => !closing && !config.stopped() && config.now() < config.allowanceDeadline
       && state.inputs.length < 4096 && state.inputs.filter(input => input.state !== 'settled').length < 64;
     const run = async (request: SessionWorkRequest): Promise<SessionWorkOutcome> => {
       ensure(safeName.test(request.operation) && request.question.trim() && request.authority.trim(), 'conversation input identity required');
@@ -289,7 +295,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       config.append(result); persist({ close: result }); return result;
     };
     const maintain = async () => {
-      if (config.stopped() || closing) { await close(); return; }
+      if (config.stopped() || closing || config.now() >= config.allowanceDeadline) { await close(); return; }
       await drain();
       if (!draining && state.worker && (config.now() >= state.deadline || state.turns >= config.maxSteps)) await retire();
     };

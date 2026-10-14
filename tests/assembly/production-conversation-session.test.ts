@@ -36,7 +36,7 @@ function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | '
     control: async () => { stops++; return { state: stopOK ? 'closed' : 'uncertain', evidence: 'stop' }; },
   };
   const config: ConversationSessionConfig = {
-    conversation: 'operator-1', store: { load: () => structuredClone(state), save: next => { state = structuredClone(next); } },
+    conversation: 'operator-1', allowanceDeadline: 100000, store: { load: () => structuredClone(state), save: next => { state = structuredClone(next); } },
     createAdapter: () => adapter,
     io: { clearResult: () => {}, readResult: () => null, modelCalls: () => used, wait: async ms => { clock += ms; },
       prepareAdmission: (_claim, edge) => { admissions.push(edge); }, closeAdmission: claim => { closed.push(claim); },
@@ -245,4 +245,66 @@ it('replacement receives current time and recorded prior outcomes without vendor
   expect(f.delivered[1]!.text).toContain('HOST CLOCK 1020');
   expect(f.delivered[1]!.text).toContain('RECORDED HOST TURN OUTCOMES');
   expect(f.delivered[1]!.text).toContain('hello'); await f.port.close();
+});
+
+it('the continuing host consumes real driver Stop receipts through the public adapter for two inputs', async () => {
+  const { createSessionConversationAdapter } = await import('../../src/assembly/conversation-harness-adapter.js');
+  const { createProductionSessionDriver } = await import('../../src/assembly/production-session-driver.js');
+  const f = fixture(); let now = 1000, pane = '❯ ', live = false, path = '', entered = 0;
+  let journal: import('../../src/assembly/production-session-driver.js').SessionJournal = { sessions: [], deliveries: [], resumes: {} };
+  const files = new Map<string, string>();
+  const receipts: { kind: 'turn-closed'; sessionId: string; at: number; receiptId: string }[] = [];
+  const physical: import('../../src/assembly/production-session-driver.js').SessionIO = {
+    exclusive: run => run(), load: () => journal, save: next => { journal = structuredClone(next); },
+    sleep: ms => { now += ms; }, armDeadline: () => {}, transcriptExists: () => false, readInbox: () => receipts,
+    tmux: args => {
+      if (args[0] === 'new-session') { live = true; expect(args.join(' ')).toContain('Stop'); }
+      if (args[0] === 'has-session') return { code: live ? 0 : 1, stdout: '' };
+      if (args[0] === 'display-message') return { code: 0, stdout: '321:1000' };
+      if (args[0] === 'capture-pane') return { code: 0, stdout: pane };
+      if (args[0] === 'kill-session') live = false;
+      if (args[0] === 'send-keys' && args.includes('Enter')) {
+        entered++; pane = `reply ${entered}\n❯ `; files.set(path, `{"reply":"answer ${entered}"}`);
+        receipts.push({ kind: 'turn-closed', sessionId: '12345678-1234-1234-1234-123456789abc', at: now, receiptId: `receipt-${entered}` });
+      }
+      return { code: 0, stdout: '' };
+    },
+  };
+  const io = { ...f.config.io, clearResult: (next: string) => { path = next; files.delete(path); },
+    readResult: (file: string) => files.get(file) ?? null, modelCalls: () => entered, wait: async (ms: number) => { now += ms; } };
+  const port = value(createConversationSessionPort({ ...f.config, io, now: () => now,
+    createAdapter: resolveDelivery => createSessionConversationAdapter({ io, resolveDelivery,
+      createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
+        framework: 'claude-code', executable: '/fake', cwd: '/scope', home: '/h', configHome: '/h', context: f.config.context,
+        io: physical, now: () => now, stopped: () => false, resolveIntake, maxSessions: 1, turnDeadlineMs: 2000,
+        readyTimeoutMs: 1000, protectedSessions: [], requireTurnHook: true, hookScript: '/installed/stop.mjs', inboxDirectory: '/inbox',
+        toolAdmission: { command: () => '/installed/tool-hook', timeoutSeconds: 2 },
+        modelGate: claim => `http://127.0.0.1:1234/${'a'.repeat(32)}/${claim}` }) }) }));
+  expect(await port.run(f.request('one'))).toMatchObject({ state: 'complete', text: '{"reply":"answer 1"}' });
+  expect(await port.run(f.request('two'))).toMatchObject({ state: 'complete', text: '{"reply":"answer 2"}' });
+  expect(journal.sessions).toHaveLength(1); expect(journal.deliveries.map(row => row.state)).toEqual(['accepted', 'accepted']);
+  expect(f.state().inputs.map(row => row.cursor)).toEqual([2, 2]);
+  await port.close(); expect(live).toBe(false);
+});
+
+it('process renewal never extends the already admitted parent lifetime', async () => {
+  const f = fixture(); await f.port.run(f.request('one')); f.advance(100000);
+  expect(f.port.available()).toBe(false); await f.port.maintain();
+  expect(f.state().worker).toBeNull(); expect(f.launches).toHaveLength(1);
+});
+
+it.each(['gap', 'wrong-delivery', 'wrong-digest', 'oversize', 'open-child'] as const)('retains uncertainty for %s evidence', async problem => {
+  const f = fixture({ maxResultBytes: problem === 'oversize' ? 2 : 65536 });
+  if (problem === 'open-child') f.config.io.admissionState = () => ({ refused: false, openDelegations: [f.admissions[0]!] });
+  const observe = f.adapter.observe;
+  f.adapter.observe = async input => {
+    const result = await observe(input);
+    if (!input.delivery) return result;
+    if (problem === 'gap') return { ...result, complete: false };
+    return { ...result, observations: result.observations.map(event => event.kind !== 'reply' ? event : {
+      ...event, ...(problem === 'wrong-delivery' ? { delivery: 'other-input' } : {}),
+      ...(problem === 'wrong-digest' ? { digest: 'sha256:wrong' } : {}) }) };
+  };
+  expect((await f.port.run(f.request('one'))).state).toBe('uncertain');
+  expect(f.state().inputs[0]!.request).toEqual(f.request('one')); await f.port.close();
 });
