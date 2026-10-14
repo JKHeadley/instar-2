@@ -109,3 +109,17 @@ it('names a consequential tool by its exact operation and renders its input cano
   expect(toolOperation('Bash')).toBe('tool:Bash');
   expect(canonical({ b: 1, a: [{ d: 2, c: 3 }] })).toBe(canonical({ a: [{ c: 3, d: 2 }], b: 1 }));
 });
+
+it('persists conversation charges before forwarding and refuses a failed durable reservation', async () => {
+  const w = await world(); const reserved: number[] = [];
+  w.gate.open('claim-durable', { framework: 'claude-code', allowance: 3, edge: w.edge, reserveCall: (ordinal: number) => {
+    expect(w.received).toHaveLength(ordinal - 1);
+    if (ordinal === 2) throw Error('disk unavailable');
+    reserved.push(ordinal);
+  } });
+  const url = `${w.gate.base('claim-durable')}/v1/messages`;
+  expect((await w.send(url)).status).toBe(200);
+  expect((await w.send(url)).status).toBe(400);
+  expect(reserved).toEqual([1]); expect(w.received).toHaveLength(1);
+  expect(w.gate.state('claim-durable')).toMatchObject({ calls: 1, refused: true });
+});

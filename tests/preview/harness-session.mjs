@@ -15,13 +15,15 @@
 import { spawn } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { harnessCommand } from '../../scripts/production-boot-io.mjs';
+import { harnessCommand, prepareSubscriptionInteractive } from '../../scripts/production-boot-io.mjs';
 import { HARNESS_LAUNCHER, readHarnessLogin } from './harness-user.mjs';
 
 /** The sudo command for one interactive harness launch: harnessCommand's, in the launcher's terminal mode. */
-export function harnessSessionCommand({ user, profile, executable, args, env, login = readHarnessLogin }) {
+export function harnessSessionCommand({ user, profile, executable, args, env, login = readHarnessLogin, cwd = process.cwd() }) {
   const command = harnessCommand({ executable, args, env, stdin: '' },
     { user, launcher: HARNESS_LAUNCHER, login: () => login(profile), plan: profile.plan });
+  // Upgrade profiles installed before interactive bootstrap, only after custody validated.
+  prepareSubscriptionInteractive(profile.configDirectory, cwd);
   const at = command.args.indexOf('--handoff');
   if (at < 0) throw Error('preview: the harness command has no hand-off');
   return { ...command, args: [...command.args.slice(0, at + 1), '--tty', ...command.args.slice(at + 1)] };

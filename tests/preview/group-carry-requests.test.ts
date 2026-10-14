@@ -278,8 +278,8 @@ it('forgetting carried request text cannot silently cancel the owned request', a
 
 // Round-two reproduction uses the shipped host bodies with only external dependencies substituted.
 const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
-const modelCode = host.split('      model: async ({ id, prepared }) => {')[1]!.split('\n      summaryCheck:')[0]!;
-const modelFunction = 'async ({ id, prepared }) => {' + modelCode.trimEnd().replace(/,$/, '');
+const modelCode = host.split('      model: async ({ id, prepared, question, context: packet }) => {')[1]!.split('\n      summaryCheck:')[0]!;
+const modelFunction = 'async ({ id, prepared, question, context: packet }) => {' + modelCode.trimEnd().replace(/,$/, '');
 // Keep the shipped parameter bindings too: optional phase observers must not break extraction
 // or become unbound names when this test executes the real send body.
 const sendCode = host.split('      send: ')[1]!.split('\n    if (existsSync(stopPath))')[0]!;
@@ -336,10 +336,10 @@ it.each([['model', false], ['subscription', false], ['send', false], ['model', t
     journalProxy, requireAt('subscription'), ModelDisclosureRefused, () => {}, null,
     () => ({ invoke: async () => { modelLaunch.started(); providerCalls++; return { state: 'complete', bytes: recorded.text }; } }),
     { now: () => 0 }, () => 'fixture', {}, () => {}, () => ({}), null);
-  const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools', 'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', `return (${modelFunction});`)(
+  const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools', 'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', 'conversationSession', `return (${modelFunction});`)(
     journalProxy, requireAt('model'), () => false, () => false, () => { throw Error('unused'); },
     async (prepared: string, id: string) => { const result = await subscription('answer', prepared, id, {}); return { state: result.state, value: result.bytes }; },
-    (x: unknown) => x, ModelDisclosureRefused, modelLaunch);
+    (x: unknown) => x, ModelDisclosureRefused, modelLaunch, false);
   let claims = 0;
   const shared = { admit: async () => {
     expect(activeJournal.view.order.find(t => t.requestedAction)?.intent).toBeDefined(); claims++; return null;
@@ -388,8 +388,8 @@ it('the shipped model wrapper never releases an invocation that already reached 
   appendGroupCarry(w.destination, w.source, scope, permission(), true, start + 3600_000, () => false); w.source.close();
   let calls = 0;
   const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
-    'ModelDisclosureRefused', 'modelLaunch', `return (${modelFunction});`)(w.destination, async () => {}, () => true, () => true,
-    async () => { calls++; w.destination.view.modelCalls.total++; throw new ModelDisclosureRefused(); }, ModelDisclosureRefused, createModelLaunchBoundary());
+    'ModelDisclosureRefused', 'modelLaunch', 'conversationSession', `return (${modelFunction});`)(w.destination, async () => {}, () => true, () => true,
+    async () => { calls++; w.destination.view.modelCalls.total++; throw new ModelDisclosureRefused(); }, ModelDisclosureRefused, createModelLaunchBoundary(), false);
   const bindings = { now: () => friday9, stopped: () => false, groupDisclosure: async () => true, checkOutbound: () => {},
     prepareModel: () => '{}', model, send: async () => { throw Error('must not send'); } };
   const worker = createJournalWorker(w.destination, bindings);

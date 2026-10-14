@@ -1,0 +1,10 @@
+{
+  "source": "step1f-firstrun-1014-records/proof3/pane-captures.jsonl",
+  "updateId": 840342692,
+  "crop": "last 14 lines, exact recorded bytes",
+  "pane": {
+    "at": 1791964364.689773,
+    "name": "instar20-5f382e6a795c8734501b254c",
+    "capture": "        .\"},\"memory\":[],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}\n\n⏺ Done. Wrote STEP1F-CEDAR-943 to first-run-proof.txt, read it back and confirmed the match, and\n  calculated 17 * 23 + 5 = 396. Result JSON written to the conversation output file.\n\n⏺ Ran 1 stop hook\n  ⎿  Stop hook error: Failed with non-blocking status code: /bin/sh: node: command not found\n\n✻ Cogitated for 11s · done 12:52 AM\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents"
+  }
+}

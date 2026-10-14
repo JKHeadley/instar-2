@@ -13,6 +13,7 @@ import { subscriptionActivationEndAllowed } from './subscription-window.js';
 // entry is named here. The two modules import each other (see the cycle note in that file).
 import { codexSubscriptionDoorway } from './production-codex-provider.js';
 import { sessionLaunchFlags } from './production-session-driver.js';
+import { conversationSessionPolicy } from './production-conversation-session.js';
 import { SESSION_WORK_RESIDUAL, sessionWorkPolicy } from './production-session-work.js';
 import type { ConfinedProviderRoute, ProviderResponseEvidenceDraft } from './provider-invocation.js';
 
@@ -726,12 +727,14 @@ export function claudeSubscriptionStatusAccepted(status: unknown,
 export const SUBSCRIPTION_SESSION_FRAMING = 'preview-session-work-v1';
 export const subscriptionSessionPolicy = (model: string) => sessionWorkPolicy({ framing: SUBSCRIPTION_SESSION_FRAMING,
   framework: 'claude-code', model, launch: sessionLaunchFlags('claude-code', true) });
+export const subscriptionConversationSessionPolicy = (model: string) => conversationSessionPolicy({ framing: SUBSCRIPTION_SESSION_FRAMING,
+  framework: 'claude-code', model, launch: sessionLaunchFlags('claude-code', true) });
 /** The activation check for a session grant: the shared Claude record checks on the session policy
  * digest, plus the operator's written acceptance of the admitted-session residual. */
 export function validateSubscriptionSessionActivation(record: SubscriptionActivationRecord,
   profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile, model: string, now: number,
-  journalEnd?: number): void {
-  validateClaudeActivation(record, profile, model, now, encoded(subscriptionSessionPolicy(model)).hash, journalEnd);
+  journalEnd?: number, conversation = false): void {
+  validateClaudeActivation(record, profile, model, now, encoded((conversation ? subscriptionConversationSessionPolicy : subscriptionSessionPolicy)(model)).hash, journalEnd);
   ensure(record.acceptedResiduals.includes(SESSION_WORK_RESIDUAL), 'session work grant does not accept the admitted-session residual');
 }
 /** Before every delegated Claude session: the exact executable, the login home's identity and
@@ -818,6 +821,10 @@ export interface SubscriptionSessionDoorway {
   readonly framework: import('./production-session-driver.js').SessionFramework;
   /** The harness executable's name, which the admission hook stops by exact PID at the call ceiling. */
   readonly harness: string;
+  /** Adapter-owned conversation policy; absent for workers not yet installed for it. */
+  readonly conversation?: Readonly<{ policy(model: string): ReturnType<typeof conversationSessionPolicy>;
+    validateActivation(record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfileRef,
+      model: string, now: number, journalEnd?: number): void }>;
   validateActivation(record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfileRef,
     model: string, now: number, journalEnd?: number): void;
   admit(input: Readonly<{ profile: ProviderSubscriptionProfileRef; io: SubscriptionProviderIO & Partial<Readonly<{
@@ -852,7 +859,10 @@ export const SUBSCRIPTION_DOORWAYS: Readonly<Record<string, SubscriptionDoorway>
       createClaudeCodeSubscriptionRoute(framing === undefined ? rest
         : { ...rest, framing: asSubscriptionFraming(framing) }),
     session: Object.freeze({ framing: SUBSCRIPTION_SESSION_FRAMING, framework: 'claude-code' as const, harness: 'claude',
-      validateActivation: validateSubscriptionSessionActivation, admit: admitClaudeSubscriptionSession }) }),
+      validateActivation: validateSubscriptionSessionActivation, admit: admitClaudeSubscriptionSession,
+      conversation: Object.freeze({ policy: subscriptionConversationSessionPolicy,
+        validateActivation: (record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfileRef,
+          model: string, now: number, journalEnd?: number) => validateSubscriptionSessionActivation(record, profile, model, now, journalEnd, true) }) }) }),
   'codex-cli-subscription': codexSubscriptionDoorway(),
 });
 /** The doorway an existing installation used before doorways were selectable. */
