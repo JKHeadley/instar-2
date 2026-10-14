@@ -20,7 +20,7 @@ Claude, Codex and native tool turns: acquire missing information through existin
 authorized reads, cite it, and report actual failed attempts. It changes no tool
 authority or resource limit; text-only turns retain their no-tools instruction.
 
-## Continuing conversation session (experimental component)
+## Continuing conversation session
 
 `production-conversation-session.ts` composes the existing Eight-owned session
 driver with the session-work admission, resource lease and durable edge interfaces.
@@ -32,11 +32,9 @@ a closed harness turn and no unresolved delegated child. The host remains the
 sender and must retain intake before calling the port, record the returned answer,
 and enforce commitment, correction and completion evidence before sending.
 
-This is an offline component, not an installed conversation route or a launch
-option. The existing preview and production launchers do not call it. Its tests
-include the real production session driver over simulated physical I/O, not a live
-harness or Telegram proof. Foundation intake/effect/judgment integration and the
-copy-room launch remain the tracked work `session-mouth-copy-1013`.
+Its tests include the real production session driver over simulated physical I/O,
+not a live harness or Telegram proof. The journal launcher wiring below is step 1;
+foundation intake/effect/judgment integration remains in the later plan steps.
 
 The host must call `close()` at shutdown, expiry or idle stop. Closing waits for
 pending admission to return before releasing its lease, preventing a late resource
@@ -115,3 +113,21 @@ measured bound proposal is in the R5 progress handoff.
 
 - `harness-doorway-parity`: binds each supported harness and model doorway to certified code; the rest are marked unproven.
   Details: binds each supported harness and model doorway to its certified code and runtime; the rest are marked unproven or unsupported.
+
+## Continuing conversation (step 1, proof-room option)
+
+`production-conversation-session.ts` uses the existing admitted session driver for
+one bounded conversation across distinct journal inputs. `journal-agent.mjs` opts
+in with `--conversation-session on`; omission or `off` retains the current route.
+The existing session activation must match `subscriptionConversationSessionPolicy`
+in `production-provider.ts`; a scheduled-work policy is deliberately insufficient.
+No grant, login or installed runner is created by this option.
+
+The journal still admits input and owns memory, commitments, review and delivery.
+The port returns the model's result through the existing answer decoder; it never
+sends. The host calls `maintain()` on its work tick and `close()` on shutdown.
+One reservation spans all turns: at most 64 inputs, 128 calls and one hour, subject
+to the existing parent cap and tool admission checks. Unknown work is not replayed.
+Claude-specific policy and availability live in the provider adapter; Codex and
+native adapter parity remain the named follow-up units. This is not proof-room
+walk evidence, an after-send review implementation, or an intake/effect migration.

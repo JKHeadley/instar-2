@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import type { Result } from '../index.js';
+import { sessionWorkPolicy, SESSION_WORK_LIMITS } from './production-session-work.js';
 import type { SessionWorkConfig, SessionWorkEdge, SessionWorkEdgeClose, SessionWorkLease,
   SessionWorkOutcome, SessionWorkRequest } from './production-session-work.js';
 
@@ -11,6 +12,8 @@ export interface ConversationSessionPort {
   available(): boolean;
   run(request: SessionWorkRequest): Promise<SessionWorkOutcome>;
   close(): Promise<SessionWorkEdgeClose | null>;
+  /** The host calls this on its ordinary work tick, including between messages. */
+  maintain(): Promise<void>;
 }
 export interface ConversationSessionConfig extends SessionWorkConfig {
   /** Stable within this admitted launch; never a per-message identity. */
@@ -22,6 +25,17 @@ const slug = (text: string) => createHash('sha256').update(text).digest('hex').s
 const safeName = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,120}$/u;
 export const CONVERSATION_SESSION_EXIT_TEST =
   'each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released';
+
+/** One reserved allowance for a proof-room conversation. The parent cap still decides
+ * whether it fits; a turn never refreshes it. */
+export const CONVERSATION_SESSION_LIMITS = Object.freeze({ ...SESSION_WORK_LIMITS,
+  maxStepsPerLaunch: 64, maxCallsPerStep: 128, deadlineMs: 3_600_000 });
+export function conversationSessionPolicy(input: Parameters<typeof sessionWorkPolicy>[0]) {
+  const base = sessionWorkPolicy(input);
+  return Object.freeze({ ...base, admission: Object.freeze({ ...base.admission, allowance: CONVERSATION_SESSION_LIMITS.maxCallsPerStep }), limits: CONVERSATION_SESSION_LIMITS,
+    exitTest: CONVERSATION_SESSION_EXIT_TEST,
+    prompt: conversationSessionPrompt({ question: '<task>', context: '<context>' }, '<result destination>') });
+}
 
 /** The memory packet is quoted data; the owner question remains a question. No capability is
  * invented here. The driver's admitted tools and current account grants decide actual access. */
@@ -134,7 +148,22 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           child = take(driver.launch({ operation: claim, claim, artifact: config.artifact,
             incarnation: config.incarnation, workingScope: config.workingScope, handles: [] }));
           await lease.attach(child);
-        } else ensure(request.authority === edge.authority, 'conversation authority changed');
+        } else {
+          ensure(request.authority === edge.authority, 'conversation authority changed');
+          ensure(!closed && !config.stopped() && config.now() < edge.budget.deadline,
+            'conversation stopped or expired before reconnect');
+          ensure(child !== null && lease !== null, 'conversation child or resource lease missing');
+          const observed = take(driver.observe({ operation: request.operation, processIdentity: child }));
+          if (observed.phase === 'exit-observed') {
+            // Only between completed turns. The driver resumes its retained transcript or
+            // rebuilds from agent-owned records before accepting the NEW intake. No replay
+            // of the previous turn, no new admission and no replenished call allowance.
+            child = take(driver.launch({ operation: claim, claim, artifact: config.artifact,
+              incarnation: config.incarnation, workingScope: config.workingScope, handles: [] }));
+            await lease.attach(child);
+          } else ensure(observed.phase !== 'pause-observed' && observed.phase !== 'uncertain',
+            `conversation reconnect needs reconciliation: ${observed.detail}`);
+        }
         ensure(!closed && !config.stopped() && config.now() < edge.budget.deadline, 'conversation stopped or expired before delivery');
         const admission = config.io.admissionState(claim);
         ensure(admission !== null && !admission.refused, 'conversation admission unreadable or allowance refused');
@@ -176,6 +205,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         if (failure !== null || closed) await close();
       }
     };
-    return Object.freeze({ owner: 'part-eight' as const, available, run, close });
+    const maintain = async (): Promise<void> => {
+      if (closed || config.stopped() || count >= config.maxSteps
+        || edge !== null && config.now() >= edge.budget.deadline) await close();
+    };
+    return Object.freeze({ owner: 'part-eight' as const, available, run, close, maintain });
   });
 }

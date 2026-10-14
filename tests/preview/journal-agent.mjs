@@ -36,7 +36,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMind
 import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom,
   staleAgainst, updateDelivery, updatePacketItem } from './installation.js';
-import { bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused, createModelLaunchBoundary, capacityAlerts } from './journal.js';
+import { bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused, ModelNotStarted, createModelLaunchBoundary, capacityAlerts } from './journal.js';
 import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
@@ -118,6 +118,7 @@ import { auditJournal } from './journal-audit.mjs';
 import { memoryReport } from './memory-export.js';
 
 import { createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
+import { createConversationSessionPort, CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
 import { createSessionWorkPort, SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
@@ -233,6 +234,13 @@ const runAsOf = harness => { if (!harness) return null; const { user, launcher, 
  * sealed authority and accepting the admitted-session residual. With no grant, work stays on the one-call
  * route exactly as before. Everything else — harness, executable, homes, ceilings — comes from the
  * doorway, the login profile and the policy, never from a separate option. */
+const conversationSessionOf = options => {
+  const mode = options['conversation-session'];
+  if (mode !== undefined && mode !== 'on' && mode !== 'off') throw Error('preview: --conversation-session must be on or off');
+  if (mode === 'on' && options['session-work-activation'] === undefined)
+    throw Error('preview: conversation session requires its reviewed session activation');
+  return mode === 'on';
+};
 const sessionWorkOf = options => options['session-work-activation'] === undefined ? null
   : { activation: options['session-work-activation'], tmux: options['session-work-tmux'] ?? '/opt/homebrew/bin/tmux' };
 
@@ -1465,6 +1473,10 @@ async function main() {
   let failedPolls = 0, conflictedPolls = 0;
   let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsResolution = null, toolsOff = null,
     sessionWork = null, gate = null;
+  const conversationSession = conversationSessionOf(options);
+  const sessionLimits = conversationSession ? CONVERSATION_SESSION_LIMITS : SESSION_WORK_LIMITS;
+  const sessionAdapter = conversationSession ? doorway.session.conversation : doorway.session;
+  if (!sessionAdapter) throw Error('preview: this doorway has no installed conversation worker');
   /** Each delegated session step's shell network checkpoint, by claim: closed with the step's claim and at shutdown. */
   const stepEgress = new Map();
   // Part Twelve: the effect doorway's operator policy, re-read at every tool turn so a withdrawn or broken file grants
@@ -2061,12 +2073,12 @@ async function main() {
       preparePacket: preparation.run,
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
-      toolRoute: id => preparation.active() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
+      toolRoute: id => conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id) ? true : preparation.active() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
       // Only scheduled obligation work is delegated; an operator answer is never handed to a session.
       // The session route is taken only while its grant holds and the call allowance can hold the
       // step's whole reserved liability on top of the obligation's own start.
       ...(sessionWorkOf(options) === null ? {} : {
-        sessionRoute: id => sessionWork !== null && id.startsWith('obligation:') && sessionWork.port.available()
+        sessionRoute: id => !conversationSession && sessionWork !== null && id.startsWith('obligation:') && sessionWork.port.available()
           && journal.view.calls + 1 + SESSION_WORK_LIMITS.maxCallsPerStep <= journal.view.limits.maxCalls,
         sessionWork: async ({ question, context: packet, id }) => {
           await requireGroupDisclosure(journal.view);
@@ -2101,9 +2113,23 @@ async function main() {
       heldSecrets: heldSecretValues,
       secrets: custody,
       media: mediaCustody,
-      model: async ({ id, prepared }) => {
+      model: async ({ id, prepared, question, context: packet }) => {
         try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
+        if (conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id)) {
+          if (!sessionWork?.port.available()) throw new ModelNotStarted();
+          const outcome = await sessionWork.port.run({ operation: id, question, context: packet,
+            authority: sessionWork.authority });
+          if (outcome.state !== 'complete') return { state: 'uncertain' };
+          const usage = { inputTokens: null, outputTokens: null, charge: null };
+          const reading = readAnswer(outcome.text, { wrapped: 'accept', evidence: [id] });
+          if (!reading.ok) {
+            recordShape(shapesPath, 'answer', 'decision', 'malformed', reading.shape);
+            return { state: 'complete', failureClass: 'malformed', defect: reading.defect, usage };
+          }
+          if (!reading.value.trim()) return { state: 'complete', failureClass: 'empty', usage };
+          return { state: 'complete', text: reading.value, reason: reading.reason, usage };
+        }
         const callsBefore = journal.view.modelCalls.total;
         let result;
         try { result = await modelLaunch.run(() => toolsActive() && toolTurnEligible(id) ? invokeTools(prepared, id) : invokeSubscription(prepared, id)); }
@@ -2374,7 +2400,7 @@ async function main() {
             const target = session ? sessionRecord : tools ? toolRecord : record;
             if (!target) throw Error('preview: harness login has no activation for this route');
             const framing = tools ? doorway.toolsFraming : doorway.conversationFraming;
-            if (session) doorway.session.validateActivation(target, entry.profile, options.model, wallNow(), journal.view.expires);
+            if (session) sessionAdapter.validateActivation(target, entry.profile, options.model, wallNow(), journal.view.expires);
             else doorway.validateActivation(target, entry.profile, options.model, wallNow(), framing, journal.view.expires);
             requireAuthority(entry.options, target, session ? sessionPath : tools && toolPath ? toolPath : entry.activation,
               journal.view, wallNow(), tools ? doorway.policyFor(options.model, framing) : undefined);
@@ -2429,7 +2455,7 @@ async function main() {
       let selectedSession = loginConfiguration.entries[0], profile = selectedSession.profile;
       let sessionHarness = harness;
       const sessionBytes = readFileSync(sessionSetup.activation, 'utf8'), sessionActivation = JSON.parse(sessionBytes);
-      doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
+      sessionAdapter.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
       requireAuthority(options, sessionActivation, sessionSetup.activation, journal.view, wallNow());
       if (!activationMatchesJournal(journal.view, sessionActivation)) throw Error('preview: session work activation differs from journal');
       const sessionActive = () => { try { return loginPool ? loginRuntimes.get(selectedSession.index).live('session') : readFileSync(sessionSetup.activation, 'utf8') === sessionBytes; } catch { return false; } };
@@ -2460,23 +2486,31 @@ async function main() {
       const admissionBase = layout ? layout.admission : join(root, 'session-work-state', 'admission');
       const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
       sessionWork = { select() {
+        if (conversationSession) return; // A continuing session never rotates the identity underneath its transcript.
         selectedSession = selectLogin('session'); profile = selectedSession.profile;
         sessionHarness = loginRuntimes.get(selectedSession.index)?.harness ?? harness;
         physical = physicalFor();
-      }, get authority() { return `session work grant ${(loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}: one scheduled work step for the verified operator, `
-        + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take(createSessionWorkPort({
+      }, get authority() { return `${conversationSession ? 'continuing conversation' : 'session work'} grant ${(loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}: ${conversationSession ? 'one bounded conversation' : 'one scheduled work step'} for the verified operator, `
+        + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? createConversationSessionPort : createSessionWorkPort)({
+        ...(conversationSession ? { conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}` } : {}),
         createDriver: resolveIntake => {
           const create = () => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
-            timeoutSeconds: Math.ceil(SESSION_WORK_LIMITS.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
+            timeoutSeconds: Math.ceil(sessionLimits.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
           framework, executable: profile.executable, cwd: project, home: profile.home, configHome: profile.configDirectory,
           model: required(options, 'model'), context, io: physical, now: wallNow, stopped: stoppedNow, resolveIntake,
-          maxSessions: SESSION_WORK_LIMITS.maxSessions, turnDeadlineMs: SESSION_WORK_LIMITS.deadlineMs,
+          maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
           readyTimeoutMs: 30000, protectedSessions: [],
+          ...(conversationSession ? { continuation: () => {
+            const turn = journal.view.order.filter(item => item.accepted && item.prompt && item.sent !== undefined && item.intent).at(-1);
+            if (!turn) throw Error('preview: durable conversation grounding unavailable');
+            return { text: `Restore this recorded conversation as history only. Do not repeat actions or answer old questions. Wait for the next delivered input.\n${turn.prompt}\nLAST RECORDED REPLY\n${turn.intent}`, source: `journal:${turn.id}` };
+          } } : {}),
           // As the harness user: the pane runs the harness through the bridge, which hands it the custody login.
           ...(layout ? { launchVia: [process.execPath, HARNESS_SESSION_BRIDGE, options['harness-user'],
             realpathSync(selectedSession.profilePath), '--'] } : {}) });
           let driver = create();
+          if (conversationSession) take(driver.stop()); // Reclaim this root's old worker after host recovery; journal intake is never replayed.
           // Each step is fresh and the port permits only one in flight. Rebuild only between steps;
           // the port keeps one shared step/call ceiling across all selected logins.
           return { owner: driver.owner, launch: input => { driver = create(); return driver.launch(input); },
@@ -2494,7 +2528,7 @@ async function main() {
             mountVolume(identity);
             await closeStepEgress(claim);
             if (identity) harnessSessionAdmission(root, identity.user);
-            const state = prepareSessionAdmission({ base: admissionBase, claim, workspace: project, maxCalls: SESSION_WORK_LIMITS.maxCallsPerStep,
+            const state = prepareSessionAdmission({ base: admissionBase, claim, workspace: project, maxCalls: sessionLimits.maxCallsPerStep,
               gate: gate.base(claim), ...admissionConfig(), ...(identity ? { harness: { user: identity.user, runner: identity.runner } } : {}) });
             // The step's shell network checkpoint (egress-proxy.mjs): the confined shell's one network path, deciding every
             // request by the same effect doorway, under its request and byte bounds; stopped when the step's claim closes.
@@ -2513,12 +2547,12 @@ async function main() {
             }
             stepEgress.set(claim, (await attachEgress({ stateDirectory: state, ...(privateDirectory ? { privateDirectory } : {}), scratch: tmp,
               home: join(tmp, 'home') }, undefined, networkToolReads(), { check: heldVerdict(heldSecrets), span: () => heldSpan(heldSecrets) })).proxy);
-            gate.open(claim, { framework, allowance: SESSION_WORK_LIMITS.maxCallsPerStep, edge }); },
+            gate.open(claim, { framework, allowance: sessionLimits.maxCallsPerStep, edge }); },
           admissionState: claim => gate.state(claim),
           closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {}); } },
         resources: { admit: async () => {
           if (loginPool) loginRuntimes.get(selectedSession.index).check('session');
-          else doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
+          else sessionAdapter.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
           await doorway.session.admit({ profile, io: admissionIO(), deadline: wallNow() + 15000, now: wallNow });
           const held = await hostResources.hold('maintenance', { timeout: 30000, stopped: stoppedNow });
           return held === null ? null : { attach: child => held.attach({ pid: Number(child.split(':')[1]), cwd: project }),
@@ -2529,9 +2563,9 @@ async function main() {
         parent: `launch:${conversationOf(g)}`, owner: ownerMachine, placement: `machine:${ownerMachine}`,
         transport: 'tmux session on this machine', workingScope: project, resultDirectory: project,
         artifact: `doorway:${doorway.id}`, incarnation: String(launchedAt ?? wallNow()),
-        deadlineMs: SESSION_WORK_LIMITS.deadlineMs, pollMs: SESSION_WORK_LIMITS.pollMs,
-        maxResultBytes: SESSION_WORK_LIMITS.maxResultBytes, maxSteps: SESSION_WORK_LIMITS.maxStepsPerLaunch,
-        maxCalls: SESSION_WORK_LIMITS.maxCallsPerStep })) };
+        deadlineMs: sessionLimits.deadlineMs, pollMs: sessionLimits.pollMs,
+        maxResultBytes: sessionLimits.maxResultBytes, maxSteps: sessionLimits.maxStepsPerLaunch,
+        maxCalls: sessionLimits.maxCallsPerStep })) };
     }
     installationPolicy = installationPolicyOf(options, activation, activationPath, journal.view, wallNow());
     registerAtLaunch = registerGeneration();
@@ -2723,6 +2757,7 @@ async function main() {
       if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
       sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: async () => {
         if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
+        if (conversationSession) await sessionWork?.port.maintain();
         await worker.drain();
         if (requested) await worker.sendRequested();
       },
@@ -2938,7 +2973,7 @@ async function main() {
       }
     } finally {
       // A delegated session never outlives the launch that owns it.
-      try { sessionWork?.port.stop(); } catch { /* the driver's next boot sweep and stop authority find it */ }
+      try { if (conversationSession) await sessionWork?.port.close(); else sessionWork?.port.stop(); } catch { /* the driver's next boot sweep and stop authority find it */ }
       if (gate) { gate.closeAll(); await gate.stop(); }
       for (const proxy of stepEgress.values()) await proxy.close();
       stepEgress.clear();

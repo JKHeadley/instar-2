@@ -206,3 +206,32 @@ it('refuses unbounded or escaped configuration and accepts its bounded neighbors
     { resultDirectory: '/outside' }, { conversation: '../escape' }, { owner: ' ' },
     { resources: undefined as never }]) expect(createConversationSessionPort({ ...f.config, ...patch }).kind).toBe('Refused');
 });
+
+it('reconnects only between completed turns without a second admission or replaying the first input', async () => {
+  const f = fixture();
+  let alive = true, launches = 0;
+  const create = f.config.createDriver;
+  const port = value(createConversationSessionPort({ ...f.config, createDriver: resolve => {
+    const driver = create(resolve);
+    return { ...driver, launch: input => { launches++; alive = true; return driver.launch(input); },
+      observe: () => alive ? driver.observe({ operation: 'observe', processIdentity: 'session:8:9' })
+        : { kind: 'Success', value: { phase: 'exit-observed', evidence: 'dead', detail: 'exited' } } as never };
+  } }));
+  expect((await port.run(f.request('first'))).state).toBe('complete');
+  alive = false;
+  expect((await port.run(f.request('second'))).state).toBe('complete');
+  expect(launches).toBe(2); expect(f.opened).toHaveLength(1); expect(f.delivered).toHaveLength(2);
+  expect(f.rows.filter(row => row.type === 'SessionWorkEdge')).toHaveLength(1);
+  await port.close();
+});
+
+it('the host work tick releases an idle session at its deadline without a new message', async () => {
+  const f = fixture();
+  await f.port.run(f.request('message-1'));
+  await f.port.maintain();
+  expect(f.counts().stoppedCount).toBe(0);
+  f.advance(2000);
+  await f.port.maintain();
+  expect(f.counts()).toEqual({ launched: 1, stoppedCount: 1, released: 1 });
+  expect(f.port.available()).toBe(false);
+});
