@@ -31,9 +31,6 @@ Decision: train-30-desk-C | Abort only the pool merge for the named ownership/st
 Decision: train-30-desk-D | Run targeted direct consumers, journal and pinned checks on WSL; report untouched physical macOS/e2e/integration checks separately for Studio. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-30-PROGRESS.md
 Decision: train-30-register | Regenerate owner pins and register using the downloaded desk chain; generated conflicts temporarily retain the previous publication until replay. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-30-PROGRESS.md
 
-simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges, local resolution preserving both behaviors, existing desk regeneration and consumer tests. No new host, pool, store or classifier. Durable intake and authority guard start; exact receipts guard completion; shared call allowance, lifetime and stop guard execution. The incompatible pool returns to its owning unit rather than growing an unreviewed replacement here. Offline recorded replay is not unattended live acceptance.
-80/20: Target changed tests, direct source consumers and named journal/pin checks only, in bounded foreground batches. Studio owns the full gate and copy walk.
-VERDICT: author submission; independent review belongs to the desk
 
 Deferral: tests/preview/journal-conversation-session.test.ts:393 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
 Deferral: tests/preview/journal-conversation-session.test.ts:426 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
@@ -52,3 +49,7 @@ Deferral: tests/preview/journal-conversation-session.test.ts:441 | not-a-deferra
 Deferral: tests/preview/journal-conversation-session.test.ts:446 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
 
 Validation: Core consumer tests 163/163; architecture, build and typecheck pass; pinned-text checks 89/89; lint has no issues and register check is true. Register publication is regenerated from 0881f380. Broader physical-host results are reported separately.
+
+simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges, local resolution preserving both behaviors, existing desk regeneration and consumer tests. No new host, pool, store or classifier. Durable intake and authority guard start; exact receipts guard completion; shared call allowance, lifetime and stop guard execution. The incompatible pool returns to its owning unit rather than growing an unreviewed replacement here. Offline recorded replay is not unattended live acceptance.
+80/20: Target changed tests, direct source consumers and named journal/pin checks only, in bounded foreground batches. Studio owns the full gate and copy walk.
+VERDICT: author submission; independent review belongs to the desk
