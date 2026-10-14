@@ -19,7 +19,7 @@ import { offlineProfile, successiveWorld } from './successive-fixture.js';
 import { encoded } from './canonical.js';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { SELF_HOST_CONTEXT, doorwayProvider, selfHost } from './self-host.mjs';
-import { CONFINEMENT_LIMITS, confinedRelease, createReleaseLeaf, createSelfHostHarness, latchStop, openRecordLog, readDurable, stoppedAt } from './self-host-harness.mjs';
+import { CONFINEMENT_LIMITS, confinedRelease, createReleaseLeaf, createSelfHostHarness, latchStop, openRecordLog, readDurable, selfHostCompositionEvidence, stoppedAt } from './self-host-harness.mjs';
 import { dispatchOwnedProvider, ownerStoreFacts, providerAttemptsOf, providerStores } from './self-host-owners.ts';
 import { currentRuntime } from '../../scripts/composition-digest.mjs';
 import { hashBytes } from '../../src/facts/index.js';
@@ -133,7 +133,7 @@ describe.each(Object.keys(DOORWAY_CONFORMANCE))('native compositions through doo
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 240000);
 
-  it('certifies the exact composition exercised by the native contract', () => {
+  it('reports the declared certification of the exact composition exercised by the native contract', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'native-contract-certificate-')));
     try {
       // The certified tuple is this composition: its declared conformance digest is the running adapter's artifact, on this
@@ -141,6 +141,17 @@ describe.each(Object.keys(DOORWAY_CONFORMANCE))('native compositions through doo
       const tuple = parityMatrix().harnessTuples.find(row => row.harness === SELF_HOST_HARNESS && row.doorway === id && row.mode === 'self-hosting');
       const described = createSelfHostHarness({ root, context: SELF_HOST_CONTEXT, stopped: () => false, now: () => NOW,
         log: openRecordLog(root, SELF_HOST_CONTEXT) }).adapter.describe();
+      expect(tuple).toBeDefined();
+      if (tuple.status === 'unproven') {
+        // A pending Studio contract run is not a certificate. The adapter must say the same thing,
+        // without changing the declaration or turning the preceding full contract into a skip.
+        expect(tuple.reason).toEqual(expect.any(String));
+        expect(tuple.reason.trim().length).toBeGreaterThan(0);
+        expect(tuple.conformance).toBeUndefined();
+        expect(selfHostCompositionEvidence().supported).toBe(false);
+        expect(described.conformance).toBe(`self-host:unproven:${described.artifact}`);
+        return;
+      }
       expect(tuple).toMatchObject({ status: 'supported', conformance: [described.artifact], runtime: [currentRuntime()],
         artifact: ['createSelfHostHarness@tests/preview/self-host-harness.mjs'] });
       expect(described.conformance).toBe(`self-host:${tuple.conformance[0]}`);
