@@ -33,4 +33,6 @@ Decision: step1b-host-1013-store-declarations | Declare bounded retained host me
 
 simplestRobustRoute: Reuse the admitted physical driver, model/tool checkpoint, journal reservation and host work tick behind the existing versioned port. The added owner snapshot prevents busy-input loss and replay across restart; durable model charges prevent replenishing in-flight exposure; exact process generations prevent reusing dead identity. No second scheduler, sender, grant store or provider loop is added. Start guards remain current ownership, signed activation, resource admission and durable parent liability; end guards require correlated reply/turn end; stop/spend/custody limits remain mandatory. No unattended live completion is claimed.
 80/20: Target fake-worker lifecycle, physical-driver receipts, durable store reopen and real local admission forwarding, then direct importers and static gates. The desk's real copy walk and macOS certificate remain the acceptance boundary specified by the brief.
+Generated register: regenerated from source commit 71cd6486db83dd0b358d9a9f60f599876259a115; includes both store declarations and current source wiring. This is shape-only replay evidence, not a new runtime certificate.
+
 VERDICT: author submission for the desk gate; no independent convergence or live production readiness claim
