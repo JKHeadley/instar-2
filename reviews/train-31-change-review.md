@@ -55,6 +55,8 @@ Prompt finding: feadb66b8ad1 | protocol-literal | Existing instruction or protoc
 Skip: tests/platform/custody-platform.test.ts:144 | scope=Linux prlimit and proc resource tests cannot run on macOS; the portable distribution and socket cases still run
 Skip: tests/platform/custody-platform.test.ts:185 | scope=Linux exempts UID zero from RLIMIT_NPROC; the one-fork denial proof runs under the non-root WSL UID
 
+Decision: train-31-parity | The merged portable tests assumed supported macOS conformance. Assert the actual reviewed unproven posture, and exercise certificate acceptance and drift refusal against an explicitly synthetic in-memory fixture; never modify the shipped declaration or claim a native run. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-31-PROGRESS.md
+
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges and the existing publication chain with direct consumer verification. No new mechanism or policy. Existing admission, reservation, custody, stop and durable dispatch enforce start, limit and end guards. Recorded replay is offline evidence; unattended live acceptance remains the desk gate.
 80/20: Target changed tests and direct importers plus the named journal/register and pinned checks, without a full suite or transitive closure.
 VERDICT: author submission; independent review belongs to the desk

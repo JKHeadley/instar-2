@@ -1,13 +1,46 @@
 import { expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { currentRuntime } from '../../scripts/composition-digest.mjs';
+import { compositionClosure, compositionDigest, currentRuntime } from '../../scripts/composition-digest.mjs';
 import { buildCoreIfAbsent, currentPlatform, lintClientImports, lintHarnessNames, lintParityRegister, lintReplacedStores,
   NATIVE_HARNESS, parityMatrix, registerDeclarationSources, shippedClientFiles } from '../../scripts/check-architecture.mjs';
 // @ts-expect-error The self-hosting harness is JavaScript.
 import { selfHostCompositionEvidence } from '../preview/self-host-composition.mjs';
 
 const read = (path: string) => { try { return readFileSync(path, 'utf8'); } catch { return null; } };
+
+// Synthetic certification exercises both sides of the checker without claiming that this
+// combined build has passed the Studio's native conformance run. Never written to declarations.
+function certifiedFixture() {
+  const sources = structuredClone(registerDeclarationSources()) as Record<string, { id: string; requiredFacts: { metrics: string[] } }[]>;
+  const harness = 'src/assembly/harness.declarations.json';
+  const prefix = 'harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.';
+  const entries = ['tests/preview/self-host.mjs', 'scripts/slice-ts-loader.mjs', 'deploy/macos/fixed-worker/worker.sb'];
+  const closure = compositionClosure(entries, read, harness);
+  expect(closure.complete).toBe(true);
+  const runtime = currentRuntime();
+  const digest = compositionDigest(runtime, closure.files, read);
+  expect(digest).toMatch(/^sha256:[a-f0-9]{64}$/u);
+  const row = sources[harness]![0]!;
+  row.requiredFacts.metrics = row.requiredFacts.metrics.filter(metric => !metric.startsWith(prefix));
+  row.requiredFacts.metrics.push(...[
+    'supported', 'artifact=createSelfHostHarness@tests/preview/self-host-harness.mjs',
+    'route=claude-code-subscription@src/assembly/production-provider.ts',
+    `entries=${entries.join(',')}`, `runtime=${runtime}`, `conformance=${digest}`,
+    'evidence=tests/preview/native-harness-contract.test.ts#native composition honours the harness contract through doorway claude-code-subscription',
+  ].map(value => prefix + value));
+  return sources;
+}
+
+it('reports the combined build as unproven until the native Studio contract is rerun', () => {
+  const sources = registerDeclarationSources();
+  const tuple = parityMatrix(sources).harnessTuples.find(tuple => tuple.harness === NATIVE_HARNESS && tuple.doorway === 'claude-code-subscription');
+  expect(tuple).toMatchObject({ status: 'unproven', reason: expect.stringContaining('desk owns the macOS contract') });
+  expect(tuple!.conformance).toBeUndefined();
+  expect(selfHostCompositionEvidence().supported).toBe(false);
+  expect(lintParityRegister(sources, read, ['claude-code-subscription'])).toEqual([]);
+});
+
 
 it('R30 flags a harness-name branch or a harness-specific adapter outside its adapter, and passes the shipped runner', () => {
   const flagged = lintHarnessNames({
@@ -50,7 +83,7 @@ it('R45 refuses a live consumer of a replaced store and an undeclared reader, an
 });
 
 it('R105 derives the parity matrix from the register declarations and refuses a cell without its evidence', () => {
-  const sources = registerDeclarationSources();
+  const sources = certifiedFixture();
   expect(existsSync('src/conversation/parity.register.json')).toBe(false);
   const matrix = parityMatrix(sources);
   expect(matrix.channels).toEqual(['slack', 'telegram']);
@@ -157,7 +190,7 @@ it('R105 derives the parity matrix from the register declarations and refuses a 
 
 it('R105 decides a certified composition on the host that can decide it: the build it needs, and the platform it names', () => {
   const harness = 'src/assembly/harness.declarations.json';
-  const sources = registerDeclarationSources() as Record<string, { id: string; requiredFacts: { metrics: string[] } }[]>;
+  const sources = certifiedFixture();
   const where = 'preview-self-host-native × claude-code-subscription';
   const elsewhere = currentPlatform() === 'darwin' ? 'linux' : 'darwin';
   const onPlatform = (platform: string, edit: (metrics: string[]) => void = () => {}) => {
