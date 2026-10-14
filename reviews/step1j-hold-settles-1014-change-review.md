@@ -46,3 +46,5 @@ Decision: step1j-settlement | Use the existing final-failure notice after exhaus
 Decision: step1j-grounding | Name live search/fetch from the session policy admission, without changing the reviewer authority or forcing B07 to fail. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1j-hold-settles-1014-PROGRESS.md
 
 Generated register: shape-only replay from source commit 47aac40f9f1c260a01ba9ff66f87dfb0fc863cf6; no runtime certificate or authority declaration changed.
+
+Deadline validation: targeted tests also refuse zero, negative, fractional, NaN and infinite deadlines before custody or dispatch; finite positive revision deadlines execute under the same parent cap.

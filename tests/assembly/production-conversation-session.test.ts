@@ -393,3 +393,11 @@ it('a revision deadline expires without dispatch, and cannot extend the parent d
   expect(g.state().deadline).toBe(3000);
   await f.port.close(); await g.port.close();
 });
+
+it.each([0, -1, 1.5, NaN, Infinity])('refuses a malformed revision deadline %s before custody or dispatch', async deadlineAt => {
+  const f = fixture();
+  await expect(f.port.run({ ...f.request('invalid'), deadlineAt })).rejects.toThrow(/finite input deadline/);
+  expect(f.delivered).toEqual([]);
+  expect(f.state()?.inputs ?? []).toEqual([]);
+  await f.port.close();
+});
