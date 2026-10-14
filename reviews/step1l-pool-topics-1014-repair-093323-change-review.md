@@ -25,3 +25,5 @@ Decision: step1l-repair-093323-completion | Reconcile an existing pool completio
 simplestRobustRoute: This is the simplest robust route: reuse the boolean wait result, durable queue, maintenance pass, original lifetime and stop, existing quota selector and completion record. No new state, coordinator or retry mechanism. Prepared intent cannot replace fresh capacity and completed evidence cannot be forgotten because capacity changed. No unattended production acceptance claim.
 80/20: Targeted topic pool and direct journal consumer tests, typecheck, architecture/register and change-review checks; Studio owns full-suite and native acceptance.
 VERDICT: author submission for desk review; no independent convergence claimed
+
+Generated register: Published from source commit da6a34d3ed00cd763e10a2fc003479a3c8030a11 using build-register --replay; shape-only evidence, not native certification. Desk rehash and repin tools changed no owner or inventory pins.
