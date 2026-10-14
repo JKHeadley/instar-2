@@ -2562,7 +2562,7 @@ async function main() {
           store: createConversationHostStore(join(root, 'session-work-state', 'conversation.json'), key()),
           createAdapter: (topic, resolveDelivery) => createSessionConversationAdapter({ createDriver: resolve => config.createDriver(resolve, topic), io: config.io, resolveDelivery })
         }) : createSessionWorkPort)({
-        ...(conversationSession ? { conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires, authorized: sessionActive, currentAuthority: () => sessionWork.authority } : {}),
+        ...(conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires, authorized: sessionActive, currentAuthority: () => sessionWork.authority } : {}),
         createDriver: (resolveIntake, topic) => {
           const create = () => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),

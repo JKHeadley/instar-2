@@ -5213,7 +5213,26 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
     if (initial && (initial.forum === true) !== (view!.genesis.forum === true))
       throw Error('preview journal: forum mode differs from journal');
     if (!readOnly && compactable() && size > Math.max(compactBytes, snapshotBase * 2)) compact();
-    return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter,
+    // Read existing durable edges, including pre-compaction evidence. No gate state or
+    // allowance is recreated, and corrupt/unavailable records never mean completion.
+    const sessionWorkRecords = (): readonly (SessionWorkEdge | SessionWorkEdgeClose)[] => {
+      if (closed) throw Error('preview journal: recovery evidence closed');
+      const rows = [...retained];
+      const bytes = Buffer.alloc(size);
+      for (let read = 0; read < size;) {
+        const count = readSync(fd, bytes, read, size - read, read);
+        if (count === 0) throw Error('preview journal: recovery source shortened');
+        read += count;
+      }
+      for (let offset = 0; offset < bytes.length;) {
+        const decoded = decodeRow(bytes, offset, key);
+        if (!decoded) throw Error('preview journal: incomplete recovery evidence');
+        if (decoded.row.kind === 'session-work') rows.push(decoded.row);
+        offset = decoded.end;
+      }
+      return rows.flatMap(row => row.kind === 'session-work' && row.record.type !== 'SessionWorkEffect' ? [row.record] : []);
+    };
+    return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter, sessionWorkRecords,
       close: () => { if (!closed) { closed = true; closeSync(fd); } } };
   } catch (error) { if (!closed) closeSync(fd); throw error; }
 }

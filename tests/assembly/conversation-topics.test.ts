@@ -6,13 +6,16 @@ import type { HarnessInputDelivery, HarnessWorkerHandle } from '../../src/assemb
 import type { SessionWorkEdge, SessionWorkEdgeClose } from '../../src/assembly/production-session-work.js';
 import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
+import { nestedSessionWorkEdge, nestedSessionWorkClose } from '../../src/assembly/production-session-work.js';
+// @ts-expect-error the shipped admission checkpoint is JavaScript
+import { createAdmissionGate } from '../preview/admission-gate.mjs';
 const digest = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const tick = () => new Promise<void>(resolve => setTimeout(resolve, 1));
 async function until(test: () => boolean) { for (let i = 0; i < 500 && !test(); i++) await tick(); expect(test()).toBe(true); }
 
 function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16) {
   let state: ConversationTopicsState | null = null, now = 1000, live = 0, peak = 0, stopped = false, authorized = true, saveFails = false;
-  let batchOutput: string | undefined;
+  let batchOutput: string | undefined, evidenceUnreadable = false;
   const held = new Set<string>(), launches: { topic: string; worker: HarnessWorkerHandle }[] = [];
   const delivered: { topic: string; input: HarnessInputDelivery }[] = [], closed: string[] = [];
   const edges: (SessionWorkEdge | SessionWorkEdgeClose)[] = [];
@@ -24,6 +27,7 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16) {
     workingScope: '/scope', resultDirectory: '/scope/results', artifact: 'artifact', incarnation: 'boot',
     store: { load: () => structuredClone(state), save: next => { if (saveFails) throw Error('disk'); state = structuredClone(next); } },
     append: row => { edges.push(row); },
+    recoveryEdges: () => { if (evidenceUnreadable) throw Error('unreadable journal'); return edges; },
     resources: { admit: async () => { if (live >= resourceCap) return null; live++; peak = Math.max(peak, live); return { attach: async () => {}, release: async () => { live--; return true; } }; } },
     io: { modelCalls: () => { throw Error('must not count another topic transcript'); }, wait: tick,
       readResult: () => null, clearResult: () => {}, prepareAdmission: () => {}, closeAdmission: () => {},
@@ -51,6 +55,7 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16) {
   const request = (operation: string) => ({ operation, question: 'hello', context: 'shared memory: Wren; own topic history', authority: 'grant' });
   return { get port() { return port; }, config, request, held, launches, delivered, closed, edges,
     batchOutput: (text: string) => { batchOutput = text; },
+    unreadableEvidence: () => { evidenceUnreadable = true; },
     state: () => state!, counts: () => ({ live, peak }), advance: (ms: number) => { now += ms; },
     stop: () => { stopped = true; }, revoke: () => { authorized = false; }, failSave: () => { saveFails = true; },
     restart: (allowanceDeadline = config.allowanceDeadline) => { port = value(createConversationTopicsPort({ ...config, allowanceDeadline })); } };
@@ -265,3 +270,46 @@ it('an invalid recovered batch settles uncertain and does not wedge later input'
   expect((await f.port.run(f.request('7:later'))).state).toBe('complete');
   await f.port.close();
 });
+
+// A process restart constructs a fresh, empty admission gate. It must neither block
+// other topics nor reopen a claim whose tools might already have executed.
+it.each(['complete', 'missing', 'unreadable', 'open-child', 'uncertain-child', 'wrong-parent', 'bad-receipt'] as const)(
+  'fresh real admission gate recovers a batch with %s durable evidence', async evidence => {
+    const f = fixture();
+    const makeGate = () => createAdmissionGate({ append: (row: SessionWorkEdge | SessionWorkEdgeClose) => f.edges.push(row),
+      effects: {}, stopped: () => false, now: () => 1000 });
+    let gate = await makeGate();
+    f.config.io.prepareAdmission = (claim, edge) => { gate.open(claim, { framework: 'claude-code', allowance: edge.budget.calls, edge }); };
+    f.config.io.admissionState = claim => gate.state(claim);
+    f.config.io.closeAdmission = claim => { gate.close(claim); };
+    try {
+      await f.port.runBatch(['7:one', '7:two'].map(f.request));
+      const complete = structuredClone(f.state()), old = complete.topics['7']!;
+      const process = f.edges.find((row): row is SessionWorkEdge => row.type === 'SessionWorkEdge' && row.id === `${old.claim}:process`)!;
+      const child = nestedSessionWorkEdge(process, { id: 'child-1', tool: 'Task' }, 1000);
+      f.edges.push(child);
+      if (evidence !== 'open-child') f.edges.push(nestedSessionWorkClose(child,
+        evidence === 'uncertain-child' ? 'uncertain' : 'complete', 'recorded child result', 'receipt:child', 3, 1001));
+      if (evidence === 'missing') f.edges.splice(0);
+      if (evidence === 'wrong-parent') f.edges.splice(f.edges.indexOf(process), 1, { ...process, parent: 'other' });
+      if (evidence === 'unreadable') f.unreadableEvidence();
+      await gate.stop(); gate = await makeGate();
+      expect(gate.state(old.claim)).toBeNull();
+      const load = f.config.store.load;
+      f.config.store.load = () => ({ ...complete, topics: { ...complete.topics, '7': { ...old,
+        inputs: old.inputs.map(row => ({ ...row, state: 'accepted', outcome: null, reply: null, cursor: 0 })) } } });
+      f.restart(); f.config.store.load = load;
+      if (evidence === 'bad-receipt') f.batchOutput('{}');
+      await f.port.maintain();
+      expect(gate.state(old.claim)).toBeNull(); // Recovery never reopens the old allowance.
+      expect(f.closed).toContain(old.claim);
+      expect(f.delivered).toHaveLength(1);
+      expect(f.state().topics['7']!.inputs.map(row => row.outcome?.state)).toEqual(
+        evidence === 'complete' ? ['complete', 'complete'] : ['uncertain', 'uncertain']);
+      if (evidence === 'complete') expect(f.state().topics['7']!.inputs.map(row => row.outcome?.text))
+        .toEqual(old.inputs.map(row => row.outcome?.text));
+      expect((await f.port.run(f.request('8:later'))).state).toBe('complete');
+      expect((await f.port.run(f.request('7:later'))).state).toBe('complete');
+      expect(f.delivered.map(row => row.input.operation)).toEqual(['7:one', '8:later', '7:later']);
+    } finally { await f.port.close(); await gate.stop(); }
+  });

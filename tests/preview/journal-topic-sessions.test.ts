@@ -8,6 +8,7 @@ import type { ConversationTopicsState } from '../../src/assembly/conversation-to
 import type { HarnessInputDelivery } from '../../src/assembly/contracts.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
+import { nestedSessionWorkEdge, nestedSessionWorkClose } from '../../src/assembly/production-session-work.js';
 import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { readAnswer } from './answer-reading.js';
 import { createJournalWorker, openPreviewJournal, ModelNotStarted, ModelDisclosureRefused, createModelLaunchBoundary,
@@ -34,6 +35,7 @@ function fixture(forum = false) {
   let now = 1000, state: ConversationTopicsState | null = null, live = 0;
   const held = new Set<string>(), deliveries: { topic: string; input: HarnessInputDelivery }[] = [];
   const launches: string[] = [], sent: { text: string; thread: number | undefined; update: number }[] = [];
+  const queuedAtDelivery: string[][] = [];
   const port = value(createConversationTopicsPort({
     context: assemblyRuntimeFixture().c, conversation: 'operator', topicOf,
     allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => 'grant',
@@ -42,6 +44,7 @@ function fixture(forum = false) {
     workingScope: '/scope', resultDirectory: '/scope/results', artifact: 'artifact', incarnation: 'boot',
     store: { load: () => state, save: next => { state = structuredClone(next); } },
     append: record => journal.append({ kind: 'session-work', record, at: now }),
+    recoveryEdges: () => journal.sessionWorkRecords(),
     resources: { admit: async () => { live++; return { attach: async () => {}, release: async () => { live--; return true; } }; } },
     io: { modelCalls: () => 0, wait: tick, readResult: () => null, clearResult: () => {},
       prepareAdmission: () => {}, closeAdmission: () => {}, admissionState: () => ({ refused: false, openDelegations: [] }) },
@@ -51,6 +54,7 @@ function fixture(forum = false) {
       deliver: async input => {
         expect(journal.view.turns.get(input.operation)?.reserved).toBe(true);
         port.reserveCall(input.claim, state!.topics[topic]!.claimCalls + 1);
+        queuedAtDelivery.push(state!.topics[topic]!.inputs.filter(row => row.state === 'queued').map(row => row.request.operation));
         deliveries.push({ topic, input }); return { state: 'accepted', evidence: 'fake' };
       },
       observe: async input => {
@@ -85,7 +89,7 @@ function fixture(forum = false) {
     sources: () => evidence ? [evidence] : [],
     prepareModel: input => JSON.stringify(input), checkOutbound: () => {},
     send: async input => { sent.push({ text: input.expectedText, thread: input.thread, update: input.update }); return sent.length; } });
-  return { journal, worker, held, deliveries, launches, sent, port, live: () => live, state: () => state!,
+  return { root, journal, worker, held, deliveries, launches, sent, port, queuedAtDelivery, live: () => live, state: () => state!,
     failBatch: (error: Error | undefined) => { batchFailure = error; },
     evidence: (value: unknown) => { evidence = value; }, reply: (value: string) => { replyOverride = value; },
     advance: (ms: number) => { now += ms; }, close: async () => { await port.close(); journal.close(); } };
@@ -194,5 +198,45 @@ it.each([new ModelNotStarted(), new ModelDisclosureRefused()])('a definitely uns
       expect(f.journal.view.order.every(turn => turn.held === 'model not started' && !turn.reserved)).toBe(true);
       expect(f.sent.length).toBeGreaterThan(0);
     } else expect(f.journal.view.order.every(turn => turn.sent)).toBe(true);
+  } finally { await f.close(); }
+});
+
+// Four individually admitted packets reproduce the review's real journal envelope
+// overflow. Smaller neighbors retain one batch; larger ones drain in ordered pieces.
+it.each([20_000, 120_000, 210_000])('journal batches only a fitting prefix with %i bytes of retained evidence', async bytes => {
+  const f = fixture();
+  try {
+    f.evidence({ retained: 'x'.repeat(bytes) });
+    f.worker.intake([1, 2, 3, 4].map(id => update(id, `Question ${id}?`, 7)));
+    await f.worker.drain();
+    expect(f.sent.map(row => row.update)).toEqual([1, 2, 3, 4]);
+    expect(f.sent.every(row => row.text === 'Answer for topic 7.')).toBe(true);
+    expect(f.state().topics['7']!.inputs.every(row => row.outcome?.state === 'complete')).toBe(true);
+    expect(f.deliveries.every(row => Buffer.byteLength(row.input.text) <= 1_048_576)).toBe(true);
+    expect(f.state().topics['7']!.inputs.every(row => Buffer.byteLength(row.request.question) <= 262_144)).toBe(true);
+    if (bytes === 20_000) { expect(f.deliveries).toHaveLength(1); expect(f.queuedAtDelivery[0]).toEqual([]); }
+    else { expect(f.deliveries).toHaveLength(bytes === 120_000 ? 2 : 4); expect(f.queuedAtDelivery[0]!.length).toBeGreaterThan(0); }
+    if (bytes === 210_000) expect(f.deliveries.some(row => !row.input.text.includes('exactly one {operation, answer}'))).toBe(true);
+    const count = f.deliveries.length; await f.worker.drain();
+    expect(f.sent).toHaveLength(4); expect(f.deliveries).toHaveLength(count);
+  } finally { await f.close(); }
+});
+
+it('recovery reads the same process and child evidence after journal compaction and reopen', async () => {
+  const f = fixture();
+  try {
+    f.worker.intake([update(1, 'First question', 7), update(2, 'Second question', 7)]);
+    await f.worker.drain();
+    const state = f.state().topics['7']!;
+    const process = f.journal.sessionWorkRecords().find(row => row.type === 'SessionWorkEdge' && row.id === `${state.claim}:process`)!;
+    if (process.type !== 'SessionWorkEdge') throw Error('missing process edge');
+    const child = nestedSessionWorkEdge(process, { id: 'child-1', tool: 'Task' }, 1001);
+    f.journal.append({ kind: 'session-work', record: child, at: 1001 });
+    f.journal.append({ kind: 'session-work', record: nestedSessionWorkClose(child, 'complete', 'child result', 'receipt:child', 2, 1002), at: 1002 });
+    const before = f.journal.sessionWorkRecords();
+    f.journal.compact();
+    expect(f.journal.sessionWorkRecords()).toEqual(before);
+    const reopened = openPreviewJournal(join(f.root, 'journal.encrypted'), new Uint8Array(32).fill(61), undefined, undefined, true);
+    try { expect(reopened.sessionWorkRecords()).toEqual(before); } finally { reopened.close(); }
   } finally { await f.close(); }
 });

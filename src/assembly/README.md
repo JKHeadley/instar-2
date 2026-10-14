@@ -163,6 +163,12 @@ backpressure at 64 pending inputs, 4096 retained inputs and 1 MiB per input, pre
 all already accepted records. A queued input remains queued after a proved non-dispatch;
 a dispatched but unresolved input becomes uncertain on restart and is never replayed.
 A repeated exact input returns its recorded outcome; conflicting bytes refuse.
+Waiting messages use the largest arrival-order prefix whose serialized delivery fits
+1 MiB; the suffix stays queued and a lone message uses its ordinary prompt. On restart,
+a completed batch may be recovered from its correlated adapter receipt and the existing
+journal's process and completed child edges, even when the old admission gate is gone.
+Missing or invalid evidence retires the old worker and records uncertainty without
+replaying its tools or preventing later messages from draining.
 
 Each OS process gets a fresh claim and incarnation, its own 64-input/one-hour ceiling,
 and only the unused portion of the original 128-call reservation. Every process deadline
