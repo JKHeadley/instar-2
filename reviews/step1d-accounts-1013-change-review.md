@@ -7,8 +7,8 @@ Outcome: Connect the role-scoped root MCP accounts to the continuing session and
 Affected rules: Rules 2, 4, 5, 18, 26, 30, 34, 38, 42, 44, 49, 58, 60, 63, 74, 75, 95, 96, 100, 101, 102, 103, 104, 105, 111, 113, 116.
 Affected floors: secrets — existing custody socket and harness handoff, outbound held-material check, no credential file; spend — existing journal reservations and session allowance; stop — host gate and worker check every admission; no duplicate sends — existing exact effect identity and journal intent; durable intake — existing journal admission unchanged.
 Operator questions: none for building the off-by-default path; activating irreversible accounts awaits purpose PR 164 and the desk's copy acceptance.
-Suggested tier: significant
-Declared tier: significant
+Suggested tier: critical
+Declared tier: critical
 Tier rationale: Changes real connector launch wiring and review ordering. Fake-harness tests are this unit's acceptance evidence under the explicit brief; the desk owns the real copy walk, live captures and R105 certificate.
 Side effects: Continuing connectors hold a socket until session closure; replacement launches invalidate old nonces. Account configuration withdrawal stops the session. Review consumes its existing capped allowance after send and can delay the next worker turn, but cannot delay the reply just produced. The non-additive generation-5 review marker means older readers refuse a root that used after-send review; retaining the original root is required for the copy walk/rollback. No live root was changed.
 Undo and recovery: Disable --conversation-session for subsequent work on a compatible reader, and leave --conversation-account-actions off. Do not run an older reader on a copy that contains the new marker. Interrupted review is recorded unavailable, never repeated as a paid call; existing exact intents prevent duplicate sends. Revert repository changes on an unused copy to return to the base.
@@ -19,6 +19,8 @@ Bug evidence: reproducer=tests/preview/journal-conversation-session.test.ts
 Hook bypass: none; core.hooksPath unset; shared hooks directory contains sample files only (checked).
 Convergence: none
 Prompt review: No model prompt or parser is changed. The existing reply-check chain now consumes the final sent text after transport; findings enter the existing next-turn coherence packet. Account scope is current recorded configuration, never a keyword inference from a user message.
+Prompt finding: e8708c7fea24 | quoted-evidence | Unchanged source-grounding instruction; the hallucination regression locates it as a negative control, and this change adds no fixture-driven classification.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged fixed empty-memory reply, asserted by the existing memory-list regression.
 Decision: step1d-accounts-custody | Reuse prepared MCP launcher records and one-use socket handoff; rearm fresh nonces on worker replacement and stop admission on root-account changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1d-accounts-1013-PROGRESS.md
 Decision: step1d-accounts-local-cause | Keep --conversation-account-actions off pending PR 164; when on, require existing role/cap/sensitive policy and write exact input, current policy and decision before an account effect. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1d-accounts-1013-PROGRESS.md
 Decision: step1d-accounts-review | Send the continuing-session reply through existing hard walls before existing model review; journal advisory results for the next turn, without replay of unknown paid review. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1d-accounts-1013-PROGRESS.md

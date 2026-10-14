@@ -209,3 +209,26 @@ it('sends under the exact answer/session cap and records unavailable review with
     expect(f.journal.view.order[0]?.replyChecks?.at(-1)?.verdict).toBe('unavailable');
   } finally { await f.close(); }
 });
+
+it('recovers an interrupted paid review as an unavailable signal without dispatching it again', async () => {
+  const f = fixture();
+  f.worker.intake([update(1, 'Question')]); await f.worker.drain();
+  const id = f.journal.view.order[0]!.id;
+  f.journal.append({ kind: 'reply-review-after-send', id, at: 1500 });
+  f.journal.append({ kind: 'reply-jev-reserve', id, at: 1500 });
+  await f.close(); // Crash boundary: the paid reservation exists, its result does not.
+  const journal = openPreviewJournal(join(f.root, 'journal.encrypted'), new Uint8Array(32).fill(61));
+  try {
+    const worker = createJournalWorker(journal, { now: () => 2000, stopped: () => false,
+      model: async () => { throw Error('unexpected answer'); },
+      send: async () => { throw Error('duplicate send'); }, checkOutbound: () => {},
+      replyReviewTiming: 'after-send', replyCheck: { elapsedMs: () => 0,
+        jev: async () => { throw Error('paid call repeated'); },
+        escalate: async () => { throw Error('paid call repeated'); } } });
+    await worker.drain(); await worker.drain();
+    expect(journal.view.order[0]?.replyChecks).toHaveLength(1);
+    expect(journal.view.order[0]?.replyChecks?.[0]).toMatchObject({ verdict: 'unavailable', path: 'holding' });
+    expect(journal.view.order[0]?.checked).toBeDefined();
+    expect(journal.view.order[0]?.sent).toBe(1);
+  } finally { journal.close(); }
+});
