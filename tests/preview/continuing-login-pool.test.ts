@@ -7,23 +7,26 @@ import { createHarnessLoginPool } from './harness-login-pool.mjs';
 import { createContinuingLoginHandoff } from '../../scripts/continuing-login-pool.mjs';
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 import { createConversationSessionPort } from '../../src/assembly/production-conversation-session.js';
+import { createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { force: true, recursive: true }); });
 const uuid = '11111111-2222-4333-8444-555555555555';
-function fixture() {
+function fixture(realDriver = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'session-pool-'))); roots.push(root);
   const project = join(root, 'scope'); mkdirSync(project);
   let now = Date.now(), selected, calls = 0, prepared = 0, stopped = 0, destination = '', busy = false;
   const launches = [], deliveries = [], rows = [], files = new Map();
+  const tmuxCalls = [];
+  let transcriptId = uuid, driver, liveTarget = '', pane = '❯ ';
   const entries = ['a', 'b'].map((name, index) => {
     const home = join(root, name); mkdirSync(home);
     return { index, profile: { reference: name, expectedAccount: `${name}@example.invalid`, configDirectory: home } };
   });
   selected = entries[0];
-  const transcript = entry => join(entry.profile.configDirectory, 'projects', project.replace(/[\/.]/g, '-'), `${uuid}.jsonl`);
+  const transcript = entry => join(entry.profile.configDirectory, 'projects', project.replace(/[\/.]/g, '-'), `${transcriptId}.jsonl`);
   const writeTranscript = (entry, text) => { mkdirSync(join(entry.profile.configDirectory, 'projects', project.replace(/[\/.]/g, '-')), { recursive: true }); writeFileSync(transcript(entry), text); };
   const quota = (entry, pct, status = 'active') => ({ email: entry.profile.expectedAccount, configHome: entry.profile.configDirectory,
     status, lastQuota: { measuredAt: new Date(now).toISOString(), fiveHour: { utilizationPct: pct, resetsAt: new Date(now + 3600000).toISOString() },
@@ -38,11 +41,41 @@ function fixture() {
     return { ...io, modelCalls: since => io.modelCalls('claude-code', project, directory, since),
       carryTranscript: input => io.carryTranscript({ ...input, framework: 'claude-code' }) }; };
   const handoff = createContinuingLoginHandoff({ pool, current: () => selected, physical, project,
-    select: next => { selected = next; }, stop: () => { expect(busy).toBe(false); stopped++; }, record: move => pool.recordHandoff(move) });
+    select: next => { selected = next; }, stop: () => { expect(busy).toBe(false); stopped++;
+      if (realDriver) value(driver.stop()); }, record: move => pool.recordHandoff(move) });
   const f = assemblyRuntimeFixture();
   let onWait = async () => {};
   const port = value(createConversationSessionPort({ conversation: 'pool-test', prepareTurn: handoff.prepareTurn,
-    createDriver: resolve => ({ owner: 'part-eight', launch: input => {
+    createDriver: resolve => realDriver ? { owner: 'part-eight', launch: input => {
+      launches.push({ login: selected.index, ...input });
+      driver = createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted', framework: 'claude-code',
+        executable: '/synthetic', cwd: project, home: selected.profile.configDirectory, configHome: selected.profile.configDirectory,
+        context: f.c, now: () => now, stopped: () => false, resolveIntake: resolve,
+        maxSessions: 1, turnDeadlineMs: 60000, readyTimeoutMs: 1000, protectedSessions: [],
+        toolAdmission: { command: () => '/host/admitted-tool-hook', timeoutSeconds: 60 },
+        modelGate: claim => `http://127.0.0.1:1234/${'a'.repeat(32)}/${claim}`,
+        // Like journal-agent: no lifecycle hook, inbox config, or manual saveResume.
+        io: { ...adapter(), armDeadline: () => {}, sleep: () => {}, tmux: args => {
+          tmuxCalls.push([...args]);
+          if (args[0] === 'new-session') {
+            liveTarget = `=${args[args.indexOf('-s') + 1]}:`; pane = '❯ ';
+            transcriptId = args[args.indexOf(args.includes('--resume') ? '--resume' : '--session-id') + 1];
+          }
+          if (args[0] === 'has-session') return { code: args[2] === liveTarget ? 0 : 1, stdout: '' };
+          if (args[0] === 'display-message') return { code: 0, stdout: '321:1000\n' };
+          if (args[0] === 'capture-pane') return { code: 0, stdout: pane };
+          if (args[0] === 'kill-session') liveTarget = '';
+          if (args[0] === 'send-keys' && args.includes('Enter')) {
+            calls++; pane = `answer ${calls}\n❯ `;
+            let prior = ''; try { prior = readFileSync(transcript(selected), 'utf8'); } catch {}
+            writeTranscript(selected, prior + JSON.stringify({ type: 'assistant', requestId: `request-${calls}` }) + '\n');
+            files.set(destination, '{"answer":"done"}');
+          }
+          return { code: 0, stdout: '' };
+        } } });
+      return driver.launch(input);
+    }, deliver: input => { deliveries.push({ login: selected.index, ...input }); return driver.deliver(input); },
+    observe: input => driver.observe(input), stop: () => driver.stop() } : ({ owner: 'part-eight', launch: input => {
       launches.push({ login: selected.index, ...input });
       const io = adapter(), journal = io.load(); io.save({ ...journal, resumes: { ...journal.resumes, [input.claim]: uuid } });
       return f.success(`session:${launches.length}:1`);
@@ -61,10 +94,34 @@ function fixture() {
     placement: 'local', transport: 'fake', workingScope: project, resultDirectory: project, artifact: 'worker', incarnation: 'one',
     deadlineMs: 60000, pollMs: 25, maxResultBytes: 1024, maxSteps: 8, maxCalls: 3 }));
   const request = operation => ({ operation, question: operation, context: 'journal history', authority: 'same-role' });
-  return { port, request, pool, settings, entries, transcript, writeTranscript, launches, deliveries, physical, project,
+  return { port, request, pool, settings, entries, transcript, writeTranscript, launches, deliveries, physical, project, tmuxCalls,
     counts: () => ({ prepared, stopped }), usage: accounts => { usage = { version: 1, accounts }; }, quota,
     wait: fn => { onWait = fn; }, advance: ms => { now += ms; }, selected: () => selected };
 }
+
+it('carries the real no-hook driver transcript through the handoff without seeding a resume handle', async () => {
+  const f = fixture(true);
+  expect(f.physical().load().resumes).toEqual({});
+  expect((await f.port.run(f.request('first'))).state).toBe('complete');
+  const first = f.tmuxCalls.find(args => args[0] === 'new-session');
+  const id = first[first.indexOf('--session-id') + 1], claim = f.launches[0].claim;
+  const journal = f.physical().load(); // New physical adapter reads the durable file.
+  expect(journal.resumes[claim]).toBe(id);
+  expect(journal.sessions[0]).toMatchObject({ resumeId: id, turnDeadline: null });
+  expect(journal.sessions[0].continuation).toBeUndefined();
+  const source = readFileSync(f.transcript(f.entries[0]), 'utf8');
+  f.usage([f.quota(f.entries[0], 95), f.quota(f.entries[1], 20)]);
+  expect((await f.port.run(f.request('second'))).state).toBe('complete');
+  const second = f.tmuxCalls.filter(args => args[0] === 'new-session')[1];
+  expect(second[second.indexOf('--resume') + 1]).toBe(id);
+  expect(second).not.toContain('--session-id');
+  expect(f.pool.state.handoffs[0]).toMatchObject({ continuity: 'transcript', copy: 'copied', calls: 1 });
+  expect(readFileSync(f.transcript(f.entries[1]), 'utf8')).toBe(source + '{"type":"assistant","requestId":"request-2"}\n');
+  expect(f.physical().load().deliveries.map(row => [row.operation, row.state])).toEqual([['first', 'accepted'], ['second', 'accepted']]);
+  expect(f.launches[1].claim).toBe(claim);
+  expect(f.counts()).toEqual({ prepared: 1, stopped: 1 });
+  expect(await f.port.close()).toMatchObject({ calls: 2, reserved: 3 });
+});
 
 it('switches at the measured threshold only between closed turns, copies history and carries allowance', async () => {
   const f = fixture();

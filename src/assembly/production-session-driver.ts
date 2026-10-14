@@ -238,6 +238,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         turnDeadline: null, turnStartedAt: null, closedAt: null };
       const current = config.io.load();
       config.io.save({ ...replaceSession(current, session),
+        resumes: reservation.resumeId ? { ...current.resumes, [reservation.claim]: reservation.resumeId } : current.resumes,
         reservations: (current.reservations ?? []).filter(row => row.name !== reservation.name) });
     }
   };
@@ -278,12 +279,15 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const active = currentJournal.sessions.filter(row => alive(row.name));
     ensure(active.length + (currentJournal.reservations ?? []).length < config.maxSessions, 'concurrent session cap reached');
     const name = `instar20-${createHash('sha256').update(`${operation}:${incarnation}:${randomUUID()}`).digest('hex').slice(0, 24)}`;
-    const reservation: SessionReservation = { name, operation, claim, incarnation, resumeId, recovery,
+    // Retain the exact native transcript handle before spawning, including on the no-hook path.
+    // Reconciliation publishes it only for a live session, also after an interrupted identity save.
+    const transcriptId = config.framework === 'claude-code' ? resumeId ?? randomUUID() : resumeId;
+    const reservation: SessionReservation = { name, operation, claim, incarnation, resumeId: transcriptId, recovery,
       startedAt: config.now(), ...(continuation ? { continuation } : {}) };
     config.io.save({ ...currentJournal, reservations: [...(currentJournal.reservations ?? []), reservation] });
     const model = config.model === undefined ? [] : ['--model', config.model];
     const args = config.framework === 'claude-code'
-      ? [resumeId ? '--resume' : '--session-id', resumeId ?? randomUUID(), ...sessionLaunchFlags('claude-code', admitted), ...model]
+      ? [resumeId ? '--resume' : '--session-id', transcriptId!, ...sessionLaunchFlags('claude-code', admitted), ...model]
       : [ ...(resumeId ? ['resume', resumeId] : []), ...sessionLaunchFlags('codex-cli', admitted), ...model];
     const lifecycleHooks = config.hookScript && config.framework === 'claude-code'
       ? { Stop: [{ hooks: [{ type: 'command', command: `node ${JSON.stringify(config.hookScript)}` }] }],

@@ -365,12 +365,39 @@ it('records a visible refusal and starts no fresh session when continuation is u
 });
 
 it('also refuses a prior topic with no recorded native resume', () => {
-  const f = fixture(); f.launch();
+  const f = fixture('codex-cli'); f.launch();
   const driver = createProductionSessionDriver({ ...f.config, maxSessions: 2, continuation: undefined });
   refused(driver.launch({ operation: 'next', claim: 'topic', artifact: 'sha256:test',
     incarnation: 'next', workingScope: '/work', handles: [] }), 'continuation provider unavailable');
   expect(f.calls.filter(row => row[0] === 'new-session')).toHaveLength(1);
   expect(f.journal.continuationRefusals?.[0]?.claim).toBe('topic');
+});
+
+it('retains the chosen fresh transcript through interrupted identity persistence and launch retry', () => {
+  const f = fixture(); f.failNextIdentitySave();
+  refused(f.driver.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test',
+    incarnation: 'inc', workingScope: '/work', handles: [] }), 'identity save failed');
+  const launch = f.calls.find(row => row[0] === 'new-session')!;
+  const id = launch[launch.indexOf('--session-id') + 1]!;
+  expect(f.journal.reservations?.[0]?.resumeId).toBe(id);
+  expect(f.journal.resumes).toEqual({});
+  const identity = f.launch();
+  expect(f.journal.resumes.topic).toBe(id);
+  expect(f.journal.sessions[0]).toMatchObject({ identity, resumeId: id });
+  expect(f.journal.reservations).toEqual([]);
+  expect(f.calls.filter(row => row[0] === 'new-session')).toHaveLength(1);
+});
+
+it('does not publish a fresh transcript handle for a failed spawn or invent one for Codex', () => {
+  const f = fixture(); f.failNextSpawn();
+  refused(f.driver.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test',
+    incarnation: 'inc', workingScope: '/work', handles: [] }), 'new-session failed');
+  expect(f.journal.resumes).toEqual({}); expect(f.journal.reservations).toEqual([]);
+  f.launch();
+  const launch = f.calls.filter(row => row[0] === 'new-session')[1]!;
+  expect(f.journal.resumes.topic).toBe(launch[launch.indexOf('--session-id') + 1]);
+  const codex = fixture('codex-cli'); codex.launch();
+  expect(codex.journal.resumes).toEqual({}); expect(codex.journal.sessions[0]?.resumeId).toBeNull();
 });
 
 it('refuses an unbounded continuation before launching a replacement', () => {
@@ -423,7 +450,10 @@ it('compacts an idle context wall once and then respawns through agent-owned con
   expect(f.calls.some(row => row[0] === 'kill-session' && row[2]?.endsWith(':'))).toBe(true);
   expect(f.journal.sessions.find(row => row.identity === next)?.continuation?.state).toBe('completed');
   expect(f.calls.filter(row => row[0] === 'new-session')).toHaveLength(2);
-  expect(f.journal.resumes.topic).toBeUndefined();
+  const replacement = f.calls.filter(row => row[0] === 'new-session')[1]!;
+  expect(replacement).toContain('--session-id');
+  expect(f.journal.resumes.topic).toBe(replacement[replacement.indexOf('--session-id') + 1]);
+  expect(f.journal.resumes.topic).not.toBe('12345678-1234-1234-1234-123456789abc');
 });
 
 it('retains context-wall continuation intent across a cut immediately after kill', () => {
