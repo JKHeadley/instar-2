@@ -132,14 +132,14 @@ journal's existing forum packet grounds in that topic's full projected history (
 its current summary and suffix), with shared agent memory and open work. Reply
 routing remains the intake record's chat/thread at the existing send doorway.
 
-The activation policy declares the four-worker cap and five-minute idle lifetime; the
+The activation policy declares the two-worker cap and five-minute idle lifetime; the
 runner, coordinator and physical driver consume those same limits. A prior activation
 with the old one-worker policy digest refuses until a matching activation is installed.
-The runner admits at most four live topic workers. A fifth waits durably for a slot;
+The runner admits at most two live topic workers. A third waits durably for a slot;
 an idle worker retires at five minutes or earlier when another topic needs its slot.
 Retirement keeps all records, and the next input launches a fresh worker from them.
 Independent topic drains also accept newly arriving topics while another awaits a
-reply, with one FIFO drain per topic and four drains at once. The serial compatibility
+reply, with one FIFO drain per topic and two drains at once. The serial compatibility
 path is unchanged when the conversation option is off. All drains settle before the
 journal writer guard is released, including on error.
 

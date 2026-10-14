@@ -165,3 +165,12 @@ it('upgrades group custody in place: retires the old worker, splits queues and p
   await f.port.close(); f.restart(); await f.port.maintain();
   expect(f.delivered).toHaveLength(3); await f.port.close();
 });
+
+it('reclaims an idle topic when the installation resource ceiling is tighter than the topic cap', async () => {
+  const f = fixture(2), admit = f.config.resources.admit;
+  f.config.resources.admit = async () => f.counts().live >= 1 ? null : admit();
+  await f.port.run(f.request('7:a'));
+  expect(await f.port.run(f.request('8:b'))).toMatchObject({ state: 'complete' });
+  expect(f.counts().peak).toBe(1); expect(f.launches.map(row => row.topic)).toEqual(['7', '8']);
+  await f.port.close();
+});

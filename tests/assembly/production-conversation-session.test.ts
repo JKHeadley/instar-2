@@ -376,6 +376,6 @@ it('an input arriving during idle retirement waits for exact stop before replace
 it('the activation policy names the same topic cap and one shared allowance as the runner', () => {
   const policy = conversationSessionPolicy({ framing: 'fixture', framework: 'claude-code', model: 'fixture', launch: [] });
   expect(policy.limits).toEqual(CONVERSATION_SESSION_LIMITS);
-  expect(policy.limits).toMatchObject({ maxSessions: 4, idleMs: 300000, maxCallsPerStep: 128 });
+  expect(policy.limits).toMatchObject({ maxSessions: 2, idleMs: 300000, maxCallsPerStep: 128 });
   expect(policy.admission.allowance).toBe(128);
 });

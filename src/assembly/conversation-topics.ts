@@ -88,10 +88,18 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
               ensure(config.now() < config.allowanceDeadline, 'parent lifetime exhausted');
             }
             ensure(!stopped && !config.stopped() && config.authorized(), 'topic dispatch stopped or grant unavailable');
-            const lease = await config.resources.admit(); if (!lease) return null;
+            let lease = await config.resources.admit();
+            if (!lease) {
+              // The installation resource owner may have a tighter ceiling (or
+              // another work family using it). Reclaim one idle topic and retry once.
+              const idle = [...active].find(key => !busy.get(key));
+              if (idle !== undefined && await hosts.get(idle)!.retireIdle()) lease = await config.resources.admit();
+            }
+            if (!lease) return null;
+            const held = lease;
             active.add(topic);
-            return { attach: lease.attach, release: async () => {
-              const released = await lease.release(); if (released) { active.delete(topic); notify(); } return released;
+            return { attach: held.attach, release: async () => {
+              const released = await held.release(); if (released) { active.delete(topic); notify(); } return released;
             } };
           };
           const pending = admission.then(acquire);
