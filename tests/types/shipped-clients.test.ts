@@ -36,7 +36,7 @@ it('reports the combined build as unproven until the native Studio contract is r
   const sources = registerDeclarationSources();
   const tuple = parityMatrix(sources).harnessTuples.find(tuple => tuple.harness === NATIVE_HARNESS && tuple.doorway === 'claude-code-subscription');
   expect(tuple).toMatchObject({ status: 'unproven', reason: expect.stringContaining('desk owns the macOS contract') });
-  expect(tuple!.conformance).toBeUndefined();
+  expect(tuple).not.toHaveProperty('conformance');
   expect(selfHostCompositionEvidence().supported).toBe(false);
   expect(lintParityRegister(sources, read, ['claude-code-subscription'])).toEqual([]);
 });
