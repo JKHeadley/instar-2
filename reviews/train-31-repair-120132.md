@@ -24,7 +24,7 @@ Decision: train31-120132-publication | Refresh the changed test's owner hash wit
 
 Subject (1 path): tests/preview/model-json.test.ts
 
-Publication: The test is pinned by the preview owner manifest. The desk rehash tool refreshed that one hash; the grounding repin chain made no changes. The generated replay publication belongs to this same reviewed change and preserves the existing declarations and safety floors.
+Publication: The test is pinned by the preview owner manifest. The desk rehash tool refreshed that one hash; the grounding repin chain made no changes. The replay publication was generated from 731ca2d78eb1fc9dc57b96d5e93333e3fb3f795d (291 entries, 116 rules, shape-only). The generated replay publication belongs to this same reviewed change and preserves the existing declarations and safety floors.
 
 ## Closing block
 
