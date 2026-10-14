@@ -46,7 +46,7 @@ Cap boundary: The three queued/same-host/restart consumer tests fill the entire 
 
 Agreement fixture: PREVIEW-CONVERSATION-RESULT-COLLECTION resolves to the shipped-closure journal regression file; the artifact pin is computed by the delegated desk rehash tool.
 
-Generated register: Source wiring is refreshed by the delegated desk tools. Regenerated with the delegated desk scripts and build-register replay; source roster and grounding inventory pins track this branch. No runtime certificate is inferred from replay.
+Generated register: Source wiring is refreshed by the delegated desk tools, then build-register replay at f569e5b4152b207b505c02b0d8c9234b0566adb2. Regenerated with the delegated desk scripts and build-register replay; source roster and grounding inventory pins track this branch. No runtime certificate is inferred from replay.
 
 Topic integration: Preserve idle retirement and parallel topic workers. The installation coordinator clamps every child to its earlier recorded lifetime, checks the deadline while waiting and charging, and routes result collection through the original topic. The parser assertion now passes because initial completion and collection share the accepted decoder; the assertion itself is unchanged.
 Deferral: tests/preview/journal-topic-sessions.test.ts:134 | not-a-deferral=Executable queued-completion regression name, not promised future work.
