@@ -27,6 +27,8 @@ Decision: train-28-desk-C | No product conflict and no head left out. Generated 
 Decision: train-28-desk-D | Run targeted direct consumers and required journal/register tests in bounded foreground chunks; classify untouched host-dependent assertions separately for the Studio gate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-28-PROGRESS.md
 Decision: train-28-chain | Apply the downloaded desk repin/build/rehash/replay chain, using Linux sed syntax only in the local tool copy. Preserve the default context guard and source roster. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-28-PROGRESS.md
 
+Generated register: replay from 40c1831eaa7878d8564f7b95738b851c4c59d913; shape-only source publication, no runtime conformance certificate modified.
+
 simplestRobustRoute: This is the simplest robust route: ordinary merges of exact reviewed heads, preservation of both histories, and the existing desk regeneration and consumer checks. No new runtime machinery or gate is added. Existing verified intake and ownership guard start; cap, stop, secrets and durable outcome/send receipts bound completion. Recorded replay proves the integrated path; unattended live acceptance belongs to the desk.
 80/20: Changed tests, direct consumers, required journal and pinned text checks in foreground chunks, plus typecheck and architecture/register/review checks. No full suite, live walk or load test.
 VERDICT: author submission; no independent convergence or live deployment claimed
