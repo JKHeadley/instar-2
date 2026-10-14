@@ -23,6 +23,7 @@ Decision: train-26-repair-parser-inventory | Repair the stale exact parser-site 
 Decision: train-26-repair-repin | Run the delegated desk rehash and repin chain, then replay the generated register from committed source; no manual pin edits. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-26-repair-004642-PROGRESS.md
 
 Subject: tests/preview/model-json.test.ts; register-source/owner-references/preview.json; generated register replay
+Generated register: replayed from source 3be5ed09058b1858ab971442262b5cd13ffb72fd, generation sha256:770ed9b8b2d8f4cf67f1bd25c50c52327b0f4d3cf73d734439e919a954ae7411; shape-only evidence.
 
 simplestRobustRoute: This is the simplest robust route: update the existing wiring test to enumerate the two actual shared-reader calls and check the answer branch, without adding runtime machinery. The start guard is the continuing-session Telegram update predicate, the outcome guard requires completion, and existing strict consumer and malformed-output checks remain; this test-only change makes no autonomous completion claim.
 80/20: Reproduced the exact reported assertion locally, then passed all 51 tests in that file. Run typecheck and the required cheap checks; leave the full suite to the Studio gate as directed.
