@@ -6,7 +6,7 @@ import { closeSync, constants, existsSync, fsyncSync, lstatSync, mkdirSync, open
 import { join, resolve, relative, isAbsolute } from 'node:path';
 import { homedir, userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { hostResources, limitedFileArgv } from './resource-owner.mjs';
+import { hostResources, limitedFileArgv, processCensusArgs, processCensusCount, processHeadroom } from './resource-owner.mjs';
 
 /** Read native nonsecret preferences without following links or replacing malformed state. */
 function readInteractiveConfig(path) {
@@ -66,15 +66,15 @@ export function prepareSubscriptionInteractive(configDirectory, workingDirectory
 
 /** The transport child's own bounds: per-process handles, and user-ID process headroom. */
 const TRANSPORT_LIMITS = Object.freeze({ handleCount: 256, processCount: 4 });
-/** The user ID's current process count plus the transport headroom, or null when it cannot be read.
+/** The user ID's current task count plus the transport headroom, or null when it cannot be read.
  * Its subject is the user ID, not the transport's tree: it caps a fork burst, never the tree's size. */
 function transportProcessLimit() {
   const uid = typeof process.getuid === 'function' ? process.getuid() : null;
   if (uid === null || uid === 0) return null;
   let count = 0;
-  try { count = execFileSync('/bin/ps', ['-U', String(uid), '-o', 'pid='], { encoding: 'utf8', timeout: 2000, env: { PATH: '/usr/bin:/bin' },
-    stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(line => line.trim()).length; } catch { count = 0; }
-  return count > 0 ? count + TRANSPORT_LIMITS.processCount : null;
+  try { count = processCensusCount(execFileSync('/bin/ps', processCensusArgs(uid), { encoding: 'utf8', timeout: 2000, env: { PATH: '/usr/bin:/bin' },
+    stdio: ['ignore', 'pipe', 'ignore'] })); } catch { count = 0; }
+  return count > 0 ? count + processHeadroom(TRANSPORT_LIMITS.processCount) : null;
 }
 
 export const productionStorageIO = Object.freeze({ pid: process.pid,
