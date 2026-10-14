@@ -41,7 +41,7 @@ type Row = { type: string; id: string; state?: string; parent?: string; drawsOn?
 
 type Policy = Record<string, unknown>;
 const HELD_SYNTHETIC = 'zq-held-synthetic-value-0123456789abcdef';
-async function step(options: { maxCalls?: number; policy?: Policy; gatePolicy?: Policy; stopped?: () => boolean; accounts?: boolean; operations?: string[]; failAppend?: boolean } = {}) {
+async function step(options: { maxCalls?: number; policy?: Policy; gatePolicy?: Policy; stopped?: () => boolean; accounts?: boolean; operations?: string[]; mcpReads?: string[]; currentReads?: string[]; accountPresent?: boolean; failAppend?: boolean } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'session-admission-'))); roots.push(root);
   const ws = join(root, 'ws'), outside = join(root, 'outside'), base = join(root, 'admission');
   for (const dir of [ws, outside]) mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -56,7 +56,7 @@ async function step(options: { maxCalls?: number; policy?: Policy; gatePolicy?: 
     effects: createToolEffectOwner({ decide: (tool: string, input: unknown) => {
       const config = { operations: options.operations ?? [], ...((options.gatePolicy ?? options.policy) ? { effectPolicy: options.gatePolicy ?? options.policy } : {}) };
       return options.accounts === undefined ? admitToolCallEffect(tool, input, config, 1_000)
-        : admitSessionConnector({ tool, input, config, mcp: { servers: { x: { command: '/fake' } }, digest: 'sha256:scope' },
+        : admitSessionConnector({ tool, input, config, mcp: options.accountPresent === false ? null : { servers: { x: { command: '/fake' } }, reads: options.currentReads ?? options.mcpReads ?? [], digest: 'sha256:scope' },
           enabled: options.accounts, now: 1_000, decide: admitToolCallEffect });
     },
     append, stopped: () => false, now: () => 1_000, prepared: (id: string) => prepared.has(id) }) });
@@ -66,7 +66,7 @@ async function step(options: { maxCalls?: number; policy?: Policy; gatePolicy?: 
     budget: { steps: 1, deadline: 9_999, maxResultBytes: 65536, calls: 24, tokens: null }, exitTest: 'x', resultDestination: join(ws, 'r.json'),
     openedAt: 1 };
   gate.open(claim, { framework: 'codex-cli', allowance: 24, edge });
-  const state = prepareSessionAdmission({ base, claim, workspace: ws, maxCalls: options.maxCalls ?? 24, gate: gate.base(claim),
+  const state = prepareSessionAdmission({ base, claim, workspace: ws, mcpReads: options.mcpReads ?? [], maxCalls: options.maxCalls ?? 24, gate: gate.base(claim),
     ...(options.policy ? { effectPolicy: options.policy } : {}) });
   return { root, ws, outside, base, claim, state, gate, rows, edge };
 }
@@ -428,4 +428,27 @@ it('irreversible account switch refuses off, records the entire cause before on 
   expect(on.rows).toHaveLength(1);
   const disk = await step({ policy, accounts: true, failAppend: true });
   expect((await hook(disk.state, call('mcp__x__send', input))).decision).toBe('deny'); expect(disk.rows).toHaveLength(0);
+});
+
+it('configured account reads reach the current policy checkpoint with exact input on every call', async () => {
+  const initial = { type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [], registered: [], grants: [] };
+  const options: Parameters<typeof step>[0] = { policy: initial, accounts: false, mcpReads: ['mcp__x__read'] };
+  const s = await step(options);
+  const input = { query: 'ordinary account lookup', nested: { limit: 2 } };
+  expect((await hook(s.state, call('mcp__x__read', input, 'ordinary'))).decision).toBe('allow');
+  // Only host policy changes; the executable hook still carries the original ordinary-read snapshot.
+  options.gatePolicy = { ...initial, policySensitive: ['mcp__x__read'] };
+  expect((await hook(s.state, call('mcp__x__read', input, 'sensitive'))).decision).toBe('deny');
+  expect(JSON.parse((s.rows[0] as Row & { cause: string }).cause)).toMatchObject({ input,
+    configuration: { mcpReads: ['mcp__x__read'], effectPolicy: initial }, decision: { admitted: true, consequential: false } });
+  options.gatePolicy = { unavailable: true };
+  expect((await hook(s.state, call('mcp__x__read', input, 'unreadable'))).decision).toBe('deny');
+  options.gatePolicy = initial;
+  options.currentReads = [];
+  expect((await hook(s.state, call('mcp__x__read', input, 'withdrawn-read'))).decision).toBe('deny');
+  options.currentReads = ['mcp__x__read']; options.accountPresent = false;
+  expect((await hook(s.state, call('mcp__x__read', input, 'withdrawn-account'))).decision).toBe('deny');
+  options.accountPresent = true;
+  expect((await hook(s.state, call('mcp__x__read', input, 'restored'))).decision).toBe('allow');
+  expect(s.rows).toHaveLength(2); // Ordinary reads can repeat; every dispatch has its durable cause.
 });

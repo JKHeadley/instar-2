@@ -40,7 +40,7 @@ export function admitSessionConnector({ tool, input, config, mcp, enabled, now, 
   if (!tool.startsWith('mcp__')) return decide(tool, input, config, now);
   if (!mcp || !Object.keys(mcp.servers).some(name => tool.startsWith(`mcp__${name}__`)))
     return { admitted: false, reason: 'connector is outside the currently granted account set' };
-  const current = { ...config, operations: enabled ? [...config.operations, 'tool:mcp'] : config.operations.filter(operation => operation !== 'tool:mcp') };
+  const current = { ...config, mcpReads: mcp.reads ?? [], operations: enabled ? [...config.operations, 'tool:mcp'] : config.operations.filter(operation => operation !== 'tool:mcp') };
   const verdict = decide(tool, input, current, now);
   // The full input, policy and decision accompany the already durable parent authority and bounds.
   // The checkpoint checks held secrets before this record can be written.

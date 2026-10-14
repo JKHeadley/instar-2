@@ -7832,9 +7832,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       || turn.answer === undefined || halted()) return;
     if (turn.afterSendReview) {
       if (turn.checked === undefined) {
-        // A interrupted paid call is never replayed. Preserve its unknown result as a next-turn signal.
-        journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable', ruleIds: [],
-          confidence: null, path: 'holding', latencyMs: 0, reason: 'retrospective review interrupted; no paid call replayed' }, at: ports.now() });
+        const review = turn.replyChecks?.at(-1);
+        // A durable terminal judgment only needs its coherence projection rebuilt. A Jev pass is terminal
+        // only when no contextual review was required; a reservation without a result is never replayed.
+        const terminal = review?.path === 'subscription' || review?.path === 'holding'
+          || review?.path === 'jev' && review.verdict === 'pass' && !turn.reviewReserved
+            && !confidentReplyNeedsReview(projectedReplyPrompt(turn.prompt));
+        if (!terminal) journal.append({ kind: 'reply-check', id: turn.id, result: {
+          verdict: 'unavailable', ruleIds: review?.ruleIds ?? [], confidence: null, path: 'holding', latencyMs: 0,
+          reason: 'retrospective review interrupted; no paid call replayed'
+            + (review ? `; recorded ${review.path} ${review.verdict}: ${review.reason ?? 'no reason recorded'}` : ''),
+        }, at: ports.now() });
         checkCoherence();
       }
       return;
