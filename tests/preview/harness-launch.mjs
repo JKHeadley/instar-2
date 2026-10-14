@@ -170,11 +170,11 @@ if (header?.login !== undefined) env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR = '
 // interactive one stays in this group instead, the terminal's foreground, or it could not read the terminal; the tree walk
 // and the tracking still find every descendant.
 const descriptors = handoff ? [header.login === undefined ? 'ignore' : 'pipe', header.mcp === undefined ? 'ignore' : 'pipe'] : [];
-// Node's "pipe" is a socket pair on Linux: open("/dev/fd/4") on it fails with
-// ENXIO. The CLI opens the MCP path, so bridge only that descriptor to a real
+// Node's "pipe" is a socket pair: opening /dev/fd/4 fails on Linux, and reopening
+// it after EOF can fail on macOS. The CLI opens this path, so bridge it to a real
 // anonymous pipe. Bash execs the installed harness in place; the bounded writer
 // shares its process group. No secret enters argv, environment or a disk file.
-const pipeMcp = process.platform === 'linux' && header?.mcp !== undefined;
+const pipeMcp = header?.mcp !== undefined;
 const dropShellEnv = ['PWD', 'SHLVL', 'OLDPWD'].filter(name => env[name] === undefined).flatMap(name => ['-u', name]);
 const launchExecutable = pipeMcp ? '/bin/bash' : executable;
 const launchArgs = pipeMcp ? ['-p', '-c', 'exec 4< <(exec 3<&-; exec /bin/cat <&4); exec /usr/bin/env "$@"',

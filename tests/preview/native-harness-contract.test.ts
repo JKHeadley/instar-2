@@ -24,6 +24,7 @@ import { dispatchOwnedProvider, ownerStoreFacts, providerAttemptsOf, providerSto
 import { currentRuntime } from '../../scripts/composition-digest.mjs';
 import { hashBytes } from '../../src/facts/index.js';
 import { SELF_HOST_HARNESS } from './stall-coverage.js';
+import { selfHostCompositionEvidence } from './self-host-composition.mjs';
 import { parityMatrix } from '../../scripts/check-architecture.mjs';
 
 const context = { site: 'preview.journal', preserved: 'preview:test', register: {
@@ -133,12 +134,18 @@ describe.each(Object.keys(DOORWAY_CONFORMANCE))('native compositions through doo
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 240000);
 
-  it('certifies the exact composition exercised by the native contract', () => {
+  it('reports the declared certification of the exact native composition', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'native-contract-certificate-')));
     try {
-      // The certified tuple is this composition: its declared conformance digest is the running adapter's artifact, on this
-      // resolved runtime, and the adapter admits that conformance only because it matches its own running closure.
+      // An unproven declaration cannot become a certificate merely by running this test.
+      // When the desk publishes certification, retain the exact composition/runtime assertions.
       const tuple = parityMatrix().harnessTuples.find(row => row.harness === SELF_HOST_HARNESS && row.doorway === id && row.mode === 'self-hosting');
+      if (tuple?.status === 'unproven') {
+        expect(tuple.reason).toBeTruthy();
+        expect(tuple.conformance).toBeUndefined();
+        expect(selfHostCompositionEvidence()).toMatchObject({ supported: false, declared: null });
+        return;
+      }
       const described = createSelfHostHarness({ root, context: SELF_HOST_CONTEXT, stopped: () => false, now: () => NOW,
         log: openRecordLog(root, SELF_HOST_CONTEXT) }).adapter.describe();
       expect(tuple).toMatchObject({ status: 'supported', conformance: [described.artifact], runtime: [currentRuntime()],
