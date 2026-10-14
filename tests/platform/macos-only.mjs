@@ -17,6 +17,8 @@ const BSD_STAT = /['"`]\/usr\/bin\/stat['"`]\s*,\s*\[\s*['"`]-f['"`]/;
 const DARWIN_CONST = /\b(?:const|let)\s+(\w+)\s*=\s*process\.platform\s*===\s*['"`]darwin['"`]/g;
 const DARWIN_GATE = /\.(?:runIf|skipIf)\(\s*!?\s*(?:process\.platform\s*[!=]==\s*['"`]darwin['"`]|['"`]darwin['"`])/;
 
+const MACOS_TOOL_CONST = /\b(?:const|let)\s+(\w+)\s*=\s*existsSync\(\s*['"`](?:\/usr\/s?bin\/|\/s?bin\/)(?:hdiutil|sandbox-exec|launchctl)['"`]\s*\)/g;
+
 const IMPORT = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"`](\.{1,2}\/[^'"`]+)['"`]/g;
 
 /** The mechanism a source text exercises directly, or null. */
@@ -26,6 +28,8 @@ export function macosMechanism(text) {
   if (DARWIN_GATE.test(text)) return 'gates tests on darwin';
   for (const [, name] of text.matchAll(DARWIN_CONST))
     if (new RegExp(`\\.(?:runIf|skipIf)\\(\\s*!?\\s*${name}\\b`).test(text)) return 'gates tests on darwin';
+  for (const [, name] of text.matchAll(MACOS_TOOL_CONST))
+    if (new RegExp(`\\.(?:runIf|skipIf)\\(\\s*!?\\s*${name}\\b`).test(text)) return 'gates tests on a macOS-only tool';
   return null;
 }
 

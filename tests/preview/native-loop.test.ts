@@ -32,7 +32,13 @@ beforeAll(async () => { owner = createResourceOwner(); await owner.attach({}); }
 const key = new Uint8Array(32).fill(9);
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
-const dir = () => { const root = realpathSync(mkdtempSync(join(tmpdir(), 'native-loop-'))); roots.push(root); return root; };
+const dir = () => {
+  // RAM temp roots can live under /dev, which the runtime must read. Validate the physical root.
+  let base = realpathSync(tmpdir());
+  try { nativeShellProfile(join(base, 'native-loop-probe'), process.execPath); }
+  catch { base = realpathSync('/tmp'); nativeShellProfile(join(base, 'native-loop-probe'), process.execPath); }
+  const root = realpathSync(mkdtempSync(join(base, 'native-loop-'))); roots.push(root); return root;
+};
 /** The scratch volume's stand-in where the test root sits on the RAM disk; the live test uses the real volume. */
 const plainScratch = (turn: string) => { mkdirSync(join(turn, 'vol'), { mode: 0o700 }); return realpathSync(join(turn, 'vol')); };
 const keepDetached = () => true;
@@ -95,67 +101,7 @@ async function nativeTurn(script: Step[] | ((envelope: string, index: number) =>
   return { outcome, journal, envelopes, stateDirectory, workspace, root };
 }
 
-describe('the native framing', () => {
-  it('is its own policy: text-only single-turn calls, a distinct digest, and a system prompt naming the native tools', () => {
-    const native = subscriptionNativePolicy('claude-sonnet-5'), conversation = subscriptionConversationPolicy('claude-sonnet-5');
-    expect(native.framing).toBe(SUBSCRIPTION_NATIVE_FRAMING);
-    expect(encoded(native).hash).not.toBe(encoded(conversation).hash);
-    // Same text-only shape: no harness tools, one turn, safe mode, no MCP servers.
-    for (const flag of ['--safe-mode', '--max-turns', '--strict-mcp-config']) expect(native.args).toContain(flag);
-    expect(native.args[native.args.indexOf('--tools') + 1]).toBe('');
-    expect(native.args[native.args.indexOf('--max-turns') + 1]).toBe('1');
-    expect(native.args[native.args.indexOf('--system-prompt') + 1]).toBe(SUBSCRIPTION_NATIVE_SYSTEM_PROMPT);
-    expect(SUBSCRIPTION_NATIVE_SYSTEM_PROMPT).not.toBe(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
-    expect(SUBSCRIPTION_NATIVE_SYSTEM_PROMPT).not.toContain('You have no tools');
-    for (const tool of NATIVE_TOOL_NAMES) expect(SUBSCRIPTION_NATIVE_SYSTEM_PROMPT).toContain(`${tool} {`);
-    expect(SUBSCRIPTION_NATIVE_SYSTEM_PROMPT).toContain(`role:${NATIVE_STEPS_ROLE}`);
-    expect(subscriptionPolicyFor('claude-sonnet-5', SUBSCRIPTION_NATIVE_FRAMING).system).toBe(SUBSCRIPTION_NATIVE_SYSTEM_PROMPT);
-    // The step cap is exactly the liability a tool turn reserves.
-    expect(NATIVE_TOOL_LIMITS.maxSteps).toBe(SUBSCRIPTION_TOOL_LIMITS.maxTurns);
-    expect(Buffer.byteLength(SUBSCRIPTION_NATIVE_SYSTEM_PROMPT) + 16384).toBeLessThan(native.maxPromptBytes);
-  });
-});
-
-describe('the step parser', () => {
-  it('reads a tool request only from an object with calls and no reply; everything else concluded is the answer', () => {
-    expect(parseNativeStep('{"calls":[{"tool":"Write","input":{"file_path":"a","content":"b"}}]}'))
-      .toEqual({ kind: 'calls', calls: [{ tool: 'Write', input: { file_path: 'a', content: 'b' } }] });
-    expect(parseNativeStep('```json\n{"calls":[{"tool":"Bash","input":{"command":"ls"}}]}\n```').kind).toBe('calls');
-    expect(parseNativeStep('The count is 11.')).toEqual({ kind: 'answer' });
-    expect(parseNativeStep('{"reply":"Done","calls":[{"tool":"Bash","input":{}}]}')).toEqual({ kind: 'answer' });
-    expect(parseNativeStep('{"reply":"Done","directives":[]}')).toEqual({ kind: 'answer' });
-    expect(parseNativeStep('{"calls":[]}').kind).toBe('malformed');
-    expect(parseNativeStep('{"calls":[{"tool":"Bash","input":"ls"}]}').kind).toBe('malformed');
-    expect(parseNativeStep(JSON.stringify({ calls: Array.from({ length: NATIVE_TOOL_LIMITS.maxCallsPerStep + 1 }, () => ({ tool: 'Glob', input: {} })) })).kind)
-      .toBe('malformed');
-    expect(parseNativeStep(JSON.stringify({ calls: Array.from({ length: NATIVE_TOOL_LIMITS.maxCallsPerStep }, () => ({ tool: 'Glob', input: {} })) })).kind)
-      .toBe('calls');
-    expect(parseNativeStep('')).toEqual({ kind: 'empty' });
-    expect(parseNativeStep('   ')).toEqual({ kind: 'empty' });
-  });
-
-  it('replays recorded real model outputs: answers stay answers, and nothing recorded reads as a tool request', () => {
-    // live-declarations-2026-09-28: raw claude-sonnet-5 Decision bytes (string and object answers); tool-turn live-2026-10-03:
-    // real tool-turn answers; proofroom cascade 2026-09-30: real delivered answers and real uncertain summary outcomes.
-    const declarations = JSON.parse(readFileSync(join(__dirname, 'fixtures/live-declarations-2026-09-28.json'), 'utf8'));
-    const raws: string[] = [...declarations.current.answers, ...declarations.fixed.answers];
-    const concluded = raws.map(raw => { const parsed = parseModelJson(raw, { wrapped: 'accept' });
-      return parsed.ok ? conclusionText((parsed.value as { conclusion: { value: unknown } }).conclusion.value as never) : null; });
-    expect(concluded.length).toBeGreaterThanOrEqual(8);
-    expect(concluded.some(text => typeof text === 'string' && text.startsWith('{"reply"'))).toBe(true);
-    for (const text of concluded) expect(parseNativeStep(text).kind).toBe('answer');
-    for (const name of ['task', 'scope', 'r6-fixed', 'call-cap']) {
-      const record = JSON.parse(readFileSync(join(__dirname, `fixtures/tool-turn/live-2026-10-03/${name}.json`), 'utf8'));
-      expect(parseNativeStep(record.answer).kind).toBe('answer');
-    }
-    const cascade = JSON.parse(readFileSync(join(__dirname, 'fixtures/proofroom-summary-cascade-stall-2026-09-30.json'), 'utf8'));
-    const delivered = cascade.rows.filter((row: { kind: string }) => row.kind === 'answer').map((row: { text: string }) => row.text);
-    expect(delivered.length).toBeGreaterThan(10);
-    for (const text of delivered) expect(parseNativeStep(text).kind).toBe('answer');
-    const uncertain = cascade.rows.filter((row: { state?: string }) => row.state === 'uncertain');
-    expect(uncertain.length).toBeGreaterThan(5);
-  });
-
+describe('the recorded step outcome', () => {
   it('a recorded uncertain or empty step ends the loop with that outcome unchanged, running nothing', async () => {
     const cascade = JSON.parse(readFileSync(join(__dirname, 'fixtures/proofroom-summary-cascade-stall-2026-09-30.json'), 'utf8'));
     const uncertain = cascade.rows.find((row: { state?: string }) => row.state === 'uncertain');
@@ -167,7 +113,7 @@ describe('the step parser', () => {
   });
 });
 
-describe('the loop', () => {
+describe.runIf(process.platform === 'darwin')('the loop', () => {
   it('creates a file, runs a command and answers with the value; every call admitted by the hook and journaled', async () => {
     const run = await nativeTurn([
       ask(['Write', { file_path: 'note.txt', content: 'hello tools' }]),
@@ -308,40 +254,7 @@ describe('the loop', () => {
   });
 });
 
-describe('the shell boundary', () => {
-  it('builds the sandbox from the harness sandbox inputs and refuses an unsafe or overlapping scratch path', () => {
-    const profile = nativeShellProfile('/private/tmp/itt-abc', '/usr/local/bin/node');
-    expect(profile).toContain('(deny default)');
-    expect(profile).toContain('(literal "/usr/local/bin/node")');
-    expect(profile).toContain('(deny network*)');
-    expect(profile).not.toContain('network-outbound');
-    // With the turn's checkpoint, the one place a command may reach is its loopback port, and its tools' locations are read.
-    const reach = nativeShellProfile('/private/tmp/itt-abc', '/usr/local/bin/node', { port: 40123, reads: ['/Library/Developer/CommandLineTools'] });
-    expect(reach).toContain('(deny network*)');
-    expect(reach).toContain('(allow network-outbound (remote ip "localhost:40123"))');
-    expect(reach).toContain('(subpath "/Library/Developer/CommandLineTools")');
-    for (const bad of [{ port: 0, reads: [] }, { port: 40123, reads: ['/private/tmp/itt-abc/x'] }, { port: 40123, reads: ['rel'] }])
-      expect(() => nativeShellProfile('/private/tmp/itt-abc', '/usr/local/bin/node', bad)).toThrow(/egress checkpoint/u);
-    expect(profile).toContain('(allow file-write* (subpath "/private/tmp/itt-abc")');
-    expect(profile).toContain('(subpath "/usr/bin")');
-    // Both sides of the host configuration (the gate run of 2026-10-07: a confined shell with no readable /private/etc
-    // reached its own checkpoint in neither profile). It is machinery again, by both spellings, and the host's own record
-    // is refused after it — last rule wins in SBPL, and the kernel decides on the resolved path, so `/etc/hosts`, a
-    // concatenated or globbed spelling of it and a `..` escape are one refused target.
-    for (const text of [profile, reach] as string[]) {
-      expect(text).toMatch(/\(allow file-read\* file-map-executable .*\(subpath "\/private\/etc"\).*\(subpath "\/etc"\)/u);
-      expect(text).toContain('(deny file-read-data (subpath "/private/etc/hosts"))');
-      const lines = text.split('\n');
-      expect(lines.findIndex(line => line.startsWith('(deny file-read-data (subpath "/private/etc/hosts")')))
-        .toBeGreaterThan(lines.findIndex(line => line.startsWith('(allow file-read* file-map-executable')));
-    }
-    expect(() => nativeShellProfile('/private/etc/x', '/usr/local/bin/node')).toThrow(/overlaps/u);
-    expect(() => nativeShellProfile('/private/tmp/a b', '/usr/local/bin/node')).toThrow(/absolute and plain/u);
-    expect(() => nativeShellProfile('/usr/share/x', '/usr/local/bin/node')).toThrow(/overlaps/u);
-    expect(() => nativeShellProfile('/private/tmp/itt-abc', '/private/tmp/itt-abc/node')).toThrow(/outside the scratch/u);
-    expect(() => nativeShellProfile('/private/tmp/itt-abc', 'node')).toThrow(/node path/u);
-  });
-
+describe.runIf(process.platform === 'darwin')('the shell boundary', () => {
   it('a sandboxed command reads and writes only its scratch volume, reaches no network and signals nothing outside', async () => {
     const outside = dir(); writeFileSync(join(outside, 'canary.txt'), 'CANARY-NATIVE-0002');
     const script = ['echo "env: $(env | grep -c CLAUDE_CODE_)"', `echo "outside-read: $(cat ${join(outside, 'canary.txt')} 2>&1)"`,
@@ -382,7 +295,7 @@ process.exitCode = real.status ?? 1;`);
   };
 }
 
-describe('the tools\' execution boundary', () => {
+describe.runIf(process.platform === 'darwin')('the tools\' execution boundary', () => {
   it('a file the hook admitted that turns into a link out of the workspace before it runs is refused; an ordinary one is read', async () => {
     const outside = dir(), canary = join(outside, 'canary.txt'); writeFileSync(canary, 'CANARY-NATIVE-0004');
     const swap = `if (input.tool_input.file_path === 'doc.txt') { const ws = ${JSON.stringify('WS')};

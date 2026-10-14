@@ -10,6 +10,8 @@ const CHECKER = resolve('scripts/check-change-review.mjs');
 const GOVERNED = resolve('scripts/check-governed-docs.mjs');
 const env: NodeJS.ProcessEnv = { ...process.env, GIT_AUTHOR_NAME: 'Echo', GIT_AUTHOR_EMAIL: 'echo@example.invalid', GIT_COMMITTER_NAME: 'Echo',
   GIT_COMMITTER_EMAIL: 'echo@example.invalid', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+// Nested fixtures exercise a complete synthetic gate, independently of the outer host split.
+delete env.INSTAR_TEST_PLATFORM_SPLIT;
 delete env.INSTAR_CHANGE_EVIDENCE;
 delete env.CHANGE_REVIEW_BASE;
 const dirs: string[] = [];

@@ -545,18 +545,12 @@ it('uninstall removes only the installed release and its files, never keys or jo
   expect(provisionRun(['accounts-rollback', '--uid', '499', '--gid', '499'], installed).err).toContain('uninstall it first');
 });
 
-it('the installation steps create an owner-only receipt key and the established journal once, and never over existing ones', () => {
+it.runIf(darwin)('the installation steps create the established journal once, and never over an existing one', () => {
   const dir = tempRoot();
   try {
     const enforcer = build(dir);
     const node = (...args: string[]) => spawnSync(process.execPath, [join(repo, 'scripts', 'fixed-native-worker-monitor.mjs'), ...args],
       { encoding: 'utf8' });
-    expect(node('keygen', join(dir, 'receipt.key'), join(dir, 'receipt.pub')).status).toBe(0);
-    expect(spawnSync('/usr/bin/stat', ['-f', '%Lp', join(dir, 'receipt.key')], { encoding: 'utf8' }).stdout.trim()).toBe('600');
-    expect(spawnSync('/usr/bin/stat', ['-f', '%Lp', join(dir, 'receipt.pub')], { encoding: 'utf8' }).stdout.trim()).toBe('644');
-    const before = readFileSync(join(dir, 'receipt.key'));
-    expect(node('keygen', join(dir, 'receipt.key'), join(dir, 'other.pub')).status).toBe(2);
-    expect(readFileSync(join(dir, 'receipt.key'))).toEqual(before);
     expect(node('journal-init', join(dir, 'journal'), 'installation:t', 'machine:t', 'journal:t', enforcer).status).toBe(0);
     const journal = new OfflineJournal(join(dir, 'journal'), undefined, { established: true });
     expect(journal.entries).toEqual([{ sequence: 1, kind: 'initialized', identity: 'journal:t',

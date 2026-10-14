@@ -71,7 +71,11 @@ it('ships a temporary-label launchd job with crash-only KeepAlive and no credent
     .replace('__ABSOLUTE_SAFE_STDOUT_LOG__', join(root, 'out.log'))
     .replace('__ABSOLUTE_SAFE_STDERR_LOG__', join(root, 'err.log'));
   const path = join(root, 'test.plist'); writeFileSync(path, rendered);
-  expect(spawnSync('plutil', ['-lint', path], { encoding: 'utf8' }).status).toBe(0);
+  const parsed = spawnSync('python3', ['-c', 'import json,plistlib,sys; print(json.dumps(plistlib.load(open(sys.argv[1], "rb"))))', path], { encoding: 'utf8' });
+  expect(parsed.status, parsed.stderr).toBe(0);
+  expect(JSON.parse(parsed.stdout)).toMatchObject({ Label: `test.instar.host-watch.${process.pid}`,
+    ProgramArguments: [process.execPath, join(process.cwd(), 'scripts/host-watch.mjs'), join(root, 'config.json')],
+    RunAtLoad: true, KeepAlive: { SuccessfulExit: false } });
   expect(rendered).toContain('<key>SuccessfulExit</key><false/>');
   expect(rendered).not.toContain('INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN');
 });

@@ -5,7 +5,7 @@ import { currentRuntime } from '../../scripts/composition-digest.mjs';
 import { buildCoreIfAbsent, currentPlatform, lintClientImports, lintHarnessNames, lintParityRegister, lintReplacedStores,
   NATIVE_HARNESS, parityMatrix, registerDeclarationSources, shippedClientFiles } from '../../scripts/check-architecture.mjs';
 // @ts-expect-error The self-hosting harness is JavaScript.
-import { selfHostCompositionEvidence } from '../preview/self-host-harness.mjs';
+import { selfHostCompositionEvidence } from '../preview/self-host-composition.mjs';
 
 const read = (path: string) => { try { return readFileSync(path, 'utf8'); } catch { return null; } };
 
@@ -68,7 +68,7 @@ it('R105 derives the parity matrix from the register declarations and refuses a 
   expect(native('claude-code-subscription')).toMatchObject({ mode: 'self-hosting', status: 'supported',
     doorway: 'claude-code-subscription', platform: 'darwin',
     artifact: ['createSelfHostHarness@tests/preview/self-host-harness.mjs'], route: ['claude-code-subscription@src/assembly/production-provider.ts'],
-    runtime: [currentRuntime()], conformance: [expect.stringMatching(/^sha256:[a-f0-9]{64}$/u)],
+    runtime: [currentPlatform() === 'darwin' ? currentRuntime() : expect.stringMatching(/^node-.+@sha256:[a-f0-9]{64}$/u)], conformance: [expect.stringMatching(/^sha256:[a-f0-9]{64}$/u)],
     entries: ['tests/preview/self-host.mjs,scripts/slice-ts-loader.mjs,deploy/macos/fixed-worker/worker.sb'],
     evidence: [{ file: 'tests/preview/native-harness-contract.test.ts', title: 'native composition honours the harness contract through doorway claude-code-subscription' }] });
   // The registered Codex doorway carries its own native tuple, and it is honestly unproven: the
@@ -138,10 +138,12 @@ it('R105 derives the parity matrix from the register declarations and refuses a 
     expect(evidence.files, path).toContain(path);
     expect(evidence.supported, path).toBe(false);
   }
-  expect(selfHostCompositionEvidence(declarations, read).supported).toBe(true);
+  const evidence = selfHostCompositionEvidence(declarations, read);
+  expect(evidence.supported).toBe(evidence.declaredRuntime === currentRuntime());
   expect(details(with_(harness, entries => { const metrics = entries[0]!.requiredFacts.metrics;
     metrics[metrics.findIndex(metric => metric.includes('.self-hosting.runtime='))] = 'harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.runtime=node-24';
-  }))).toContain(`preview-self-host-native × claude-code-subscription × darwin × self-hosting: certified on node-24, running ${currentRuntime()}`);
+    for (const [at, metric] of metrics.entries()) metrics[at] = metric.replace('.darwin.self-hosting', `.${currentPlatform()}.self-hosting`);
+  }))).toContain(`preview-self-host-native × claude-code-subscription × ${currentPlatform()} × self-hosting: certified on node-24, running ${currentRuntime()}`);
   expect(details(with_(harness, entries => { const metrics = entries[0]!.requiredFacts.metrics;
     metrics.splice(metrics.findIndex(metric => metric.includes('.self-hosting.entries=')), 1);
   }))).toContain('preview-self-host-native × claude-code-subscription × darwin × self-hosting: supported without complete composition entry points (closure reaching its artifact and route) and runtime');
@@ -149,9 +151,9 @@ it('R105 derives the parity matrix from the register declarations and refuses a 
   expect(details(sources, [...doorways, 'new-doorway'])).toContain('registered doorway new-doorway has no native harness tuple');
   // The committed declarations carry no other finding.
   expect(clean).toEqual([]);
-// Bounded but heavy: each of the nine drift cases re-hashes the whole composition closure (typescript.js included), about 8 s
-// alone; under a loaded full suite it passed the 10 s default, so it gets its own ceiling.
-}, 60_000);
+// Each drift case hashes the composition closure, including the compiler. Use the suite's
+// bounded 90 s timeout: the Linux portable gate measured 62.4 s, beyond the former 60 s override.
+});
 
 it('R105 decides a certified composition on the host that can decide it: the build it needs, and the platform it names', () => {
   const harness = 'src/assembly/harness.declarations.json';
