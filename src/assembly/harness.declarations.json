@@ -19,13 +19,8 @@
         "harness.session-harness:codex-cli.codex-cli-subscription.darwin.conversation.reason=the Codex model doorway codex-cli-subscription is registered and the session driver launches Codex for long and scheduled work, but no captured test runs a live operator conversation through a Codex session on darwin",
         "harness.preview-self-host-native.codex-cli-subscription.darwin.self-hosting.unproven",
         "harness.preview-self-host-native.codex-cli-subscription.darwin.self-hosting.reason=the doorway is registered and answers through it are captured, but the native harness contract suite has not been run against it; Rule 115 conformance for this doorway is the next unit and is deliberately not claimed here",
-        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.supported",
-        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.artifact=createSelfHostHarness@tests/preview/self-host-harness.mjs",
-        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.route=claude-code-subscription@src/assembly/production-provider.ts",
-        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.entries=tests/preview/self-host.mjs,scripts/slice-ts-loader.mjs,deploy/macos/fixed-worker/worker.sb",
-        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.runtime=node-24.14.1@sha256:91d3afb67a7dc211f642f2328f822505ff1c1ad381e98ffdd21b003970deeeda",
-        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.conformance=sha256:c5c00aaeefbbc17afa49022590f3db3871468cbf4bb65a43d8e423e30e1dbf02",
-        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.evidence=tests/preview/native-harness-contract.test.ts#native composition honours the harness contract through doorway claude-code-subscription"
+        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.unproven",
+        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.reason=Rule 105 requires a certificate for the current composition; step1b-host-1013 changes its bytes and the desk owns the macOS contract and copy walk. Previous conformance remains in git history, not certification of this head"
       ]
     },
     "profile": {

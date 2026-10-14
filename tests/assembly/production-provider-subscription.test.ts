@@ -691,3 +691,23 @@ it('coalesces overlapping version checks only for the same complete profile', as
   await check(newer, async () => { calls++; });
   expect(calls).toBe(3);
 });
+
+it('keeps scheduled work policy unchanged and requires the exact continuing-session policy', () => {
+  const f = fixture(), session = subscriptionDoorway('claude-code-subscription').session;
+  const { profile, activation, model } = f.input;
+  const conversation = session.conversation!;
+  const policy = conversation.policy(model);
+  expect(policy.limits).toMatchObject({ maxStepsPerLaunch: 64, maxCallsPerStep: 128, deadlineMs: 3600000 });
+  expect(policy.admission.allowance).toBe(policy.limits.maxCallsPerStep);
+  expect(policy.prompt).toContain('wait for the next message');
+  expect(policy.prompt).not.toContain('You have no tools');
+  const granted = { ...activation, invocationPolicyDigest: hash(policy), acceptedResiduals: [SESSION_WORK_RESIDUAL] };
+  expect(() => conversation.validateActivation(granted, profile, model, 1000)).not.toThrow();
+  expect(() => session.validateActivation(granted, profile, model, 1000)).toThrow(/policy differs/u);
+  const scheduled = { ...granted, invocationPolicyDigest: hash(subscriptionSessionPolicy(model)) };
+  expect(() => session.validateActivation(scheduled, profile, model, 1000)).not.toThrow();
+  expect(() => conversation.validateActivation(scheduled, profile, model, 1000)).toThrow(/policy differs/u);
+  expect(() => conversation.validateActivation({ ...granted, acceptedResiduals: [] }, profile, model, 1000))
+    .toThrow(/residual/u);
+  expect(subscriptionDoorway('codex-cli-subscription').session.conversation).toBeUndefined();
+});
