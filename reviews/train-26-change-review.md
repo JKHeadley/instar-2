@@ -50,6 +50,10 @@ Prompt finding: b00ed403060a | protocol-literal | The repeated existing tool-sco
 Prompt finding: b1bb3946362d | protocol-literal | Existing agent identity opening, unchanged here; every input uses it without test-specific dispatch.
 Prompt finding: 450c79237a95 | protocol-literal | Existing conflict/recall evidence instruction, unchanged here; matching assertions protect evidence handling for arbitrary memories.
 
+Decision: train-26-review | Repair the missing Subject base and mandatory metadata in main's platform-installation review guide, keeping its original design body intact and citing this train for the combined source scope; cover the register publication in this record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-26-PROGRESS.md
+
+Generated register: replayed from combined source 5fe4a1ef0b38cd093fc5cf69ff0ad147e0db511a, generation sha256:7c26d28c1d7748fa52192310216cecb1c4aa28d8363d48a6a4b51c086ac719f0; shape-only evidence.
+
 simplestRobustRoute: This is the simplest robust route: two ordinary exact-head merges, preserving reviewed implementations, followed by the existing repin/build/rehash/register replay and consumer checks. No new classifier, store or gate. Start guards remain durable authenticated intake and current activation/owner admission; completion is correlated reply evidence; stop, bounded allowance, no-repeat and secret floors remain held. The desk owns unattended live acceptance; this record claims only combined-tree verification.
 80/20: Changed tests, direct consumers and required journal/register/pinned-text checks in bounded foreground runs; no full suite or load injection. Host-only checks remain for the gate host under the explicit brief.
 VERDICT: author submission; independent review and live acceptance belong to the desk
