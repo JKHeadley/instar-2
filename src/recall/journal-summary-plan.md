@@ -4,7 +4,7 @@ Tracking key: journal-read-port-1013-summary. Owner: the journal-read-port follo
 builder, scheduled by the desk before step6-grounding consumes long histories.
 Exit test: given a fixture journal and target message K, one bounded background invocation
 records a faithful accepted summary through K; the read port sees its exact coverage after
-reopen. Failure, uncertainty, stop, insufficient budget and unknown earlier outcomes leave
+reopen. Failure, an uncertain paid-call outcome, stop, insufficient budget and unknown earlier outcomes leave
 the accepted frontier unchanged and preserve the source messages and recorded attempt.
 Review cadence: at that unit's start and gate, and when the desk schedules step6-grounding.
 
@@ -71,3 +71,17 @@ Acceptance evidence, before claiming the producer is on:
 Part 1 intentionally leaves this protocol in its current owner. Extracting just the happy
 path would duplicate acceptance authority and lose the correction, spend or UNKNOWN floor;
 copying the whole journal into src would violate the brief's simplest robust route.
+
+
+## Extraction implementation
+
+Unit `summary-producer-1013` implements the selected-frontier transition in
+`rolling-summary.ts`; the current background tick invokes it through injected ports.
+The pure faithfulness, integrity and shared JSON decoders live beside it, with compatibility
+exports at their former locations. Journal-specific decoding and correction validation,
+source selection, retry accounting and physical model bindings remain with their owner.
+New summary frames carry exact message coverage verified by the existing read adapter.
+The unit tests and encrypted recorded-walk reopens exercise that consumer, including
+staleness, structural refusal and faithful uncertainty. Captured writer and review outputs
+are exercised by the existing summary-cascade regression tests. The desk owns the approved
+proof-room live-provider run; this extraction does not claim live-user acceptance.

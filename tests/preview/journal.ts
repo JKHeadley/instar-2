@@ -29,8 +29,10 @@ import { messageTime, zoneFormatter } from './self-state.js';
 import { TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
 import { renderCapabilityReply, renderCapabilityRevision } from './capability-render.js';
 import type { ObjectionDisposition, ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyFinding, ReplyReviewDiagnostics, ReplyRule } from './reply-check.js';
-import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
-import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJev, summaryFaithfulnessEvidence, summaryJevScore, summaryJevUsage } from './summary-faithfulness.js';
+import type { SummaryCheckResult } from './summary-check.js';
+import { produceRollingSummary } from '../../src/recall/rolling-summary.js';
+import { journalSummarySource } from './journal-history-adapter.js';
+import { summaryFaithfulnessEvidence } from './summary-faithfulness.js';
 
 import { unlabeledRecall } from './answer-provenance.js';
 import { interpretStepJev, stepQuestionFor, stepQuestionsFor, type StepCheckResult } from './step-check.js';
@@ -1304,7 +1306,7 @@ export type JournalRecord =
   | { kind: 'index-reserve'; sources: string[]; maxInputTokens: number; maxOutputTokens: number; at: number }
   | { kind: 'meaning-index'; concepts: SummaryConcept[]; usage?: ModelUsage; at: number }
   | { kind: 'memory-undecided'; id: string; reason: 'summary-uncertain' | 'summary-failed' | 'summary-behind'; at: number }
-  | { kind: 'summary'; through: number; text: string; memoryItems?: SummaryMemoryItem[];
+  | { kind: 'summary'; through: number; covers?: string[]; text: string; memoryItems?: SummaryMemoryItem[];
     /** Meaning terms for summarized operator messages (Rule 11): a retrieval index, never shown as fact. */
     concepts?: SummaryConcept[]; people?: PersonNote[]; personAttributes?: PersonAttribute[]; memoryFor?: string[]; memory?: MemoryChange[];
     /** Validated forgets of a still-open request's message, held until that request's cancel decision (Rules 10, 93). */
@@ -4050,6 +4052,14 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     view.indexConcepts.push(...row.concepts); view.indexOpen = null; return;
   }
   if (row.kind === 'summary') {
+    // New producer records pin exact received-message coverage; old rows retain
+    // their legacy read projection. Refuse malformed new coverage before mutation.
+    if (row.covers !== undefined) {
+      const expected = journalSummarySource(view, row.through).covers;
+      if (!Array.isArray(row.covers) || !row.covers.length || row.covers.length !== expected.length
+        || row.covers.some((id, index) => id !== expected[index]))
+        throw Error('preview journal: summary coverage missing or malformed');
+    }
     if (!view.summaryReservations.has(row.through) || liveSummaries(view).some(item => item.through === row.through))
       throw Error('preview journal: summary without reservation');
     if (view.summaryRequired.has(row.through) && (!view.summaryCandidates.has(row.through)
@@ -10218,321 +10228,259 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         return;
       }
       const { through, packet, prepared, offered, memorySources, questionSources, trigger, strictMemory, reminderOffer, indexBacklog } = chosen;
-      gate();
       summarized = true;
-      journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),
-        ...(ports.replyCheck ? { supervised: true as const } : {}),
-        maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at:ports.now()});
-      unknownSince.set(through, elapsed());
-      // Plan #389: the retraction state this packet was built under. A retraction applied while the call is out makes
-      // the answer stale: it may carry the retracted turns' facts, so it is settled as failed at admission, never kept.
+      let summaryForFailure: Awaited<ReturnType<PreviewPorts['model']>> | undefined;
+      let memoryPendingFor = trigger && strictMemory ? trigger.id : undefined;
       const retractedAtBuild = journal.view.retracted?.length ?? 0;
+      const produced = await produceRollingSummary<Awaited<ReturnType<PreviewPorts['model']>>,
+        (faithfulness: SummaryFaithfulness, covers: readonly string[]) => void>(through, {
+        source: () => journalSummarySource(journal.view, through),
+        guard: gate,
+        reserve: () => {
+          journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),
+            ...(ports.replyCheck ? { supervised: true as const } : {}),
+            maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at:ports.now()});
+          unknownSince.set(through, elapsed());
+        },
+        write: async () => {
+          const result = await ports.model({ question: summaryQuestion, context: packet, id: `summary:${through}`,
+            ...(prepared === undefined ? {} : { prepared }) });
+          summaryForFailure = result;
+          return result;
+        },
+        prepare: summary => {
+          if (typeof summary !== 'string' && 'state' in summary && summary.state === 'uncertain') {
+            journal.append({kind:'summary-uncertain',through,state:'uncertain',
+              ...('usage' in summary && summary.usage ? { usage: summary.usage } : {}),at:ports.now()});
+            // Proven over the cap: the next attempt settles it and takes a shorter span, inside this pass's bounds.
+            if (journal.view.summaryOverCap.some(item => item.through === through)) { return { kind: 'over-cap' as const }; }
+            return { kind: 'stop' as const };
+          }
+          if (typeof summary !== 'string' && 'failureClass' in summary) {
+            journal.append({kind:'summary-failed',format:SUMMARY_FORMAT,through,state:summary.state,failureClass:summary.failureClass,
+              ...(summary.usage ? { usage: summary.usage } : {}),at:ports.now()}); return { kind: 'stop' as const };
+          }
+          const answered = typeof summary === 'string' ? summary : summary.text;
+          if (!answered.trim()) {
+            journal.append({kind:'summary-failed',format:SUMMARY_FORMAT,through,state:'complete',failureClass:'empty',
+              ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return { kind: 'stop' as const };
+          }
+          const redactedFailure = ports.stepCheck ? redact(answered) : null;
+          const failedOutput = redactedFailure
+            ? { output: redactedFailure.count || Buffer.byteLength(answered) > 8192 ? '' : clean(redactedFailure.text, true) } : {};
+          let summaryText = answered, proposedItems: unknown, proposedConcepts: unknown, people: PersonNote[] | undefined, personAttributes: PersonAttribute[] | undefined, commitments: CommitmentNote[] | undefined,
+            commitmentSources: CommitmentSource[] | undefined, commitmentRefusals = 0,
+            closed: CommitmentClosure[] | undefined, memory: MemoryChange[] | undefined, questions: OpenQuestion[] | undefined,
+            reminderCancels: string[] | undefined;
+          let attemptedMemory = false, unresolvedMemory = false, attemptedAttributes = false;
+          const heldForgets: MemoryChange[] = [];
+          try { type SummaryAnswer = { summary?: unknown; people?: unknown; personAttributes?: unknown;
+              commitments?: unknown; closed?: unknown; memory?: unknown; memoryDisposition?: unknown; questions?: unknown; memoryItems?: unknown; cancelReminders?: unknown };
+            let parsed = JSON.parse(answered.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')) as SummaryAnswer & { reply?: unknown };
+            // The shared system prompt tells the model to wrap decision fields as {"reply": ...} when a memory
+            // decision applies; a real summary answer (live 2026-09-30) came back as {"reply":"<summary JSON>"}.
+            // Unwrapped here, so its fields (memoryDisposition included) are read and the judges see the summary prose.
+            // Live 2026-10-02 (cint-L28, summary:969389764 and the second summary:969389763) the prose came back as `reply`
+            // beside the other fields; JSON.parse of that prose threw, so the whole object was measured as the prose and
+            // its memoryDisposition was never read. Prose that is not JSON is the summary, its siblings the fields.
+            if (typeof parsed?.summary !== 'string' && parsed?.reply !== undefined) {
+              let inner: unknown = parsed.reply;
+              if (typeof inner === 'string') try { inner = JSON.parse(inner); } catch { inner = undefined; }
+              if (inner && typeof inner === 'object' && typeof (inner as SummaryAnswer).summary === 'string') parsed = inner as SummaryAnswer;
+              else if (typeof parsed.reply === 'string') parsed = { ...parsed, summary: parsed.reply };
+            }
+            if (typeof parsed?.summary === 'string') summaryText = parsed.summary;
+            unresolvedMemory = parsed?.memoryDisposition === 'unresolved';
+            attemptedMemory = parsed?.memory !== undefined && (!Array.isArray(parsed.memory) || parsed.memory.length > 0);
+            attemptedAttributes = parsed?.personAttributes !== undefined;
+            if (typeof parsed?.summary === 'string' && Array.isArray(parsed.people)) {
+              summaryText = parsed.summary; people = notesFrom(parsed.people, through);
+              if (parsed.personAttributes !== undefined) personAttributes = attributesFrom(parsed.personAttributes,
+                journal.view.order.filter(item => remembered(item) && item.update > (summaryFor(through)?.through ?? -1) && item.update <= through));
+              proposedItems = parsed.memoryItems;
+              proposedConcepts = (parsed as { concepts?: unknown }).concepts;
+              if (Array.isArray(parsed.questions)) questions = questionsFrom(parsed.questions, questionSources);
+              if (trigger && Array.isArray(parsed.memory) && parsed.memoryDisposition !== 'unresolved')
+                memory = memoryFrom(parsed.memory, trigger, new Set(memorySources),
+                  (JSON.parse(packet) as { summary?: { text: string } }).summary?.text, [], heldForgets);
+              // One field, one shape (plan #507). `cancelReminders` on the ANSWER side is
+              // [{id, quote-of-this-message}], and this side asked for [ids] -- the same name for two shapes, to the same
+              // model. It writes the answer's shape here: all three real-model runs of 2026-10-04 that volunteered the
+              // field wrote [{id, quote}], as did the recorded live output of 2026-10-02, so the withdrawal was read as
+              // nothing and the summary was refused for want of it. Both forms are read, and the quoted form carries the
+              // answer side's own evidence rule: the id must be one this packet offered AND still open, and the quote must
+              // be copied from the operator's own withdrawing message (Rules 57, 93 -- the agent's reply is never the
+              // evidence). So the object form is strictly the stronger of the two, never a loosening.
+              if (reminderOffer.length && Array.isArray(parsed.cancelReminders)) {
+                const pending = new Set(openRequests(journal.view).map(datedKey));
+                const ids = new Map(reminderOffer.filter(item => pending.has(datedKey(item))).map(item => [reminderId(item), datedKey(item)]));
+                // Exactly the text the packet showed as memoryRequest.message, so a legitimate quote of it always matches.
+                const shown = trigger ? clean(redact(trigger.text).text, false, trigger.id) : '';
+                const withdrawn = (value: unknown): string | undefined => {
+                  if (typeof value === 'string') return ids.has(value) ? value : undefined;
+                  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+                  const { id, quote } = value as { id?: unknown; quote?: unknown };
+                  return typeof id === 'string' && ids.has(id) && typeof quote === 'string'
+                    && quote.trim().length >= WITHDRAWAL_QUOTE_MIN_CHARS
+                    && Buffer.byteLength(quote) <= WITHDRAWAL_QUOTE_MAX_BYTES && shown.includes(quote) ? id : undefined;
+                };
+                const cited = parsed.cancelReminders.map(withdrawn);
+                if (cited.every(id => id !== undefined))
+                  reminderCancels = [...new Set(cited as string[])].map(id => ids.get(id)!);
+              }
+              if (Array.isArray(parsed.closed)) closed = closuresFrom(parsed.closed, through, new Set(offered.map(item => item.id)));
+              if (Array.isArray(parsed.commitments)) {
+                const found = commitmentsFrom(parsed.commitments, through, new Set(closed?.map(item => item.id) ?? []));
+                commitments = found.notes; commitmentSources = found.links; closed = [...closed ?? [], ...found.closures];
+                commitmentRefusals = found.refused;
+              }
+            } } catch { /* a plain summary: no person or commitment notes, visible in status */ }
+          if (attemptedAttributes && personAttributes === undefined
+            || unresolvedMemory || strictMemory && memory === undefined || attemptedMemory && memory === undefined
+            || questionSources.length > 0 && questions === undefined || reminderOffer.length > 0 && reminderCancels === undefined) {
+            journal.append({kind:'summary-failed',format:SUMMARY_FORMAT,through,state:'complete',failureClass:'malformed',
+              ...(trigger ? { memoryPendingFor: trigger.id } : {}),
+              ...failedOutput, ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return { kind: 'stop' as const };
+          }
+          const allMemory = [...journal.view.memory, ...memory ?? []];
+          if (allMemory.some((change, index) => (change.mode === 'correct' || change.mode === 'forget')
+            && !preferenceState().lineage.has(JSON.stringify([change.source, change.quote]))
+            && !restoredHistorical(change, [...journal.view.memory, ...memory ?? []])
+            && !allMemory.slice(index + 1).some(later => later.mode === 'correct' && later.replacement?.includes(change.quote))
+            && (hasClaim(summaryText, change.quote)
+              || change.summaryPassages?.some(passage => hasClaim(summaryText, passage))))) {
+            const reason = 'summary faithfulness: stale corrected or forgotten claim';
+            journal.append({kind:'summary-failed',format:SUMMARY_FORMAT,through,state:'complete',failureClass:'malformed',reason,
+              ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
+              ...(typeof summary === 'string' ? {} : { usage: summary.usage }),...failedOutput, at:ports.now()});
+            const affected = journal.view.order.find(item => item.update === through);
+            if (affected) journal.append({kind:'hold',id:affected.id,reason,...failedOutput, at:ports.now()});
+            return { kind: 'stop' as const };
+          }
+          // The prose ceiling: past the carried size every packet is sized for, a rewrite asked too much whatever the span,
+          // so it is the over-bound class and the over-cap brake applies. Prose between the target and the ceiling is
+          // accepted: the answer ended within the output cap, and the next pass is asked to condense it.
+          if (Buffer.byteLength(summaryText) > summaryTextCeiling()) {
+            journal.append({kind:'summary-failed',format:SUMMARY_FORMAT,through,state:'complete',failureClass:'malformed',
+              reason:SUMMARY_OVER_BOUND_REASON,...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
+              ...failedOutput, ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()});
+            // Like a proven over-cap attempt: a shorter span next, inside this pass's bound of four.
+            return { kind: 'over-cap' as const };
+          }
+          const priorItems = summaryFor(through)?.memoryItems ?? [];
+          const changes = [...journal.view.memory, ...memory ?? []];
+          const memoryItems: SummaryMemoryItem[] = priorItems.filter(item => !changes.some(change =>
+            (change.mode === 'correct' || change.mode === 'forget') && change.source === item.source
+              && (item.quote.includes(change.quote) || change.quote.includes(item.quote))));
+          for (const [index, change] of changes.entries()) if (change.mode === 'correct' && change.replacement
+            && (memory?.includes(change) || priorItems.some(item => item.source === change.source
+              && (item.quote.includes(change.quote) || change.quote.includes(item.quote))))
+            && !changes.slice(index + 1).some(later => (later.mode === 'correct' || later.mode === 'forget') && later.source === change.trigger
+              && (change.replacement!.includes(later.quote) || later.quote.includes(change.replacement!)))) {
+            const source = journal.view.turns.get(change.trigger);
+            if (source && redact(source.text).text.includes(change.replacement)
+              && Buffer.byteLength(change.replacement) <= 300 && memoryItems.length < 20
+              && !memoryItems.some(item => item.source === source.id && item.quote === change.replacement))
+              memoryItems.push({ source: source.id, quote: change.replacement });
+          }
+          const after = summaryFor(through)?.through ?? -1;
+          for (const item of Array.isArray(proposedItems) ? proposedItems.slice(0, 20) : []) {
+            const { source, quote } = (item ?? {}) as { source?: unknown; quote?: unknown };
+            const turn = typeof source === 'string' ? journal.view.turns.get(source) : undefined;
+            if (!turn?.accepted || !fromOperator(turn) || turn.update <= after || turn.update > through
+              || typeof quote !== 'string' || !quote.trim() || Buffer.byteLength(quote) > 300
+              || !redact(turn.text).text.includes(quote) || memoryItems.length >= 20
+              || memoryItems.some(saved => saved.source === source && saved.quote === quote)
+              || changes.some(change => (change.mode === 'correct' || change.mode === 'forget') && change.source === source
+                && (quote.includes(change.quote) || change.quote.includes(quote)))) continue;
+            memoryItems.push({ source: turn.id, quote });
+          }
+          // Meaning terms index the operator messages this summary newly covers, and the offered backlog (bounded per pass).
+          const concepts: SummaryConcept[] = [];
+          for (const item of Array.isArray(proposedConcepts) ? proposedConcepts.slice(0, CONCEPT_SOURCES_LIMIT) : []) {
+            const { source, terms: proposed } = (item ?? {}) as { source?: unknown; terms?: unknown };
+            const turn = typeof source === 'string' ? journal.view.turns.get(source) : undefined;
+            const words = proposedConceptTerms(proposed);
+            if (!turn?.accepted || !fromOperator(turn) || (turn.update <= after && !indexBacklog.includes(turn.id)) || turn.update > through || !words?.length
+              || concepts.some(saved => saved.source === turn.id)) continue;
+            concepts.push({ source: turn.id, terms: words });
+          }
+          const candidate = clean(redact(summaryText).text, true, through);
+          const candidateWithItems = [candidate, ...memoryItems.map(item => item.quote)].join('\n');
+          let supervisedState: string | undefined;
+          // A decided removal must not be reintroduced through a secondary model
+          // check. Keep the audit structure, but project every string through the
+          // same exact clauses before handing it to Jev or a summary reviewer.
+          const auditChanges = [...journal.view.memory, ...memory ?? []];
+          const safeAudit = (value: string) => projectModelEvidence(value, auditChanges);
+          if (ports.replyCheck) {
+            supervisedState = safeAudit(JSON.stringify({ packet: JSON.parse(packet) as object,
+              proposed: { summary: summaryText, people: people ?? [], personAttributes: personAttributes ?? [], commitments: commitments ?? [],
+                closed: closed ?? [], memory: memory ?? [], memoryItems } }, (_key, value: unknown) =>
+              typeof value === 'string' ? redact(value).text : value));
+            journal.append({ kind: 'summary-candidate', through, state: supervisedState,
+              ...(typeof summary === 'string' ? {} : { usage: summary.usage }), at: ports.now() });
+            gate();
+          }
+          memoryPendingFor = trigger && (strictMemory || memory?.length) ? trigger.id : undefined;
+          const auditDecisions = auditChanges.map(change => ({ mode: change.mode,
+            source: publicMemoryId(change.source), trigger: change.trigger,
+            sourceQuote: withheld, subjects: statedFacts(change.quote).map(fact => fact.subject),
+            ...(change.replacement === undefined ? {} : { replacement: redact(change.replacement).text }) }));
+          return { kind: 'candidate' as const, candidate: {
+            packet, textWithItems: candidateWithItems, memory: memory ?? [],
+            evidence: safeAudit(summaryFaithfulnessEvidence(packet, candidateWithItems, memory ?? [], auditDecisions)),
+            ...(supervisedState === undefined ? {} : { supervisedState }),
+            value: (faithfulness: SummaryFaithfulness, covers: readonly string[]) => {
+          journal.append({kind:'summary',through,covers:[...covers],text:candidate,...(memoryItems.length ? { memoryItems } : {}),...(concepts.length ? { concepts } : {}),faithfulness: ports.replyCheck
+            ? { path: faithfulness.path, verdict: faithfulness.verdict, score: faithfulness.score } : faithfulness,
 
-      let summary: Awaited<ReturnType<PreviewPorts['model']>>;
-      try { summary = await ports.model({ question: summaryQuestion,
-        context: packet, id: `summary:${through}`, ...(prepared === undefined ? {} : { prepared }) }); }
-      catch { return; } // outcome UNKNOWN; preserve the reservation
-      if (typeof summary !== 'string' && 'state' in summary && summary.state === 'uncertain') {
-        journal.append({kind:'summary-uncertain',through,state:'uncertain',
-          ...('usage' in summary && summary.usage ? { usage: summary.usage } : {}),at:ports.now()});
-        // Proven over the cap: the next attempt settles it and takes a shorter span, inside this pass's bounds.
-        if (journal.view.summaryOverCap.some(item => item.through === through)) { if (++overCapAttempts < 4) continue; break; }
-        return;
-      }
-      if (typeof summary !== 'string' && 'failureClass' in summary) {
-        journal.append({kind:'summary-failed',format:SUMMARY_FORMAT,through,state:summary.state,failureClass:summary.failureClass,
-          ...(summary.usage ? { usage: summary.usage } : {}),at:ports.now()}); return;
-      }
-      const answered = typeof summary === 'string' ? summary : summary.text;
-      if (!answered.trim()) {
-        journal.append({kind:'summary-failed',format:SUMMARY_FORMAT,through,state:'complete',failureClass:'empty',
-          ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
-      }
-      const redactedFailure = ports.stepCheck ? redact(answered) : null;
-      const failedOutput = redactedFailure
-        ? { output: redactedFailure.count || Buffer.byteLength(answered) > 8192 ? '' : clean(redactedFailure.text, true) } : {};
-      let summaryText = answered, proposedItems: unknown, proposedConcepts: unknown, people: PersonNote[] | undefined, personAttributes: PersonAttribute[] | undefined, commitments: CommitmentNote[] | undefined,
-        commitmentSources: CommitmentSource[] | undefined, commitmentRefusals = 0,
-        closed: CommitmentClosure[] | undefined, memory: MemoryChange[] | undefined, questions: OpenQuestion[] | undefined,
-        reminderCancels: string[] | undefined;
-      let attemptedMemory = false, unresolvedMemory = false, attemptedAttributes = false;
-      const heldForgets: MemoryChange[] = [];
-      try { type SummaryAnswer = { summary?: unknown; people?: unknown; personAttributes?: unknown;
-          commitments?: unknown; closed?: unknown; memory?: unknown; memoryDisposition?: unknown; questions?: unknown; memoryItems?: unknown; cancelReminders?: unknown };
-        let parsed = JSON.parse(answered.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')) as SummaryAnswer & { reply?: unknown };
-        // The shared system prompt tells the model to wrap decision fields as {"reply": ...} when a memory
-        // decision applies; a real summary answer (live 2026-09-30) came back as {"reply":"<summary JSON>"}.
-        // Unwrapped here, so its fields (memoryDisposition included) are read and the judges see the summary prose.
-        // Live 2026-10-02 (cint-L28, summary:969389764 and the second summary:969389763) the prose came back as `reply`
-        // beside the other fields; JSON.parse of that prose threw, so the whole object was measured as the prose and
-        // its memoryDisposition was never read. Prose that is not JSON is the summary, its siblings the fields.
-        if (typeof parsed?.summary !== 'string' && parsed?.reply !== undefined) {
-          let inner: unknown = parsed.reply;
-          if (typeof inner === 'string') try { inner = JSON.parse(inner); } catch { inner = undefined; }
-          if (inner && typeof inner === 'object' && typeof (inner as SummaryAnswer).summary === 'string') parsed = inner as SummaryAnswer;
-          else if (typeof parsed.reply === 'string') parsed = { ...parsed, summary: parsed.reply };
-        }
-        if (typeof parsed?.summary === 'string') summaryText = parsed.summary;
-        unresolvedMemory = parsed?.memoryDisposition === 'unresolved';
-        attemptedMemory = parsed?.memory !== undefined && (!Array.isArray(parsed.memory) || parsed.memory.length > 0);
-        attemptedAttributes = parsed?.personAttributes !== undefined;
-        if (typeof parsed?.summary === 'string' && Array.isArray(parsed.people)) {
-          summaryText = parsed.summary; people = notesFrom(parsed.people, through);
-          if (parsed.personAttributes !== undefined) personAttributes = attributesFrom(parsed.personAttributes,
-            journal.view.order.filter(item => remembered(item) && item.update > (summaryFor(through)?.through ?? -1) && item.update <= through));
-          proposedItems = parsed.memoryItems;
-          proposedConcepts = (parsed as { concepts?: unknown }).concepts;
-          if (Array.isArray(parsed.questions)) questions = questionsFrom(parsed.questions, questionSources);
-          if (trigger && Array.isArray(parsed.memory) && parsed.memoryDisposition !== 'unresolved')
-            memory = memoryFrom(parsed.memory, trigger, new Set(memorySources),
-              (JSON.parse(packet) as { summary?: { text: string } }).summary?.text, [], heldForgets);
-          // One field, one shape (plan #507). `cancelReminders` on the ANSWER side is
-          // [{id, quote-of-this-message}], and this side asked for [ids] -- the same name for two shapes, to the same
-          // model. It writes the answer's shape here: all three real-model runs of 2026-10-04 that volunteered the
-          // field wrote [{id, quote}], as did the recorded live output of 2026-10-02, so the withdrawal was read as
-          // nothing and the summary was refused for want of it. Both forms are read, and the quoted form carries the
-          // answer side's own evidence rule: the id must be one this packet offered AND still open, and the quote must
-          // be copied from the operator's own withdrawing message (Rules 57, 93 -- the agent's reply is never the
-          // evidence). So the object form is strictly the stronger of the two, never a loosening.
-          if (reminderOffer.length && Array.isArray(parsed.cancelReminders)) {
-            const pending = new Set(openRequests(journal.view).map(datedKey));
-            const ids = new Map(reminderOffer.filter(item => pending.has(datedKey(item))).map(item => [reminderId(item), datedKey(item)]));
-            // Exactly the text the packet showed as memoryRequest.message, so a legitimate quote of it always matches.
-            const shown = trigger ? clean(redact(trigger.text).text, false, trigger.id) : '';
-            const withdrawn = (value: unknown): string | undefined => {
-              if (typeof value === 'string') return ids.has(value) ? value : undefined;
-              if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
-              const { id, quote } = value as { id?: unknown; quote?: unknown };
-              return typeof id === 'string' && ids.has(id) && typeof quote === 'string'
-                && quote.trim().length >= WITHDRAWAL_QUOTE_MIN_CHARS
-                && Buffer.byteLength(quote) <= WITHDRAWAL_QUOTE_MAX_BYTES && shown.includes(quote) ? id : undefined;
-            };
-            const cited = parsed.cancelReminders.map(withdrawn);
-            if (cited.every(id => id !== undefined))
-              reminderCancels = [...new Set(cited as string[])].map(id => ids.get(id)!);
+            ...(trigger && (strictMemory || memory?.length) ? { memoryFor: [trigger.id] } : {}), ...(people ? { people } : {}),
+            ...(personAttributes?.length ? { personAttributes } : {}),
+            ...(reminderCancels ? { reminderCancels } : {}),
+            ...(memory ? { memory } : {}), ...(memory && heldForgets.length ? { heldForgets } : {}),
+            ...(commitments ? { commitments } : {}), ...(commitmentSources?.length ? { commitmentSources } : {}),
+            ...(commitmentRefusals ? { commitmentRefusals } : {}),
+            ...(closed?.length ? { closed } : {}),
+            ...(questionSources.length ? { questions: questions ?? [], questionsReviewed: questionSources.map(item => item.id) } : {}),
+            ...(!ports.replyCheck && typeof summary !== 'string' ? { usage: summary.usage } : {}),state:'complete',at:ports.now()});
+            }
+          } };
+        },
+        record: event => journal.append({ ...event, through, at: ports.now() }),
+        reject: (failure, output) => {
+          const summary = output ?? summaryForFailure;
+          // An uncertain paid call remains reserved even if the source moved meanwhile.
+          if (summary && typeof summary !== 'string' && 'state' in summary && summary.state === 'uncertain') {
+            journal.append({ kind: 'summary-uncertain', through, state: 'uncertain',
+              ...('usage' in summary && summary.usage ? { usage: summary.usage } : {}), at: ports.now() });
+            return;
           }
-          if (Array.isArray(parsed.closed)) closed = closuresFrom(parsed.closed, through, new Set(offered.map(item => item.id)));
-          if (Array.isArray(parsed.commitments)) {
-            const found = commitmentsFrom(parsed.commitments, through, new Set(closed?.map(item => item.id) ?? []));
-            commitments = found.notes; commitmentSources = found.links; closed = [...closed ?? [], ...found.closures];
-            commitmentRefusals = found.refused;
+          const reason = failure.stale && (journal.view.retracted?.length ?? 0) !== retractedAtBuild
+            ? SUMMARY_RETRACTED_REASON : failure.reason;
+          journal.append({ kind: 'summary-failed', through, ...(failure.stale ? {} : { format: SUMMARY_FORMAT }),
+            ...(reason === undefined ? {} : { reason }), ...(memoryPendingFor ? { memoryPendingFor } : {}),
+            ...(failure.evidence === undefined ? {} : { evidence: failure.evidence }),
+            ...(failure.faithfulness === undefined ? {} : { faithfulness: failure.faithfulness }),
+            ...(!ports.replyCheck && summary && typeof summary !== 'string' && summary.usage ? { usage: summary.usage } : {}),
+            ...(reason ? { state: 'complete' as const } : {}), at: ports.now() });
+          if (failure.evidence && reason) {
+            const affected = journal.view.order.find(item => item.update === through);
+            if (affected) journal.append({ kind: 'hold', id: affected.id, reason, at: ports.now() });
           }
-        } } catch { /* a plain summary: no person or commitment notes, visible in status */ }
-      if (attemptedAttributes && personAttributes === undefined
-        || unresolvedMemory || strictMemory && memory === undefined || attemptedMemory && memory === undefined
-        || questionSources.length > 0 && questions === undefined || reminderOffer.length > 0 && reminderCancels === undefined) {
-        journal.append({kind:'summary-failed',format:SUMMARY_FORMAT,through,state:'complete',failureClass:'malformed',
-          ...(trigger ? { memoryPendingFor: trigger.id } : {}),
-          ...failedOutput, ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()}); return;
-      }
-      const allMemory = [...journal.view.memory, ...memory ?? []];
-      if (allMemory.some((change, index) => (change.mode === 'correct' || change.mode === 'forget')
-        && !preferenceState().lineage.has(JSON.stringify([change.source, change.quote]))
-        && !restoredHistorical(change, [...journal.view.memory, ...memory ?? []])
-        && !allMemory.slice(index + 1).some(later => later.mode === 'correct' && later.replacement?.includes(change.quote))
-        && (hasClaim(summaryText, change.quote)
-          || change.summaryPassages?.some(passage => hasClaim(summaryText, passage))))) {
-        const reason = 'summary faithfulness: stale corrected or forgotten claim';
-        journal.append({kind:'summary-failed',format:SUMMARY_FORMAT,through,state:'complete',failureClass:'malformed',reason,
-          ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
-          ...(typeof summary === 'string' ? {} : { usage: summary.usage }),...failedOutput, at:ports.now()});
-        const affected = journal.view.order.find(item => item.update === through);
-        if (affected) journal.append({kind:'hold',id:affected.id,reason,...failedOutput, at:ports.now()});
-        return;
-      }
-      // The prose ceiling: past the carried size every packet is sized for, a rewrite asked too much whatever the span,
-      // so it is the over-bound class and the over-cap brake applies. Prose between the target and the ceiling is
-      // accepted: the answer ended within the output cap, and the next pass is asked to condense it.
-      if (Buffer.byteLength(summaryText) > summaryTextCeiling()) {
-        journal.append({kind:'summary-failed',format:SUMMARY_FORMAT,through,state:'complete',failureClass:'malformed',
-          reason:SUMMARY_OVER_BOUND_REASON,...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
-          ...failedOutput, ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()});
-        // Like a proven over-cap attempt: a shorter span next, inside this pass's bound of four.
-        if (++overCapAttempts < 4) continue; break;
-      }
-      const priorItems = summaryFor(through)?.memoryItems ?? [];
-      const changes = [...journal.view.memory, ...memory ?? []];
-      const memoryItems: SummaryMemoryItem[] = priorItems.filter(item => !changes.some(change =>
-        (change.mode === 'correct' || change.mode === 'forget') && change.source === item.source
-          && (item.quote.includes(change.quote) || change.quote.includes(item.quote))));
-      for (const [index, change] of changes.entries()) if (change.mode === 'correct' && change.replacement
-        && (memory?.includes(change) || priorItems.some(item => item.source === change.source
-          && (item.quote.includes(change.quote) || change.quote.includes(item.quote))))
-        && !changes.slice(index + 1).some(later => (later.mode === 'correct' || later.mode === 'forget') && later.source === change.trigger
-          && (change.replacement!.includes(later.quote) || later.quote.includes(change.replacement!)))) {
-        const source = journal.view.turns.get(change.trigger);
-        if (source && redact(source.text).text.includes(change.replacement)
-          && Buffer.byteLength(change.replacement) <= 300 && memoryItems.length < 20
-          && !memoryItems.some(item => item.source === source.id && item.quote === change.replacement))
-          memoryItems.push({ source: source.id, quote: change.replacement });
-      }
-      const after = summaryFor(through)?.through ?? -1;
-      for (const item of Array.isArray(proposedItems) ? proposedItems.slice(0, 20) : []) {
-        const { source, quote } = (item ?? {}) as { source?: unknown; quote?: unknown };
-        const turn = typeof source === 'string' ? journal.view.turns.get(source) : undefined;
-        if (!turn?.accepted || !fromOperator(turn) || turn.update <= after || turn.update > through
-          || typeof quote !== 'string' || !quote.trim() || Buffer.byteLength(quote) > 300
-          || !redact(turn.text).text.includes(quote) || memoryItems.length >= 20
-          || memoryItems.some(saved => saved.source === source && saved.quote === quote)
-          || changes.some(change => (change.mode === 'correct' || change.mode === 'forget') && change.source === source
-            && (quote.includes(change.quote) || change.quote.includes(quote)))) continue;
-        memoryItems.push({ source: turn.id, quote });
-      }
-      // Meaning terms index the operator messages this summary newly covers, and the offered backlog (bounded per pass).
-      const concepts: SummaryConcept[] = [];
-      for (const item of Array.isArray(proposedConcepts) ? proposedConcepts.slice(0, CONCEPT_SOURCES_LIMIT) : []) {
-        const { source, terms: proposed } = (item ?? {}) as { source?: unknown; terms?: unknown };
-        const turn = typeof source === 'string' ? journal.view.turns.get(source) : undefined;
-        const words = proposedConceptTerms(proposed);
-        if (!turn?.accepted || !fromOperator(turn) || (turn.update <= after && !indexBacklog.includes(turn.id)) || turn.update > through || !words?.length
-          || concepts.some(saved => saved.source === turn.id)) continue;
-        concepts.push({ source: turn.id, terms: words });
-      }
-      const candidate = clean(redact(summaryText).text, true, through);
-      const candidateWithItems = [candidate, ...memoryItems.map(item => item.quote)].join('\n');
-      let supervisedState: string | undefined;
-      // A decided removal must not be reintroduced through a secondary model
-      // check. Keep the audit structure, but project every string through the
-      // same exact clauses before handing it to Jev or a summary reviewer.
-      const auditChanges = [...journal.view.memory, ...memory ?? []];
-      const safeAudit = (value: string) => projectModelEvidence(value, auditChanges);
-      if (ports.replyCheck) {
-        supervisedState = safeAudit(JSON.stringify({ packet: JSON.parse(packet) as object,
-          proposed: { summary: summaryText, people: people ?? [], personAttributes: personAttributes ?? [], commitments: commitments ?? [],
-            closed: closed ?? [], memory: memory ?? [], memoryItems } }, (_key, value: unknown) =>
-          typeof value === 'string' ? redact(value).text : value));
-        journal.append({ kind: 'summary-candidate', through, state: supervisedState,
-          ...(typeof summary === 'string' ? {} : { usage: summary.usage }), at: ports.now() });
-        gate();
-      }
-      let faithfulness: SummaryFaithfulness = { path: 'exact', verdict: 'pass', score: null };
-      let escalation: SummaryCheckResult | undefined;
-      const stoppedNow = () => { try { gate(); return false; } catch { return true; } };
-      if (exactSummaryFaithfulness(packet, candidateWithItems, memory ?? []) === 'undecided') {
-        let verdict: 'pass' | 'lost' | 'undecided' = 'undecided';
-        faithfulness = { path: 'jev', verdict, score: null };
-        const auditDecisions = auditChanges.map(change => ({ mode: change.mode,
-          source: publicMemoryId(change.source), trigger: change.trigger,
-          sourceQuote: withheld, subjects: statedFacts(change.quote).map(fact => fact.subject),
-          ...(change.replacement === undefined ? {} : { replacement: redact(change.replacement).text }) }));
-        const evidence = safeAudit(summaryFaithfulnessEvidence(packet, candidateWithItems, memory ?? [], auditDecisions));
-        try {
-          gate();
-          if (Buffer.byteLength(evidence) > journal.view.limits.maxBytes) throw Error('summary audit context too large');
-          if (ports.summaryCheck) {
-            journal.append({ kind: 'summary-faithfulness-reserve', through, at: ports.now() });
-            const result = await ports.summaryCheck(evidence);
-            verdict = interpretFaithfulnessJev(result);
-            faithfulness = { path: 'jev', verdict, score: summaryJevScore(result), usage: summaryJevUsage(result) };
-            // Persist the completed external judgment before the next supervisor call.
-            journal.append({ kind: 'summary-faithfulness', through, result: faithfulness, at: ports.now() });
-          }
-          gate();
-        } catch {
-          // A stop after Jev answered still refuses the pending summary commit.
-          verdict = 'undecided';
-          faithfulness = { ...faithfulness, path: 'jev', verdict };
-        }
-        // Confidence cascade (observer #102): Jev decides only when confident. Its unsure band, or no Jev
-        // answer at all (unavailable, or evidence past its bound), escalates to the full-context subscription
-        // review on the installed route: undecided is never a refusal on its own. A confident "lost" and a
-        // review violation still refuse. An unanswered Jev call keeps its reserved charge (outcome unknown).
-        if (verdict === 'undecided' && ports.replyCheck?.summaryReview && supervisedState !== undefined && !stoppedNow()
-          && journal.view.calls < journal.view.limits.maxCalls) {
-          journal.append({ kind: 'summary-check', through, faithfulness, at: ports.now() });
-          journal.append({ kind: 'summary-review-reserve', through, at: ports.now() });
-          const reviewStarted = ports.replyCheck.elapsedMs();
-          try {
-            escalation = { ...await ports.replyCheck.summaryReview(supervisedState, through), path: 'subscription' };
-          } catch {
-            escalation = { verdict: 'unavailable', path: 'subscription',
-              latencyMs: Math.max(0, ports.replyCheck.elapsedMs() - reviewStarted) };
-          }
-          journal.append({ kind: 'summary-check', through, result: escalation, at: ports.now() });
-          if (escalation.verdict === 'unavailable' && !escalation.retryable) return; // paid outcome may be UNKNOWN
-          if (escalation.verdict === 'pass') { verdict = 'pass'; faithfulness = { path: 'subscription', verdict, score: null }; }
-          else gate();
-        }
-        if (verdict !== 'pass') {
-          const reason = verdict === 'lost' ? 'summary faithfulness: active memory item lost'
-            : escalation?.verdict === 'violation' ? 'summary faithfulness: full-context review found loss'
-            : 'summary faithfulness: undecided';
-          journal.append({ kind: 'summary-failed', format: SUMMARY_FORMAT, through, reason, evidence, faithfulness, state: 'complete',
-            ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
-            ...(ports.replyCheck || typeof summary === 'string' ? {} : { usage: summary.usage }), at: ports.now() });
-          const affected = journal.view.order.find(item => item.update === through);
-          if (affected) journal.append({ kind: 'hold', id: affected.id, reason, at: ports.now() });
-          return;
-        }
-      }
-      // An escalated pass already read the whole packet and proposed notes for coverage and invented facts,
-      // which is the integrity question too; asking the same route again would only spend the cap.
-      if (escalation?.verdict === 'pass') gate();
-      else if (ports.replyCheck) {
-        if (faithfulness.path === 'jev')
-          journal.append({ kind: 'summary-check', through, faithfulness, at: ports.now() });
-        const recordedFaithfulness: SummaryFaithfulness = { path: faithfulness.path,
-          verdict: faithfulness.verdict, score: faithfulness.score };
-        const state = supervisedState!;
-        const started = ports.replyCheck.elapsedMs();
-        let jev: SummaryCheckResult;
-        journal.append({ kind: 'summary-integrity-reserve', through, at: ports.now() });
-        try {
-          const answer = await ports.replyCheck.jev(state, SUMMARY_QUESTION, undefined, `summary:${through}`);
-          jev = interpretSummaryJev(answer.value, answer.latencyMs);
-        } catch {
-          jev = { verdict: 'unavailable', path: 'jev', latencyMs: Math.max(0, ports.replyCheck.elapsedMs() - started) };
-        }
-        journal.append({ kind: 'summary-check', through, result: jev, faithfulness: recordedFaithfulness, at: ports.now() });
-        if (jev.verdict === 'unavailable') {
-          journal.append({ kind: 'summary-failed', format: SUMMARY_FORMAT, through, faithfulness: recordedFaithfulness,
-            ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}), at: ports.now() }); return;
-        }
-        if (jev.verdict !== 'pass') {
-          if (journal.view.calls >= journal.view.limits.maxCalls || !ports.replyCheck.summaryReview) {
-            journal.append({ kind: 'summary-failed', format: SUMMARY_FORMAT, through, faithfulness: recordedFaithfulness,
-              ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}), at: ports.now() }); return;
-          }
-          gate();
-          journal.append({ kind: 'summary-review-reserve', through, at: ports.now() });
-          const reviewStarted = ports.replyCheck.elapsedMs();
-          let review: SummaryCheckResult;
-          try {
-            const result = await ports.replyCheck.summaryReview(state, through);
-            review = { ...result, path: 'subscription' };
-          } catch {
-            review = { verdict: 'unavailable', path: 'subscription',
-              latencyMs: Math.max(0, ports.replyCheck.elapsedMs() - reviewStarted) };
-          }
-          journal.append({ kind: 'summary-check', through, result: review, at: ports.now() });
-          if (review.verdict === 'unavailable' && !review.retryable) return; // paid outcome may be UNKNOWN
-          if (review.verdict !== 'pass') {
-            journal.append({ kind: 'summary-failed', format: SUMMARY_FORMAT, through, faithfulness: recordedFaithfulness,
-              ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}), at: ports.now() }); return;
-          }
-        }
-        gate();
-      }
-      // Checked last, after every awaited reviewer: the existing failure row settles the call (usage, evidence) and the
-      // next pass rebuilds from the turns that remain. No format is recorded, so it spends none of the span's retries.
-      if ((journal.view.retracted?.length ?? 0) !== retractedAtBuild) {
-        journal.append({ kind: 'summary-failed', through, state: 'complete', reason: SUMMARY_RETRACTED_REASON,
-          ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
-          ...(!ports.replyCheck && typeof summary !== 'string' ? { usage: summary.usage } : {}), at: ports.now() });
-        return;
-      }
-      journal.append({kind:'summary',through,text:candidate,...(memoryItems.length ? { memoryItems } : {}),...(concepts.length ? { concepts } : {}),faithfulness: ports.replyCheck
-        ? { path: faithfulness.path, verdict: faithfulness.verdict, score: faithfulness.score } : faithfulness,
-
-        ...(trigger && (strictMemory || memory?.length) ? { memoryFor: [trigger.id] } : {}), ...(people ? { people } : {}),
-        ...(personAttributes?.length ? { personAttributes } : {}),
-        ...(reminderCancels ? { reminderCancels } : {}),
-        ...(memory ? { memory } : {}), ...(memory && heldForgets.length ? { heldForgets } : {}),
-        ...(commitments ? { commitments } : {}), ...(commitmentSources?.length ? { commitmentSources } : {}),
-        ...(commitmentRefusals ? { commitmentRefusals } : {}),
-        ...(closed?.length ? { closed } : {}),
-        ...(questionSources.length ? { questions: questions ?? [], questionsReviewed: questionSources.map(item => item.id) } : {}),
-        ...(!ports.replyCheck && typeof summary !== 'string' ? { usage: summary.usage } : {}),state:'complete',at:ports.now()});
+        },
+        commit: (apply, faithfulness, covers) => apply(faithfulness, covers),
+        evidenceFits: evidence => Buffer.byteLength(evidence) <= journal.view.limits.maxBytes,
+        canReview: () => journal.view.calls < journal.view.limits.maxCalls,
+        ...(ports.summaryCheck ? { faithfulness: ports.summaryCheck } : {}),
+        ...(ports.replyCheck ? { supervisor: {
+          elapsedMs: () => ports.replyCheck!.elapsedMs(),
+          jev: (state, question, id) => ports.replyCheck!.jev(state, question, undefined, id),
+          ...(ports.replyCheck.summaryReview ? { review: (state: string, target: number) => ports.replyCheck!.summaryReview!(state, target) } : {})
+        } } : {})
+      });
+      if (produced === 'over-cap') { if (++overCapAttempts < 4) continue; break; }
+      if (produced !== 'accepted') return;
       overCapAttempts = 0;
 
     }

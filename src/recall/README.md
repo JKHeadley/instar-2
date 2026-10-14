@@ -158,3 +158,29 @@ clock. This unit does not claim that integration or unattended summary productio
 
 The explicitly scoped part-2 work and its exit tests are in
 [`journal-summary-plan.md`](journal-summary-plan.md).
+
+## Rolling summary producer
+
+`produceRollingSummary(through, ports)` in `rolling-summary.ts` executes one selected,
+bounded summary attempt. The host supplies a source revision and exact chronological
+message IDs, admission/reservation, the metered writer, source-linked decoding, redaction,
+clock, judgment ports and the existing commit path. The producer checks coverage structure,
+exact preservation or full-context faithfulness, and integrity supervision. An uncertain
+fact may be faithfully retained; an uncertain paid-call outcome remains UNKNOWN and charged.
+
+Every completed awaited call is followed by a stop and source-revision check before another
+call or acceptance. Completed metering is recorded before stop is honored. A revision change
+refuses the candidate; rejection never removes source history. UNKNOWN and retry limits stay
+with the journal owner, as do oldest-first selection, prompt sizing, corrections and the
+background cadence. There is no second timer, queue, sender, summary store or retry loop.
+
+`summary-faithfulness.ts`, `summary-check.ts` and their shared `model-json.ts` decoder retain
+the existing prompt and decoding bytes. Compatibility exports keep all driver consumers on
+these implementations. The journal driver calls this producer from its existing summary tick;
+new accepted rows persist `covers`, and `journal-history-adapter.ts` uses the same message
+projection to verify those IDs. Legacy rows remain readable. Mixed-topic or stale summaries
+still yield complete original history through the read port.
+
+The core has no ambient I/O or clock. The host's durable append retains stop, spend, ownership,
+supervision and reservation enforcement. This is an extraction into the existing running path,
+not an independent production scheduler or a change to live session grounding.

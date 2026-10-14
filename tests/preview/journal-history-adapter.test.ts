@@ -1,9 +1,10 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { openPreviewJournal, type JournalRecord } from './journal.js';
+import { createJournalWorker, openPreviewJournal, type JournalRecord } from './journal.js';
 import { readJournalHistory } from './journal-history-adapter.js';
+import * as historyAdapter from './journal-history-adapter.js';
 import { factsFixture, value, refused } from '../facts/fixtures.js';
 
 const roots: string[] = [];
@@ -20,8 +21,9 @@ function fixture() {
     expires: 9_999_999_999_999, maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 262144, cursor: 0 });
   return { journal, path, context: factsFixture().c };
 }
-function replay(journal: ReturnType<typeof openPreviewJournal>, stopBeforeSent = false) {
+function replay(journal: ReturnType<typeof openPreviewJournal>, stopBeforeSent = false, through = Infinity) {
   for (const row of captured.frames) {
+    if ('update' in row && row.update > through) continue;
     if (row.kind === 'intake') {
       journal.append(row);
     } else if ('id' in row && journal.view.turns.has(row.id)) {
@@ -179,5 +181,71 @@ it('reads only accepted live summaries and owner-folded commitments; candidates 
     expect(retired.summaries(conversation)).toEqual([]);
     expect(retired.work(conversation)).toEqual([]);
     expect(accepted.summaries(conversation)).toHaveLength(1);
+  } finally { journal.close(); }
+});
+
+// The input and received replies are the recorded walk, not invented equivalents.
+// Writer/reviewer decisions here are boundary neighbors; the captured complete
+// writer/Jev/subscription outputs run separately in summary-cascade-stall.test.ts.
+it.each(['accepted', 'stale', 'missing-coverage', 'faithful-uncertainty'] as const)
+  ('produces through the recorded walk and reopens exact coverage: %s', async mode => {
+    const { journal, path, context } = fixture();
+    try {
+      replay(journal, false, 6233126);
+      const last = journal.view.order.at(-1)!;
+      const target = `${last.id}:reply`;
+      const original = value(value(readJournalHistory(journal.view, 'owner-a', context)).coverage(conversation, target));
+      const source = historyAdapter.journalSummarySource;
+      const spy = mode === 'missing-coverage' ? vi.spyOn(historyAdapter, 'journalSummarySource')
+        .mockImplementation((view, through) => ({ ...source(view, through), covers: [] })) : undefined;
+      let calls = 0;
+      const worker = createJournalWorker(journal, {
+        now: () => 1792000000000, stopped: () => false, checkOutbound: () => {},
+        send: async () => { throw Error('summary must never send'); },
+        model: async input => {
+          calls++;
+          expect(input.id).toBe(`summary:${last.update}`);
+          const packet = JSON.parse(input.context) as { history: { user: string; answer?: string }[] };
+          const text = packet.history.flatMap(row => [row.user, row.answer ?? '']).join('\n');
+          if (mode === 'stale') journal.view.order[0]!.text += ' Edited during the call.';
+          return JSON.stringify({ summary: text + (mode === 'faithful-uncertainty'
+            ? '\nThe initial bread-reminder response did not confirm the reminder.' : ''),
+            people: [], commitments: [], closed: [], memory: [], memoryItems: [], questions: [] });
+        },
+        summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }),
+        replyCheck: { elapsedMs: () => 0,
+          jev: async () => ({ value: { model: 'jev-1.13.0', answers: { summary_integrity: { type: 'noul', noul: 0.01 } } }, latencyMs: 1 }),
+          escalate: async () => { throw Error('no reply review'); } }
+      });
+      try { await worker.summarizeIfNeeded(true); } finally { spy?.mockRestore(); }
+      const accepted = mode === 'accepted' || mode === 'faithful-uncertainty';
+      expect(calls).toBe(mode === 'missing-coverage' ? 0 : 1);
+      expect(journal.view.summaries).toHaveLength(accepted ? 1 : 0);
+      if (accepted) {
+        expect(journal.view.summaries[0]).toMatchObject({ through: last.update, covers: original.covered, faithfulness: { verdict: 'pass' } });
+        if (mode === 'faithful-uncertainty') expect(journal.view.summaries[0]!.text).toContain('did not confirm');
+      } else expect(journal.view.lastSummaryFailure?.reason).toContain(mode === 'stale' ? 'revision changed' : 'coverage missing');
+      journal.close();
+      const reopened = openPreviewJournal(path, key, undefined, undefined, true);
+      try {
+        const coverage = value(value(readJournalHistory(reopened.view, 'owner-a', context)).coverage(conversation, target));
+        expect(coverage.covered).toEqual(original.covered);
+        expect(coverage.summary !== null).toBe(accepted);
+        if (!accepted) expect(coverage.messages).toEqual(original.messages);
+      } finally { reopened.close(); }
+    } finally { journal.close(); vi.restoreAllMocks(); }
+  });
+
+it.each([{ covers: [] }, { covers: ['not-a-source'] }])('refuses malformed persisted coverage before changing encrypted bytes: $covers', ({ covers }) => {
+  const { journal, path } = fixture();
+  try {
+    replay(journal, false, 6233126);
+    const through = journal.view.order.at(-1)!.update;
+    journal.append({ kind: 'summary-reserve', through, at: 1792000000000 });
+    const before = readFileSync(path);
+    expect(() => journal.append({ kind: 'summary', through, covers, text: 'invalid coverage',
+      at: 1792000000000 })).toThrow('summary coverage missing or malformed');
+    expect(readFileSync(path)).toEqual(before);
+    expect(journal.view.summaries).toEqual([]);
   } finally { journal.close(); }
 });
