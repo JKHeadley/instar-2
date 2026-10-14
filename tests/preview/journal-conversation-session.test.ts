@@ -21,7 +21,7 @@ const usage = { inputTokens: null, outputTokens: null, charge: null };
 const update = (id: number, text: string) => ({ update_id: id,
   message: { message_id: id, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
 
-function fixture(enabled = true, checkIntake = true, maxCalls = 200) {
+function fixture(enabled = true, checkIntake = true, maxCalls = 200, extra: Partial<PreviewPorts> = {}) {
   const root = mkdtempSync(join(tmpdir(), 'conversation-wiring-')); roots.push(root);
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
     kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
@@ -53,7 +53,7 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200) {
   const worker = createJournalWorker(journal, { now: () => now, stopped: () => stopped,
     prepareModel: input => JSON.stringify({ ...input, responseContract: "decision-envelope-marker" }), model,
     send: async input => { sent.push(input.expectedText); return sent.length; },
-    checkOutbound: text => { if (text.includes('SECRET')) throw Error('credential'); } });
+    checkOutbound: text => { if (text.includes('SECRET')) throw Error('credential'); }, ...extra });
   return { journal, worker, model, port, sent, delivered, edges: () => edges, counts: () => ({ launches, calls, fallback }),
     answer: (text: string) => { answer = text; }, stop: () => { stopped = true; },
     close: async () => { await port.close(); journal.close(); } };
@@ -134,5 +134,45 @@ it('the journal refuses the whole session reservation before launch when the par
     expect(f.counts()).toEqual({ launches: 0, calls: 0, fallback: 0 });
     expect(f.journal.view.calls).toBe(0);
     expect(f.sent).toEqual([]);
+  } finally { await f.close(); }
+});
+
+it('sends at turn end before slow review, persists objections for the next turn, and never sends twice', async () => {
+  let release!: () => void;
+  const delayed = new Promise<void>(resolve => { release = resolve; });
+  const events: string[] = [];
+  const f = fixture(true, true, 200, { replyReviewTiming: 'after-send',
+    replyCheck: { elapsedMs: () => 0,
+      jev: async () => { events.push('jev'); await delayed; return { value: {}, latencyMs: 1 }; },
+      escalate: async () => { events.push('review'); return { verdict: 'violation', confidence: 1, latencyMs: 1, ruleIds: ['self_state_claim'],
+        reason: 'The answer claims work without evidence.' }; } } });
+  try {
+    f.worker.intake([update(1, 'First question')]);
+    const draining = f.worker.drain();
+    for (let i = 0; i < 100 && !events.length; i++) await new Promise(resolve => setTimeout(resolve, 1));
+    expect(f.sent).toEqual(['A useful answer.']); // The reviewer is still awaiting the injected slow path.
+    expect(events).toEqual(['jev']);
+    release(); await draining;
+    expect(events).toEqual(['jev', 'review']);
+    expect(f.journal.view.order[0]?.replyChecks?.at(-1)?.verdict).toBe('violation');
+    expect(f.journal.view.order[0]?.afterSendReview).toBe(true);
+    expect(f.journal.view.order[0]?.checked).toBeDefined();
+    await f.worker.drain(); expect(f.sent).toHaveLength(1); expect(events).toHaveLength(2);
+    f.worker.intake([update(2, 'Second question')]); await f.worker.drain();
+    expect(f.delivered[1]).toContain('self_state_claim');
+  } finally { release(); await f.close(); }
+});
+
+it.each(['SECRET', 'stop'] as const)('after-send review preserves the %s wall', async kind => {
+  let reviews = 0;
+  const f = fixture(true, true, 200, { replyReviewTiming: 'after-send', replyCheck: {
+    elapsedMs: () => 0, jev: async () => { reviews++; return { value: {}, latencyMs: 0 }; },
+    escalate: async () => ({ verdict: 'pass', confidence: 1, latencyMs: 1, ruleIds: [] }) } });
+  try {
+    if (kind === 'SECRET') f.answer(JSON.stringify({ reply: 'SECRET', memory: [] }));
+    f.worker.intake([update(1, 'Question')]);
+    if (kind === 'stop') f.stop();
+    try { await f.worker.drain(); } catch { /* stop is an explicit refusal */ }
+    expect(f.sent).toHaveLength(0); expect(reviews).toBe(0);
   } finally { await f.close(); }
 });

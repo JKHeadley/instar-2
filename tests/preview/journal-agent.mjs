@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { prepareSessionConnectors, conversationAccountActions, admitSessionConnector } from './session-connectors.mjs';
 import { recordPhaseTiming } from './phase-timing.js';
 import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice } from './reply-check.js';
 import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin } from './installed-harness-logins.mjs';
@@ -1474,11 +1475,18 @@ async function main() {
   let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsResolution = null, toolsOff = null,
     sessionWork = null, gate = null;
   const conversationSession = conversationSessionOf(options);
+  const accountActions = conversationAccountActions(options);
   const sessionLimits = conversationSession ? CONVERSATION_SESSION_LIMITS : SESSION_WORK_LIMITS;
   const sessionAdapter = conversationSession ? doorway.session.conversation : doorway.session;
   if (!sessionAdapter) throw Error('preview: this doorway has no installed conversation worker');
   /** Each delegated session step's shell network checkpoint, by claim: closed with the step's claim and at shutdown. */
   const stepEgress = new Map();
+  const sessionConnectors = new Map();
+  let sessionMcpDigest;
+  const sessionAccountsChanged = () => {
+    if (!conversationSession || sessionMcpDigest === undefined) return false;
+    try { return (readRootMcp(root)?.digest ?? null) !== sessionMcpDigest; } catch { return true; }
+  };
   // Part Twelve: the effect doorway's operator policy, re-read at every tool turn so a withdrawn or broken file grants
   // nothing (nothing outward by default); launch refuses a policy that does not decode.
   let effectPolicyOf = () => DEFAULT_EFFECT_POLICY;
@@ -2073,6 +2081,7 @@ async function main() {
       preparePacket: preparation.run,
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
+      replyReviewTiming: conversationSession ? 'after-send' : 'before-send',
       toolRoute: id => conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id) ? true : preparation.active() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
       // Scheduled obligations keep their existing route; continuing operator conversation is selected below.
       // The session route is taken only while its grant holds and the call allowance can hold the
@@ -2445,10 +2454,13 @@ async function main() {
     // withdrawn or unreadable mid-step refuses), exactly as an unchecked tool turn's hook does.
     if (sessionSetup !== null || doorway.toolTurn?.harness) {
       const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
-        || wallNow() >= journal.view.expires || !active();
+        || wallNow() >= journal.view.expires || !active() || sessionAccountsChanged();
       const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
       gate = await createAdmissionGate({ append: appendWork, stopped: gateStopped, now: wallNow, held: heldVerdict(heldSecrets),
-        effects: createToolEffectOwner({ decide: (tool, input) => admitToolCallEffect(tool, input, admissionConfig(), wallNow()),
+        effects: createToolEffectOwner({ decide: (tool, input, parent) => conversationSession && sessionConnectors.has(parent.child)
+          ? admitSessionConnector({ tool, input, config: admissionConfig(), mcp: readRootMcp(root), enabled: accountActions,
+            now: wallNow(), decide: admitToolCallEffect })
+          : admitToolCallEffect(tool, input, admissionConfig(), wallNow()),
           append: appendWork, stopped: gateStopped, now: wallNow, prepared: identity => (journal.view.toolEffects ?? []).includes(identity) }) });
     }
     if (sessionSetup !== null) {
@@ -2476,7 +2488,8 @@ async function main() {
         home: profile.home, configHome: profile.configDirectory, cwd: project });
       let physical = physicalFor();
       const stoppedNow = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
-        || wallNow() >= journal.view.expires || !active() || !sessionActive();
+        || wallNow() >= journal.view.expires || !active() || !sessionActive()
+        || sessionAccountsChanged();
       // The step's preflights run as the identity its session will (harness-user: held, never the runner's, while unready).
       const admissionIO = () => createSubscriptionProviderIO({ repository: process.cwd(), stopped: stoppedNow, work: 'maintenance',
         runAs: runAsOf(sessionHarness) });
@@ -2497,6 +2510,7 @@ async function main() {
           const create = () => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
             timeoutSeconds: Math.ceil(sessionLimits.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
+          ...(conversationSession ? { connectors: claim => sessionConnectors.get(claim)?.launch() } : {}),
           framework, executable: profile.executable, cwd: project, home: profile.home, configHome: profile.configDirectory,
           model: required(options, 'model'), context, io: physical, now: wallNow, stopped: stoppedNow, resolveIntake,
           maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
@@ -2528,7 +2542,9 @@ async function main() {
             mountVolume(identity);
             await closeStepEgress(claim);
             if (identity) harnessSessionAdmission(root, identity.user);
-            const state = prepareSessionAdmission({ base: admissionBase, claim, workspace: project, maxCalls: sessionLimits.maxCallsPerStep,
+            const mcp = conversationSession ? readRootMcp(root) : null;
+            if (conversationSession) sessionMcpDigest = mcp?.digest ?? null;
+            const state = prepareSessionAdmission({ mcpReads: mcp?.reads ?? [], base: admissionBase, claim, workspace: project, maxCalls: sessionLimits.maxCallsPerStep,
               gate: gate.base(claim), ...admissionConfig(), ...(identity ? { harness: { user: identity.user, runner: identity.runner } } : {}) });
             // The step's shell network checkpoint (egress-proxy.mjs): the confined shell's one network path, deciding every
             // request by the same effect doorway, under its request and byte bounds; stopped when the step's claim closes.
@@ -2547,9 +2563,19 @@ async function main() {
             }
             stepEgress.set(claim, (await attachEgress({ stateDirectory: state, ...(privateDirectory ? { privateDirectory } : {}), scratch: tmp,
               home: join(tmp, 'home') }, undefined, networkToolReads(), { check: heldVerdict(heldSecrets), span: () => heldSpan(heldSecrets) })).proxy);
+            if (conversationSession) {
+              const previous = sessionConnectors.get(claim);
+              if (previous) await previous.close();
+              sessionConnectors.set(claim, await prepareSessionConnectors({ mcp,
+                privateDirectory: privateDirectory ?? state, identity,
+                resolveSecret: name => createSecretCustody(root, key(), wallNow).resolve(secretRef(name)),
+                check: heldVerdict(heldSecrets) }));
+            }
             gate.open(claim, { framework, allowance: sessionLimits.maxCallsPerStep, edge }); },
           admissionState: claim => gate.state(claim),
-          closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {}); } },
+          closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {});
+            const connectors = sessionConnectors.get(claim); sessionConnectors.delete(claim);
+            connectors?.close().catch(() => {}); } },
         resources: { admit: async () => {
           if (loginPool) loginRuntimes.get(selectedSession.index).check('session');
           else sessionAdapter.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);

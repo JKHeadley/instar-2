@@ -130,4 +130,31 @@ One reservation spans all turns: at most 64 inputs, 128 calls and one hour, subj
 to the existing parent cap and tool admission checks. Unknown work is not replayed.
 Claude-specific policy and availability live in the provider adapter; Codex and
 native adapter parity remain the named follow-up units. This is not proof-room
-walk evidence, an after-send review implementation, or an intake/effect migration.
+walk evidence or an intake/effect migration.
+
+
+### Continuing-session accounts and review
+
+The admitted driver accepts host-prepared connector records through `connectors(claim)`.
+The host uses the same root MCP configuration, SecretRef resolution, one-use socket
+launcher and harness handoff as the per-call path. Each replacement launch rearms
+fresh nonces; no credential value is written in a launch file. Root account changes
+close admission. Reads declared in that root and reversible role-granted actions work
+through the existing hook and current effect policy.
+
+`--conversation-account-actions on` is the single irreversible-account rollout switch,
+default **off**. Keep it off until purpose PR 164 merges and the desk accepts the copy.
+When on, only configured connectors with current role/resource/sign-off coverage can
+pass. The existing effect owner durably retains the exact input, configuration and
+decision before release, linked to the parent authority/budget, and refuses duplicate
+or unrecordable effects. This is the journal admission path; step 4 owns its foundation
+effect-doorway replacement.
+
+With `--conversation-session on`, the journal sends the completed reply through its
+existing secret, stop, spend and duplicate-send walls first. The existing Jev and
+contextual review then record advisory results for the next turn's grounding. A slow
+review cannot hold that reply; unknown paid reviews are never retried on recovery.
+Option off retains the existing pre-send review route. The non-additive journal
+`reply-review-after-send` marker uses generation 5: an older reader must refuse a copy
+that has used this mode. Do not reuse that copy for an older-build rollback; retain the
+original root for the desk's copy walk and deployment decision.

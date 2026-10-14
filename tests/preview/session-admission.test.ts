@@ -23,6 +23,9 @@ import { startEgressProxy } from './egress-proxy.mjs';
 // @ts-expect-error see above
 import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
 
+// @ts-expect-error physical boundary
+import { admitSessionConnector, conversationAccountActions } from './session-connectors.mjs';
+
 const HOOK = join(__dirname, 'tool-admission-hook.mjs');
 const PROBE = join(__dirname, 'fixtures/codex-hook-probe-2026-10-03');
 const CAPABILITIES = join(__dirname, 'fixtures/codex-capabilities-2026-10-03');
@@ -38,20 +41,24 @@ type Row = { type: string; id: string; state?: string; parent?: string; drawsOn?
 
 type Policy = Record<string, unknown>;
 const HELD_SYNTHETIC = 'zq-held-synthetic-value-0123456789abcdef';
-async function step(options: { maxCalls?: number; policy?: Policy; gatePolicy?: Policy; stopped?: () => boolean } = {}) {
+async function step(options: { maxCalls?: number; policy?: Policy; gatePolicy?: Policy; stopped?: () => boolean; accounts?: boolean; failAppend?: boolean } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'session-admission-'))); roots.push(root);
   const ws = join(root, 'ws'), outside = join(root, 'outside'), base = join(root, 'admission');
   for (const dir of [ws, outside]) mkdirSync(dir, { recursive: true, mode: 0o700 });
   writeFileSync(join(ws, 'in.txt'), 'hi\n'); writeFileSync(join(outside, 'canary.txt'), 'CANARY-DUMMY-0002\n');
   const claim = 'session-work-0123456789abcdef0123456789abcdef';
   const rows: Row[] = [], prepared = new Set<string>();
-  const append = (row: Row) => { rows.push(row); if (row.type === 'SessionWorkEffect' && row.state === 'prepared') prepared.add(row.id); };
+  const append = (row: Row) => { if (options.failAppend) throw Error('disk'); rows.push(row); if (row.type === 'SessionWorkEffect' && row.state === 'prepared') prepared.add(row.id); };
   const gate = await createAdmissionGate({ append, stopped: options.stopped ?? (() => false), now: () => 1_000,
     // Plan #507: the runner's held-secret check, holding one synthetic value (the runner wires its own held set).
     held: heldVerdict(createHeldSecrets({ synthetic: () => [HELD_SYNTHETIC] })),
     // The effect owner decides by the doorway's four tests under the installation's current policy, as the runner wires it.
-    effects: createToolEffectOwner({ decide: (tool: string, input: unknown) => admitToolCallEffect(tool, input,
-      { operations: [], ...((options.gatePolicy ?? options.policy) ? { effectPolicy: options.gatePolicy ?? options.policy } : {}) }, 1_000),
+    effects: createToolEffectOwner({ decide: (tool: string, input: unknown) => {
+      const config = { operations: [], ...((options.gatePolicy ?? options.policy) ? { effectPolicy: options.gatePolicy ?? options.policy } : {}) };
+      return options.accounts === undefined ? admitToolCallEffect(tool, input, config, 1_000)
+        : admitSessionConnector({ tool, input, config, mcp: { servers: { x: { command: '/fake' } }, digest: 'sha256:scope' },
+          enabled: options.accounts, now: 1_000, decide: admitToolCallEffect });
+    },
     append, stopped: () => false, now: () => 1_000, prepared: (id: string) => prepared.has(id) }) });
   gates.push(gate);
   const edge: SessionWorkEdge = { type: 'SessionWorkEdge', schemaVersion: 1, id: 'session-work-edge:obligation-1:1', parent: 'launch:1',
@@ -400,4 +407,25 @@ it('keeps only the newest step directories, never the current one', async () => 
   const last = `session-work-${String(19).padStart(32, '0')}`;
   expect(existsSync(join(s.base, last, 'config.json'))).toBe(true);
   expect(readdirSync(s.base).length).toBe(16);
+});
+
+it('irreversible account switch refuses off, records the entire cause before on dispatch, never duplicates, and refuses failed durability', async () => {
+  expect(conversationAccountActions({})).toBe(false);
+  expect(conversationAccountActions({ 'conversation-session': 'on', 'conversation-account-actions': 'on' })).toBe(true);
+  expect(() => conversationAccountActions({ 'conversation-account-actions': 'maybe' })).toThrow();
+  const policy = { type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [], registered: [
+    { effect: 'tool:mcp', target: 'mcp__x__send', consequence: 'data', reversibility: 'irreversible', reach: 'world', costUsd: 0, source: 'test' }],
+    grants: [{ id: 'role-mail', effect: 'tool:mcp', target: 'mcp__x__send', approves: ['scope'], source: 'test', custodian: 'desk', recovery: 'withdraw' }] };
+  const input = { to: 'fixture@example.test', message: 'one message' };
+  const off = await step({ policy, accounts: false });
+  expect((await hook(off.state, call('mcp__x__send', input))).decision).toBe('deny'); expect(off.rows).toHaveLength(0);
+  const on = await step({ policy, accounts: true });
+  expect((await hook(on.state, call('mcp__x__send', input))).decision).toBe('allow');
+  const cause = JSON.parse((on.rows[0] as Row & { cause: string }).cause);
+  expect(cause).toMatchObject({ input, accountActions: true, configuration: { effectPolicy: policy }, decision: { admitted: true } });
+  expect((await hook(on.state, call('mcp__x__send', input, 'again'))).decision).toBe('deny');
+  expect((await hook(on.state, call('mcp__x__send', { message: HELD_SYNTHETIC }, 'secret'))).decision).toBe('deny');
+  expect(on.rows).toHaveLength(1);
+  const disk = await step({ policy, accounts: true, failAppend: true });
+  expect((await hook(disk.state, call('mcp__x__send', input))).decision).toBe('deny'); expect(disk.rows).toHaveLength(0);
 });
