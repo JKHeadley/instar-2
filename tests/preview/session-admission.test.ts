@@ -41,7 +41,7 @@ type Row = { type: string; id: string; state?: string; parent?: string; drawsOn?
 
 type Policy = Record<string, unknown>;
 const HELD_SYNTHETIC = 'zq-held-synthetic-value-0123456789abcdef';
-async function step(options: { maxCalls?: number; policy?: Policy; gatePolicy?: Policy; stopped?: () => boolean; accounts?: boolean; failAppend?: boolean } = {}) {
+async function step(options: { maxCalls?: number; policy?: Policy; gatePolicy?: Policy; stopped?: () => boolean; accounts?: boolean; operations?: string[]; failAppend?: boolean } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'session-admission-'))); roots.push(root);
   const ws = join(root, 'ws'), outside = join(root, 'outside'), base = join(root, 'admission');
   for (const dir of [ws, outside]) mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -54,7 +54,7 @@ async function step(options: { maxCalls?: number; policy?: Policy; gatePolicy?: 
     held: heldVerdict(createHeldSecrets({ synthetic: () => [HELD_SYNTHETIC] })),
     // The effect owner decides by the doorway's four tests under the installation's current policy, as the runner wires it.
     effects: createToolEffectOwner({ decide: (tool: string, input: unknown) => {
-      const config = { operations: [], ...((options.gatePolicy ?? options.policy) ? { effectPolicy: options.gatePolicy ?? options.policy } : {}) };
+      const config = { operations: options.operations ?? [], ...((options.gatePolicy ?? options.policy) ? { effectPolicy: options.gatePolicy ?? options.policy } : {}) };
       return options.accounts === undefined ? admitToolCallEffect(tool, input, config, 1_000)
         : admitSessionConnector({ tool, input, config, mcp: { servers: { x: { command: '/fake' } }, digest: 'sha256:scope' },
           enabled: options.accounts, now: 1_000, decide: admitToolCallEffect });
@@ -417,7 +417,7 @@ it('irreversible account switch refuses off, records the entire cause before on 
     { effect: 'tool:mcp', target: 'mcp__x__send', consequence: 'data', reversibility: 'irreversible', reach: 'world', costUsd: 0, source: 'test' }],
     grants: [{ id: 'role-mail', effect: 'tool:mcp', target: 'mcp__x__send', approves: ['scope'], source: 'test', custodian: 'desk', recovery: 'withdraw' }] };
   const input = { to: 'fixture@example.test', message: 'one message' };
-  const off = await step({ policy, accounts: false });
+  const off = await step({ policy, accounts: false, operations: ['tool:mcp'] });
   expect((await hook(off.state, call('mcp__x__send', input))).decision).toBe('deny'); expect(off.rows).toHaveLength(0);
   const on = await step({ policy, accounts: true });
   expect((await hook(on.state, call('mcp__x__send', input))).decision).toBe('allow');
