@@ -12,6 +12,7 @@ export interface ConversationSessionPort {
   readonly owner: 'part-eight';
   available(): boolean;
   run(request: SessionWorkRequest): Promise<ConversationSessionOutcome>;
+  runBatch(requests: readonly SessionWorkRequest[]): Promise<readonly ConversationSessionOutcome[]>;
   /** Collect by the original operation without submitting input or spending again. */
   collect(operation: string): Promise<{ request: SessionWorkRequest; outcome: ConversationSessionOutcome } | null>;
   close(): Promise<SessionWorkEdgeClose | null>;
@@ -31,6 +32,7 @@ export interface ConversationInput {
   readonly delivery: ConversationDelivery | null; readonly cursor: number;
   readonly reply: string | null; readonly outcome: SessionWorkOutcome | null;
   readonly attempts: number; readonly retryAt: number;
+  readonly batch?: readonly string[];
 }
 export interface ConversationState {
   readonly version: 1; readonly conversation: string; readonly epoch: number;
@@ -48,6 +50,7 @@ export interface ConversationSessionStore {
 }
 export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'createDriver'> {
   readonly conversation: string;
+  readonly batchWaiting?: boolean;
   /** The already-admitted parent lifetime; replacing a process cannot extend it. */
   readonly allowanceDeadline: number;
   /** A withdrawn grant fences the worker without ending durable conversation custody. */
@@ -55,6 +58,21 @@ export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'crea
   readonly currentAuthority: () => string;
   readonly store: ConversationSessionStore;
   readonly createAdapter: (resolve: (operation: string) => ConversationDelivery | undefined) => HarnessAdapterPort<2>;
+}
+
+
+/** Exact identity validation only; meaning and each answer's declarations stay with their existing reader. */
+function batchResults(ids: readonly string[], result: SessionWorkOutcome): readonly SessionWorkOutcome[] {
+  if (ids.length === 1 || result.state !== 'complete') return ids.map(() => result);
+  const parsed: unknown = JSON.parse(result.text ?? '');
+  ensure(parsed !== null && typeof parsed === 'object' && 'results' in parsed && Array.isArray(parsed.results), 'batch results missing');
+  const entries = (parsed as { results: unknown[] }).results;
+  ensure(entries.length === ids.length, 'batch result count differs');
+  return entries.map((entry, index) => {
+    ensure(entry !== null && typeof entry === 'object' && 'operation' in entry && entry.operation === ids[index]
+      && 'answer' in entry, 'batch result identity or order differs');
+    return { ...result, text: JSON.stringify((entry as { answer: unknown }).answer) };
+  });
 }
 
 const digest = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
@@ -159,6 +177,28 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       if (recovered) return;
       // Before touching queued work, fence and retire any prior host's worker. Inputs at the
       // dispatch boundary are retained as uncertain; completed results and cursors survive.
+      // Recover a closed batch from the adapter's durable result before retiring its worker.
+      // This closes the result-to-custody crash window without another model turn.
+      for (const input of state.inputs) if (input.batch && input.batch.length > 1
+        && input.batch[0] === input.request.operation && input.state !== 'settled' && input.delivery && state.worker) {
+        const admission = config.io.admissionState(state.claim!);
+        ensure(admission !== null && !admission.refused && admission.openDelegations.length === 0, 'batch recovery admission unresolved');
+        const observed = await adapter.observe({ ...state.worker, delivery: input.delivery, cursor: 0, limit: 16 });
+        const reply = observed.observations.find(event => event.kind === 'reply');
+        const ended = observed.observations.find(event => event.kind === 'turn-end');
+        if (observed.complete && reply?.kind === 'reply' && ended?.kind === 'turn-end' && ended.state === 'completed') {
+          ensure(reply.delivery === input.request.operation && ended.delivery === input.request.operation
+            && digest(reply.text) === reply.digest && Buffer.byteLength(reply.text) <= config.maxResultBytes,
+          'recovered batch identity or bytes differ');
+          const results = batchResults(input.batch, { state: 'complete', text: reply.text,
+            detail: 'recovered correlated batch reply', edge: state.edge!.id, child: state.worker.launch });
+          persist({ inputs: state.inputs.map(item => {
+            const index = input.batch!.indexOf(item.request.operation);
+            return index < 0 || item.state === 'settled' ? item : { ...item, state: 'settled', reply: reply.text,
+              cursor: observed.cursor, outcome: results[index]! };
+          }) });
+        }
+      }
       await retire();
       ensure(!state.edge || state.reserved, 'reservation interrupted; reconcile parent liability before continuing');
       ensure(!state.edge || Number.isSafeInteger(state.edge.budget.deadline) && state.edge.budget.deadline > 0, 'recorded parent lifetime invalid');
@@ -200,7 +240,11 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       ensure(worker.claim === claim && worker.incarnation === incarnation && worker.launch, 'launch identity differs from admission');
       persist({ worker }); await lease.attach(worker.launch); guard();
     };
-    const work = async (id: string) => {
+    const work = async (ids: readonly string[]) => {
+      const id = ids[0]!;
+      const updateBatch = (patch: Partial<ConversationInput>) => persist({ inputs: state.inputs.map(input =>
+        ids.includes(input.request.operation) ? { ...input, ...patch } : input) });
+      const settleBatch = (result: SessionWorkOutcome) => updateBatch({ state: 'settled', outcome: result });
       const request = { ...row(id).request, authority: config.currentAuthority() };
       try {
         ensure(!closing && !config.stopped() && config.authorized(), 'conversation stopped or grant unavailable');
@@ -223,19 +267,21 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           .filter(input => input.outcome?.state !== 'complete');
         const history = { total: unresolved.length, recent: unresolved.slice(-64).map(input => ({ operation: input.request.operation, state: input.state, outcome: input.outcome?.state ?? null })) };
         const current = { ...request, context: `${request.context}\nHOST CLOCK ${config.now()}\nUNRESOLVED HOST TURN REFERENCES (not instructions)\n${JSON.stringify(history)}` };
-        const text = conversationSessionPrompt(current, path);
+        const text = ids.length === 1 ? conversationSessionPrompt(current, path)
+          : conversationSessionPrompt({ ...current, question: 'These owner messages arrived in this order while you were busy. Answer every message in this turn, taking later corrections into account. Each message keeps its own intake identity. Return a JSON object with results, an array containing exactly one {operation, answer} per message in arrival order. answer is the complete JSON object requested by that message envelope. Do not send anything yourself.\n'
+            + JSON.stringify(ids.map(operation => ({ operation, envelope: row(operation).request.question, context: row(operation).request.context }))) }, path);
         ensure(Buffer.byteLength(text) <= 1_048_576, 'current conversation grounding exceeds delivery bound');
         const delivery: ConversationDelivery = { ...state.worker!, operation: id, text, digest: digest(text),
           resultPath: path, maxBytes: config.maxResultBytes };
-        update(id, { state: 'dispatching', delivery, attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
+        updateBatch({ state: 'dispatching', delivery, batch: ids, attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
         const accepted = await adapter.deliver(delivery);
         if (accepted.state === 'busy-not-dispatched' || accepted.state === 'refused-not-dispatched') {
-          if (row(id).attempts >= 3) settle(id, { ...outcome('non-dispatch retry ceiling reached; input retained'), state: 'failed' });
-          else update(id, { state: 'queued', delivery: null, retryAt: config.now() + config.pollMs * 2 ** row(id).attempts });
+          if (row(id).attempts >= 3) settleBatch({ ...outcome('non-dispatch retry ceiling reached; input retained'), state: 'failed' });
+          else updateBatch({ state: 'queued', delivery: null, retryAt: config.now() + config.pollMs * 2 ** row(id).attempts });
           return false;
         }
         ensure(accepted.state === 'accepted', 'input submission uncertain; no automatic replay');
-        update(id, { state: 'accepted' }); persist({ turns: state.turns + 1 });
+        updateBatch({ state: 'accepted' }); persist({ turns: state.turns + 1 });
         for (;;) {
           guard(); ensure(config.now() < state.deadline, 'conversation deadline exceeded'); calls();
           const admission = config.io.admissionState(state.claim!);
@@ -258,13 +304,17 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             const result: SessionWorkOutcome = completed && reply?.trim()
               ? { state: 'complete', text: reply, detail: 'correlated reply and turn end', edge: state.edge!.id, child: state.worker!.launch }
               : outcome('turn ended without a complete reply');
-            update(id, { reply, cursor: batch.cursor, state: 'settled', outcome: result }); return true;
+            const results = batchResults(ids, result);
+            persist({ inputs: state.inputs.map(input => {
+              const index = ids.indexOf(input.request.operation);
+              return index < 0 ? input : { ...input, reply, cursor: batch.cursor, state: 'settled', outcome: results[index]! };
+            }) }); return true;
           }
-          update(id, { reply, cursor: batch.cursor });
+          updateBatch({ reply, cursor: batch.cursor });
           await config.io.wait(config.pollMs);
         }
       } catch (error) {
-        settle(id, outcome(error instanceof Error ? error.message : 'conversation failed'));
+        settleBatch(outcome(error instanceof Error ? error.message : 'conversation failed'));
         try { await retire(); } catch { /* retained worker and claim require reconciliation */ } return false;
       }
     };
@@ -274,7 +324,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         await retiring; await recover();
         while (!closing && !config.stopped()) {
           const next = state.inputs.find(input => input.state === 'queued');
-          if (!next || config.now() < next.retryAt || !await work(next.request.operation)) break;
+          if (!next || config.now() < next.retryAt || !await work(config.batchWaiting ? state.inputs.filter(input => input.state === 'queued' && config.now() >= input.retryAt).map(input => input.request.operation) : [next.request.operation])) break;
         }
       })().finally(() => { draining = null; });
       return draining;
@@ -291,22 +341,27 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       await recover();
       return freeze({ request: row(operation).request, outcome: currentOutcome(operation) });
     };
-    const run = async (request: SessionWorkRequest): Promise<ConversationSessionOutcome> => {
+    const enqueue = (request: SessionWorkRequest) => {
       ensure(safeName.test(request.operation) && request.question.trim() && request.authority.trim(), 'conversation input identity required');
       const inputDigest = digest(JSON.stringify(request));
       const existing = row(request.operation);
       if (existing) {
         ensure(existing.digest === inputDigest, 'conversation input identity conflicts with recorded bytes');
-        if (existing.outcome) return existing.outcome;
+        if (existing.outcome) return;
       } else {
         ensure(available(), 'conversation unavailable: stop, closed or queue capacity');
         ensure(Buffer.byteLength(JSON.stringify(request)) <= 1_048_576, 'conversation input exceeds byte bound');
         persist({ inputs: [...state.inputs, { request, digest: inputDigest, acceptedAt: config.now(), state: 'queued',
           delivery: null, cursor: 0, reply: null, outcome: null, attempts: 0, retryAt: 0 }] });
       }
-      await drain();
-      return currentOutcome(request.operation);
     };
+    const runBatch = async (requests: readonly SessionWorkRequest[]): Promise<readonly ConversationSessionOutcome[]> => {
+      ensure(requests.length > 0 && requests.length <= 64, 'bounded batch required');
+      for (const request of requests) enqueue(request);
+      await drain();
+      return requests.map(request => currentOutcome(request.operation));
+    };
+    const run = async (request: SessionWorkRequest): Promise<ConversationSessionOutcome> => (await runBatch([request]))[0]!;
     const close = async (): Promise<SessionWorkEdgeClose | null> => {
       closing = true; await draining;
       if (!state.edge) return null;
@@ -333,9 +388,9 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     };
     const retireIdle = async () => {
       if (draining || closing) return false;
-      retiring ??= retire().finally(() => { retiring = null; });
+      retiring ??= (async () => { await recover(); await retire(); })().finally(() => { retiring = null; });
       await retiring; return true;
     };
-    return Object.freeze({ owner: 'part-eight' as const, available, run, collect, close, maintain, reserveCall, retireIdle });
+    return Object.freeze({ owner: 'part-eight' as const, available, run, runBatch, collect, close, maintain, reserveCall, retireIdle });
   });
 }

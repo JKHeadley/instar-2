@@ -222,3 +222,20 @@ Option off retains the existing pre-send review route. The non-additive journal
 `reply-review-after-send` marker uses generation 5: an older reader must refuse a copy
 that has used this mode. Do not reuse that copy for an older-build rollback; retain the
 original root for the desk's copy walk and deployment decision.
+
+
+Topic hosts take a snapshot of waiting messages in arrival order and deliver them in one
+continuing turn. The journal prepares and reserves each intake separately; the batch result
+names each operation, and the host persists every result in one atomic snapshot. Each answer
+then uses the existing journal validation and unique send intent. A lone waiting message
+keeps the original envelope. A closed batch whose result was not yet checkpointed is read
+through the correlated adapter before worker retirement; queued messages still drain after
+restart. An interrupted tool-bearing turn without a correlated completion remains uncertain,
+never automatically repeated as if its effects had not happened.
+
+While a message waits behind a reserved turn, the journal can send one fixed progress line
+after 45 seconds (Rule 87's bounded pace; the unit brief selects the interval). Durable
+progress intents bound it to one per message and one per topic per 45 seconds, including
+across restart. The ordinary send doorway still enforces audience, secrets, stop and reply
+allowance. Uncertain sends are not repeated. These additive custody fields retain existing
+records; rollback requires a reader that understands them, never deleting the journal.

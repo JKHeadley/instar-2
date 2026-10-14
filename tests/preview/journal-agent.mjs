@@ -2127,6 +2127,15 @@ async function main() {
       heldSecrets: heldSecretValues,
       secrets: custody,
       media: mediaCustody,
+      ...(conversationSession ? { modelBatch: async inputs => {
+        await requireGroupDisclosure(journal.view);
+        sessionWork?.select?.();
+        if (!sessionWork?.port.available()) throw new ModelNotStarted();
+        const outcomes = await sessionWork.port.runBatch(inputs.map(input => ({ operation: input.id,
+          question: input.prepared, context: input.context, authority: sessionWork.authority })));
+        return outcomes.map((outcome, index) => conversationSessionAnswer(outcome, inputs[index].id,
+          shape => recordShape(shapesPath, 'answer', 'decision', 'malformed', shape)));
+      } } : {}),
       collectModel: async id => {
         if (!conversationSession || !sessionWork || !/^telegram:[0-9]+:update:[0-9]+$/u.test(id)) return null;
         const turn = journal.view.turns.get(id);

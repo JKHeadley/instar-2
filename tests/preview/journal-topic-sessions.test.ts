@@ -30,6 +30,7 @@ function fixture(forum = false) {
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 200, maxReplies: 30,
     maxTurns: 30, maxBytes: 262144, cursor: 0 });
   const topicOf = Function('journal', `return operation => {${topicOfBody}}`)(journal) as (operation: string) => string;
+  let evidence: unknown = null, replyOverride: string | undefined;
   let now = 1000, state: ConversationTopicsState | null = null, live = 0;
   const held = new Set<string>(), deliveries: { topic: string; input: HarnessInputDelivery }[] = [];
   const launches: string[] = [], sent: { text: string; thread: number | undefined; update: number }[] = [];
@@ -55,8 +56,10 @@ function fixture(forum = false) {
       observe: async input => {
         if (!input.delivery || held.has(topic)) return { observations: [], cursor: input.cursor, complete: true };
         const turn = journal.view.turns.get(input.delivery.operation)!;
-        const text = JSON.stringify({ reply: `Answer for topic ${topic}.`, memory: turn.text === 'Remember my sister is called Wren.'
-          ? [{ mode: 'remember', source: turn.id, quote: 'my sister is called Wren' }] : [] });
+        const answer = { reply: replyOverride ?? `Answer for topic ${topic}.`, memory: turn.text === 'Remember my sister is called Wren.'
+          ? [{ mode: 'remember', source: turn.id, quote: 'my sister is called Wren' }] : [] };
+        const ids = state!.topics[topic]!.inputs.find(row => row.request.operation === input.delivery!.operation)!.batch ?? [];
+        const text = JSON.stringify(ids.length > 1 ? { results: ids.map(operation => ({ operation, answer })) } : answer);
         return { observations: [{ kind: 'reply', delivery: input.delivery.operation, text,
           digest: `sha256:${createHash('sha256').update(text).digest('hex')}` },
         { kind: 'turn-end', delivery: input.delivery.operation, state: 'completed' }], cursor: input.cursor + 2, complete: true };
@@ -69,10 +72,21 @@ function fixture(forum = false) {
     async () => {}, () => false, () => false, () => { throw Error('fallback'); }, () => { throw Error('fallback'); },
     (input: unknown) => input, ModelDisclosureRefused, createModelLaunchBoundary(), true, { port, authority: 'grant' },
     ModelNotStarted, conversationSessionAnswer, readAnswer, () => {}, '/unused') as PreviewPorts['model'];
-  const worker = createJournalWorker(journal, { topicConcurrency: 2, groupDisclosure: async () => true, now: () => now, stopped: () => false, model,
+  const batchBody = source.split('modelBatch: async inputs => {')[1]!.split('\n      } } : {}),')[0]!;
+  const modelBatch = Function('journal', 'requireGroupDisclosure', 'sessionWork', 'ModelNotStarted',
+    'conversationSessionAnswer', 'recordShape', 'shapesPath', `return async inputs => {${batchBody}}`)(journal,
+    async () => {}, { port, authority: 'grant' }, ModelNotStarted, conversationSessionAnswer, () => {}, '/unused') as NonNullable<PreviewPorts['modelBatch']>;
+  const collectModel: PreviewPorts['collectModel'] = async id => {
+    const saved = await port.collect(id);
+    return saved && { context: saved.request.context, prepared: saved.request.question,
+      answer: conversationSessionAnswer(saved.outcome, id, () => {}) };
+  };
+  const worker = createJournalWorker(journal, { topicConcurrency: 2, groupDisclosure: async () => true, now: () => now, stopped: () => false, model, modelBatch, collectModel,
+    sources: () => evidence ? [evidence] : [],
     prepareModel: input => JSON.stringify(input), checkOutbound: () => {},
     send: async input => { sent.push({ text: input.expectedText, thread: input.thread, update: input.update }); return sent.length; } });
   return { journal, worker, held, deliveries, launches, sent, port, live: () => live, state: () => state!,
+    evidence: (value: unknown) => { evidence = value; }, reply: (value: string) => { replyOverride = value; },
     advance: (ms: number) => { now += ms; }, close: async () => { await port.close(); journal.close(); } };
 }
 
@@ -123,5 +137,41 @@ it('a forum topic grounds in its own history while recalling a fact learned in a
     expect(JSON.stringify(packet.memory)).toContain('my sister is called Wren');
     expect(f.deliveries[2]!.input.text).toContain('my sister is called Wren');
     expect(f.sent.map(row => row.thread)).toEqual([7, 8, 8]);
+  } finally { await f.close(); }
+});
+
+
+it('the shipped journal host batches three messages arriving behind one busy turn and sends each once', async () => {
+  const f = fixture();
+  try {
+    f.held.add('7'); f.worker.intake([update(1, 'First request.', 7)]);
+    const drain = f.worker.drain(); await until(() => f.deliveries.length === 1);
+    f.worker.intake([update(2, 'Second request.', 7), update(3, 'Third request.', 7), update(4, 'Fourth request.', 7)]);
+    f.held.delete('7'); await drain;
+    expect(f.deliveries).toHaveLength(2);
+    expect(f.sent.map(row => row.update)).toEqual([1, 2, 3, 4]);
+    expect(f.journal.view.order.every(turn => turn.sent !== undefined)).toBe(true);
+    expect(f.state().topics['7']!.inputs.every(row => row.outcome?.state === 'complete')).toBe(true);
+    await f.worker.drain(); expect(f.sent).toHaveLength(4); expect(f.deliveries).toHaveLength(2);
+  } finally { f.held.clear(); await f.close(); }
+});
+
+
+const recordedBatchShapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
+  otherShapes: { kind: string; id: string; raw: string; source: unknown }[] };
+it.each(recordedBatchShapes.otherShapes)('batch path preserves recorded $kind from $id and terminalizes each intake', async sample => {
+  const f = fixture();
+  try {
+    f.evidence({ recordedShape: sample });
+    if (sample.kind === 'delivered-reply' || sample.kind === 'empty-reply-in-recorded-context') f.reply(sample.raw);
+    f.worker.intake([update(1, 'Continue this conversation.', 7), update(2, 'And this next message.', 7)]);
+    await f.worker.drain();
+    expect(f.deliveries[0]!.input.text).toContain('exactly one {operation, answer}');
+    expect(f.state().topics['7']!.inputs.every(input => input.request.context.includes(JSON.stringify(sample.raw)))).toBe(true);
+    expect(f.journal.view.order.every(turn => turn.sent !== undefined)).toBe(true);
+    expect(f.sent.every(row => row.text.trim().length > 0)).toBe(true);
+    if (sample.kind === 'empty-reply-in-recorded-context')
+      expect(f.journal.view.order.every(turn => turn.failureClass === 'empty')).toBe(true);
+    const count = f.sent.length; await f.worker.drain(); expect(f.sent).toHaveLength(count);
   } finally { await f.close(); }
 });

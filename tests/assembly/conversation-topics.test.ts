@@ -38,7 +38,8 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16) {
       },
       observe: async input => {
         if (!input.delivery || held.has(topic)) return { observations: [], cursor: input.cursor, complete: true };
-        const text = `answer in ${topic}`;
+        const ids = state!.topics[topic]!.inputs.find(row => row.request.operation === input.delivery!.operation)!.batch ?? [];
+        const text = ids.length > 1 ? JSON.stringify({ results: ids.map(operation => ({ operation, answer: { reply: `answer to ${operation}`, memory: [] } })) }) : `answer in ${topic}`;
         return { observations: [{ kind: 'reply', delivery: input.delivery.operation, text, digest: digest(text) },
           { kind: 'turn-end', delivery: input.delivery.operation, state: 'completed' }], cursor: input.cursor + 2, complete: true };
       },
@@ -190,4 +191,39 @@ it.each([200000, 50000])('reopened and new topics keep the earlier installation 
   expect(await f.port.collect('8:b')).toMatchObject({ outcome: { state: 'complete' } });
   expect(await f.port.collect('9:absent')).toBeNull();
   await f.port.maintain(); expect(f.counts().live).toBe(0);
+});
+
+
+it('three waiting messages share the next turn and retain three terminal outcomes in intake order', async () => {
+  const f = fixture(); f.held.add('7');
+  const first = f.port.run(f.request('7:first'));
+  await until(() => f.delivered.length === 1);
+  const waiting = ['7:two', '7:three', '7:four'].map(id => f.port.run(f.request(id)));
+  await until(() => f.state().topics['7']!.inputs.length === 4);
+  f.held.delete('7'); await Promise.all([first, ...waiting]);
+  expect(f.delivered.map(row => row.input.operation)).toEqual(['7:first', '7:two']);
+  expect(f.state().topics['7']!.inputs.slice(1).map(row => row.outcome?.text))
+    .toEqual(['7:two', '7:three', '7:four'].map(id => JSON.stringify({ reply: `answer to ${id}`, memory: [] })));
+  expect(f.state().topics['7']!.turns).toBe(2);
+  const saved = structuredClone(f.state());
+  await f.port.close(); f.restart(); await f.port.maintain();
+  expect(f.delivered).toHaveLength(2);
+  expect(f.state().topics['7']!.inputs.map(row => row.outcome)).toEqual(saved.topics['7']!.inputs.map(row => row.outcome));
+  await f.port.close();
+});
+
+it('recovers a closed batch before its terminal snapshot without dispatching any member twice', async () => {
+  const f = fixture();
+  const ids = ['7:one', '7:two', '7:three'];
+  await f.port.runBatch(ids.map(f.request));
+  const complete = structuredClone(f.state());
+  const interrupted = { ...complete, topics: { ...complete.topics, '7': { ...complete.topics['7']!,
+    inputs: complete.topics['7']!.inputs.map(row => ({ ...row, state: 'accepted' as const, outcome: null, reply: null, cursor: 0 })) } } };
+  const load = f.config.store.load;
+  f.config.store.load = () => interrupted; f.restart(); f.config.store.load = load;
+  await f.port.maintain();
+  expect(f.delivered).toHaveLength(1);
+  expect(f.state().topics['7']!.inputs.map(row => row.outcome?.text))
+    .toEqual(complete.topics['7']!.inputs.map(row => row.outcome?.text));
+  await f.port.close();
 });

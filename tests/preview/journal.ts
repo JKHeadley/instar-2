@@ -299,6 +299,8 @@ export const MEMORY_ITEM_SHAPE = 'Memory item: {"mode":"correct"|"forget"|"updat
  * carry keeps MEMORY_ITEM_SHAPE byte for byte. */
 export const CARRIED_MEMORY_ITEM_SOURCE = 'A source may also be a source from predecessorMemory.entries, quoting that carried entry text word for word.';
 export const MEMORY_UNDECIDED_REPLY = 'Your message is retained, but I could not validate and save the requested memory change.';
+export const WAITING_PROGRESS_AFTER_MS = 45_000;
+export const WAITING_PROGRESS = "Still on your earlier message; I'll get to this one next.";
 export const UNKNOWN_SEND_NOTICE = 'My answer may not have arrived. Your request and the answer remain in the conversation record. You can ask me for the answer again.';
 export const UNKNOWN_ANSWER_NOTICE = 'The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.';
 export const TOO_LONG_INPUT_NOTICE = 'Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
@@ -1157,8 +1159,8 @@ export type JournalRecord =
   | { kind: 'held-notice-review'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'held-notice-intent'; id: string; text: string; chat: string; thread?: number; update: number; grant: string;
     /** Other held messages in this conversation the one notice also answers; none gets a second push (P-14). */
-    covers?: string[]; acknowledgement?: true; deliveryUnknown?: true; provenance?: OutboundProvenance; at: number }
-  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; at: number }
+    covers?: string[]; acknowledgement?: true; waitingProgress?: true; deliveryUnknown?: true; provenance?: OutboundProvenance; at: number }
+  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; waitingProgress?: true; at: number }
 
   // Non-additive: reservations/checks below may follow a sent reply; an older writer must refuse.
   | { kind: 'reply-review-after-send'; id: string; at: number }
@@ -1361,7 +1363,7 @@ export interface PacketDrop { kind: string; source: string; reason: string }
 export type IntakeCustody = { state: 'stored'; arrival: string; capture: string; secrets: string[] } | { state: 'failed' };
 /** One later message of a reply split across several: its plain text, its Telegram body, and its own signed provenance. */
 export interface ReplyPart { text: string; body: string; provenance: OutboundProvenance }
-export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
+export interface Turn { waitingProgress?: { at: number; sent?: number }; id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
   media?: MediaCustodyResult;
   /** Expected causal prefix, retained before the first media request. */
   mediaClaim?: string;
@@ -3001,6 +3003,8 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
   const [kind, ...rest] = target.split(':'), key = rest.join(':');
   if (kind === 'reply') { const turn = view.turns.get(key);
     return turn?.intent !== undefined && turn.groupedInto === undefined ? { sent: turn.sent } : undefined; }
+  if (kind === 'waiting-progress') { const progress = view.turns.get(key)?.waitingProgress;
+    return progress ? { sent: progress.sent } : undefined; }
   if (kind === 'delivery-notice') { const notice = view.turns.get(key)?.deliveryNotice;
     return notice?.lead === key ? { sent: notice.sent } : undefined; }
   if (kind === 'held-notice') { const turn = view.turns.get(key);
@@ -3096,6 +3100,7 @@ export function sendOutcomeCounts(view: JournalView) {
     if (turn.intent !== undefined) settle(replyTarget(turn), turn.sent);
     for (const [index, part] of (turn.replyParts ?? []).entries()) if (part.started) settle(replyPartTarget(turn.id, index + 2), part.sent);
     if (turn.deliveryNotice?.lead === turn.id) settle(`delivery-notice:${turn.id}`, turn.deliveryNotice.sent);
+    if (turn.waitingProgress) settle(`waiting-progress:${turn.id}`, turn.waitingProgress.sent);
     if (turn.heldNoticeIntent !== undefined) settle(`held-notice:${turn.id}`, turn.heldNoticeSent);
     if (turn.limited?.lead === turn.id) settle(`limited:${turn.id}`, turn.limitedSent);
   }
@@ -3140,7 +3145,7 @@ export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' |
   if (row.kind === 'operator-result-intent') return { target: `operator-result:${row.request}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'limited-intent') return { target: `limited:${row.id}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'intent') return { target: `reply:${row.id}`, chat: row.chat, ...thread, body: row.body ?? row.text };
-  if (row.kind === 'held-notice-intent') return { target: `${row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.text };
+  if (row.kind === 'held-notice-intent') return { target: `${row.waitingProgress ? 'waiting-progress' : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.text };
   return { target: `requested-reminder:${String(row.batch)}`, chat: row.chat, ...thread, body: row.body };
 }
 /** Verifies a recorded system writer's owner signature over its exact occurrence. */
@@ -4275,6 +4280,23 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     turn.heldNoticeReview = row.result;
     if (row.result.verdict !== 'unavailable') settleTokens(view, `held-notice-review:${row.id}`, row.result.usage);
     return;
+  }
+  if (row.kind === 'held-notice-intent' && row.waitingProgress) {
+    const last = Math.max(0, ...view.order.filter(item => item.thread === turn.thread).map(item => item.waitingProgress?.at ?? 0));
+    const earlier = view.order.slice(0, view.order.indexOf(turn)).some(item => item.thread === turn.thread
+      && item.accepted && item.reserved && item.intent === undefined);
+    if (!operatorWriter(view, turn, true) || turn.requestedAction || turn.editOf || turn.reserved || turn.intent
+      || turn.waitingProgress || !earlier || row.text !== WAITING_PROGRESS || row.at < turn.at + WAITING_PROGRESS_AFTER_MS
+      || last > 0 && row.at < last + WAITING_PROGRESS_AFTER_MS || view.stop !== null || row.at >= view.expires
+      || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
+      || row.grant !== view.genesis.grant || row.deliveryUnknown || row.acknowledgement || row.covers
+      || view.replies >= view.limits.maxReplies - 1) throw Error('preview journal: waiting progress not due');
+    turn.waitingProgress = { at: row.at }; view.replies++; return;
+  }
+  if (row.kind === 'held-notice-sent' && row.waitingProgress) {
+    if (!turn.waitingProgress || turn.waitingProgress.sent !== undefined || row.deliveryUnknown
+      || !Number.isSafeInteger(row.message) || row.message <= 0) throw Error('preview journal: waiting progress receipt order');
+    turn.waitingProgress.sent = row.message; return;
   }
   if (row.kind === 'held-notice-intent' && row.deliveryUnknown) {
     const covered = [turn, ...(row.covers ?? []).map(id => view.turns.get(id))];
@@ -5478,6 +5500,7 @@ export interface PreviewPorts {
    * the result so recovery uses the same answer consumer and grounding. */
   collectModel?(id: string): Promise<{ context: string; prepared: string;
     answer: Awaited<ReturnType<PreviewPorts['model']>> } | null>;
+  modelBatch?(inputs: readonly Parameters<PreviewPorts['model']>[0][]): Promise<readonly Awaited<ReturnType<PreviewPorts['model']>>[]>;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
     usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage;
       /** Exact zero-token provider quota refusal, carried separately from semantic rejection. */ capacity?: ModelCapacity;
@@ -5636,6 +5659,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
 
   // Bounded by admitted turn slots. Intake arms these independently of the serial answer worker.
+  const progressTimers = new Map<Turn, () => void>();
+  const progressInFlight = new Map<Turn, Promise<void>>();
   const acknowledgementTimers = new Map<Turn, () => void>();
   const acknowledgementsInFlight = new Map<Turn, Promise<void>>();
   const cancelAcknowledgement = (turn: Turn) => { acknowledgementTimers.get(turn)?.(); acknowledgementTimers.delete(turn); };
@@ -7759,7 +7784,46 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     acknowledgementsInFlight.set(turn, job);
     return job;
   };
+  const progressDue = (turn: Turn) => !halted() && fromOperator(turn) && !turn.requestedAction && !turn.editOf
+    && !turn.reserved && !turn.intent && !turn.waitingProgress && !outsideAllowance(journal.view, turn)
+    && journal.view.replies < journal.view.limits.maxReplies - 1
+    && journal.view.order.slice(0, journal.view.order.indexOf(turn)).some(item => item.thread === turn.thread
+      && item.accepted && item.reserved && item.intent === undefined);
+  const progressAt = (turn: Turn) => Math.max(turn.at + WAITING_PROGRESS_AFTER_MS,
+    ...journal.view.order.filter(item => item.thread === turn.thread && item.waitingProgress)
+      .map(item => item.waitingProgress!.at + WAITING_PROGRESS_AFTER_MS));
+  const startProgress = (turn: Turn) => {
+    if (progressTimers.has(turn) || turn.waitingProgress || turn.intent || turn.reserved || turn.editOf || turn.requestedAction
+      || !fromOperator(turn) || outsideAllowance(journal.view, turn)) return;
+    const after = ports.acknowledgementTimer ?? ((ms: number, run: () => void) => {
+      const timer = setTimeout(run, ms); timer.unref(); return () => clearTimeout(timer);
+    });
+    progressTimers.set(turn, after(Math.max(0, progressAt(turn) - ports.now()), () => {
+      progressTimers.delete(turn);
+      const run = async () => {
+        if (!progressDue(turn)) return;
+        if (ports.now() < progressAt(turn)) { startProgress(turn); return; }
+        const text = WAITING_PROGRESS, chat = journal.view.genesis.chat;
+        const thread = turn.thread === undefined ? {} : { thread: turn.thread };
+        const target = `waiting-progress:${turn.id}`;
+        ports.checkOutbound(text);
+        const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
+        let admitted = false;
+        const current = () => admitted ? !halted() && !turn.reserved && !turn.intent
+          : progressDue(turn) && ports.now() >= progressAt(turn);
+        const outcome = await push('reply', target, provenance, { text, expectedText: text, chat, ...thread,
+          update: turn.update, current }, () => { journal.append({ kind: 'held-notice-intent', waitingProgress: true,
+          id: turn.id, text, chat, ...thread, update: turn.update, grant: journal.view.genesis.grant, provenance, at: ports.now() }); admitted = true; });
+        if (outcome.kind === 'accepted') journal.append({ kind: 'held-notice-sent', waitingProgress: true,
+          id: turn.id, message: outcome.message, at: ports.now() });
+        if (!turn.waitingProgress && progressDue(turn) && ports.now() < progressAt(turn)) startProgress(turn);
+      };
+      const job = run().catch(() => {}).finally(() => { progressInFlight.delete(turn); });
+      progressInFlight.set(turn, job);
+    }));
+  };
   const startAcknowledgement = (turn: Turn) => {
+    startProgress(turn);
     if (acknowledgementTimers.has(turn) || !fromOperator(turn) || turn.requestedAction || turn.editOf
       || ((turn.reserved || turn.answer !== undefined) && turn.modelState !== 'complete')
       || turn.intent !== undefined || outsideAllowance(journal.view, turn)) return;
@@ -8141,8 +8205,37 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             }
             return result;
           };
-          let answer = collected?.answer ?? await attempt({ question, context, id: turn.id,
-            ...(prepared === undefined ? {} : { prepared }) });
+          // Snapshot the waiting topic prefix. Every member is prepared and reserved through
+          // the same intake/grounding path before the host receives the batch. Later intake
+          // belongs to the following turn; other topics keep their own worker.
+          const waiting: Parameters<PreviewPorts['model']>[0][] = [{ question, context, id: turn.id,
+            ...(prepared === undefined ? {} : { prepared }) }];
+          if (!collected && ports.modelBatch && !due && !turn.answerRetried) {
+            for (const pending of journal.view.order.slice(journal.view.order.indexOf(turn) + 1)) {
+              if (pending.thread !== turn.thread || !pending.accepted || pending.editOf || pending.sent || pending.intent) continue;
+              if (pending.reserved || pending.answer !== undefined || pending.requestedAction || pending.held
+                || pending.noticeClass || outsideAllowance(journal.view, pending) || actionBlocked(pending)
+                || isStopCommand(pending.text) || isStatusCommand(pending.text) || pendingMemory()
+                || journal.view.order.some(item => item.accepted && item.editOf === pending.id)
+                || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0) || waiting.length >= 64) break;
+              const packet = await prepareRecall(() => preparedFor(pending));
+              if ('reason' in packet || packet.prepared === undefined) break;
+              gate();
+              journal.append({ kind: 'reserve', id: pending.id, prompt: packet.prepared,
+                corrections: packet.carried, grounding: packet.grounding, packetDropped: packet.dropped,
+                packetLimit: journal.view.limits.maxBytes, maxInputTokens: journal.view.limits.maxBytes,
+                maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
+              waiting.push({ id: pending.id, question: packet.question, context: packet.context, prepared: packet.prepared });
+            }
+          }
+          let answer: Answer | false;
+          if (waiting.length > 1) {
+            try {
+              if (!await disclosure()) throw new ModelDisclosureRefused();
+              gate();
+              answer = (await ports.modelBatch!(waiting))[0] ?? false;
+            } catch { blockedEarlier = true; answer = false; }
+          } else answer = collected?.answer ?? await attempt(waiting[0]!);
           if (answer === false) continue;
           // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
           // once more with a runner-authored format reminder in the packet (never in the operator's message),
@@ -9261,7 +9354,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (!due && pendingMemory()?.editOf) settleBehind();
       if (!due && pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
     } finally {
-      try { await Promise.all(acknowledgementsInFlight.values()); } finally {
+      try { await Promise.all([...acknowledgementsInFlight.values(), ...progressInFlight.values()]); } finally {
+        for (const cancel of progressTimers.values()) cancel();
+        progressTimers.clear();
         wakeTopicDrain = null;
         acknowledgementsInFlight.clear();
         for (const turn of acknowledgementTimers.keys()) cancelAcknowledgement(turn);

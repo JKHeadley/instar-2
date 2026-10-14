@@ -55,7 +55,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       ensure(/^(?:main|[1-9][0-9]{0,15})$/u.test(topic), 'exact topic identity required');
       const existing = hosts.get(topic); if (existing) return existing;
       ensure(Object.keys(state.topics).length < 4096 || topic in state.topics, 'topic custody capacity reached');
-      const result = createConversationSessionPort({ ...config, conversation: `${config.conversation}:${topic}`, allowanceDeadline: parentDeadline(),
+      const result = createConversationSessionPort({ ...config, batchWaiting: true, conversation: `${config.conversation}:${topic}`, allowanceDeadline: parentDeadline(),
         stopped: () => stopped || config.stopped(),
         store: { load: () => state.topics[topic] ?? null, save: next => {
           ensure(spent() - (state.topics[topic]?.spent ?? 0) + next.spent <= config.maxCalls, 'installation call allowance exhausted');
@@ -141,13 +141,15 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       }
       recovered = true;
     })();
-    const run = async (request: SessionWorkRequest) => {
+    const runBatch = async (requests: readonly SessionWorkRequest[]) => {
+      ensure(requests.length > 0 && requests.every(request => config.topicOf(request.operation) === config.topicOf(requests[0]!.operation)), 'batch must name one topic');
       await recover();
-      const topic = config.topicOf(request.operation), host = hostFor(topic);
+      const topic = config.topicOf(requests[0]!.operation), host = hostFor(topic);
       busy.set(topic, (busy.get(topic) ?? 0) + 1);
-      try { return await host.run(request); }
+      try { return await host.runBatch(requests); }
       finally { busy.set(topic, busy.get(topic)! - 1); touched.set(topic, config.now()); notify(); }
     };
+    const run = async (request: SessionWorkRequest) => (await runBatch([request]))[0]!;
     const maintain = async () => {
       await recover();
       if (config.stopped() || config.now() >= parentDeadline()) { await close(); return; }
@@ -170,7 +172,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     };
     return Object.freeze({ owner: 'part-eight' as const,
       available: () => !stopped && !config.stopped() && config.authorized() && config.now() < parentDeadline(),
-      run, maintain, close,
+      run, runBatch, maintain, close,
       collect: async (operation: string) => {
         await recover();
         const topic = config.topicOf(operation);
