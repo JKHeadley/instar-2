@@ -26,6 +26,9 @@ is closed; field groups and variant names below are members of these types, not 
 
 | Defined here | Meaning and construction |
 |---|---|
+| `Commitment` | A durable promise, reminder or follow-up, independent of a worker or running assignment; section 3a defines its lifecycle. |
+| `CommitmentChange` | An immutable, conditionally admitted change to one commitment; includes due-work links and closure evidence. |
+| `CommitmentPort` | Public record, read and change operations over part two; an interface, not another database. |
 | `Run` | A durable assignment and its immutable opening facts; decoded at run admission. |
 | `RunStep` | One proposed bounded action with a stable logical identity; decoded before admission. |
 | `RunTransition` | A causally linked change in work state; decoded by transition admission and stored inside part two's envelope. |
@@ -325,6 +328,205 @@ by the actual environment, never inferred from these defaults. Section 11 states
 that test enforcement and measure the cost rather than promising universal throughput.
 
 ---
+
+## 3a. Commitments that outlive the conversation
+
+**Value — the simplest robust route.** A full session makes and works on promises through one
+public commitment port. Five owns their meaning and lifecycle; Two stores their facts. One
+rebuildable view supplies open work, due selection and session grounding. Six wakes ordinary work;
+Fourteen detects missing capture and stalled progress. No promise needs its own daemon, model,
+cron package, approval ceremony or permanently live worker. The separate record is necessary
+because a promise can exist before a run starts and after a session ends. A run records an
+attempt to keep it; ending that attempt does not end the promise.
+
+**Rule — one durable population.** Rules 6, 7, 8, 32, 33, 68 and 83; **checks:
+P5-C-01/02/07** below. A commitment is an obligation the agent has accepted to do, check or deliver
+something. It names an accountable agent even when the next action belongs to a person or an
+external service. The declaration in Part Three covers the store and its view, not each promise
+as a new governed register entry. The source is append-only Part Two facts, using its existing
+storage and durability adapter. A JSON file beside a harness or a timer's memory is not a second
+source of truth. The public operations are `record`, `read` and `change`; due selection is a read,
+and linking admitted work is a change. Names here describe the required port, not landed exports.
+
+| Recorded field | Meaning |
+|---|---|
+| Identity and cause | Stable agent-wide id, schema version, source conversation and exact durable intake/turn or tool-call identity plus an item key. A retry of the same creation returns the same id and receipt; different bytes under that key conflict. Similar prose alone never merges two requests. |
+| Content and owner | Plain statement of what was promised, accountable verified agent, source evidence, scope and current grant references. A parent commitment reference is optional for a separately promised check-in. No credential bytes. |
+| What it waits on | Explicit `nothing`, time, a named work/effect/dependency, a named person, authority, stop or resource inhibition. A dependency names its responsible party and next observation. Empty or unexplained waiting refuses creation. |
+| Timing | Optional promised due instant, original time expression and time zone, plus a required next internal review instant and bounded revisit cadence. A promise without a deadline still resurfaces. A due date is never an expiry or evidence of permission. |
+| Acceptance | What would count as kept and the evidence required. Delivery promises name recipient, conversation/account route and required delivery result separately from producing the content. |
+| Current work and evidence | Links to admitted runs, pending effects, progress, dependency probes and delivery settlement. Derived from accepted changes; absence of a worker is not absence of work. |
+| Disposition | Open, or a closed disposition with cause and evidence: fulfilled, withdrawn, superseded or not-kept. Closure does not delete the opening or its history. |
+
+**Rule — a stated time resolves before it is confirmed.** Rules 6, 10, 13 and 96;
+**checks: P5-C-01/03/05**. The session interprets the person's time expression using the actual
+clock and recorded conversation time zone; the existing date/calendar adapter supplies the
+absolute instant. Record both the interpreted instant and its source expression. If a missing
+zone or ambiguous local time changes the promised action materially, clarify that fact before
+confirming the date; preserve the request and its clarification wait immediately. An invalid
+or unknown instant is not silently replaced with now. A clock discontinuity causes a fresh due
+read, not duplicate execution of an already linked item.
+
+**Rule — capture precedes confirmation.** Rules 4, 6, 10, 42, 83 and 86; **checks:
+P5-C-01/03**. The session's tools expose the generated commitment capability on every harness.
+It records the promise while the relevant context exists and receives the durable receipt before
+confirming it. A structured final-turn declaration may use the same operation; the host records
+all declarations before admitting the corresponding confirmation send. The operation binds the
+source and exact promise, and the send binds the receipt into its durable causal preparation.
+A memory-only success, failed append, missing receipt or mismatched declaration cannot authorize
+that confirmation. Durable intake and the attempted declaration remain available for recovery;
+the session can repair it or honestly explain that it has not been recorded. Other replies remain
+reachable. A confirmation that was never sent does not silently delete an accepted obligation.
+A lost send receipt keeps confirmation delivery uncertain under its original effect identity.
+
+Meaning remains the full session's judgment. Code validates declared fields and references; it
+does not infer promises or completion from phrases. No new model call is required before every
+reply. Retrospective full-context review compares delivered conversation with this population,
+records missing promises or unsupported closure and uses the same record/change path to repair
+them. This detects a session that failed to declare a promise; it cannot establish a guarantee
+that every undeclared promise was caught before speaking. That residual is measured in the live
+conversation proof, including an intentionally omitted declaration.
+
+**Rule — updates preserve cause and ownership.** Rules 4, 7, 28, 63, 83 and 93; **checks:
+P5-C-01/02/04**. `change` requires the current commitment head and current owner authority, retains
+its cause, and appends a new fact under the existing conditional owner admission. A stale writer
+rereads; equal retries return the recorded result; incompatible successors remain visible conflicts
+and cannot authorize effects. Rescheduling records why and preserves the promised deadline as
+history; postponing an internal review cannot erase lateness. Stop, capacity exhaustion, a worker
+exit, an elapsed deadline, a missing row in a partial read and an `at-risk` warning are nonterminal.
+A person can cancel or replace their request through authenticated intake. A model can propose a
+closure but cannot manufacture the authority or evidence for it.
+
+A fulfilled disposition cites evidence satisfying the promise's actual acceptance condition.
+Preparing a reply does not prove delivery; an unrelated reply, heartbeat, tool exit code or model
+claim does not prove the work was done. A withdrawn disposition cites an authorized withdrawal;
+superseded cites its replacement and the authority to change the obligation. A not-kept disposition
+records what failed, its investigation and the honest result owed to the person. An unresolved
+delivery remains a separately owned obligation after work disposition; closure cannot release an
+uncertain effect or its liability. A genuine blocker retains its next recheck under Rule 99.
+A linked operator Directive remains open until completed or superseded under Rule 93: closing an
+attempt or marking a promise not-kept never expires the directive or abandons its next work.
+
+**Rule — due work survives an absent worker.** Rules 8, 15, 46, 55, 60, 61, 63, 68, 92 and
+97; **checks: P5-C-04/05**. At boot and on its bounded cadence, the host asks the open-work view
+for due reviews using an actual clock reading. A due item is identified by commitment id and the
+accepted change that established that review instant. The current owner conditionally links that
+item to one durable admitted work identity before delivery or launch. A crash before that link
+leaves it due; a crash after it resumes or reconciles that same work. Duplicate ticks, duplicate
+intake and two machines cannot create a second attempt for the same due item. Advancing the review
+instant requires a recorded outcome, next dependency observation or explicit inhibition, not merely
+having selected the item. A completed check that leaves the promise open records the next review.
+
+When its conversation session is available, the owner delivers this work there with a durable
+input id and consumption receipt. A busy session gets a durable queued input. With no suitable
+worker, ordinary run admission launches or revives a full session through the public harness
+contract. No fresh session per reminder is required. Rule 15's independently reachable session
+remains a system duty; recovery from an absent work session is not permission to design away that
+duty. Tool and connected-account work uses the ordinary effect doorway under fresh authority,
+secrets, spend, stop, ownership and durability checks. A scheduled instant supplies no additional
+grant. Uncertain prior work is observed before any permitted new execution.
+
+Scanning, delivery, launch and retry use Six's existing bounds, backoff and breaker. Defaults are
+engineering choices: a 60-second due scan, at most 32 selected items per pass, and a one-hour
+internal review when no more specific observation is known. These are targets, not timing promises;
+the scan uses a persistent fair cursor so capped passes cannot starve older or later items.
+Resource denial leaves an owned, visible wait and next observation; it never drops the item or
+asks the user to remember it. Autonomous run check-ins retain their charter cadence. Recurring
+calendar work uses Part Fifteen occurrence identities; no catch-up rule silently skips a separately
+promised reminder. The model decides whether late work still serves its purpose and records that
+judgment. It must honestly close or reschedule it, not treat lateness as deletion.
+
+**Rule — a reminder has its own result.** Rules 8, 52, 53, 83, 87 and 89; **checks:
+P5-C-03/04/05**. A promise solely to remind someone is one commitment whose result is delivery.
+A separate promised check-in on a larger job is a second commitment with a parent reference and
+its own absolute instant. Sending that check-in cannot fulfill the larger job, and an unrelated
+run wake cannot overwrite it. Completion of the parent suppresses a still-unneeded check-in only
+through an explicit, evidenced closure that respects the check-in's terms. A requested reminder
+or promised result is agent work routed to its recorded audience; it is not an infrastructure
+notice. An internal review date alone creates no user message. Infrastructure failure notices
+remain aggregated on the alerts route, after eligible self-heal, through Eight. No direct timer
+send or alternate notification budget exists.
+
+**Rule — the session reads open work on every boundary.** Rules 47, 78, 84, 96 and 110;
+**checks: P5-C-06/07**. Start, resume, compaction, clear and respawn all obtain a fresh owner-read
+snapshot and actual clock reading, bound to the grounding receipt and worker. Include this
+conversation's open promises, due/overdue work, waits and responsible parties, current work/effect
+links and acceptance conditions. Include authorized related work across conversations without
+revealing another person's restricted facts. The record is quoted context, never a new grant.
+While a session continues, admitted commitment changes and new inbound work invalidate affected
+snapshot entries and are delivered at its next input boundary; consequence-bearing actions reread
+current authority and commitment state. Compaction also retains the last inbound id and disclosure.
+
+Use the existing awareness delivery hook and consumption receipt. Extend its open-commitment row
+with waits, evidence and coverage rather than inventing a second briefing. Bounded pages carry
+a stable snapshot position, total/count coverage and a continuation; a partial or failed read is
+never an empty complete population. Due work and the current task are loaded first; omitted detail
+is explicitly counted and retrievable through the same port. Grounding failure remains visible
+and owned, inhibits an ungrounded consequential action, and does not close the separate reachable
+communication plane. A session answering what remains open must fetch omitted relevant pages.
+
+**Rule — loss is detected, not inferred away.** Purpose constraint 2 and Rules 7, 26, 32,
+33 and 113; **checks: P5-C-02/07**. This is agent-shared state. On one machine, the existing durable
+fact append and local conditional writer suffice; the view and wake queue are disposable. Boot
+replay verifies the source prefix and compares the view's position and open/due counts. Missing
+captures, broken chains, incomplete reads or a checkpoint beyond the available source report
+unknown coverage and prevent false empty/completed claims. Rebuild repairs a lost view. The
+promise holder checks due age, unclaimed due work, linked-work liveness, unresolved deliveries
+and read freshness; existing host supervision detects a dead scanner. Retention compacts indexes,
+not the commitments or evidence needed to reconstruct them.
+
+On multiple machines the same ids and facts replicate through Two and the current conversation
+owner in Six alone admits changes, launches and effects. Peers forward or durably queue. Conflicts
+and incomplete replication remain visible; no last-writer-wins merge or local-authority fallback.
+An effect consumes its installed durability demand over the complete causal prefix, including
+the commitment and due-work link. Adding a peer does not silently lower that demand. Permanent
+loss of the only disk has the constitution's accepted loss model; absence after reinstall never
+authorizes repeating an uncertain send.
+
+**Rule — adoption has one writer and accounts for every loop.** Rules 35, 44, 45 and 71;
+**checks: P5-C-07/08**. Import the existing journal's open commitments, dated check-ins, directive
+links, blocker rechecks and outstanding deliveries through the new owner. Preserve original ids
+through a durable mapping, source bytes/references, waits and uncertain outcomes. Do not reinterpret
+an old unknown send as unsent. Reconcile counts and individual identities before switching writes;
+malformed rows stay preserved and visibly unresolved, never omitted. Quiesce old commitment writes,
+import through a recorded journal position, reconcile any tail, then switch the session tools,
+due worker, grounding and status readers together. The journal can remain conversation history
+until its own migration. Production refuses fixture identities. Rollback uses a compatible reader
+of the retained source or stops new commitment mutation while preserving intake; it does not start
+a second writer against an older journal projection.
+
+**Rule — acceptance exercises both neighbors.** Rules 26, 34, 43, 62, 69 and 116;
+**checks: P5-C-01–08**. These checks are build obligations, not claims of implemented coverage.
+
+| Check | Positive and negative neighbors |
+|---|---|
+| P5-C-01 | Durable record/read/change with owner, explicit wait and acceptance; missing fields, conflicting replay, stale head and false persistence receipt refuse while preserving input. |
+| P5-C-02 | Crash after append before acknowledgement recovers one commitment; view deletion rebuilds; partial/corrupt history never reports zero open; concurrent owners cannot admit competing work. |
+| P5-C-03 | Full session records before confirmation; failed capture cannot confirm; requested reminder uses its agent route; date-only status cannot become a push; uncertain send never dispatches twice. |
+| P5-C-04 | Evidence closes kept work; unrelated output cannot; cancellation and supersession cite authority; a deadline, stop, exhausted budget or worker death leaves work open; parent completion cannot falsely fulfill a separate check-in or directive. |
+| P5-C-05 | Due with no work session creates one recoverable work input; not-yet-due and closed items do not; busy input queues, crash cuts replay the link, caps preserve backlog, and a fake clock plus injected slow path proves unrelated progress. |
+| P5-C-06 | Startup and every resume boundary receive the same open-work classes and current clock; stale/trimmed/failed coverage is explicit; a newly opened or cancelled promise reaches an already-live session. |
+| P5-C-07 | Journal import preserves identity, uncertainty and count; repeated import is idempotent; fixtures refuse production; missing rows, mixed writers and lost wake notifications are detected. |
+| P5-C-08 | On the shipped channel a person makes a promise with tools, changes it in another turn, stops/restarts the worker, receives the due result unattended and sees honest closure. Include a separately promised check-in, an unavailable account, ambiguous delivery, compaction and a deliberately undeclared promise detected by review. Repeat the same port contract across harness adapters; one passing stub is not live proof. |
+
+**Value — implementation choices and limits.** The physical store format remains Two/Ten's
+choice; use the installed fact store rather than adding a database. Cursor page sizes, scan
+cadence and index acceleration are measured engineering defaults. The current full-store reads
+are adequate only where the measured population fits the installed scan/resource bound; exceeding
+it leaves visible backlog and requires the bounded read work, never deletion or an invented
+successful scan. A small live installation need not wait for the entire recurring-job or
+multi-machine scheduling design. No new operator policy is required for internal review timing.
+
+**Value — questions for the operator.** No new authority is requested by this commitment
+store. The existing single-machine account-action question belongs to the purpose: it permits
+local irreversible effects only for the "fixed profile's closed set" and says "an operation
+outside the set ... refuses", while also saying a reading under which a supported single-machine
+installation cannot perform a needed function "is wrong; the defect is in the wording".
+A promised email or account mutation outside that set can be recorded, but this design cannot
+claim it executable locally. It remains an explicitly explained, owned authority wait with a
+recheck; confirmation must not promise an ability the installation lacks. The operator must
+resolve that constitutional wording before such execution can be activated. Ordinary supported
+replies, durable capture, review and grounding do not depend on that resolution.
 
 ## 4. Finishing, cancelling, and carrying a blocker
 

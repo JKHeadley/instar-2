@@ -1,5 +1,23 @@
 ## 1. Ownership and boundaries
 
+**Rule — conversational due work uses the commitment owner.** Rules 6, 8, 30, 46, 55,
+60, 63, 68 and 83; **checks: P5-C-01–08 and P15-NF-18/21/23**. A promise made in a full session
+uses [Five's commitment port](../09-the-run-graph.md#3a-commitments-that-outlive-the-conversation).
+Its due scan and delivery use Six's existing loop, admission and bounds. It does not require a
+new declarative job package, per-promise person approval, provider route or worker. A due input
+can join a live conversation, wait durably while that conversation is busy, or start an ordinary
+full session. Every path retains one logical due-work identity before launch. The source
+commitment and current standing authorize its scope; a clock callback does not.
+
+This part's manifests, calendar calculation and occurrence identities serve genuinely recurring
+jobs and installed maintenance. One recurring occurrence can create or reference commitments
+through Five when it owes a result; neither completion nor catch-up disposition of a scheduled
+run silently closes a promise. Common capacity, stop, ownership and no-repeat controls apply to
+both populations. A missed conversational promise stays owned even where an installed job's
+catch-up policy chooses no execution. The broad job-package activation dependencies below apply
+to the corresponding scheduled families, not as a prerequisite for every conversational promise.
+The simple due-work path still has to prove its own owner ports and production wiring.
+
 **Rule — part fifteen defines no new core type.** Rules 1, 30, 49, 66, 69, 90 and 114;
 **checks: P15-NF-01/03**. A job manifest is a part-ten package resource whose decoder selects and
 configures existing types. A schedule holder is a part-nine holder realized by part ten. A due

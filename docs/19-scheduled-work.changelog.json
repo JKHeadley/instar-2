@@ -1,5 +1,21 @@
 [
   {
+    "revision": 3,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin: design-commitments-1013, plan of record From the stand-in to the actual agent; joint design review pending."
+    },
+    "changes": [
+      {
+        "what": "Separate conversational commitment due work from installed recurring-job packages.",
+        "why": "Use ordinary sessions and bounded admission without imposing per-promise package and approval machinery.",
+        "ref": "reviews/design-commitments-1013-change-review.md"
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-09-28",
     "status": "approved",

@@ -1,5 +1,21 @@
 [
   {
+    "revision": 5,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin: design-commitments-1013, plan of record From the stand-in to the actual agent; joint design review pending."
+    },
+    "changes": [
+      {
+        "what": "Define the minimal commitment record, public lifecycle, capture-before-confirmation, due work, grounding, migration and paired acceptance checks.",
+        "why": "Promises must outlive full sessions and be kept or honestly closed without duplicating the scheduler or effect doorway.",
+        "ref": "reviews/design-commitments-1013-change-review.md"
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-09-23",
     "status": "draft",

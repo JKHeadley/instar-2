@@ -4,6 +4,10 @@ _Generated from `19-scheduled-work.changelog.json` by `scripts/render-changelog.
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 3 · 2026-10-13 · draft — Justin: design-commitments-1013, plan of record From the stand-in to the actual agent; joint design review pending.
+
+- **Separate conversational commitment due work from installed recurring-job packages.** — Use ordinary sessions and bounded admission without imposing per-promise package and approval machinery. _(reviews/design-commitments-1013-change-review.md)_
+
 ## Revision 2 · 2026-09-28 · approved — Operator's standing direction in topic 52075 at 09:09 PDT 2026-09-28 ('For the 2.0 work the only thing I need to approve are changes to the constitution'): design parts need no separate operator approval; this part is approved as written.
 
 - **Mark the design approved as written.** — Only changes to the constitution require the operator; design parts implement it and are approved on the operator's standing direction. _(topic-52075-2026-09-28T16:09Z)_

@@ -18,76 +18,56 @@ their positive claims real Eleven rendering, reachability or production wiring.
 Their independent facts-fold, query, classifier and pure rendering-unit assertions remain separate
 and executable against their landed owners.
 
-**Rule — promise watching follows durable ownership and detects missing registration.** Rules 8,
-9, 13, 46, 55, 64, 68, 83, 87, 92 and 93; **checks: P14-NF-37–41/55/63**. A promise arm consumes the
-durable work/run source selected by
-parts three and five; this part does not create a competing commitment schema. Each open agent-owned
-obligation has a cadence, blocker state, next probe or progress due, terminal test and bounded
-revival policy. `at-risk` is non-terminal. An external wait needs a fresh structured probe. An
-operator-owned or authorization-blocked item is not falsely narrated as agent progress. Caps apply
-per obligation, conversation, machine and package, and overflow stays visible rather than vanishing.
-A separate sentinel arm inspects attributable conversation history for promises that have no
-matching durable obligation. Its classifier uses full-context Part Seven judgment, not keywords.
-A supported finding opens the ordinary Part Five registration/reconciliation path and remains a
-missing-registration gap until that path records or explicitly declines the obligation. Detecting a
-promise does not itself invent work authority or close the user's request.
+**Rule — promise watching reads one owner and signals repair.** Rules 8, 9, 26, 46,
+55, 64, 68, 83, 87, 92 and 93; **checks: P14-NF-37–41/55/63 and P5-C-01–08**. Five owns the
+[commitment lifecycle](../09-the-run-graph.md#3a-commitments-that-outlive-the-conversation), including
+separate dated check-ins, public record/read/change operations and closure. The holder consumes its
+status-bearing open-work view. It never creates a competing store, closes a promise from absence
+in a partial page, or equates an attempted work step with fulfillment. Each open item has an
+accountable agent, explicit wait, next review and acceptance condition. `at-risk`, failed probes,
+operator waits and exhausted attempts are nonterminal. Due work is admitted by the ordinary
+scheduler under Six's bounds; the holder's independent role is to detect that admission or
+progress did not happen and open the same bounded recovery path. It adds no second timer-to-send
+path, worker launcher or per-promise model call.
 
-**Rule — a dated check-in is a distinct absolute due obligation.** Rules 8, 26, 42, 46, 52, 53,
-55, 68, 83, 87, 88, 89 and 92; **checks: P14-NF-37–39/45–47/63**. When an agent-owned promise includes an
-absolute check-in instant, Part Fourteen needs a separate Five-owned due item rather than treating
-the run's one mutable `nextWake` as that item. The landed `RunGraphPort` has no owner-decoded due-item
-identity, promise relationship, registration, complete read, closure or replay operation. The exact
-additive contract is GRANTED in `seam-response-rungraph-followup.md`, ledger #39, but is not landed.
-It grants one Five-owned dated-reminder due-item record and public `REGISTER`, `READ` and `CLOSE`
-operations; Fourteen neither names that owner type nor emulates a `run-due-view`. Under the granted
-seam, Five owns registration and explicit closure: an owner-valid fulfilled,
-withdrawn or superseded disposition of the underlying obligation suppresses the item, while the
-exact settled reminder closes only the reminder item. The reminder holder owns complete observation
-of the open dated population and compares each absolute instant with an actual clock reading.
-Not-yet-due, terminally closed and already-settled items request no effect. Reaching the instant
-makes the item due; it neither proves the promised work happened nor establishes that a person must
-act.
+The holder checks complete scan coverage, due age, unclaimed work, failed consumption, stalled
+linked runs and unresolved delivery. A shared bounded pass and existing host supervision prove
+that looking happened. Caps apply to the existing obligation, conversation, machine and package
+resource domains; overflow remains visible and the cursor continues fairly. A known external wait
+is reported as waiting, with its latest evidence and next observation, not agent progress.
 
-A due date by itself remains a pull-visible obligation. It does not satisfy Part Eight's
-`required action` or result eligibility and cannot route a system notice to the ordinary
-conversation. A bounded infrastructure notice becomes eligible only when fresh evidence separately
-establishes a concrete result or a human-required action and, for an internal issue, records the
-eligible self-heal that was attempted and failed. That notice carries infrastructure provenance.
-It quotes the promise only as data. A **causal episode** is the stable identity joining one
-originating failure's observations and actions across retries, workers and machines. The notice
-aggregates by that causal episode. It routes through Eight to the declared alerts destination under
-Rule 53, not to the promise's original destination. Eight
-re-resolves current ownership, scope, message eligibility, notification budget and route before it
-records observation and settlement. If the promise explicitly requires delivery of a reminder or
-result to a named destination, that is a distinct owner-approved agent reply/result contract through
-Five and Eight; the holder may not infer it from the date or convert an infrastructure notice into
-agent speech.
+The existing retrospective full-context judgment also compares attributable conversation against
+the owner's records for missing registration and unsupported fulfillment. P14-NF-55 exercises a
+supported missing promise, an existing match, and a non-promise. Keywords cannot open obligations
+or close them. A supported finding uses Five's ordinary reconciliation operations; declined or
+uncertain findings keep their cause and disposition. Semantic review is the residual detector
+for undeclared speech, not evidence that it was durably recorded before confirmation.
 
-P14-NF-63 separates its positive contract into these independent assertions:
+**Rule — reminders and infrastructure notices have different causes.** Rules 8, 26, 42,
+46, 52, 53, 55, 68, 83, 87, 88, 89 and 92; **checks: P14-NF-63 and P5-C-03/04/05**. A promised
+reminder has an absolute due instant and an acceptance condition requiring its delivery. Five
+records it independently of a run's mutable `nextWake`; a check-in on another promise carries a
+parent reference. Settling the check-in does not complete the parent. The full session prepares
+that agent result through Eight to the recorded audience, subject to current standing and the
+installed durability profile. A date on an internal review item alone establishes no notification
+eligibility. The holder may neither impersonate the agent nor turn such a date into a notice.
 
-1. **Registration and replay.** Registering and replaying one promise/check-in pair preserves one
-   stable due-item identity despite unrelated `nextWake` changes.
-2. **Timing.** An actual clock observation selects a due item at its absolute instant; the otherwise
-   identical not-yet-due item requests no effect.
-3. **Closure.** Owner-valid fulfillment, withdrawal or supersession closes the underlying
-   obligation, while exact reminder settlement closes only the reminder item.
-4. **Date-only eligibility.** A due date without separate action-needed or result evidence stays
-   pull-visible and requests no message.
-5. **Eligible notice.** Fresh concrete-result or human-required-action evidence, plus the required
-   failed eligible self-heal for an internal issue, requests one bounded aggregate infrastructure
-   notice under the stable item identity.
-6. **Routing.** The eligible infrastructure notice goes only to the declared alerts destination;
-   the ordinary or original conversation route is refused.
-7. **Delivery uncertainty.** A lost or ambiguous answer remains owned and uncertain under the
-   original effect identity, permits read-only reconciliation and never mints a second invocation.
+Infrastructure notices require separate concrete result or human-required-action evidence and,
+for an internal issue, failed eligible self-heal. They carry infrastructure provenance, aggregate
+under one causal episode, and use the alerts destination through Eight. A causal episode joins
+one originating failure's observations and actions across workers and machines. Eight owns
+current route, ownership, scope, notification budget, dispatch, observation and settlement.
+Ambiguous delivery retains the original effect identity and only permits reconciliation; a
+new clock tick or a lost holder cache cannot mint another send. Attempts exhausted leaves an
+owned, visible undelivered state.
 
-Attempt or notification-budget exhaustion leaves the due item and undelivered state owned and
-pull-visible. Assertions 1–3 are **non-executable until the ledger #39 grant in
-`seam-response-rungraph-followup.md` lands**. Assertion 5's dispatch positive is additionally
-**non-executable until `seam-response-effects-payloads.md` and
-`seam-response-assembly-followup.md` land**; those GRANTED files supply the typed infrastructure
-notice and confined notice driver. The refusal cases in assertions 2, 4, 6 and 7 remain pure
-specified neighbors; they do not establish a live positive on this HEAD.
+P14-NF-63 has seven paired assertions: one stable promise/check-in identity on replay; due versus
+not-yet-due selection; evidenced closure versus a missing row; internal date-only status versus
+an explicitly promised reminder result; eligible notice versus absent self-heal/action evidence;
+agent result routing versus infrastructure alerts routing; and confirmed settlement versus
+uncertain delivery with no repeat. These are implementation obligations until Five's commitment
+port, its production consumers and Eight's appropriate effect operations are wired. A pure
+classifier pass cannot establish that a real promise was captured, acted on or delivered.
 
 **Rule — unregistered dirty work remains visible after its worker dies.** Rules 9, 26, 42, 45,
 59, 68, 69 and 87; **checks: P14-NF-25/35/42/45/49/50/61**. Here **dirty** means a

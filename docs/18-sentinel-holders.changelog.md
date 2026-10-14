@@ -4,6 +4,10 @@ _Generated from `18-sentinel-holders.changelog.json` by `scripts/render-changelo
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 4 · 2026-10-13 · draft — Justin: design-commitments-1013, plan of record From the stand-in to the actual agent; joint design review pending.
+
+- **Bind promise observation to Five and distinguish promised agent reminders from infrastructure notices.** — Detect missed capture and stalled work without a competing store, direct send or closure inferred from incomplete observation. _(reviews/design-commitments-1013-change-review.md)_
+
 ## Revision 3 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with PR #154; final-head code-owner approval pending.
 
 - **Remove per-kind recovery approval and inherited ships-dark defaults for supported role-covered recovery; preserve continuity, ownership, resource and no-repeat floors.** — The purpose requires role-covered capabilities by default and reserves sign-off for its fixed list. _(`fc0e3c20`, docs/00-the-purpose.md; reviews/docs-align-1010-change-review.md)_

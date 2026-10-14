@@ -1,5 +1,21 @@
 [
   {
+    "revision": 4,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin: design-commitments-1013, plan of record From the stand-in to the actual agent; joint design review pending."
+    },
+    "changes": [
+      {
+        "what": "Bind promise observation to Five and distinguish promised agent reminders from infrastructure notices.",
+        "why": "Detect missed capture and stalled work without a competing store, direct send or closure inferred from incomplete observation.",
+        "ref": "reviews/design-commitments-1013-change-review.md"
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-10-10",
     "status": "draft",

@@ -4,6 +4,10 @@ _Generated from `09-the-run-graph.changelog.json` by `scripts/render-changelog.m
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-10-13 · draft — Justin: design-commitments-1013, plan of record From the stand-in to the actual agent; joint design review pending.
+
+- **Define the minimal commitment record, public lifecycle, capture-before-confirmation, due work, grounding, migration and paired acceptance checks.** — Promises must outlive full sessions and be kept or honestly closed without duplicating the scheduler or effect doorway. _(reviews/design-commitments-1013-change-review.md)_
+
 ## Revision 4 · 2026-09-23 · draft — PREVIEW-S2 design as amended by astra-preview-s2-bytecap.md; reviewed landing remains desk-owned
 
 - **Document the exact signed-Decision PREVIEW projection and unchanged raw-answer alternative.** — Use one accepted answer without releasing UNKNOWN provider obligations or broadening the existing Eight definitions. _(PREVIEW-S2 / ROUND 2)_

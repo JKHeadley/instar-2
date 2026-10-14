@@ -57,6 +57,23 @@ enters force, verified where it is consumed.
 
 ---
 
+## Commitment ownership
+
+**Rule — the register describes the commitment facility, not each promise.** Rules 6, 8,
+32, 33, 78, 83 and 84; **checks: P3-NF-04/16/29 and Part Five P5-C-01/06/07**. Part Five's
+`CommitmentPort` owns the runtime population described in
+[the commitment lifecycle](09-the-run-graph.md#3a-commitments-that-outlive-the-conversation).
+Declare the source store, derived view, bounded scan, observation duty and exposed session
+capability beside their implementations using the existing kinds. The store declares shared
+machine scope, retention, loss detection and agreement between the source and view. Generated
+capability briefing exposes record/read/change at start and resume on every harness. One
+conversation promise is runtime work, not a governed declaration needing a new register generation
+or individual approval. The due scanner and promise holder read Five's population; they do not
+maintain separate commitment schemas. The checks name required implementation evidence and do
+not claim that this store has landed.
+
+---
+
 ## The kind roster, fixed by name
 
 The register document defined thirteen kinds and the glossary added two more — terms and rules —

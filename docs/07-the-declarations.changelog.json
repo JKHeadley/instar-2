@@ -1,5 +1,21 @@
 [
   {
+    "revision": 9,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin: design-commitments-1013, plan of record From the stand-in to the actual agent; joint design review pending."
+    },
+    "changes": [
+      {
+        "what": "Assign commitment runtime ownership to Five and expose its capability through existing declarations.",
+        "why": "Keep one shared source and generated awareness without a register version or approval per promise.",
+        "ref": "reviews/design-commitments-1013-change-review.md"
+      }
+    ]
+  },
+  {
     "revision": 8,
     "date": "2026-10-10",
     "status": "draft",

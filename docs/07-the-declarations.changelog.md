@@ -4,6 +4,10 @@ _Generated from `07-the-declarations.changelog.json` by `scripts/render-changelo
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 9 · 2026-10-13 · draft — Justin: design-commitments-1013, plan of record From the stand-in to the actual agent; joint design review pending.
+
+- **Assign commitment runtime ownership to Five and expose its capability through existing declarations.** — Keep one shared source and generated awareness without a register version or approval per promise. _(reviews/design-commitments-1013-change-review.md)_
+
 ## Revision 8 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
 
 - **Describe verification coverage without a numeric readiness promise and require demonstrated awareness beyond generated briefing bytes.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_
