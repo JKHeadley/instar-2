@@ -1,0 +1,36 @@
+# Change review — prepared login records survive installation moves
+
+Subject base: 0de16e3cdaea380ac746793123a51382aeb9830b
+Review state: open
+Reviewed content: none
+Outcome: A copied or renamed installation resolves prepared login records against its current root, including the existing absolute-path format. Preparation recreates missing derived records from verified admitted sources without resetting pool selection or notices.
+Affected rules: Purpose 2/3; Rules 1, 4, 26, 28, 34, 35, 37, 42, 44, 45, 49, 70, 74, 95, 100, 101, 102, 111, 112, 113, 116
+Affected floors: secrets — unchanged harness custody, no credential copying or printing; spend cap and stop — unchanged dispatch admission; no duplicate sends — retain identity, holds, switch history and notice identity without replay; durable intake — unchanged journal and root writer lease
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: The repair changes installation admission and recovery, preserving independent authority and existing state.
+Side effects: Source references inside the recorded installation root resolve locally even while an old copy remains. External custody/profile home paths remain external and unchanged. Immutable records are compared against the prepared values rather than overwritten; absent derived copies can be reconstructed after live admission. A missing source still refuses or excludes its own member. Cached manifest member paths, admission snapshots and source witnesses are checked. Historical legacy identity hashes retain recorded path bytes, allowing verified adoption without repeating notices. No pool-state migration or new state store is introduced.
+Undo and recovery: Revert the code to restore former path behavior; retain all inventory, manifests and selection state. The old reader ignores root metadata but cannot launch a moved root. Move it back or use the repaired reader; do not erase state or replay calls. Retain source records as withdrawal handles. Cached tampering is preserved for inspection and refused, not silently replaced.
+Multi-machine posture: Deliberately machine-local installation inventory, prepared files, custody and selection. Moving or copying the installation does not grant another machine authority or synchronize credentials. Shared conversation ownership, stop, spend and delivery fences are unchanged.
+Layer below: Read the full purpose and rule book. Inspected installed preparation, loader predecessor adoption, source withdrawal, sealed authority resolver, real activation validator, pool state/notice persistence, journal-agent launch and dispatch validation, and physical Telegram transport. Checked git hook configuration and common hooks directory: core.hooksPath unset, sample hooks only.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/installed-harness-logins.test.ts
+Verification evidence: Four fail-before regressions reproduced rename failure, copying that borrowed the original files, missing derived activation and absent digest directory. The installer and direct pool consumers pass 80 tests, including real moves, old-format absolute records, same/next builds, imported predecessors, v1 notice adoption and five tamper/refusal cases. Typecheck, build and architecture pass. Shipped CLI fixture cases include rename/copy/absent-directory and update the missing-derived-record expectation to repair; on this Linux host the transport refuses bot identity before model dispatch in all thirteen cases, including the unchanged pool and legacy cases. Studio execution is required for that host-dependent transport evidence; no live acceptance is claimed.
+Hook bypass: none; no bypass flag, stash, history rewrite, Telegram message or live-root write.
+Convergence: none
+Decision: PRR-paths | Resolve installation-local file references against the current root; infer the old root from legacy prepared paths and retain explicit root metadata for future moves. Keep custody/profile content and external references unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/pool-records-relocatable-1013-PROGRESS.md
+Decision: PRR-repair | Reuse verified preparation and immutable comparisons on cached records, filling only missing derived files and directories. Refuse substituted member paths, changed profiles, source witnesses and record contents. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/pool-records-relocatable-1013-PROGRESS.md
+Decision: PRR-history | Calculate legacy identities from original recorded references while reading relocated files, preserving predecessor validation, active member, holds, history and notice identity. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/pool-records-relocatable-1013-PROGRESS.md
+Decision: PRR-publication | Regenerate the register from committed source and run targeted consumer and pinned-text checks; record Linux transport limitations for the Studio gate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/pool-records-relocatable-1013-PROGRESS.md
+Prompt review: No model prompt, model output parser, or model verdict acceptance semantics change. The existing pool test replays recorded summary, uncertain summary, Jev unsure/undecided, reply review, delivered reply and empty context shapes through adoption; the real captured provider-limit fixture remains covered. All new records use synthetic independent custody/authority; no serving login or model call is used.
+
+Publication: Register replay from source af4a2e67714b3585b88614cfbd49b211b5a828dc produced generation sha256:6f5c3c7f5823b5854a00d7d5ea979ff9ccbb7b3d4e4ab3ffe3018f8a59c89ca1. This record covers the source and its generated publication.
+
+Consumer review: Status passes raw primary paths from the retained manifest into the loader. The loader now resolves those paths through the same relocation map before comparing them, and both move tests exercise that exact consumer shape.
+
+Final source publication: Source 4f6f7363e189fbfbb36ff443a5d309882e19a83d regenerated as sha256:2a6353542b450509ef244db01b3a017bc58f62896fc740c2b34ee110a20d26d2. The 80 targeted installer/pool checks pass after the consumer repair; the six pinned-text files pass 89 checks.
+
+simplestRobustRoute: This is the simplest robust route: re-derive local paths at existing reads, keep immutable record bytes and pool state, and reuse the existing preparation validators to restore absent copies. Root metadata is needed for singleton installations and imported predecessor paths lacking a build-directory anchor. Original legacy hash inputs prevent duplicate historical notices. Start guards remain admission and own sealed authority; end guards are valid local records and unchanged selection/history; limits remain the existing eight-member bound, caps, stop and no retries. No new watcher, migration service or background action is added, and no autonomous live completion is claimed.
+80/20: Repair the two small host modules and their installer/launcher consumers. Keep unrelated platform transport repairs at their owning gate; run targeted tests and required publication checks, not a whole suite.
+VERDICT: author submission; no independent convergence verdict claimed
