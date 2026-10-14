@@ -16,7 +16,11 @@ async function measure(fn: () => unknown | Promise<unknown>, samples = 7) {
 // is opt-in and runs on the assigned builder host, never the serving/gate host.
 it('measures and compares whole-scan and indexed recorded-message reads', async () => {
   for (const size of process.env.INSTAR_RECORD_BENCHMARK === '1' ? [2000, 20_000] : [200]) {
+    const coldStart = performance.now();
+    console.log(JSON.stringify({ phase: 'verify-start', conversationFacts: size }));
     const { r, facts, store, context, runFixture } = await measuredCorpus(size);
+    console.log(JSON.stringify({ phase: 'verify-finished', conversationFacts: size, ms: performance.now() - coldStart }));
+    await new Promise<void>(resolve => setImmediate(resolve));
     let reads = 0;
     const source = { ...store, read: () => { reads++; return store.read(); } };
     const reader = { context: r.fx.c, store: source, stopped: () => false };
@@ -24,7 +28,11 @@ it('measures and compares whole-scan and indexed recorded-message reads', async 
       .filter(row => row.e?.conversation === 'conversation-1')
       .sort((a, b) => b.e!.at - a.e!.at || b.order - a.order).slice(0, 20).map(row => row.e);
     const f = runFixture!;
-    const projection = openRunWorkProjection({ snapshot: value(store.readForProjection()),
+    const snapshotStart = performance.now();
+    const snapshot = value(store.readForProjection());
+    console.log(JSON.stringify({ phase: 'work-snapshot-finished', conversationFacts: size, ms: performance.now() - snapshotStart }));
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const projection = openRunWorkProjection({ snapshot,
       generation: { reference: f.ctx.decode.register.generation, kinds: context.schemas.map(s => s.kind),
         lineages: { 'machine-a': { head: facts.at(-1)!.segment, observedAt: f.now.value, closed: false } } },
       context: { ...f.c, facts: { ...context, facts } }, now: f.now,
@@ -36,6 +44,8 @@ it('measures and compares whole-scan and indexed recorded-message reads', async 
     const before = { latestMs: await measure(latest), openWorkMs: await measure(() => { openReference = open(); }, openSamples),
       recallMs: await measure(() => recall(query, reader)) };
     expect(openReference.map(work => work.state)).toEqual(['ready']);
+    console.log(JSON.stringify({ phase: 'before-measured', conversationFacts: size, before }));
+    await new Promise<void>(resolve => setImmediate(resolve));
     const start = performance.now();
     const index = value(rebuildConversationReadView(source, r.fx.c, projection));
     const rebuildMs = Number((performance.now() - start).toFixed(3));

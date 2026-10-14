@@ -41,8 +41,10 @@ export function corpus(size: number) {
 /** Yield between verification batches so the test reporter can acknowledge its RPCs. */
 export async function measuredCorpus(size: number) {
   const data = source(size, true);
+  if (size > 2000) console.log(JSON.stringify({ phase: 'signed-source', facts: data.raw.length }));
   for (let n = 1000; n < data.raw.length; n += 1000) {
     data.setThrough(n); value(data.store.read());
+    if (size > 2000) console.log(JSON.stringify({ phase: 'verified-prefix', facts: n }));
     await new Promise<void>(resolve => setImmediate(resolve));
   }
   data.setThrough(data.raw.length);
