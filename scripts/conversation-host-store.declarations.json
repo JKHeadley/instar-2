@@ -16,7 +16,7 @@
         {
           "store": "preview.journal.openPreviewJournal",
           "invariant": "On each ordinary host work tick, collect the durable outcome by original operation into the existing reserved journal consumer only when its prepared packet matches exactly. Queued custody remains pending; uncertain dispatch is never replayed; completed results pass the existing answer review and one durable send intent. Full host outcomes remain authoritative execution evidence and the journal remains authoritative publication evidence.",
-          "check": "tests/preview/journal-conversation-session.test.ts"
+          "check": "PREVIEW-CONVERSATION-RESULT-COLLECTION"
         }
       ]
     },

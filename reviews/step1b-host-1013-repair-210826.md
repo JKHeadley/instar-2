@@ -42,6 +42,8 @@ Deferral: tests/preview/journal-conversation-session.test.ts:259 | not-a-deferra
 
 Decision: step1b-repair-generated-wiring | Run the delegated desk tools and regenerate source wiring from the committed tree; the inherited public contracts pin is refreshed by the supplied chain script, never hand-edited. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1b-host-1013-repair-210826-PROGRESS.md
 
+Agreement fixture: PREVIEW-CONVERSATION-RESULT-COLLECTION resolves to the shipped-closure journal regression file; the artifact pin is computed by the delegated desk rehash tool.
+
 Generated register: Regenerated with the delegated desk scripts and build-register replay; source roster and grounding inventory pins track this branch. No runtime certificate is inferred from replay.
 
 simplestRobustRoute: This is the simplest route: read the one existing durable host outcome into the one existing journal answer/send consumer; take the earlier existing lifetime; reuse the journal grounding already prepared. The optional collector prevents a demonstrated lost-result boundary without new stores or dispatch. Original operation and packet bind recovery; stop, disclosure, allowance and send-intent checks remain. Targeted shipped-closure tests with physical IO substituted demonstrate unattended completion; no live installation certificate is claimed.
