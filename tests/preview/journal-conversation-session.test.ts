@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { readAnswer } from './answer-reading.js';
+import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
 import type { ConversationState } from '../../src/assembly/production-conversation-session.js';
 import { createConversationSessionPort } from '../../src/assembly/production-conversation-session.js';
@@ -25,19 +26,27 @@ const update = (id: number, text: string) => ({ update_id: id,
 
 function fixture(enabled = true, checkIntake = true, maxCalls = 200) {
   const root = mkdtempSync(join(tmpdir(), 'conversation-wiring-')); roots.push(root);
-  const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
+  const open = () => openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
     kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls, maxReplies: 20,
     maxTurns: 30, maxBytes: 262144, cursor: 0 });
+  let journal = open();
   const f = assemblyRuntimeFixture();
   let now = 1000, launches = 0, calls = 0, fallback = 0, stopped = false, edges = 0;
   let destination = '', answer = JSON.stringify({ reply: 'A useful answer.', memory: [] });
   const files = new Map<string, string>(), delivered: string[] = [], sent: string[] = [];
-  let state: ConversationState | null = null;
+  let state: ConversationState | null = null, busy = false;
+  let sources: readonly unknown[] = [];
+  let adapter: import('../../src/assembly/contracts.js').HarnessAdapterPort<2>;
   const adapt = (config: Omit<import('../../src/assembly/production-conversation-session.js').ConversationSessionConfig, 'store' | 'createAdapter'> & Pick<import('../../src/assembly/production-session-work.js').SessionWorkConfig, 'createDriver'>) => createConversationSessionPort({ ...config,
     store: { load: () => state, save: next => { state = structuredClone(next); } },
-    createAdapter: resolveDelivery => createSessionConversationAdapter({ createDriver: config.createDriver, io: config.io, resolveDelivery }) });
-  const port = value(adapt({ conversation: 'operator', allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => 'existing-role',
+    createAdapter: resolveDelivery => {
+      adapter = createSessionConversationAdapter({ createDriver: config.createDriver, io: config.io, resolveDelivery });
+      const deliver = adapter.deliver;
+      adapter.deliver = input => busy ? Promise.resolve({ state: 'busy-not-dispatched', evidence: 'proved busy' }) : deliver(input);
+      return adapter;
+    } });
+  const openPort = () => value(adapt({ conversation: 'operator', allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => 'existing-role',
     createDriver: resolve => ({ owner: 'part-eight', launch: () => { launches++; return f.success('session:123:1'); },
       deliver: input => { if (checkIntake) expect(journal.view.order.some(turn => turn.id === input.intake && turn.reserved)).toBe(true);
         delivered.push(resolve(input.intake, input.digest)); calls++; files.set(destination, answer); return f.success('accepted'); },
@@ -50,17 +59,27 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200) {
     append: record => { journal.append({ kind: 'session-work', record, at: now }); if (record.type === 'SessionWorkEdge' && !record.drawsOn) edges++; }, parent: 'runner', owner: 'machine',
     placement: 'local', transport: 'fake', workingScope: '/scope', resultDirectory: '/scope', artifact: 'worker',
     incarnation: 'one', deadlineMs: 10000, pollMs: 25, maxResultBytes: 65536, maxSteps: 8, maxCalls: 10 }));
-  const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
+  let port = openPort();
+  const openModel = () => Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
     'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', 'conversationSession',
-    'sessionWork', 'ModelNotStarted', 'readAnswer', 'recordShape', 'shapesPath', `return (${signature}${body});`)(journal, async () => {}, () => false, () => false,
+    'sessionWork', 'ModelNotStarted', 'conversationSessionAnswer', 'readAnswer', 'recordShape', 'shapesPath', `return (${signature}${body});`)(journal, async () => {}, () => false, () => false,
     () => { throw Error('unexpected tools fallback'); }, async () => { fallback++; return { state: 'complete', value: answer, usage }; },
     (input: unknown) => input, ModelDisclosureRefused, createModelLaunchBoundary(), enabled,
-    { port, authority: 'existing-role' }, ModelNotStarted, readAnswer, () => {}, '/unused') as PreviewPorts['model'];
-  const worker = createJournalWorker(journal, { now: () => now, stopped: () => stopped,
-    prepareModel: input => JSON.stringify({ ...input, responseContract: "decision-envelope-marker" }), model,
+    { port, authority: 'existing-role' }, ModelNotStarted, conversationSessionAnswer, readAnswer, () => {}, '/unused') as PreviewPorts['model'];
+  let model = openModel();
+  const collectBody = host.split('      collectModel: async id => {')[1]!.split('\n      model:')[0]!.trimEnd().replace(/,$/u, '');
+  const collectModel = (id: string) => Function('conversationSession', 'sessionWork', 'conversationSessionAnswer', 'recordShape', 'shapesPath',
+    `return (async id => {${collectBody});`)(enabled, { port }, conversationSessionAnswer, () => {}, '/unused')(id);
+  const openWorker = () => createJournalWorker(journal, { now: () => now, stopped: () => stopped,
+    sources: () => sources, prepareModel: input => JSON.stringify({ ...input, responseContract: "decision-envelope-marker" }), model, collectModel,
     send: async input => { sent.push(input.expectedText); return sent.length; },
     checkOutbound: text => { if (text.includes('SECRET')) throw Error('credential'); } });
-  return { journal, worker, model, port, sent, delivered, edges: () => edges, counts: () => ({ launches, calls, fallback }),
+  let worker = openWorker();
+  return { get journal() { return journal; }, get worker() { return worker; }, get model() { return model; }, get port() { return port; }, sent, delivered, edges: () => edges, counts: () => ({ launches, calls, fallback }),
+    evidence: (value: unknown) => { sources = [value]; },
+    busy: (value: boolean) => { busy = value; }, advance: (ms: number) => { now += ms; },
+    state: () => state!, restore: (next: ConversationState) => { state = structuredClone(next); },
+    restart: async (crash = false) => { if (!crash) await port.close(); journal.close(); journal = open(); port = openPort(); model = openModel(); worker = openWorker(); },
     answer: (text: string) => { answer = text; }, stop: () => { stopped = true; },
     close: async () => { await port.close(); journal.close(); } };
 }
@@ -182,4 +201,91 @@ it.each([false, true])('the shipped grant refresh validates changed bytes before
   bytes = JSON.stringify({ reference: 'same-grant', policy: 'invalid' });
   expect(() => route.select()).toThrow(/invalid grant/); expect(route.active()).toBe(false);
   expect(seen).toHaveLength(2);
+});
+
+it.each(['same-host', 'queued-restart', 'completed-restart'] as const)('collects a deferred result through the ordinary answer/send path once (%s)', async mode => {
+  const f = fixture(true, true, 11); // existing turn + parent reservation fill the cap; collection spends nothing
+  try {
+    f.busy(true); f.worker.intake([update(1, 'First question')]); await f.worker.drain();
+    expect(f.sent).toEqual([]); expect(f.state().inputs[0]!.state).toBe('queued');
+    expect(f.journal.view.order[0]).toMatchObject({ reserved: true });
+    expect(f.journal.view.order[0]!.modelState).toBeUndefined();
+    await f.worker.drain(); expect(f.delivered).toHaveLength(0);
+    if (mode === 'queued-restart') await f.restart();
+    f.busy(false); f.advance(200); await f.port.maintain();
+    if (mode === 'completed-restart') await f.restart();
+    const calls = f.journal.view.calls;
+    await f.worker.drain(); await f.worker.drain(); await f.port.maintain();
+    expect(f.sent).toEqual(['A useful answer.']); expect(f.delivered).toHaveLength(1);
+    expect(f.journal.view.calls).toBe(calls);
+    expect(f.journal.view.order[0]!.modelState).toBe('complete');
+    expect(f.journal.view.order[0]!.noticeClass).toBeUndefined();
+    await f.restart(); await f.worker.drain(); expect(f.sent).toHaveLength(1);
+  } finally { await f.close(); }
+});
+
+it('an unresolved dispatched host turn is never replayed by the journal collector after restart', async () => {
+  const f = fixture();
+  try {
+    f.busy(true); f.worker.intake([update(1, 'Question')]); await f.worker.drain();
+    f.restore({ ...f.state(), inputs: f.state().inputs.map(row => ({ ...row, state: 'accepted', outcome: null })) });
+    await f.restart(true); f.busy(false); f.advance(200); await f.port.maintain(); await f.worker.drain();
+    expect(f.journal.view.order[0]!.modelState).toBe('uncertain');
+    await f.worker.drain(); expect(f.delivered).toHaveLength(0); expect(f.sent).not.toContain('A useful answer.');
+  } finally { await f.close(); }
+});
+
+it.each(recorded.records)('collects recorded frame $frame into the same consumer disposition as immediate delivery', async row => {
+  const deferred = fixture(), immediate = fixture();
+  try {
+    for (const f of [deferred, immediate]) {
+      f.advance(1791907200000 - 1000); f.answer(row.output);
+      f.busy(f === deferred); f.worker.intake([update(1, JSON.parse(row.output).dated[0].quote)]); await f.worker.drain();
+    }
+    await deferred.restart(); deferred.busy(false); deferred.advance(200);
+    await deferred.port.maintain(); await deferred.worker.drain();
+    expect(deferred.delivered).toHaveLength(1);
+    expect(deferred.state().inputs[0]!.outcome).toMatchObject({ state: 'complete', text: row.output });
+    expect(deferred.journal.view.order[0]!.modelState).toBe(immediate.journal.view.order[0]!.modelState);
+    expect(deferred.sent).toEqual(immediate.sent);
+    expect(deferred.journal.view.order[0]!.answerRetried).toBe(immediate.journal.view.order[0]!.answerRetried);
+    if (row.frame === 595) expect(deferred.sent.join('\n')).toContain(JSON.parse(row.output).reply);
+    await deferred.worker.drain(); expect(deferred.delivered).toHaveLength(1);
+  } finally { await deferred.close(); await immediate.close(); }
+});
+
+const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
+  otherShapes: { kind: string; id: string; raw: string }[] };
+it.each(shapes.otherShapes)('keeps recorded $kind ($id) in the original packet across deferred collection', async row => {
+  const f = fixture();
+  try {
+    // Archived summary/Jev/review bytes are quoted evidence, never reclassified as answer output.
+    // Delivered and empty historical reply bytes exercise the reply field, as in their original consumer tests.
+    f.evidence({ recordedShape: row });
+    if (row.kind === 'delivered-reply' || row.kind === 'empty-reply-in-recorded-context')
+      f.answer(JSON.stringify({ reply: row.raw, memory: [] }));
+    f.busy(true); f.worker.intake([update(1, 'Continue the conversation')]); await f.worker.drain();
+    const packet = f.state().inputs[0]!.request.context;
+    expect(packet).toContain(JSON.stringify(row.raw));
+    await f.restart(); f.busy(false); f.advance(200); await f.port.maintain(); await f.worker.drain();
+    expect(f.state().inputs[0]!.request.context).toBe(packet);
+    expect(f.delivered).toHaveLength(1); expect(f.sent).toHaveLength(1); expect(f.sent[0]!.trim()).not.toBe('');
+    expect(f.journal.view.order[0]!.failureClass).toBe(row.kind === 'empty-reply-in-recorded-context' ? 'empty' : undefined);
+    await f.worker.drain(); expect(f.sent).toHaveLength(1);
+  } finally { await f.close(); }
+});
+
+it('an older host result cannot settle a newer reserved packet, including after restart', async () => {
+  const f = fixture();
+  try {
+    f.busy(true); f.worker.intake([update(1, 'Question')]); await f.worker.drain();
+    f.journal.append({ kind: 'format-retry', id: f.journal.view.order[0]!.id, role: 'answer', state: 'complete',
+      failureClass: 'malformed', prompt: 'a different exact packet', at: 1000 });
+    await f.restart(); f.busy(false); f.advance(200); await f.port.maintain();
+    const calls = f.journal.view.calls;
+    await f.worker.drain(); await f.worker.drain();
+    expect(f.state().inputs[0]!.outcome?.state).toBe('complete');
+    expect(f.sent).toEqual([]); expect(f.delivered).toHaveLength(1); expect(f.journal.view.calls).toBe(calls);
+    expect(f.journal.view.order[0]!.modelState).toBeUndefined();
+  } finally { await f.close(); }
 });

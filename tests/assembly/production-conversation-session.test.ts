@@ -240,12 +240,13 @@ it('non-dispatched retries back off and stop at a finite ceiling without losing 
   expect(f.state().inputs[0]!.request).toEqual(f.request('one')); await f.port.close();
 });
 
-it('replacement receives current time and recorded prior outcomes without vendor history', async () => {
+it('replacement receives current time and bounded unresolved references; journal packet owns answer history', async () => {
   const f = fixture({ maxSteps: 1 }); await f.port.run(f.request('one')); f.advance(20);
   await f.port.run(f.request('two'));
   expect(f.delivered[1]!.text).toContain('HOST CLOCK 1020');
-  expect(f.delivered[1]!.text).toContain('RECORDED HOST TURN OUTCOMES');
-  expect(f.delivered[1]!.text).toContain('hello'); await f.port.close();
+  expect(f.delivered[1]!.text).toContain('UNRESOLVED HOST TURN REFERENCES');
+  expect(f.delivered[1]!.text).not.toContain('hello');
+  expect(f.state().inputs[0]!.outcome?.text).toContain('hello'); await f.port.close();
 });
 
 it('the continuing host consumes real driver Stop receipts through the public adapter for two inputs', async () => {
@@ -378,4 +379,68 @@ it('the activation policy names the same topic cap and one shared allowance as t
   expect(policy.limits).toEqual(CONVERSATION_SESSION_LIMITS);
   expect(policy.limits).toMatchObject({ maxSessions: 2, idleMs: 300000, maxCallsPerStep: 128 });
   expect(policy.admission.allowance).toBe(128);
+});
+
+it.each([200000, 50000])('reopen enforces the earlier persisted/admitted parent deadline with config %s', async allowanceDeadline => {
+  const f = fixture(); await f.port.run(f.request('one')); await f.port.close();
+  const next = value(createConversationSessionPort({ ...f.config, allowanceDeadline }));
+  const deadline = Math.min(100000, allowanceDeadline);
+  f.advance(deadline - 1500); // 500 ms remain in the effective parent
+  expect(next.available()).toBe(true);
+  expect(await next.run(f.request('two'))).toMatchObject({ state: 'complete' });
+  expect(f.admissions.at(-1)!.budget.deadline).toBe(deadline);
+  next.reserveCall(f.state().claim!, 1);
+  f.advance(500);
+  expect(next.available()).toBe(false);
+  expect(() => next.reserveCall(f.state().claim!, 2)).toThrow(/parent lifetime/);
+  await expect(next.run(f.request('three'))).rejects.toThrow(/unavailable/);
+  await next.maintain(); expect(f.state().worker).toBeNull();
+  expect(f.launches).toHaveLength(2);
+  expect((await next.collect('two'))?.outcome.state).toBe('complete');
+});
+
+it('a reopen with a later grant cannot launch after the persisted parent expired', async () => {
+  const f = fixture(); await f.port.run(f.request('one')); await f.port.close(); f.advance(100000);
+  const next = value(createConversationSessionPort({ ...f.config, allowanceDeadline: 200000 }));
+  expect(next.available()).toBe(false);
+  await expect(next.run(f.request('two'))).rejects.toThrow(/unavailable/);
+  await next.maintain(); expect(f.launches).toHaveLength(1);
+});
+
+it('continues beyond eighteen 60KB answers without copying or deleting durable answer history', async () => {
+  const f = fixture({ maxCalls: 64, maxSteps: 64 }); const answer = JSON.stringify({ reply: 'x'.repeat(60000) });
+  f.answer(answer);
+  for (let n = 0; n < 20; n++) expect(await f.port.run(f.request(`input-${n}`))).toMatchObject({ state: 'complete', text: answer });
+  expect(f.delivered).toHaveLength(20); expect(f.launches).toHaveLength(1);
+  expect(f.delivered.every(row => Buffer.byteLength(row.text) < 2000)).toBe(true);
+  expect(f.state().inputs.every(row => row.outcome?.text === answer)).toBe(true);
+  expect(f.state().inputs).toHaveLength(20); await f.port.close();
+});
+
+it('collection recovers uncertainty but never dispatches queued input or replays an accepted input', async () => {
+  const f = fixture(); const deliver = f.adapter.deliver;
+  f.adapter.deliver = async () => ({ state: 'busy-not-dispatched', evidence: 'no bytes' });
+  expect(await f.port.run(f.request('one'))).toMatchObject({ state: 'queued' });
+  expect((await f.port.collect('one'))?.outcome.state).toBe('queued');
+  expect(await f.port.collect('absent')).toBeNull(); expect(f.delivered).toHaveLength(0);
+  f.adapter.deliver = deliver; f.advance(200); await f.port.maintain();
+  const saved = await f.port.collect('one'); expect(saved?.outcome.state).toBe('complete');
+  f.restore({ ...f.state(), inputs: f.state().inputs.map(row => ({ ...row, state: 'accepted', outcome: null })) });
+  const next = f.restart();
+  expect((await next.collect('one'))?.outcome).toMatchObject({ state: 'uncertain', detail: expect.stringContaining('no automatic replay') });
+  await next.maintain(); expect(f.delivered).toHaveLength(1); await next.close();
+});
+
+it('bounds unresolved prompt references while preserving all uncertain records', async () => {
+  const f = fixture({ maxCalls: 128 }); await f.port.run(f.request('seed'));
+  const prior = f.state().inputs[0]!;
+  f.restore({ ...f.state(), inputs: Array.from({ length: 70 }, (_, n) => ({ ...prior,
+    request: f.request(`uncertain-${n}`), digest: hash(JSON.stringify(f.request(`uncertain-${n}`))),
+    outcome: { state: 'uncertain' as const, detail: 'effect unknown', edge: prior.outcome!.edge, child: null } })) });
+  const next = f.restart(); await next.run(f.request('next'));
+  const text = f.delivered.at(-1)!.text;
+  expect(text).toContain('"total":70'); expect(text).not.toContain('"operation":"uncertain-0"');
+  expect(text).toContain('"operation":"uncertain-6"'); expect(text).toContain('"operation":"uncertain-69"');
+  expect(f.state().inputs).toHaveLength(71); expect(f.state().inputs[0]!.outcome!.detail).toBe('effect unknown');
+  await next.close();
 });

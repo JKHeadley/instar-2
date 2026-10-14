@@ -8,6 +8,7 @@ import type { ConversationTopicsState } from '../../src/assembly/conversation-to
 import type { HarnessInputDelivery } from '../../src/assembly/contracts.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
+import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { readAnswer } from './answer-reading.js';
 import { createJournalWorker, openPreviewJournal, ModelNotStarted, ModelDisclosureRefused, createModelLaunchBoundary,
   type PreviewPorts } from './journal-test-worker.js';
@@ -22,14 +23,15 @@ const topicOfBody = source.split('topicOf: operation => {')[1]!.split('\n       
 const update = (id: number, text: string, thread?: number) => ({ update_id: id,
   message: { message_id: id, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
     ...(thread === undefined ? {} : { message_thread_id: thread, is_topic_message: true }) } });
-function fixture(forum = false) {
+function fixture(forum = false, maxCalls = 200) {
   const root = mkdtempSync(join(tmpdir(), 'topic-session-journal-')); roots.push(root);
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
     kind: 'genesis', bot: '12345678', chat: forum ? '-7654321' : '7654321', operator: '7654321', ...(forum ? { forum: true } : {}), grant: 'grant:preview',
-    configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 200, maxReplies: 30,
+    configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls, maxReplies: 30,
     maxTurns: 30, maxBytes: 262144, cursor: 0 });
   const topicOf = Function('journal', `return operation => {${topicOfBody}}`)(journal) as (operation: string) => string;
   let now = 1000, state: ConversationTopicsState | null = null, live = 0;
+  const busy = new Set<string>();
   const held = new Set<string>(), deliveries: { topic: string; input: HarnessInputDelivery }[] = [];
   const launches: string[] = [], sent: { text: string; thread: number | undefined; update: number }[] = [];
   const port = value(createConversationTopicsPort({
@@ -47,6 +49,7 @@ function fixture(forum = false) {
       describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false }),
       launch: async input => { launches.push(topic); return { launch: `worker-${launches.length}`, claim: input.claim, incarnation: input.incarnation }; },
       deliver: async input => {
+        if (busy.has(topic)) return { state: 'busy-not-dispatched', evidence: 'no bytes sent' };
         expect(journal.view.turns.get(input.operation)?.reserved).toBe(true);
         port.reserveCall(input.claim, state!.topics[topic]!.claimCalls + 1);
         deliveries.push({ topic, input }); return { state: 'accepted', evidence: 'fake' };
@@ -64,14 +67,17 @@ function fixture(forum = false) {
   }));
   const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
     'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', 'conversationSession',
-    'sessionWork', 'ModelNotStarted', 'readAnswer', 'recordShape', 'shapesPath', `return (${signature}${body});`)(journal,
+    'sessionWork', 'ModelNotStarted', 'conversationSessionAnswer', 'readAnswer', 'recordShape', 'shapesPath', `return (${signature}${body});`)(journal,
     async () => {}, () => false, () => false, () => { throw Error('fallback'); }, () => { throw Error('fallback'); },
     (input: unknown) => input, ModelDisclosureRefused, createModelLaunchBoundary(), true, { port, authority: 'grant' },
-    ModelNotStarted, readAnswer, () => {}, '/unused') as PreviewPorts['model'];
-  const worker = createJournalWorker(journal, { topicConcurrency: 2, groupDisclosure: async () => true, now: () => now, stopped: () => false, model,
+    ModelNotStarted, conversationSessionAnswer, readAnswer, () => {}, '/unused') as PreviewPorts['model'];
+  const collectBody = source.split('      collectModel: async id => {')[1]!.split('\n      model:')[0]!.trimEnd().replace(/,$/u, '');
+  const collectModel = Function('conversationSession', 'sessionWork', 'conversationSessionAnswer', 'recordShape', 'shapesPath',
+    `return (async id => {${collectBody});`)(true, { port }, conversationSessionAnswer, () => {}, '/unused') as PreviewPorts['collectModel'];
+  const worker = createJournalWorker(journal, { topicConcurrency: 2, groupDisclosure: async () => true, now: () => now, stopped: () => false, model, collectModel,
     prepareModel: input => JSON.stringify(input), checkOutbound: () => {},
     send: async input => { sent.push({ text: input.expectedText, thread: input.thread, update: input.update }); return sent.length; } });
-  return { journal, worker, held, deliveries, launches, sent, port, live: () => live, state: () => state!,
+  return { journal, worker, held, busy, deliveries, launches, sent, port, live: () => live, state: () => state!,
     advance: (ms: number) => { now += ms; }, close: async () => { await port.close(); journal.close(); } };
 }
 
@@ -122,5 +128,20 @@ it('a forum topic grounds in its own history while recalling a fact learned in a
     expect(JSON.stringify(packet.memory)).toContain('my sister is called Wren');
     expect(f.deliveries[2]!.input.text).toContain('my sister is called Wren');
     expect(f.sent.map(row => row.thread)).toEqual([7, 8, 8]);
+  } finally { await f.close(); }
+});
+
+
+it('collects a deferred topic answer through the shipped closure without a second reservation or send', async () => {
+  const f = fixture(false, 11);
+  try {
+    f.busy.add('7'); f.worker.intake([update(1, 'Please answer in this topic.', 7)]); await f.worker.drain();
+    expect(f.sent).toHaveLength(0); expect(f.state().topics['7']!.inputs[0]!.state).toBe('queued');
+    expect(f.journal.view.calls).toBe(11); await f.worker.drain(); expect(f.deliveries).toHaveLength(0);
+    f.busy.clear(); f.advance(200); await f.port.maintain();
+    expect(f.state().topics['7']!.inputs[0]!.outcome?.state).toBe('complete');
+    await f.worker.drain(); await f.worker.drain();
+    expect(f.sent).toEqual([{ text: 'Answer for topic 7.', thread: 7, update: 1 }]);
+    expect(f.deliveries).toHaveLength(1); expect(f.journal.view.calls).toBe(11);
   } finally { await f.close(); }
 });

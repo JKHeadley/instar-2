@@ -79,7 +79,8 @@ it('the cap queues durably, retires an idle topic and resumes it with a fresh id
   await f.port.run(f.request('7:c'));
   expect(f.launches.map(row => row.topic)).toEqual(['7', '8', '7']);
   expect(f.launches[2]!.worker.claim).not.toBe(f.launches[0]!.worker.claim);
-  expect(f.delivered[2]!.input.text).toContain('answer in 7');
+  expect(f.delivered[2]!.input.text).toContain('own topic history');
+  expect(f.state().topics['7']!.inputs[0]!.outcome?.text).toBe('answer in 7');
   expect(f.delivered[2]!.input.text).toContain('shared memory: Wren');
   await f.port.close();
 });
@@ -172,4 +173,47 @@ it('reclaims an idle topic when the installation resource ceiling is tighter tha
   expect(await f.port.run(f.request('8:b'))).toMatchObject({ state: 'complete' });
   expect(f.counts().peak).toBe(1); expect(f.launches.map(row => row.topic)).toEqual(['7', '8']);
   await f.port.close();
+});
+
+it.each([200000, 50000])('new topics inherit the earlier installation lifetime on reopen (%s)', async allowanceDeadline => {
+  const f = fixture(); await f.port.run(f.request('7:a')); await f.port.close();
+  Object.assign(f.config, { allowanceDeadline }); f.restart();
+  const deadline = Math.min(100000, allowanceDeadline);
+  f.advance(deadline - 1500);
+  expect(f.port.available()).toBe(true);
+  expect(await f.port.run(f.request('8:b'))).toMatchObject({ state: 'complete' });
+  expect(f.state().topics['8']!.deadline).toBe(deadline);
+  expect(f.state().topics['8']!.edge!.budget.deadline).toBe(deadline);
+  f.advance(500);
+  expect(f.port.available()).toBe(false);
+  expect(() => f.port.reserveCall(f.state().topics['8']!.claim!, 2)).toThrow(/parent lifetime/);
+  await expect(f.port.run(f.request('9:c'))).rejects.toThrow(/unavailable/);
+  await f.port.maintain(); expect(f.counts().live).toBe(0);
+  expect((await f.port.collect('8:b'))?.outcome.state).toBe('complete');
+  expect(f.delivered).toHaveLength(2);
+});
+
+it('an expired legacy reservation cannot grant a fresh topic a later lifetime', async () => {
+  const f = fixture(); await f.port.run(f.request('7:a')); await f.port.close();
+  const legacy = { ...f.state().topics['7']!, conversation: 'operator' };
+  const load = f.config.store.load;
+  f.config.store.load = () => legacy;
+  Object.assign(f.config, { allowanceDeadline: 200000 }); f.advance(100000); f.restart();
+  f.config.store.load = load;
+  expect(f.port.available()).toBe(false);
+  await expect(f.port.run(f.request('8:b'))).rejects.toThrow(/unavailable/);
+  expect((await f.port.collect('7:a'))?.outcome.state).toBe('complete');
+  expect(f.delivered).toHaveLength(1); await f.port.close();
+});
+
+it('capacity waits stop at the recorded lifetime without dispatching a new topic', async () => {
+  const f = fixture(1); await f.port.run(f.request('7:seed')); await f.port.close();
+  Object.assign(f.config, { allowanceDeadline: 200000 }); f.restart(); f.held.add('7');
+  const a = f.port.run(f.request('7:a')); await until(() => f.delivered.length === 2);
+  const b = f.port.run(f.request('8:b')); await until(() => !!f.state().topics['8']);
+  f.advance(100000);
+  expect(await b).toMatchObject({ state: 'uncertain', detail: 'parent lifetime exhausted' });
+  expect(await a).toMatchObject({ state: 'uncertain' });
+  expect(f.launches.map(row => row.topic)).toEqual(['7', '7']);
+  expect(f.delivered).toHaveLength(2); await f.port.close();
 });
