@@ -25,6 +25,7 @@ export function createTopicLoginHandoff({ topic, pool, entries, store, physical,
           claim: claim ?? state.claim, attempt } }); // intent durable before retirement or account change
       }
       const move = state.pending, source = entries[move.from], target = entries[move.to];
+      if (!pool.readySession(move.to)) return false; // Recheck a prepared destination after delays or restart.
       await admit(target); // failed destination preflight leaves the old idle worker intact
       await retire();
       const io = physical(source), journal = io.load(), id = move.claim ? journal.resumes[move.claim] : null;

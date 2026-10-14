@@ -279,3 +279,15 @@ it.each(recorded.otherShapes)('the pool replacement carries recorded $kind ($id)
   f.restart(); expect(await f.port.run(request)).toEqual(moved); expect(f.deliveries).toHaveLength(2);
   await f.port.close();
 });
+
+
+it('rechecks a pending destination after restart and retains input if that account has since filled', async () => {
+  const f = fixture(); await f.port.run(f.request('7:first'));
+  f.usage([f.quota(f.entries[0], 99), f.quota(f.entries[1], 10)]); f.failCopy(true);
+  await expect(f.port.maintain()).rejects.toThrow('crash');
+  f.failCopy(false); f.restart(); f.usage(f.entries.map(entry => f.quota(entry, 99)));
+  expect(await f.port.run(f.request('7:second'))).toMatchObject({ state: 'queued' });
+  expect(f.pool.state.switches).toEqual([]); expect(f.deliveries).toHaveLength(1);
+  expect(f.handoffFor('7').state.pending).toMatchObject({ from: 0, to: 1 });
+  expect(f.pool.state.handoffAttempts).toHaveLength(1); await f.port.close();
+});

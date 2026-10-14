@@ -19,7 +19,8 @@ still apply. Sign-in repair items are recorded for the desk, never executed here
 Each topic's encrypted `topic-login-<topic>.json` records the selected account,
 last claim and pending move. The pool registers the topic so loss of that snapshot
 cannot look like a first launch. A move records its source, destination and exact
-selection attempt before destination preflight or worker retirement. Preflight
+selection attempt before destination preflight or worker retirement. A delayed or
+recovered move rechecks fresh destination quota without adding a new attempt. Preflight
 failure leaves the idle worker intact. After exact retirement, the physical
 adapter copies only the recorded native transcript, never credentials. An
 identical copy is reusable; divergent, unsafe or missing bytes use the existing

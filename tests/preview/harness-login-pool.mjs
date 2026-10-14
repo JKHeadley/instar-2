@@ -183,7 +183,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     validate(entry, tools);
     return entry;
   };
-  const select = (tools = false, current = state.active, requireRoom = false) => {
+  const select = (tools = false, current = state.active, requireRoom = false, onlyCurrent = false) => {
     const at = now();
     let reading = null;
     try { reading = usage(); } catch { /* A failed quota observation cannot create a limit. */ }
@@ -204,7 +204,12 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     if (repairs.length) persist({ ...state, signinRepairs: [...(state.signinRepairs ?? []),
       ...repairs.map(entry => ({ index: entry.index, account: entry.profile.expectedAccount, machine, at }))] });
     const limited = index => state.holds[index] && (state.holds[index].resetAt === null || state.holds[index].resetAt > at);
-    if (!limited(current) && !unavailable.has(current) && !signedOut.has(current)) return admitted(entries[current], tools);
+    if (!limited(current) && !unavailable.has(current) && !signedOut.has(current)) {
+      const quota = harnessQuotaReading(reading, entries[current].profile, at, entries[current].usageAccount);
+      if (onlyCurrent && (!quota || !quota.windows.every(window => window && window.utilizationPct < configuration.threshold))) return null;
+      return admitted(entries[current], tools);
+    }
+    if (onlyCurrent) return null;
     for (let offset = 1; offset < entries.length; offset++) {
       const index = (current + offset) % entries.length;
       if (limited(index) || unavailable.has(index) || signedOut.has(index)) continue;
@@ -242,6 +247,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
         handoffs: [...(state.handoffs ?? []), { ...move, machine, at: now() }] });
     },
     selectSession: current => select('session', current, true),
+    readySession: current => select('session', current, true, true),
     signinRepairs: () => (state.signinRepairs ?? []).map(item => ({
       key: `login-signin:${identity}:${item.index}:${item.machine}`, account: item.account, machine: item.machine,
       profile: entries[item.index].profile.reference, action: 'desk: run /subscription-signin for this account and machine',
