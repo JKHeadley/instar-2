@@ -91,13 +91,13 @@ it.each(['accepted', 'joined-before-send', 'stopped-during-probe', 'unknown-send
     await vi.runAllTimersAsync(); await draining;
     const turn = journal.view.order[0]!;
     expect(models).toBe(1); expect(reviews).toBe(0); expect(turn.replyChecks?.map(check => check.path)).toEqual(['jev']);
-    expect(acknowledgements).toEqual([]); // answer completed before the ten-second acknowledgement deadline
+    expect(acknowledgements).toEqual([REPLY_ACKNOWLEDGEMENT]); // eight-second answer crosses the seven-second receipt deadline
     expect(active).toBe(0); expect(turn.text).toBe(captured.recorded.text);
     if (outcome === 'accepted') {
       console.log(JSON.stringify({ stage: 'send', update: captured.recorded.update, sendMs: turn.sendMs,
         audienceMs: Date.now() - sendProbeStart - 100, transportMs: 100, probes, reads, sendProbeReads, peak }));
       expect(failure).toBeUndefined(); expect(sends).toEqual([captured.recorded.answer]);
-      expect(turn.sendMs).toBe(3100); expect(sendProbeReads).toBe(6); expect(peak).toBe(4); // the answer is ready before the ten-second acknowledgement deadline
+      expect(turn.sendMs).toBe(3100); expect(sendProbeReads).toBe(6); expect(peak).toBe(4); // the ready answer adds no second acknowledgement during the send probe
     } else if (outcome === 'unknown-send') {
       expect(sends).toEqual([captured.recorded.answer, UNKNOWN_SEND_NOTICE]);
       expect(turn.deliveryNotice?.text).toBe(UNKNOWN_SEND_NOTICE);
@@ -115,6 +115,6 @@ it.each(['accepted', 'joined-before-send', 'stopped-during-probe', 'unknown-send
       const replay = createJournalWorker(reopened, ports).drain();
       await vi.runAllTimersAsync(); await replay;
       expect(sends).toEqual(outcome === 'unknown-send'
-        ? [captured.recorded.answer, UNKNOWN_SEND_NOTICE] : [captured.recorded.answer]); expect(models).toBe(1); reopened.close();
+        ? [captured.recorded.answer, UNKNOWN_SEND_NOTICE] : [captured.recorded.answer]); expect(models).toBe(1); expect(acknowledgements).toEqual([REPLY_ACKNOWLEDGEMENT]); reopened.close();
     }
   });

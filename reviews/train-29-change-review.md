@@ -32,6 +32,8 @@ Decision: train-29-repin | Run the existing repin/build/owner-rehash/register-re
 
 Decision: train-29-review-base | Make the imported incomplete platform guide a train-scoped composition review at the exact live base, preserving the original guide from da99cd521f8eb7a11c0fee24961df13d47d19f9e as quoted history. Its original creation parent is 7ef8f158d4129a4cf90cf3c546701f32e348fdd3, but using that as the current review scope incorrectly included unrelated historical runtime changes. No governing design or convergence claim changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-29-PROGRESS.md
 
+Decision: train-29-send-replay | Update the recorded send-stage replay from the old ten-second expectation to one acknowledgement for an eight-second answer under the merged seven-second deadline; retain audience, stop, UNKNOWN and restart send fences. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-29-PROGRESS.md
+
 simplestRobustRoute: This is the simplest robust route: ordinary merges of the reviewed heads plus existing generation tools and direct consumer checks. No new orchestration or policy mechanism. Start guards remain verified durable intake and exact reserved repair admission; end guards remain durable completion and unique parent sends; timer and repair caps bound resource use. Offline replay is evidence of composition, not unattended live acceptance; that remains the desk's gate.
 80/20: Changed tests, direct imports, journal suites and named register/briefing checks only, with foreground chunks under ten minutes; no full suite or load generation.
 VERDICT: author submission for desk review; no independent convergence or live acceptance claimed
