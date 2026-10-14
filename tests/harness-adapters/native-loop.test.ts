@@ -1,7 +1,10 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { nativeStepEnvelope, parseNativeStep, runNativeLoop } from '../../src/harness-adapters/index.js';
 import type { NativeLoopOptions, NativeStepResult } from '../../src/harness-adapters/index.js';
+// @ts-expect-error Physical native host stays JavaScript, outside the pure worker.
+import { runNativeLoop as runHostedLoop } from '../preview/native-loop.mjs';
 
 const prepared = JSON.stringify({ messages: [{ role: 'user', content: 'do the work' }] });
 const answer = (value: string): NativeStepResult => ({ state: 'complete', value });
@@ -22,6 +25,23 @@ it('carries tool observations to the next model call, and returns the reply unch
   expect(await f.run()).toMatchObject({ value: 'done', native: { models: 2, steps: 1, calls: 1, ended: 'answered' } });
   expect(f.events).toEqual(['model', 'admit', 'execute', 'record', 'model']);
   expect(f.envelopes[1]).toContain('written');
+});
+it('the shipped preview host delegates an answer turn and invalid bounds to the foundation worker', async () => {
+  // The suite redirects tmpdir to /dev/shm on Linux; /dev is a runtime read, so
+  // the real host correctly refuses it as scratch. Keep this allocation outside it.
+  const root = realpathSync(mkdtempSync(join(process.cwd(), '.native-foundation-')));
+  try {
+    const scratch = join(root, 'scratch'), workspace = join(scratch, 'work'), stateDirectory = join(root, 'state');
+    mkdirSync(workspace, { recursive: true }); mkdirSync(stateDirectory);
+    let calls = 0;
+    const options = { turn: { scratch, workspace, stateDirectory, hook: { node: realpathSync(process.execPath), script: '/unused-hook' } },
+      prepared, promptLimit: 32768, stopped: () => false,
+      resources: { execute: () => { throw Error('an answer must launch no tool'); } },
+      step: async () => { calls++; return answer('hosted answer'); } };
+    expect(await runHostedLoop(options)).toMatchObject({ value: 'hosted answer', native: { ended: 'answered', models: 1, calls: 0 } });
+    await expect(runHostedLoop({ ...options, maxSteps: Infinity })).rejects.toThrow('finite positive bounds');
+    expect(calls).toBe(1);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 it('never executes a refused tool; the model sees the refusal', async () => {
   const f = fixture([request, answer('refused')], { admit: async () => ({ decision: 'deny', reason: 'outside grant' }) });

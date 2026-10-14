@@ -1,0 +1,2 @@
+J-selfhost-run: Harness identity: Claude Code runs as its own macOS user (_instarharness). The kernel refuses its opens of the operator account's private files; its login and MCP credentials reach it only through a one-shot hand-off, never a file it can open; new entries in the system temporary folder are denied to it from creation; operator files every local user may read elsewhere stay readable to it.
+self-host refused: preview: subscription route refused
