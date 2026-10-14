@@ -455,9 +455,11 @@ Review of reviewer quality uses bounded independent samples; it does not recursi
 review before allowing any to finish. Cost and omissions remain visible.
 
 **Rule — the mind-held roster is enumerated.** **Checks: P9-NF-08/26/30**. The register's
-mind-held rules each require their generated session-reading duty, focused watcher and
-retrospective arm. This plan covers rules 3, 16, 17, 18, 19, 25, 48, 50, 51, 54, 80 and 108.
-The watcher compares recorded decisions and context across cases: unsupported capitulation,
+mind-held rules each require their generated session-reading duty and applicable recorded
+judgment. One shared retrospective review may cover several rules; a separate watcher
+per rule is not required. Rule 51 retains its dedicated inefficiency sentinel. This plan
+covers rules 3, 16, 17, 18, 19, 25, 48, 50, 51, 54, 80 and 108.
+The shared review compares recorded decisions and context across cases: unsupported capitulation,
 repeated manual work, recurring repairs, unnecessary interruptions, declared development tier,
 surface clarity and reasons refuted after a conclusion. Five's semantic duties also enter the
 population: neutral dispatch (27), exhaustion adequacy (20/21/23/99), answerable gaps (22),
@@ -496,6 +498,247 @@ Declining a requested change records why and preserves the feedback; it neither 
 nor supersedes a Directive. Open work cannot close because the response was sent or the backlog
 hit a cap. Overdue work is surfaced with its owner. Detecting every implicit correction remains
 partial; the capture, inspection coverage and follow-through are mechanically held.
+
+### 6.1. Learning across full sessions
+
+**Rule — the employee continues through its record.** Rules 30, 47, 58, 78, 84,
+85, 96, 108, 113 and 115; **checks: P9-EG-01–06 below**. A continuing conversation
+lives in a full session with tools and connected accounts. The frame retains what
+that session learns and brings it into later sessions. Identity includes a
+truthful account of learned strengths, recurring mistakes and unresolved limits,
+with evidence; it is not only a name and description. The purpose requires
+identity, self-knowledge, reflection and the means to evolve by default. It does
+not promise that every correction is right or that remembering one proves growth.
+These checks are build obligations, not claims of implemented or live behavior.
+
+**Value — simplestRobustRoute.** Use the existing feedback and retrospective
+review, append lessons through the fact owner, derive a small self-knowledge view,
+and deliver relevant lessons through recall and awareness. A lesson is an ordinary
+registered record, not a new service, store, authority or model trained on private
+history. One source of truth prevents a mutable identity file from disagreeing
+with feedback history. A durable review cursor prevents a crash from skipping
+feedback; a delivery manifest distinguishes saved learning from delivered context;
+a later unfamiliar case distinguishes repetition from improvement. Each addition
+answers a failure the transcript alone cannot detect.
+
+**Rule — capture the event before interpreting it.** Rules 6, 10, 14, 28, 29,
+46, 58, 85 and 93; **checks: P9-EG-01/02**. Every admitted message retains its
+verified speaker, scope and source identity through intake. Review records link
+the original request, action/tool observations, delivered reply or delivery
+uncertainty, correction, and later outcome. A sent reply is not evidence that the
+work succeeded; silence is neither satisfaction nor permission. The existing
+feedback inspection reads the surrounding conversation and work, including
+negative and uncertain outcomes, without making a model call a prerequisite for
+intake or the next answer. An explicit correction can guide the current session
+immediately under existing standing; durable inspection catches what it misses.
+
+The review cursor advances only over inputs with a durable disposition or an
+explicit pending item with an owner and next check. A crash before append replays
+the same source identities; a crash afterward finds the existing disposition.
+A negative inspection is recorded and sampled for misses. Ambiguous feedback
+stays pending with the competing interpretations and a due check; it is not
+silently classified as no feedback. Ordinary new work continues. A correction
+that is a Directive keeps that directive's standing and supersession rules;
+learned advice cannot expire, reject or overrule it.
+
+**Rule — a lesson says what to do differently and where.** Rules 7, 28, 57, 58,
+85, 93 and 108; **checks: P9-EG-02/03**. Nine owns one versioned lesson payload
+linked from FeedbackDisposition; Two owns its append, admission, history and
+replication. Its minimum content is:
+
+| Content | Why it is retained |
+|---|---|
+| Source feedback/review and work/outcome references, speaker standing and observation time | Trace the lesson to evidence; retain one root despite redelivery |
+| Behavioral conclusion and reason as separate claims | Refuting the reason requires re-derivation even if the conclusion survives |
+| Applicability: owner, relationship/project, work situation and exclusions | A preference in one context must not silently become a universal rule |
+| Supporting and contrary evidence; what would falsify the claim | Preserve disagreement and avoid learning from praise alone |
+| Proposed change: a short instruction, skill reference or concrete repair work | Change behavior, not just record an apology |
+| State, superseded lesson, current evidence frontier, owner and next check | Rebuild current learning, detect missing work and reverse a mistaken lesson |
+| Internal-use and disclosure scope inherited from sources | A general-sounding lesson can still expose a private relationship |
+
+A lesson is proposed, in use with support unmeasured, supported within a named
+scope, disputed, or superseded. These are learning states, not authorization
+states. A verified owner's clear preference may be used at once inside the
+existing role without another approval. A model's generalization remains labelled
+inference; the session judges whether it applies. A disputed inference loses its
+claim to established support and enters review; exact standing and directives
+continue to govern. Supersession preserves the earlier evidence and as-of queries.
+The current view never chooses between concurrent conflicting lessons by wall
+clock or popularity. Repeated occurrences link to one improvement obligation
+without erasing their separate outcomes. If the lesson needs a code or skill
+repair, that run has a named exit test; a growing instruction list is not a repair
+for a recurring structural defect (Rules 24/25/50).
+
+Learning never mints a grant, edits the constitution, administers a safeguard,
+raises a spend cap, bypasses stop or turns a past action into permission to repeat
+it. A proposed authority change uses the existing standing-grant path. A quoted
+instruction in an account document is evidence from that document, not an owner's
+correction. If feedback asks for something impermissible, preserve it and record
+the exact governing reason rather than claiming verified improvement.
+
+**Rule — deliver learning through the normal context path.** Rules 11, 30, 47,
+78, 84, 96 and 110; **checks: P9-EG-03/04**. Awareness derives self-knowledge from
+identity, actual registered capabilities, active scoped lessons and their evidence.
+It separates what the agent has learned, what it is testing, and what it has not
+yet shown. It does not overwrite constitutional identity with the latest feedback.
+Recall selects lessons by meaning for the current work and can retrieve the
+supporting cases through existing permission checks. A lexical miss is not proof
+that no lesson applies. Cross-project application needs a stated reason and retains
+the lesson's limits; access to one connected account grants no access to another.
+
+At start, resume, compaction and worker replacement, use the same context contract
+for role/directives, history and current clock, open work, relevant lessons and
+self-knowledge. Within a long session, deliver changed relevant lessons at the next
+safe input boundary and refresh recall when the work changes. Do not restart a
+conversation merely to learn. Bind each delivery to the session incarnation,
+context generation, lesson versions and source frontier; record included, withheld,
+trimmed, disputed and unavailable items with reasons in the internal manifest.
+A hook acknowledgement proves receipt only. Use the adapter's actual context
+boundary evidence for a delivery claim and later work for a use claim. All harnesses
+consume this contract; harness-specific injection remains inside their adapters.
+
+The context has a finite byte budget. Reserve space for standing/directives,
+unanswered input and open work before selecting relevant lessons; keep a compact
+self-knowledge summary and retrievable source references. Omitted lessons stay
+in the store and appear in coverage accounting. Missing summaries or stale lesson
+views trigger bounded rebuild/re-grounding through the existing awareness sentinel,
+not deletion or a fresh learning process. If optional learning is unavailable,
+report it internally as unavailable and keep ordinary conversation reachable using
+available context; do not claim that the affected lesson was applied. Existing
+mandatory grounding and effect prerequisites keep their own failure behavior.
+
+**Rule — improvement is a later work outcome.** Rules 13, 26, 34, 58, 62, 65, 85
+and 108; **checks: P9-EG-05/06**. The existing retrospective review checks correction
+coverage, application and outcomes together. Its full population includes missed
+inspections, uncertain outcomes, refusals, empty delivered replies and unfinished
+work. Review use of a lesson and deliberate non-use on a relevant counterexample;
+copying its wording into a reply does not count. A feedback item may be closed as
+an immediate repair with evidence, but a claim that the agent learned for later
+work needs the later evidence as well. An apology or successful replay of the
+corrected task alone cannot close a transfer claim.
+
+Before testing a lesson, record the affected task class, acceptance criterion,
+comparison context, resource bound and evidence cutoff. Use a real, graded source
+case for the existing benchmark; do not invent one and label it history. Test
+transfer on a later real task whose answer and outcome were unavailable when the
+lesson was frozen, in a different project or with materially different entities,
+constraints or tool sequence. A renamed copy is a regression case, not independent
+transfer. Keep all cases from the same incident in one group and hide future
+corrections, answers and outcome grades from the worker. If the owner has no such
+task yet, record “transfer unmeasured” and retain owned follow-through; no timer
+turns that into success.
+
+Compare the frozen incumbent with the lesson-bearing context on that held-out
+case through the existing bounded benchmark path. Replay uses captured tool
+observations or an isolated reversible workspace with no real send/account-write
+capability; historical tools must not repeat live effects. Keep models, tools,
+inputs and resource ceilings matched, record any difference, and rerun the affected
+benchmark when its prompt/context policy changes. The frozen incumbent is an
+evaluation control, never a reason to withhold an owner's current directive from
+live work. A changed model or incomparable task population makes the causal gain
+unknown. Grade completion, correctness and conclusion/reason separately from tone,
+praise, cost and latency. A reviewer distinct from the lesson's author examines
+outcomes without the preferred answer; disagreement remains explicit.
+
+Report eligible/inspected corrections, pending age, relevant opportunities,
+confirmed context deliveries, appropriate uses/non-uses, repeated mistakes,
+completed useful work, owner rework and measured time/token/spend cost by task
+class and observation window. Show missing and unknown observations alongside the
+denominator. Do not combine these into a personality score. One favorable held-out
+case supports that case; sustained improvement requires recorded ordinary use
+across days with fewer repeated corrections and no lost completion or safety floor.
+Keep the baseline and all contrary cases. Real-use acceptance remains the purpose's
+Rule 6; this design makes no claim that the agent is already measurably better.
+
+**Rule — the record has one owner and loss is detectable.** Rules 7, 31, 32, 33,
+46, 55, 60, 61, 63, 75 and 113; **checks: P9-EG-01/03/06**. On one machine,
+source events, lesson facts, feedback dispositions, grades and review progress use
+the existing durable store/custody boundary. While the journal is the conversation
+record, a read port exposes its stable source identities; it is not a second lesson
+store. Step 5 migrates those references and every consumer together with replay
+parity. Derived indexes, self-knowledge text and delivery caches are rebuildable,
+machine-local views keyed to the fact frontier. No untracked mutable identity file
+becomes authoritative. Boot/review reconciliation compares admitted inputs with
+inspection dispositions, open obligations with their owners, lesson dependencies
+with available facts, and context manifests with the current view. Missing records,
+stale frontiers and overdue reviews are visible failures, never empty success.
+
+Review uses existing scheduled work and resource admission: bounded batches,
+durable cursors, finite attempts/backoff and recorded model usage. It cannot borrow
+the reserved reachable session, exceed the owner's cap or erase backlog to fit a
+budget. Intake persists during stop; stop prevents new discretionary review/model
+work and actions. Restart resumes pending work, not old uncertain effects. Review
+findings go to the existing aggregated pull/alert surface, not one notification
+per lesson. A routine review result does not send an unsolicited message.
+
+Shared lesson facts use the existing replication and causal-conflict mechanisms
+when peers are enrolled. Only the current work owner schedules the corresponding
+review or effect. A partition cannot invent agreement; preserve conflicts and
+mark the affected learning support unresolved. Source access restrictions survive
+replication, including local capture references that a peer cannot read. Loss of
+the sole disk retains the installation's accepted loss model; no extra replica
+service or quorum is needed just for learning.
+
+**Value — build seams and limits.** The source trace for this design is
+`origin/train-19` at `ac3bd4d8`, not an assertion of live activation:
+
+| Existing part | What it carries; remaining connection |
+|---|---|
+| `src/verification/review.ts`, contracts and README | Population/feedback accounting, grades and held-out accounting; wire an actual reviewer and lesson production to continuing work |
+| `src/recall/` | Signed exchange capture, bounded rendering, semantic rerank seam and reveal checks; index lessons and supply measured meaning-based retrieval, not a claimed lexical guarantee |
+| `src/awareness/grounding.ts`, `service.ts`, `sentinel.ts` | Identity/history/work grounding and bounded context recovery; add the derived learning view, version coverage and real context receipts |
+| `src/judgment/benchmark.ts` and Nine's grade/evaluation contracts | Real-case provenance and read contracts; benchmark execution and later-use grading still need wiring |
+| `src/facts/` and scheduled work | Durable admitted facts and bounded follow-through mechanisms; use the plan's commitments owner for unfinished improvement work |
+| `src/assembly/growth.ts` | Retained-state cost threshold episodes, not employee learning; keep that purpose and do not overload its “growth” name |
+
+The live train uses recall helpers and an awareness work index but bypasses the
+foundation review/feedback path. A reference implementation or a populated identity
+string therefore proves none of this loop. The full-session work on
+`origin/session-mouth-copy-1013` supplies the continuing worker seam; integration
+uses start/resume/compaction, admitted input, tool/outcome and reply observations,
+not its harness names or transcript format. It is a dependency to read, not a
+second implementation to fork.
+
+**Value — decisions and removals.** Shared retrospective review replaces the
+per-rule watcher requirement; the dedicated inefficiency sentinel explicitly
+required by Rule 51 stays. Context recovery sentinels retain their existing jobs.
+No constitution requires a separate learning daemon, identity database, live
+semantic gate for every correction, or fleet learning rollout before local
+improvement. Do not add them. Ordinary local preferences use this loop;
+[Part 23 §5](23-judgment-of-use/05-local-wisdom-fleet-candidates-and-pillar-placement.md)
+keeps the sensitivity, standing and evaluation duties for learned use-or-withhold
+judgment. Its full experimental comparison is not a prerequisite for learning how
+the owner wants an ordinary work product prepared.
+
+Operator questions for this loop: none. Lesson representation, batching, selection
+size and the held-out task class are agent-owned engineering defaults measured
+against the checks below. Actual review cadence and resource allotment must fit the
+installed policies; start with the existing daily retrospective cadence and inspect
+explicit corrections at the next bounded review opportunity. The joint design
+review must settle the exact source/context port shapes with steps 1, 3, 5 and 6;
+these are build seams, not new authority questions.
+
+The separate connected-account boundary remains with the effects design. The
+purpose says a single machine “may dispatch irreversible effects `local-durable`
+only for the fixed profile's closed set” and “an operation outside the set ...
+refuses.” Learning does not reinterpret that line. Cases needing such an effect
+await its governed resolution; source capture, local learning and reversible
+transfer checks work without it. This loop proposes no constitutional amendment.
+
+**Rule — acceptance covers the positive and negative neighbors.**
+**Checks: P9-EG-01–06; rules 26/34/85/108.** These are targeted implementation
+acceptance cases under the existing verification holder, not another gate or
+checker. Register and run them when building the loop; docs checks prove prose
+consistency only.
+
+| Check | Required positive evidence and forbidden neighbor |
+|---|---|
+| P9-EG-01: capture and loss | Explicit/implicit correction and a genuine non-correction keep distinct contextual dispositions; crash before/after append, redelivery, stop and reviewer outage preserve one input and visible pending work. No keyword-only meaning decision or missing input counted inspected. |
+| P9-EG-02: scoped change | Owner preference changes later choices inside its scope; unrelated work, quoted account instructions and praise do not widen it. A genuine changed directive supersedes with provenance; pressure without evidence cannot erase a supported reason. |
+| P9-EG-03: truthful self-knowledge | Restart and replica catch-up derive the same view at the same frontier; missing evidence, conflicting lessons, a refuted reason and revoked access remain explicit. Unknown experience cannot become an asserted ability or a new grant. |
+| P9-EG-04: delivery | Real session start, continuing input, compaction and harness replacement carry the same applicable lesson versions with actual context evidence; missing hooks, byte trimming, wrong audience and a receipt without context evidence cannot claim delivery/use. |
+| P9-EG-05: transfer | A frozen lesson improves a later unfamiliar real work item and leaves its exclusion case correct; replay of the original, answer leakage, duplicate incidents, polished apologies and missing outcomes cannot count as transfer. |
+| P9-EG-06: ordinary use and floors | Recorded multi-day full-session use completes useful work with less owner rework; include contrary/missed cases and all costs. Inject slow review, absent provider and a fake-clock backlog: intake/reachability persist, caps/stop/secrets hold, and no replay sends or repeats an uncertain account action. |
 
 **Rule — waiver review folds Authorization facts.** Rule 94; **checks: P9-NF-35/36**.
 The waiver projection consumes actual kind-waiver Authorization facts, rule versions, associated

@@ -24,6 +24,24 @@ A harmless scoped preference may apply under existing local authority; that does
 not certify a measured judgment policy. Learning support claims require the
 applicable evaluation, not a recurrence threshold or rising confidence alone.
 
+**Rule — ordinary employee learning uses the shared feedback loop.**
+**Checks: P23-NF-10/11 and P9-EG-01–06.**
+[Part Nine §6.1](../13-the-verification-holders.md#61-learning-across-full-sessions)
+owns correction capture, scoped behavioral lessons, self-knowledge, context delivery
+and transfer evidence across full sessions. A LocalWisdomCandidate specializes that
+lesson for use-or-withhold judgment; it does not create a second learning store or
+review scheduler. Ordinary preferences and work methods do not need this part's
+A/B/C experimental comparison before use inside an existing role. That comparison
+remains required for its measured judgment-policy claims. Current sensitivity,
+standing, permitted internal use and disclosure still apply to every source and
+derivative; calling something a work preference cannot evade them. A lesson that
+changes disclosure judgment enters this part's applicable evaluation and unresolved
+policy questions. Fleet export stays separately governed by Part 22.
+
+Basis: Purpose's default growth, least revelation and granted role; rules
+49/57/58/85/108/116. The constitution requires lasting corrections and measured
+claims, not a separate experiment or live gate for each ordinary preference.
+
 **Rule — a pillar name must carry an argument.**
 **Checks: P23-NF-11/14.** The PlacementAssessment contains exact purpose/pillar/
 constraint version, scoped learning claim, an explanation of how the cited principle supports the lesson, conflict search,

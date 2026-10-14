@@ -4,6 +4,11 @@ _Generated from `13-the-verification-holders.changelog.json` by `scripts/render-
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 9 · 2026-10-13 · draft — Justin’s design-employee-growth-1013 brief, From the stand-in to the actual agent, section d; joint design review pending.
+
+- **Specify the smallest full-session employee learning loop: durable scoped lessons, derived self-knowledge, context delivery, held-out transfer and multi-day outcome checks.** — The live trace bypasses feedback/review, so saved corrections and identity descriptions do not yet cause or prove changed behavior on later work. _(design-employee-growth-1013 task; lanes/actual-agent-plan-1013.md §d; lanes/src-carry-table-1013.md; origin/train-19 ac3bd4d8)_
+- **Replace the watcher-per-rule requirement with shared retrospective review while retaining Rule 51’s dedicated inefficiency sentinel.** — Rule 116 and the rule book explicitly permit shared review; extra watchers do not prevent a distinct failure. _(design-employee-growth-1013 task; lanes/actual-agent-plan-1013.md §d; lanes/src-carry-table-1013.md; origin/train-19 ac3bd4d8)_
+
 ## Revision 8 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
 
 - **Require real-use acceptance, sourced lookup and shared retrospective review instead of coverage counts or a watcher for every rule.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_

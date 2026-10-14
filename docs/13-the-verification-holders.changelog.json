@@ -1,5 +1,26 @@
 [
   {
+    "revision": 9,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin’s design-employee-growth-1013 brief, From the stand-in to the actual agent, section d; joint design review pending."
+    },
+    "changes": [
+      {
+        "what": "Specify the smallest full-session employee learning loop: durable scoped lessons, derived self-knowledge, context delivery, held-out transfer and multi-day outcome checks.",
+        "why": "The live trace bypasses feedback/review, so saved corrections and identity descriptions do not yet cause or prove changed behavior on later work.",
+        "ref": "design-employee-growth-1013 task; lanes/actual-agent-plan-1013.md §d; lanes/src-carry-table-1013.md; origin/train-19 ac3bd4d8"
+      },
+      {
+        "what": "Replace the watcher-per-rule requirement with shared retrospective review while retaining Rule 51’s dedicated inefficiency sentinel.",
+        "why": "Rule 116 and the rule book explicitly permit shared review; extra watchers do not prevent a distinct failure.",
+        "ref": "design-employee-growth-1013 task; lanes/actual-agent-plan-1013.md §d; lanes/src-carry-table-1013.md; origin/train-19 ac3bd4d8"
+      }
+    ]
+  },
+  {
     "revision": 8,
     "date": "2026-10-10",
     "status": "draft",

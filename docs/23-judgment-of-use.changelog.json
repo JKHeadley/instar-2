@@ -1,5 +1,21 @@
 [
   {
+    "revision": 11,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin’s design-employee-growth-1013 brief, From the stand-in to the actual agent, section d; joint design review pending."
+    },
+    "changes": [
+      {
+        "what": "Connect local wisdom to Nine’s shared lesson record and distinguish ordinary preference application from measured use-or-withhold policy evaluation.",
+        "why": "Local employee growth needs no duplicate store, scheduler or A/B/C trial per preference; sensitivity, standing and the evaluation for policy claims still hold.",
+        "ref": "design-employee-growth-1013 task; lanes/actual-agent-plan-1013.md §d; lanes/src-carry-table-1013.md; origin/train-19 ac3bd4d8"
+      }
+    ]
+  },
+  {
     "revision": 10,
     "date": "2026-10-10",
     "status": "draft",

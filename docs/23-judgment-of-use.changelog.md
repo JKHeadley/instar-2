@@ -4,6 +4,10 @@ _Generated from `23-judgment-of-use.changelog.json` by `scripts/render-changelog
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 11 · 2026-10-13 · draft — Justin’s design-employee-growth-1013 brief, From the stand-in to the actual agent, section d; joint design review pending.
+
+- **Connect local wisdom to Nine’s shared lesson record and distinguish ordinary preference application from measured use-or-withhold policy evaluation.** — Local employee growth needs no duplicate store, scheduler or A/B/C trial per preference; sensitivity, standing and the evaluation for policy claims still hold. _(design-employee-growth-1013 task; lanes/actual-agent-plan-1013.md §d; lanes/src-carry-table-1013.md; origin/train-19 ac3bd4d8)_
+
 ## Revision 10 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
 
 - **Quote the fixed sign-off list, retain separate verification profiles, and exercise all five conditions with ordinary and outside-grant controls.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_
