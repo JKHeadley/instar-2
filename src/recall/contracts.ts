@@ -51,7 +51,7 @@ export interface RecallRerankPort {
 export interface RecallSpendPort { reserve(amount: number): boolean }
 
 export interface RecallBounds {
-  readonly maxScan: number;          // most-recent exchanges SCORED per query (the whole store is still read and sorted)
+  readonly maxScan: number;          // most-recent exchanges SCORED per query; an explicit read view avoids the full scan
   readonly maxResults: number;       // exchanges returned
   readonly maxRerankCandidates: number;
   readonly maxChars: number;         // rendered grounding block bound
@@ -77,6 +77,8 @@ export interface RecallManifest {
 export interface RecallResult { readonly hits: readonly RecallHit[]; readonly manifest: RecallManifest }
 export interface RecallReader {
   readonly context: BoundaryContext; readonly store: FactStorePort;
+  /** Explicit as-of view; caller refreshes it after intake/append before grounding. */
+  readonly index?: import('./read-view.js').RecallReadView;
   readonly reranker?: RecallRerankPort; readonly spend?: RecallSpendPort;
   /** The stop floor: while true no model spend happens and grounding is refused, including
    * when the stop is asserted while recall is in flight (checked again before grounding returns). */

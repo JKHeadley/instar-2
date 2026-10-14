@@ -35,3 +35,11 @@ Side effects and rollback: additive package subpaths and contract implementation
 Verification: numbered P2 tests live under `tests/facts/` and `tests/projections/`; integration and fresh-process tests exercise the public entry points. The completion note records any checks awaiting a named provider and the actual executed check map. The independent review desk, not this builder, determines convergence.
 
 Determinism checks include all 24 permutations, duplication and all six merge classes over eight seeded four-fact causal sets; the residual is explicitly finite. `tests/p2-canonical.json` pins original canonical envelope/preimage bytes, hash, signature and reconciliation output. CI executes and compares the same output artifacts on x64 and arm64; two machine identities on one host are not treated as two architectures.
+
+`read-view.ts` publishes a disposable, explicitly pinned evidence index after one successful
+verified read and semantic-owner projection. Kind/id lookups and an owner-folded projection
+avoid repeated whole-history scans. Rebuilds publish atomically and retain no index file;
+a restart reconstructs from the recovered facts. The source count and tail identify the
+as-of view. This is deliberately not a live authorization view: use `readForProjection`
+for current standing. The consumer must refresh after intake/append before using a new
+view. The underlying storage verification and cold rebuild still scale with history.

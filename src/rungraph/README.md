@@ -156,3 +156,9 @@ Production probes, cadence and Tier-1 supervision remain eleven's assembly duty.
 
 - `rungraph-core`: records each run as signed facts and refuses a step outside its budget or grant.
   Details: records each run's opening, grounding, steps, transitions and exit as signed facts, and refuses a step outside its declared budget or grant.
+
+`read-view.ts` supplies the conversation index with open work using `foldRun` and its
+existing status, causal and witness checks. It refuses a fact source different from the
+status snapshot. Completed, unreachable and cancelled runs are excluded; uncertain,
+waiting, halted and conflicted work stays open. The composition supplies its established
+binding-to-conversation mapping. The result is pinned evidence, never launch authority.

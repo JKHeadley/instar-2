@@ -59,19 +59,26 @@ function prepare(query: RecallQuery, reader: RecallReader): Result<Prepared> {
     ensure(Array.isArray(excluded) && excluded.length <= 64 && excluded.every(x => x !== null && typeof x === 'object'
       && typeof x.conversation === 'string' && typeof x.messageId === 'string'), 'exclude: bounded list of {conversation, messageId} required', 'policy');
     const exclude = new Set(excluded.map(x => `${x.conversation}\n${x.messageId}`));
-    const facts = take(reader.store.read());
     let stored = 0, unreadable = 0;
-    const all: { e: RecalledExchange; order: number }[] = [];
-    facts.forEach((fact, order) => {
-      if (fact.kind !== recallExchangeKind) return;
-      stored++;
-      const e = readExchange(fact);
-      if (!e) { unreadable++; return; }
-      if (!exclude.has(`${e.conversation}\n${e.messageId}`)) all.push({ e, order });
-    });
-    // Newest first; `maxScan` bounds how many of the most recent exchanges are scored, not read.
-    all.sort((a, b) => b.e.at - a.e.at || b.order - a.order);
-    const scanned = all.slice(0, bounds.maxScan).map(x => x.e);
+    let scanned: readonly RecalledExchange[];
+    if (reader.index) {
+      ensure(reader.index.store === reader.store, 'recall index belongs to another store', 'integrity');
+      const slice = take(reader.index.select(bounds.maxScan, excluded));
+      stored = slice.stored; unreadable = slice.unreadable; scanned = slice.scanned;
+    } else {
+      const facts = take(reader.store.read());
+      const all: { e: RecalledExchange; order: number }[] = [];
+      facts.forEach((fact, order) => {
+        if (fact.kind !== recallExchangeKind) return;
+        stored++;
+        const e = readExchange(fact);
+        if (!e) { unreadable++; return; }
+        if (!exclude.has(`${e.conversation}\n${e.messageId}`)) all.push({ e, order });
+      });
+      // Newest first; `maxScan` bounds how many of the most recent exchanges are scored, not read.
+      all.sort((a, b) => b.e.at - a.e.at || b.order - a.order);
+      scanned = all.slice(0, bounds.maxScan).map(x => x.e);
+    }
     const q = terms(query.text, 32);
     const docs = scanned.map(e => terms(`${e.speakerName} ${e.text}`));
     // Coverage first, then weight, then recency (scanned is newest-first). When some exchange

@@ -115,3 +115,12 @@ participants. Recall itself never decides reveal.
 
 Tests: `tests/recall/` covers capture, retrieval quality on a small fixture set, reveal and
 grounding, and a session-A to session-B recall across a real encrypted-disk restart.
+
+`read-view.ts` builds an explicit conversation read view from the fact store: latest messages
+by conversation, bounded recall windows, and work grouped by conversation. Work's semantic
+owner supplies the fold over that same verified source; this cache never infers completion
+from message text or session exit. Pass the view as `RecallReader.index` to retain the exact
+existing ranking, exclusions, unreadable counts, rerank, spend and stop behavior with no
+whole-store read on each query. Refresh after intake or append; `source` identifies the old
+view retained by in-flight readers. Restart discards the local index and rebuilds atomically
+from facts. No consumer's history is migrated by this module.
