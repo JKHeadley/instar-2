@@ -25,6 +25,8 @@ Prompt review: No prompt, model-output parsing, acceptance, escalation or refusa
 
 Subject: src/assembly/production-session-driver.ts, tests/assembly/production-session-driver.test.ts, tests/preview/continuing-login-pool.test.ts, src/assembly/harness.declarations.json, generated/
 
+Publication: Register replay binds source commit 79f35820e54aa76ddda2e1f7e0558b25114b1a93; generated metadata carries that source without changing grants or register membership.
+
 Validation: The new real-driver handoff regression fails against the original source at the absent resume handle and passes with the repair. Driver and handoff tests pass, including interrupted identity persistence, failed spawn, Codex's no-invented-ID path, matching-topic resume, copy fallback, stop and cumulative allowance. Typecheck/build pass. Real tmux launch, exact target and restart-delivery tests pass. Recorded replay fixtures pass. The unchanged native contract encounters uv_uptime EPERM and confined exit 71 on this host; the unchanged scheduled-work tmux test cannot confirm a child process gone. Live-provider tests remain opt-in and are not enabled. These are host-dependent or unrun evidence, not passing live conformance; the desk retains real-copy and combined-build acceptance.
 
 ## Closing block
