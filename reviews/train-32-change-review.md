@@ -27,6 +27,22 @@ Decision: train-32-p2-p2-desk-C | No genuine product conflict and no reviewed he
 Decision: train-32-p2-p2-desk-D | Run direct consumers and named checks in bounded foreground chunks on WSL; report unavailable Studio evidence and macOS/live checks honestly, without changing declarations. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-32-p2-p2-PROGRESS.md
 Decision: train-32-p2-p2-desk-replay | Use existing downloaded repin/build/rehash/register replay tools; Linux sed syntax adaptation only. No new machinery. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-32-p2-p2-PROGRESS.md
 
+Deferral: tests/preview/journal-conversation-session.test.ts:399 | not-a-deferral=Executable delayed-completion regression or deferred fixture variable, not postponed author work.
+Deferral: tests/preview/journal-conversation-session.test.ts:432 | not-a-deferral=Executable delayed-completion regression or deferred fixture variable, not postponed author work.
+Deferral: tests/preview/journal-conversation-session.test.ts:434 | not-a-deferral=Executable delayed-completion regression or deferred fixture variable, not postponed author work.
+Deferral: tests/preview/journal-conversation-session.test.ts:436 | not-a-deferral=Executable delayed-completion regression or deferred fixture variable, not postponed author work.
+Deferral: tests/preview/journal-conversation-session.test.ts:438 | not-a-deferral=Executable delayed-completion regression or deferred fixture variable, not postponed author work.
+Deferral: tests/preview/journal-conversation-session.test.ts:439 | not-a-deferral=Executable delayed-completion regression or deferred fixture variable, not postponed author work.
+Deferral: tests/preview/journal-conversation-session.test.ts:440 | not-a-deferral=Executable delayed-completion regression or deferred fixture variable, not postponed author work.
+Deferral: tests/preview/journal-conversation-session.test.ts:441 | not-a-deferral=Executable delayed-completion regression or deferred fixture variable, not postponed author work.
+Deferral: tests/preview/journal-conversation-session.test.ts:442 | not-a-deferral=Executable delayed-completion regression or deferred fixture variable, not postponed author work.
+Deferral: tests/preview/journal-conversation-session.test.ts:443 | not-a-deferral=Executable delayed-completion regression or deferred fixture variable, not postponed author work.
+Deferral: tests/preview/journal-conversation-session.test.ts:444 | not-a-deferral=Executable delayed-completion regression or deferred fixture variable, not postponed author work.
+Deferral: tests/preview/journal-conversation-session.test.ts:445 | not-a-deferral=Executable delayed-completion regression or deferred fixture variable, not postponed author work.
+Deferral: tests/preview/journal-conversation-session.test.ts:446 | not-a-deferral=Executable delayed-completion regression or deferred fixture variable, not postponed author work.
+Deferral: tests/preview/journal-conversation-session.test.ts:447 | not-a-deferral=Executable delayed-completion regression or deferred fixture variable, not postponed author work.
+Deferral: tests/preview/journal-conversation-session.test.ts:452 | not-a-deferral=Executable delayed-completion regression or deferred fixture variable, not postponed author work.
+
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges, append-only changelog reconciliation and the existing desk generation chain. It adds no coordinator, gate, queue or state. Start guards remain grants, ownership and current admission; end guards remain correlated turn completion and durable receipts; resource and deadline limits remain. Offline replay is wiring evidence, not unattended live acceptance.
 80/20: Test only changed files, direct importers and explicitly required journal/register and pinned-text checks; no whole-suite or transitive import-closure run, and no independent convergence claim.
 VERDICT: author submission for desk review; no release acceptance claim
