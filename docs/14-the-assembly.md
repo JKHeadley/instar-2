@@ -1227,9 +1227,10 @@ these policy tradeoffs. The concrete proposed choices are ready for review:
    already-authorized plaintext extraction outside the prevention guarantee?
 2. Accept governed-mode refusal for opaque/unconfined harnesses and unsupported protected host
    modes, while retaining independently admitted communication and supported ordinary work?
-3. Approve the requirement for finite per-installation replay/maintenance/resource thresholds
-   and independently recoverable encryption keys before the corresponding live claims? The
-   deployment selects the actual values within governance and records its measurements.
+Finite per-installation replay, maintenance and resource thresholds are agent-owned engineering
+defaults under the accepted ceilings. Independently recoverable custody is a required contract,
+not a new opt-in. The agent selects and measures implementations; the operator accepts the
+named administrator, recovery and loss risks under existing P-01/P-08 policy.
 
 Routine capture deletion or weaker approval provenance would amend earlier governed contracts;
 this part proposes neither. Technical choices within those contracts—separate custodian,

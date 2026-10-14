@@ -4,6 +4,10 @@ _Generated from `15-the-operator-surfaces.changelog.json` by `scripts/render-cha
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 10 · 2026-10-13 · draft — Justin / design-profile-judgment-1013 brief; joint review findings in design-set-review-fable-1013 and design-set-review-astra-1013, 2026-10-13.
+
+- **Accept a continuing conversation, assign everyday capability rendering to Eleven, and make measured margins agent-owned.** — Actual use and truthful current self-knowledge are required; engineering settings do not need repeat operator permission. _(reviews/design-profile-judgment-1013-change-review.md; Studio lanes/design-profile-judgment-1013-brief.txt and both design-set-review reports)_
+
 ## Revision 9 · 2026-10-13 · draft — operator review on PR #162; Independent bootstrap review: two authority gaps and three implementation/UX notes
 
 - **Specify protected Mac selection of the provider-authenticated phone account and copied-code refusal.** — Close initial identity and authority without circular grants, extra approval classes or new stores. _(PR 162; reviews/install-bootstrap-design-1013.md; astra-install-bootstrap-design-1013-review.md)_

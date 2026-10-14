@@ -2,7 +2,9 @@
 
 **Status: draft, awaiting operator approval.**
 
-**Value — purpose.** This profile defines the bounded contracts for one usable installation.
+**Value — purpose.** Sections 1–12 define the fixed provider/reply installation and its evidence
+contracts. Section 13 defines the broader continuing-session target and its build owners. The
+fixed profile is a bounded slice, not the acceptance test for the whole agent.
 It does not define a general installer. It does not generate keys. It does not add a certification
 system. It does not turn the eighteen production resolver names into eighteen new record bodies.
 It selects one machine, one voter, one pre-bound Telegram conversation and optionally one
@@ -51,7 +53,7 @@ and assessment records are referenced through their public decoders. The owner m
 | Eleven | operator surface, minimal-plane dependency verdict, limited voice, and whole-slice acceptance |
 | Twelve | Telegram and Slack identity, route, capability, provider-acceptance limit, and delivery-stage evidence |
 
-**Rule — the profile has one exact scope.** Owner: Ten, with operator standing verified through
+**Rule — the fixed slice has one exact scope.** Owner: Ten, with operator standing verified through
 One and Eleven. Predicate: P10-SI-03 accepts only one named machine identity, one Six voter, one
 Native harness and model-route tuple, one Telegram bot/account/chat/topic route, one bound
 operator principal, one reply-only audience, and the six named Eleven folds. It may additionally
@@ -435,7 +437,8 @@ Positive neighbors include exact rerun and crash on either side of the single ap
 necessary, not sufficient. `ProductionInstallation` v1 cannot be rebound in place. The transition
 of an existing installation to that generation, including installation identity, bootstrap/package
 approval and continuity of outstanding work and capacity, is an unresolved Ten owner-contract gap:
-`installation-generation-transition`. Until that transition is explicitly specified and granted,
+`installation-generation-transition`, owned by the section-13 transition unit. Until that
+transition is implemented, admitted and evidenced,
 changed or expired selections remain inhibited; this amendment authorizes neither mutation of old
 installation facts nor resetting obligations under a new identity. Basis:
 `src/assembly/installation-selection.ts:94-99` requires the referenced installation’s generation,
@@ -677,7 +680,8 @@ dollar allowance, paid overage permission or automatic retry. Unsupported manage
 contradicted extra usage, known subscription exhaustion, missing bindings or changed profile
 refuse before model launch. Unobservable extra usage remains explicitly operator-attested.
 
-Framing v2 uses the exact fixed 1424-byte replacement `--system-prompt` instruction and unchanged
+The PREVIEW-S2 framing contract applies to its own invocation lineage; it does not set the
+continuing profile's model input cap. Framing v2 uses the exact fixed 1424-byte replacement `--system-prompt` instruction and unchanged
 canonical stdin, with data-only context `{bindings, conversationKind:'captured-telegram-updates',
 conversation}` preserving all selected updates. System plus stdin must fit 4096 UTF-8 bytes,
 including JSON escaping; measure before intent and before any child. No truncation, context
@@ -2164,3 +2168,106 @@ applicable independent evidence and final reviewed content/digests. Their absenc
 named evidence hold, never permission to choose defaults. An additional owner consumer, schema,
 helper, cancellation effect, supervisor path or checker discovered during implementation must
 be reported by exact file:line before its dependent work exceeds §7's approved grant.
+
+## 13. The continuing-session installed profile
+
+**Value — target and simplest route.** `continuing-session` is the broader profile for an
+agent whose conversation and work live in a full replaceable session. Reuse the fixed profile's
+independent custody, owner records, local setup supervisor, durability receipts and minimal
+responder. Extend their selections and public adapter. Existing fixed/preview records retain
+their original interpretation; they do not certify the broader profile.
+
+**Rule — scope follows actual capabilities, current role and finite resources.** Purpose
+role, single-machine, independent safeguards and durable cause; Rules 30, 44, 45, 60, 63, 75,
+96, 114 and 115; **checks: P10-SI-01–04/24/36, P13-NF-09/18–27/40/47 and P11-NF-43–49**.
+Ten selects a versioned full-session mode with one common adapter contract, current role accounts,
+conversation routes and bounded resource policy. The worker reasons, receives later inputs,
+uses mediated tools and continues across compaction and replacement. A context-loading success
+alone is insufficient. Claude Code, Codex and native are interchangeable implementations with
+separate actual conformance evidence; adding a mode does not create a new agent identity or
+reset any grant, input, promise, stop state or spend reservation. Six admits distinct turns/work
+against one shared remaining allowance and keeps independent responder capacity protected.
+Unknown old effects retain their original ownership and exposure while unrelated admissible
+work uses the remainder. Every full-session mode requires the per-call paid admission in Seven
+section 3 and Eight's physical mediation.
+
+**Rule — the installed input cap fits grounded work and remains enforced.** Rules 47, 60,
+75, 96 and 110; **checks: P10-SI-01/36 and P13-NF-09/18/23/27**. The continuing profile selects
+an explicit finite token window and encoded-byte bound from the actual route/model contract,
+with reserved output, tool schema, authority, capability, open-work and current-input space.
+Ten measures the complete submitted context, including encoding, at delivery and each inner
+call. A 4,096-byte preview envelope is not the whole-session cap. Engineering owns the concrete
+measured values under the operator's existing resource ceiling; an absent bound refuses.
+The grounding owner supplies full history or current source-covered summaries plus the uncovered
+suffix, preserving uncertainty. If it cannot fit, repair coverage or use a separately admitted
+compatible continuation; never silently truncate, drop the new message or reset a budget.
+Required evidence pairs an actual history-rich conversation larger than 4,096 bytes within
+its declared bound with bound-plus-one refusal before call dispatch, and compaction/restart
+with exact coverage and last-input accounting. The independent responder remains reachable.
+
+**Rule — the constitutional operation boundary is explicit in either outcome.** The purpose
+states “only for the fixed profile's closed set: its installed paid provider call, its reply-only
+Telegram `ordinary-reply` send, and its text-only, reply-only Slack `ordinary-reply` send in one
+workspace to the bound operator's pre-bound DM or thread,” and its check refuses “an operation
+outside the set”. It also says that a supported one-machine installation unable to perform a
+needed function “is wrong; the defect is in the wording.” **Checks: P10-SI-04/36** retain the
+closed-set refusal and admitted positive neighbor. This design stops the out-of-set local
+irreversible admission decision at that conflict; it supplies no waiver or new authority.
+
+With the wording unchanged, continuing conversation, the installed provider/reply operations,
+commitment capture and ordinary bounded reversible tools can run within their proven contracts.
+An irreversible account action, an unattended reminder that is not a reply, or a shell/file action
+without a usable undo cannot acquire local-durable permission by being called ordinary. The
+commitment stays owned and the affected capability is honestly unavailable. With an operator-
+approved amendment removing that closed enumeration and matching accepted P-08/profile/operation
+definitions, `step4-actions` can enable the granted irreversible methods and `step3-commitments`
+can enable the newly covered due sends. Acceptance binds the exact installation, operation set,
+full causal prefix and loss model. Role grants still do not replace this admission, and a second
+enrolled machine retains `replicated(1)` by default without local fallback after peer loss.
+
+**Rule — an update preserves the installation and its unfinished work.** Rules 7, 32, 33,
+44, 45, 63, 68, 90 and 113; **checks: P10-SI-02/19/20/34/36 and P12-NF-43/44/48**.
+`installation-generation-transition` is an explicit build obligation, not a closed gap. Ten owns
+an immutable successor selection bound to the existing installation lineage, old and new approved
+generations, exact package/profile bytes and verified standing. Three supplies real entering-force
+evidence; owner decoders retain old schemas. Approval of a generation alone cannot activate it.
+
+The transition unit prepares and verifies the successor while the currently valid generation
+continues serving. At a bounded quiescent boundary it fences old dispatch, preserves the durable
+input queue, grounding coverage, open commitments, original effect identities and retained
+exposure, then conditionally records one current selection through existing owner history. A
+new process gets a fresh admitted incarnation and resumes from that history. Unknown old sends
+or charges are observed under their original contracts; they are neither migrated into fresh
+operations nor marked complete. Duplicate transition delivery joins the same successor; a crash
+on either side of activation resolves exactly one current writer. Stale, expired or incompatible
+selections inhibit their affected scope and keep independent reachability/repair; they do not
+make an expired generation valid. Rollback is another admitted compatible selection retaining all
+new facts, not mutation of `ProductionInstallation` v1 or restoration of an old history snapshot.
+
+**Rule — each target capability has an implementation owner and an exit test.** Rules 34,
+62, 69 and 71; **checks: P10-SI-19/20 and P11-NF-43–49**. These are build units and required
+evidence, not claims of implemented grants or passed tests.
+
+| Unit and owner | Deliverable and acceptance | Dependency / parallel work |
+|---|---|---|
+| `step1b-host-1013` — Ten/Thirteen with Five/Six | Full-session adapter host, durable busy queue, fresh process incarnations, remaining-capacity continuation and enforced inner-call admission; two inputs, busy, stop, crash and uncertain-call neighbors | Common combined contract; build beside keys, memory and both other worker adapters. |
+| `codex-worker-1013` and `native-harness-1013` — Thirteen | Same continuing walk, tools, accounting and control as Claude; native additionally builds/tests/installs a capability through public ports | Shared contract first; independent workers build in parallel without holding the Claude proof copy. |
+| `step6-grounding` — Five/awareness/Seven, Eleven rendering | Measured model input cap, current covered summaries, boundary refresh and truthful plain-language capability answers | `journal-read-port-1013` and its summary producer, plus host delivery; parallel with `step5-record-1013` migration work. |
+| `step2-doors` — Four/conversation/Eight | Multiple reply obligations, bounded acknowledgment and long-answer parts through real custody and no-repeat claims | Combined-contract identities and host; parallel with commitments and grounding. |
+| `step4-actions` — Eight/Ten | Role-account bindings and physical tool mediation with current grants and durable cause; real allowed action and revoked/out-of-scope refusal | Build reversible paths beside host/keys; out-of-set local irreversible activation waits for the constitutional answer and accepted policy. |
+| `step7-keys` — Nine/Ten/Eleven | Actual independent custodian, initial standing, enforced caps and stop through the install track; denied worker access and successful admitted use | Starts alongside host/doors; test-signed authority cannot certify production. |
+| `installation-generation-transition` — Ten with Three/Five/Six/Eight | Immutable successor path; use through update, crash at activation, stale selection, unknown send and compatible rollback | Build beside other units; activation needs owner decoders, custody and integrated continuing profile. |
+| `step3-commitments` — Five/Six | Record before confirmation; next-due wake and observed due outcome, without a run per ordinary message | Parallel with doors and record; newly covered irreversible reminders wait for policy, not capture. |
+
+**Value — operator choices and evidence limits.** The person chooses role/accounts, spend
+ceiling, sensitive matters and accepted deployment/loss policy through the established surfaces.
+Ten derives and pre-fills manifests, mode choices, schema compatibility, resource margins and
+transition steps; the person does not hand-author installation records or approve every technical
+setting. A protected-content change retains its exact existing approval requirement. Ordinary
+in-role updates need no extra permission invented by this profile.
+
+A Claude proof copy is useful before full parity. The finished target additionally requires the
+same real continuing conversation across all three workers, actual account and reminder outcomes,
+later use of a correction, update continuity and independent work alongside retained uncertainty.
+Recorded replay captures, publication pins and the channel-parity certificate remain implementation
+and landing evidence with their existing owners; this design submission establishes none of them.

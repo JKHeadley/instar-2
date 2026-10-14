@@ -4,6 +4,10 @@ _Generated from `18-sentinel-holders.changelog.json` by `scripts/render-changelo
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 4 · 2026-10-13 · draft — Justin / design-profile-judgment-1013 brief; joint review findings in design-set-review-fable-1013 and design-set-review-astra-1013, 2026-10-13.
+
+- **Define retrospective guidance with advisory pre-send defaults and align recovery and operating decisions with existing policy.** — Mandatory semantic review and holding notes for every reply contradict the rule book; the guidance section cited by the brief exists at b6d46771 but is absent from the fetched main base. _(reviews/design-profile-judgment-1013-change-review.md; Studio lanes/design-profile-judgment-1013-brief.txt and both design-set-review reports)_
+
 ## Revision 3 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with PR #154; final-head code-owner approval pending.
 
 - **Remove per-kind recovery approval and inherited ships-dark defaults for supported role-covered recovery; preserve continuity, ownership, resource and no-repeat floors.** — The purpose requires role-covered capabilities by default and reserves sign-off for its fixed list. _(`fc0e3c20`, docs/00-the-purpose.md; reviews/docs-align-1010-change-review.md)_

@@ -1,5 +1,21 @@
 [
   {
+    "revision": 7,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin / design-profile-judgment-1013 brief; joint review findings in design-set-review-fable-1013 and design-set-review-astra-1013, 2026-10-13."
+    },
+    "changes": [
+      {
+        "what": "Align P-15 with recovery already covered by the onboarded role.",
+        "why": "A default of no recovery authority contradicts the purpose and the sentinel role-covered recovery contract.",
+        "ref": "reviews/design-profile-judgment-1013-change-review.md; Studio lanes/design-profile-judgment-1013-brief.txt and both design-set-review reports"
+      }
+    ]
+  },
+  {
     "revision": 6,
     "date": "2026-10-10",
     "status": "draft",

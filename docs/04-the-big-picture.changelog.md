@@ -4,6 +4,10 @@ _Generated from `04-the-big-picture.changelog.json` by `scripts/render-changelog
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 4 · 2026-10-13 · draft — Justin / design-profile-judgment-1013 brief; joint review findings in design-set-review-fable-1013 and design-set-review-astra-1013, 2026-10-13.
+
+- **Define continuing-conversation acceptance and distinguish system questions from full-session reasoning.** — One message, one model call and one response cannot establish the requested continuing agent. _(reviews/design-profile-judgment-1013-change-review.md; Studio lanes/design-profile-judgment-1013-brief.txt and both design-set-review reports)_
+
 ## Revision 3 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
 
 - **Place mission, default identity, role-based agency and real-use acceptance in the architecture contract.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_

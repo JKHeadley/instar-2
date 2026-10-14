@@ -4,6 +4,10 @@ _Generated from `00-the-policy-register.changelog.json` by `scripts/render-chang
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-10-13 · draft — Justin / design-profile-judgment-1013 brief; joint review findings in design-set-review-fable-1013 and design-set-review-astra-1013, 2026-10-13.
+
+- **Align P-15 with recovery already covered by the onboarded role.** — A default of no recovery authority contradicts the purpose and the sentinel role-covered recovery contract. _(reviews/design-profile-judgment-1013-change-review.md; Studio lanes/design-profile-judgment-1013-brief.txt and both design-set-review reports)_
+
 ## Revision 6 · 2026-10-10 · draft — Justin, topic 102965, 2026-10-10 17:23 PDT: "Yes, I like this ... I approve the changes"; constitution-amendments-approved-2026-10-10.md, observer #239; final-head GitHub approval and merge pending.
 
 - **Align P-05 and P-06 with role grants recorded in one onboarding conversation, and replace the removed nothing-outward heading.** — A fixed reply-only start or separate public-ingress setup must not contradict the person’s chosen role and starting trust. _(Justin, topic 102965, 2026-10-10 17:23 PDT: "Yes, I like this ... I approve the changes"; constitution-amendments-approved-2026-10-10.md, observer #239; final-head GitHub approval and merge pending.)_

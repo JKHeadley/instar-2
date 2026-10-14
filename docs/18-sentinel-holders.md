@@ -10,8 +10,8 @@ holders. It gives that family no private power.
 
 **Rule — reading convention and evidence discipline.** Rules 9, 13, 26, 41, 42, 43, 49, 59,
 61, 69, 90, 91, 107 and 111; **checks: P14-NF-01/02/05/08/09/45/49/50**. Every normative claim in
-this document is in a Rule block and names executable checks. Value blocks are proposals for the
-operator to accept or reject. A configured file, enabled flag, timer, process, log pathname, session
+this document is in a Rule block and names executable checks. Value blocks state choices; engineering defaults belong to the agent, while direction, policy
+and authority choices belong to the operator under the purpose. A configured file, enabled flag, timer, process, log pathname, session
 label or component self-report is never proof that a holder ran or that protection passed. A
 measurement records the named subject, hardware, workload, clock basis, eligible failures and actual
 observations. A target, configured interval, estimate or successful-only percentile is not measured.
@@ -37,3 +37,4 @@ This document is split into one file per section so each renders on GitHub and c
 13. [Negative contract fixtures](18-sentinel-holders/13-negative-contract-fixtures.md)
 14. [Inherited duties and disposition](18-sentinel-holders/14-inherited-duties-and-disposition.md)
 15. [Operator decisions and honest limits](18-sentinel-holders/15-operator-decisions-and-honest-limits.md)
+16. [The guidance sentinel family](18-sentinel-holders/16-the-guidance-sentinel-family.md)

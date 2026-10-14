@@ -4,6 +4,10 @@ _Generated from `16-conversation-adapters.changelog.json` by `scripts/render-cha
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 4 · 2026-10-13 · draft — Justin / design-profile-judgment-1013 brief; joint review findings in design-set-review-fable-1013 and design-set-review-astra-1013, 2026-10-13.
+
+- **Use the common adapter turn for real conversation and settle engineering defaults within existing role and policy.** — The fixed answer-review-send sequence loses continuing tool turns and creates unnecessary operator questions. _(reviews/design-profile-judgment-1013-change-review.md; Studio lanes/design-profile-judgment-1013-brief.txt and both design-set-review reports)_
+
 ## Revision 3 · 2026-10-10 · draft — operator review on PR #157; Astra round 1, head 309cf8e22f305c5490d9220608497076c380d14c; docs-align-1010 round 2 repair.
 
 - **Align P12-NF-52 with the three migration cases: preserve explicit opt-outs, refuse missing standing with the needed grant, and admit covered ordinary output without another opt-in.** — MF1: the fixture must agree with section 4 while retaining authority-inert imports, missing-payload/receipt holds and uncertain-send no-repeat. _(`309cf8e22`, lanes/astra-unit-docs-align-1010-review.r1.md; reviews/docs-align-1010-r2-change-review.md)_

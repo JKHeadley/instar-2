@@ -365,7 +365,7 @@ does not imply authority it lacks.
 | Authorization completion | Four's request | Eleven surface; four/eight/nine validate | Exact request digest and existing authorization/decline fact; broker journal for protected change | render → verified act through intake → current exact validation → effect/broker → receipt | authority closed; diagnosis, stop and preserved request open | Eleven interaction; four authority decode; eight effect; nine broker |
 | Conversation binding | Genesis or verified operator act | Four standing resolution | Existing grant/revocation facts at causal frontier | inspect → verify → append → fold → receipt | no self-bind; conflict freezes new authority, not stop | Eleven surface act; four resolution; two conflict/replay |
 | Minimal plane | Facts from source parts and ten assembly | Live responder and operator views | Spine at stated vector; projections disposable | verify/replay → compare → admit scope/dependencies → preserve → satisfy Eight's approved operation durability demand → serve/repair | mutation closed on stale; accepted intake preserved; response requires the declared minimal path | Eleven admission/live posture; source owners close their facts; ten wiring |
-| Vertical slice | Four → five → seven → eight → nine | Ten assembly and acceptance harness | Causally linked facts plus independent delivery evidence | preserve/authenticate → run → judgment → response effect → verify → rebuild | affected effect closed; accepted input and owned repair remain live | each part its transition; eleven whole-slice verdict |
+| Vertical slice | Four → conversation/Five → Ten/Thirteen → Eight → Nine | Ten assembly and acceptance harness | Continuing inputs, per-call evidence, reply parts and independent delivery evidence | preserve → ground/deliver → observe turns → admitted effects → verify → continue/rebuild | affected effect closed; accepted input, remaining-capacity work and owned repair remain live | each part its transition; Eleven whole-conversation verdict |
 
 **Rule — four shared traces have one answer.** Rules 24, 26, 31, 33, 42, 63 and 68;
 **checks: P11-NF-41/42**.
@@ -379,15 +379,38 @@ does not imply authority it lacks.
 
 ---
 
-## 7. The first vertical slice
+## 7. The continuing-conversation acceptance slice
+
+**Rule — the agent explains its actual abilities in everyday words.** Purpose default
+self-knowledge; Rules 26, 30, 78, 80, 84 and 96; **checks: P11-NF-43/49/51 and P12-NF-04/49**.
+Eleven owns the human-facing rendering and acceptance cases; Three supplies the generated
+capability inventory, Ten supplies current installed/admitted status, and awareness delivers
+that derived information on start, resume and compaction. The `capability-plain` work within
+`step6-grounding` implements this path, consuming `journal-read-port-1013` until the verified
+step-5 cutover. It ships no hand-maintained second inventory. The full session answers what it
+is, what Instar is and what it can do in the person's language, with concrete useful examples
+and truthful current limits, without naming its harness or model as its identity.
+
+The acceptance conversation asks these questions, exercises one claimed ability, then changes
+or revokes one installed capability and asks again after resume/compaction. A stale or internal-
+jargon answer fails even if the generated inventory is correct. An unavailable capability is
+explained accurately without falsely declining available work. These checks join the same
+three-worker walk; the two recorded user-walk failures are regression cases, not evidence that
+this design already repaired their delivered replies.
 
 **Rule — one exact chain proves the narrow waist.** Rules 14, 15, 26, 28, 37, 41, 42, 46, 58,
 62, 68, 75, 77, 89 and 95; **checks: P11-NF-43–49**. The acceptance fixture uses one real
 authenticated conversation adapter and a pre-existing verified conversation binding. It preserves
-one message, admits one durable run, makes one bounded model judgment through the registered
-doorway, renders one attributable ordinary reply, admits and sends it through the effect doorway,
-collects independent evidence for the adapter's declared delivery stage, grades the judgment when
-the declared outcome becomes observable, and rebuilds every resulting projection from facts.
+successive distinct messages, including a busy arrival, and delivers them through the common
+adapter into a continuing full session. It admits each inner model/tool call, renders attributable
+reply parts through Eight, collects independent evidence at the declared delivery stage, grades
+outcomes retrospectively and rebuilds all resulting views from facts. Ordinary turns need no
+new bounded assignment; Five opens a run for explicit work that needs one. The same real walk
+runs on Claude Code, Codex and native, measures timing, correctness and completion separately,
+and includes a reminder observed at its due time, a role-account action, a later application of
+a correction and an independent answer while an older operation remains unresolved. The closed
+single-machine irreversible set still governs; the full account/reminder milestone waits for
+any necessary constitutional amendment and matching P-08 admission, not a relabelled reply.
 
 The fixture kills the worker after every durable boundary: after preservation, authentication and
 standing resolution; after run creation; after grounding; after judgment request, reservation,
@@ -415,16 +438,16 @@ can prove application or decisive non-occurrence, whose delayed executions have 
 quiescence observation, and whose final charge becomes observable. Its installed durability
 source, lease authority, route, identity source and evidence service eventually recover within the
 fixture's declared finite recovery window. Under those prerequisites, passing requires: one admitted
-input; one durable run identity; one accepted judgment resolution with complete capture/meter
-references; no action outside its floor; one attributable outbound operation; no more than one
-externally observed reply for the semantic message identity; delivery proved only to the adapter's
+input record per authenticated event; stable turn/delivery and any admitted run identities;
+complete per-call capture/meter references; no action outside its floor; attributable reply
+obligations with immutable parts/attempts; no more than one external application per part; delivery proved only to the adapter's
 declared stage; no open ownerless obligation; within-execution rebuild equality; the across-run
 semantic predicate above; and recorded duration, memory, tokens, money, attempts and notification
 counts inside declared finite bounds.
 
 For a cut after model or send dispatch-claim where the adapter cannot provide decisive application,
-non-occurrence, quiescence or final-charge evidence, the required result is not success: the same
-logical operation remains owned and uncertain, its maximum execution and charge exposure remains
+non-occurrence, quiescence or final-charge evidence, the affected operation remains owned and
+uncertain; independent admitted work may continue. The same logical operation keeps its identity, its maximum execution and charge exposure remains
 reserved, no new semantic key/provider/route is invoked, and every projection rebuild reproduces
 that pending state. Later evidence may settle it through six/eight/nine's existing contract. A
 permanently opaque adapter remains uncertain indefinitely. Refusal and uncertainty are required
@@ -561,10 +584,11 @@ surface must say unprotected.
 have different phishing, recovery and accessibility costs. No check chooses the right deployment
 default. Whichever is selected must pass the identical subject-binding, replay and mobile tests.
 
-**Value — published margins.** No check chooses how much safety margin to add to the worst measured
-genesis replay and live-response samples. The operator approves deployment budgets and margins
-after the raw distributions, failures and hardware profiles are visible; the measurements
-themselves cannot be replaced by that approval.
+**Value — published margins are engineering defaults.** The agent chooses finite replay,
+response and recovery margins from measured distributions, failures and hardware profiles,
+and publishes their basis. The operator sets spending/resource ceilings and accepted deployment
+risk through existing policy; tuning beneath them needs no fresh approval. A margin cannot
+raise a cap, weaken a safeguard or replace evidence with approval.
 
 **Rule — technical completion is not approval or certification.** Rules 34, 65, 82, 90 and 109;
 **checks: P11-NF-49/53** and the governed review process. This draft claims no deployment, runtime

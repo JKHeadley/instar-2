@@ -4,6 +4,10 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 25 · 2026-10-13 · draft — Justin / design-profile-judgment-1013 brief; joint review findings in design-set-review-fable-1013 and design-set-review-astra-1013, 2026-10-13.
+
+- **Define the broader continuing-session installed profile, measured context bounds, three worker implementations, role accounts and immutable generation-transition work.** — The fixed loading-only and preview contracts do not supply continuing use; name owners while retaining historic evidence and pending effects. _(reviews/design-profile-judgment-1013-change-review.md; Studio lanes/design-profile-judgment-1013-brief.txt and both design-set-review reports)_
+
 ## Revision 24 · 2026-10-13 · draft — Justin / design-adapter-contract-1013 brief and actual-agent-plan-1013, 2026-10-13; joint design review pending.
 
 - **Align the owning public worker-port design with the continuing-session contract, including admitted control and typed reply/turn observations.** — One public contract must be consistent at its Ten owner and Thirteen implementations; neither private driver APIs nor a first-input-only launch can carry subsequent conversation turns. _(`7ef8f158`, `ac3bd4d8`, `4a5a9628`, `2dc2d45a`, reviews/design-adapter-contract-1013.md; operator brief .instar/lanes/design-adapter-contract-1013-brief.txt and plan .instar/lanes/actual-agent-plan-1013.md (read-only Studio inputs))_

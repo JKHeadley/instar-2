@@ -214,7 +214,8 @@ records understandable to a person.
 
 ## 5. Judgment has one doorway
 
-Features never call a model provider directly. They submit a `JudgmentRequest` containing the
+System-initiated questions never call a model provider directly. Features submit a
+`JudgmentRequest` containing the
 registered judgment point, complete safe action floor, conservative default, relevant evidence,
 scenario class, and deadline. The doorway chooses a model and provider from measured benchmark
 results, or labels the route `unmeasured`. It records what the model saw and returned, after
@@ -223,6 +224,11 @@ credential scrubbing and under a declared retention policy.
 The model may narrow the declared action floor; it cannot add an action. Provider failure returns
 the judgment point's declared default and fail direction. A response is decoded into a typed
 decision before any caller can act on it.
+
+A continuing full session reasons inside its replaceable harness. Its adapter mediates and
+reports every inner paid call through the same admission, spend and effect owners, as Part Seven
+section 3 specifies; a session is not one aggregate judgment request. System questions and
+session reasoning both retain per-call accounting, durable cause, stop and disclosure checks.
 
 The doorway meters component, model, tokens, latency, price, subsidy basis, and outcome. The full
 input and output remain local, scrubbed, access-controlled, and retention-bounded so later review
@@ -469,10 +475,21 @@ Once this document is approved, part designs proceed in dependency order:
 10. native-harness and remaining adapter contracts, executable assembly, and local capability packages;
 11. operator surfaces and the first vertical slice.
 
-The first vertical slice should be deliberately small: receive one authenticated message, create
-a durable run, make one bounded model judgment, send one attributable response, verify delivery,
-and rebuild the entire result from facts after killing the worker between every pair of steps.
-It proves the narrow waist before breadth accumulates.
+The first vertical slice is a continuing conversation through the real owners: preserve distinct
+authenticated inputs, including one while the worker is busy; deliver current grounding to one
+full session; admit and meter its model and tool turns; send attributable reply parts and verify
+their actual delivery stage. An ordinary turn is history; Five opens a bounded run when work needs
+an exit test, a promise, delegation or scheduled continuation. Restart and compaction preserve
+history, remaining budget, work and unresolved effects. A second independent request must remain
+answerable within the remaining allowance while an older operation stays uncertain.
+
+The acceptance walk measures timing, correctness and completion separately on Claude Code, Codex
+and the native worker through one adapter contract, with stop, crash, compaction and uncertainty
+cuts. It includes an observed reminder, a real granted account action, a correction used later
+and a plain account of the agent's actual abilities. Irreversible single-machine work outside the
+purpose's closed set awaits the operator's constitutional answer and matching installed policy;
+a useful narrower copy is not evidence of the whole target. Rebuild the recorded outcomes from
+facts after each cut, without repeating uncertain effects or requiring identical model prose.
 
 **Value — dependency order and first slice.** The constitution requires the properties but does
 not prescribe the build sequence. This order retires architectural uncertainty from the inside

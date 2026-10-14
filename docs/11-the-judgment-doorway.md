@@ -117,12 +117,39 @@ captured outbound exchange to its manifest and tests unavailable provider intern
 
 ## 3. One call path, including the call's own side effects
 
-**Rule — the judgment service is the only path to model reasoning.** Rules 1, 30, 41, 58,
-69, and 75. Features, sentinels, benchmark runners, native harnesses and provider fallbacks
-use the same port. Only model adapters import provider clients; only the doorway invokes those
-adapters. Concrete implementations are wired by part ten. Dynamic plugin access remains an
-enumerated enforcement-boundary residual under part three, never claimed as complete coverage.
-**Check:** P7-NF-03/09 plus P3-NF-29 and the production wiring test P7-NF-41.
+**Rule — the judgment service is the path for system-initiated model calls.** Rules 1, 30,
+41, 58, 69 and 75. Features, sentinels, summary jobs, benchmark runners and their provider
+fallbacks submit bounded questions through this port. Only model adapters import provider
+clients for these questions; Seven invokes them through Eight's admitted effect boundary.
+A full session's own reasoning and tool loop happen inside its harness, behind Ten's public
+`describe/launch/deliver/observe/control` contract. They are not one JudgmentRequest standing
+in for all the session's inner calls. The native worker obeys the same contract and may reuse
+Seven for its individual calls; it gains no private provider or authority path. Concrete
+implementations are wired by Ten. Dynamic plugin access remains an enumerated enforcement
+residual, not a claim of complete coverage. **Check:** P7-NF-03/09/41 and P13-NF-09/23/40/47
+pair an admitted system question and an admitted multi-call session with refused provider bypass.
+
+**Rule — every inner paid call has admission before dispatch and accounting afterward.**
+Rules 4, 41, 55, 60, 63 and 75; **checks: P7-NF-11/12/17/28/30 and P13-NF-09/23/40/47**.
+The adapter's mediated call boundary reports the owning component, conversation, turn/delivery,
+run/step when present, process incarnation, stable call/attempt id, route/account/model,
+submitted-input digest and finite maximum token/quota/charge demand. Six durably allocates that
+call from the remaining installation and work reservation; Eight binds its durable cause and
+one-use dispatch identity. The adapter receives the admitted handle before the provider can be
+reached. No launch-time estimate, after-the-fact usage total or prompt instruction substitutes
+for this enforced boundary. A mode unable to mediate its inner paid calls is unavailable for
+paid execution until its adapter proves this contract; P-11 cannot waive the spend floor.
+
+The adapter reports captured response/terminal evidence and token, quota and charge observations
+against that same call id, including retries, helper calls, summaries and compaction. Provider
+usage exceptions are written and retain the enforced maximum exposure; missing usage is unknown,
+never zero. Six accounts each observation once and Eight owns reconciliation. Replacement,
+continuation and a new input do not replenish the allowance or retry an uncertain call. Separate
+admitted work may use the remainder without settling that call. The positive case admits two
+inner calls and accounts both once; cap-plus-one, missing mediation, duplicate usage, stale fence,
+stop and crash-before-usage cases refuse new dispatch or retain exposure as appropriate.
+Private chain of thought is not required; submitted context, returned evidence, tool steps and
+observation limits remain auditable through the existing owner records.
 
 **Rule — calling a model spends and discloses.** Rules 4, 60, 63, 75, and 100. A provider
 dispatch is a registered effect: money or subscription quota may be consumed and submitted
@@ -144,7 +171,7 @@ present merely because the provider transport was checked. **Check:** P7-NF-13 r
 cyclic supervision dependency and reports the missing business supervisor separately. The
 semantic adequacy and live coverage of supervision remain part nine's partial obligation.
 
-**Rule — the transition order is fixed.** Rules 41, 42, 46, 55, 58, 60, and 63.
+**Rule — a system-initiated question has a fixed transition order.** Rules 41, 42, 46, 55, 58, 60, and 63.
 The sequence below is enforced by P7-NF-11/14/15/16, including a kill between each pair.
 
 1. Preserve and decode the question; persist the pending run step and logical JudgmentRequest
@@ -225,17 +252,25 @@ occurrence-only settlement does not qualify for this first output-use mode; it i
 nor retroactively upgraded. No change to the fully settled resolution's zero-unresolved rule,
 raw-capture custody, model-authority ceiling or exposure retention follows from this contract.
 
-**Rule — acceptance supplies one separately admitted reply, not readiness for the provider run.**
-Owner: Five for conditional consumption and the reply run; Seven owns the accepted answer; Eight
-owns the reply operation. **Check: P10-SI-24**. Five's public `openAcceptedProviderReply` rechecks
-the original current predecessor, stop, standing, lease-derived fence and conversation obligation,
-then deduplicates one standard `Run` v1 opening by the exact acceptance fact. The original provider
-run and accounting stay pending. The reply run obtains its own grounding, authority, budget,
-durability and Eight dispatch claim and cannot invoke the model again. Changed predecessor or stop,
-a second consumption, or a reply run without its own admission refuses. The positive neighbor
-sends one real reply from one assessed complete answer while maximum exposure remains held; restart
-finds the same reply run and outbound operation and performs neither a second model call nor a
-second reply operation.
+**Rule — accepted output does not finish its accounting or the conversation.**
+Rules 42, 60, 63, 68 and 75. Five owns consumption, Seven owns accepted system-question output,
+and Eight owns outward operations. **Checks: P10-SI-24 and P12-NF-43/44**. The fixed profile's
+`openAcceptedProviderReply` retains its historical meaning: one acceptance opens one separately
+admitted reply run, cannot repeat that model call and does not complete the provider run or
+release unknown charge. Its schema and evidence remain readable; it is not a conversation-wide
+one-answer limit.
+
+For the continuing profile, Five and the conversation owner consume the adapter's distinct
+reply-candidate and turn-end observations under the current delivery and incarnation. A turn can
+contain several admitted model/tool calls and yield reply content before its terminal event;
+neither event proves send or work completion. Eight's reply obligation, immutable parts and
+attempt identities in Part Twelve section 7 govern acknowledgements, answers and long replies.
+Each outward part has its own current authority, stop, budget, durability and dispatch claim.
+An accepted answer is never permission to repeat an uncertain call or send. The same observation
+after restart joins the same reply; a later input can use remaining capacity for new reasoning
+and a distinct answer. Empty or incomplete output retains the reply obligation and repair owner,
+never a successful empty bubble. These are continuing-profile build obligations, not a
+reinterpretation of old single-answer records.
 
 **Rule — identities and reservation authority have one owner each.** Rules 33, 55, 60,
 63, and 75. The map below is enforced by P7-NF-17/30/52; none of its references creates
@@ -321,6 +356,7 @@ requires its own registered floor, default and checked fail direction. **Check:*
 | Intake operation interpretation | Unclassified; no inferred operation, holder selection or candidate grant | Receipt and ordinary conversation; the affected authority exercise stays held or ends honestly expired. |
 | Irreversible operation supervision | No affirmative supervision; proposed operation refused/preserved under its declared floor | Unrelated work and communication. |
 | Recurrence comparison | No similarity conclusion; retain both cases separately and mark comparison unavailable | Repair already allowed under standing; no claim that the defect did not recur. |
+| Summary acceptance | Preserve a faithful account of uncertainty; no fabricated certainty or unlimited review loop | Five checks exact coverage, available source bytes and freshness. Missing/stale coverage uses full covered history if it fits; otherwise grounding repair owns the wait and the independent responder remains reachable. An `uncertain` or `undecided` observation alone neither proves nor disproves coverage or fidelity. |
 | Retrospective or benchmark reasoning | Incomplete record of evaluation; no grade fabricated here | Durable candidate remains discoverable; nothing is promoted as measured success. |
 
 **Rule — a failed record store is not permission to make an unrecorded call.** Rules 41,
@@ -915,9 +951,10 @@ written; the following choices remain policy questions for the responsible appro
 1. Does the proposed conservative retention posture fit the intended privacy policy: retain
    unresolved evidence, stop new affected model calls at capacity, and have part nine settle
    routine-age retention through the existing amendment path rather than silently deleting it?
-2. Which independent trust boundary should protect dashboard/runtime artifacts? This part
-   requires honest evidence of it but does not select a host, signing principal or hardware
-   anchor on behalf of parts nine/eleven or the operator.
+The agent selects the concrete protection implementation through Nine/Ten's existing custody
+contract and measures it. P-01 leaves acceptance of administrators, recovery custody and residual
+host-loss risk to the operator; choosing a host technology or setting measured margins within
+that accepted policy is an engineering default, not another approval question.
 
 **Value — side effects of adopting this design.** Full local captures consume finite disk and
 limit where full-context grading can run. Honest unknown charges can tie up budget. Preserving
@@ -928,9 +965,9 @@ facts and refusing to relabel old unmeasured routes. Implementation rollback mus
 record and pins, not erase the evidence the design was meant to create.
 
 **Rule — implementation earns activation.** Rules 34, 37, 43, 69, and 113. The production
-assembly must run unit/decoder tests, full-port integration tests and a real lifecycle from
-authenticated intake through a bounded model call and attributable response, with fault recovery
-and cross-part ownership checks. This document's governance check alone cannot establish any
+assembly must run unit/decoder tests, full-port integration tests and the real continuing
+conversation specified by Eleven, including system questions and individually admitted inner
+session calls, attributable replies, fault recovery and cross-part ownership checks. This document's governance check alone cannot establish any
 of those results. **Check:** P7-NF-41/52 and part three's check-run evidence gate.
 
 *Rule dependency references: approved docs/01-the-rules.md through docs/08-the-intake.md;

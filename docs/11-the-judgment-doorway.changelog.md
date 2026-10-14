@@ -4,6 +4,10 @@ _Generated from `11-the-judgment-doorway.changelog.json` by `scripts/render-chan
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-10-13 · draft — Justin / design-profile-judgment-1013 brief; joint review findings in design-set-review-fable-1013 and design-set-review-astra-1013, 2026-10-13.
+
+- **Scope Seven to system-initiated questions, require adapter per-call paid admission and accounting, and retain consumer-specific defaults.** — A full session cannot be hidden inside one single-call request; unavailable advice must not close ordinary communication. _(reviews/design-profile-judgment-1013-change-review.md; Studio lanes/design-profile-judgment-1013-brief.txt and both design-set-review reports)_
+
 ## Revision 4 · 2026-09-21 · draft — Nine exact-response output-use supplement from astra-m4-g6-nine-adjudication.md; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec. Unstaged docs-first draft; desk owns merge and final implementation grants.
 
 - **Bind the bounded optional response-evidence envelope, public read-only decodeCapturedProviderDecision operation and exact captured Decision to Nine’s current output assessment and the same Eight settlement assessment.** — The actual return/capture boundary must preserve source and completion evidence without promoting Seven’s decode into Nine’s verdict or weakening the fully settled path. _(/Users/dabombstudio/.instar/agents/echo/.instar/lanes/astra-m4-g6-nine-adjudication.md §§2–4,6; docs-first task on design-m4-nine-exact-response-assessment; base 9e17a00fe95440ef8fbe878dc2f0cd3cca2a47ec)_
