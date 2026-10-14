@@ -189,5 +189,7 @@ it('does not stop the old worker if the destination admission fails', async () =
   await expect(handoff.prepareTurn({ claim: f.launches[0].claim, child: 'session:1:1', openedAt: 0 }))
     .rejects.toThrow('destination authentication failed');
   expect(f.counts().stopped).toBe(0); expect(f.selected()).toBe(f.entries[0]);
+  expect(f.pool.state.active).toBe(0); expect(f.pool.notices()).toEqual([]);
+  expect(f.pool.state.switches.at(-1).phase).toBe('prepared');
   await f.port.close();
 });

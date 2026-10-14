@@ -153,7 +153,8 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     if (event?.sequence !== index + 1 || !Number.isSafeInteger(event.at)
       || !entries.some(entry => entry.profile.reference === event.from)
       || !entries.some(entry => entry.profile.reference === event.to) || event.from === event.to
-      || !['provider-limit', 'usage-threshold', 'member-unavailable'].includes(event.reason)) fail('switch history is malformed');
+      || !['provider-limit', 'usage-threshold', 'member-unavailable'].includes(event.reason)
+      || (event.phase !== undefined && !['prepared', 'completed'].includes(event.phase))) fail('switch history is malformed');
   const persist = next => { write(statePath, next); state = next; };
   if (adoptLegacy) persist({ ...state, identity, noticeIdentity: state.noticeIdentity ?? state.identity,
     migrations: [...(state.migrations ?? []), { from: state.identity, to: identity, at: now(),
@@ -214,8 +215,8 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       if (requireRoom && state.switches.filter(event => at - event.at < 600_000).length >= 5) return null;
       const next = admitted(entries[index], tools);
       const event = { from: entries[current].profile.reference, to: next.profile.reference,
-        reason: unavailable.has(current) || signedOut.has(current) ? 'member-unavailable' : state.holds[current].reason, at, sequence: state.switches.length + 1 };
-      persist({ ...state, active: index, switches: [...state.switches, event] });
+        reason: unavailable.has(current) || signedOut.has(current) ? 'member-unavailable' : state.holds[current].reason, at, sequence: state.switches.length + 1, ...(requireRoom ? { phase: 'prepared' } : {}) };
+      persist({ ...state, active: requireRoom ? state.active : index, switches: [...state.switches, event] });
       return next;
     }
     if (requireRoom) return null;
@@ -223,10 +224,17 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
   };
   return Object.freeze({
     select,
-    recordHandoff: move => persist({ ...state, handoffs: [...(state.handoffs ?? []), { ...move, machine, at: now() }] }),
+    recordHandoff(move) {
+      const attempt = state.switches.findLastIndex(event => event.phase === 'prepared' && event.from === move.from && event.to === move.to);
+      const next = entries.find(entry => entry.profile.reference === move.to);
+      if (attempt < 0 || !next) fail('handoff has no prepared selection');
+      persist({ ...state, active: next.index,
+        switches: state.switches.map((event, index) => index === attempt ? { ...event, phase: 'completed' } : event),
+        handoffs: [...(state.handoffs ?? []), { ...move, machine, at: now() }] });
+    },
     selectSession: current => select('session', current, true),
     signinRepairs: () => (state.signinRepairs ?? []).map(item => ({
-      key: `login-signin:${identity}:${item.index}:${machine}`, account: item.account, machine: item.machine,
+      key: `login-signin:${identity}:${item.index}:${item.machine}`, account: item.account, machine: item.machine,
       profile: entries[item.index].profile.reference, action: 'desk: run /subscription-signin for this account and machine',
     })),
     observe(entry, result) {
@@ -236,7 +244,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       hold(entry, { reason: 'provider-limit', observedAt: now(), resetAt: Number.isSafeInteger(reset) && reset > now() ? reset : null });
     },
     notices: () => [
-      ...state.switches.filter(event => event.reason !== 'member-unavailable').map(event => ({ key: `doorway:harness-login:${state.noticeIdentity ?? identity}:${event.sequence}`,
+      ...state.switches.filter(event => event.reason !== 'member-unavailable' && event.phase !== 'prepared').map(event => ({ key: `doorway:harness-login:${state.noticeIdentity ?? identity}:${event.sequence}`,
         line: `The model login reached its ${event.reason === 'usage-threshold' ? 'configured usage threshold' : 'usage limit'}. I switched to the next approved login for this runner.` })),
       ...(state.exclusions ?? []).map(({ index }) => ({ key: `doorway:harness-login:${identity}:unavailable:${index}`,
         line: `Approved model login ${index + 1} was unavailable and was removed from selection. See status for current login availability.` })),
@@ -261,8 +269,9 @@ export function harnessLoginPoolStatus(configuration, state, unavailable, usage,
       + (quota?.windows.some(Boolean) ? `; fresh usage, switches at ${configuration.threshold}%`
         : '; usage stale or unavailable, switching only after a typed limit reply');
   });
-  const last = state.switches.at(-1);
+  const last = state.switches.findLast(event => event.phase !== 'prepared');
   return `Model login pool: using approved login ${state.active + 1} of ${entries.length}. ` + members.join(' | ')
+    + (state.switches.at(-1)?.phase === 'prepared' ? ' A continuing-session login move was prepared but is not confirmed.' : '')
     + (state.signinRepairs?.length ? ` Recorded sign-in repair items: ${state.signinRepairs.map(item => `${item.account} on ${item.machine}; desk /subscription-signin`).join(' | ')}.` : '')
     + (last ? ` Last switch: ${last.from} to ${last.to}, ${last.reason}, at ${last.at}.` : ' Last switch: none.');
 }
