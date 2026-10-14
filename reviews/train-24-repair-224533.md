@@ -12,7 +12,7 @@ Declared tier: ordinary
 Tier rationale: Test-only repair of assumptions contradicted by the deliberately unproven shipped declaration; no product behavior changes.
 Side effects: Supported-certificate mutation tests now use an explicit in-memory declaration derived from actual local composition bytes and runtime. This is test input, never published certification. The native contract checks the adapter's reported posture against the shipped declaration, retaining exact conformance and runtime assertions for supported tuples and requiring explicit unproven provenance otherwise.
 Undo and recovery: Revert these test changes and this record; no persistent product state changes or migration exist. Reversion restores the stale test failures but cannot change the shipped certification posture.
-Multi-machine posture: Test fixtures use the local resolved runtime and composition; platform-neighbor tests still check on-host runtime refusal and off-host byte drift. No machine state or ownership behavior changes.
+Multi-machine posture: Test fixtures use the local resolved runtime and composition; platform-neighbor tests still check on-host runtime refusal and off-host byte drift. No machine state or ownership behavior changes. The optional reason field is asserted through its optional length so the test remains type-safe without weakening its minimum-length check.
 Layer below: Read parityMatrix, lintParityRegister, compositionClosure, compositionDigest, selfHostCompositionEvidence and the real adapter description; the shipped declaration explicitly withdraws the old certificate after the host composition changed.
 Bug class: integration
 Bug evidence: reproducer=tests/types/shipped-clients.test.ts; tests/preview/native-harness-contract.test.ts

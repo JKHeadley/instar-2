@@ -79,7 +79,7 @@ it('R105 derives the parity matrix from the register declarations and refuses a 
   expect(shippedNative).toBeDefined();
   expect(['supported', 'unproven']).toContain(shippedNative!.status);
   if (shippedNative!.status === 'unproven') {
-    expect(shippedNative!.reason.length).toBeGreaterThanOrEqual(10);
+    expect(shippedNative!.reason?.length).toBeGreaterThanOrEqual(10);
     expect(shippedNative!.evidence).toBeUndefined();
   }
   expect(selfHostCompositionEvidence(shipped['src/assembly/harness.declarations.json'], read).supported)
