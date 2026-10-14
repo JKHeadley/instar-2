@@ -178,9 +178,14 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       && previous.observedAt === evidence.observedAt) return;
     persist({ ...state, holds: { ...state.holds, [entry.index]: evidence } });
   };
-  const admitted = (entry, tools) => {
+  const admitted = (entry, tools, waitOnUnavailable) => {
     if (!configuration.current()) fail('manifest changed; restart with reviewed configuration');
-    validate(entry, tools);
+    // Session intake has not dispatched: retain it for the host's ordinary retry.
+    // Manifest and durable-state failures stay outside this availability boundary.
+    try { validate(entry, tools); } catch (error) {
+      if (waitOnUnavailable) return null;
+      throw error;
+    }
     return entry;
   };
   const select = (tools = false, current = state.active, requireRoom = false, onlyCurrent = false) => {
@@ -207,7 +212,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     if (!limited(current) && !unavailable.has(current) && !signedOut.has(current)) {
       const quota = harnessQuotaReading(reading, entries[current].profile, at, entries[current].usageAccount);
       if (onlyCurrent && (!quota || !quota.windows.every(window => window && window.utilizationPct < configuration.threshold))) return null;
-      return admitted(entries[current], tools);
+      return admitted(entries[current], tools, requireRoom);
     }
     if (onlyCurrent) return null;
     for (let offset = 1; offset < entries.length; offset++) {
@@ -217,7 +222,8 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       if (requireRoom && (!quota || !quota.windows.every(window => window && window.utilizationPct < configuration.threshold))) continue;
       // 1.x SessionRefresh's five-attempt / ten-minute brake, durable across host restarts.
       if (requireRoom && (state.handoffAttempts ?? []).filter(event => at - event.at < 600_000).length >= 5) return null;
-      const next = admitted(entries[index], tools);
+      const next = admitted(entries[index], tools, requireRoom);
+      if (!next) return null;
       const event = { from: entries[current].profile.reference, to: next.profile.reference,
         reason: unavailable.has(current) || signedOut.has(current) ? 'member-unavailable' : state.holds[current].reason, at, sequence: state.switches.length + 1 };
       if (requireRoom) persist({ ...state, handoffAttempts: [...(state.handoffAttempts ?? []),

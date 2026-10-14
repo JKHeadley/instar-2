@@ -21,7 +21,8 @@ last claim and pending move. The pool registers the topic so loss of that snapsh
 cannot look like a first launch. A move records its source, destination and exact
 selection attempt before destination preflight or worker retirement. A delayed or
 recovered move rechecks fresh destination quota without adding a new attempt. Preflight
-failure leaves the idle worker intact and undispatched input queued for maintenance
+failure, including pool activation, authority and login validation during initial
+selection or pending-destination revalidation, leaves the idle worker intact and undispatched input queued for maintenance
 under its original lifetime and stop. Retirement and custody errors remain visible.
 After exact retirement, the physical
 adapter copies only the recorded native transcript, never credentials. An

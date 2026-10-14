@@ -20,7 +20,7 @@ async function until(test) { for (let n = 0; n < 500 && !test(); n++) await tick
 function fixture() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'topic-pool-'))); roots.push(root);
   const project = join(root, 'scope'); mkdirSync(project);
-  let now = 1000000, stopped = false, failCopy = false, failCommit = false, failAdmit = false;
+  let now = 1000000, stopped = false, failCopy = false, failCommit = false, failAdmit = false, failValidate = false;
   const entries = ['a', 'b'].map((name, index) => { const home = join(root, name); mkdirSync(home);
     return { index, profile: { reference: name, expectedAccount: `${name}@example.invalid`, configDirectory: home } }; });
   const quota = (entry, pct, status = 'active') => ({ email: entry.profile.expectedAccount, configHome: entry.profile.configDirectory,
@@ -28,7 +28,7 @@ function fixture() {
       sevenDay: { utilizationPct: pct, resetsAt: new Date(now + 3600000).toISOString() } } });
   let usage = { version: 1, accounts: entries.map(entry => quota(entry, 20)) };
   const settings = { configuration: { entries, threshold: 95, identity: 'fixture', current: () => true },
-    machine: 'test-linux', statePath: join(root, 'pool.json'), now: () => now, validate: () => {}, usage: () => usage };
+    machine: 'test-linux', statePath: join(root, 'pool.json'), now: () => now, validate: entry => { if (failValidate && entry.index === 1) throw Error('destination login unavailable'); }, usage: () => usage };
   let pool = createHarnessLoginPool(settings);
   const physical = entry => { const io = createProductionSessionIO({ stateDirectory: join(root, 'physical'), tmuxPath: '/synthetic',
     home: entry.profile.configDirectory, configHome: entry.profile.configDirectory, cwd: project });
@@ -88,6 +88,7 @@ function fixture() {
     handoffFor, handoffs, stores, held, deliveries, launches, closes, edges, state: () => state, reply: text => { answer = text; },
     usage: accounts => { usage = { version: 1, accounts }; }, advance: ms => { now += ms; },
     failCopy: value => { failCopy = value; }, failCommit: value => { failCommit = value; }, failAdmit: value => { failAdmit = value; },
+    failValidate: value => { failValidate = value; },
     stop: () => { stopped = true; },
     restart: () => { pool = createHarnessLoginPool(settings); handoffs.clear(); open(); } };
 }
@@ -268,6 +269,10 @@ it.each(recorded.otherShapes)('the pool replacement carries recorded $kind ($id)
     ? JSON.stringify({ reply: row.raw, memory: [] }) : JSON.stringify({ reply: 'Continued.', memory: [] });
   f.reply(output);
   const request = { ...f.request('7:recorded'), context: JSON.stringify({ recordedShape: row }) };
+  f.failValidate(true);
+  expect(await f.port.run(request)).toMatchObject({ state: 'queued' });
+  expect(f.deliveries).toHaveLength(1); expect(f.closes).toEqual([]);
+  f.failValidate(false); await f.port.maintain();
   const moved = await f.port.run(request);
   expect(f.pool.state.handoffs).toHaveLength(1); expect(f.launches.at(-1)).toMatchObject({ login: 1, resume: true });
   expect(f.deliveries.at(-1).input.text).toContain(JSON.stringify(row.raw));
@@ -354,4 +359,51 @@ it('does not disguise transcript custody failure as a preflight wait', async () 
   f.usage([f.quota(f.entries[0], 99), f.quota(f.entries[1], 10)]); f.failCopy(true);
   expect(await f.port.run(f.request('7:second'))).toMatchObject({ state: 'uncertain', detail: 'crash at copy' });
   expect(f.deliveries).toHaveLength(1); expect(f.closes).toHaveLength(1); await f.port.close();
+});
+
+it.each(['initial', 'pending'])('queues on %s destination validation failure and delivers once after recovery', async phase => {
+  const f = fixture(); await f.port.run(f.request('7:first'));
+  const before = f.state().topics['7'];
+  f.usage([f.quota(f.entries[0], 99), f.quota(f.entries[1], 10)]);
+  if (phase === 'pending') {
+    f.failAdmit(true); await f.port.maintain(); f.failAdmit(false);
+    expect(f.handoffFor('7').state.pending).toMatchObject({ from: 0, to: 1 });
+  }
+  f.failValidate(true);
+  expect(await f.port.run(f.request('7:second'))).toMatchObject({ state: 'queued' });
+  expect(f.state().topics['7'].inputs.at(-1)).toMatchObject({ state: 'queued', attempts: 0, delivery: null });
+  expect(f.state().topics['7'].claim).toBe(before.claim);
+  await f.port.maintain();
+  expect(f.closes).toEqual([]); expect(f.deliveries).toHaveLength(1);
+  expect(f.pool.state.handoffAttempts ?? []).toHaveLength(phase === 'pending' ? 1 : 0);
+  f.failValidate(false); await f.port.maintain();
+  expect(await f.port.collect('7:second')).toMatchObject({ outcome: { state: 'complete' } });
+  expect(f.deliveries.map(row => row.login)).toEqual([0, 1]);
+  expect(f.pool.state.handoffAttempts).toHaveLength(1); expect(f.pool.state.handoffs).toHaveLength(1);
+  expect(f.state().topics['7'].edge.budget.deadline).toBe(before.edge.budget.deadline);
+  expect(f.state().topics['7'].spent).toBe(2);
+  await f.port.run(f.request('7:second')); await f.port.maintain();
+  expect(f.deliveries).toHaveLength(2); await f.port.close();
+});
+
+it.each(['stop', 'deadline'])('destination validation wait respects the original %s', async boundary => {
+  const f = fixture(); await f.port.run(f.request('7:first'));
+  f.usage([f.quota(f.entries[0], 99), f.quota(f.entries[1], 10)]); f.failValidate(true);
+  expect(await f.port.run(f.request('7:second'))).toMatchObject({ state: 'queued' });
+  if (boundary === 'stop') f.stop(); else f.advance(100001);
+  f.failValidate(false); await f.port.maintain();
+  expect(f.deliveries).toHaveLength(1); expect(f.pool.state.handoffs ?? []).toHaveLength(0);
+});
+
+it('keeps manifest and pool persistence errors distinct from destination validation waits', () => {
+  const f = fixture();
+  f.settings.configuration.current = () => false;
+  expect(() => f.pool.selectSession(0)).toThrow('manifest changed');
+  expect(() => f.pool.readySession(0)).toThrow('manifest changed');
+  f.settings.configuration.current = () => true;
+  f.usage([f.quota(f.entries[0], 99), f.quota(f.entries[1], 10)]);
+  const pool = createHarnessLoginPool({ ...f.settings, write: () => { throw Error('pool persistence failed'); } });
+  expect(() => pool.selectSession(0)).toThrow('pool persistence failed');
+  f.failValidate(true);
+  expect(() => f.pool.select()).toThrow('destination login unavailable');
 });
