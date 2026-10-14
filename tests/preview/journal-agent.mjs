@@ -36,7 +36,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMind
 import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom,
   staleAgainst, updateDelivery, updatePacketItem } from './installation.js';
-import { bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused, createModelLaunchBoundary, capacityAlerts } from './journal.js';
+import { bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused, ModelNotStarted, createModelLaunchBoundary, capacityAlerts } from './journal.js';
 import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
@@ -118,6 +118,11 @@ import { auditJournal } from './journal-audit.mjs';
 import { memoryReport } from './memory-export.js';
 
 import { createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
+import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
+import { lifecycleHookPath, installLifecycleHook } from '../../scripts/conversation-lifecycle-io.mjs';
+import { createConversationHostStore } from '../../scripts/conversation-host-store.mjs';
+import { CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
+import { createConversationTopicsPort } from '../../src/assembly/conversation-topics.js';
 import { createSessionWorkPort, SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
@@ -233,6 +238,13 @@ const runAsOf = harness => { if (!harness) return null; const { user, launcher, 
  * sealed authority and accepting the admitted-session residual. With no grant, work stays on the one-call
  * route exactly as before. Everything else — harness, executable, homes, ceilings — comes from the
  * doorway, the login profile and the policy, never from a separate option. */
+const conversationSessionOf = options => {
+  const mode = options['conversation-session'];
+  if (mode !== undefined && mode !== 'on' && mode !== 'off') throw Error('preview: --conversation-session must be on or off');
+  if (mode === 'on' && options['session-work-activation'] === undefined)
+    throw Error('preview: conversation session requires its reviewed session activation');
+  return mode === 'on';
+};
 const sessionWorkOf = options => options['session-work-activation'] === undefined ? null
   : { activation: options['session-work-activation'], tmux: options['session-work-tmux'] ?? '/opt/homebrew/bin/tmux' };
 
@@ -1465,6 +1477,10 @@ async function main() {
   let failedPolls = 0, conflictedPolls = 0;
   let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsResolution = null, toolsOff = null,
     sessionWork = null, gate = null;
+  const conversationSession = conversationSessionOf(options);
+  const sessionLimits = conversationSession ? CONVERSATION_SESSION_LIMITS : SESSION_WORK_LIMITS;
+  const sessionAdapter = conversationSession ? doorway.session.conversation : doorway.session;
+  if (!sessionAdapter) throw Error('preview: this doorway has no installed conversation worker');
   /** Each delegated session step's shell network checkpoint, by claim: closed with the step's claim and at shutdown. */
   const stepEgress = new Map();
   // Part Twelve: the effect doorway's operator policy, re-read at every tool turn so a withdrawn or broken file grants
@@ -2047,7 +2063,7 @@ async function main() {
     bindPreviewBlockingSites({ journal: declarationsOf('journal.declarations'), replyCheck: declarationsOf('reply-check.declarations'),
       redact: JSON.parse(readFileSync(resolve(process.cwd(), 'src/recall/redact.declarations.json'), 'utf8')),
       resourceOwner: JSON.parse(readFileSync(resolve(process.cwd(), 'scripts/resource-owner.declarations.json'), 'utf8')) });
-    worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
+    worker = createJournalWorker(journal, { ...(conversationSession ? { topicConcurrency: sessionLimits.maxSessions } : {}), ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       groupDisclosure: async () => {
         if (journal.view.groupCarry) { await requireGroupDisclosure(journal.view); return true; }
         const scope = { sourceRoot: root, destinationRoot: root, chat: journal.view.genesis.chat,
@@ -2061,12 +2077,12 @@ async function main() {
       preparePacket: preparation.run,
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
-      toolRoute: id => preparation.active() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
-      // Only scheduled obligation work is delegated; an operator answer is never handed to a session.
+      toolRoute: id => conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id) ? true : preparation.active() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
+      // Scheduled obligations keep their existing route; continuing operator conversation is selected below.
       // The session route is taken only while its grant holds and the call allowance can hold the
       // step's whole reserved liability on top of the obligation's own start.
       ...(sessionWorkOf(options) === null ? {} : {
-        sessionRoute: id => sessionWork !== null && id.startsWith('obligation:') && sessionWork.port.available()
+        sessionRoute: id => !conversationSession && sessionWork !== null && id.startsWith('obligation:') && sessionWork.port.available()
           && journal.view.calls + 1 + SESSION_WORK_LIMITS.maxCallsPerStep <= journal.view.limits.maxCalls,
         sessionWork: async ({ question, context: packet, id }) => {
           await requireGroupDisclosure(journal.view);
@@ -2101,9 +2117,38 @@ async function main() {
       heldSecrets: heldSecretValues,
       secrets: custody,
       media: mediaCustody,
-      model: async ({ id, prepared }) => {
+      model: async ({ id, prepared, question, context: packet }) => {
         try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
+        if (conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id)) {
+          // The journal reserves the one format repair before this call. Its exact packet gets
+          // a durable child identity; replaying the original bytes still names the original turn.
+          // Never relax the host's same-identity request-digest check.
+          const turn = journal.view.turns.get(id);
+          const operation = turn?.promptKind === 'format-retry' && turn.prompt === prepared
+            ? `${id}:format-retry` : id;
+          let outcome;
+          try {
+            sessionWork?.select?.();
+            if (!sessionWork?.port.available()) throw new ModelNotStarted();
+            outcome = await sessionWork.port.run({ operation, question: prepared, context: packet,
+              authority: sessionWork.authority });
+          } catch (error) {
+            if (operation === id && error instanceof ModelNotStarted) throw error;
+            // A refused/unknown repair is not permission to replay tools. Let the journal's
+            // existing unknown-answer notice settle this intake through its unique send path.
+            return { state: 'uncertain' };
+          }
+          if (outcome.state !== 'complete') return { state: 'uncertain' };
+          const usage = { inputTokens: null, outputTokens: null, charge: null };
+          const reading = readAnswer(outcome.text, { wrapped: 'accept', evidence: [id] });
+          if (!reading.ok) {
+            recordShape(shapesPath, 'answer', 'decision', 'malformed', reading.shape);
+            return { state: 'complete', failureClass: 'malformed', defect: reading.defect, usage };
+          }
+          if (!reading.value.trim()) return { state: 'complete', failureClass: 'empty', usage };
+          return { state: 'complete', text: reading.value, reason: reading.reason, usage };
+        }
         const callsBefore = journal.view.modelCalls.total;
         let result;
         try { result = await modelLaunch.run(() => toolsActive() && toolTurnEligible(id) ? invokeTools(prepared, id) : invokeSubscription(prepared, id)); }
@@ -2169,9 +2214,19 @@ async function main() {
           const context = replyReviewContext(originalPrompt, text, ruleIds, undefined, credentialRegister());
           // Rule 29: the revision input (the objected draft in its review context) is written by the runner.
           const writer = envelopeWriter(journal.systemWriter('reply-review', `${id}:reply-revision\n${context}`, wallNow()));
-          const prepared = modelEnvelope({ question: replyRevisionQuestion(objections, reason, findings), context, id: `${id}:reply-revision`,
+          const prepared = modelEnvelope({ question: replyRevisionQuestion(objections, reason, findings, conversationSession), context, id: `${id}:reply-revision`,
             ...(writer ? { writer } : {}) });
-          const result = await invokeSubscription(prepared, `${id}:reply-revision`, undefined, deadlineAt);
+          let result;
+          if (conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id)) {
+            await requireGroupDisclosure(journal.view);
+            sessionWork?.select?.();
+            const outcome = await sessionWork.port.run({ operation: `${id}:reply-revision`, question: prepared,
+              context, authority: sessionWork.authority, deadlineAt });
+            if (outcome.state !== 'complete') return { state: 'uncertain' };
+            const reading = readAnswer(outcome.text, { wrapped: 'accept', evidence: [id] });
+            if (!reading.ok) return { state: 'rejected' };
+            result = { state: 'complete', value: reading.value, usage: { inputTokens: null, outputTokens: null, charge: null } };
+          } else result = await invokeSubscription(prepared, `${id}:reply-revision`, undefined, deadlineAt);
           const usage = result.usage ? { usage: recordedUsage(result.usage) } : {};
           if (result.state === 'uncertain') return { state: 'uncertain', ...usage };
           if (result.state !== 'complete' || result.failureClass) return { state: 'rejected', ...usage };
@@ -2374,7 +2429,7 @@ async function main() {
             const target = session ? sessionRecord : tools ? toolRecord : record;
             if (!target) throw Error('preview: harness login has no activation for this route');
             const framing = tools ? doorway.toolsFraming : doorway.conversationFraming;
-            if (session) doorway.session.validateActivation(target, entry.profile, options.model, wallNow(), journal.view.expires);
+            if (session) sessionAdapter.validateActivation(target, entry.profile, options.model, wallNow(), journal.view.expires);
             else doorway.validateActivation(target, entry.profile, options.model, wallNow(), framing, journal.view.expires);
             requireAuthority(entry.options, target, session ? sessionPath : tools && toolPath ? toolPath : entry.activation,
               journal.view, wallNow(), tools ? doorway.policyFor(options.model, framing) : undefined);
@@ -2428,11 +2483,11 @@ async function main() {
     if (sessionSetup !== null) {
       let selectedSession = loginConfiguration.entries[0], profile = selectedSession.profile;
       let sessionHarness = harness;
-      const sessionBytes = readFileSync(sessionSetup.activation, 'utf8'), sessionActivation = JSON.parse(sessionBytes);
-      doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
+      let sessionBytes = readFileSync(sessionSetup.activation, 'utf8'), sessionActivation = JSON.parse(sessionBytes);
+      sessionAdapter.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
       requireAuthority(options, sessionActivation, sessionSetup.activation, journal.view, wallNow());
       if (!activationMatchesJournal(journal.view, sessionActivation)) throw Error('preview: session work activation differs from journal');
-      const sessionActive = () => { try { return loginPool ? loginRuntimes.get(selectedSession.index).live('session') : readFileSync(sessionSetup.activation, 'utf8') === sessionBytes; } catch { return false; } };
+      const sessionActive = () => { try { return loginPool && !conversationSession ? loginRuntimes.get(selectedSession.index).live('session') : readFileSync(sessionSetup.activation, 'utf8') === sessionBytes; } catch { return false; } };
       // Rule 60: the session's working scope is a persistent fixed-size volume (tool-turn.mjs attachSessionVolume), mounted
       // before the first step, so every file a step writes, however many, is bounded together. Run as the harness user
       // (--harness-user), the same volume mounts where that user can reach it (harness-user.mjs harnessSessionLayout),
@@ -2447,10 +2502,12 @@ async function main() {
         if (identity) grantVolume(project, identity.user, identity.runner);
       };
       const physicalFor = () => createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
-        home: profile.home, configHome: profile.configDirectory, cwd: project });
+        home: profile.home, configHome: profile.configDirectory, cwd: project,
+        ...(conversationSession && layout ? { lifecycleDirectory: join(layout.admission, 'lifecycle') } : {}) });
       let physical = physicalFor();
-      const stoppedNow = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
-        || wallNow() >= journal.view.expires || !active() || !sessionActive();
+      const hostStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
+        || wallNow() >= journal.view.expires || !active();
+      const stoppedNow = () => hostStopped() || !sessionActive();
       // The step's preflights run as the identity its session will (harness-user: held, never the runner's, while unready).
       const admissionIO = () => createSubscriptionProviderIO({ repository: process.cwd(), stopped: stoppedNow, work: 'maintenance',
         runAs: runAsOf(sessionHarness) });
@@ -2460,19 +2517,57 @@ async function main() {
       const admissionBase = layout ? layout.admission : join(root, 'session-work-state', 'admission');
       const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
       sessionWork = { select() {
+        if (conversationSession) {
+          // A changed signed grant is revalidated at the turn boundary. Never keep dispatching
+          // under the old bytes; stoppedNow closes an active turn on withdrawal.
+          const current = readFileSync(sessionSetup.activation, 'utf8');
+          if (current !== sessionBytes) {
+            const record = JSON.parse(current);
+            sessionAdapter.validateActivation(record, profile, required(options, 'model'), wallNow(), journal.view.expires);
+            requireAuthority(options, record, sessionSetup.activation, journal.view, wallNow());
+            if (!activationMatchesJournal(journal.view, record)) throw Error('preview: refreshed session grant differs from journal');
+            sessionBytes = current; sessionActivation = record;
+          }
+          return;
+        }
         selectedSession = selectLogin('session'); profile = selectedSession.profile;
         sessionHarness = loginRuntimes.get(selectedSession.index)?.harness ?? harness;
         physical = physicalFor();
-      }, get authority() { return `session work grant ${(loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}: one scheduled work step for the verified operator, `
-        + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take(createSessionWorkPort({
-        createDriver: resolveIntake => {
+      }, get authority() { return `${conversationSession ? 'continuing conversation' : 'session work'} grant ${(conversationSession ? sessionActivation : loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}${conversationSession ? ` bytes ${sha256(sessionBytes)}` : ''}: ${conversationSession ? 'one bounded conversation' : 'one scheduled work step'} for the verified operator, `
+        + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? config => createConversationTopicsPort({ ...config,
+          maxSessions: sessionLimits.maxSessions, idleMs: sessionLimits.idleMs,
+          topicOf: operation => {
+            // A repair inherits only its admitted parent's topic, never its execution identity.
+            // The durable one-repair reservation is required; a suffix alone grants nothing.
+            const parent = /^telegram:[0-9]+:update:[0-9]+:format-retry$/u.test(operation)
+              ? journal.view.turns.get(operation.slice(0, -':format-retry'.length)) : undefined;
+            const revisionParent = /^telegram:[0-9]+:update:[0-9]+:reply-revision$/u.test(operation)
+              ? journal.view.turns.get(operation.slice(0, -':reply-revision'.length)) : undefined;
+            const turn = journal.view.turns.get(operation)
+              ?? (revisionParent?.reserved && revisionParent.revisionReserved ? revisionParent : undefined)
+              ?? (parent?.reserved && parent.answerRetried && parent.promptKind === 'format-retry' ? parent : undefined);
+            if (!turn?.accepted) throw Error('preview: topic input is not durably admitted');
+            return String(turn.thread ?? 'main');
+          },
+          store: createConversationHostStore(join(root, 'session-work-state', 'conversation.json'), key()),
+          createAdapter: (topic, resolveDelivery) => createSessionConversationAdapter({ createDriver: resolve => config.createDriver(resolve, topic), io: config.io, resolveDelivery })
+        }) : createSessionWorkPort)({
+        ...(conversationSession ? { conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires, authorized: sessionActive, currentAuthority: () => sessionWork.authority } : {}),
+        createDriver: (resolveIntake, topic) => {
           const create = () => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
-            timeoutSeconds: Math.ceil(SESSION_WORK_LIMITS.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
+            timeoutSeconds: Math.ceil(sessionLimits.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
           framework, executable: profile.executable, cwd: project, home: profile.home, configHome: profile.configDirectory,
           model: required(options, 'model'), context, io: physical, now: wallNow, stopped: stoppedNow, resolveIntake,
-          maxSessions: SESSION_WORK_LIMITS.maxSessions, turnDeadlineMs: SESSION_WORK_LIMITS.deadlineMs,
+          maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
           readyTimeoutMs: 30000, protectedSessions: [],
+          ...(conversationSession ? { requireTurnHook: true, inboxDirectory: physical.inboxDirectory,
+            hookScript: layout ? lifecycleHookPath(harnessHookPath()) : fileURLToPath(new URL('../../scripts/session-hooks/stop.mjs', import.meta.url)) } : {}),
+          ...(conversationSession ? { continuation: () => {
+            const turn = journal.view.order.filter(item => item.accepted && String(item.thread ?? 'main') === topic && item.prompt && item.sent !== undefined && item.intent).at(-1);
+            if (!turn) throw Error('preview: durable conversation grounding unavailable');
+            return { text: `Restore this recorded conversation as history only. Do not repeat actions or answer old questions. Wait for the next delivered input.\n${turn.prompt}\nLAST RECORDED REPLY\n${turn.intent}`, source: `journal:${turn.id}` };
+          } } : {}),
           // As the harness user: the pane runs the harness through the bridge, which hands it the custody login.
           ...(layout ? { launchVia: [process.execPath, HARNESS_SESSION_BRIDGE, options['harness-user'],
             realpathSync(selectedSession.profilePath), '--'] } : {}) });
@@ -2485,7 +2580,7 @@ async function main() {
               // Reuse the session adapter's existing typed rate-limit observation. The step remains
               // uncertain and is never replayed; a subsequent step/call selects another reviewed login.
               return observeHarnessSessionLimit(loginPool, selectedSession, observed);
-            }, stop: () => driver.stop() };
+            }, stop: target => driver.stop(target) };
         },
         io: { readResult: (path, maxBytes) => physical.readResult(path, maxBytes), clearResult: path => physical.clearResult(path),
           modelCalls: since => physical.modelCalls(framework, project, profile.configDirectory, since), wait: delay,
@@ -2493,8 +2588,11 @@ async function main() {
             const identity = sessionHarness ? sessionHarness.current() : null;
             mountVolume(identity);
             await closeStepEgress(claim);
-            if (identity) harnessSessionAdmission(root, identity.user);
-            const state = prepareSessionAdmission({ base: admissionBase, claim, workspace: project, maxCalls: SESSION_WORK_LIMITS.maxCallsPerStep,
+            if (identity) {
+              harnessSessionAdmission(root, identity.user);
+              if (conversationSession) { installLifecycleHook(harnessHookPath()); grantVolume(physical.inboxDirectory, identity.user, identity.runner); }
+            }
+            const state = prepareSessionAdmission({ base: admissionBase, claim, workspace: project, maxCalls: edge.budget.calls,
               gate: gate.base(claim), ...admissionConfig(), ...(identity ? { harness: { user: identity.user, runner: identity.runner } } : {}) });
             // The step's shell network checkpoint (egress-proxy.mjs): the confined shell's one network path, deciding every
             // request by the same effect doorway, under its request and byte bounds; stopped when the step's claim closes.
@@ -2513,25 +2611,26 @@ async function main() {
             }
             stepEgress.set(claim, (await attachEgress({ stateDirectory: state, ...(privateDirectory ? { privateDirectory } : {}), scratch: tmp,
               home: join(tmp, 'home') }, undefined, networkToolReads(), { check: heldVerdict(heldSecrets), span: () => heldSpan(heldSecrets) })).proxy);
-            gate.open(claim, { framework, allowance: SESSION_WORK_LIMITS.maxCallsPerStep, edge }); },
+            gate.open(claim, { framework, allowance: edge.budget.calls, edge,
+              ...(conversationSession ? { reserveCall: ordinal => sessionWork.port.reserveCall(claim, ordinal) } : {}) }); },
           admissionState: claim => gate.state(claim),
           closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {}); } },
         resources: { admit: async () => {
-          if (loginPool) loginRuntimes.get(selectedSession.index).check('session');
-          else doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
+          if (loginPool && !conversationSession) loginRuntimes.get(selectedSession.index).check('session');
+          else sessionAdapter.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
           await doorway.session.admit({ profile, io: admissionIO(), deadline: wallNow() + 15000, now: wallNow });
           const held = await hostResources.hold('maintenance', { timeout: 30000, stopped: stoppedNow });
           return held === null ? null : { attach: child => held.attach({ pid: Number(child.split(':')[1]), cwd: project }),
             release: async () => (await held.release()).verified };
         } },
-        context, now: wallNow, stopped: stoppedNow,
+        context, now: wallNow, stopped: conversationSession ? hostStopped : stoppedNow,
         append: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
         parent: `launch:${conversationOf(g)}`, owner: ownerMachine, placement: `machine:${ownerMachine}`,
         transport: 'tmux session on this machine', workingScope: project, resultDirectory: project,
         artifact: `doorway:${doorway.id}`, incarnation: String(launchedAt ?? wallNow()),
-        deadlineMs: SESSION_WORK_LIMITS.deadlineMs, pollMs: SESSION_WORK_LIMITS.pollMs,
-        maxResultBytes: SESSION_WORK_LIMITS.maxResultBytes, maxSteps: SESSION_WORK_LIMITS.maxStepsPerLaunch,
-        maxCalls: SESSION_WORK_LIMITS.maxCallsPerStep })) };
+        deadlineMs: sessionLimits.deadlineMs, pollMs: sessionLimits.pollMs,
+        maxResultBytes: sessionLimits.maxResultBytes, maxSteps: sessionLimits.maxStepsPerLaunch,
+        maxCalls: sessionLimits.maxCallsPerStep })) };
     }
     installationPolicy = installationPolicyOf(options, activation, activationPath, journal.view, wallNow());
     registerAtLaunch = registerGeneration();
@@ -2723,6 +2822,10 @@ async function main() {
       if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
       sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: async () => {
         if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
+        if (conversationSession) {
+          try { sessionWork?.select?.(); } catch { /* unchanged grant bytes keep authorization closed; custody remains */ }
+          await sessionWork?.port.maintain();
+        }
         await worker.drain();
         if (requested) await worker.sendRequested();
       },
@@ -2938,7 +3041,7 @@ async function main() {
       }
     } finally {
       // A delegated session never outlives the launch that owns it.
-      try { sessionWork?.port.stop(); } catch { /* the driver's next boot sweep and stop authority find it */ }
+      try { if (conversationSession) await sessionWork?.port.close(); else sessionWork?.port.stop(); } catch { /* the driver's next boot sweep and stop authority find it */ }
       if (gate) { gate.closeAll(); await gate.stop(); }
       for (const proxy of stepEgress.values()) await proxy.close();
       stepEgress.clear();

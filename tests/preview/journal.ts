@@ -21,7 +21,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { boundedCorrection, checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, REVIEW_INTERRUPTED_REASON, GROUP_REVIEW_FINAL_NOTICE, isGroupReviewFinalNotice, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, jevConfidentPass, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, confidentReplyNeedsReview, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
+import { boundedCorrection, checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, LEGACY_HOLDING_REPLY, REVIEW_INTERRUPTED_REASON, GROUP_REVIEW_FINAL_NOTICE, isGroupReviewFinalNotice, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, jevConfidentPass, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, confidentReplyNeedsReview, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { latestRecurringDay, nextRecurringDay, parseDatedItem, resolvedDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -5413,6 +5413,8 @@ export function concurrentWorkItem(input: { now: number; current: { owner: strin
 }
 
 export interface PreviewPorts {
+  /** Bound independent topic drains; omitted retains the serial compatibility path. */
+  topicConcurrency?: number;
   /** Current scoped authority and real group membership, checked afresh before every model or send port. */
   groupDisclosure?(): Promise<boolean>;
   now(): number; stopped(): boolean;
@@ -5616,6 +5618,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const acknowledgementsInFlight = new Map<Turn, Promise<void>>();
   const cancelAcknowledgement = (turn: Turn) => { acknowledgementTimers.get(turn)?.(); acknowledgementTimers.delete(turn); };
   let working = false, workingSince = 0, ordinaryFailedSince: number | null = null;
+  let wakeTopicDrain: (() => void) | null = null;
   /** Every live send consumes its durable signed intent; a refusal or unknown outcome is recorded, never
    * retried. The one exception is the transport's own proof that it never made the network call: nothing
    * reached Telegram, so that exact intent is dispatched once more (the no-duplicate floor is untouched —
@@ -5789,6 +5792,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // A held page that moved the cursor may have more backlog behind it: the runner reads on at once.
     readAhead = held && journal.view.stop === null && journal.view.cursor > start
       && journal.view.waiting.length < MINIMAL_WAITING_UPDATES;
+    wakeTopicDrain?.();
     return journal.view.cursor;
   };
   /** Rules 79/82/98: the verified operator's press may decline a request or confirm the brake. It can
@@ -5933,7 +5937,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Rules 26/110: journals retain the exact failure notice delivered before the wording upgrade.
         : [MEMORY_UNDECIDED_REPLY, "I couldn't record that memory change. Please send it again."]
           .includes(replyBody(before)?.replace(/^PREVIEW — /u, '') ?? '') ? 'memory-not-recorded notice delivered'
-          : replyBody(before)?.replace(/^PREVIEW — /u, '') === HOLDING_REPLY ? 'holding reply delivered' : undefined;
+          : [HOLDING_REPLY, LEGACY_HOLDING_REPLY].includes(replyBody(before)?.replace(/^PREVIEW — /u, '') ?? '') ? 'holding reply delivered' : undefined;
     const [disposition, reference]: [ContinuityAccount['disposition'], string] = edit ? ['superseded', `your edit #${edit.update}`]
       : notice !== undefined ? ['pending', `${notice} as Telegram message ${before.sent}, not an answer`]
         : before.sent !== undefined ? ['addressed', `Telegram message ${before.sent}`]
@@ -6683,7 +6687,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     && (item.failureClass !== undefined || item.modelState === 'rejected');
   const sizeRefused = (item: Turn) => item.noticeClass === 'too-long-input';
   const holdingText = (item: Turn, text: string) => replyBody(item)?.replace(/^PREVIEW — /u, '') === text;
-  const holdingReply = (item: Turn) => (holdingText(item, HOLDING_REPLY) || holdingText(item, CREDENTIAL_SHAPE_NOTICE))
+  const holdingReply = (item: Turn) => (holdingText(item, HOLDING_REPLY) || holdingText(item, LEGACY_HOLDING_REPLY) || holdingText(item, CREDENTIAL_SHAPE_NOTICE))
     && item.replyChecks?.some(check => check.verdict === 'violation') === true;
   const knownNonAnswer = (item: Turn) => item.noticeClass !== undefined || modelFailure(item) || holdingReply(item);
   const heldNoticeOutcome = (item: Turn) => {
@@ -7839,8 +7843,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // A split reply left part-way by a restart continues before anything new is answered.
       for (const turn of journal.view.order) if (turn.replyParts?.length) await sendReplyParts(turn);
       if (due) scheduleRequests();
+      const concurrency = ports.topicConcurrency ?? 1;
+      if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 16)
+        throw Error('preview: bounded topic concurrency required');
+      const drainTopic = async (topic: number | string | null) => {
       let blockedEarlier = false;
       for (const turn of journal.view.order) {
+        if (topic !== null && (turn.thread ?? 'main') !== topic) continue;
         if (!turn.accepted || turn.editOf || turn.sent || turn.intent) continue;
         if ((turn.requestedAction !== undefined) !== due) continue;
         // Past the ordinary turn allowance only the minimal responder answers (Rule 15).
@@ -9138,6 +9147,28 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // The rest of a split reply follows at once, before any later reply.
         if (parts.length) await sendReplyParts(turn);
       }
+      };
+      if (concurrency === 1) await drainTopic(null);
+      else await new Promise<void>((resolve, reject) => {
+        const running = new Set<number | string>(), visited = new Map<number | string, number>();
+        let failure: unknown;
+        const pump = () => {
+          const latest = new Map<number | string, number>();
+          for (const turn of journal.view.order) if (turn.accepted)
+            latest.set(turn.thread ?? 'main', turn.update);
+          for (const [topic, frontier] of latest) {
+            if (failure || running.size >= concurrency) break;
+            if (running.has(topic) || (visited.get(topic) ?? -1) >= frontier) continue;
+            running.add(topic);
+            void drainTopic(topic).catch(error => { failure = error; }).finally(() => {
+              visited.set(topic, journal.view.order.filter(turn => (turn.thread ?? 'main') === topic).at(-1)?.update ?? frontier);
+              running.delete(topic); pump();
+            });
+          }
+          if (!running.size) { wakeTopicDrain = null; if (failure) reject(failure); else resolve(); }
+        };
+        wakeTopicDrain = pump; pump();
+      });
       await noticeUnknownReplies();
       if (!audienceHolds) await noticeDisclosureHolds();
       // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
@@ -9148,6 +9179,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (!due && pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
     } finally {
       try { await Promise.all(acknowledgementsInFlight.values()); } finally {
+        wakeTopicDrain = null;
         acknowledgementsInFlight.clear();
         for (const turn of acknowledgementTimers.keys()) cancelAcknowledgement(turn);
         working = false;

@@ -112,7 +112,7 @@ export interface SessionWorkLease {
 export interface SessionWorkConfig {
   /** The session driver this port delegates through, built with `resolveIntake` below. */
   readonly createDriver: (resolveIntake: (intake: string, digest: string) => string) => NativeHarnessDriverPort
-    & Readonly<{ stop(): Result<readonly string[]> }>;
+    & Readonly<{ stop(input?: Readonly<{ claim: string; incarnation: string; processIdentity?: string }>): Result<readonly string[]> }>;
   readonly io: SessionWorkIO;
   /** The host's one resource owner. `null` from `admit` is a capacity refusal. */
   readonly resources: Readonly<{ admit(): Promise<SessionWorkLease | null> }>;
@@ -141,6 +141,8 @@ export interface SessionWorkRequest {
    * names the child too: each step is a fresh session, never a continuation of an earlier one. */
   readonly operation: string;
   readonly question: string; readonly context: string;
+  /** A child revision may shorten, never extend, the parent lifetime. */
+  readonly deadlineAt?: number;
   /** The reviewed grant this child runs under, named in the edge. */
   readonly authority: string;
 }

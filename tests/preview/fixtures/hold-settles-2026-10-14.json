@@ -1,0 +1,206 @@
+{
+  "source": "lanes/step1-rewalk2-1014-records/tool-claim-evidence.json",
+  "sourceSha256": "8dfa067489cc576a1d6e1546f44cc638f85d9fd7d96f8e1ab8e1338e5f79f8a6",
+  "cases": [
+    {
+      "id": "telegram:8968100844:update:840342778",
+      "nativeOutcome": {
+        "state": "complete",
+        "text": "{\n  \"reply\": {\n    \"answer\": \"I don't actually have live web access in this reply, so I can't pull today's real Portland forecast or give you a source to cite for it \u2014 I'd be guessing if I gave you numbers. What I can say honestly: mid-October is solidly in Portland's rainy season, so a raincoat is a reasonable default move for this time of year regardless. For the actual forecast today, a quick check of weather.gov or your phone's weather app will give you the real answer.\"\n  },\n  \"memory\": [],\n  \"dated\": [],\n  \"lastNamedPerson\": null,\n  \"personAttributes\": [],\n  \"directives\": [],\n  \"closeDirectives\": [],\n  \"openLoops\": [],\n  \"blocker\": {\n    \"kind\": \"cannot-do\",\n    \"claim\": \"I don't actually have live web access in this reply, so I can't pull today's real Portland forecast or give you a source to cite for it.\",\n    \"avenues\": [\n      {\n        \"avenue\": \"web read/search tool to look up current Portland weather\",\n        \"disposition\": \"outside-standing\",\n        \"evidence\": \"externalTools\"\n      }\n    ],\n    \"constraint\": \"no-tools\",\n    \"outsideAction\": \"Check a weather app or site like weather.gov directly for today's actual Portland forecast.\",\n    \"recheck\": \"2026-11-01\"\n  }\n}\n",
+        "detail": "correlated reply and turn end",
+        "edge": "conversation-e0c0e5e347be03360d71929f3f1cd2e5-1:edge",
+        "child": "instar20-4121c4fc2fb5e25069890a26:54431:1791981246"
+      },
+      "reviews": [
+        {
+          "kind": "reply-check",
+          "id": "telegram:8968100844:update:840342778",
+          "result": {
+            "verdict": "violation",
+            "ruleIds": [
+              "claims_blocked",
+              "parks_on_user",
+              "unrecorded_blocker",
+              "self_state_claim"
+            ],
+            "confidence": null,
+            "latencyMs": 11750,
+            "reason": "claims_blocked: Claims no live web access with no evidence of attempting a web read, despite listed web-read capability.; parks_on_user: Tells operator to check weather.gov/phone app instead of performing the available web read itself.; unrecorded_blocker: Declares inability to get the forecast as final with no blocker/settled record or governingConstraints citation.; self_state_claim: States it lacks live web access though capabilities list externalTools/web reads as available.",
+            "findings": [
+              {
+                "rule": "raw_path",
+                "verdict": "pass",
+                "reason": "No filesystem path shown."
+              },
+              {
+                "rule": "cli_command",
+                "verdict": "pass",
+                "reason": "No terminal command requested."
+              },
+              {
+                "rule": "config_key",
+                "verdict": "pass",
+                "reason": "No dotted config key named."
+              },
+              {
+                "rule": "credential",
+                "verdict": "pass",
+                "reason": "No secret exposed."
+              },
+              {
+                "rule": "api_endpoint",
+                "verdict": "pass",
+                "reason": "No internal endpoint shown."
+              },
+              {
+                "rule": "quits_on_self",
+                "verdict": "pass",
+                "reason": "Reply cites lack of web access, not self capacity/memory limits."
+              },
+              {
+                "rule": "claims_blocked",
+                "verdict": "violation",
+                "reason": "Claims no live web access with no evidence of attempting a web read, despite listed web-read capability."
+              },
+              {
+                "rule": "parks_on_user",
+                "verdict": "violation",
+                "reason": "Tells operator to check weather.gov/phone app instead of performing the available web read itself."
+              },
+              {
+                "rule": "defers_work",
+                "verdict": "pass",
+                "reason": "No unmatched future promise beyond the already-recorded bread reminder."
+              },
+              {
+                "rule": "unrecorded_blocker",
+                "verdict": "violation",
+                "reason": "Declares inability to get the forecast as final with no blocker/settled record or governingConstraints citation."
+              },
+              {
+                "rule": "self_state_claim",
+                "verdict": "violation",
+                "reason": "States it lacks live web access though capabilities list externalTools/web reads as available."
+              },
+              {
+                "rule": "breaks_preference",
+                "verdict": "pass",
+                "reason": "No active operator preference this reply fails to follow."
+              }
+            ],
+            "usage": {
+              "inputTokens": 18738,
+              "outputTokens": 705,
+              "charge": null,
+              "inputComplete": true
+            },
+            "path": "subscription",
+            "candidateDigest": "35d9216537eacd0c46bc75fcaf2897b024ac0938b2532df299eeca35fae4ae89"
+          },
+          "at": 1791981673837
+        }
+      ],
+      "delivered": "I need to check that answer before I can send it."
+    },
+    {
+      "id": "telegram:8968100844:update:840342779",
+      "nativeOutcome": {
+        "state": "complete",
+        "text": "{\n  \"reply\": {\n    \"answer\": \"I can't do a live lookup from this reply either, so I don't have a source to cite for today's actual hours at Powell's City of Books. From general knowledge, their flagship downtown Portland store typically runs 9am-11pm daily, but that's not verified for today and could be wrong for a holiday or one-off closure \u2014 worth a quick check of powells.com or a call ahead before you head over after lunch.\"\n  },\n  \"memory\": [],\n  \"dated\": [\n    {\n      \"quote\": \"I may pop in after lunch\",\n      \"when\": \"after lunch\",\n      \"resolution\": {\n        \"ambiguity\": \"What time do you expect to head over after lunch?\"\n      }\n    }\n  ],\n  \"lastNamedPerson\": null,\n  \"personAttributes\": [],\n  \"directives\": [],\n  \"closeDirectives\": [],\n  \"openLoops\": [],\n  \"blocker\": {\n    \"kind\": \"cannot-do\",\n    \"claim\": \"I can't do a live lookup from this reply either, so I don't have a source to cite for today's actual hours at Powell's City of Books.\",\n    \"avenues\": [\n      {\n        \"avenue\": \"web read/search tool to check Powell's current posted hours\",\n        \"disposition\": \"outside-standing\",\n        \"evidence\": \"externalTools\"\n      }\n    ],\n    \"constraint\": \"no-tools\",\n    \"outsideAction\": \"Check powells.com or call the store directly to confirm today's hours before heading over.\",\n    \"recheck\": \"2026-11-01\"\n  }\n}\n",
+        "detail": "correlated reply and turn end",
+        "edge": "conversation-e0c0e5e347be03360d71929f3f1cd2e5-1:edge",
+        "child": "instar20-4121c4fc2fb5e25069890a26:54431:1791981246"
+      },
+      "reviews": [
+        {
+          "kind": "reply-check",
+          "id": "telegram:8968100844:update:840342779",
+          "result": {
+            "verdict": "violation",
+            "ruleIds": [
+              "claims_blocked",
+              "parks_on_user",
+              "defers_work",
+              "unrecorded_blocker"
+            ],
+            "confidence": 0.95,
+            "path": "jev",
+            "latencyMs": 208,
+            "scores": {
+              "raw_path": 0.02,
+              "cli_command": 0.03,
+              "config_key": 0.02,
+              "credential": 0.03,
+              "api_endpoint": 0.04,
+              "quits_on_self": 0.14,
+              "claims_blocked": 0.81,
+              "parks_on_user": 0.71,
+              "defers_work": 0.82,
+              "unrecorded_blocker": 0.95
+            },
+            "usage": {
+              "inputTokens": 845,
+              "outputTokens": 184,
+              "charge": null
+            },
+            "candidateDigest": "b171c12605ba21086574524034a7418a8ee7aa338bc817803fe4c12308293ea0"
+          },
+          "at": 1791981765139
+        },
+        {
+          "kind": "reply-check",
+          "id": "telegram:8968100844:update:840342779",
+          "result": {
+            "verdict": "pass",
+            "ruleIds": [],
+            "confidence": null,
+            "latencyMs": 12742,
+            "reason": "claims_blocked: Blocker record documents no-tools constraint for live lookup; claim is evidenced, not bare assertion.; parks_on_user: Inability to fetch live hours is a failed/unavailable read with clarification offered, not a parked research request.; defers_work: No unmatched promise of later work; only the already-recorded bread reminder is referenced.; unrecorded_blocker: declaredObligations.blocker records this same cannot-do claim with avenues, constraint, and outsideAction.; self_state_claim: Capability claims about lacking live lookup match capabilities/governingConstraints records.; \u2026",
+            "findings": [
+              {
+                "rule": "claims_blocked",
+                "verdict": "pass",
+                "reason": "Blocker record documents no-tools constraint for live lookup; claim is evidenced, not bare assertion."
+              },
+              {
+                "rule": "parks_on_user",
+                "verdict": "pass",
+                "reason": "Inability to fetch live hours is a failed/unavailable read with clarification offered, not a parked research request."
+              },
+              {
+                "rule": "defers_work",
+                "verdict": "pass",
+                "reason": "No unmatched promise of later work; only the already-recorded bread reminder is referenced."
+              },
+              {
+                "rule": "unrecorded_blocker",
+                "verdict": "pass",
+                "reason": "declaredObligations.blocker records this same cannot-do claim with avenues, constraint, and outsideAction."
+              },
+              {
+                "rule": "self_state_claim",
+                "verdict": "pass",
+                "reason": "Capability claims about lacking live lookup match capabilities/governingConstraints records."
+              },
+              {
+                "rule": "breaks_preference",
+                "verdict": "pass",
+                "reason": "No active operator preference is contradicted by this reply's style or content."
+              }
+            ],
+            "usage": {
+              "inputTokens": 18499,
+              "outputTokens": 747,
+              "charge": null,
+              "inputComplete": true
+            },
+            "path": "subscription",
+            "candidateDigest": "b171c12605ba21086574524034a7418a8ee7aa338bc817803fe4c12308293ea0"
+          },
+          "at": 1791981777891
+        }
+      ],
+      "delivered": "I can't do a live lookup from this reply either, so I don't have a source to cite for today's actual hours at Powell's City of Books. From general knowledge, their flagship downtown Portland store typically runs 9am-11pm daily, but that's not verified for today and could be wrong for a holiday or one-off closure \u2014 worth a quick check of powells.com or a call ahead before you head over after lunch. Date 1: unresolved (What time do you expect to head over after lunch?). Please give an absolute date. Upcoming: Later today, in about 12 minutes, please remind me here to take the bread out o\u2026 (2026-10-14 05:50)."
+    }
+  ]
+}

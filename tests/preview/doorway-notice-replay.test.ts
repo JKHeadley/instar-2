@@ -6,7 +6,7 @@ import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { doorwayNotices } from './credential-reminders.js';
 import { observeExchange, type DoorwayMap } from './doorway-map.js';
-import { HOLDING_REPLY, parseReplyReviewVerdict, type ReplyRule } from './reply-check.js';
+import { HOLDING_REPLY, LEGACY_HOLDING_REPLY, parseReplyReviewVerdict, type ReplyRule } from './reply-check.js';
 import { readAnswer } from './answer-reading.js';
 
 // The retained answer-check copy is never run. This replays update 715675469's exact
@@ -24,7 +24,7 @@ it('reconstructs the held notice from the recorded base map and preserves its ep
   expect(captured.replyChecks[0]).toMatchObject({ verdict: 'unsure', scores: { parks_on_user: 0.69, defers_work: 0.57 } });
   expect(captured.replyChecks[1].ruleIds).toEqual(['parks_on_user', 'defers_work']);
   expect(captured.revisionReview.verdict).toBe('unavailable');
-  expect(captured.delivered).toBe(HOLDING_REPLY);
+  expect(captured.delivered).toBe(LEGACY_HOLDING_REPLY);
 });
 
 it.each(['original', 'repaired', 'offload'] as const)('replays the real %s review through the send checkpoint and restart', async mode => {
