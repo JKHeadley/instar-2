@@ -77,15 +77,16 @@ export function causalIndex(facts: readonly FactEnvelope[]): CausalIndex {
   const vectors = new Map<string, CausalFrontier | null>(), visiting = new Set<string>();
   // Only list members are remembered (by id); any other object, even one sharing an id, is
   // computed from its own signed references.
+  const references = (fact: FactEnvelope) => [...[fact.predecessors.inSegment, ...fact.predecessors.required].map(id => id === null ? null : byId.get(id)),
+    ...Object.entries(fact.predecessors.frontier).map(([m, p]) => at.get(factId({ machine: m, ...p })))];
   const compute = (fact: FactEnvelope): CausalFrontier | null => {
-    const refs = [...[fact.predecessors.inSegment, ...fact.predecessors.required].map(id => id === null ? null : byId.get(id)),
-      ...Object.entries(fact.predecessors.frontier).map(([m, p]) => at.get(factId({ machine: m, ...p })))];
+    const refs = references(fact);
     // Machine names are arbitrary strings ('constructor', '__proto__', ...): a null-prototype
     // dictionary, as canonical snapshotting uses, so no inherited property reads as a position.
     const vector: Record<string, LineagePosition> = Object.create(null) as Record<string, LineagePosition>;
     for (const ref of refs) {
       if (ref === null) continue;
-      const inner = ref && member(ref);
+      const inner = ref && vectors.get(ref.id);
       if (!ref || !inner || ref.id === fact.id) return null;
       for (const [m, p] of [...Object.entries(inner), [ref.machine, ref.segment] as const])
         if (!vector[m] || comparePosition(p, vector[m]!) > 0) vector[m] = { epoch: p.epoch, position: p.position };
@@ -97,12 +98,29 @@ export function causalIndex(facts: readonly FactEnvelope[]): CausalIndex {
   };
   const member = (fact: FactEnvelope): CausalFrontier | null => {
     const known = vectors.get(fact.id); if (known !== undefined) return known;
-    if (visiting.has(fact.id)) return null;
-    visiting.add(fact.id); const vector = compute(fact); visiting.delete(fact.id);
-    vectors.set(fact.id, vector); return vector;
+    // A cold caller may ask for the tail first. Resolve dependencies on an
+    // explicit stack so a long valid lineage never overflows the host stack.
+    const stack = [{ fact, refs: references(fact), next: 0 }];
+    visiting.add(fact.id);
+    while (stack.length) {
+      const frame = stack.at(-1)!;
+      if (frame.next < frame.refs.length) {
+        const ref = frame.refs[frame.next++];
+        if (ref && !vectors.has(ref.id) && !visiting.has(ref.id)) {
+          visiting.add(ref.id); stack.push({ fact: ref, refs: references(ref), next: 0 });
+        }
+      } else {
+        vectors.set(frame.fact.id, compute(frame.fact));
+        visiting.delete(frame.fact.id); stack.pop();
+      }
+    }
+    return vectors.get(fact.id) ?? null;
   };
-  const frontierOf = (fact: FactEnvelope): CausalFrontier | undefined =>
-    (byId.get(fact.id) === fact ? member(fact) : compute(fact)) ?? undefined;
+  const frontierOf = (fact: FactEnvelope): CausalFrontier | undefined => {
+    if (byId.get(fact.id) === fact) return member(fact) ?? undefined;
+    for (const ref of references(fact)) if (ref) member(ref);
+    return compute(fact) ?? undefined;
+  };
   const head = (m: string, p: LineagePosition) => at.get(factId({ machine: m, ...p }))!;
   return { byId, frontierOf,
     coneSize: fact => { const v = frontierOf(fact); return v && Object.entries(v).reduce((n, [m, p]) => n + rank.get(head(m, p).id)! + 1, 0); },

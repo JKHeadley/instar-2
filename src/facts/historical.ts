@@ -4,7 +4,7 @@ import type { ConstitutionalValue, DecodeContext, HistoricalRead, Json, Result, 
 import { boundary, encoding, fields, frozen, object, requireFact, same, string, take } from './boundary.js';
 import { causalCone, causalIndex, causalStanding, migrateBody } from './admission.js';
 import type { CausalIndex } from './admission.js';
-import { decodeFrame, hashBytes, schemaFor } from './envelope.js';
+import { decodeFrame, factId, hashBytes, schemaFor } from './envelope.js';
 import { snapshot } from '../decode/canonical.js';
 import { contextBoundary } from './contracts.js';
 import type { AuthorityTaint, FactContext, FactEnvelope } from './contracts.js';
@@ -30,6 +30,10 @@ export interface HistoricalScope {
   readonly context: FactContext; readonly index: CausalIndex; tables?: string;
   positions?: { readonly grants: ReadonlyMap<object, number>; readonly revocations: ReadonlyMap<object, number> };
 }
+type HistoryRow = { readonly fact: FactEnvelope; readonly records: readonly HistoricalRead<ConstitutionalValue>[] };
+// Inclusive sparse histories: validated ancestors with no constitutional records
+// consume no history slot. Private, operation-local, and never persisted.
+const operationHistories = new WeakMap<HistoricalScope, Map<FactEnvelope, readonly HistoryRow[]>>();
 const operationAncestors = new WeakMap<HistoricalScope, Map<FactEnvelope, HistoricalBody>>();
 // GRANT M3-E: the memo fingerprint keeps the exact canonical bytes of its composite input, but a
 // component object that is runtime-verified deep-frozen (and so can never change) is encoded once
@@ -179,23 +183,46 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
         heads ? `heads:${heads.join(',')}` : `cone:${causalCone(record, context.facts).map(f => f.contentHash).sort().join(',')}`}`);
       const byContent = decodedByContent.get(record.id);
       const reused = byContent?.envelope === envelopeBytes(record) ? byContent : undefined;
-      if (reused?.fingerprint === fingerprint && reused.owners === context.ownedBodies && reused.migrations === context.migrations) {
-        cache.set(record.id, reused.body); return reused.body;
-      }
-      const history: HistoricalRead<ConstitutionalValue>[] = [];
-      // Within this one read-only operation an ancestor always has the same causal
-      // standing. Reuse that verified body instead of re-hashing it once per descendant.
-      // The next operation owns a fresh scope, so changed policy/captures still revalidate.
       const ancestors = operationAncestors.get(scope) ?? new Map<FactEnvelope, HistoricalBody>();
       operationAncestors.set(scope, ancestors);
-      for (const ancestor of causalCone(record, context.facts)) {
+      const summaries = operationHistories.get(scope) ?? new Map<FactEnvelope, readonly HistoryRow[]>();
+      operationHistories.set(scope, summaries);
+      const rows = new Map<string, HistoryRow>();
+      const parents = [...[record.predecessors.inSegment, ...record.predecessors.required].filter(id => id !== null),
+        ...Object.entries(record.predecessors.frontier).map(([machine, p]) => factId({ machine, ...p }))]
+        .map(id => causal.byId.get(id));
+      // The causal index proves complete, acyclic signed chains. Reusing each
+      // parent's verified inclusive history preserves DFS postorder, including
+      // first-visit deduplication at joins. Otherwise retain the original walk.
+      if (causal.frontierOf(record) && parents.every(parent => parent && summaries.has(parent))) {
+        for (const parent of parents) for (const row of summaries.get(parent!)!)
+          if (!rows.has(row.fact.id)) rows.set(row.fact.id, row);
+      } else for (const ancestor of causalCone(record, context.facts)) {
         let prior = ancestors.get(ancestor);
         if (!prior) {
           prior = read(ancestor, causalStanding(ancestor, context, false, causal).decode);
           ancestors.set(ancestor, prior);
         }
-        history.push(...prior.records);
+        if (prior.records.length) rows.set(ancestor.id, { fact: ancestor, records: prior.records });
       }
+      const remember = (body: HistoricalBody): HistoricalBody => {
+        const history = [...rows.values()];
+        if (body.records.length) history.push({ fact: record, records: body.records });
+        // A public caller can supply a different decode context for the root.
+        // Only its own causal standing may be reused when it becomes an ancestor.
+        if (shared(c)) {
+          try {
+            if (standing(c) === standing(causalStanding(record, context, false, causal).decode)) summaries.set(record, history);
+          } catch {
+            // Root-only historical inspection never required causal admission.
+            // Preserve that result, but do not admit it to ancestor reuse.
+          }
+        }
+        cache.set(record.id, body); return body;
+      };
+      if (reused?.fingerprint === fingerprint && reused.owners === context.ownedBodies && reused.migrations === context.migrations)
+        return remember(reused.body);
+      const history: HistoricalRead<ConstitutionalValue>[] = [...rows.values()].flatMap(row => row.records);
       const checked = take(decodeFrame(record, context)), bytes = envelopeBytes(record), reference = `origin:${record.id}`;
       const captures = { ...c.captures, [reference]: bytes };
       const captureStatuses = Object.fromEntries(Object.entries(context.captures).map(([ref, capture]) => {
@@ -257,7 +284,7 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
         }
       }
       const result: HistoricalBody = { fields: out, records: own, grants, revocations, taint: unavailable ? ['evidence-unavailable'] : [] };
-      cache.set(record.id, result);
+      remember(result);
       const decoded: DecodedBody = { fingerprint, owners: context.ownedBodies, migrations: context.migrations, body: frozen(result) };
       decodedByContent.set(record.id, { ...decoded, envelope: envelopeBytes(record) }); return result;
     };

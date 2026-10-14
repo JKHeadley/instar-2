@@ -43,3 +43,16 @@ a restart reconstructs from the recovered facts. The source count and tail ident
 as-of view. This is deliberately not a live authorization view: use `readForProjection`
 for current standing. The consumer must refresh after intake/append before using a new
 view. The underlying storage verification and cold rebuild still scale with history.
+
+Cold recovery keeps a private id/head index while checking each original signed
+frame. Historical operations retain sparse, origin-verified constitutional history
+in causal DFS order; plain conversation ancestors add no history entries. The
+causal index resolves long or reversed chains on an explicit stack. Invalid or
+non-indexable graphs still use the full causal walk and its refusals. These are
+per-operation products, not durable checkpoints: interruption discards them and
+restart verifies the retained source again. Cost remains proportional to the
+actual constitutional dependency records where those records are required.
+
+The decoder's own immutable envelope can also retain its checked signed frame,
+only after byte equality with the original frame and while current key/register
+tables match. Mutable copies and changed policy re-enter frame verification.

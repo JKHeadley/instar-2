@@ -18,8 +18,8 @@ it('measures and compares whole-scan and indexed recorded-message reads', async 
   for (const size of process.env.INSTAR_RECORD_BENCHMARK === '1' ? [2000, 20_000] : [200]) {
     const coldStart = performance.now();
     console.log(JSON.stringify({ phase: 'verify-start', conversationFacts: size }));
-    const { r, facts, store, context, runFixture } = await measuredCorpus(size);
-    console.log(JSON.stringify({ phase: 'verify-finished', conversationFacts: size, ms: performance.now() - coldStart }));
+    const { r, facts, store, context, runFixture, signingMs, recoveryMs } = await measuredCorpus(size);
+    console.log(JSON.stringify({ phase: 'verify-finished', conversationFacts: size, ms: performance.now() - coldStart, signingMs, recoveryMs }));
     await new Promise<void>(resolve => setImmediate(resolve));
     let reads = 0;
     const source = { ...store, read: () => { reads++; return store.read(); } };

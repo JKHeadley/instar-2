@@ -4,7 +4,7 @@ import type { Json, Result } from '../index.js';
 import { boundary, encoding, frozen, object, requireFact, take } from './boundary.js';
 import { causalIndex, causalStanding, decodeBody, extendsChain, historyOf, validateRepair, validateSchemas } from './admission.js';
 import type { CausalIndex } from './admission.js';
-import { decodeEnvelope, factId, genesisHash, signEnvelope } from './envelope.js';
+import { comparePosition, decodeEnvelope, factId, genesisHash, signEnvelope } from './envelope.js';
 import type { AuthorityTaint, CausalFrontier, ConflictClass, DurabilityState, FactContext, FactEnvelope } from './contracts.js';
 import { contextBoundary } from './contracts.js';
 import { decodeHistoricalBody, historicalAuthority } from './historical.js';
@@ -87,9 +87,20 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
     }
     requireFact(raw.length - cached.length <= (recovery.verificationBudget ?? Number.MAX_SAFE_INTEGER), 'verification budget exhausted', 'budget-exhausted');
     const facts: FactEnvelope[] = [...cached];
+    // Recovery admits one signed prefix in order. Chain admission only needs id
+    // uniqueness and the maximum position per machine, not a re-sorted prefix.
+    const ids = new Set<string>(), heads = new Map<string, FactEnvelope>();
+    for (const fact of [...context.facts, ...facts]) {
+      ids.add(fact.id);
+      const head = heads.get(fact.machine);
+      if (!head || comparePosition(fact.segment, head.segment) >= 0) heads.set(fact.machine, fact);
+    }
     for (const input of raw.slice(cached.length)) {
-      const at = { ...context, facts: [...context.facts, ...facts] };
-      const fact = take(decodeEnvelope(input, at, 'replication')); extendsChain(fact, at); facts.push(fact); recovery.onVerified?.(fact);
+      const fact = take(decodeEnvelope(input, context, 'replication'));
+      requireFact(!ids.has(fact.id), 'id already admitted; origin may not reuse ids');
+      const head = heads.get(fact.machine);
+      extendsChain(fact, { ...context, facts: head ? [head] : [] });
+      ids.add(fact.id); heads.set(fact.machine, fact); facts.push(fact); recovery.onVerified?.(fact);
     }
     cached = facts;
     verifiedRaw = raw.slice(); // a private copy: an adapter may later reorder or replace slots in its own array

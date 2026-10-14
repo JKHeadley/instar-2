@@ -8,6 +8,8 @@ import { contextBoundary } from './contracts.js';
 
 export const genesisHash: Hash = `sha256:${'0'.repeat(64)}`;
 const admittedEnvelopes = new WeakMap<object, string>();
+type SignedFrame = { raw: Json; keyId: string; frame: Pick<FactEnvelope, Exclude<Extract<keyof FactEnvelope, string>, 'principal' | 'provenance'>> & { principal: Json; provenance: Json } };
+const admittedFrames = new WeakMap<object, { context: string; checked: SignedFrame }>();
 const envelopeContext = (context: FactContext) => encoding({ keys: context.keys, register: context.decode.register }).hash;
 export function comparePosition(a: LineagePosition, b: LineagePosition): number { return a.epoch - b.epoch || a.position - b.position; }
 export function factId(segment: SegmentPosition): string { return `${encodeURIComponent(segment.machine)}:${segment.epoch}:${segment.position}`; }
@@ -53,7 +55,13 @@ export function signEnvelope(input: unknown, privateKey: string): unknown {
   return { ...value, contentHash, signature: sign(null, Buffer.from(contentHash, 'utf8'), privateKey).toString('hex') };
 }
 
-export function decodeFrame(input: unknown, context: FactContext) {
+export function decodeFrame(input: unknown, context: FactContext): Result<SignedFrame> {
+  const known = input && typeof input === 'object' ? admittedFrames.get(input) : undefined;
+  if (known) return boundary('SignedFactFrame', null, contextBoundary(context), () =>
+    known.context === envelopeContext(context) ? known.checked : take(decodeFrameFresh(input, context)));
+  return decodeFrameFresh(input, context);
+}
+function decodeFrameFresh(input: unknown, context: FactContext): Result<SignedFrame> {
   return boundary('SignedFactFrame', input, contextBoundary(context), raw => {
     // The public boundary snapshots without evaluating getters. No refused body is retained here.
     requireFact(!secretShape(encoding(raw).bytes), 'secret-shaped bytes', 'policy');
@@ -70,7 +78,10 @@ export function decodeFrame(input: unknown, context: FactContext) {
     const prevInSegment = hash(v.prevInSegment), parents = predecessors(v.predecessors);
     const contentHash = hash(v.contentHash), signature = string(v.signature, 'signature');
     requireFact(/^[a-f0-9]{128}$/.test(signature), 'signature encoding');
-    requireFact(preimage(raw).hash === contentHash, 'content hash mismatch', 'integrity');
+    // raw already passed the snapshot boundary; hash its payload directly rather
+    // than canonicalizing, parsing, and copying the entire frame a second time.
+    const { contentHash: _contentHash, signature: _signature, ...payload } = v;
+    requireFact(encoding(payload).hash === contentHash, 'content hash mismatch', 'integrity');
     const key = context.keys.find(k => k.machine === machine && comparePosition(segment, k.from) >= 0 && (!k.through || comparePosition(segment, k.through) <= 0)
       && verify(null, Buffer.from(contentHash, 'utf8'), k.publicKey, Buffer.from(signature, 'hex')));
     requireFact(key, 'signature, signing owner, or key position invalid', 'integrity');
@@ -82,13 +93,15 @@ export function decodeFrame(input: unknown, context: FactContext) {
 }
 
 export function decodeEnvelope(input: unknown, context: FactContext, mode: 'origin' | 'replication' = 'origin'): Result<FactEnvelope> {
-  if (mode === 'replication' && input && typeof input === 'object' && admittedEnvelopes.get(input) === envelopeContext(context)) {
+  const admitted = input && typeof input === 'object' ? admittedEnvelopes.get(input) : undefined;
+  if (mode === 'replication' && admitted !== undefined && admitted === envelopeContext(context)) {
     return boundary('VerifiedEnvelopeReuse', null, contextBoundary(context), () => input as FactEnvelope);
   }
   return boundary('FactEnvelopeDecode', input, contextBoundary(context), raw => {
     const checked = take(decodeFrame(raw, context));
     const { principal: principalInput, provenance: provenanceInput, ...base } = checked.frame;
     const { id, kind, schemaVersion: version, signature } = base;
+    const signedBytes = encoding(checked.raw).bytes;
     schemaFor(context, kind, version);
     let principal: HistoricalShape<VerifiedPrincipal>, provenance: HistoricalShape<Provenance>;
     if (mode === 'origin') {
@@ -99,7 +112,7 @@ export function decodeEnvelope(input: unknown, context: FactContext, mode: 'orig
       const decoded = take(decode('VerifiedPrincipal', { type: 'VerifiedPrincipal', schemaVersion: 1, id: p.id, kind: p.kind }, { ...context.decode, provenance: p.provenance }));
       principal = decoded; provenance = pinned;
     } else {
-      const bytes = encoding(raw).bytes, reference = `origin:${id}`;
+      const bytes = signedBytes, reference = `origin:${id}`;
       const pin = { origin: { owner: 'part-two' as const, name: 'FactEnvelope' as const, id }, capture: { reference, hash: hashBytes(bytes) }, machineKeyId: checked.keyId, path: ['principal'] };
       const historicalContext = { ...context.decode, captures: { ...context.decode.captures, [reference]: bytes } };
       // Identity evidence and action evidence may be different captures of the same actor.
@@ -108,6 +121,11 @@ export function decodeEnvelope(input: unknown, context: FactContext, mode: 'orig
       requireFact(provenance.authenticated.principal.id === principal.id && provenance.authenticated.principal.kind === principal.kind, 'origin actor mismatch', 'integrity');
     }
     const fact = { ...base, principal, provenance } as FactEnvelope;
-    admittedEnvelopes.set(fact, envelopeContext(context)); return fact;
+    const policy = envelopeContext(context);
+    admittedEnvelopes.set(fact, policy);
+    // Only this decoder's immutable output, with exactly the signed bytes, may
+    // reuse a frame. Fresh/mutable copies and changed key/register tables verify.
+    if (encoding(fact).bytes === signedBytes) admittedFrames.set(fact, { context: policy, checked });
+    return fact;
   });
 }

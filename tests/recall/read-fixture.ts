@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks';
 import { readFileSync } from 'node:fs';
 import { value } from '../fixtures.js';
 import { recallFixture } from './fixture.js';
@@ -40,7 +41,9 @@ export function corpus(size: number) {
 }
 /** Yield between verification batches so the test reporter can acknowledge its RPCs. */
 export async function measuredCorpus(size: number) {
-  const data = source(size, true);
+  const started = performance.now(), data = source(size, true);
+  const signingMs = performance.now() - started;
+  const recoveryStart = performance.now();
   if (size > 2000) console.log(JSON.stringify({ phase: 'signed-source', facts: data.raw.length }));
   for (let n = 1000; n < data.raw.length; n += 1000) {
     data.setThrough(n); value(data.store.read());
@@ -48,5 +51,6 @@ export async function measuredCorpus(size: number) {
     await new Promise<void>(resolve => setImmediate(resolve));
   }
   data.setThrough(data.raw.length);
-  return { ...data, facts: value(data.store.read()) };
+  const facts = value(data.store.read());
+  return { ...data, facts, signingMs, recoveryMs: performance.now() - recoveryStart };
 }

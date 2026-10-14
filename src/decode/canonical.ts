@@ -32,14 +32,40 @@ export function snapshot(input: unknown, seen = new Set<object>(), depth = 0): J
   }
   return out;
 }
+// Validate and encode in one walk. snapshot() remains the independent mutable-copy
+// boundary; encoding needs no intermediate copy or second traversal of every field.
 export function canonicalText(input: unknown): string {
-  const encode = (value: Json): string => {
-    if (value === null || typeof value !== 'object') return JSON.stringify(value);
-    if (Array.isArray(value)) return `[${value.map(encode).join(',')}]`;
-    const record = value as Record<string, Json>;
-    return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${encode(record[key]!)}`).join(',')}}`;
+  const seen = new Set<object>();
+  const encode = (value: unknown, depth: number): string => {
+    if (depth > 64) throw new Error('input exceeds 64 levels');
+    if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
+    if (typeof value === 'number' && Number.isFinite(value)) return JSON.stringify(Object.is(value, -0) ? 0 : value);
+    if (!value || typeof value !== 'object') throw new Error('input is not finite JSON data');
+    if (seen.has(value)) throw new Error('cyclic input');
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== Array.prototype && proto !== null) throw new Error('non-data prototype');
+    seen.add(value);
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Reflect.ownKeys(value).some(k => typeof k !== 'string')) throw new Error('symbol field');
+    const parts: Record<string, string> = Object.create(null) as Record<string, string>;
+    const keys = Object.keys(descriptors).sort(), array = Array.isArray(value);
+    for (const key of keys) {
+      if (array && key === 'length') continue;
+      const descriptor = descriptors[key]!;
+      if (!('value' in descriptor) || !descriptor.enumerable) throw new Error('accessor or hidden field');
+      parts[key] = encode(descriptor.value, depth + 1);
+    }
+    seen.delete(value);
+    if (array) {
+      if (Object.keys(parts).length !== value.length) throw new Error('sparse or extended array');
+      return `[${Array.from({ length: value.length }, (_, i) => {
+        if (!(String(i) in parts)) throw new Error('sparse array');
+        return parts[String(i)]!;
+      }).join(',')}]`;
+    }
+    return `{${keys.map(key => `${JSON.stringify(key)}:${parts[key]!}`).join(',')}}`;
   };
-  return encode(snapshot(input));
+  return encode(input, 0);
 }
 export function hashText(bytes: string): Hash { return `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}`; }
 export function canonical(input: unknown, preserved = 'input://caller'): Result<{ bytes: string; hash: Hash }> {

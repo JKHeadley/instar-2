@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { consumeResult, decode, readHistorical, readHistoricalEvidence } from '../../src/index.js';
 import type { Provenance, Result } from '../../src/index.js';
@@ -110,4 +111,32 @@ describe('origin-pinned historical principal and provenance reads', () => {
       Refused: r => { expect(at === 99 || at >= 105, r.detail).toBe(true); expect(r.detail).toMatch(/standing|not live/); },
     });
   });
+});
+
+it('warm origin verification does not retain key registration, path or capture authority', () => {
+  const f = fixture(), p = f.alice, pin = f.historyPin(p);
+  const warm = () => value(readHistorical('VerifiedPrincipal', clone(p), pin, f.ctx));
+  warm(); expect(warm().view.id).toBe(p.id);
+  const withKey = (change: object) => ({ ...f.ctx, register: { ...f.ctx.register,
+    keys: { ...f.ctx.register.keys, [pin.machineKeyId]: { ...f.ctx.register.keys[pin.machineKeyId]!, ...change } } } });
+  for (const [change, message] of [[{ methods: [] }, 'key or capture'], [{ owner: 'other-machine' }, 'machine/key owner'],
+    [{ publicKey: generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString() }, 'signature']] as const) {
+    warm(); refused(readHistorical('VerifiedPrincipal', clone(p), pin, withKey(change)), message);
+  }
+  warm(); refused(readHistorical('VerifiedPrincipal', clone(p), { ...pin, path: ['absent'] }, f.ctx), 'path');
+  warm(); refused(readHistorical('VerifiedPrincipal', clone(p), { ...pin, origin: { ...pin.origin, id: 'other' } }, f.ctx), 'identity');
+  warm(); delete f.captures[p.provenance.record.reference];
+  expect(value(readHistorical('VerifiedPrincipal', clone(p), pin, f.ctx)).captureStatus).toBe('missing');
+});
+
+it('pins one public-key read before retaining verified origin bytes', () => {
+  const f = fixture(), pin = f.historyPin(f.alice), good = f.ctx.register.keys[pin.machineKeyId]!;
+  if (good.algorithm !== 'ed25519') throw new Error('fixture requires ed25519');
+  const other = generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString();
+  let reads = 0;
+  const key = { ...good, get publicKey() { return ++reads === 1 ? good.publicKey : other; } };
+  const context = { ...f.ctx, register: { ...f.ctx.register, keys: { ...f.ctx.register.keys, [pin.machineKeyId]: key } } };
+  value(readHistorical('VerifiedPrincipal', clone(f.alice), pin, context));
+  expect(reads).toBe(1);
+  refused(readHistorical('VerifiedPrincipal', clone(f.alice), pin, context), 'signature');
 });
