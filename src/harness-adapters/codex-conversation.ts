@@ -92,10 +92,11 @@ export function createCodexTurnReader(threadId: string, turnId: string, maxReply
       if (prior.text !== next.text || prior.phase !== next.phase) invalid('conflicting completed agent message');
       return;
     }
-    if (messages.size >= 256 || bytes + Buffer.byteLength(item.text) > maxReplyBytes) {
+    const addedBytes = Buffer.byteLength(item.text) + (messages.size ? 2 : 0);
+    if (messages.size >= 256 || bytes + addedBytes > maxReplyBytes) {
       invalid('reply capture bound exceeded'); return;
     }
-    messages.set(item.id, next); bytes += Buffer.byteLength(item.text);
+    messages.set(item.id, next); bytes += addedBytes;
   };
   const snapshot = (): CodexTurnResult => {
     // Legacy unphased messages count only when there is no explicit final-answer item.

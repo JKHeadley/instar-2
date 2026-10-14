@@ -96,6 +96,9 @@ describe('Codex continuing conversation protocol', () => {
     expect(reader.consume(done()).reply).toBe('🙂');
     const large = createCodexTurnReader('thread', 'turn', 3); large.consume(item('🙂'));
     expect(large.consume(done()).status).toBe('unverifiable');
+    const joined = createCodexTurnReader('thread', 'turn', 4);
+    joined.consume(item('ab', null, 'one')); joined.consume(item('cd', null, 'two'));
+    expect(joined.consume(done()).status).toBe('unverifiable');
     const many = createCodexTurnReader('thread', 'turn');
     for (let i = 0; i < 257; i++) many.consume(item('', null, `item${i}`));
     expect(many.snapshot().status).toBe('unverifiable');
