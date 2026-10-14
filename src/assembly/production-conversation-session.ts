@@ -119,7 +119,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       ensure(!closing && !config.stopped(), 'conversation stopped');
       ensure(config.now() < config.allowanceDeadline, 'parent lifetime exhausted');
       ensure(config.authorized(), 'conversation grant unavailable');
-      ensure(!state.worker || state.authority === config.currentAuthority(), 'worker grant superseded');
+      ensure(!state.claim || state.authority === config.currentAuthority(), 'worker grant superseded');
     };
     const calls = () => {
       const used = state.edge ? config.io.modelCalls(state.edge.openedAt) : 0;

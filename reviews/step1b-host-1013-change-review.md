@@ -31,7 +31,7 @@ Decision: step1b-host-1013-parent-lifetime | Renew only process lifetime; every 
 
 Decision: step1b-host-1013-store-declarations | Declare bounded retained host memory and accumulating machine-local hook copies beside their actual writers, then regenerate source wiring. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1b-host-1013-PROGRESS.md
 
-Decision: step1b-host-1013-grant-withdrawal | Fence a withdrawn grant separately from operator stop, revalidate on the idle tick and bind replacement to changed signed bytes; never turn routine renewal into permanent host closure. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1b-host-1013-PROGRESS.md
+Decision: step1b-host-1013-grant-withdrawal | Fence a withdrawn grant separately from operator stop, revalidate on the idle tick and bind replacement to changed signed bytes; never turn routine renewal into permanent host closure. Recheck the admitted claim after asynchronous resource admission, before a process exists. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1b-host-1013-PROGRESS.md
 
 Generated register: regenerated from the committed source head; includes both store declarations and current source wiring. This is shape-only replay evidence, not a new runtime certificate.
 

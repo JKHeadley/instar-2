@@ -345,3 +345,15 @@ it('a validated grant change fences old model calls immediately and replaces the
   expect(f.admissions[1]!.authority).toBe('refreshed-signed-grant');
   expect(f.admissions[1]!.budget.calls).toBe(5); await f.port.close();
 });
+
+it('a grant superseded during asynchronous resource admission cannot launch or charge the old claim', async () => {
+  const f = fixture(); let released = false;
+  Object.assign(f.config.resources, { admit: async () => {
+    f.grant('new-grant');
+    expect(() => f.port.reserveCall(f.state().claim!, 1)).toThrow(/superseded/);
+    return { attach: async () => {}, release: async () => { released = true; return true; } };
+  } });
+  expect(await f.port.run(f.request('one'))).toMatchObject({ state: 'uncertain', detail: 'worker grant superseded' });
+  expect(f.launches).toHaveLength(0); expect(f.state().spent).toBe(0); expect(released).toBe(true);
+  await f.port.close();
+});
