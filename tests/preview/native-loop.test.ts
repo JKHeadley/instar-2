@@ -6,9 +6,10 @@
 // one step short of it, a stop, a failed step, and the tools' boundary: a path swapped into a link after admission, a blocking
 // read under a stop, a stopped fetch and a bounded body, and the resource owner's memory and process ceilings. Recorded real model outputs replay through the step
 // parser (Rule 106 / observer #106).
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { once } from 'node:events';
 import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { openPreviewJournal } from './journal.js';
@@ -499,7 +500,9 @@ child.unref(); process.stdout.write(String(child.pid));`;
   const settled = async (pid: number) => { for (let i = 0; i < 50 && alive(pid); i++) await new Promise(done => setTimeout(done, 20)); return !alive(pid); };
 
   it('a detached descendant outside the working area is ended when its call completes; a process outside the sandbox is not', { timeout: 20000 }, async () => {
-    const neighbor = execFileSync('/bin/sh', ['-c', '/bin/sleep 60 >/dev/null 2>&1 & echo $!'], { encoding: 'utf8' }).trim();
+    const neighbor = spawn('/bin/sleep', ['60'], { stdio: 'ignore' });
+    await once(neighbor, 'spawn'); // A refused fork fails here; no shell output can become PID 0.
+    const neighborExit = once(neighbor, 'exit');
     let node = '';
     try {
       const run = await nativeTurn((_envelope, index) => index === 0 ? ask(['Write', { file_path: 'daemon.mjs', content: DAEMON }], daemonize(node))
@@ -508,9 +511,9 @@ child.unref(); process.stdout.write(String(child.pid));`;
       const daemon = Number(posts[1].stdout);
       expect(Number.isSafeInteger(daemon) && daemon > 1).toBe(true);
       expect(await settled(daemon)).toBe(true);
-      expect(alive(Number(neighbor))).toBe(true);
+      expect(alive(neighbor.pid!)).toBe(true);
       expect(run.outcome.result).toMatchObject({ native: { ended: 'answered', unresolved: [] } });
-    } finally { process.kill(Number(neighbor), 'SIGKILL'); }
+    } finally { neighbor.kill('SIGKILL'); await neighborExit; }
   });
 
   it('the stop ends a detached descendant that left the group, its parent and the working area while its call still runs', { timeout: 20000 }, async () => {
@@ -539,14 +542,16 @@ child.unref(); process.stdout.write(String(child.pid));`;
   });
 
   it('a command that ends every process of its own sandbox ends only that: the owner proves the cleanup, the next call runs', { timeout: 20000 }, async () => {
-    const neighbor = execFileSync('/bin/sh', ['-c', '/bin/sleep 60 >/dev/null 2>&1 & echo $!'], { encoding: 'utf8' }).trim();
+    const neighbor = spawn('/bin/sleep', ['60'], { stdio: 'ignore' });
+    await once(neighbor, 'spawn'); // A refused fork fails here; no shell output can become PID 0.
+    const neighborExit = once(neighbor, 'exit');
     try {
       const run = await nativeTurn([ask(['Bash', { command: 'kill -9 -1' }], ['Bash', { command: 'echo after' }]), answer('done')]);
       const posts = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
       expect(posts[1]).toMatchObject({ stdout: 'after\n', exitCode: 0 });
       expect(run.outcome.result.native.unresolved).toEqual([]);
-      expect(alive(Number(neighbor))).toBe(true);
-    } finally { process.kill(Number(neighbor), 'SIGKILL'); }
+      expect(alive(neighbor.pid!)).toBe(true);
+    } finally { neighbor.kill('SIGKILL'); await neighborExit; }
   });
 
   /** A detached node child, in a new session with its parent gone, that holds ~400 MiB while its launcher keeps running in the
@@ -611,18 +616,20 @@ child.unref(); process.stdout.write(String(child.pid));`;
     // The old sweeper's file shapes, planted by the workload itself: a pid file naming a process outside the sandbox, a FIFO
     // under a pid-file name and a forged completion marker. The cleanup path reads no workload file, so the neighbour lives,
     // the loop never blocks, and the launch's end is still proven by the owner's own census.
-    const neighbor = execFileSync('/bin/sh', ['-c', '/bin/sleep 60 >/dev/null 2>&1 & echo $!'], { encoding: 'utf8' }).trim();
+    const neighbor = spawn('/bin/sleep', ['60'], { stdio: 'ignore' });
+    await once(neighbor, 'spawn'); // A refused fork fails here; no shell output can become PID 0.
+    const neighborExit = once(neighbor, 'exit');
     try {
       const started = performance.now();
-      const run = await nativeTurn([ask(['Bash', { command: `cd .. && echo ${neighbor} > .sweep-forged.pid && /usr/bin/mkfifo .sweep-fifo.pid && : > .sweep-fifo && echo planted` }],
+      const run = await nativeTurn([ask(['Bash', { command: `cd .. && echo ${neighbor.pid} > .sweep-forged.pid && /usr/bin/mkfifo .sweep-fifo.pid && : > .sweep-fifo && echo planted` }],
         ['Bash', { command: 'echo after' }]), answer('done')]);
       expect(performance.now() - started).toBeLessThan(10000);
       const posts = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
       expect(posts[0]).toMatchObject({ stdout: 'planted\n', exitCode: 0 });
       expect(posts[1]).toMatchObject({ stdout: 'after\n', exitCode: 0 });
       expect(run.outcome.result).toMatchObject({ native: { ended: 'answered', unresolved: [] } });
-      expect(alive(Number(neighbor))).toBe(true);
-    } finally { process.kill(Number(neighbor), 'SIGKILL'); }
+      expect(alive(neighbor.pid!)).toBe(true);
+    } finally { neighbor.kill('SIGKILL'); await neighborExit; }
   });
 
   it('refuses to run without a host resource owner', async () => {

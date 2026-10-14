@@ -141,10 +141,20 @@ describe.each(Object.keys(DOORWAY_CONFORMANCE))('native compositions through doo
       const tuple = parityMatrix().harnessTuples.find(row => row.harness === SELF_HOST_HARNESS && row.doorway === id && row.mode === 'self-hosting');
       const described = createSelfHostHarness({ root, context: SELF_HOST_CONTEXT, stopped: () => false, now: () => NOW,
         log: openRecordLog(root, SELF_HOST_CONTEXT) }).adapter.describe();
-      expect(tuple).toMatchObject({ status: 'supported', conformance: [described.artifact], runtime: [currentRuntime()],
-        artifact: ['createSelfHostHarness@tests/preview/self-host-harness.mjs'] });
-      expect(described.conformance).toBe(`self-host:${tuple.conformance[0]}`);
-      expect(described.platform).toBe(`${tuple.platform}-${process.arch}`);
+      expect(tuple).toBeDefined();
+      if (tuple.status === 'unproven') {
+        // A combine may invalidate the Studio certificate. The adapter must say so, never
+        // invent certification because a test expects it. The desk alone re-declares support.
+        expect(tuple.reason).toEqual(expect.any(String));
+        expect(tuple.reason.length).toBeGreaterThan(0);
+        expect(tuple.conformance).toBeUndefined();
+        expect(described.conformance).toBe(`self-host:unproven:${described.artifact}`);
+      } else {
+        expect(tuple).toMatchObject({ status: 'supported', conformance: [described.artifact], runtime: [currentRuntime()],
+          artifact: ['createSelfHostHarness@tests/preview/self-host-harness.mjs'] });
+        expect(described.conformance).toBe(`self-host:${tuple.conformance[0]}`);
+        expect(described.platform).toBe(`${tuple.platform}-${process.arch}`);
+      }
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
