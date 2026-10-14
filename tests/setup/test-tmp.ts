@@ -135,7 +135,13 @@ export default function setup(): () => void {
     process.stderr.write(`[instar tests] WARNING: no verified RAM root; test temp files stay in the inherited TMPDIR `
       + `(${process.env.TMPDIR ?? 'unset'}), which may be the REAL DISK. Run scripts/ensure-test-ramdisk.sh on macOS `
       + `or set INSTAR_TEST_TMP.\n`);
-    return () => {};
+    // macOS aliases /var and /tmp. Fixtures must hand the journal the real path;
+    // its substituted-directory guard must continue to reject actual symlinks.
+    const previous = process.env.TMPDIR;
+    process.env.TMPDIR = realpathSync(tmpdir());
+    return () => {
+      if (previous === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = previous;
+    };
   }
   if (choice.kind === 'ram-full') {
     process.stderr.write(`[instar tests] WARNING: the RAM root has under ${RAM_MIN_FREE_BYTES / 1024 ** 3} GiB free `
@@ -151,7 +157,7 @@ export default function setup(): () => void {
   sweepDeadRuns(choice.root);
   const previous = process.env.TMPDIR;
   process.env.INSTAR_TEST_OUTER_TMPDIR = tmpdir();
-  const runDir = mkdtempSync(join(choice.root, `${RUN_PREFIX}${process.pid}-`));
+  const runDir = mkdtempSync(join(realpathSync(choice.root), `${RUN_PREFIX}${process.pid}-`));
   process.env.TMPDIR = runDir;
   process.env.INSTAR_TEST_TMP_ROOT = choice.root;
   process.env.INSTAR_TEST_TMP_KIND = choice.kind;
