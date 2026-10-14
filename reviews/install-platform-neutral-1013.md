@@ -1,42 +1,31 @@
-# Review guide — installation on macOS and Linux
+# Change review — installation review record repair
 
-Read [the platform guarantees](../docs/14-the-assembly.md#installation-platforms), [the build units](../docs/14-the-assembly.md#fresh-installation), [the protected local act](../docs/15-the-operator-surfaces.md#fresh-install-pairing), and [custody/recovery](../docs/17-harness-adapters/03-capability-account-quota-and-launch-pins.md#installation-custody-and-recovery).
-
-Outcome: a fresh-install design with no Mac prerequisite, concrete macOS and Linux bindings, and named Linux implementation commitments. Design only; no runtime or model-facing change.
-Affected rules: purpose independent safeguards, single-machine operation and durable cause; Rules 1/28/29/31/32/49/71/74/90/91/100/101/111/113/116.
-Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake remain required on both OSes.
-Operator questions: none for this design; the operator already directed OS compatibility. A separate constitutional proposal is in the builder report, not this PR.
-Suggested tier: significant
-Declared tier: significant
-Side effects: each installation milestone needs evidence on both OSes, including headless Linux. An existing Mac mechanism does not establish installer readiness.
-Undo and recovery: supersede these design bindings through the existing changelogs; no runtime migration or authority change.
-Multi-machine posture: single-machine on either OS without a peer; private custody and OS checks stay host-local; shared authority/history and P-08 replication demands remain unchanged.
-Layer below: purpose and rules read in full; PR 162 enrollment and genesis; existing One/Two/Four/Nine/Ten/Eleven/Seventeen owner boundaries. No OS requirement exists in the constitution: the purpose's single-machine rule is at lines 139–144; Rule 30 at rules line 216 covers harnesses, not operating systems.
+Subject base: c50a9fb46faf2c63a833ce08dcbda81633bbc817
+Review state: open
+Reviewed content: none
+Outcome: Repair the invalid Rule 74 record while preserving the original installation design guide in docs/install-platform-neutral-review-guide-1013.md. No installation design or runtime behavior changes.
+Affected rules: Rules 1, 26, 48, 49, 70, 74, 101, 102, 109, 111, 112, 113, 116; truthful evidence and unchanged authority.
+Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake remain unchanged; only review metadata and guide location change.
+Operator questions: none
+Suggested tier: ordinary
+Declared tier: ordinary
+Tier rationale: Editorial record repair with the original design prose preserved and no executable or governing document edits.
+Side effects: The design guide moves to docs/ with relative links adjusted. This review path remains as a pointer, preserving references from train-27. The checker now receives a real ancestor and a narrowly bounded nonempty subject.
+Undo and recovery: Revert this repair commit to restore the original file location and reproduce the missing-subject-base error; no runtime state or migration is involved.
+Multi-machine posture: Repository documentation travels through git on every host. The local report is copied to the named Studio report by the desk; no Studio write or runtime state changes.
+Layer below: Read the complete constitution, original da99cd521f8eb7a11c0fee24961df13d47d19f9e design commit and parent 7ef8f158d4129a4cf90cf3c546701f32e348fdd3; inspected records(), subject range computation and validateRecord in the existing checker. Adding the old parent here would incorrectly widen this current record across unrelated changes.
+Bug class: none
+Bug evidence: none
 Hook bypass: none
-Convergence: none; author submission for independent review.
+Convergence: none
+Decision: train-27-repair-015450-D1 | Preserve the original design guide under docs and bind this record to the repair parent, avoiding an inaccurate review over unrelated intervening changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-27-repair-015450-PROGRESS.md
 
-## Fixed authority contract
+Original design guide: [installation on macOS and Linux](../docs/install-platform-neutral-review-guide-1013.md). Original design provenance: da99cd521f8eb7a11c0fee24961df13d47d19f9e; this repair asserts no new design approval.
 
-The enrollment order remains pending session → provider-authenticated phone account and DM → protected local selection → exact phone confirmation. Local mechanisms vary by OS; code possession still cannot select an operator. The numbered record sequence in part 06 remains byte-for-byte unchanged: `R/OR → GP`, `E → GE → A0 → O0 → GO → C0`. Neither OS adds an approval class or an authority database.
+Subject (1 paths): docs/install-platform-neutral-review-guide-1013.md
 
-## Implementation and evidence
+## Closing block
 
-Linux uses a separate system user and systemd system service, a protected polkit/sudo helper, and custodian-only files with independent encrypted vault backup. The headless route uses an operator-only console/SSH session and the same phone sequence. All six Linux units in part 14 are to build. Each unit must prove its successful case and the matching refusal cases already attached to the four milestones. No new installer readiness or Linux execution evidence is claimed.
-
-Mechanism references: [polkit authentication and retained-authority limits](https://polkit.pages.freedesktop.org/polkit/polkit.8.html) and [Apple Authorization Services](https://developer.apple.com/library/archive/documentation/Security/Conceptual/authorization_concepts/01introduction/introduction.html). Binding OS authentication to the exact pending subject is an Instar implementation obligation, not a property these APIs supply by themselves.
-
-## Other Mac-specific design references (unchanged)
-
-A repository-wide scan of docs Markdown for Mac/macOS, Keychain, launchd/launchctl, hdiutil, sandbox-exec, dscl, Darwin, Touch ID, Seatbelt and osascript finds two other design passages, both in the conversation adapters:
-
-- `docs/16-conversation-adapters/03-inbound-custody-before-platform-acknowledgment.md:76` — iMessage on a Mac uses the enrolled account/service, database epoch and stable message/chat identifiers.
-- `docs/16-conversation-adapters/14-operator-decisions-and-honest-limits.md:27` — personal-device policy explicitly covers iMessage on a Mac.
-
-Those are channel-specific requirements, not a requirement that all of Instar run on a Mac. No other design part states a Mac-only mechanism as the general design. `docs/03-the-glossary.md:182` uses “keychain” as one example of a store. Harvest quotations, recorded research hardware and the resolved off-Mac lane-document defect are historical/evidence references, not design mechanisms. No out-of-scope file is changed.
-
-## Review checks
-
-Confirm the constitution and numbered authority sequence are unchanged; compare the four enrollment steps for unchanged actors, order and evidence; verify each build row names the common interface and both OS implementations. The allow/refuse pairs remain real implementation exit conditions, not stub tests or claimed live evidence.
-
-simplestRobustRoute: This is the simplest robust route: preserve existing owner contracts and add only concrete OS bindings and their evidence obligations, preventing a silent Mac dependency without new authority machinery.
-VERDICT: author submission; independent review pending
+simplestRobustRoute: This is the simplest robust route: retain the design guide verbatim apart from relative links, and bind its relocation to the existing review schema. Start guard is the observed missing-base failure; end guard is the existing checker accepting the repaired record; scope excludes runtime, governance and checker edits. No new mechanism or autonomous runtime completion is claimed.
+80/20: Run the existing consumer and cheap gate checks; leave independent acceptance to the desk. No new tests or checker exceptions for an editorial repair.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
