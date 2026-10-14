@@ -42,6 +42,8 @@ Prompt finding: 7c45ffbe90ad | protocol-literal | Historical prompt translation 
 Prompt finding: b1bb3946362d | protocol-literal | Existing production-provider identity prefix asserted by the now-scoped act-first test; this change does not alter that identity, provider, or assertion.
 Prompt finding: 42faf877ba82 | protocol-literal | Existing production-codex-provider identity prefix asserted by the now-scoped act-first test; this change does not alter that identity, provider, or assertion.
 
+Generated register: shape-only replay from combined source 045487179fc54cc1126eae1c60fd90a14ba57aad; 291 entries, 116 rules. Inventory contract pin refreshed through the desk chain. No runtime certificate claim.
+
 simplestRobustRoute: This is the simplest robust route: ordinary merges of reviewed heads, retained live ancestry, existing desk regeneration and targeted consumer checks. No new mechanism is added. Start guards are exact pinned heads and durable intake/current admission; end guards are correlated worker completion and durable send receipts; all five floors and existing packet bounds remain. Member clean-profile unattended proof is reported as member evidence, not a new combined live proof.
 80/20: Direct importers, changed tests and explicitly required journal/register checks only; no full suite. The desk owns independent review and combined live acceptance.
 VERDICT: author submission for desk review, not a production acceptance claim
