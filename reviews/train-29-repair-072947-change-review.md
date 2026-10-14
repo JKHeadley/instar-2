@@ -15,7 +15,7 @@ Undo and recovery: Revert this repair commit; no persisted state or runtime migr
 Multi-machine posture: Repository test evidence is local to the checker host; conversation ownership, durable intake and send fences are unchanged on every machine. Native macOS certification belongs to the Studio desk.
 Layer below: Inspected journal-agent.mjs subscription parsing and its exact Telegram-update conversation-session branch. Only that answer branch uses the second tolerant reader; non-conversation calls retain their existing route. The existing journal-conversation-session tests execute the shipped closure and cover routing, stop, secret refusal and durable retry behavior.
 Bug class: integration
-Bug evidence: The supplied Studio fail-fast log records model-json.test.ts:114 receiving two readAnswer sites against one expected. After correction, model-json.test.ts (51 tests) and journal-conversation-session.test.ts (29 tests) pass together on WSL.
+Bug evidence: reproducer=tests/preview/model-json.test.ts; consumer=tests/preview/journal-conversation-session.test.ts; The supplied Studio fail-fast log records model-json.test.ts:114 receiving two readAnswer sites against one expected. After correction, model-json.test.ts (51 tests) and journal-conversation-session.test.ts (29 tests) pass together on WSL.
 Hook bypass: none
 Convergence: none
 Decision: train-29-repair-parser-inventory | Correct the exact two-call test inventory instead of changing valid runtime parsing; the conversation-session call is already restricted to operator answers. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-29-repair-072947-PROGRESS.md
