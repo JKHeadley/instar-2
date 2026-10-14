@@ -20,8 +20,11 @@ Hook bypass: none; core.hooksPath unset and the common hooks directory contains 
 Convergence: none
 Prompt review: No prompt or model parser behavior changes. The existing model-json tests retain captured-provider bytes and both accepting and refusing wrapper cases. No live-model acceptance claim.
 Decision: train31-120132-smallest | Follow the existing shared decoder in the test rather than restore duplicated runtime parsing or undo accepted host repairs; retain exact parser-policy and caller coverage. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-31-repair-120132-PROGRESS.md
+Decision: train31-120132-publication | Refresh the changed test's owner hash with the delegated desk tools and regenerate the replay register from the committed source; no hand-edited pins. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-31-repair-120132-PROGRESS.md
 
 Subject (1 path): tests/preview/model-json.test.ts
+
+Publication: The test is pinned by the preview owner manifest. The desk rehash tool refreshed that one hash; the grounding repin chain made no changes. The generated replay publication belongs to this same reviewed change and preserves the existing declarations and safety floors.
 
 ## Closing block
 
