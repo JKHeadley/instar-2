@@ -147,28 +147,26 @@ corrected, not the safeguard bypassed.
 **Rule — a single-machine installation is a supported deployment shape.** Owner: the operator
 owns the installation policy, Ten owns the fixed profile, Eight owns operation demands, and Two
 owns durability receipts. Predicate: when only one machine is enrolled, the installation carries
-no peer dependency and may dispatch irreversible effects `local-durable` only for the fixed
-profile's closed set: its installed paid provider call, its reply-only Telegram `ordinary-reply`
-send, and its text-only, reply-only Slack `ordinary-reply` send in one workspace to the bound
-operator's pre-bound DM or thread. These operations are singled out because the agent cannot undo
-them alone. At install time,
-the profile presents that set and this loss model for one independently verified operator
-acceptance that enters force for the installation: permanent loss of the machine can destroy the
-authority, work, captures, observations and accounting evidence needed to reconstruct a paid call
-or send; no peer survives; and an unknown earlier effect cannot safely be repeated from memory or
-a new installation. The operator accepts the profile set as a whole and does not hand-list its
-operations. **Check:** the effect doorway accepts a local irreversible operation only when the
-current signed P-08 policy binds the installation, profile, closed operation set, full causal-prefix
-requirement, and accepted loss model, and the exact local prefix is durable before dispatch. Missing or stale
-policy, an operation outside the set, an incomplete local prefix, or automatic fallback after a
-peer is lost refuses. The same profile operation with its complete local receipt is the positive
-neighbor. Whenever a second machine is enrolled, `replicated(1)` is the default; every operation
-whose demand names replication requires an acknowledged copy on that second independently failing
-machine. Such an operation refuses in the single-machine shape instead of adding a peer dependency.
+no peer dependency: every operation its granted role calls for may run `local-durable`, with
+its complete local cause recorded before the effect. At install time, the profile presents this
+loss model for one independently verified operator acceptance that enters force for the
+installation: permanent loss of the machine can destroy the authority, work, captures,
+observations and accounting evidence needed to reconstruct an effect; no peer survives; and an
+unknown earlier effect cannot safely be repeated from memory or a new installation. The operator
+accepts this loss model once for the installation, without hand-listing operations. Secrets
+custody, spend caps, stop, durable intake and effect uniqueness, including no duplicate sends,
+remain enforced. **Check:** the effect doorway accepts a local irreversible operation only when
+the current signed P-08 policy binds the installation, profile, full causal-prefix requirement
+and accepted loss model, and the exact local prefix is durable before dispatch. Missing or stale
+policy, an incomplete local prefix, or automatic fallback after a peer is lost refuses. An
+operation within the granted role with its complete local receipt and current policy is the
+positive neighbor. Whenever a second machine is enrolled, `replicated(1)` is the default; every
+operation whose demand names replication requires an acknowledged copy on that many independently
+failing peers before dispatch. Losing an enrolled peer never lowers that demand automatically.
 A second process on the same machine is not a peer. No demand is named `replicated(0)`.
 
 **Rule — ordinary bounded operations retain their whole cause at least locally.** An ordinary
-reversible operation may run on one machine outside the irreversible provider/reply set.
+reversible operation may run on one machine.
 **Check:** the effect doorway admits it only when none of the five sign-off conditions below holds, its resource and lifetime bounds are finite and enforced, and its whole causal record is
 retained durably at least locally, with the complete required prefix durable before dispatch.
 Declared loss consequences may require stronger durability; calling an operation ordinary
