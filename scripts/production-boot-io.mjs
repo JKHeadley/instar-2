@@ -13,7 +13,8 @@ function readInteractiveConfig(path) {
   let value = {};
   try {
     if (!lstatSync(path).isFile()) throw Error('interactive profile config must be a regular file');
-    value = JSON.parse(readFileSync(path, 'utf8'));
+    // The worker can rename entries here: refuse a link swapped in after lstat, too.
+    value = JSON.parse(readFileSync(path, { encoding: 'utf8', flag: constants.O_RDONLY | constants.O_NOFOLLOW }));
   } catch (error) { if (error?.code !== 'ENOENT') throw error; }
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw Error('interactive profile config must be an object');

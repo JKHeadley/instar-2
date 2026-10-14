@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error Physical adapter stays plain JavaScript.
 import { prepareSubscriptionInteractive } from '../../scripts/production-boot-io.mjs';
@@ -78,4 +79,28 @@ it('refuses missing directories and links without changing their targets', () =>
   expect(() => prepareSubscriptionInteractive(join(root, 'absent'))).toThrow();
   const directoryLink = join(fresh(), 'link'); symlinkSync(root, directoryLink);
   expect(() => prepareSubscriptionInteractive(directoryLink)).toThrow(/config directory/);
+});
+
+it('refuses a config-to-secret symlink swap between the file check and its read', () => {
+  const root = fresh(), file = join(root, '.claude.json'), secret = join(root, 'runner-custody');
+  writeFileSync(file, '{}'); writeFileSync(secret, '{"token":"synthetic-custody-only"}');
+  // Deterministic race at the OS read boundary. Old lstat-then-read followed the swapped link
+  // and copied its token into worker-readable config; O_NOFOLLOW must refuse the same race.
+  const script = `import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import {syncBuiltinESMExports} from 'node:module';
+import {prepareSubscriptionInteractive} from ${JSON.stringify(new URL('../../scripts/production-boot-io.mjs', import.meta.url).href)};
+const file=${JSON.stringify(file)}, secret=${JSON.stringify(secret)}, root=${JSON.stringify(root)};
+const read=fs.readFileSync;
+fs.readFileSync=(path,...args)=>{
+ if(path===file){fs.unlinkSync(file);fs.symlinkSync(secret,file);}
+ return read(path,...args);
+};
+syncBuiltinESMExports();
+assert.throws(()=>prepareSubscriptionInteractive(root),{code:'ELOOP'});
+assert.equal(read(secret,'utf8'),'{'+'"token":"synthetic-custody-only"}');
+assert.equal(fs.existsSync(root+'/settings.json'),false);
+`;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8', timeout: 10000 });
+  expect(result.status, result.stderr).toBe(0);
 });
