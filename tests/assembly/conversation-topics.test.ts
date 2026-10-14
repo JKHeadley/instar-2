@@ -79,7 +79,8 @@ it('the cap queues durably, retires an idle topic and resumes it with a fresh id
   await f.port.run(f.request('7:c'));
   expect(f.launches.map(row => row.topic)).toEqual(['7', '8', '7']);
   expect(f.launches[2]!.worker.claim).not.toBe(f.launches[0]!.worker.claim);
-  expect(f.delivered[2]!.input.text).toContain('answer in 7');
+  expect(f.delivered[2]!.input.text).not.toContain('answer in 7');
+  expect(f.state().topics['7']!.inputs[0]!.outcome?.text).toBe('answer in 7');
   expect(f.delivered[2]!.input.text).toContain('shared memory: Wren');
   await f.port.close();
 });
@@ -172,4 +173,22 @@ it('reclaims an idle topic when the installation resource ceiling is tighter tha
   expect(await f.port.run(f.request('8:b'))).toMatchObject({ state: 'complete' });
   expect(f.counts().peak).toBe(1); expect(f.launches.map(row => row.topic)).toEqual(['7', '8']);
   await f.port.close();
+});
+
+it.each([50000, 200000])('new topics inherit the earlier installation lifetime after restart (%s)', async allowanceDeadline => {
+  const f = fixture(); await f.port.run(f.request('7:a')); await f.port.close();
+  const deadline = Math.min(allowanceDeadline, 100000);
+  f.advance(deadline - 1500);
+  const next = value(createConversationTopicsPort({ ...f.config, allowanceDeadline,
+    createAdapter: (topic, resolve) => ({ ...f.config.createAdapter(topic, resolve),
+      deliver: async input => ({ state: 'busy-not-dispatched', evidence: input.operation }) }),
+  }));
+  expect(next.available()).toBe(true);
+  expect(await next.run(f.request('8:b'))).toMatchObject({ state: 'queued' });
+  expect(f.state().topics['8']!.edge!.budget.deadline).toBe(deadline);
+  f.advance(500); expect(next.available()).toBe(false);
+  expect(() => next.reserveCall(f.state().topics['8']!.claim!, 1)).toThrow(/parent lifetime/);
+  await expect(next.run(f.request('9:c'))).rejects.toThrow(/unavailable/);
+  expect((await next.collect('7:a'))?.outcome.state).toBe('complete');
+  await next.maintain(); expect(f.counts().live).toBe(0);
 });
