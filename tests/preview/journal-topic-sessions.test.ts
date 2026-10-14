@@ -8,6 +8,7 @@ import type { ConversationTopicsState } from '../../src/assembly/conversation-to
 import type { HarnessInputDelivery } from '../../src/assembly/contracts.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
+import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { readAnswer } from './answer-reading.js';
 import { createJournalWorker, openPreviewJournal, ModelNotStarted, ModelDisclosureRefused, createModelLaunchBoundary,
   type PreviewPorts } from './journal-test-worker.js';
@@ -64,10 +65,10 @@ function fixture(forum = false) {
   }));
   const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
     'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', 'conversationSession',
-    'sessionWork', 'ModelNotStarted', 'readAnswer', 'recordShape', 'shapesPath', `return (${signature}${body});`)(journal,
+    'sessionWork', 'ModelNotStarted', 'conversationSessionAnswer', 'readAnswer', 'recordShape', 'shapesPath', `return (${signature}${body});`)(journal,
     async () => {}, () => false, () => false, () => { throw Error('fallback'); }, () => { throw Error('fallback'); },
     (input: unknown) => input, ModelDisclosureRefused, createModelLaunchBoundary(), true, { port, authority: 'grant' },
-    ModelNotStarted, readAnswer, () => {}, '/unused') as PreviewPorts['model'];
+    ModelNotStarted, conversationSessionAnswer, readAnswer, () => {}, '/unused') as PreviewPorts['model'];
   const worker = createJournalWorker(journal, { topicConcurrency: 2, groupDisclosure: async () => true, now: () => now, stopped: () => false, model,
     prepareModel: input => JSON.stringify(input), checkOutbound: () => {},
     send: async input => { sent.push({ text: input.expectedText, thread: input.thread, update: input.update }); return sent.length; } });
