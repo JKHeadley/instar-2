@@ -15,7 +15,7 @@ Undo and recovery: Administrator bootout of system/ai.instar.harness-tmp-acl and
 Multi-machine posture: Deliberately machine-local; each macOS harness host provisions its own root-owned job. Existing conversation ownership, replicated intake and effect deduplication are unchanged.
 Layer below: Read both constitutional documents, retained journal status for update 715675937, launch log, host reboot time and directory birth/ACL, existing tmp-acl.sh, harnessReadiness and actual kernel probe. Confirmed the earlier train-32 disk-arbitration fault was distinct. Verified root ownership/mode, launchd last exit 0, the real installed profile's readiness, two recreated-directory replays of the exact emitted command and an unchanged usable harness temporary area.
 Bug class: live-path
-Bug evidence: reproducer=tests/preview/harness-tmp-boot.test.ts live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-33-repair-PROGRESS.md
+Bug evidence: reproducer=tests/preview/harness-tmp-boot.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-33-repair-PROGRESS.md
 Hook bypass: none
 Convergence: none
 Prompt review: No prompt, parser, reply selection or model judgment change. The failure precedes all model execution. Real evidence is kernel access and host readiness; no fresh delivered-answer acceptance is claimed.
