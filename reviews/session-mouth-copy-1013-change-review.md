@@ -29,6 +29,15 @@ Decision: session-mouth-copy-1013-idle | Use the existing host work tick to clos
 
 Decision: session-mouth-copy-1013-pins | Refresh only the composition byte pin and generated register for this source change; the native macOS contract remains a Studio gate, not newly claimed Linux evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/session-mouth-copy-1013-PROGRESS.md
 
+Prompt review: Reviewed the existing provider policy and new session prompt for fixture-specific dispatch. No branch routes on user wording or a replay identifier: the launch option and durable intake type select the worker. The full prepared envelope retains the existing response schema and current records; arbitrary questions use the same path. Captured outputs are test data only.
+Prompt finding: 034c5250da92 | protocol-literal | Existing standing-authority policy wording, unchanged here; the fixture asserts the shared grant/revocation description, not a phrase-triggered answer.
+Prompt finding: 45e37ea2e9e9 | protocol-literal | Existing tool authority policy, unchanged here; this describes allowed scope and does not choose an answer by input wording.
+Prompt finding: 6af48f94b789 | protocol-literal | Existing single-machine effect boundary wording, unchanged here; the effect checkpoint enforces it and the test pins truthful capability description.
+Prompt finding: b00ed403060a | protocol-literal | The repeated existing tool-scope instruction is policy text, not a fixture cue or input branch; the new route does not alter it.
+Prompt finding: b1bb3946362d | protocol-literal | Existing agent identity opening, unchanged here; every input uses it without test-specific dispatch.
+Prompt finding: 450c79237a95 | protocol-literal | Existing conflict/recall evidence instruction, unchanged here; matching assertions protect evidence handling for arbitrary memories.
+Deferral: src/assembly/README.md:132 | not-a-deferral=Documents the desk's explicit separate codex-worker-1013 and native-harness-1013 ownership in actual-agent-plan-1013; no unowned future task is substituted for this unit's Claude step.
+
 Subject: src/assembly/production-conversation-session.ts, src/assembly/production-provider.ts, src/assembly/README.md, tests/assembly/production-conversation-session.test.ts, tests/assembly/production-provider-subscription.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal-conversation-session.test.ts, tests/preview/group-carry-requests.test.ts, tests/preview/fixtures/conversation-session-userwalk-2026-10-13.json, src/assembly/harness.declarations.json, generated/
 
 ## Closing block
