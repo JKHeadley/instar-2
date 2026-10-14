@@ -23,9 +23,6 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing source attribution in
 Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory renderer is unchanged; literal names the exact inventory state, not a new classifier.
 
 
-simplestRobustRoute: This is the simplest robust route: ordinary merges of the reviewed heads plus existing generation tools and direct consumer checks. No new orchestration or policy mechanism. Start guards remain verified durable intake and exact reserved repair admission; end guards remain durable completion and unique parent sends; timer and repair caps bound resource use. Offline replay is evidence of composition, not unattended live acceptance; that remains the desk's gate.
-80/20: Changed tests, direct imports, journal suites and named register/briefing checks only, with foreground chunks under ten minutes; no full suite or load generation.
-VERDICT: author submission for desk review; no independent convergence or live acceptance claimed
 
 Decision: train-29-platform-record | Carry the platform design guide in a complete review of the actual train composition; the original author guide remains quoted below, with no independent convergence claim. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-29-PROGRESS.md
 
@@ -73,3 +70,7 @@ Decision: train-29-platform-record | Carry the platform design guide in a comple
 >
 > simplestRobustRoute: This is the simplest robust route: preserve existing owner contracts and add only concrete OS bindings and their evidence obligations, preventing a silent Mac dependency without new authority machinery.
 > VERDICT: author submission; independent review pending
+
+simplestRobustRoute: This is the simplest robust route: ordinary merges of the reviewed heads plus existing generation tools and direct consumer checks. No new orchestration or policy mechanism. Start guards remain verified durable intake and exact reserved repair admission; end guards remain durable completion and unique parent sends; timer and repair caps bound resource use. Offline replay is evidence of composition, not unattended live acceptance; that remains the desk's gate.
+80/20: Changed tests, direct imports, journal suites and named register/briefing checks only, with foreground chunks under ten minutes; no full suite or load generation.
+VERDICT: author submission for desk review; no independent convergence or live acceptance claimed
