@@ -133,18 +133,26 @@ describe.each(Object.keys(DOORWAY_CONFORMANCE))('native compositions through doo
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 240000);
 
-  it('certifies the exact composition exercised by the native contract', () => {
+  it('reports the declared certification state of the exact composition exercised by the native contract', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'native-contract-certificate-')));
     try {
-      // The certified tuple is this composition: its declared conformance digest is the running adapter's artifact, on this
-      // resolved runtime, and the adapter admits that conformance only because it matches its own running closure.
+      // Running the contract is evidence, not a declaration update. The desk may deliberately leave
+      // this composition unproven until its platform-bound certification is recorded.
       const tuple = parityMatrix().harnessTuples.find(row => row.harness === SELF_HOST_HARNESS && row.doorway === id && row.mode === 'self-hosting');
+      expect(tuple).toBeDefined();
       const described = createSelfHostHarness({ root, context: SELF_HOST_CONTEXT, stopped: () => false, now: () => NOW,
         log: openRecordLog(root, SELF_HOST_CONTEXT) }).adapter.describe();
-      expect(tuple).toMatchObject({ status: 'supported', conformance: [described.artifact], runtime: [currentRuntime()],
-        artifact: ['createSelfHostHarness@tests/preview/self-host-harness.mjs'] });
-      expect(described.conformance).toBe(`self-host:${tuple.conformance[0]}`);
-      expect(described.platform).toBe(`${tuple.platform}-${process.arch}`);
+      if (tuple.status === 'unproven') {
+        expect(tuple.reason.length).toBeGreaterThanOrEqual(10);
+        expect(tuple.evidence).toBeUndefined();
+        expect(tuple.conformance).toBeUndefined();
+        expect(described.conformance).toBe(`self-host:unproven:${described.artifact}`);
+      } else {
+        expect(tuple).toMatchObject({ status: 'supported', conformance: [described.artifact], runtime: [currentRuntime()],
+          artifact: ['createSelfHostHarness@tests/preview/self-host-harness.mjs'] });
+        expect(described.conformance).toBe(`self-host:${tuple.conformance[0]}`);
+        expect(described.platform).toBe(`${tuple.platform}-${process.arch}`);
+      }
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
