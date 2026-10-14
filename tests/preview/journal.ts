@@ -6446,7 +6446,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         || items.some(item => item.quote === quote)) return undefined;
       // The operator's own words carry the date; a restated absolute date only has to agree with them.
       const delay = relativeDelay(when);
-      const at = delay === undefined ? sentAt(turn) ?? turn.at : turn.at, zone = ports.timeZone ?? 'America/Los_Angeles';
+      const zone = ports.timeZone ?? 'America/Los_Angeles';
+      const intakeClock = delay !== undefined || zone === 'America/Los_Angeles' && /,?\s+Portland time$/iu.test(when);
+      const at = intakeClock ? turn.at : sentAt(turn) ?? turn.at;
       const phrase = quote.includes(when) ? when : restatedDatePhrase(quote, when, at, zone);
       if (phrase === undefined) return undefined;
       const instant = delay === undefined ? undefined : new Date(at + delay);

@@ -145,3 +145,12 @@ it('drives late admission through real recorded summary, Jev, review, delivered 
     } finally { h.close(); }
   }
 });
+
+it('resolves Portland today from intake even when Telegram sent it on the previous local day', async () => {
+  const record = records.find(row => row.update === 840342802)!;
+  const h = make({ ...record, sentAt: record.sentAt - 86400_000 });
+  try {
+    h.intake(); await h.worker.drain();
+    expect(openRequests(h.journal.view)).toMatchObject([{ day: '2026-10-14', time: '16:40', remind: true }]);
+  } finally { h.close(); }
+});
