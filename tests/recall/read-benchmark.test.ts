@@ -60,4 +60,4 @@ it('measures and compares whole-scan and indexed recorded-message reads', async 
     console.log(JSON.stringify({ facts: facts.length, conversationFacts: size, openRuns: 1, samples: { latest: 7, recall: 7, openBefore: openSamples, openAfter: 7 }, statistic: 'median-ms', maxScan: 500,
       before, after, rebuildMs, hotSourceReads: reads - atReads }));
   }
-}, 900_000);
+}, process.env.INSTAR_RECORD_BENCHMARK === '1' ? 2_400_000 : 30_000);
