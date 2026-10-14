@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { createHarnessLoginPool } from './harness-login-pool.mjs';
 import { createTopicLoginHandoff } from '../../scripts/topic-login-pool.mjs';
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
@@ -36,7 +37,7 @@ function fixture() {
   const transcript = (entry, id) => join(entry.profile.configDirectory, 'projects', project.replace(/[\/.]/g, '-'), `${id}.jsonl`);
   const writeTranscript = (entry, id, text) => { const path = transcript(entry, id); mkdirSync(join(path, '..'), { recursive: true }); writeFileSync(path, text); };
   const stores = new Map(), handoffs = new Map(), busy = new Set(), held = new Set(), deliveries = [], launches = [], closes = [], edges = [];
-  let live = 0, state = null, port;
+  let live = 0, state = null, port, answer = null;
   const handoffFor = topic => {
     if (handoffs.has(topic)) return handoffs.get(topic);
     const disk = createConversationHostStore(join(root, `login-${topic}.json`), new Uint8Array(32).fill(7));
@@ -57,7 +58,7 @@ function fixture() {
       prepareAdmission: () => {}, closeAdmission: () => {}, admissionState: () => ({ refused: false, openDelegations: [] }) } };
   const config = { ...base, createAdapter: () => { throw Error('must use topic binding'); }, topicConfig: topic => {
     const h = handoffFor(topic);
-    return { ...base, prepareTurn: h.prepareTurn, createAdapter: () => ({
+    return { ...base, currentAuthority: () => `grant:${h.current().index}`, prepareTurn: h.prepareTurn, createAdapter: () => ({
       describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: true }),
       launch: async input => {
         h.bindClaim(input.claim);
@@ -74,7 +75,7 @@ function fixture() {
         deliveries.push({ topic, login: h.current().index, input }); return { state: 'accepted', evidence: 'fake' }; },
       observe: async input => {
         if (!input.delivery || held.has(topic)) return { observations: [], cursor: input.cursor, complete: true };
-        busy.delete(topic); const text = `answer ${input.delivery.operation}`;
+        busy.delete(topic); const text = answer ?? `answer ${input.delivery.operation}`;
         return { observations: [{ kind: 'reply', delivery: input.delivery.operation, text, digest: hash(text) },
           { kind: 'turn-end', delivery: input.delivery.operation, state: 'completed' }], cursor: input.cursor + 2, complete: true };
       },
@@ -84,7 +85,7 @@ function fixture() {
   const open = () => { port = value(createConversationTopicsPort(config)); }; open();
   const request = operation => ({ operation, question: operation, context: 'recorded topic history', authority: 'grant' });
   return { get port() { return port; }, request, entries, quota, settings, get pool() { return pool; }, physical, project, transcript, writeTranscript,
-    handoffFor, handoffs, stores, held, deliveries, launches, closes, edges, state: () => state,
+    handoffFor, handoffs, stores, held, deliveries, launches, closes, edges, state: () => state, reply: text => { answer = text; },
     usage: accounts => { usage = { version: 1, accounts }; }, advance: ms => { now += ms; },
     failCopy: value => { failCopy = value; }, failCommit: value => { failCommit = value; }, failAdmit: value => { failAdmit = value; },
     stop: () => { stopped = true; },
@@ -101,6 +102,8 @@ it('moves only an idle topic; the in-flight topic finishes on A then moves, with
   expect(await f.port.run(f.request('8:second'))).toMatchObject({ state: 'complete' });
   expect(f.launches.at(-1)).toMatchObject({ topic: '8', login: 1, resume: true });
   expect(f.launches.at(-1).id).toBe(f.launches[0].id);
+  expect(f.state().topics['8'].authority).toBe('grant:1');
+  expect(f.state().topics['7'].authority).toBe('grant:0');
   f.held.delete('7'); expect(await active).toMatchObject({ state: 'complete' });
   await f.port.maintain(); expect(f.handoffFor('7').current().index).toBe(1);
   await f.port.run(f.request('7:second')); await f.port.run(f.request('7:first'));
@@ -253,4 +256,26 @@ it('the shipped configuration captures each topic account for launch, observatio
   await b.resources.admit(); await a.resources.admit(); expect(admitted).toEqual(['login-1', 'login-0']);
   db.stop({ claim: 'claim-8', incarnation: 'epoch-2' });
   expect(stopped).toEqual([{ claim: 'claim-8', incarnation: 'epoch-2' }]);
+});
+
+const recorded = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8'));
+it.each(recorded.otherShapes)('the pool replacement carries recorded $kind ($id) unchanged to the existing consumer', async row => {
+  const f = fixture(); await f.port.run(f.request('7:first'));
+  f.usage([f.quota(f.entries[0], 95), f.quota(f.entries[1], 20)]);
+  // Writer/Jev/review outputs remain quoted context. Historical delivered/empty
+  // replies also exercise the answer field with their exact recorded bytes.
+  const output = ['delivered-reply', 'empty-reply-in-recorded-context'].includes(row.kind)
+    ? JSON.stringify({ reply: row.raw, memory: [] }) : JSON.stringify({ reply: 'Continued.', memory: [] });
+  f.reply(output);
+  const request = { ...f.request('7:recorded'), context: JSON.stringify({ recordedShape: row }) };
+  const moved = await f.port.run(request);
+  expect(f.pool.state.handoffs).toHaveLength(1); expect(f.launches.at(-1)).toMatchObject({ login: 1, resume: true });
+  expect(f.deliveries.at(-1).input.text).toContain(JSON.stringify(row.raw));
+  expect(moved.text).toBe(output);
+  const after = conversationSessionAnswer(moved, 'recorded', () => {});
+  expect(after).toEqual(conversationSessionAnswer({ state: 'complete', text: output }, 'recorded', () => {}));
+  if (row.kind === 'empty-reply-in-recorded-context') expect(JSON.parse(after.text).reply).toBe('');
+  // The journal's decision consumer, exercised in journal-conversation-session.test.ts, classifies this empty field.
+  f.restart(); expect(await f.port.run(request)).toEqual(moved); expect(f.deliveries).toHaveLength(2);
+  await f.port.close();
 });

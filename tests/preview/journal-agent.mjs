@@ -2523,7 +2523,7 @@ async function main() {
       const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
       const configurationFor = (topic, binding, handoff = null) => ({
         ...(conversationSession ? { conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
-          authorized: binding.authorized, currentAuthority: () => sessionWork.authority,
+          authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
           ...(handoff ? { prepareTurn: handoff.prepareTurn } : {}) } : {}),
         createDriver: resolveIntake => {
           const create = () => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
@@ -2630,6 +2630,7 @@ async function main() {
         const runtime = () => loginRuntimes.get(entry().index);
         const binding = { entry, physical: () => physicalEntry(entry()), harness: () => runtime()?.harness ?? harness,
           authorized: () => sessionActive() && (!loginPool || runtime().live('session')),
+          authority: () => `${sessionWork.authority}; topic ${topic} account grant ${(runtime()?.sessionRecord ?? sessionActivation).reference}`,
           stopped: stoppedNow,
           admissionIO: () => createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => binding.stopped(),
             work: 'maintenance', runAs: runAsOf(binding.harness()) }) };

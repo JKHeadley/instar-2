@@ -204,10 +204,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       persist({ worker }); await lease.attach(worker.launch); guard();
     };
     const work = async (id: string) => {
-      const request = { ...row(id).request, authority: config.currentAuthority() };
       try {
         ensure(!closing && !config.stopped() && config.authorized(), 'conversation stopped or grant unavailable');
         if (config.prepareTurn && !await config.prepareTurn({ claim: state.claim, retire })) return false;
+        const request = { ...row(id).request, authority: config.currentAuthority() };
         let replaceNeeded = !state.worker || state.turns >= config.maxSteps || config.now() >= state.deadline || state.authority !== request.authority;
         if (state.worker && !replaceNeeded) {
           const observed = await adapter.observe({ ...state.worker, delivery: null, cursor: 0, limit: 2 });
