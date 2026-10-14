@@ -12,6 +12,7 @@ async function until(test: () => boolean) { for (let i = 0; i < 500 && !test(); 
 
 function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16) {
   let state: ConversationTopicsState | null = null, now = 1000, live = 0, peak = 0, stopped = false, authorized = true, saveFails = false;
+  let batchOutput: string | undefined;
   const held = new Set<string>(), launches: { topic: string; worker: HarnessWorkerHandle }[] = [];
   const delivered: { topic: string; input: HarnessInputDelivery }[] = [], closed: string[] = [];
   const edges: (SessionWorkEdge | SessionWorkEdgeClose)[] = [];
@@ -39,7 +40,7 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16) {
       observe: async input => {
         if (!input.delivery || held.has(topic)) return { observations: [], cursor: input.cursor, complete: true };
         const ids = state!.topics[topic]!.inputs.find(row => row.request.operation === input.delivery!.operation)!.batch ?? [];
-        const text = ids.length > 1 ? JSON.stringify({ results: ids.map(operation => ({ operation, answer: { reply: `answer to ${operation}`, memory: [] } })) }) : `answer in ${topic}`;
+        const text = batchOutput ?? (ids.length > 1 ? JSON.stringify({ results: ids.map(operation => ({ operation, answer: { reply: `answer to ${operation}`, memory: [] } })) }) : `answer in ${topic}`);
         return { observations: [{ kind: 'reply', delivery: input.delivery.operation, text, digest: digest(text) },
           { kind: 'turn-end', delivery: input.delivery.operation, state: 'completed' }], cursor: input.cursor + 2, complete: true };
       },
@@ -49,6 +50,7 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16) {
   let port = value(createConversationTopicsPort(config));
   const request = (operation: string) => ({ operation, question: 'hello', context: 'shared memory: Wren; own topic history', authority: 'grant' });
   return { get port() { return port; }, config, request, held, launches, delivered, closed, edges,
+    batchOutput: (text: string) => { batchOutput = text; },
     state: () => state!, counts: () => ({ live, peak }), advance: (ms: number) => { now += ms; },
     stop: () => { stopped = true; }, revoke: () => { authorized = false; }, failSave: () => { saveFails = true; },
     restart: (allowanceDeadline = config.allowanceDeadline) => { port = value(createConversationTopicsPort({ ...config, allowanceDeadline })); } };
@@ -225,5 +227,41 @@ it('recovers a closed batch before its terminal snapshot without dispatching any
   expect(f.delivered).toHaveLength(1);
   expect(f.state().topics['7']!.inputs.map(row => row.outcome?.text))
     .toEqual(complete.topics['7']!.inputs.map(row => row.outcome?.text));
+  await f.port.close();
+});
+
+
+it.each([
+  '{}',
+  JSON.stringify({ results: [{ operation: '7:one', answer: { reply: 'one' } }] }),
+  JSON.stringify({ results: [{ operation: '7:two', answer: { reply: 'two' } }, { operation: '7:one', answer: { reply: 'one' } }] }),
+  JSON.stringify({ results: [{ operation: '7:one', answer: { reply: 'one' } }, { operation: '7:one', answer: { reply: 'duplicate' } }] }),
+])('a malformed or misattributed batch cannot partially settle as success: %s', async output => {
+  const f = fixture(); f.batchOutput(output);
+  const results = await f.port.runBatch(['7:one', '7:two'].map(f.request));
+  expect(results.every(result => result.state === 'uncertain')).toBe(true);
+  expect(f.state().topics['7']!.inputs.every(row => row.state === 'settled' && row.outcome?.state === 'uncertain')).toBe(true);
+  await f.port.close(); f.restart(); await f.port.maintain(); expect(f.delivered).toHaveLength(1); await f.port.close();
+});
+
+it('a batch cannot borrow another topic identity or bypass stop', async () => {
+  const f = fixture();
+  await expect(f.port.runBatch(['7:one', '8:two'].map(f.request))).rejects.toThrow(/one topic/);
+  expect(f.delivered).toHaveLength(0); f.stop();
+  await expect(f.port.runBatch(['7:one', '7:two'].map(f.request))).rejects.toThrow(/unavailable/);
+  expect(f.delivered).toHaveLength(0);
+});
+
+it('an invalid recovered batch settles uncertain and does not wedge later input', async () => {
+  const f = fixture(); await f.port.runBatch(['7:one', '7:two'].map(f.request));
+  const complete = structuredClone(f.state());
+  const interrupted = { ...complete, topics: { ...complete.topics, '7': { ...complete.topics['7']!,
+    inputs: complete.topics['7']!.inputs.map(row => ({ ...row, state: 'accepted' as const, outcome: null, reply: null, cursor: 0 })) } } };
+  const load = f.config.store.load;
+  f.config.store.load = () => interrupted; f.restart(); f.config.store.load = load; f.batchOutput('{}');
+  await f.port.maintain();
+  expect(f.state().topics['7']!.inputs.every(row => row.outcome?.state === 'uncertain')).toBe(true);
+  expect(f.delivered).toHaveLength(1);
+  expect((await f.port.run(f.request('7:later'))).state).toBe('complete');
   await f.port.close();
 });

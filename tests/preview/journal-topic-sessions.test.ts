@@ -30,7 +30,7 @@ function fixture(forum = false) {
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 200, maxReplies: 30,
     maxTurns: 30, maxBytes: 262144, cursor: 0 });
   const topicOf = Function('journal', `return operation => {${topicOfBody}}`)(journal) as (operation: string) => string;
-  let evidence: unknown = null, replyOverride: string | undefined;
+  let evidence: unknown = null, replyOverride: string | undefined, batchFailure: Error | undefined;
   let now = 1000, state: ConversationTopicsState | null = null, live = 0;
   const held = new Set<string>(), deliveries: { topic: string; input: HarnessInputDelivery }[] = [];
   const launches: string[] = [], sent: { text: string; thread: number | undefined; update: number }[] = [];
@@ -81,11 +81,12 @@ function fixture(forum = false) {
     return saved && { context: saved.request.context, prepared: saved.request.question,
       answer: conversationSessionAnswer(saved.outcome, id, () => {}) };
   };
-  const worker = createJournalWorker(journal, { topicConcurrency: 2, groupDisclosure: async () => true, now: () => now, stopped: () => false, model, modelBatch, collectModel,
+  const worker = createJournalWorker(journal, { topicConcurrency: 2, groupDisclosure: async () => true, now: () => now, stopped: () => false, model, modelBatch: async inputs => { if (batchFailure) throw batchFailure; return modelBatch(inputs); }, collectModel,
     sources: () => evidence ? [evidence] : [],
     prepareModel: input => JSON.stringify(input), checkOutbound: () => {},
     send: async input => { sent.push({ text: input.expectedText, thread: input.thread, update: input.update }); return sent.length; } });
   return { journal, worker, held, deliveries, launches, sent, port, live: () => live, state: () => state!,
+    failBatch: (error: Error | undefined) => { batchFailure = error; },
     evidence: (value: unknown) => { evidence = value; }, reply: (value: string) => { replyOverride = value; },
     advance: (ms: number) => { now += ms; }, close: async () => { await port.close(); journal.close(); } };
 }
@@ -173,5 +174,25 @@ it.each(recordedBatchShapes.otherShapes)('batch path preserves recorded $kind fr
     if (sample.kind === 'empty-reply-in-recorded-context')
       expect(f.journal.view.order.every(turn => turn.failureClass === 'empty')).toBe(true);
     const count = f.sent.length; await f.worker.drain(); expect(f.sent).toHaveLength(count);
+  } finally { await f.close(); }
+});
+
+it.each([new ModelNotStarted(), new ModelDisclosureRefused()])('a definitely unstarted batch restores every unused reservation: %s', async error => {
+  const f = fixture();
+  try {
+    f.failBatch(error); f.worker.intake([update(1, 'First waiting question', 7), update(2, 'Second waiting question', 7)]);
+    await f.worker.drain();
+    expect(f.deliveries).toHaveLength(0);
+    expect(f.sent.every(row => row.text !== 'Answer for topic 7.')).toBe(true);
+    expect(f.journal.view.order.every(turn => !turn.reserved)).toBe(true);
+    expect(f.journal.view.calls).toBe(0);
+    f.failBatch(undefined); await f.worker.drain();
+    const expected = error instanceof ModelNotStarted ? 0 : 2;
+    expect(f.sent.filter(row => row.text === 'Answer for topic 7.')).toHaveLength(expected);
+    expect(f.deliveries).toHaveLength(expected);
+    if (error instanceof ModelNotStarted) {
+      expect(f.journal.view.order.every(turn => turn.held === 'model not started' && !turn.reserved)).toBe(true);
+      expect(f.sent.length).toBeGreaterThan(0);
+    } else expect(f.journal.view.order.every(turn => turn.sent)).toBe(true);
   } finally { await f.close(); }
 });

@@ -7981,9 +7981,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         throw Error('preview: bounded topic concurrency required');
       const drainTopic = async (topic: number | string | null) => {
       let blockedEarlier = false;
+      const batchDeferred = new Set<string>();
       for (const turn of journal.view.order) {
         if (topic !== null && (turn.thread ?? 'main') !== topic) continue;
-        if (!turn.accepted || turn.editOf || turn.sent || turn.intent) continue;
+        if (!turn.accepted || turn.editOf || turn.sent || turn.intent || batchDeferred.has(turn.id)) continue;
         if ((turn.requestedAction !== undefined) !== due) continue;
         // Past the ordinary turn allowance only the minimal responder answers (Rule 15).
         if (outsideAllowance(journal.view, turn)) continue;
@@ -8219,6 +8220,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 || isStopCommand(pending.text) || isStatusCommand(pending.text) || pendingMemory()
                 || journal.view.order.some(item => item.accepted && item.editOf === pending.id)
                 || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0) || waiting.length >= 64) break;
+              const inbound = JSON.parse(pending.raw) as TelegramUpdate;
+              if (telegramInboundMedia(inbound.edited_message ?? inbound.message)) break;
               const packet = await prepareRecall(() => preparedFor(pending));
               if ('reason' in packet || packet.prepared === undefined) break;
               gate();
@@ -8235,7 +8238,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               if (!await disclosure()) throw new ModelDisclosureRefused();
               gate();
               answer = (await ports.modelBatch!(waiting))[0] ?? false;
-            } catch { blockedEarlier = true; answer = false; }
+            } catch (error) {
+              if (error instanceof ModelDisclosureRefused || error instanceof ModelNotStarted) {
+                for (const input of waiting) {
+                  batchDeferred.add(input.id);
+                  const pending = journal.view.turns.get(input.id)!;
+                  journal.append({ kind: 'hold', id: input.id,
+                    reason: error instanceof ModelDisclosureRefused ? GROUP_DISCLOSURE_HOLD : MODEL_NOT_STARTED_HOLD,
+                    unusedModel: { corrections: pending.grounding?.corrections ?? [], toolCalls: 0 }, at: ports.now() });
+                }
+              }
+              blockedEarlier = true; answer = false;
+            }
           } else answer = collected?.answer ?? await attempt(waiting[0]!);
           if (answer === false) continue;
           // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn

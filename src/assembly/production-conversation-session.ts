@@ -60,7 +60,6 @@ export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'crea
   readonly createAdapter: (resolve: (operation: string) => ConversationDelivery | undefined) => HarnessAdapterPort<2>;
 }
 
-
 /** Exact identity validation only; meaning and each answer's declarations stay with their existing reader. */
 function batchResults(ids: readonly string[], result: SessionWorkOutcome): readonly SessionWorkOutcome[] {
   if (ids.length === 1 || result.state !== 'complete') return ids.map(() => result);
@@ -190,8 +189,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           ensure(reply.delivery === input.request.operation && ended.delivery === input.request.operation
             && digest(reply.text) === reply.digest && Buffer.byteLength(reply.text) <= config.maxResultBytes,
           'recovered batch identity or bytes differ');
-          const results = batchResults(input.batch, { state: 'complete', text: reply.text,
-            detail: 'recovered correlated batch reply', edge: state.edge!.id, child: state.worker.launch });
+          let results: readonly SessionWorkOutcome[];
+          try { results = batchResults(input.batch, { state: 'complete', text: reply.text,
+            detail: 'recovered correlated batch reply', edge: state.edge!.id, child: state.worker.launch }); }
+          catch { continue; } // Invalid results fall through to the existing uncertain settlement after retirement.
           persist({ inputs: state.inputs.map(item => {
             const index = input.batch!.indexOf(item.request.operation);
             return index < 0 || item.state === 'settled' ? item : { ...item, state: 'settled', reply: reply.text,
