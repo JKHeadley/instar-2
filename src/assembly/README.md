@@ -20,6 +20,34 @@ Claude, Codex and native tool turns: acquire missing information through existin
 authorized reads, cite it, and report actual failed attempts. It changes no tool
 authority or resource limit; text-only turns retain their no-tools instruction.
 
+## Continuing conversation session (experimental component)
+
+`production-conversation-session.ts` composes the existing Eight-owned session
+driver with the session-work admission, resource lease and durable edge interfaces.
+Unlike scheduled work, successive inputs use the same child. One reserved call
+allowance, lifetime deadline and finite turn count span the conversation; none
+resets on a new message. Each input receives the current memory/open-work packet
+and a separate bounded result destination. A result requires two identical reads,
+a closed harness turn and no unresolved delegated child. The host remains the
+sender and must retain intake before calling the port, record the returned answer,
+and enforce commitment, correction and completion evidence before sending.
+
+This is an offline component, not an installed conversation route or a launch
+option. The existing preview and production launchers do not call it. Its tests
+include the real production session driver over simulated physical I/O, not a live
+harness or Telegram proof. Foundation intake/effect/judgment integration and the
+copy-room launch remain the tracked work `session-mouth-copy-1013`.
+
+The host must call `close()` at shutdown, expiry or idle stop. Closing waits for
+pending admission to return before releasing its lease, preventing a late resource
+allocation from escaping cleanup. A failed turn closes admission, stops the exact
+owned driver session and retains uncertainty; it is never retried by this port.
+The driver owns durable delivery records. The port's in-memory turn set is only a
+same-instance guard, not restart deduplication. Restart recovery remains with the
+host journal and the driver's existing uncertain-delivery rules. Multi-machine
+posture is deliberately local to the admitted conversation owner and its launch;
+this port does not acquire or transfer conversation ownership.
+
 ## Bounded grounding packet (R5, `production-context-sampler.ts`)
 
 Evidence tier: offline ahead unit. It is not exported from the barrel or wired into
