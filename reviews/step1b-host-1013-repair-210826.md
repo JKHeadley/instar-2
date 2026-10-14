@@ -44,7 +44,7 @@ Decision: step1b-repair-generated-wiring | Run the delegated desk tools and rege
 
 Agreement fixture: PREVIEW-CONVERSATION-RESULT-COLLECTION resolves to the shipped-closure journal regression file; the artifact pin is computed by the delegated desk rehash tool.
 
-Generated register: Regenerated with the delegated desk scripts and build-register replay; source roster and grounding inventory pins track this branch. No runtime certificate is inferred from replay.
+Generated register: Replay publication uses source commit 5b6304b4870f5f31b7cf47fbb92a03cba94f7348. Regenerated with the delegated desk scripts and build-register replay; source roster and grounding inventory pins track this branch. No runtime certificate is inferred from replay.
 
 simplestRobustRoute: This is the simplest route: read the one existing durable host outcome into the one existing journal answer/send consumer; take the earlier existing lifetime; reuse the journal grounding already prepared. The optional collector prevents a demonstrated lost-result boundary without new stores or dispatch. Original operation and packet bind recovery; stop, disclosure, allowance and send-intent checks remain. Targeted shipped-closure tests with physical IO substituted demonstrate unattended completion; no live installation certificate is claimed.
 80/20: Repair the three demonstrated failures and prove their positive and negative neighbors with targeted tests and archived shapes. The Studio owns the full suite, live copy walk and macOS conformance proof.
