@@ -32,6 +32,8 @@ export interface SessionWorkEffect {
   readonly type: 'SessionWorkEffect'; readonly schemaVersion: 1;
   readonly id: string; readonly edge: string; readonly operation: string; readonly digest: string;
   readonly state: 'prepared' | 'observed'; readonly detail: string; readonly at: number;
+  /** Complete local cause for a connected-account action; never credential values. */
+  readonly cause?: string;
 }
 /** The same edge's settled disposition. Every path through the run writes exactly one, after the
  * child session has been stopped, so `complete` is never written over a child still running. */
