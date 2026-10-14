@@ -15,7 +15,7 @@ Undo and recovery: Revert this repair commit to restore the old assertions; no d
 Multi-machine posture: Checker fixtures bind the current runtime and exercise both matching and other platforms. Physical native contract verification and certification remain on macOS; WSL runs portable assertions only.
 Layer below: Inspected parityMatrix, lintParityRegister, compositionClosure/compositionDigest and selfHostCompositionEvidence. The committed declaration explicitly withdrew certification after step1b-host-1013 changed composition bytes; the checker correctly accepts that reasoned unproven state.
 Bug class: unit
-Bug evidence: reproducer — supplied Studio fast log on 943602ba shows two supported-versus-unproven assertions and undefined runtime.replace; repaired checker tests pass all five cases and seven portable native-contract cases pass, including unproven adapter reporting.
+Bug evidence: reproducer=tests/types/shipped-clients.test.ts
 Hook bypass: none
 Convergence: none
 Decision: train28-repair-cert-fixture | Exercise certified checker behavior using an in-memory positive fixture; keep deployed certification unchanged and verify the adapter reports its actual unproven state. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-28-repair-052720-PROGRESS.md
