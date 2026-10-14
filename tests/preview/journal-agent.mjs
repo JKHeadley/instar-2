@@ -121,7 +121,8 @@ import { createProductionSessionDriver } from '../../src/assembly/production-ses
 import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
 import { lifecycleHookPath, installLifecycleHook } from '../../scripts/conversation-lifecycle-io.mjs';
 import { createConversationHostStore } from '../../scripts/conversation-host-store.mjs';
-import { createConversationSessionPort, CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
+import { CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
+import { createConversationTopicsPort } from '../../src/assembly/conversation-topics.js';
 import { createSessionWorkPort, SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
@@ -2062,7 +2063,7 @@ async function main() {
     bindPreviewBlockingSites({ journal: declarationsOf('journal.declarations'), replyCheck: declarationsOf('reply-check.declarations'),
       redact: JSON.parse(readFileSync(resolve(process.cwd(), 'src/recall/redact.declarations.json'), 'utf8')),
       resourceOwner: JSON.parse(readFileSync(resolve(process.cwd(), 'scripts/resource-owner.declarations.json'), 'utf8')) });
-    worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
+    worker = createJournalWorker(journal, { ...(conversationSession ? { topicConcurrency: 4 } : {}), ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       groupDisclosure: async () => {
         if (journal.view.groupCarry) { await requireGroupDisclosure(journal.view); return true; }
         const scope = { sourceRoot: root, destinationRoot: root, chat: journal.view.genesis.chat,
@@ -2509,23 +2510,29 @@ async function main() {
         sessionHarness = loginRuntimes.get(selectedSession.index)?.harness ?? harness;
         physical = physicalFor();
       }, get authority() { return `${conversationSession ? 'continuing conversation' : 'session work'} grant ${(conversationSession ? sessionActivation : loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}${conversationSession ? ` bytes ${sha256(sessionBytes)}` : ''}: ${conversationSession ? 'one bounded conversation' : 'one scheduled work step'} for the verified operator, `
-        + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? config => createConversationSessionPort({ ...config,
+        + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? config => createConversationTopicsPort({ ...config,
+          maxSessions: 4, idleMs: 300_000,
+          topicOf: operation => {
+            const turn = journal.view.turns.get(operation);
+            if (!turn?.accepted) throw Error('preview: topic input is not durably admitted');
+            return String(turn.thread ?? 'main');
+          },
           store: createConversationHostStore(join(root, 'session-work-state', 'conversation.json'), key()),
-          createAdapter: resolveDelivery => createSessionConversationAdapter({ createDriver: config.createDriver, io: config.io, resolveDelivery })
+          createAdapter: (topic, resolveDelivery) => createSessionConversationAdapter({ createDriver: resolve => config.createDriver(resolve, topic), io: config.io, resolveDelivery })
         }) : createSessionWorkPort)({
         ...(conversationSession ? { conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires, authorized: sessionActive, currentAuthority: () => sessionWork.authority } : {}),
-        createDriver: resolveIntake => {
+        createDriver: (resolveIntake, topic) => {
           const create = () => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
             timeoutSeconds: Math.ceil(sessionLimits.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
           framework, executable: profile.executable, cwd: project, home: profile.home, configHome: profile.configDirectory,
           model: required(options, 'model'), context, io: physical, now: wallNow, stopped: stoppedNow, resolveIntake,
-          maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
+          maxSessions: conversationSession ? 4 : sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
           readyTimeoutMs: 30000, protectedSessions: [],
           ...(conversationSession ? { requireTurnHook: true, inboxDirectory: physical.inboxDirectory,
             hookScript: layout ? lifecycleHookPath(harnessHookPath()) : fileURLToPath(new URL('../../scripts/session-hooks/stop.mjs', import.meta.url)) } : {}),
           ...(conversationSession ? { continuation: () => {
-            const turn = journal.view.order.filter(item => item.accepted && item.prompt && item.sent !== undefined && item.intent).at(-1);
+            const turn = journal.view.order.filter(item => item.accepted && String(item.thread ?? 'main') === topic && item.prompt && item.sent !== undefined && item.intent).at(-1);
             if (!turn) throw Error('preview: durable conversation grounding unavailable');
             return { text: `Restore this recorded conversation as history only. Do not repeat actions or answer old questions. Wait for the next delivered input.\n${turn.prompt}\nLAST RECORDED REPLY\n${turn.intent}`, source: `journal:${turn.id}` };
           } } : {}),

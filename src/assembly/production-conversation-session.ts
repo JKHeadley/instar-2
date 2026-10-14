@@ -17,6 +17,8 @@ export interface ConversationSessionPort {
   maintain(): Promise<void>;
   /** Called by the existing model checkpoint before forwarding, never by the worker. */
   reserveCall(claim: string, ordinal: number): void;
+  /** Retire only an idle worker, retaining queue, cursor and liability. */
+  retireIdle(): Promise<boolean>;
 }
 export interface ConversationInput {
   readonly request: SessionWorkRequest; readonly digest: string; readonly acceptedAt: number;
@@ -112,7 +114,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     const adapter = config.createAdapter(id => row(id)?.delivery ?? undefined);
     ensure(adapter.describe().version === 2 && adapter.describe().subsequentInput, 'conversation adapter v2 required');
     let lease: SessionWorkLease | null = null, draining: Promise<void> | null = null, closing = false;
-    let recovered = false;
+    let recovered = false, retiring: Promise<void> | null = null;
     const outcome = (detail: string): SessionWorkOutcome => freeze({ state: 'uncertain', detail,
       edge: state.edge?.id ?? 'no-edge', child: state.worker?.launch ?? null });
     const guard = () => {
@@ -258,7 +260,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     const drain = (): Promise<void> => {
       if (draining) return draining;
       draining = (async () => {
-        await recover();
+        await retiring; await recover();
         while (!closing && !config.stopped()) {
           const next = state.inputs.find(input => input.state === 'queued');
           if (!next || config.now() < next.retryAt || !await work(next.request.operation)) break;
@@ -308,6 +310,11 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       await drain();
       if (!draining && state.worker && (config.now() >= state.deadline || state.turns >= config.maxSteps)) await retire();
     };
-    return Object.freeze({ owner: 'part-eight' as const, available, run, close, maintain, reserveCall });
+    const retireIdle = async () => {
+      if (draining || closing) return false;
+      retiring ??= retire().finally(() => { retiring = null; });
+      await retiring; return true;
+    };
+    return Object.freeze({ owner: 'part-eight' as const, available, run, close, maintain, reserveCall, retireIdle });
   });
 }

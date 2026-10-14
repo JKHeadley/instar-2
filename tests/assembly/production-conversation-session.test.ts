@@ -357,3 +357,18 @@ it('a grant superseded during asynchronous resource admission cannot launch or c
   expect(f.launches).toHaveLength(0); expect(f.state().spent).toBe(0); expect(released).toBe(true);
   await f.port.close();
 });
+
+it('an input arriving during idle retirement waits for exact stop before replacement', async () => {
+  const f = fixture(); await f.port.run(f.request('one'));
+  let release!: () => void;
+  const control = f.adapter.control;
+  f.adapter.control = async input => { await new Promise<void>(resolve => { release = resolve; }); return control(input); };
+  const retirement = f.port.retireIdle();
+  const next = f.port.run(f.request('two'));
+  await Promise.resolve(); await Promise.resolve();
+  expect(f.delivered).toHaveLength(1);
+  f.adapter.control = control; release();
+  expect(await retirement).toBe(true); expect(await next).toMatchObject({ state: 'complete' });
+  expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(2);
+  await f.port.close();
+});

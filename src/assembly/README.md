@@ -124,6 +124,32 @@ puts the existing admitted driver behind version 2. The host never selects a ven
 `journal-agent.mjs` opts in with `--conversation-session on` and the existing
 reviewed conversation activation; default behavior and scheduled work remain separate.
 
+`conversation-topics.ts` composes one such host per admitted Telegram topic, including
+one `main` host for the general topic. The runner supplies the topic from the durable
+intake record, never from model output. Each topic keeps its own queue, observation
+cursor, process identity and cumulative share of the installation allowance. The
+journal's existing forum packet grounds in that topic's full projected history (or
+its current summary and suffix), with shared agent memory and open work. Reply
+routing remains the intake record's chat/thread at the existing send doorway.
+
+The runner admits at most four live topic workers. A fifth waits durably for a slot;
+an idle worker retires at five minutes or earlier when another topic needs its slot.
+Retirement keeps all records, and the next input launches a fresh worker from them.
+Independent topic drains also accept newly arriving topics while another awaits a
+reply, with one FIFO drain per topic and four drains at once. The serial compatibility
+path is unchanged when the conversation option is off. All drains settle before the
+journal writer guard is released, including on error.
+
+The encrypted snapshot holds all topic states and ONE installation reservation.
+Topic and process edges draw on it; the checkpoint atomically sums durable charges
+across topics before forwarding a call. Directory-wide transcript counts are not
+used on this route because they mix other topics' calls. Snapshots admit at most
+4096 topic records and retain all memory. The old group-wide snapshot upgrades in
+place: first retire its exact worker, then split inputs by their recorded topics,
+keep unresolved dispatched inputs uncertain, and retain the old charges and original
+inputs as migration evidence. An interrupted reservation, malformed custody or
+unconfirmed retirement refuses without resetting liability or replaying effects.
+
 The host owns accepted inputs, FIFO disposition, exact-identity deduplication,
 reply captures, observation cursors, process generations and cumulative call charges.
 Its injected store is atomic and durable before return. The physical composition uses
