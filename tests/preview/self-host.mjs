@@ -9,6 +9,7 @@
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { hashBytes } from '../../src/facts/index.js';
+import { consumeResult } from '../../src/index.js';
 import { DEVELOPMENT_TOOLS } from '../../src/assembly/index.js';
 import { redact } from '../../src/recall/redact.js';
 import { appendDurable, createSelfHostHarness, dispatchTool, latchStop, openRecordLog, stoppedAt } from './self-host-harness.mjs';
@@ -152,7 +153,14 @@ export async function doorwayProvider({ doorwayId, io, profile, activation, mode
   if (stopped()) throw Error('self-host: subscription preview stopped or revoked');
   validateSubscriptionActivation(activation, profile, model, now(), framing);
   return Object.freeze({ doorway: doorway.id, model, framing, invocationBinding: stage2InvocationBinding({ activation, profile, model, framing }),
-    routeFactory: stage2RouteFactory({ activation, profile, model, io, now, active: () => !stopped(), framing, create: doorway.create }) });
+    routeFactory: stage2RouteFactory({ activation, profile, model, io, now, active: () => !stopped(), framing,
+      // Keep the actual admission failure: the generic route-factory message hid the
+      // cause of J5's pre-dispatch refusal. This does not change which routes admit.
+      create: input => {
+        const result = doorway.create(input);
+        return consumeResult(result, { Success: () => result,
+          Refused: refusal => { throw Error(`preview: subscription route refused: ${redact(refusal.detail).text}`); } });
+      } }) });
 }
 
 /**
@@ -202,5 +210,10 @@ const main = async () => {
   if (!report.passed) process.exitCode = 1;
 };
 if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
-  try { await main(); } catch (error) { process.stderr.write(`self-host refused: ${redact(String(error?.message ?? error)).text}\n`); process.exitCode = 1; }
+  try { await main(); } catch (error) {
+    const reason = redact(String(error?.message ?? error)).text;
+    process.stderr.write(`self-host refused: ${reason}\n`);
+    process.stdout.write(`${JSON.stringify({ passed: false, failure: { stage: 'self-host', reason } })}\n`);
+    process.exitCode = 1;
+  }
 }

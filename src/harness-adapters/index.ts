@@ -23,3 +23,5 @@ export { decodeHarnessValidationFloor } from './validation-floor.js';
 export * as holderLifecycle from './holder.js';
 export * as sessionAdapters from './adapter.js';
 export * as recoveryBoundaries from './regression-boundaries.js';
+export { NATIVE_STEPS_ROLE, parseNativeStep, nativeStepEnvelope, runNativeLoop } from './native-loop.js';
+export type { NativeCall, NativeContainment, NativeStepRecord, NativeStepResult, NativeLoopPorts, NativeLoopOptions } from './native-loop.js';

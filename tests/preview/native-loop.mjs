@@ -16,8 +16,11 @@ import { fileURLToPath } from 'node:url';
 import { NATIVE_TOOL_LIMITS, NATIVE_TOOL_NAMES, SUBSCRIPTION_TOOL_RUNTIME_READS } from '../../src/assembly/production-provider.js';
 import { SHELL_HOST_CONFIG_READS, SHELL_HOST_RECORD_READS } from './tool-admission.mjs';
 
-/** The message role that carries the loop's state to the model; the system prompt names it. */
-export const NATIVE_STEPS_ROLE = 'tool-steps';
+import { NATIVE_STEPS_ROLE, parseNativeStep as parseStep, nativeStepEnvelope as stepEnvelope,
+  runNativeLoop as runWorkerLoop } from '../../src/harness-adapters/index.js';
+export { NATIVE_STEPS_ROLE };
+export const parseNativeStep = text => parseStep(text, NATIVE_TOOL_LIMITS.maxCallsPerStep);
+export const nativeStepEnvelope = (prepared, steps, remaining, limit) => stepEnvelope(prepared, steps, remaining, limit, NATIVE_TOOL_NAMES);
 const SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
 const within = (path, root) => path === root || path.startsWith(root + sep);
 const clip = (text, chars = NATIVE_TOOL_LIMITS.resultChars) => text.length > chars ? `${text.slice(0, chars)}…[truncated ${text.length - chars} chars]` : text;
@@ -54,41 +57,6 @@ export function nativeShellProfile(scratch, node, egress = null) {
     '(allow signal (target same-sandbox))', '(allow process-info* (target same-sandbox))',
     '(deny network*)', ...(egress ? [`(allow network-outbound (remote ip "localhost:${String(port)}"))`] : []),
     '(deny mach-lookup (with no-report))', ''].join('\n');
-}
-
-/**
- * Parses one step's conclusion text. A request is exactly an object with a non-empty `calls` array (and no `reply`); anything
- * else the model concluded is its answer, unchanged, for the caller's existing answer path. `null` text is not an answer.
- */
-export function parseNativeStep(text) {
-  if (typeof text !== 'string' || !text.trim()) return { kind: 'empty' };
-  let value = null;
-  const bare = text.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '');
-  if (bare.startsWith('{')) try { value = JSON.parse(bare); } catch { value = null; }
-  if (!value || typeof value !== 'object' || Array.isArray(value) || !Object.hasOwn(value, 'calls') || Object.hasOwn(value, 'reply'))
-    return { kind: 'answer' };
-  const calls = value.calls;
-  if (!Array.isArray(calls) || calls.length === 0 || calls.length > NATIVE_TOOL_LIMITS.maxCallsPerStep
-    || !calls.every(call => call && typeof call === 'object' && typeof call.tool === 'string' && call.tool.length > 0 && call.tool.length <= 64
-      && call.input !== null && typeof call.input === 'object' && !Array.isArray(call.input)))
-    return { kind: 'malformed', reason: `a tool request must be {"calls":[{"tool":<name>,"input":<object>}]} with 1 to ${NATIVE_TOOL_LIMITS.maxCallsPerStep} calls` };
-  return { kind: 'calls', calls: calls.map(call => ({ tool: call.tool, input: call.input })) };
-}
-
-/** The step's envelope: the answer's own prepared envelope with the loop state appended as one quoted-data message. Older
- * results are shortened first when the envelope would pass `limit` bytes; null when even that cannot fit. */
-export function nativeStepEnvelope(prepared, steps, remaining, limit) {
-  const envelope = JSON.parse(prepared);
-  if (!envelope || !Array.isArray(envelope.messages)) throw Error('native loop: prepared envelope malformed');
-  const state = steps.map(step => ({ step: step.step, calls: step.calls.map(call => ({ ...call })) }));
-  const render = () => JSON.stringify({ ...envelope, messages: [...envelope.messages,
-    { role: NATIVE_STEPS_ROLE, content: JSON.stringify({ tools: NATIVE_TOOL_NAMES, remaining, steps: state }) }] });
-  let bytes = render();
-  for (const call of state.flatMap(step => step.calls)) {
-    if (Buffer.byteLength(bytes) <= limit) return bytes;
-    if (typeof call.result === 'string' && call.result.length > 256) { call.result = `${call.result.slice(0, 256)}…[shortened]`; bytes = render(); }
-  }
-  return Buffer.byteLength(bytes) <= limit ? bytes : null;
 }
 
 /** Runs the turn's admission hook executable (`pre` or `post`) on one call. Any failure of `pre` is a refusal (fail closed). */
@@ -222,45 +190,12 @@ export async function runNativeLoop({ turn, prepared, step, stopped, promptLimit
   if (typeof resources?.execute !== 'function') throw Error('native loop: no host resource owner to launch tools through');
   const profilePath = join(turn.stateDirectory, 'shell.sb');
   writeFileSync(profilePath, nativeShellProfile(realpathSync(turn.scratch), realpathSync(turn.hook.node), turn.egress ?? null), { mode: 0o600 });
-  const steps = [], context = { profilePath, scratch: realpathSync(turn.scratch), stopped, fetch: fetcher, resources };
-  let calls = 0, asked = 0;
-  const unresolved = [];
-  // `models`: model calls made (at most maxSteps, the reserved liability); `steps`: those that requested tools; `calls`: tools run;
-  // `unresolved`: the worker launches whose end the owner did not prove (its cleanup not verified under the sandbox join).
-  const finish = (result, ended) => ({ ...result, native: { models: asked, steps: steps.length, calls, ended, unresolved: [...unresolved] } });
-  for (let index = 0; index < maxSteps; index++) {
-    if (stopped()) return finish({ state: 'uncertain' }, 'stopped');
-    const envelope = nativeStepEnvelope(prepared, steps, { steps: maxSteps - index - 1 }, promptLimit);
-    if (envelope === null) return finish({ state: 'complete', failureClass: 'prompt-size' }, 'prompt-size');
-    asked++;
-    const result = await step(envelope, index);
-    if (result?.state !== 'complete' || result.failureClass || typeof result.value !== 'string') return finish(result ?? { state: 'uncertain' }, 'step-failed');
-    const parsed = parseNativeStep(result.value);
-    if (parsed.kind === 'answer') return finish(result, 'answered');
-    if (parsed.kind === 'empty') return finish({ ...result, failureClass: 'empty' }, 'step-failed');
-    const record = { step: index + 1, calls: [] };
-    steps.push(record);
-    if (parsed.kind === 'malformed') { record.calls.push({ tool: null, decision: 'deny', reason: parsed.reason, result: null }); continue; }
-    if (index === maxSteps - 1) return finish({ ...result, failureClass: 'step-cap' }, 'step-cap');
-    for (const [position, call] of parsed.calls.entries()) {
-      if (stopped()) return finish({ state: 'uncertain' }, 'stopped');
-      const id = `native-${String(index + 1)}-${String(position + 1)}`;
-      const admission = await runHook(turn.hook, turn.stateDirectory, 'pre', { tool_name: call.tool, tool_input: call.input, tool_use_id: id });
-      const entry = { tool: call.tool, input: clip(JSON.stringify(call.input), 1024), decision: admission.decision, reason: admission.reason, result: null };
-      record.calls.push(entry);
-      if (admission.decision !== 'allow') continue;
-      calls++;
-      // A stop latched while the hook decided: the admitted call is recorded as stopped and never dispatched.
-      const { output, containment } = stopped() ? { output: { error: 'stopped before dispatch', interrupted: 'stopped' } }
-        : await execute(call.tool, admission.updatedInput ?? call.input, turn, context);
-      if (containment) {
-        entry.containment = containment;
-        if (containment.cleanup !== 'not-launched' && (containment.cleanup !== 'verified' || containment.membership !== 'sandbox-joined'))
-          unresolved.push({ id, ...containment });
-      }
-      await runHook(turn.hook, turn.stateDirectory, 'post', { tool_name: call.tool, tool_input: call.input, tool_use_id: id, tool_response: output });
-      entry.result = clip(JSON.stringify(output));
-    }
-  }
-  return finish({ state: 'complete', failureClass: 'step-cap' }, 'step-cap');
+  const context = { profilePath, scratch: realpathSync(turn.scratch), stopped, fetch: fetcher, resources };
+  return runWorkerLoop({ prepared, step, stopped, promptLimit, maxSteps,
+    maxCallsPerStep: NATIVE_TOOL_LIMITS.maxCallsPerStep, resultChars: NATIVE_TOOL_LIMITS.resultChars, tools: NATIVE_TOOL_NAMES,
+    admit: (call, id) => runHook(turn.hook, turn.stateDirectory, 'pre',
+      { tool_name: call.tool, tool_input: call.input, tool_use_id: id }),
+    execute: call => execute(call.tool, call.input, turn, context),
+    record: (call, id, output) => runHook(turn.hook, turn.stateDirectory, 'post',
+      { tool_name: call.tool, tool_input: call.input, tool_use_id: id, tool_response: output }) });
 }

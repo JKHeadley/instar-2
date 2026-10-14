@@ -18,6 +18,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { SELF_HOST_QUESTION, doorwayProvider, loadLoginProfile, selfHostPrompt } from './self-host.mjs';
 import { dispatchOwnedProvider } from './self-host-owners.ts';
 import { stoppedAt } from './self-host-harness.mjs';
@@ -129,3 +130,24 @@ it('the CLI login-profile loading point yields the frozen descriptor the credent
     } finally { rmSync(mutable, { recursive: true, force: true }); }
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }, 120_000);
+
+it('the real CLI returns a machine-readable failed report on refusal, with a nonzero exit', () => {
+  const result = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    'tests/preview/self-host.mjs', 'invalid-command'], { cwd: process.cwd(), encoding: 'utf8', timeout: 60_000 });
+  expect(result.status).toBe(1);
+  expect(JSON.parse(result.stdout)).toMatchObject({ passed: false, failure: { stage: 'self-host', reason: expect.stringContaining('usage') } });
+  expect(result.stderr).toContain('self-host refused:');
+}, 65_000);
+
+it('preserves the route admission cause when a physical profile binding differs, before dispatch', async () => {
+  const root = temp(), state = { outcome: 'complete', calls: 0, stdin: [] };
+  try {
+    const io = DOORWAY_CONFORMANCE[DOORWAY].io(state);
+    const provider = await doorwayProvider({ doorwayId: DOORWAY, profile: DOORWAY_CONFORMANCE[DOORWAY].profile,
+      io: { ...io, inspectSubscriptionProfile: () => ({ loginProfileIdentity: 'changed', managedConfigurationDigest: 'changed' }) },
+      activation: world.activation(), model: world.model, stopped: stoppedAt(root), now: () => NOW });
+    await expect(dispatchOwnedProvider({ root, task: 'binding-refusal', question: SELF_HOST_QUESTION, conversation: [],
+      allowance: 1, provider, stopped: stoppedAt(root), now: () => NOW })).rejects.toThrow(/subscription route refused:.*profile/);
+    expect(state.calls).toBe(0);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 60_000);

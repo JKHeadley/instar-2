@@ -1,0 +1,34 @@
+# Change review — native turn worker and self-host refusal evidence
+
+Subject base: ac3bd4d8874495f8b66b571837a1380995113d7a
+Review state: open
+Reviewed content: none
+Outcome: the native turn loop, parser and envelope builder now live in src/harness-adapters/native-loop.ts. The existing native host delegates to that worker while retaining the same admission hook, sandbox and resource owner. Invalid loop bounds refuse before model dispatch. The self-host CLI preserves the specific route admission cause and prints a failed JSON report on exceptions, rather than leaving J5 to diagnose empty stdout. The October 10 artifact establishes route refusal before dispatch, not a native tool-loop failure; its precise discarded refusal detail cannot be recovered from that artifact. The same CLI on train-19 with captured doorway frames reaches the model and durable provider observations, then fails at macOS confinement on WSL. This submission does not claim a successful live package installation or a completed continuing native conversation.
+Affected rules: 2, 26, 30, 34, 36, 42, 55, 60, 70, 74, 75, 101, 102, 105, 113, 115, 116
+Affected floors: secrets — credentials remain host-owned and route failure reasons pass the existing redactor; spend cap — each model step remains under the caller's reservation and finite integer bounds are required; stop — checked before each model step and tool call, including after admission; no duplicate sends — no send path added or changed; durable intake — caller-owned context and intake are unchanged and tool observations use the same recording hook
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: this moves orchestration on the native tool execution path and changes failure reporting at the self-host provider boundary. Admission, resource custody and durable ownership are retained, not reimplemented.
+Side effects: the host's imports now reach a typed source module, so source inventories must regenerate. The supported self-host composition digest changes because its CLI changes. The digest is recomputed against the declared Studio runtime, not certified against the WSL runtime. Exceptions now produce one JSON failure on stdout as well as redacted stderr and exit 1; successful output is unchanged. A caller that supplied non-integer, zero or infinite loop bounds now gets an explicit error before a model call.
+Undo and recovery: revert the change commits and regenerate the source inventory. No storage schema changes, no live roots changed and no migration. Existing operation and intake identities remain the owners' authority; no uncertain operation is automatically repeated.
+Multi-machine posture: machine-local worker execution, deliberately. Durable intake, lease ownership, model reservations and result retention stay with existing owners; moving the loop creates no new cross-machine state or ownership claim.
+Layer below: NativeHarnessDriverPort and createSessionHarnessAdapter's immutable first-input constraint; lane A origin/session-mouth-copy-1013 at 11c40b11 and its ConversationSessionPort; the original native host's pre/post admission hooks and resource containment; the registered doorway and credential custodian; the signed provider attempt stores and existing conformance digest checker.
+Bug class: live-path
+Bug evidence: reproducer=tests/preview/self-host-cli-profile.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/pipeline/live-proof/results/J-proofroom2-20261010-134550/j5-build.out
+Hook bypass: none
+Convergence: none
+Decision: native1013-extract | move the existing orchestration and parser into a pure worker with injected host ports; preserve the physical admission, sandbox and resource code rather than transplanting ambient I/O into src | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/native-harness-1013-PROGRESS.md
+Decision: native1013-diagnostics | retain the real route refusal detail through the existing redactor and emit failed JSON on CLI exceptions; do not misdiagnose the historical desk driver as the already-fixed mutable-profile defect | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/native-harness-1013-PROGRESS.md
+Decision: native1013-bounds | require finite positive integer loop limits before the first model call because Infinity or fractional overrides cannot express the reserved step count | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/native-harness-1013-PROGRESS.md
+Decision: native1013-proof-scope | use the captured doorway frames and native task/scope/stop captures locally; name macOS execution, exact runtime conformance and the proof-room walk as Studio checks, without changing their assertions or using serving logins | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/native-harness-1013-PROGRESS.md
+Decision: native1013-contract-gap | take the brief's explicit loop-only extraction option; record the continuing-session adapter gap and native proof-room walk mapping in the report, without adding a second conversation authority or modifying lane A | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/native-harness-1013-PROGRESS.md
+Prompt review: the existing parser and model envelope move without new semantic instructions or fixture-keyword branches. The malformed-call message is unchanged. Native task, scope and stop values captured on 2026-10-03 drive the extracted worker. The two real self-host answers from 2026-10-06 still pass the existing reading tests. No dispatch to another agent and no expected conclusion embedded in an agent briefing. The desk explicitly exempts this unit from new recorded walk captures as a READY precondition.
+
+Subject (8 paths): src/assembly/harness.declarations.json, src/harness-adapters/README.md, src/harness-adapters/index.ts, src/harness-adapters/native-loop.ts, tests/harness-adapters/native-loop.test.ts, tests/preview/native-loop.mjs, tests/preview/self-host-cli-profile.test.ts, tests/preview/self-host.mjs
+
+## Closing block
+
+simplestRobustRoute: this is the simplest robust route: extract only the existing pure turn algorithm, inject its existing effect owners, and fix the one point that discarded the diagnostic. The only new guard rejects invalid numeric loop limits, preventing an unbounded turn. No new daemon, store, authority, send path, retry policy or model selector. Start guards are the caller's admitted turn plus finite bounds; end-state is the original reply or explicit failed/stopped/capped result; resource and tool floors remain in the host. Unattended shipped-path installation is not claimed from WSL.
+80/20: author tests cover the extracted worker and the CLI diagnostic; host-only evidence is explicitly left to the Studio gate under the brief. No independent convergence is asserted.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
