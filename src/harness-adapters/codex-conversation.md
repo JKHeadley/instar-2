@@ -24,7 +24,7 @@ production worker; the shipped `unproven` declarations remain accurate.
    An RPC id is not an idempotency key. This module performs no retry or send itself.
 5. Bind a reader to the returned turn and thread ids. Capture notifications arriving
    before the RPC response until they can be bound. Feed completed item, token usage
-   and terminal notifications to it. Only completed turns expose reply text. Commentary,
+   and terminal notifications to it. Only completed turns expose the last final reply text, matching the existing Codex exec parser; earlier retried answers are not concatenated. Commentary,
    failed/interrupted output and empty bubbles are not outbound replies. A completed
    turn without text remains distinct from an open turn.
 6. Retain raw frames before projecting them. Reader state is disposable, machine-local

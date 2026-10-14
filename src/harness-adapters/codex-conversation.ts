@@ -92,7 +92,7 @@ export function createCodexTurnReader(threadId: string, turnId: string, maxReply
       if (prior.text !== next.text || prior.phase !== next.phase) invalid('conflicting completed agent message');
       return;
     }
-    const addedBytes = Buffer.byteLength(item.text) + (messages.size ? 2 : 0);
+    const addedBytes = Buffer.byteLength(item.text);
     if (messages.size >= 256 || bytes + addedBytes > maxReplyBytes) {
       invalid('reply capture bound exceeded'); return;
     }
@@ -102,7 +102,9 @@ export function createCodexTurnReader(threadId: string, turnId: string, maxReply
     // Legacy unphased messages count only when there is no explicit final-answer item.
     const all = [...messages.values()];
     const finals = all.filter(item => item.phase === 'final_answer');
-    const reply = (finals.length ? finals : all.filter(item => item.phase === null)).map(item => item.text).join('\n\n');
+    // Match the existing Codex exec adapter: the last completed answer replaces an
+    // earlier answer from a retried response, rather than concatenating both replies.
+    const reply = (finals.length ? finals : all.filter(item => item.phase === null)).at(-1)?.text ?? '';
     return Object.freeze({ threadId, turnId, status,
       reply: status === 'completed' && reply.trim() ? reply : null, cumulativeUsage, reason });
   };

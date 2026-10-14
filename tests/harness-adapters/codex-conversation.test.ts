@@ -96,12 +96,21 @@ describe('Codex continuing conversation protocol', () => {
     expect(reader.consume(done()).reply).toBe('🙂');
     const large = createCodexTurnReader('thread', 'turn', 3); large.consume(item('🙂'));
     expect(large.consume(done()).status).toBe('unverifiable');
-    const joined = createCodexTurnReader('thread', 'turn', 4);
+    const joined = createCodexTurnReader('thread', 'turn', 3);
     joined.consume(item('ab', null, 'one')); joined.consume(item('cd', null, 'two'));
     expect(joined.consume(done()).status).toBe('unverifiable');
     const many = createCodexTurnReader('thread', 'turn');
     for (let i = 0; i < 257; i++) many.consume(item('', null, `item${i}`));
     expect(many.snapshot().status).toBe('unverifiable');
+  });
+  it('returns the last completed final answer instead of concatenating retried responses', () => {
+    const reader = createCodexTurnReader('thread', 'turn');
+    reader.consume(item('first attempt', 'final_answer', 'old'));
+    reader.consume(item('replacement answer', 'final_answer', 'new'));
+    expect(reader.consume(done()).reply).toBe('replacement answer');
+    const empty = createCodexTurnReader('thread', 'turn');
+    empty.consume(item('old answer', 'final_answer', 'old')); empty.consume(item('', 'final_answer', 'new'));
+    expect(empty.consume(done()).reply).toBeNull();
   });
   it('reads terminal item snapshots and rejects malformed terminal, message and usage evidence', () => {
     const reader = createCodexTurnReader('thread', 'turn');
