@@ -71,7 +71,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/model-json.test.ts",
-        "hash": "sha256:98831eb20d1053bf09a4c6f43b63e8a0eaa598c4b2a72b86a85d5f6b31309ed1"
+        "hash": "sha256:0bfa098eaf7514e4a4f46e2d3f7de5ab8599119aff0281357e3e229259fe1049"
       }
     },
     {
