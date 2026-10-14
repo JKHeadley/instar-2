@@ -42,10 +42,12 @@ Deferral: tests/preview/journal-conversation-collection.test.ts:255 | not-a-defe
 Deferral: tests/preview/journal-conversation-collection.test.ts:256 | not-a-deferral=Executable queued-result regression or variable; no promised work is deferred
 Deferral: tests/preview/journal-conversation-collection.test.ts:261 | not-a-deferral=Executable queued-result regression or variable; no promised work is deferred
 
-Subject (12 paths): register-source/owner-references/preview.json, scripts/conversation-host-store.declarations.json, src/assembly/conversation-topics.ts, src/assembly/production-conversation-session.ts, tests/assembly/conversation-topics.test.ts, tests/assembly/production-conversation-session.test.ts, tests/preview/conversation-session-answer.ts, tests/preview/fixtures/repair-admission-rewalk-2026-10-14.json, tests/preview/journal-agent.mjs, tests/preview/journal-conversation-collection.test.ts, tests/preview/journal-conversation-session.test.ts, tests/preview/journal.ts
+Subject (13 paths): register-source/owner-references/preview.json, scripts/conversation-host-store.declarations.json, src/assembly/conversation-topics.ts, src/assembly/production-conversation-session.ts, tests/assembly/conversation-topics.test.ts, tests/assembly/production-conversation-session.test.ts, tests/preview/conversation-session-answer.ts, tests/preview/fixtures/repair-admission-rewalk-2026-10-14.json, tests/preview/journal-agent.mjs, tests/preview/journal-conversation-collection.test.ts, tests/preview/journal-conversation-session.test.ts, tests/preview/journal-topic-sessions.test.ts, tests/preview/journal.ts
 
 ## Closing block
 
 simplestRobustRoute: This is the simplest route: reuse accepted host repair e23846b7 and reserved-child lookup 2e40cac9, expose collection through the existing coordinator and bind new topics to the installation deadline. Existing admission, packet, stop, allowance and receipt checkpoints hold the floors. Targeted shipped-closure tests prove unattended completion with substituted physical dependencies, not live installation acceptance.
 80/20: Address the four reproduced integration failures and original parser assertion at source, retain accepted regressions, and verify targeted tests plus required gates. Studio owns full-suite and live acceptance; no full suite or certificate is fabricated.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
+
+Pin refresh: The delegated desk rehash tool binds PREVIEW-CONVERSATION-RESULT-COLLECTION to its separate coordinator collection regression. The chain script found no changed grounding-inventory entries. Architecture passes with no exceptions.
