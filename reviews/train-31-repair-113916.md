@@ -40,7 +40,7 @@ Deferral: tests/preview/journal-conversation-session.test.ts:534 | not-a-deferra
 
 Subject (11 paths): register-source/owner-references/preview.json, scripts/conversation-host-store.declarations.json, src/assembly/conversation-topics.ts, src/assembly/production-conversation-session.ts, tests/assembly/conversation-topics.test.ts, tests/assembly/production-conversation-session.test.ts, tests/preview/conversation-session-answer.ts, tests/preview/journal-agent.mjs, tests/preview/journal-conversation-session.test.ts, tests/preview/journal-topic-sessions.test.ts, tests/preview/journal.ts
 
-Validation: 125 targeted tests pass across host, topics and journal bridges; typecheck, build and architecture pass. Owner-reference source hashes refreshed with delegated desk tool; grounding chain was already current.
+Validation: 125 targeted tests pass across host, topics and journal bridges; typecheck, build and architecture pass. Owner-reference source hashes refreshed with delegated desk tool; grounding chain was already current. Register replay regenerated 291 entries and 116 rules from 316aa8b843b3255b4fc70df0e542f22fbf2e983a (shape-only, 48 warnings).
 
 ## Closing block
 
