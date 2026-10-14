@@ -1,5 +1,22 @@
 [
   {
+    "revision": 4,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 162,
+      "note": "Operator requires macOS and Linux compatibility without requiring a Mac."
+    },
+    "changes": [
+      {
+        "what": "Specify platform-neutral installation guarantees and concrete macOS/Linux implementations, including headless Linux and named build units.",
+        "why": "Keep the reviewed enrollment and authority record chain while removing the implicit Mac requirement.",
+        "ref": "https://github.com/JKHeadley/instar-2/pull/162"
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-10-13",
     "status": "draft",

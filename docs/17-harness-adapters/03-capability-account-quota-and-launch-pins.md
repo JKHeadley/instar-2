@@ -82,6 +82,21 @@ under an installer-owned installation root with separately owned subtrees; root 
 alone proves neither separation nor custody. Host administrator compromise is P-01's named
 residual, not a capability granted to the agent.
 
+The OS-neutral contract is a separately administered broker and a store the agent and
+harness identities cannot read, replace or administer. **macOS:** a dedicated service user,
+administrator-owned launchd LaunchDaemon, protected Keychain and separately owned files;
+the protected installer uses OS reauthentication and authenticated local IPC. **Linux: to
+build — `install-linux-broker` and `install-linux-custody`:** a separate non-login system
+user, root-owned systemd system service with that `User=`, and custodian-owned `0700`
+directories / `0600` secret files beneath protected parents. Worker groups, ACLs, inherited
+handles and elevation cannot reach them. The file store is the headless baseline; a desktop
+Secret Service or kernel keyring may only replace it after proving the same separate-identity,
+restart and recovery guarantees, never by borrowing the worker's login session. Linux's
+protected installing-person act uses the `install-linux-enrollment` polkit/sudo helper
+specified by [Ten](../14-the-assembly.md#installation-platforms). No desktop or Mac is needed.
+These units must prove a scoped operation succeeds and raw-read, replacement, debugger and
+elevation attempts fail with each worker's complete credentials.
+
 The same custodian keeps the first signing/verification material and subscription credentials
 in distinct scopes. The installer records only SecretRefs in Ten's manifest and account
 inventory. Before login admission it checks the initial grant, current custody evidence,
@@ -99,6 +114,11 @@ recovery and revocation/version references. P-01 names the actual vault service/
 its normal account-recovery route; neither agent nor harness has that account's credential,
 session, delegated access or recovery path. The custodian updates the independently retained version/revocation witness when those
 subjects change, so restore can test currency rather than trust an old package.
+On macOS the product vault adapter backs up and restores the custodian's protected material.
+**Linux: to build — `install-linux-custody`** must implement that same vault protocol from
+the system service, including restore challenge, current revocation/version verification
+and operator authentication on a replacement device without a desktop or Mac keychain.
+Local file permissions alone do not meet the independent-backup guarantee.
 The product adapter performs backup and restore;
 the person does not copy keys, hand-write records or keep the sole copy on their phone.
 A vault that loses access with the same single device does not meet this contract. This is
