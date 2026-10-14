@@ -374,7 +374,7 @@ it('accepts a summary completed after intake only when offered to the correction
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('keeps correction lineage valid when a later background summary completes', async () => {
+it('keeps correction lineage valid when a stale background summary is refused', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-later-summary-')));
   try {
     const path = join(root, 'journal.encrypted');
@@ -416,7 +416,10 @@ it('keeps correction lineage valid when a later background summary completes', a
     releaseSummary(); await background;
     const reservation = journal.view.awayEvents.find(event => event.kind === 'reserve'
       && event.id === journal.view.memory[0]!.trigger)!;
-    expect(journal.view.summaries[1]!.at).toBeGreaterThan(reservation.at);
+    expect(journal.view.summaries).toHaveLength(1);
+    expect(journal.view.lastSummaryFailure).toMatchObject({ through: 2, reason: 'summary source revision changed' });
+    expect(journal.view.lastSummaryFailure!.at).toBeGreaterThan(reservation.at);
+    expect(journal.view.lastSummaryFailure!.format).toBeUndefined();
     expect(auditJournal(journal.view).findings).toEqual([]);
     journal.close();
     const replay = openPreviewJournal(path, key);
