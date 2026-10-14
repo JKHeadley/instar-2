@@ -105,17 +105,25 @@ it('discards the wrapper, so nothing beside the object can reach the answer', ()
 // where it is bash); this check holds the wiring those cases exercise.
 it('the shipped launcher parses with a per-consumer policy, and only the answer side may discard a wrapper', () => {
   const launcher = readFileSync(join(process.cwd(), 'tests/preview/journal-agent.mjs'), 'utf8');
+  const sessionAnswer = readFileSync(join(process.cwd(), 'tests/preview/conversation-session-answer.ts'), 'utf8');
   expect(launcher).toContain("const wrappedPolicyOf = role => role === 'answer' ? 'accept' : 'refuse';");
   // Plan #507: the second per-consumer declaration beside it -- whose answer IS a JSON object.
   expect(launcher).toContain("const objectAnswerOf = id => /^summary:/u.test(id);");
-  // Every reading uses answer-reading.ts; the conversation answer and its one revision
-  // accept wrappers just like the subscription answer role. Review readers remain strict.
+  // The initial and collected conversation answers share a decoder; the revision stays inline.
+  expect(launcher).toContain("import { conversationSessionAnswer } from './conversation-session-answer.js';");
+  expect(launcher.match(/conversationSessionAnswer\([^;]*?\)\)/gu)).toEqual([
+    "conversationSessionAnswer(saved.outcome, id, shape => recordShape(shapesPath, 'answer', 'decision', 'malformed', shape))",
+    "conversationSessionAnswer(outcome, id, shape => recordShape(shapesPath, 'answer', 'decision', 'malformed', shape))",
+  ]);
+  // Every reading uses answer-reading.ts; answer consumers accept wrappers, review readers stay strict.
   expect(launcher.match(/parseModelJson\(/gu)).toBeNull();
-  const sites = launcher.match(/readAnswer\([^;]*?\);/gu) ?? [];
+  expect(sessionAnswer.match(/parseModelJson\(/gu)).toBeNull();
+  const sites = [...(launcher.match(/readAnswer\([^;]*?\);/gu) ?? []),
+    ...(sessionAnswer.match(/readAnswer\([^;]*?\);/gu) ?? [])];
   expect(sites).toEqual([
     'readAnswer(result.bytes, { wrapped: wrappedPolicyOf(role), evidence: [id],\n        ...(objectAnswerOf(id) ? { object: true } : {}) });',
     "readAnswer(outcome.text, { wrapped: 'accept', evidence: [id] });",
-    "readAnswer(outcome.text, { wrapped: 'accept', evidence: [id] });",
+    "readAnswer(outcome.text ?? '', { wrapped: 'accept', evidence: [id] });",
   ]);
   expect(launcher).toContain('const role = roleOf(id);');
 });
