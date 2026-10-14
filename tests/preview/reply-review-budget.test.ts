@@ -7,7 +7,7 @@ import fixture from './fixtures/forum-review-budget-2026-10-10.json' with { type
 import { subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 import { readAnswer } from './answer-reading.js';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
-import { GROUP_REVIEW_FINAL_NOTICE, HOLDING_REPLY, parseReplyReviewVerdict, replyReviewQuestion } from './reply-check.js';
+import { GROUP_REVIEW_FINAL_NOTICE, LEGACY_HOLDING_REPLY, parseReplyReviewVerdict, replyReviewQuestion } from './reply-check.js';
 
 const rules = ['parks_on_user', 'defers_work', 'self_state_claim', 'breaks_preference', 'sensitive_disclosure'] as const;
 const original = JSON.parse(fixture.original.input);
@@ -19,7 +19,7 @@ it('replays the historical over-cap forum review and its real bounded-prompt rep
   const limit = subscriptionConversationPolicy('claude-sonnet-5').maxTokens;
   expect(fixture.original).toMatchObject({ outcome: 'uncertain', output: null, usage: { outputTokens: 2136 } });
   expect(fixture.original.usage.outputTokens).toBeGreaterThan(limit);
-  expect(fixture.recorded.intent.text).toBe(HOLDING_REPLY);
+  expect(fixture.recorded.intent.text).toBe(LEGACY_HOLDING_REPLY);
   expect(createHash('sha256').update(fixture.original.input).digest('hex')).toBe(fixture.original.inputSha256);
   const prepared = structuredClone(original);
   // Preserve the captured request: parks_on_user has since gained act-first guidance.
