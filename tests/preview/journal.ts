@@ -8587,8 +8587,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               // Even a separated answer can contain an unsupported promise (840342802).
               // An invalid requested action keeps only the host outcome. A non-action date
               // still preserves the separately supplied answer to the person's other question.
-              body = requested.some(Boolean) ? '' : separatedAnswer?.trim() ?? '';
-              text = `${body} I could not verify the date you gave. Please restate it; I have not saved a dated item.`.trim();
+              body = unreadAction || requested.some(Boolean) ? '' : separatedAnswer?.trim() ?? '';
+              text = `${unreadAction ? OPERATOR_ACTION_UNREAD : body} I could not verify the date you gave. Please restate it; I have not saved a dated item.`.trim();
             } else if (!invalidMemory && dated?.length) {
               const late = (item: DatedItem) => item.remind && relativeDelay(item.when) !== undefined
                 && item.resolution !== undefined && Date.parse(item.resolution.instant) <= ports.now();
@@ -8597,7 +8597,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               // replace that body with the verified per-action outcomes when any action failed
               // or became late. Accepted, on-time requests keep their original promise.
               if (dated.some((item, index) => requested[index] && !item.remind || late(item))) {
-                text = ''; body = '';
+                text = unreadAction ? OPERATOR_ACTION_UNREAD : ''; body = '';
               }
               const receipt = dated.map((item, index) => (item.day
                 ? `Date ${index + 1}: ${item.day}${item.time ? ` ${item.time}` : ''} (${item.zone})${item.ambiguity ? `; ${item.ambiguity}` : ''}.`

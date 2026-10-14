@@ -166,3 +166,18 @@ it('removes a promise even when the requested date proposal fails citation valid
     expect(openRequests(h.journal.view)).toEqual([]);
   } finally { h.close(); }
 });
+
+it.each(['unresolved', 'late'])('retains the host renewal refusal beside a %s reminder outcome', async mode => {
+  const record = records.find(row => row.update === 840342823)!;
+  const when = mode === 'late' ? 'in one minute' : 'sometime';
+  const request = `Renew my trial and remind me ${when} to put it by the door.`;
+  const h = make({ ...record, request }, JSON.stringify({ reply: "I'll renew it and remind you.",
+    dated: [{ quote: request, when, remind: true }],
+    operatorAction: { action: 'renew-expiry', requestedEnd: '2026-10-20T20:40:00Z' } }));
+  try {
+    h.intake(); h.state.now += 120_000; await h.worker.drain();
+    expect(h.state.sent[0]).toContain('I could not form that request exactly');
+    expect(h.state.sent[0]).toContain(mode === 'late' ? 'This reminder is late' : 'I did not schedule');
+    expect(h.state.sent[0]).not.toContain("I'll renew it");
+  } finally { h.close(); }
+});
