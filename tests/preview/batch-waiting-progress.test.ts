@@ -16,7 +16,7 @@ function fixture(receipt: number | null = 1) {
   let release!: () => void, entered!: () => void;
   const enteredPromise = new Promise<void>(done => { entered = done; });
   const busy = new Promise<void>(done => { release = done; });
-  const sent: { text: string; at: number; target?: string }[] = [];
+  const sent: { text: string; at: number; target: string | undefined }[] = [];
   const ports: PreviewPorts = { now: () => Date.now(), stopped: () => false,
     model: async input => { if (input.id.endsWith(':1')) { entered(); await busy; } return 'Done.'; }, checkOutbound: () => {},
     send: async input => { sent.push({ text: input.expectedText, at: Date.now(), target: input.target }); return input.expectedText === WAITING_PROGRESS ? receipt : sent.length; } };
