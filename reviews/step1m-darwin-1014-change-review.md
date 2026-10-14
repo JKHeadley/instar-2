@@ -15,13 +15,13 @@ Undo and recovery: Revert the declaration with its matching composition and rege
 Multi-machine posture: Shared declaration carries evidence only for the exact Darwin runtime and composition tested here; no remote authority or other platform claim.
 Layer below: Inspected compositionClosure, compositionDigest, currentRuntime and selfHostCompositionEvidence. The unchanged contract exercises the actual confined local build, test and install through owner admissions, plus provider refusal, stop, restart and bounded readiness.
 Bug class: none
-Bug evidence: Evidence maintenance only. Before re-declaration 9/10 passed: native execution and all floor cases succeeded, and only the stale-certificate assertion failed. The unchanged full file must pass 10/10 after renewal. Its exact certificate assertion and architecture R105 verify the resulting declaration; before/after logs are retained in the absolute PROGRESS location.
+Bug evidence: Evidence maintenance only. Before re-declaration 9/10 passed: native execution and all floor cases succeeded, and only the stale-certificate assertion failed. The unchanged full file passed 10/10 after renewal (26.61s); architecture passed. Register replay binds source commit ff95c55eb6fcef0e2529ae1cfd8af069c50ef827. Its exact certificate assertion and architecture R105 verify the resulting declaration; before/after logs are retained in the absolute PROGRESS location.
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains samples only.
 Convergence: none
 
 Decision: step1m-darwin-conformance | step1m Darwin conformance re-declared for its composition; use the existing digest helpers after the native contract passes, then replay dependent publication. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1m-darwin-1014-PROGRESS.md
 
-Subject (1 paths): src/assembly/harness.declarations.json
+Subject (8 paths): src/assembly/harness.declarations.json, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 ## Closing block
 
