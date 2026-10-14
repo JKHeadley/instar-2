@@ -10,3 +10,7 @@ rotation, pending-work decisions, completion, liveness, reconnect, and resume
 confirmation are `NON-EXECUTABLE-UNTIL-slice-A2`. Output ranges decode and
 deduplicate in A1, but output cannot be credited as owner-resolved progress
 until Slice A2 binds a landed current Part Two capture-custody read.
+
+The separate [Codex conversation protocol adapter](codex-conversation.md) maps continuing
+thread/turn requests and projects bounded reply/terminal evidence. It does not extend
+holder authority or register a production worker; its required host wiring is explicit.

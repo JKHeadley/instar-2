@@ -1,0 +1,729 @@
+{
+  "provenance": {
+    "capturedAt": "2026-10-13",
+    "binary": "codex-cli 0.156.1",
+    "method": "real app-server process, isolated empty HOME/CODEX_HOME, deterministic HTTP/SSE server on loopback; no authentication or paid model",
+    "upstream": "fabricated response content LOCAL_PROTOCOL_OK and usage 10 input / 3 output; outer app-server notifications are captured unchanged",
+    "negative": "first probe retained after fake provider omitted total_tokens; real CLI retries then reports failed despite emitting reply items"
+  },
+  "runs": [
+    {
+      "outcome": "completed",
+      "events": [
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "userMessage",
+              "id": "01a137d1-24f8-7e21-b690-2bddb978937a",
+              "clientId": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with the local probe response.",
+                  "text_elements": []
+                }
+              ]
+            },
+            "threadId": "01a137d1-245e-7a41-8745-64a4794f27a5",
+            "turnId": "01a137d1-24c5-7cd2-84dc-2941f3c644a3",
+            "completedAtMs": 1791937815802
+          },
+          "emittedAtMs": 1791937815855
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "agentMessage",
+              "id": "msg_probe",
+              "text": "LOCAL_PROTOCOL_OK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            "threadId": "01a137d1-245e-7a41-8745-64a4794f27a5",
+            "turnId": "01a137d1-24c5-7cd2-84dc-2941f3c644a3",
+            "completedAtMs": 1791937815859
+          },
+          "emittedAtMs": 1791937815862
+        },
+        {
+          "method": "thread/tokenUsage/updated",
+          "params": {
+            "threadId": "01a137d1-245e-7a41-8745-64a4794f27a5",
+            "turnId": "01a137d1-24c5-7cd2-84dc-2941f3c644a3",
+            "tokenUsage": {
+              "total": {
+                "totalTokens": 13,
+                "inputTokens": 10,
+                "cachedInputTokens": 0,
+                "cacheWriteInputTokens": 0,
+                "outputTokens": 3,
+                "reasoningOutputTokens": 0
+              },
+              "last": {
+                "totalTokens": 13,
+                "inputTokens": 10,
+                "cachedInputTokens": 0,
+                "cacheWriteInputTokens": 0,
+                "outputTokens": 3,
+                "reasoningOutputTokens": 0
+              },
+              "modelContextWindow": 258400
+            }
+          },
+          "emittedAtMs": 1791937815869
+        },
+        {
+          "method": "turn/completed",
+          "params": {
+            "threadId": "01a137d1-245e-7a41-8745-64a4794f27a5",
+            "turn": {
+              "id": "01a137d1-24c5-7cd2-84dc-2941f3c644a3",
+              "items": [
+                {
+                  "type": "agentMessage",
+                  "id": "msg_probe",
+                  "text": "LOCAL_PROTOCOL_OK",
+                  "phase": "final_answer",
+                  "memoryCitation": null,
+                  "delivery": null,
+                  "questions": null
+                }
+              ],
+              "itemsView": "summary",
+              "status": "completed",
+              "error": null,
+              "startedAt": 1791937815,
+              "completedAt": 1791937815,
+              "durationMs": 109
+            }
+          },
+          "emittedAtMs": 1791937815873
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "userMessage",
+              "id": "01a137d1-2551-78e2-905b-ef3114de3e88",
+              "clientId": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with the local probe response.",
+                  "text_elements": []
+                }
+              ]
+            },
+            "threadId": "01a137d1-245e-7a41-8745-64a4794f27a5",
+            "turnId": "01a137d1-2542-78e0-87ed-265aaff7a8da",
+            "completedAtMs": 1791937815890
+          },
+          "emittedAtMs": 1791937815893
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "agentMessage",
+              "id": "msg_probe",
+              "text": "LOCAL_PROTOCOL_OK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            "threadId": "01a137d1-245e-7a41-8745-64a4794f27a5",
+            "turnId": "01a137d1-2542-78e0-87ed-265aaff7a8da",
+            "completedAtMs": 1791937815896
+          },
+          "emittedAtMs": 1791937815898
+        },
+        {
+          "method": "thread/tokenUsage/updated",
+          "params": {
+            "threadId": "01a137d1-245e-7a41-8745-64a4794f27a5",
+            "turnId": "01a137d1-2542-78e0-87ed-265aaff7a8da",
+            "tokenUsage": {
+              "total": {
+                "totalTokens": 26,
+                "inputTokens": 20,
+                "cachedInputTokens": 0,
+                "cacheWriteInputTokens": 0,
+                "outputTokens": 6,
+                "reasoningOutputTokens": 0
+              },
+              "last": {
+                "totalTokens": 13,
+                "inputTokens": 10,
+                "cachedInputTokens": 0,
+                "cacheWriteInputTokens": 0,
+                "outputTokens": 3,
+                "reasoningOutputTokens": 0
+              },
+              "modelContextWindow": 258400
+            }
+          },
+          "emittedAtMs": 1791937815901
+        },
+        {
+          "method": "turn/completed",
+          "params": {
+            "threadId": "01a137d1-245e-7a41-8745-64a4794f27a5",
+            "turn": {
+              "id": "01a137d1-2542-78e0-87ed-265aaff7a8da",
+              "items": [
+                {
+                  "type": "agentMessage",
+                  "id": "msg_probe",
+                  "text": "LOCAL_PROTOCOL_OK",
+                  "phase": "final_answer",
+                  "memoryCitation": null,
+                  "delivery": null,
+                  "questions": null
+                }
+              ],
+              "itemsView": "summary",
+              "status": "completed",
+              "error": null,
+              "startedAt": 1791937815,
+              "completedAt": 1791937815,
+              "durationMs": 75
+            }
+          },
+          "emittedAtMs": 1791937815954
+        }
+      ]
+    },
+    {
+      "outcome": "failed",
+      "events": [
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "userMessage",
+              "id": "01a137d0-07be-7be0-901c-a2fd3b041996",
+              "clientId": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with the local probe response.",
+                  "text_elements": []
+                }
+              ]
+            },
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-07ad-74d0-8174-ca3ad5b557c0",
+            "completedAtMs": 1791937742783
+          },
+          "emittedAtMs": 1791937742784
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "agentMessage",
+              "id": "msg_probe",
+              "text": "LOCAL_PROTOCOL_OK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-07ad-74d0-8174-ca3ad5b557c0",
+            "completedAtMs": 1791937742786
+          },
+          "emittedAtMs": 1791937742787
+        },
+        {
+          "method": "error",
+          "params": {
+            "error": {
+              "message": "Reconnecting... 1/5",
+              "codexErrorInfo": {
+                "responseStreamDisconnected": {
+                  "httpStatusCode": null
+                }
+              },
+              "additionalDetails": "stream disconnected before completion: failed to parse ResponseCompleted: missing field `total_tokens`",
+              "misalignment": null
+            },
+            "willRetry": true,
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-07ad-74d0-8174-ca3ad5b557c0"
+          },
+          "emittedAtMs": 1791937742788
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "agentMessage",
+              "id": "msg_probe",
+              "text": "LOCAL_PROTOCOL_OK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-07ad-74d0-8174-ca3ad5b557c0",
+            "completedAtMs": 1791937743025
+          },
+          "emittedAtMs": 1791937743031
+        },
+        {
+          "method": "error",
+          "params": {
+            "error": {
+              "message": "Reconnecting... 2/5",
+              "codexErrorInfo": {
+                "responseStreamDisconnected": {
+                  "httpStatusCode": null
+                }
+              },
+              "additionalDetails": "stream disconnected before completion: failed to parse ResponseCompleted: missing field `total_tokens`",
+              "misalignment": null
+            },
+            "willRetry": true,
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-07ad-74d0-8174-ca3ad5b557c0"
+          },
+          "emittedAtMs": 1791937743034
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "agentMessage",
+              "id": "msg_probe",
+              "text": "LOCAL_PROTOCOL_OK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-07ad-74d0-8174-ca3ad5b557c0",
+            "completedAtMs": 1791937743489
+          },
+          "emittedAtMs": 1791937743531
+        },
+        {
+          "method": "error",
+          "params": {
+            "error": {
+              "message": "Reconnecting... 3/5",
+              "codexErrorInfo": {
+                "responseStreamDisconnected": {
+                  "httpStatusCode": null
+                }
+              },
+              "additionalDetails": "stream disconnected before completion: failed to parse ResponseCompleted: missing field `total_tokens`",
+              "misalignment": null
+            },
+            "willRetry": true,
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-07ad-74d0-8174-ca3ad5b557c0"
+          },
+          "emittedAtMs": 1791937743535
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "agentMessage",
+              "id": "msg_probe",
+              "text": "LOCAL_PROTOCOL_OK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-07ad-74d0-8174-ca3ad5b557c0",
+            "completedAtMs": 1791937744372
+          },
+          "emittedAtMs": 1791937744373
+        },
+        {
+          "method": "error",
+          "params": {
+            "error": {
+              "message": "Reconnecting... 4/5",
+              "codexErrorInfo": {
+                "responseStreamDisconnected": {
+                  "httpStatusCode": null
+                }
+              },
+              "additionalDetails": "stream disconnected before completion: failed to parse ResponseCompleted: missing field `total_tokens`",
+              "misalignment": null
+            },
+            "willRetry": true,
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-07ad-74d0-8174-ca3ad5b557c0"
+          },
+          "emittedAtMs": 1791937744374
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "agentMessage",
+              "id": "msg_probe",
+              "text": "LOCAL_PROTOCOL_OK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-07ad-74d0-8174-ca3ad5b557c0",
+            "completedAtMs": 1791937745964
+          },
+          "emittedAtMs": 1791937745965
+        },
+        {
+          "method": "error",
+          "params": {
+            "error": {
+              "message": "Reconnecting... 5/5",
+              "codexErrorInfo": {
+                "responseStreamDisconnected": {
+                  "httpStatusCode": null
+                }
+              },
+              "additionalDetails": "stream disconnected before completion: failed to parse ResponseCompleted: missing field `total_tokens`",
+              "misalignment": null
+            },
+            "willRetry": true,
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-07ad-74d0-8174-ca3ad5b557c0"
+          },
+          "emittedAtMs": 1791937745966
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "agentMessage",
+              "id": "msg_probe",
+              "text": "LOCAL_PROTOCOL_OK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-07ad-74d0-8174-ca3ad5b557c0",
+            "completedAtMs": 1791937749071
+          },
+          "emittedAtMs": 1791937749072
+        },
+        {
+          "method": "error",
+          "params": {
+            "error": {
+              "message": "stream disconnected before completion: failed to parse ResponseCompleted: missing field `total_tokens`",
+              "codexErrorInfo": "other",
+              "additionalDetails": null,
+              "misalignment": null
+            },
+            "willRetry": false,
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-07ad-74d0-8174-ca3ad5b557c0"
+          },
+          "emittedAtMs": 1791937749073
+        },
+        {
+          "method": "turn/completed",
+          "params": {
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turn": {
+              "id": "01a137d0-07ad-74d0-8174-ca3ad5b557c0",
+              "items": [],
+              "itemsView": "notLoaded",
+              "status": "failed",
+              "error": {
+                "message": "stream disconnected before completion: failed to parse ResponseCompleted: missing field `total_tokens`",
+                "codexErrorInfo": "other",
+                "additionalDetails": null,
+                "misalignment": null
+              },
+              "startedAt": 1791937742,
+              "completedAt": 1791937749,
+              "durationMs": 6307
+            }
+          },
+          "emittedAtMs": 1791937749074
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "userMessage",
+              "id": "01a137d0-2059-7293-a5d0-836d5fb7e9d6",
+              "clientId": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with the local probe response.",
+                  "text_elements": []
+                }
+              ]
+            },
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-2052-76a3-a6d4-f80154376f3c",
+            "completedAtMs": 1791937749081
+          },
+          "emittedAtMs": 1791937749082
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "agentMessage",
+              "id": "msg_probe",
+              "text": "LOCAL_PROTOCOL_OK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-2052-76a3-a6d4-f80154376f3c",
+            "completedAtMs": 1791937749084
+          },
+          "emittedAtMs": 1791937749084
+        },
+        {
+          "method": "error",
+          "params": {
+            "error": {
+              "message": "Reconnecting... 1/5",
+              "codexErrorInfo": {
+                "responseStreamDisconnected": {
+                  "httpStatusCode": null
+                }
+              },
+              "additionalDetails": "stream disconnected before completion: failed to parse ResponseCompleted: missing field `total_tokens`",
+              "misalignment": null
+            },
+            "willRetry": true,
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-2052-76a3-a6d4-f80154376f3c"
+          },
+          "emittedAtMs": 1791937749085
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "agentMessage",
+              "id": "msg_probe",
+              "text": "LOCAL_PROTOCOL_OK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-2052-76a3-a6d4-f80154376f3c",
+            "completedAtMs": 1791937749297
+          },
+          "emittedAtMs": 1791937749297
+        },
+        {
+          "method": "error",
+          "params": {
+            "error": {
+              "message": "Reconnecting... 2/5",
+              "codexErrorInfo": {
+                "responseStreamDisconnected": {
+                  "httpStatusCode": null
+                }
+              },
+              "additionalDetails": "stream disconnected before completion: failed to parse ResponseCompleted: missing field `total_tokens`",
+              "misalignment": null
+            },
+            "willRetry": true,
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-2052-76a3-a6d4-f80154376f3c"
+          },
+          "emittedAtMs": 1791937749298
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "agentMessage",
+              "id": "msg_probe",
+              "text": "LOCAL_PROTOCOL_OK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-2052-76a3-a6d4-f80154376f3c",
+            "completedAtMs": 1791937749705
+          },
+          "emittedAtMs": 1791937749711
+        },
+        {
+          "method": "error",
+          "params": {
+            "error": {
+              "message": "Reconnecting... 3/5",
+              "codexErrorInfo": {
+                "responseStreamDisconnected": {
+                  "httpStatusCode": null
+                }
+              },
+              "additionalDetails": "stream disconnected before completion: failed to parse ResponseCompleted: missing field `total_tokens`",
+              "misalignment": null
+            },
+            "willRetry": true,
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-2052-76a3-a6d4-f80154376f3c"
+          },
+          "emittedAtMs": 1791937749713
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "agentMessage",
+              "id": "msg_probe",
+              "text": "LOCAL_PROTOCOL_OK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-2052-76a3-a6d4-f80154376f3c",
+            "completedAtMs": 1791937750498
+          },
+          "emittedAtMs": 1791937750499
+        },
+        {
+          "method": "error",
+          "params": {
+            "error": {
+              "message": "Reconnecting... 4/5",
+              "codexErrorInfo": {
+                "responseStreamDisconnected": {
+                  "httpStatusCode": null
+                }
+              },
+              "additionalDetails": "stream disconnected before completion: failed to parse ResponseCompleted: missing field `total_tokens`",
+              "misalignment": null
+            },
+            "willRetry": true,
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-2052-76a3-a6d4-f80154376f3c"
+          },
+          "emittedAtMs": 1791937750500
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "agentMessage",
+              "id": "msg_probe",
+              "text": "LOCAL_PROTOCOL_OK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-2052-76a3-a6d4-f80154376f3c",
+            "completedAtMs": 1791937752144
+          },
+          "emittedAtMs": 1791937752144
+        },
+        {
+          "method": "error",
+          "params": {
+            "error": {
+              "message": "Reconnecting... 5/5",
+              "codexErrorInfo": {
+                "responseStreamDisconnected": {
+                  "httpStatusCode": null
+                }
+              },
+              "additionalDetails": "stream disconnected before completion: failed to parse ResponseCompleted: missing field `total_tokens`",
+              "misalignment": null
+            },
+            "willRetry": true,
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-2052-76a3-a6d4-f80154376f3c"
+          },
+          "emittedAtMs": 1791937752145
+        },
+        {
+          "method": "item/completed",
+          "params": {
+            "item": {
+              "type": "agentMessage",
+              "id": "msg_probe",
+              "text": "LOCAL_PROTOCOL_OK",
+              "phase": "final_answer",
+              "memoryCitation": null,
+              "delivery": null,
+              "questions": null
+            },
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-2052-76a3-a6d4-f80154376f3c",
+            "completedAtMs": 1791937755667
+          },
+          "emittedAtMs": 1791937755667
+        },
+        {
+          "method": "error",
+          "params": {
+            "error": {
+              "message": "stream disconnected before completion: failed to parse ResponseCompleted: missing field `total_tokens`",
+              "codexErrorInfo": "other",
+              "additionalDetails": null,
+              "misalignment": null
+            },
+            "willRetry": false,
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turnId": "01a137d0-2052-76a3-a6d4-f80154376f3c"
+          },
+          "emittedAtMs": 1791937755669
+        },
+        {
+          "method": "turn/completed",
+          "params": {
+            "threadId": "01a137d0-07a3-7122-9012-a057807351aa",
+            "turn": {
+              "id": "01a137d0-2052-76a3-a6d4-f80154376f3c",
+              "items": [],
+              "itemsView": "notLoaded",
+              "status": "failed",
+              "error": {
+                "message": "stream disconnected before completion: failed to parse ResponseCompleted: missing field `total_tokens`",
+                "codexErrorInfo": "other",
+                "additionalDetails": null,
+                "misalignment": null
+              },
+              "startedAt": 1791937749,
+              "completedAt": 1791937755,
+              "durationMs": 6593
+            }
+          },
+          "emittedAtMs": 1791937755669
+        }
+      ]
+    }
+  ]
+}
