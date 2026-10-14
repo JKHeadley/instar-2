@@ -44,3 +44,5 @@ Decision: step1j-revision | Route the reserved revision to its continuing worker
 Decision: step1j-deadline | Shorten a revision input to the existing review deadline, with no new budget. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1j-hold-settles-1014-PROGRESS.md
 Decision: step1j-settlement | Use the existing final-failure notice after exhausted review and retain recognition of old placeholder records. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1j-hold-settles-1014-PROGRESS.md
 Decision: step1j-grounding | Name live search/fetch from the session policy admission, without changing the reviewer authority or forcing B07 to fail. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1j-hold-settles-1014-PROGRESS.md
+
+Generated register: shape-only replay from source commit 47aac40f9f1c260a01ba9ff66f87dfb0fc863cf6; no runtime certificate or authority declaration changed.
