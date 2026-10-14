@@ -21,7 +21,9 @@ Convergence: none
 Decision: train-29-repair-parser-inventory | Correct the exact two-call test inventory instead of changing valid runtime parsing; the conversation-session call is already restricted to operator answers. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-29-repair-072947-PROGRESS.md
 Decision: train-29-repair-native-certificate | Leave the three supplied failures from the unproven native macOS certificate to Studio renewal under the standing charter exception; do not change tests or declarations to manufacture certification. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-29-repair-072947-PROGRESS.md
 
-Subject: tests/preview/model-json.test.ts
+Decision: train-29-repair-pins | Run the delegated desk rehash and repin tools, then regenerate the register from the committed pin, so the changed test is consumed at its actual bytes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-29-repair-072947-PROGRESS.md
+
+Subject: tests/preview/model-json.test.ts; register-source/owner-references/preview.json; generated register publications
 
 simplestRobustRoute: This is the simplest robust route: repair the stale exact test expectation and retain both working runtime routes. No new machinery or safeguards. Start, end and limit guards are unchanged; no autonomous live-completion claim is made.
 80/20: Run the changed test, the existing conversation-session consumer tests, typecheck and required cheap and pinned-text gates. Studio owns native certification and full-suite acceptance.
