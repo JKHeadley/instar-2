@@ -27,7 +27,9 @@ Decision: session-mouth-copy-1013-decoder | Pass returned session bytes through 
 Decision: session-mouth-copy-1013-recovery | Refuse busy and duplicate intake; reconnect only between completed turns with the same cumulative reservation, reconstruct from journal history when needed, and never replay uncertain input. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/session-mouth-copy-1013-PROGRESS.md
 Decision: session-mouth-copy-1013-idle | Use the existing host work tick to close an idle expired session, and close the same port during host shutdown. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/session-mouth-copy-1013-PROGRESS.md
 
-Subject: src/assembly/production-conversation-session.ts, src/assembly/production-provider.ts, src/assembly/README.md, tests/assembly/production-conversation-session.test.ts, tests/assembly/production-provider-subscription.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal-conversation-session.test.ts, tests/preview/group-carry-requests.test.ts, tests/preview/fixtures/conversation-session-userwalk-2026-10-13.json
+Decision: session-mouth-copy-1013-pins | Refresh only the composition byte pin and generated register for this source change; the native macOS contract remains a Studio gate, not newly claimed Linux evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/session-mouth-copy-1013-PROGRESS.md
+
+Subject: src/assembly/production-conversation-session.ts, src/assembly/production-provider.ts, src/assembly/README.md, tests/assembly/production-conversation-session.test.ts, tests/assembly/production-provider-subscription.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal-conversation-session.test.ts, tests/preview/group-carry-requests.test.ts, tests/preview/fixtures/conversation-session-userwalk-2026-10-13.json, src/assembly/harness.declarations.json, generated/
 
 ## Closing block
 
