@@ -242,6 +242,39 @@ One decodes grants, Two admits genesis and subsequent facts, Four binds the conv
 Seven supervises critical steps, Nine witnesses protection, and Ten admits the runtime.
 No desk seal, preview waiver, manual grant file or second installer authority store participates.
 
+#### Installation platforms
+
+**Value — macOS and Linux are installation targets; a Mac is never a prerequisite.**
+The same owner interfaces, enrollment sequence and authority records apply to both.
+Each implementation must earn the same positive and refusal evidence; an OS mechanism's
+existence is not proof that the ordinary installer has integrated it. The concrete bindings
+below implement the preceding Rule's independent installation authority.
+
+| Required guarantee / OS-neutral interface | macOS implementation | Linux implementation |
+|---|---|---|
+| Verify the release against an independently installed distribution root; install a broker under an OS identity separate from both agent and harness. | Existing broker isolation/distribution path; dedicated service user and administrator-owned launchd LaunchDaemon, with verified release signature and protected service files. | **Linux: to build — `install-linux-broker`.** Verify the same release signature/root; create a separate non-login system user and root-owned systemd system service unit with `User=` naming that user. Neither worker can alter the unit, executable, parents or service account, or elevate to it. |
+| Record a protected local act by the installing person that neither worker identity can perform or forge, bound to the exact account-selection digest and pending session. | Protected installer UI, OS reauthentication through Authorization Services and authenticated local IPC to the broker. | **Linux: to build — `install-linux-enrollment`.** Root-owned narrow helper with polkit fresh administrator authentication on desktop; headless uses sudo with fresh authentication for that helper only. The helper displays and confirms the broker's exact pending subject; it does not accept a caller's assertion of approval. |
+| Keep signing/verification material and credentials in a store neither worker can read, replace or administer; expose only scope-checked operations and SecretRefs. | Separate custodian's protected Keychain and separately owned files; no worker access to the keychain, unlock credentials or service configuration. | **Linux: to build — `install-linux-custody`.** Custodian-owned files, directories mode `0700`, secret files `0600`, protected parents and no worker ACLs/groups/handles. No desktop secret service is required. Seventeen specifies independent encrypted recovery on both OSes. |
+| Run bounded setup supervision before critical preparation without paid credentials. | Pinned local model/runtime in the reviewed setup manifest, with measured macOS resource bounds. | **Linux: to build — `install-linux-supervisor`.** Pinned Linux model/runtime under the same Seven interface, with systemd/cgroup resource limits and Linux adequacy evidence before key creation. |
+
+A headless Linux server runs the system service without a desktop session. The person uses
+an operator-only console or authenticated SSH session to invoke the protected local helper;
+the agent and harness have neither that session nor its authentication/recovery credentials.
+The helper runs on the installation host and renders the account, DM, machine and exact
+pending selection before a fresh sudo authentication and explicit confirmation. Its allowed
+command is fixed; neither worker receives sudo rights, a cached authorization, an arbitrary
+command argument or an editable helper. The sudo helper rule requires authentication on
+every invocation (`timestamp_timeout=0`, no `NOPASSWD`); desktop polkit uses `auth_admin`,
+not a retained `auth_admin_keep` grant. Desktop polkit likewise cannot authorize either
+worker, reuse a retained authentication for another selection, or trust a claimed UID.
+The broker authenticates the local peer and consumes a one-use result tied to the digest,
+installation session and expiry. Phone provider authentication and phone confirmation stay
+in their reviewed positions; no GUI, Keychain or Mac relay is required on Linux.
+
+Linux integrations above are to build, with the named units owned by Ten/Nine/Eleven/Seven
+as appropriate and accepted by the milestones below. Missing protection holds the affected
+setup stage with its checkpoint intact; it never falls back to the harness user's store.
+
 **Rule — supervision starts before critical preparation.** Rule 38 and section 12's
 manual-preparation boundary; **check: P10-SI-11/12**. The authenticated operator installation
 session admits a finite setup manifest under its own administration authority, independent
@@ -271,7 +304,7 @@ existing owner records, with finite retries and a stop that survives restart.
 | Step | Status | Record, consumer and completion evidence |
 |---|---|---|
 | Genesis material created | **to build** | Supervised custodian prepares one installation identity, machine key set, org-intent candidate and recovery package. Nothing is an approved anchor yet. Two later admits only the digest approved in pairing. |
-| Pairing/binding | **to build** | Eleven's provider authentication, protected Mac account selection and phone confirmation establish enrollment; the custodian seals the exact org-intent/genesis subject and P-01/P-08 choices. One/Two admit initial standing, then Four records the authenticated account/conversation binding. Repeating the act yields the same records. |
+| Pairing/binding | **to build** | Eleven's provider authentication, protected local account selection and phone confirmation establish enrollment; the custodian seals the exact org-intent/genesis subject and P-01/P-08 choices. One/Two admit initial standing, then Four records the authenticated account/conversation binding. Repeating the act yields the same records. |
 | Role agreement | **exists** | Slice 1 (`bin/instar2.mjs setup`, `scripts/onboarding.mjs` on the installation track) records role, starting trust, monthly choice and sensitive matters durably. Connecting its input to the verified conversation/standing decoders is to build; its terminal receipt alone is not binding, activation or an enforced monthly cap. |
 | First subscription request answered by P-02 yes | **to build** | Four prepares the exact account/installation/runtime/custody/resource request under current initial standing. The bound operator replies once; One's approval decoder produces the scoped grant, Two records it, and existing cap authority installs the agreed spend bounds before paid use. |
 | Login admitted | **exists but desk-only** | `install-login` / `prepare-logins` in the preview's `installed-harness-logins.mjs` verify already granted logins. Ordinary composition must replace desk-sealed authority with the preceding grant, root-contained custodian/profile references, fresh account evidence and Ten's current AssemblyAdmission. No copied preview waiver. |
@@ -312,7 +345,7 @@ while private custody handles and host isolation remain machine-local. Enrolling
 retains P-08's replicated default and never silently lowers it after peer loss.
 
 The ordered milestones below are not single builder units. **The first bounded unit is
-Nine/Ten's existing broker Mac isolation and distribution verification**: run the harness
+Nine/Ten's existing broker isolation and distribution verification on each OS**: run the harness
 without administrative access; verify the installed service against the distribution anchor;
 prove one harmless scoped request succeeds, while replace/read/elevate attempts from both
 agent and harness are denied. This establishes a boundary only, not admitted genesis or
@@ -331,6 +364,26 @@ The milestones are:
    Exit: one onboarding conversation records the role and usable limits without repeated in-role prompts; absent binding, wrong account, expired/withdrawn approval and cap overflow cannot activate paid use.
 4. **Ordinary login admission and first exchange — Ten and the conversation/effect owners.** Reuse login preparation, replace desk-only authority, generate the launcher from admission and complete real conversation through durable intake.
    Exit: intended account/runtime replies and recalls across restart; missing custody, wrong account, stop, failed login and uncertain send retain their proper outcomes without duplicate sends or a desk intervention.
+
+Each bounded build unit below exposes an OS-neutral interface. Both implementations use
+the milestone's exit cases; a Mac-only pass cannot close the Linux unit. These are tracked
+implementation commitments owned by the listed parts, not claims of shipped compatibility.
+
+| Build unit / owner | OS-neutral interface | macOS implementation | Named Linux implementation unit |
+|---|---|---|---|
+| Broker boundary and distribution / Ten, Nine | Verify release, install isolated broker, serve scoped request | `install-macos-broker`: existing broker path, separate user/launchd and protected distribution files | `install-linux-broker`: separate system user/systemd, verified release and denial matrix |
+| Setup supervision / Seven, Ten | Admit finite local model route; validate critical step | `install-macos-supervisor`: pinned local runtime and host bounds | `install-linux-supervisor`: Linux runtime/cgroup bounds and measured adequacy |
+| Custody and recovery / Nine, Ten, Seventeen | Store references; back up, challenge restore, check currency | `install-macos-custody`: protected Keychain/files and independent vault adapter | `install-linux-custody`: protected files and the same vault protocol, including headless restore |
+| Pairing and genesis / Eleven, One, Two, Four | Select account locally, confirm on phone, admit exact existing record chain | `install-macos-enrollment`: protected UI/OS reauthentication and authenticated IPC | `install-linux-enrollment`: polkit or headless sudo helper, authenticated IPC and identical phone/record flow |
+| Role and first subscription / Four, One, cap owner | Consume bound role answers and P-02 yes; install enforced cap | `install-macos-role-subscription`: role slice bound to macOS custody adapter | `install-linux-role-subscription`: same role/grant/cap owners bound to Linux custody adapter |
+| Login and first exchange / Ten, conversation/effect owners | Admit actual account/runtime; durable intake, one claim, observed delivery | `install-macos-first-exchange`: admitted macOS launcher/login adapter and restart proof | `install-linux-first-exchange`: admitted systemd launcher/Linux login adapter and headless restart proof |
+
+All Linux units are **to build**. A provider login requiring a desktop has no implicit
+headless equivalent: `install-linux-first-exchange` must implement and verify a provider's
+supported device/browser login through the protected custody surface, or name that provider
+mode unavailable while supplying a working admitted headless route. It cannot substitute
+copied worker credentials. Milestones 1–4 close only with fresh-install and recovery evidence
+on both OSes, including the headless path, with all five floors intact.
 
 ---
 
