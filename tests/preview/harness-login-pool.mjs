@@ -117,13 +117,21 @@ export function harnessQuotaLimit(document, profile, threshold, now, usageAccoun
   return quotaLimit(harnessQuotaReading(document, profile, now, usageAccount), threshold);
 }
 
+function matchingUsageAccount(document, entry) {
+  if (document?.version !== 1 || !Array.isArray(document.accounts)) return null;
+  const matches = document.accounts.filter(account => account?.email === entry.profile.expectedAccount
+    && account.identityDrifted !== true && (entry.usageAccount === undefined
+      ? account.configHome === entry.profile.configDirectory : account.id === entry.usageAccount));
+  return matches.length === 1 ? matches[0] : null;
+}
+
 /** The root's existing writer lease serializes this small durable selection record. History contains
  * only profile references, causes and times; retained for audit, never model text or credentials.
  * A missing initial record is installed durably before use; corrupt/mismatched state holds admission.
  * No timer retries: an exhausted profile becomes eligible after a provider/reading reset time.
  * Unknown resets recover from newer matched readings with capacity in both quota windows. */
 export function createHarnessLoginPool({ configuration, statePath, now, validate,
-  unavailable = new Map(), readText = read, write = durablePreviewWrite, previouslyLaunched = () => false, usage = () => configuration.usageFile
+  machine = 'local', unavailable = new Map(), readText = read, write = durablePreviewWrite, previouslyLaunched = () => false, usage = () => configuration.usageFile
     ? JSON.parse(readText(configuration.usageFile)) : null }) {
   const { entries, identity } = configuration;
   let state;
@@ -175,36 +183,69 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     validate(entry, tools);
     return entry;
   };
+  const select = (tools = false, current = state.active, requireRoom = false) => {
+    const at = now();
+    let reading = null;
+    try { reading = usage(); } catch { /* A failed quota observation cannot create a limit. */ }
+    for (const entry of entries) {
+      const quota = harnessQuotaReading(reading, entry.profile, at, entry.usageAccount);
+      const limit = quotaLimit(quota, configuration.threshold);
+      if (limit) hold(entry, { ...limit, observedAt: quota.at });
+      const previous = state.holds[entry.index];
+      if (previous?.resetAt === null && quota && quota.at > previous.observedAt
+        && quota.windows.every(window => window && window.utilizationPct < configuration.threshold)) {
+        const holds = { ...state.holds };
+        delete holds[entry.index];
+        persist({ ...state, holds });
+      }
+    }
+    const signedOut = new Set(entries.filter(entry => matchingUsageAccount(reading, entry)?.status === 'needs-reauth').map(entry => entry.index));
+    const repairs = entries.filter(entry => signedOut.has(entry.index) && !(state.signinRepairs ?? []).some(item => item.index === entry.index));
+    if (repairs.length) persist({ ...state, signinRepairs: [...(state.signinRepairs ?? []),
+      ...repairs.map(entry => ({ index: entry.index, account: entry.profile.expectedAccount, machine, at }))] });
+    const limited = index => state.holds[index] && (state.holds[index].resetAt === null || state.holds[index].resetAt > at);
+    if (!limited(current) && !unavailable.has(current) && !signedOut.has(current)) return admitted(entries[current], tools);
+    for (let offset = 1; offset < entries.length; offset++) {
+      const index = (current + offset) % entries.length;
+      if (limited(index) || unavailable.has(index) || signedOut.has(index)) continue;
+      const quota = harnessQuotaReading(reading, entries[index].profile, at, entries[index].usageAccount);
+      if (requireRoom && (!quota || !quota.windows.every(window => window && window.utilizationPct < configuration.threshold))) continue;
+      // 1.x SessionRefresh's five-attempt / ten-minute brake, durable across host restarts.
+      if (requireRoom && (state.handoffAttempts ?? []).filter(event => at - event.at < 600_000).length >= 5) return null;
+      const next = admitted(entries[index], tools);
+      const event = { from: entries[current].profile.reference, to: next.profile.reference,
+        reason: unavailable.has(current) || signedOut.has(current) ? 'member-unavailable' : state.holds[current].reason, at, sequence: state.switches.length + 1 };
+      if (requireRoom) persist({ ...state, handoffAttempts: [...(state.handoffAttempts ?? []),
+        { ...event, sequence: (state.handoffAttempts?.length ?? 0) + 1, phase: 'prepared' }] });
+      else persist({ ...state, active: index, switches: [...state.switches, event] });
+      return next;
+    }
+    if (requireRoom) return null;
+    fail('has no reviewed login with available capacity');
+  };
   return Object.freeze({
-    select(tools = false) {
-      const at = now();
-      let reading = null;
-      try { reading = usage(); } catch { /* A failed quota observation cannot create a limit. */ }
-      for (const entry of entries) {
-        const quota = harnessQuotaReading(reading, entry.profile, at, entry.usageAccount);
-        const limit = quotaLimit(quota, configuration.threshold);
-        if (limit) hold(entry, { ...limit, observedAt: quota.at });
-        const previous = state.holds[entry.index];
-        if (previous?.resetAt === null && quota && quota.at > previous.observedAt
-          && quota.windows.every(window => window && window.utilizationPct < configuration.threshold)) {
-          const holds = { ...state.holds };
-          delete holds[entry.index];
-          persist({ ...state, holds });
-        }
-      }
-      const limited = index => state.holds[index] && (state.holds[index].resetAt === null || state.holds[index].resetAt > at);
-      if (!limited(state.active) && !unavailable.has(state.active)) return admitted(entries[state.active], tools);
-      for (let offset = 1; offset < entries.length; offset++) {
-        const index = (state.active + offset) % entries.length;
-        if (limited(index) || unavailable.has(index)) continue;
-        const next = admitted(entries[index], tools);
-        const event = { from: entries[state.active].profile.reference, to: next.profile.reference,
-          reason: unavailable.has(state.active) ? 'member-unavailable' : state.holds[state.active].reason, at, sequence: state.switches.length + 1 };
-        persist({ ...state, active: index, switches: [...state.switches, event] });
-        return next;
-      }
-      fail('has no reviewed login with available capacity');
+    select,
+    registerTopic(topic) {
+      if (!(state.topicLogins ?? []).includes(topic)) persist({ ...state, topicLogins: [...(state.topicLogins ?? []), topic] });
     },
+    recordHandoff(move) {
+      if (move.id && (state.handoffs ?? []).some(event => event.id === move.id)) return;
+      const attempts = state.handoffAttempts ?? [];
+      const attempt = attempts.findLastIndex(event => event.phase === 'prepared' && event.from === move.from && event.to === move.to
+        && (move.attempt === undefined || event.sequence === move.attempt));
+      const next = entries.find(entry => entry.profile.reference === move.to);
+      if (attempt < 0 || !next) fail('handoff has no prepared selection');
+      persist({ ...state, active: next.index,
+        handoffAttempts: attempts.map((event, index) => index === attempt ? { ...event, phase: 'completed' } : event),
+        switches: [...state.switches, { from: move.from, to: move.to, reason: attempts[attempt].reason,
+          at: now(), sequence: state.switches.length + 1 }],
+        handoffs: [...(state.handoffs ?? []), { ...move, machine, at: now() }] });
+    },
+    selectSession: current => select('session', current, true),
+    signinRepairs: () => (state.signinRepairs ?? []).map(item => ({
+      key: `login-signin:${identity}:${item.index}:${item.machine}`, account: item.account, machine: item.machine,
+      profile: entries[item.index].profile.reference, action: 'desk: run /subscription-signin for this account and machine',
+    })),
     observe(entry, result) {
       if (entries[entry?.index] !== entry) fail('observation names an unreviewed login');
       if (result?.failure?.failureClass !== 'limit') return;
@@ -239,6 +280,8 @@ export function harnessLoginPoolStatus(configuration, state, unavailable, usage,
   });
   const last = state.switches.at(-1);
   return `Model login pool: using approved login ${state.active + 1} of ${entries.length}. ` + members.join(' | ')
+    + (state.handoffAttempts?.at(-1)?.phase === 'prepared' ? ' A continuing-session login move was prepared but is not confirmed.' : '')
+    + (state.signinRepairs?.length ? ` Recorded sign-in repair items: ${state.signinRepairs.map(item => `${item.account} on ${item.machine}; desk /subscription-signin`).join(' | ')}.` : '')
     + (last ? ` Last switch: ${last.from} to ${last.to}, ${last.reason}, at ${last.at}.` : ' Last switch: none.');
 }
 

@@ -68,6 +68,8 @@ export interface ProductionSessionConfig {
   readonly launchVia?: readonly string[];
   readonly inboxDirectory?: string; readonly compactGroundingFile?: string;
   /** Must reconstruct complete permitted context from agent-owned records, including both sides of prior turns. */
+  /** The topic host may carry history across a new admission claim. */
+  readonly continuationRequired?: () => boolean;
   readonly continuation?: ((input: Readonly<{ operation: string; claim: string; incarnation: string;
     reason: 'cache-miss' | 'context-wall' }>) => Readonly<{ text: string; source: string }>) | undefined;
 }
@@ -270,6 +272,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         turnDeadline: null, turnStartedAt: null, closedAt: null };
       const current = config.io.load();
       config.io.save({ ...replaceSession(current, session),
+        resumes: reservation.resumeId ? { ...current.resumes, [reservation.claim]: reservation.resumeId } : current.resumes,
         reservations: (current.reservations ?? []).filter(row => row.name !== reservation.name) });
     }
   };
@@ -310,12 +313,13 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const active = currentJournal.sessions.filter(row => alive(row.name));
     ensure(active.length + (currentJournal.reservations ?? []).length < config.maxSessions, 'concurrent session cap reached');
     const name = `instar20-${createHash('sha256').update(`${operation}:${incarnation}:${randomUUID()}`).digest('hex').slice(0, 24)}`;
-    const reservation: SessionReservation = { name, operation, claim, incarnation, resumeId, recovery,
+    const transcriptId = config.framework === 'claude-code' ? resumeId ?? randomUUID() : resumeId;
+    const reservation: SessionReservation = { name, operation, claim, incarnation, resumeId: transcriptId, recovery,
       startedAt: config.now(), ...(continuation ? { continuation } : {}) };
     config.io.save({ ...currentJournal, reservations: [...(currentJournal.reservations ?? []), reservation] });
     const model = config.model === undefined ? [] : ['--model', config.model];
     const args = config.framework === 'claude-code'
-      ? [resumeId ? '--resume' : '--session-id', resumeId ?? randomUUID(), ...sessionLaunchFlags('claude-code', admitted), ...model]
+      ? [resumeId ? '--resume' : '--session-id', transcriptId!, ...sessionLaunchFlags('claude-code', admitted), ...model]
       : [ ...(resumeId ? ['resume', resumeId] : []), ...sessionLaunchFlags('codex-cli', admitted), ...model];
     const lifecycleHooks = config.hookScript && config.framework === 'claude-code'
       ? { Stop: [{ hooks: [{ type: 'command', command: `node ${JSON.stringify(config.hookScript)}` }] }],
@@ -445,7 +449,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           const resumeId = journal.resumes[input.claim] ?? null;
           ensure(!resumeId || uuid.test(resumeId), 'invalid recorded resume id');
           const hit = resumeId !== null && config.io.transcriptExists(config.framework, resumeId, config.cwd, config.configHome);
-          const needsContinuation = !hit && (resumeId !== null || journal.sessions.some(row => row.claim === input.claim));
+          const needsContinuation = !hit && (resumeId !== null || config.continuationRequired?.() === true || journal.sessions.some(row => row.claim === input.claim));
           const continuation = needsContinuation
             ? requireContinuation(input.operation, input.claim, input.incarnation, 'cache-miss') : undefined;
           const identity = spawn(input.operation, input.claim, input.incarnation, input.workingScope,

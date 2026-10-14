@@ -222,3 +222,8 @@ Option off retains the existing pre-send review route. The non-additive journal
 `reply-review-after-send` marker uses generation 5: an older reader must refuse a copy
 that has used this mode. Do not reuse that copy for an older-build rollback; retain the
 original root for the desk's copy walk and deployment decision.
+
+Continuing topic workers can use a host-supplied `prepareTurn` boundary and
+`topicConfig` binding for reviewed account-pool moves. The host serializes the
+boundary with its queue, retires only that worker, and keeps the shared allowance
+and durable intake. See [topic login pool](../../docs/topic-login-pool.md).
