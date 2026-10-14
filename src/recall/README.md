@@ -115,3 +115,46 @@ participants. Recall itself never decides reveal.
 
 Tests: `tests/recall/` covers capture, retrieval quality on a small fixture set, reveal and
 grounding, and a session-A to session-B recall across a real encrypted-disk restart.
+
+## Journal history read port
+
+`journal-read-view.ts` publishes an immutable, disposable view from one journal-owner
+projection. `ConversationHistoryReadPort<T>` has the same `latest(conversation, limit)`
+and `work(conversation)` signatures as `ConversationReadView<T>` on `step5-record-1013`
+(`fe0c95d15cb73d2d1e72c753c396c6113f09c337`). It deliberately does not impersonate a
+signed fact store. A grounding consumer depends on this read subset, not a store handle.
+
+- `latest` returns newest first, with the fact view's source-order tie break; zero returns
+  nothing, and limits outside integer 0..50000 refuse.
+- `coverage(conversation, messageId)` returns the entire chronological prefix through that
+  exact message, as an accepted summary plus every remaining message. Missing targets and
+  summary coverage holes refuse. Latest-N is never represented as complete grounding.
+- `summaries` exposes accepted, non-retired summaries with exact covered IDs, source-linked
+  memory items and the recorded faithfulness result when present. It does not manufacture a
+  faithfulness verdict for legacy summaries.
+- `work` exposes the owner's current fold, including an obligation's recorded work/report
+  state. No model judgment is inferred from the words of an answer.
+
+The physical binding is `tests/preview/journal-history-adapter.ts`, beside the existing
+encrypted journal owner. It calls `groundingHistory`, `liveSummaries`, `projectMemoryText`,
+`commitmentOpen`, `openRequests`, `openDirectives`, `openBlockers` and
+`openQuestionCandidates`. It reads accepted inputs and received reply parts, including
+empty replies, plus recorded acknowledgements and limited/delivery notices. An intent without
+a receipt remains unknown work, never a delivered message. Notice rows without a separate
+receipt timestamp retain their recorded preparation timestamp; no receipt time is invented.
+An edited or retracted input follows the owner's active-history policy. A mixed-topic legacy
+summary is never assigned to one topic; that conversation uses complete raw history. A late
+reply or edit invalidating a summary prefix likewise uses complete raw history.
+
+This is a read API, not a new authority, sender, model call or store. It is safe to inspect
+while stopped and creates no spend. Strings are redacted on read, identity keys containing
+credentials refuse rather than collide, and work is detached before freezing. The host must
+retain its journal storage envelope, authenticated owner binding and audience checks. Cold
+publication copies the projection; latest reads visit only the requested output, while full
+coverage necessarily visits its prefix. No cross-machine union or claim that a journal
+revision is a foundation durability receipt is made. Rebuild after owner refresh; existing
+readers retain their old revision. Step 6 must wire it into grounding and read the actual
+clock. This unit does not claim that integration or unattended summary production.
+
+The explicitly scoped part-2 work and its exit tests are in
+[`journal-summary-plan.md`](journal-summary-plan.md).
