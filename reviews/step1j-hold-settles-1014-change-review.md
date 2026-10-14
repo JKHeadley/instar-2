@@ -48,6 +48,8 @@ Deadline validation: targeted tests also refuse zero, negative, fractional, NaN 
 
 Test maintenance: sensitivity.test.ts retains its existing disclosure checks and now expects the settled-failure wording instead of the exhausted placeholder.
 
+Consumer parser wiring: model-json.test.ts now enumerates the subscription, conversation-answer and conversation-revision readAnswer sites; review parsing remains strict. This closes the single-site assertion caught by the direct-consumer run.
+
 simplestRobustRoute: This is the simplest robust route: reuse the one durable revision reservation, topic owner, worker and parent send. A distinct reserved child operation prevents request-digest conflicts without weakening identity. A shortening-only request deadline prevents the worker using its hour-long parent lifetime for a sixty-second review. End guards are the contextual revision review and one honest terminal notice; existing secrets, spend, stop, intake and send floors remain. No unattended live acceptance of this changed build is claimed.
 80/20: Run changed tests and direct source consumers, typecheck, architecture, lint, register, change-review and pinned READY tests. No full suite, walks, sends or deliberate load.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
