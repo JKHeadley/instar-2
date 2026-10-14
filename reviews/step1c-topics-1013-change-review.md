@@ -28,7 +28,8 @@ Decision: step1c-topics-1013-migration | Upgrade the group snapshot in place aft
 
 Decision: step1c-topics-1013-policy | Declare the topic cap in the activation policy and consume it at all three runtime admission sites; never widen a prior one-worker activation silently. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1c-topics-1013-PROGRESS.md
 
+Generated register: refreshed from pushed source commit c876fcdaeb9f488fec738b827cc8122424b0d6ed; shape-only replay, not a runtime certificate.
+
 simplestRobustRoute: This is the simplest robust route through the existing host, encrypted snapshot, journal packet and sender. A small coordinator prevents two credible failures that changing only a session key cannot: multiplying reserved allowance and unbounded live topic processes. A bounded topic drain lets another topic answer while one is busy. One shared atomic snapshot avoids a new cross-store accounting protocol. Start guards are durable intake, current ownership/activation and resource admission; completion requires correlated reply/turn end; idle retirement never completes or deletes work. Stop, spend and exact unknown-effect handling remain mandatory. No unattended live completion is claimed; the desk's copy walk is the stated acceptance boundary.
 80/20: Fake-worker topic lifecycle, shared-cap and recovery tests plus the shipped journal model closure, real encrypted journal, direct importers and static gates. No full-suite, load burner or live provider run on this host.
-Generated register: refreshed from pushed source commit c876fcdaeb9f488fec738b827cc8122424b0d6ed; shape-only replay, not a runtime certificate.
 VERDICT: author submission for desk review; no independent convergence or production acceptance claim
