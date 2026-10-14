@@ -49,7 +49,7 @@ Cap boundary: The three queued/same-host/restart consumer tests fill the entire 
 
 Agreement fixture: PREVIEW-CONVERSATION-RESULT-COLLECTION resolves to the shipped-closure journal regression file; the artifact pin is computed by the delegated desk rehash tool.
 
-Generated register: Replay publication binds source commit 6706f2f6195cbf4b041ea99ec3fcd231f25b21eb. Regenerated with the delegated desk scripts and build-register replay; source roster and grounding inventory pins track this branch. No runtime certificate is inferred from replay.
+Generated register: Replay publication binds source commit a97a66b059780f5de6ae73c3da7078b4addbaa55. Regenerated with the delegated desk scripts and build-register replay; source roster and grounding inventory pins track this branch. No runtime certificate is inferred from replay.
 
 simplestRobustRoute: This is the simplest route: read the one existing durable host outcome into the one existing journal answer/send consumer; take the earlier existing lifetime; reuse the journal grounding already prepared. The optional collector prevents a demonstrated lost-result boundary without new stores or dispatch. Original operation and packet bind recovery; stop, disclosure, allowance and send-intent checks remain. Targeted shipped-closure tests with physical IO substituted demonstrate unattended completion; no live installation certificate is claimed.
 80/20: Repair the three demonstrated failures and prove their positive and negative neighbors with targeted tests and archived shapes. The Studio owns the full suite, live copy walk and macOS conformance proof.
