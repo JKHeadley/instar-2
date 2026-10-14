@@ -30,6 +30,7 @@ export interface HistoricalScope {
   readonly context: FactContext; readonly index: CausalIndex; tables?: string;
   positions?: { readonly grants: ReadonlyMap<object, number>; readonly revocations: ReadonlyMap<object, number> };
 }
+const operationAncestors = new WeakMap<HistoricalScope, Map<FactEnvelope, HistoricalBody>>();
 // GRANT M3-E: the memo fingerprint keeps the exact canonical bytes of its composite input, but a
 // component object that is runtime-verified deep-frozen (and so can never change) is encoded once
 // and reused by identity. Everything mutable is still walked and encoded on every read, with the
@@ -154,7 +155,6 @@ export function historicalAuthority(context: FactContext): FactContext {
 export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, decoderContext: DecodeContext, operation?: HistoricalScope): Result<HistoricalBody> {
   return boundary('HistoricalFactBody', fact.body, contextBoundary(context), () => {
     const cache = new Map<string, HistoricalBody>();
-    const issued = new Map<string, readonly HistoricalRead<ConstitutionalValue>[]>();
     // Occam cut #5: the memo key is the fact (id + exact bytes below) plus the context, encoded at
     // most once per operation, plus the history's identity: its chain-head contentHashes where the
     // index can answer by position, else the full contentHash list the walk yields (as before).
@@ -180,12 +180,21 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
       const byContent = decodedByContent.get(record.id);
       const reused = byContent?.envelope === envelopeBytes(record) ? byContent : undefined;
       if (reused?.fingerprint === fingerprint && reused.owners === context.ownedBodies && reused.migrations === context.migrations) {
-        cache.set(record.id, reused.body); issued.set(record.id, reused.body.records); return reused.body;
+        cache.set(record.id, reused.body); return reused.body;
       }
       const history: HistoricalRead<ConstitutionalValue>[] = [];
+      // Within this one read-only operation an ancestor always has the same causal
+      // standing. Reuse that verified body instead of re-hashing it once per descendant.
+      // The next operation owns a fresh scope, so changed policy/captures still revalidate.
+      const ancestors = operationAncestors.get(scope) ?? new Map<FactEnvelope, HistoricalBody>();
+      operationAncestors.set(scope, ancestors);
       for (const ancestor of causalCone(record, context.facts)) {
-        read(ancestor, causalStanding(ancestor, context, false, causal).decode);
-        history.push(...issued.get(ancestor.id)!);
+        let prior = ancestors.get(ancestor);
+        if (!prior) {
+          prior = read(ancestor, causalStanding(ancestor, context, false, causal).decode);
+          ancestors.set(ancestor, prior);
+        }
+        history.push(...prior.records);
       }
       const checked = take(decodeFrame(record, context)), bytes = envelopeBytes(record), reference = `origin:${record.id}`;
       const captures = { ...c.captures, [reference]: bytes };
@@ -248,7 +257,7 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
         }
       }
       const result: HistoricalBody = { fields: out, records: own, grants, revocations, taint: unavailable ? ['evidence-unavailable'] : [] };
-      issued.set(record.id, own); cache.set(record.id, result);
+      cache.set(record.id, result);
       const decoded: DecodedBody = { fingerprint, owners: context.ownedBodies, migrations: context.migrations, body: frozen(result) };
       decodedByContent.set(record.id, { ...decoded, envelope: envelopeBytes(record) }); return result;
     };

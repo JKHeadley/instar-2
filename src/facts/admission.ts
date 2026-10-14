@@ -10,25 +10,28 @@ import { decodeOwnedBody } from './owned.js';
 export function causalCone(fact: FactEnvelope, facts: readonly FactEnvelope[]): readonly FactEnvelope[] {
   const byId = new Map(facts.map(f => [f.id, f]));
   const found = new Map<string, FactEnvelope>(), visiting = new Set<string>();
-  const visit = (f: FactEnvelope) => {
-    requireFact(!visiting.has(f.id) && f.id !== fact.id, 'causal cycle');
-    if (found.has(f.id)) return;
-    visiting.add(f.id);
+  function* parents(f: FactEnvelope): Generator<FactEnvelope> {
     for (const id of [f.predecessors.inSegment, ...f.predecessors.required]) if (id !== null) {
-      const p = byId.get(id); requireFact(p, `dangling causal reference: ${id}`); visit(p);
+      const p = byId.get(id); requireFact(p, `dangling causal reference: ${id}`); yield p;
     }
     for (const [machine, head] of Object.entries(f.predecessors.frontier)) {
       const p = facts.find(p => p.machine === machine && comparePosition(p.segment, head) === 0);
-      requireFact(p, `dangling frontier: ${machine}`); visit(p);
+      requireFact(p, `dangling frontier: ${machine}`); yield p;
     }
-    visiting.delete(f.id); found.set(f.id, f);
-  };
-  for (const id of [fact.predecessors.inSegment, ...fact.predecessors.required]) if (id !== null) {
-    const p = byId.get(id); requireFact(p, `dangling causal reference: ${id}`); visit(p);
   }
-  for (const [machine, head] of Object.entries(fact.predecessors.frontier)) {
-    const p = facts.find(p => p.machine === machine && comparePosition(p.segment, head) === 0);
-    requireFact(p, `dangling frontier: ${machine}`); visit(p);
+  // Same depth-first postorder and refusal order as the recursive walk, without
+  // exhausting the host stack on a real conversation's long signed lineage.
+  const stack: { fact?: FactEnvelope; parents: Generator<FactEnvelope> }[] = [{ parents: parents(fact) }];
+  while (stack.length) {
+    const frame = stack.at(-1)!, next = frame.parents.next();
+    if (next.done) {
+      if (frame.fact) { visiting.delete(frame.fact.id); found.set(frame.fact.id, frame.fact); }
+      stack.pop(); continue;
+    }
+    const f = next.value;
+    requireFact(!visiting.has(f.id) && f.id !== fact.id, 'causal cycle');
+    if (found.has(f.id)) continue;
+    visiting.add(f.id); stack.push({ fact: f, parents: parents(f) });
   }
   return [...found.values()];
 }
