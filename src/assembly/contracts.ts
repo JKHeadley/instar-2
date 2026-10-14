@@ -226,7 +226,7 @@ export interface AssemblyHost {
   current(): Readonly<{ facts: FactContext; generation: string; stopped: boolean; clock: Clock }>;
 }
 
-export interface HarnessAdapterPort {
+interface FirstInputHarnessAdapterPort {
   readonly owner: 'part-ten'; readonly id: string;
   describe(): Readonly<{ artifact: Hash; platform: string; contextModes: readonly string[]; outputModes: readonly string[]; interruptionModes: readonly string[]; custodyModes: readonly string[]; observationModes: readonly string[]; conformance: string }>;
   launch(spec: HarnessLaunchSpec, operation: string, claim: string): Result<HarnessObservation>;
@@ -234,6 +234,34 @@ export interface HarnessAdapterPort {
     /** Required by the production arm; omitted only by the landed compatibility arm. */
     contextDelivery?: string; claim?: string }>): Result<HarnessObservation>;
   observe(input: Readonly<{ launch: string; delivery: string; operation: string }>): Result<HarnessObservation>;
+}
+
+/** One public adapter family. Version 1 is the retained first-input compatibility arm;
+ * continuing hosts require version 2 and cannot advertise a v1 worker as conforming. */
+export type HarnessAdapterPort<Version extends 1 | 2 = 1> = Version extends 2
+  ? ContinuingHarnessAdapterPort : FirstInputHarnessAdapterPort;
+
+/** Public conversation protocol v2. Custody, queue, admission and cursors belong to the host.
+ * All worker operations are asynchronous; the installed driver supplies their finite deadlines. */
+export interface HarnessWorkerHandle {
+  readonly launch: string; readonly incarnation: string; readonly claim: string;
+}
+export interface HarnessInputDelivery extends HarnessWorkerHandle {
+  readonly operation: string; readonly text: string; readonly digest: string;
+  readonly resultPath: string; readonly maxBytes: number;
+}
+export type HarnessNormalizedObservation =
+  | Readonly<{ kind: 'reply'; delivery: string; text: string; digest: string }>
+  | Readonly<{ kind: 'turn-end'; delivery: string; state: 'completed' | 'no-reply' | 'uncertain' }>
+  | Readonly<{ kind: 'exit' | 'paused'; evidence: string }>;
+interface ContinuingHarnessAdapterPort {
+  describe(): Readonly<{ version: 2; subsequentInput: true; output: 'reply-and-turn-end'; resume: boolean }>;
+  launch(input: Readonly<{ operation: string; claim: string; artifact: string; incarnation: string; workingScope: string }>): Promise<HarnessWorkerHandle>;
+  deliver(input: HarnessInputDelivery): Promise<Readonly<{ state: 'accepted' | 'busy-not-dispatched' | 'refused-not-dispatched' | 'uncertain'; evidence: string }>>;
+  observe(input: HarnessWorkerHandle & Readonly<{ delivery: HarnessInputDelivery | null; cursor: number; limit: number }>): Promise<Readonly<{
+    observations: readonly HarnessNormalizedObservation[]; cursor: number; complete: boolean }>>;
+  control(input: HarnessWorkerHandle & Readonly<{ action: 'interrupt' | 'close' | 'compact'; authority: string; reason: string }>): Promise<Readonly<{
+    state: 'closed' | 'refused' | 'uncertain'; evidence: string }>>;
 }
 
 export interface PersistenceReceipt { readonly owner: 'part-ten'; readonly store: string; readonly position: string; readonly bytesDigest: Hash; readonly physicalHead: Hash; readonly durability: 'local-durable' }
