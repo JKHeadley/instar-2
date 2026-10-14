@@ -4,6 +4,10 @@ _Generated from `06-the-fact-envelope.changelog.json` by `scripts/render-changel
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 13 · 2026-10-13 · draft — operator review on PR #162; Operator requires macOS and Linux compatibility without requiring a Mac.
+
+- **Specify platform-neutral installation guarantees and concrete macOS/Linux implementations, including headless Linux and named build units.** — Keep the reviewed enrollment and authority record chain while removing the implicit Mac requirement. _(https://github.com/JKHeadley/instar-2/pull/162)_
+
 ## Revision 12 · 2026-10-13 · draft — operator review on PR #162; Independent bootstrap review: two authority gaps and three implementation/UX notes
 
 - **Specify the finite enrollment seed, exact first Authorization and runtime genesis/version record sequence.** — Close initial identity and authority without circular grants, extra approval classes or new stores. _(PR 162; reviews/install-bootstrap-design-1013.md; astra-install-bootstrap-design-1013-review.md)_
