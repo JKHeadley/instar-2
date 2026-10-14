@@ -50,6 +50,18 @@ describe('pinned conversation read indexes', () => {
     expect(value(index.select(20, [])).unreadable).toBe(1);
   });
 
+  it('skips an entire repeated excluded identity without walking its history', () => {
+    const { r, facts, store } = corpus(1);
+    // A replicated capture identity can occur in distinct admitted lineage envelopes.
+    const rows = Array.from({ length: 4096 }, (_, i) => ({ ...facts[0]!, id: `replica:${i}` }));
+    const source = { ...store, read: () => r.fx.success(rows) };
+    const index = value(rebuildConversationReadView(source, r.fx.c, noWork(r)));
+    const e = readExchange(facts[0]!)!;
+    const selected = value(index.select(20, [{ conversation: e.conversation, messageId: e.messageId }]));
+    expect(selected.scanned).toEqual([]); expect(selected.examined).toBe(1);
+    expect(value(index.select(20, [])).scanned).toHaveLength(20);
+  });
+
   it('does no source reads or work folding on hot queries, and exposes its pinned source', async () => {
     const { r, store, reader } = corpus(120);
     let reads = 0, folds = 0;

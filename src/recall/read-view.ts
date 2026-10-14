@@ -11,6 +11,21 @@ import type { RecallQuery, RecalledExchange } from './contracts.js';
 export interface ExchangeSlice {
   readonly stored: number; readonly unreadable: number;
   readonly scanned: readonly RecalledExchange[];
+  /** Diagnostic only: tree nodes and leaf rows examined by this selection. */
+  readonly examined: number;
+}
+type WindowNode = Readonly<{ start: number; end: number; identities: readonly string[] | null;
+  left?: WindowNode; right?: WindowNode }>;
+const identity = (row: Pick<RecalledExchange, 'conversation' | 'messageId'>) => `${row.conversation}\n${row.messageId}`;
+// Exclusions name at most 64 identities, but replication can retain many rows per identity.
+// A subtree with >64 distinct identities cannot be wholly excluded. Smaller identity sets
+// let selection skip an arbitrary run of excluded rows without scanning that history.
+function windowTree(rows: readonly RecalledExchange[], start = 0, end = rows.length): WindowNode {
+  if (end - start <= 32) return { start, end, identities: [...new Set(rows.slice(start, end).map(identity))] };
+  const mid = start + Math.floor((end - start) / 2);
+  const left = windowTree(rows, start, mid), right = windowTree(rows, mid, end);
+  const keys = left.identities && right.identities ? [...new Set([...left.identities, ...right.identities])] : null;
+  return { start, end, left, right, identities: keys && keys.length <= 64 ? keys : null };
 }
 export interface RecallReadView {
   readonly store: FactStorePort;
@@ -29,8 +44,8 @@ export interface WorkReadProjection<T> {
 }
 /** A single atomic rebuild publishes message and owner-folded work indexes from the same
  * verified source. Supply the existing work owner's fold; this module does not decide
- * what is open, completed, cancelled or uncertain. Cold rebuild is O(history); hot
- * reads visit only the requested output / maxScan window plus excluded identities.
+ * what is open, completed, cancelled or uncertain. Cold rebuild replays history; hot
+ * reads visit the requested output / maxScan window and exclusion index nodes.
  * Existing readers retain their explicit old source across refresh, never half a view. */
 export function rebuildConversationReadView<T>(store: FactStorePort, context: BoundaryContext,
   work: WorkReadProjection<T>): Result<ConversationReadView<T>> {
@@ -47,7 +62,7 @@ export function rebuildConversationReadView<T>(store: FactStorePort, context: Bo
       ordered.sort((a, b) => b.exchange.at - a.exchange.at || b.order - a.order);
       return { stored, unreadable, ordered: ordered.map(row => row.exchange), work: take(work.fold(facts)) };
     })));
-    const p = built.projection;
+    const p = built.projection, windows = windowTree(built.projection.ordered);
     const conversations = new Map<string, RecalledExchange[]>(), works = new Map<string, T[]>();
     for (const row of p.ordered) {
       const rows = conversations.get(row.conversation) ?? [];
@@ -73,13 +88,23 @@ export function rebuildConversationReadView<T>(store: FactStorePort, context: Bo
         validLimit(limit);
         ensure(Array.isArray(exclude) && exclude.length <= 64 && exclude.every(x => x !== null && typeof x === 'object'
           && typeof x.conversation === 'string' && typeof x.messageId === 'string'), 'invalid exchange exclusions', 'policy');
-        const excluded = new Set(exclude.map(x => `${x.conversation}\n${x.messageId}`));
+        const excluded = new Set(exclude.map(identity));
         const scanned: RecalledExchange[] = [];
-        for (const row of p.ordered) {
-          if (scanned.length === limit) break;
-          if (!excluded.has(`${row.conversation}\n${row.messageId}`)) scanned.push(row);
-        }
-        return { stored: p.stored, unreadable: p.unreadable, scanned };
+        let examined = 0;
+        const visit = (node: WindowNode): void => {
+          if (scanned.length === limit) return;
+          examined++;
+          if (node.identities?.every(key => excluded.has(key))) return;
+          if (node.left && node.right) { visit(node.left); visit(node.right); return; }
+          for (let i = node.start; i < node.end && scanned.length < limit; i++) {
+            examined++;
+            const row = p.ordered[i]!;
+            if (!excluded.has(identity(row))) scanned.push(row);
+          }
+        };
+        if (excluded.size) visit(windows);
+        else scanned.push(...p.ordered.slice(0, limit));
+        return { stored: p.stored, unreadable: p.unreadable, scanned, examined };
       }) });
   });
 }
