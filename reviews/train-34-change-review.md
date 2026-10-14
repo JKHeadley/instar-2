@@ -27,12 +27,13 @@ Subject (16 paths): generated/capabilities.json, generated/capabilities.md, gene
 
 ## Closing block
 
-simplestRobustRoute: This is the simplest robust route: ordinary exact-head merge, existing desk regeneration and targeted consumer verification. No new machinery. Verified intake and authority guard start; correlated results and durable unique sends guard completion; shared allowance, stop and byte bounds guard execution. No unattended live deployment claim.
-80/20: Run changed tests, direct consumers and named journal/pin checks in bounded foreground batches; Studio owns physical-host checks and the combined full gate.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Decision: train-34-merge | Ordinary merge of exact 75633196fe99391ea1f20cf9516c9ea5d75ec6f3 fast-forwarded without conflict; report /Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1m-batch-waiting-1014-PROGRESS.md and reviews/step1m-darwin-1014-change-review.md document behavior and native certification. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-34-PROGRESS.md
 Decision: train-34-desk-A | Preserve all member behavior byte-for-byte; no overlapping conflict or manual source resolution. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-34-PROGRESS.md
 Decision: train-34-desk-B | Create the separate branch directly at exact 9d8c16f03f6917b9850269f3773809bd39fa9335 and preserve its ancestry; no main merge or later branch movement. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-34-PROGRESS.md
 Decision: train-34-desk-D | Run portable targeted and pinned checks on WSL; report untouched physical-host checks for the Studio gate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-34-PROGRESS.md
 Decision: train-34-register | Run downloaded desk repin, build, owner rehash and register replay against exact reviewed head; retain renewed native conformance declaration unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-34-PROGRESS.md
+
+simplestRobustRoute: This is the simplest robust route: ordinary exact-head merge, existing desk regeneration and targeted consumer verification. No new machinery. Verified intake and authority guard start; correlated results and durable unique sends guard completion; shared allowance, stop and byte bounds guard execution. No unattended live deployment claim.
+80/20: Run changed tests, direct consumers and named journal/pin checks in bounded foreground batches; Studio owns physical-host checks and the combined full gate.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
