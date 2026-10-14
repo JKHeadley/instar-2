@@ -21,6 +21,8 @@ Convergence: none
 Prompt review: No prompts or parsers changed. Recorded summary, uncertain, Jev undecided/unsure, reply-review and delivered/empty reply shapes now pass through validation failure, queued wait, recovery and existing answer consumer in topic-login-pool tests.
 Decision: step1l-repair-095646-validation | Catch only the injected validation call for session selection, returning the existing no-eligible result for initial and pending destinations; propagate manifest, persistence and non-session errors. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1l-pool-topics-1014-repair-095646-PROGRESS.md
 
+Generated register: Replayed from source commit 2fb5a10ea57d3b3f3aa38345a148c07cb516ede7. Delegated desk rehash and repin scripts changed no owner or inventory pins. Shape-only evidence, not native certification.
+
 simplestRobustRoute: This is the simplest robust route: reuse pool eligibility and the existing host queue, maintenance, lifetime, stop and allowance. No new recovery mechanism. Validate before retirement; preserve input on unavailability; drain once after recovery. Disposable-host evidence is not native/provider or unattended production acceptance.
 80/20: Both reproduced paths turn green, with stop/deadline, unchanged accounting, error distinction and recorded-shape coverage. Full suite and native acceptance belong to the Studio gate.
 VERDICT: author submission; no independent convergence claimed
