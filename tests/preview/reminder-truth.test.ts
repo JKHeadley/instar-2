@@ -154,3 +154,15 @@ it('resolves Portland today from intake even when Telegram sent it on the previo
     expect(openRequests(h.journal.view)).toMatchObject([{ day: '2026-10-14', time: '16:40', remind: true }]);
   } finally { h.close(); }
 });
+
+it('removes a promise even when the requested date proposal fails citation validation', async () => {
+  const record = records.find(row => row.update === 840342823)!;
+  const h = make(record, JSON.stringify({ reply: { answer: "I'll remind you tomorrow." }, memory: [],
+    dated: [{ quote: record.request, when: 'next Thursday at 3 pm', remind: true }] }));
+  try {
+    h.intake(); await h.worker.drain();
+    expect(h.state.sent[0]).toContain('I have not saved a dated item.');
+    expect(h.state.sent[0]).not.toContain("I'll remind you tomorrow.");
+    expect(openRequests(h.journal.view)).toEqual([]);
+  } finally { h.close(); }
+});

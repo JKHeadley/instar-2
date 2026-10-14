@@ -8393,7 +8393,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   personAttributes = attributesFrom(parsed.personAttributes, [turn]);
                   if (personAttributes === undefined) invalidMemory = true;
                 }
-                if (dated) requested = (parsed.dated as { remind?: unknown }[]).map(value => value?.remind === true);
+                if (Array.isArray(parsed.dated)) requested = (parsed.dated as { remind?: unknown }[]).map(value => value?.remind === true);
                 // Rules 10, 57, 85, 93: the model reads whether the operator withdrew a request; code admits the
                 // withdrawal only against the operator's own words. Live 2026-10-02 (room two, build e26a8c1b):
                 // "Also remind me today at 1:25 am to call the plumber" cancelled the 1:25 bird-feeder request,
@@ -8585,9 +8585,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (forgotten.length) memory = [...memory!, ...forgotten];
             if (invalidDate && !invalidMemory) {
               // Even a separated answer can contain an unsupported promise (840342802).
-              // An invalid date therefore keeps only the host outcome.
-              body = '';
-              text = `I could not verify the date you gave. Please restate it; I have not saved a dated item.`.trim();
+              // An invalid requested action keeps only the host outcome. A non-action date
+              // still preserves the separately supplied answer to the person's other question.
+              body = requested.some(Boolean) ? '' : separatedAnswer?.trim() ?? '';
+              text = `${body} I could not verify the date you gave. Please restate it; I have not saved a dated item.`.trim();
             } else if (!invalidMemory && dated?.length) {
               const late = (item: DatedItem) => item.remind && relativeDelay(item.when) !== undefined
                 && item.resolution !== undefined && Date.parse(item.resolution.instant) <= ports.now();
