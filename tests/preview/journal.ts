@@ -22,7 +22,7 @@ import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
 import { boundedCorrection, checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, REVIEW_INTERRUPTED_REASON, GROUP_REVIEW_FINAL_NOTICE, isGroupReviewFinalNotice, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, jevConfidentPass, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, confidentReplyNeedsReview, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
-import { latestRecurringDay, nextRecurringDay, parseDatedItem, resolvedDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
+import { latestRecurringDay, nextRecurringDay, parseDatedItem, relativeDelay, resolvedDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
 import { messageTime, zoneFormatter } from './self-state.js';
@@ -6445,10 +6445,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         || !turn.text.includes(quote) || !terms(quote).length
         || items.some(item => item.quote === quote)) return undefined;
       // The operator's own words carry the date; a restated absolute date only has to agree with them.
-      const at = sentAt(turn) ?? turn.at, zone = ports.timeZone ?? 'America/Los_Angeles';
+      const delay = relativeDelay(when);
+      const at = delay === undefined ? sentAt(turn) ?? turn.at : turn.at, zone = ports.timeZone ?? 'America/Los_Angeles';
       const phrase = quote.includes(when) ? when : restatedDatePhrase(quote, when, at, zone);
       if (phrase === undefined) return undefined;
-      let item = resolvedDatedItem(parseDatedItem(turn.id, quote, phrase, at, zone), resolution, at);
+      const instant = delay === undefined ? undefined : new Date(at + delay);
+      const resolved = instant === undefined ? resolution : Number.isFinite(instant.getTime())
+        ? { at, zone, instant: instant.toISOString() } : { ambiguity: 'duration exceeds the calendar range' };
+      let item = resolvedDatedItem(parseDatedItem(turn.id, quote, phrase, at, zone), resolved, at);
       if (item.resolution && item.day && item.time
         && wallEpoch(item.day, item.time, zone) !== Math.floor(Date.parse(item.resolution.instant) / 60_000) * 60_000)
         item = { ...item, ambiguity: 'That local time repeats when clocks change; which occurrence do you mean?' };
@@ -6456,10 +6460,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     return items;
   };
-  /** A delayed standing request catches up once; only an expired one-time date loses its scheduling window. */
+  /** A duration anchored to durable intake catches up through the same due-turn path as standing requests. */
   const reminderRefusal = (item: DatedItem) => item.day === undefined || item.ambiguity !== undefined
     ? 'its day or time is not settled; restate it with a day and time such as Friday at 9 am'
-    : !item.recurrence && reminderDue(item) <= localStamp(ports.now(), item.zone) ? 'that time has already passed'
+    : !item.recurrence && relativeDelay(item.when) === undefined
+      && reminderDue(item) <= localStamp(ports.now(), item.zone) ? 'that time has already passed'
       : reminderDue(item) >= localStamp(journal.view.expires, item.zone) ? 'this preview ends before then' : null;
   const clean = (value: string, _derived = false, source?: string | number) => projectMemoryClause(journal.view, value, source);
   const restoredHistorical = (change: MemoryChange, changes: readonly MemoryChange[] = journal.view.memory) =>
@@ -7888,14 +7893,23 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     checkCoherence();
   };
   /** Ordinary answers drain on every cycle. A requested action is proactive: it is created and answered only at
-   * the due point `sendRequested()`, after a successful poll returned nothing new, so a queued withdrawal is
-   * always read and settled first (Rules 57, 93). */
+   * the due point `sendRequested()`, or just after admitting an already-late relative request.
+   * Both paths settle queued withdrawals first (Rules 57, 93). */
   const drain = () => drainTurns(false);
   /** Eleven §5's ordinary-worker cut: a failed ordinary pass leaves the minimal path answering at once
    * (reason `worker`) until an ordinary pass completes again. */
   const drainTurns = async (due: boolean) => {
     if (working) throw Error('preview journal: second worker refused');
-    try { await drainTurnsOnce(due); ordinaryFailedSince = null; }
+    try {
+      await drainTurnsOnce(due);
+      // Read every queued operator turn (including cancellations) first. A relative request
+      // already due at admission needs no new poll or timer; the existing durable due turn
+      // keeps stop, caps, UNKNOWN-send handling and restart deduplication intact.
+      if (!due && pendingRequests(journal.view).some(item => relativeDelay(item.when) !== undefined
+        && item.resolution !== undefined && Date.parse(item.resolution.instant) <= ports.now()))
+        await drainTurnsOnce(true);
+      ordinaryFailedSince = null;
+    }
     catch (error) { if (journal.view.stop === null) ordinaryFailedSince ??= ports.now(); throw error; }
   };
   const drainTurnsOnce = async (due: boolean) => {
@@ -8568,15 +8582,25 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const forgotten = held.filter(withdrawnSource), kept = held.filter(change => !withdrawnSource(change));
             if (forgotten.length) memory = [...memory!, ...forgotten];
             if (invalidDate && !invalidMemory) {
-              // Legacy reply strings can mix an answer with an unchecked save claim.
-              // Only the separated answer is safe to keep when validation rejects the date.
-              body = separatedAnswer?.trim() ?? '';
-              text = `${separatedAnswer?.trim() ?? ''} I could not verify the date you gave. Please restate it; I have not saved a dated item.`.trim();
+              // Even a separated answer can contain an unsupported promise (840342802).
+              // An invalid date therefore keeps only the host outcome.
+              body = '';
+              text = `I could not verify the date you gave. Please restate it; I have not saved a dated item.`.trim();
             } else if (!invalidMemory && dated?.length) {
+              const late = (item: DatedItem) => item.remind && relativeDelay(item.when) !== undefined
+                && item.resolution !== undefined && Date.parse(item.resolution.instant) <= ports.now();
+              // The legacy free-text body can contain unlisted promises and even copied host
+              // receipts (recorded 840342823). Do not guess sentence meaning with a regex:
+              // replace that body with the verified per-action outcomes when any action failed
+              // or became late. Accepted, on-time requests keep their original promise.
+              if (dated.some((item, index) => requested[index] && !item.remind || late(item))) {
+                text = ''; body = '';
+              }
               const receipt = dated.map((item, index) => (item.day
                 ? `Date ${index + 1}: ${item.day}${item.time ? ` ${item.time}` : ''} (${item.zone})${item.ambiguity ? `; ${item.ambiguity}` : ''}.`
                 : `Date ${index + 1}: unresolved (${item.ambiguity ?? 'ambiguous'}). Please give an absolute date.`)
-                + (item.remind && item.recurrence ? ` I will act on this ${item.recurrence === 'daily' ? 'every day' : 'every weekday'} at ${item.time} (${item.zone}), first due ${item.day}, while I am running and within my spend and stop limits. Ask me to cancel this request to stop the series. Missed occurrences are combined into one on recovery.`
+                + (late(item) ? ' This reminder is late: its time passed while your message waited. It is due now.'
+                  : item.remind && item.recurrence ? ` I will act on this ${item.recurrence === 'daily' ? 'every day' : 'every weekday'} at ${item.time} (${item.zone}), first due ${item.day}, while I am running and within my spend and stop limits. Ask me to cancel this request to stop the series. Missed occurrences are combined into one on recovery.`
                   : item.remind ? ` I will act on this once at ${reminderDue(item)} (${item.zone})${item.time ? '' : ' because you gave no time'} and send you the result here.`
                   : requested[index] ? ` I did not schedule what you asked for: ${reminderRefusal(item) ?? 'it could not be granted'}.`
                   : item.day ? ' I recorded this date; I act on a date only when you ask me to.' : '')).join(' ');
