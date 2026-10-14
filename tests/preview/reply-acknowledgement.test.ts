@@ -41,7 +41,7 @@ for (const receipt of [10, null]) it(`slow active reply sends one fixed acknowle
   const f = fixture({ receipt });
   try {
     f.worker.intake([update()]); const drain = f.worker.drain(); await f.entered.promise;
-    f.advance(9999); await f.worker.minimal(); expect(f.sent).toHaveLength(0);
+    f.advance(6999); await f.worker.minimal(); expect(f.sent).toHaveLength(0);
     f.advance(1); await Promise.all([f.worker.minimal(), f.worker.minimal()]);
     expect(f.sent.map(row => row.expectedText)).toEqual([REPLY_ACKNOWLEDGEMENT]);
     expect(f.sent[0]).toMatchObject({ kind: 'reply', disposition: 'result', replyTo: 101 });
@@ -260,7 +260,7 @@ it('cancels an acknowledgement when the answer arrives during its disclosure che
   } finally { f.close(); }
 });
 
-for (const age of [7999, 8000, 9300, 9999, 10000]) it(`new acknowledgement admission versus historical replay at ${age} ms`, async () => {
+for (const age of [6999, 7000, 7999, 8000, 9300, 9999, 10000]) it(`new acknowledgement admission versus historical replay at ${age} ms`, async () => {
   const f = fixture();
   try {
     f.worker.intake([update()]); const turn = f.journal.view.order[0]!;
@@ -268,7 +268,7 @@ for (const age of [7999, 8000, 9300, 9999, 10000]) it(`new acknowledgement admis
     const row = { kind: 'held-notice-intent' as const, id: turn.id, text, chat: genesis.chat, update: turn.update,
       grant: genesis.grant, acknowledgement: true as const,
       provenance: f.journal.signOutbound('infrastructure', { target, chat: genesis.chat, body: text }), at: turn.at + age };
-    if (age >= 10000) f.journal.append(row);
+    if (age >= 7000) f.journal.append(row);
     else {
       expect(() => f.journal.append(row)).toThrow('fixed acknowledgement no longer due');
       // Encode an old-build frame directly: new admission must not be used to manufacture historical acceptance.
@@ -280,7 +280,7 @@ for (const age of [7999, 8000, 9300, 9999, 10000]) it(`new acknowledgement admis
       length.writeUInt32BE(bytes.length); appendFileSync(f.path, Buffer.concat([length, bytes]));
     }
     f.journal.close();
-    if (age < 8000) expect(() => openPreviewJournal(f.path, key)).toThrow('fixed acknowledgement no longer due');
+    if (age < 7000) expect(() => openPreviewJournal(f.path, key)).toThrow('fixed acknowledgement no longer due');
     else {
       const reopened = openPreviewJournal(f.path, key);
       try { expect(reopened.view.order[0]?.heldNoticeIntent).toBe(text);
