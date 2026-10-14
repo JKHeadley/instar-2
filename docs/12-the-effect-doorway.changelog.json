@@ -1,5 +1,26 @@
 [
   {
+    "revision": 10,
+    "date": "2026-10-13",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, design-effects-actions-1013: design tool and connected-account actions for both answers to the single-machine closed-set question; joint design review pending."
+    },
+    "changes": [
+      {
+        "what": "Define continuing-session tool admission, capability-level registration, pre-dispatch causal records and result recovery through the existing effect owners.",
+        "why": "A full session needs role-granted tools and accounts without an approval or registration ceremony per action, while secrets, spending, stop, durable intake and no duplicate sends remain enforced.",
+        "ref": "reviews/design-effects-actions-1013-change-review.md; operator brief /Users/dabombstudio/.instar/agents/echo/.instar/lanes/design-effects-actions-1013-brief.txt, 2026-10-13; base 7ef8f158"
+      },
+      {
+        "what": "State both conditional single-machine designs and the exact unresolved constitutional exclusion; identify the source seams and unnecessary per-action machinery.",
+        "why": "Only the operator can amend the closed irreversible set; ordinary role status alone does not authorize a local email send. Rule 116 calls for reuse of the durable request, claim and observation path.",
+        "ref": "docs/00-the-purpose.md: supported single-machine shape, role granted once, sign-off list; docs/01-the-rules.md: Rule 116"
+      }
+    ]
+  },
+  {
     "revision": 9,
     "date": "2026-10-10",
     "status": "draft",

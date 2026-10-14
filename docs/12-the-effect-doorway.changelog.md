@@ -4,6 +4,11 @@ _Generated from `12-the-effect-doorway.changelog.json` by `scripts/render-change
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 10 · 2026-10-13 · draft — Justin, design-effects-actions-1013: design tool and connected-account actions for both answers to the single-machine closed-set question; joint design review pending.
+
+- **Define continuing-session tool admission, capability-level registration, pre-dispatch causal records and result recovery through the existing effect owners.** — A full session needs role-granted tools and accounts without an approval or registration ceremony per action, while secrets, spending, stop, durable intake and no duplicate sends remain enforced. _(reviews/design-effects-actions-1013-change-review.md; operator brief /Users/dabombstudio/.instar/agents/echo/.instar/lanes/design-effects-actions-1013-brief.txt, 2026-10-13; base 7ef8f158)_
+- **State both conditional single-machine designs and the exact unresolved constitutional exclusion; identify the source seams and unnecessary per-action machinery.** — Only the operator can amend the closed irreversible set; ordinary role status alone does not authorize a local email send. Rule 116 calls for reuse of the durable request, claim and observation path. _(docs/00-the-purpose.md: supported single-machine shape, role granted once, sign-off list; docs/01-the-rules.md: Rule 116)_
+
 ## Revision 9 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
 
 - **Quote the five sign-off conditions, separate them from verification and standing, and align ordinary launch and local durability checks.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_

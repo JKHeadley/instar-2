@@ -71,8 +71,9 @@ the boundary check prevents it becoming an unrestricted escape.
 ## 2. An external service becomes an operation
 
 **Rule — an operation is governed before it is callable.** Rules 4, 30, 57, 66, 69,
-90 and 103. Each callable operation has one `OperationDefinition` at an approved version and
-one matching feature declaration in the existing register. The feature's stable id identifies
+90 and 103. Each callable operation capability has one `OperationDefinition` at an approved version and
+one matching feature declaration in the existing register. A capability may expose a finite
+set of typed methods; its invocations are requests, not fresh feature registrations (section 2a). The feature's stable id identifies
 the operation; the definition fact names that feature and its governing version. The definition
 is loaded from the spine, not stuffed into an undeclared register field. It inherits part
 three's governed-port construction and part two's version-chain approval contract. No new
@@ -134,6 +135,198 @@ appear as observations, never as a retroactive change to the request.
 safe conditional update or decisive cancellation query. This design chooses to enable only
 modes the adapter proves, rather than certifying an entire service with one green badge.
 No check chooses the useful set of modes; P8-NF-05/09 enforces the declared set.
+
+---
+
+## 2a. Tools and accounts in a continuing session
+
+**Value — the conversation lives in a full session; the authority and record outlive it.**
+The agent reads, edits, runs tools and uses the accounts granted with its role over many turns.
+The session chooses the work. This doorway admits each effect before it can happen, records its
+result, and returns that result to the same conversation. A session restart, compaction or move
+must not erase an accepted input, a tool result, an outstanding action or the reason for a refusal.
+There is no approval conversation for each ordinary action and no new register entry for each
+invocation. The installation's grant and operation contracts cover a class of work; each request
+binds its actual arguments. A message send remains irreversible even if its service offers delete.
+
+**Rule — role, sign-off and durability are separate decisions.** Purpose: role granted once,
+sign-off list, least revelation, durable cause and supported single-machine shape; Rules 4,
+18, 28, 42, 57, 103 and 104. **Checks: P8-NF-06/07/16/25/44** exercise these pairs:
+
+| Actual proposal | Ordinary neighbor and intercepted neighbor |
+|---|---|
+| Read a role account or search it | Admit within its grant, audience, finite quota and installed demand; refuse a different tenant, expired credential or disclosure to an unentitled recipient. A read that discloses a query to a service still needs that disclosure scope. |
+| Edit work in the workspace | Admit a bounded, reversible edit in granted scope with durable cause; intercept a protected policy file, path escape or irreversible overwrite. Reversibility requires a usable undo, not merely a tool named Edit. |
+| Send email or change an account record | Inside the role, with no sign-off condition, no extra approval is needed. The dispatch still needs its installed durability path. Outside every grant, refuse and name the grant needed; a grant for reading does not grant sending. |
+| Publish in the person's name or touch a marked sensitive matter | Preserve and hold the exact proposal for the existing sign-off path, even inside the role; ordinary private communication as the agent does not inherit this hold. |
+| Spend or widen authority | Within the recorded cap and role, proceed if all other floors hold; above the cap or widening authority requires the person's recorded act before execution. A yes cannot overdraw the cap: its authorized allocation must enter force first. |
+
+Meaning-dependent choices belong to the agent using the conversation, grants and account
+context; tool names, MCP read-only hints and shell prefixes are not authority. Installed
+operation contracts constrain the reachable effects and derive the checked scope from the
+actual target and arguments. An unsupported or ambiguous mapping is preserved and returned as
+an owned classification task; it cannot execute under an invented ordinary label. Exact checks
+of recorded standing, secrets, spend, stop, claim and durability can refuse without a new model
+review. Quality and patterns are reviewed after the fact; an irreversible moment may use the
+existing judgment doorway where its governed contract requires judgment, not a new universal
+pre-tool model gate.
+
+**Value — the one-machine question belongs to the operator.** The purpose says:
+
+> may dispatch irreversible effects `local-durable` only for the fixed
+> profile's closed set
+
+It also says:
+
+> Everything else inside the agent's role is ordinary, including sending messages and using the accounts that go with the role.
+
+And the fully functional single-machine Rule says:
+
+> the defect is in the wording.
+
+These statements do not grant this design permission to add an email send to the closed set.
+The candidate amendment is the general principle that any action inside a granted role may use
+an installation's explicitly accepted local-loss policy, with its complete cause durable before
+dispatch and every other floor intact. It does not select an account, grant a role or waive a
+sign-off condition. The following two designs are conditional on the operator's answer; until
+an amendment enters force, only the unchanged-text arm is authorized. Section 5 is the current
+binding demand, not an implicit selection of the candidate.
+
+| Operator answer | One-machine behavior | More than one machine |
+|---|---|---|
+| Retain the closed set | Ordinary reversible bounded tools work locally. The installed provider and bounded ordinary replies use their accepted local policy. Other irreversible actions, including an in-role email, are prepared and refused before dispatch with the precise closed-set reason; a per-action yes or broader role grant cannot repair that exclusion. Full connected-account action on one machine remains a constitutional gap, not a completed capability. | A registered tool/account mode may dispatch with its complete replicated demand and valid authority. No automatic enrollment, peer requirement imposed on ordinary local work, or fallback on peer loss. |
+| Amend the purpose to cover role actions | After the amendment, matching P-08 policy and assembly profile enter force with operator acceptance of the expanded loss model, admitted role actions may use local durability. Account binding and actual authority are still checked per invocation. A new action instance inside the accepted class needs no separate profile acceptance. | Keep replicated(1) as the enrolled-peer default and honor stronger installed demands. Reuse the same request, claim and result protocol; topology changes are governed, not inferred from reachability. |
+
+Under either answer, permanent loss of the only machine can lose cause, receipts and accounting;
+unknown prior work is not repeated from recollection or from a new installation. If the owner
+retains the text, the unresolved fully-functional conflict stops activation of the excluded
+capability. It is not worked around through a shell, account proxy, remote worker or false claim
+that a send is reversible. No runtime policy switch can choose the amended arm before its
+constitutional authority exists.
+
+**Rule — register an operation capability, not each action instance.** Rules 30, 49, 69, 78,
+90 and 116; **checks: P8-NF-03/05/06/07**. A tool connector supplies one versioned contract for
+its supported finite method set, argument schemas, target derivation, effects, bounds and
+observation behavior. These are OperationDefinition modes under the existing feature, generated
+from the installed connector contract where possible. Registration classifies the reachable
+sign-off conditions; invocation evaluates the applicable conditions against current grants and
+the exact arguments. The model cannot register its own permissive contract or turn a service's
+self-description into standing. Connecting an account binds that contract to the granted role
+and SecretRefs once; calling it creates only a request and the existing lifecycle facts.
+A changed tool contract needs compatibility/authority review, not a new approval of every task.
+No closed list of all future shell command strings, email bodies, recipients or file names is
+required. The contract carries a scope predicate; the request carries the concrete member.
+
+**Rule — the session admission hook is a transport into this doorway.** Rules 1, 30, 60, 63,
+66, 75, 100, 114 and 115; **checks: P8-NF-10/11/14/17/31/42/44/49**. Each harness adapter
+maps its pre-tool event to the same request contract and its result event to an observation.
+Harness names and hook encodings stay inside adapters. Native execution calls the same public
+port directly. Subagents inherit the intersection of their delegated scope and remaining parent
+allocation; they cannot borrow the root's credentials or omit their durable parent-child edge.
+A continuing conversation can produce many operations without restarting its session per tool.
+
+The admission call carries the authenticated session/incarnation and delegation, durable work
+and inbound cause, stable logical action id, connector contract/method/version, canonical
+arguments or custody reference, actual account/tenant/target, and resource allocation. The
+host resolves these references against its own records; a worker's claim to be an operator is
+not trusted. The response is either a preserved refusal/authorization wait, an existing result
+or unresolved operation reference, or an exact one-use execution handoff. A refusal includes
+its governing source and the actionable missing grant, policy or evidence; it is never an empty
+successful tool result. The result destination names the continuing work and action, not only
+the current process. Completion is persisted before delivery to the session, and consumption is
+recorded so restart can redeliver knowledge without re-performing the action.
+
+A pre-tool hook returning an unrestricted “allow” is insufficient. The executor either invokes
+the operation itself and supplies the tool result, or releases an exact one-use handoff to a
+confined tool whose actual I/O consumes it. File operations bind resolved object identity and
+required base; account/network operations run through a credential custodian or mediated
+endpoint. Local shell work runs inside an admitted finite filesystem/process/resource scope;
+network and account actions reached from that shell pass the same effect admission boundary.
+An arbitrary shell program cannot prove its effects by command-text inspection. Raw network,
+service credentials, writable admission state and safeguard administration are unreachable to
+the worker. The OS/host enforces this even if a plugin ignores a hook or a hook times out.
+Missing coverage refuses the affected effect with the named safeguard requirement; it does
+not remove unrelated tools or pretend the session is fully confined. Instructions and an HTTP
+proxy environment variable alone are not confinement evidence.
+
+The loading-only process mode in section 4a proves only its named mode. It is not a restriction
+that every continuing session must be loading-only. A full session's separately admitted launch
+can grant mediated tool/model handles under the same finite resource and authority floors;
+none of those handles grants unrestricted downstream effects. The session driver and host own
+that launch contract; this part owns admission of the effects it requests.
+
+**Rule — every action has its cause before the world can change.** Purpose: durable cause;
+Rules 7, 32, 33, 42, 55, 60, 63 and 68. **Checks: P8-NF-13/14/17/22/25/31/35/37/39/42**
+apply the order in section 6 to tool actions, using the existing six stored record families:
+
+1. Persist accepted inbound work through intake. Preserve the tool proposal, its causal work
+   reference, exact arguments/payload digest and custody-safe captures. Allocate its stable
+   logical action identity from the durable work record before releasing it to the worker.
+2. Record the current contract, grants, policy and sign-off evidence where required, target,
+   disclosure scope, installed demand, finite maximum exposure and actual dispatch validation.
+   Reserve resources and persist the verification/reconciliation obligation with its owner.
+3. Record the matching one-use claim and consumption at the installed demand before invocation;
+   recheck stop, currency and expiry after any durability wait. Missing predecessor, capture,
+   capacity or receipt prevents dispatch and leaves a discoverable pending action.
+4. Preserve observations, partial output, external ids and execution/charge uncertainty; settle
+   through the existing evidence consumer and accounting owner. Return only the supported result
+   to the session. Unknown charge retains its exposure even if a useful result can be delivered.
+
+Use a closed tool-action payload variant of EffectRequest, with versioned decoders, rather than
+encoding account actions as OutboundMessage text or adding a second action database. Existing
+message, provider and process encodings keep their original interpretation and digests. Request
+identity is the durable intended action within continuing work, not the entire conversation and
+not a newly generated harness call id. The adapter binds a harness call id to that identity
+before dispatch. The same identity and arguments rejoin the original operation; changed bytes
+under that identity conflict. A later, deliberately distinct action can have identical arguments
+and its own causal identity. Resume reconstructs pending actions and supplies their outcomes
+before accepting replacements. Exact identity checks prevent transport replay; whether a model
+has disguised the same unfinished intent as new work remains a recorded judgment/review duty,
+not a claimed solution from hashing text. A still-unknown send cannot gain retry permission from
+a new tool id, session, run, account or machine.
+
+**Value — the smallest implementation extends the existing owners.** The usable spine is
+Eight's prepare/dispatch/handoff and durable observation path, Six's reservation/claim/recovery,
+Two's receipt and custody contracts, and the independently supplied settlement assessment.
+The source slice's message-shaped OperationAdapterPort, message-bound EffectRequest and finite
+single-reply history scan are implementation limits, not constitutional restrictions. Tools
+need a typed request/adapter variant and lookup of the relevant action's causal closure; a
+continuing conversation must not stop because the entire history exceeds the reference slice's
+4,096-record ceiling. Paged owner indexes can retain finite work per admission without deleting
+permanent replay identities or the causal record.
+
+| Owner seam | Keep and complete |
+|---|---|
+| `src/effects/contracts.ts`, `records.ts` | Keep owner records and historical decoders; add a closed tool-action payload with method, target and typed arguments, not a message disguised as an account request. |
+| `src/effects/doorway.ts` and `OperationAdapterPort` | Reuse prepare, validation, one-use handoff and observation; dispatch the typed action variant and locate its causal closure without a whole-conversation ceiling. |
+| `src/transport` and `src/facts` public ports | Keep the single reservation/claim ledger, durability receipts and reconstruction; extend joins only where the action variant needs them. No second lease or budget ledger. |
+| Session driver and harness adapters | Bind pre/post hooks, delegated calls and continuation to durable action ids; return preserved results and pending references. Tool access and connected-account handles are part of the full-session contract. |
+| Assembly credential/execution boundary | Supply scoped account bindings and real constrained I/O; a tool hook cannot certify its own isolation or approve an account grant. |
+
+The test driver's role/sign-off/durability separation, pre/post tool hooks and mediated shell
+boundary are useful behavior to port in small pieces. Its admission journal and hand-maintained
+tool classifications do not become another authority alongside Eight. Remove duplicate policy,
+reservation and result stores once their consumers use the owner ports; preserve historical
+records and their identity mappings during that migration. Remove per-invocation registration,
+one-reply-per-history assumptions, mandatory session replacement per tool, and unconditional
+per-tool model review: none is required by the constitution. Keep supported-mode checks, exact
+standing, one-use claims, finite bounds and no retry while uncertain. Do not require a new
+retry engine, workflow language, sentinel, event bus or approval surface to deliver this path.
+
+**Rule — prove the continuing path and its neighboring refusals.** Rules 26, 30, 34, 36,
+42, 62, 69 and 115; **checks: P8-NF-06/10/14/17/22/25/31/36/39/42/49** include one real
+many-turn conversation: an in-role account read, reversible edit and account send, a second
+independent action, compaction, and resumed result delivery through each harness adapter.
+With retained constitutional text, the one-machine send must produce the sourced refusal; with
+an approved amended profile it must produce its actual receipt without another permission ask.
+Exercise the same methods with wrong tenant, public-in-person-name audience, sensitive target,
+revocation, exhausted cap, stop and missing durable prefix. Duplicate the pre-tool call, kill
+between claim/consumption/invocation/result delivery, disable the hook, attempt direct network
+and credential access, and take over on another machine. Valid neighbors must still act.
+Partial batches retain per-item identities; a lost response produces uncertainty without a
+second send. Test beyond the old history ceiling and under an injected slow receipt, proving
+stop remains effective. Real captured connector/harness shapes and real permitted service
+outcomes are required for implementation readiness; this document claims only the design.
 
 ---
 
@@ -1062,7 +1255,7 @@ terms retain their existing meaning.
 | Term | Kind | Definition |
 |---|---|---|
 | effect doorway | noun | The single admission and adapter-invocation boundary for operations that change the world or consume/disclose resources, above the enumerated maintenance primitives. |
-| operation definition | noun | Approved contract for one registered feature's exact callable operation and supported modes. |
+| operation definition | noun | Approved contract for one registered capability's typed methods, scope derivation and supported modes; not a registration of each invocation. |
 | effect request | noun | Durable exact proposal with its cause, actor, target, authority basis and operation mapping. |
 | effect validation | noun | Recorded current-source comparison at reservation or dispatch; never a reusable grant. |
 | operation observation | noun | Attributable evidence about an attempted operation, without settlement or execution power. |
@@ -1076,16 +1269,21 @@ terms retain their existing meaning.
 tradeoffs. Technical completion of this document does not request an interruption of ordinary
 work; these are the policy questions for its approval surface.
 
-1. **Durability versus single-machine availability.** Support a no-peer installation whose one
+1. **Role actions on one machine.** Section 2a gives both answers to the purpose's closed-set
+   question. Should the purpose permit irreversible actions within a granted role under an
+   explicitly accepted local-loss policy? Until an amendment enters force, an excluded local
+   action refuses even with a role grant; full one-machine account agency remains unresolved.
+   This is a candidate constitutional amendment, not an engineering default or deployment toggle.
+2. **Durability versus single-machine availability.** Support a no-peer installation whose one
    install-time policy accepts the fixed profile's closed irreversible local-durable operation set
    and permanent-machine-loss model; ordinary bounded operations follow the purpose's Rule.
    Use replicated(1) by default whenever a second machine is
    enrolled and for every operation whose demand names replication. Stops retain their approved
    local-durable fast path.
-2. **Indefinite uncertainty.** Accept blocked automatic repetition and retained exposure when
+3. **Indefinite uncertainty.** Accept blocked automatic repetition and retained exposure when
    an external service cannot provide decisive evidence, with finite observation effort and
    an owned unresolved record? This follows six/seven and does not authorize timeout-to-truth.
-3. **Supported operation modes.** Accept that base-bound changes remain unsupported on
+4. **Supported operation modes.** Accept that base-bound changes remain unsupported on
    services lacking a target-side conditional mechanism, rather than claiming an approval
    snapshot protects an unconditional mutation? Eight proposes no waiver of exact approval.
 
