@@ -84,15 +84,27 @@ it.each([false, true])('uses the shipped model route, mode=%s, and sends each du
   } finally { await f.close(); }
 });
 
-it('keeps summary/review/repair calls on their existing route and refuses a closed session without fallback', async () => {
+it.each(['summary:1', 'summary:1:review', 'telegram:7654321:update:2:reply-review',
+  'telegram:7654321:update:2:revision-review', 'telegram:7654321:update:2:held-notice-review'])(
+  'keeps %s on its existing route and refuses a closed session without fallback', async id => {
   const f = fixture();
   try {
-    await f.model({ id: 'summary:1', question: 'summarize', context: '{}', prepared: 'exact bytes' });
+    await f.model({ id, question: 'review or summarize', context: '{}', prepared: 'exact bytes' });
     expect(f.counts().fallback).toBe(1); expect(f.counts().launches).toBe(0);
     await f.port.close();
     await expect(f.model({ id: 'telegram:7654321:update:2', question: 'hello', context: '{}', prepared: '{}' }))
       .rejects.toBeInstanceOf(ModelNotStarted);
     expect(f.counts().fallback).toBe(1);
+  } finally { await f.close(); }
+});
+
+it('discards answer wrappers on the continuing route before the journal sends the decoded reply', async () => {
+  const f = fixture();
+  try {
+    f.answer('Internal wrapper.\n' + JSON.stringify({ reply: 'Only this answer.', memory: [] }));
+    f.worker.intake([update(1, 'Question')]); await f.worker.drain();
+    expect(f.sent).toEqual(['Only this answer.']);
+    expect(f.counts()).toEqual({ launches: 1, calls: 1, fallback: 0 });
   } finally { await f.close(); }
 });
 

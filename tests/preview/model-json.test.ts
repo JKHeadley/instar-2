@@ -100,7 +100,8 @@ it('discards the wrapper, so nothing beside the object can reach the answer', ()
   expect(conclusionText((wrapped.value as typeof decision).conclusion.value)).toBe(decision.conclusion.value);
 });
 
-// The shipped launcher's one parse site chooses the policy per consumer. The live role mapping itself is
+// The shipped launcher chooses the policy per consumer; its continuing session handles only operator answers.
+// The live role mapping itself is
 // proven end-to-end by the launcher cases in journal-agent.test.ts (they spawn `/bin/sh`, so they run only
 // where it is bash); this check holds the wiring those cases exercise.
 it('the shipped launcher parses with a per-consumer policy, and only the answer side may discard a wrapper', () => {
@@ -108,10 +109,13 @@ it('the shipped launcher parses with a per-consumer policy, and only the answer 
   expect(launcher).toContain("const wrappedPolicyOf = role => role === 'answer' ? 'accept' : 'refuse';");
   // Plan #507: the second per-consumer declaration beside it -- whose answer IS a JSON object.
   expect(launcher).toContain("const objectAnswerOf = id => /^summary:/u.test(id);");
-  // The one reading (answer-reading.ts readAnswer, which calls parseModelJson) is the launcher's only parse site.
+  // Both routes share answer-reading.ts; neither introduces a separate JSON parser.
   expect(launcher.match(/parseModelJson\(/gu)).toBeNull();
   const sites = launcher.match(/readAnswer\([^;]*?\);/gu) ?? [];
-  expect(sites).toEqual(['readAnswer(result.bytes, { wrapped: wrappedPolicyOf(role), evidence: [id],\n        ...(objectAnswerOf(id) ? { object: true } : {}) });']);
+  expect(sites).toEqual([
+    'readAnswer(result.bytes, { wrapped: wrappedPolicyOf(role), evidence: [id],\n        ...(objectAnswerOf(id) ? { object: true } : {}) });',
+    "readAnswer(outcome.text, { wrapped: 'accept', evidence: [id] });",
+  ]);
   expect(launcher).toContain('const role = roleOf(id);');
 });
 
