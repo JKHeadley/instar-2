@@ -348,3 +348,24 @@ it('refuses unreserved or invented suffixes and inherits only the reserved paren
     expect(f.topics()['7']!.inputs[0]!.request.operation).toBe(request.operation);
   } finally { await f.close(); }
 });
+
+const recordedShapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
+  otherShapes: { kind: string; id: string; raw: string }[] };
+it.each(recordedShapes.otherShapes)('executes a reserved repair carrying recorded $kind ($id) without creating another admission', async sample => {
+  const f = fixture();
+  try {
+    const operation = 'telegram:12345678:update:1';
+    f.worker.intake([update(1, 'Recorded shape replay')]);
+    f.journal.append({ kind: 'reserve', id: operation, prompt: 'original', at: 1000 });
+    f.journal.append({ kind: 'format-retry', id: operation, role: 'answer', state: 'complete',
+      failureClass: 'malformed', prompt: 'repair', at: 1001 });
+    // These are recorded outputs from different roles, intentionally presented to
+    // the answer reader. Routing must not depend on the content or invent admission.
+    f.answer(sample.raw);
+    await f.model({ id: operation, question: 'Recorded shape replay', context: '{}', prepared: 'repair' });
+    expect(f.counts()).toEqual({ launches: 1, calls: 1, fallback: 0 });
+    expect(f.state().inputs.map(input => input.request.operation)).toEqual([`${operation}:format-retry`]);
+    expect(f.journal.view.order).toHaveLength(1);
+    expect(f.sent).toEqual([]);
+  } finally { await f.close(); }
+});
