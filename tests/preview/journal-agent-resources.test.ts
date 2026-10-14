@@ -11,15 +11,15 @@ import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, 
 
 const TOKEN = 'ghp_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8';
 
-it.each([0, 8200, 10200])('PREVIEW-HOST-RESOURCE-FUNNEL records resources, custody and fixed slow acknowledgement (elapsed=%sms)', async elapsed => {
-  const acknowledgementDue = elapsed >= 10000;
+it.each([0, 6999, 7000, 8200, 10200])('PREVIEW-HOST-RESOURCE-FUNNEL records resources, custody and fixed slow acknowledgement (elapsed=%sms)', async elapsed => {
+  const acknowledgementDue = elapsed >= 7000;
   const world = successiveWorld(), root = join(world.directory, 'resource-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
   const provider = join(world.directory, 'provider.mjs'), loader = join(world.directory, 'loader.mjs');
   const cli = join(world.directory, 'fake-cli.mjs'), prompts = join(world.directory, 'prompts.jsonl');
   const fakeClock = join(world.directory, 'clock.mjs'), workerModule = join(world.directory, 'worker.mjs');
-  // Cover immediate, the former eight-second threshold, and the current ten-second threshold.
+  // Cover immediate, both sides of the seven-second boundary, and the older slow cases.
   // Wall time and acknowledgement timers are controlled. Resource deadlines retain the real monotonic clock.
   writeFileSync(fakeClock, `import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 const state = ${JSON.stringify(join(world.directory, 'fixture-time'))};
