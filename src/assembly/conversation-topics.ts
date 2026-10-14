@@ -40,6 +40,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     const persist = (patch: Partial<ConversationTopicsState>) => {
       const next = freeze({ ...state, ...patch }); config.store.save(next); state = next;
     };
+    const parentDeadline = () => Math.min(config.allowanceDeadline, state.edge?.budget.deadline ?? config.allowanceDeadline);
     const spent = () => Object.values(state.topics).reduce((sum, row) => sum + row.spent, state.legacy?.spent ?? 0);
     ensure(spent() <= config.maxCalls, 'shared topic allowance exceeded');
     const hosts = new Map<string, ConversationSessionPort>();
@@ -54,7 +55,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       ensure(/^(?:main|[1-9][0-9]{0,15})$/u.test(topic), 'exact topic identity required');
       const existing = hosts.get(topic); if (existing) return existing;
       ensure(Object.keys(state.topics).length < 4096 || topic in state.topics, 'topic custody capacity reached');
-      const result = createConversationSessionPort({ ...config, conversation: `${config.conversation}:${topic}`,
+      const result = createConversationSessionPort({ ...config, conversation: `${config.conversation}:${topic}`, allowanceDeadline: parentDeadline(),
         stopped: () => stopped || config.stopped(),
         store: { load: () => state.topics[topic] ?? null, save: next => {
           ensure(spent() - (state.topics[topic]?.spent ?? 0) + next.spent <= config.maxCalls, 'installation call allowance exhausted');
@@ -85,7 +86,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
               const idle = [...active].filter(key => !busy.get(key)).sort((a, b) => (touched.get(a) ?? 0) - (touched.get(b) ?? 0))[0];
               if (idle !== undefined) { ensure(await hosts.get(idle)!.retireIdle(), 'idle worker retirement raced'); continue; }
               await Promise.race([new Promise<void>(resolve => { wake = resolve; }), config.io.wait(config.pollMs)]);
-              ensure(config.now() < config.allowanceDeadline, 'parent lifetime exhausted');
+              ensure(config.now() < parentDeadline(), 'parent lifetime exhausted');
             }
             ensure(!stopped && !config.stopped() && config.authorized(), 'topic dispatch stopped or grant unavailable');
             let lease = await config.resources.admit();
@@ -149,7 +150,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     };
     const maintain = async () => {
       await recover();
-      if (config.stopped() || config.now() >= config.allowanceDeadline) { await close(); return; }
+      if (config.stopped() || config.now() >= parentDeadline()) { await close(); return; }
       for (const [topic, host] of hosts) if (!busy.get(topic)) {
         if (active.has(topic) && config.now() - (touched.get(topic) ?? 0) >= config.idleMs)
           await host.retireIdle();
@@ -168,8 +169,14 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       return results.find(row => row?.state === 'uncertain') ?? results.find(row => row !== null) ?? null;
     };
     return Object.freeze({ owner: 'part-eight' as const,
-      available: () => !stopped && !config.stopped() && config.authorized() && config.now() < config.allowanceDeadline,
+      available: () => !stopped && !config.stopped() && config.authorized() && config.now() < parentDeadline(),
       run, maintain, close,
+      collect: async (operation: string) => {
+        await recover();
+        const topic = config.topicOf(operation);
+        if (!state.topics[topic]) return null;
+        return hostFor(topic).collect(operation);
+      },
       reserveCall: (claim: string, ordinal: number) => {
         ensure(recovered && spent() < config.maxCalls, 'installation call allowance exhausted or host recovering');
         const topic = Object.keys(state.topics).find(key => state.topics[key]!.claim === claim);
