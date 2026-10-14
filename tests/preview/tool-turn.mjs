@@ -210,6 +210,18 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
     ...(shellProfile ? { shellProfile } : {}), ...(gate ? { gate, delegation: true, networkReads: true } : {}),
     children: { max: children, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: mcp ? [...mcp.reads] : [], authority,
     ...(effectPolicy === undefined ? {} : { effectPolicy }), ...(irreversibleTerm === undefined ? {} : { irreversibleTerm }) }), { mode: 0o600 });
+  const mcpTurn = prepareMcpLaunch({ mcp, privateDirectory, socket, harness, node });
+  // Only now may the harness enter its state: it reads the runner's config, adds its own files, and replaces none.
+  if (opened) opened.open([join(stateDirectory, 'config.json')]);
+  return { slug, directory: turn, volumeDirectory: volume ? volume.directory : turn, scratch: mounted, workspace, tmp, home, stateDirectory,
+    privateDirectory, hook: { node, script: harness ? harness.hookScript : TOOL_HOOK_SCRIPT }, socket: { path: socket, shared: harness !== null },
+    ...(mcpTurn ? { mcp: mcpTurn } : {}) };
+}
+
+/** Prepare the same credential-free MCP launch records for a tool turn or continuing session.
+ * Secret values never enter the file: the existing one-use socket launcher receives them. */
+export function prepareMcpLaunch({ mcp, privateDirectory, socket, harness = null, node = process.execPath }) {
+  const servers = mcp ? Object.keys(mcp.servers) : [];
   let mcpTurn;
   if (servers.length) {
     const secretServers = servers.filter(name => Object.keys(mcp.secrets?.[name] ?? {}).length > 0);
@@ -230,11 +242,7 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
     writeFileSync(config, JSON.stringify({ mcpServers: launch }), { mode: 0o600 });
     mcpTurn = { config, servers, launch, ...(Object.keys(nonces).length ? { nonces } : {}) };
   }
-  // Only now may the harness enter its state: it reads the runner's config, adds its own files, and replaces none.
-  if (opened) opened.open([join(stateDirectory, 'config.json')]);
-  return { slug, directory: turn, volumeDirectory: volume ? volume.directory : turn, scratch: mounted, workspace, tmp, home, stateDirectory,
-    privateDirectory, hook: { node, script: harness ? harness.hookScript : TOOL_HOOK_SCRIPT }, socket: { path: socket, shared: harness !== null },
-    ...(mcpTurn ? { mcp: mcpTurn } : {}) };
+  return mcpTurn;
 }
 
 /** Where the shell's network tools live, read-only inside the sandbox: the runner's own node (its directory goes first on
@@ -394,7 +402,13 @@ export async function serveTurnSocket(socket, { nonces = {}, values = {}, shared
   // The harness's own user connects too (`shared`): the socket is writable by every identity that can reach it, and its
   // directory is traversable only by the runner and that user (harness-user.mjs harnessSocketDirectory).
   if (shared) chmodSync(socket, 0o666);
-  return () => new Promise(resolve => server.close(() => { rmSync(dirname(socket), { recursive: true, force: true }); resolve(); }));
+  const close = () => new Promise(resolve => server.close(() => { rmSync(dirname(socket), { recursive: true, force: true }); resolve(); }));
+  // Only the host can rearm a replacement worker; old launcher nonces cease to work.
+  close.rearm = (nextNonces, nextValues) => {
+    nonces = nextNonces; pending.clear();
+    for (const [name, env] of Object.entries(nextValues)) pending.set(name, env);
+  };
+  return close;
 }
 
 /** Rewrites the turn's admission record with each served credential value replaced by its SecretRef marker and every
