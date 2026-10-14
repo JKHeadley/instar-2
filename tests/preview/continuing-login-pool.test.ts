@@ -121,7 +121,7 @@ it('waits with the next input undelivered when all logins are full, then moves a
 it('bounds pool churn with the durable five moves per ten minutes brake', () => {
   const f = fixture();
   const state = f.pool.state;
-  state.switches = Array.from({ length: 5 }, (_, index) => ({ from: 'a', to: 'b', reason: 'usage-threshold',
+  state.handoffAttempts = Array.from({ length: 5 }, (_, index) => ({ from: 'a', to: 'b', reason: 'usage-threshold', phase: 'prepared',
     at: Date.parse(f.quota(f.entries[0], 10).lastQuota.measuredAt), sequence: index + 1 }));
   writeFileSync(f.settings.statePath, JSON.stringify(state));
   const reopened = createHarnessLoginPool(f.settings);
@@ -190,6 +190,7 @@ it('does not stop the old worker if the destination admission fails', async () =
     .rejects.toThrow('destination authentication failed');
   expect(f.counts().stopped).toBe(0); expect(f.selected()).toBe(f.entries[0]);
   expect(f.pool.state.active).toBe(0); expect(f.pool.notices()).toEqual([]);
-  expect(f.pool.state.switches.at(-1).phase).toBe('prepared');
+  expect(f.pool.state.handoffAttempts.at(-1).phase).toBe('prepared');
+  expect(f.pool.state.switches).toEqual([]);
   await f.port.close();
 });

@@ -37,7 +37,9 @@ The 1.x procedure is reused in bounded form: `src/core/SessionRefresh.ts` copies
 `projects/<project>/<session>.jsonl` before resuming and limits refresh attempts to
 five per ten minutes. This pool keeps the same brake durably and uses only the
 explicit source and destination homes, rather than searching unrelated accounts.
-A prepared move counts against the brake but does not report a successful switch
+Prepared attempts use an additive handoffAttempts field; completed switches keep
+the original schema so older readers remain truthful after rollback. A prepared
+move counts against the brake but does not report a successful switch
 until destination admission and history handoff succeed. Known reset holds prevent repeated selection of a pressured account. All state
 and copying are deliberately machine-local: an owning host alone may perform it.
 Cross-machine copying of credentials or browser profiles is not introduced.
