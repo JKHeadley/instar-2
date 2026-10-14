@@ -54,7 +54,7 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, extra: Part
     prepareModel: input => JSON.stringify({ ...input, responseContract: "decision-envelope-marker" }), model,
     send: async input => { sent.push(input.expectedText); return sent.length; },
     checkOutbound: text => { if (text.includes('SECRET')) throw Error('credential'); }, ...extra });
-  return { journal, worker, model, port, sent, delivered, edges: () => edges, counts: () => ({ launches, calls, fallback }),
+  return { root, journal, worker, model, port, sent, delivered, edges: () => edges, counts: () => ({ launches, calls, fallback }),
     answer: (text: string) => { answer = text; }, stop: () => { stopped = true; },
     close: async () => { await port.close(); journal.close(); } };
 }
@@ -174,5 +174,38 @@ it.each(['SECRET', 'stop'] as const)('after-send review preserves the %s wall', 
     if (kind === 'stop') f.stop();
     try { await f.worker.drain(); } catch { /* stop is an explicit refusal */ }
     expect(f.sent).toHaveLength(0); expect(reviews).toBe(0);
+  } finally { await f.close(); }
+});
+
+it('reopens the post-send journal without repeating review or delivery', async () => {
+  let reviews = 0;
+  const f = fixture(true, true, 200, { replyReviewTiming: 'after-send', replyCheck: {
+    elapsedMs: () => 0, jev: async () => { reviews++; return { value: {}, latencyMs: 0 }; },
+    escalate: async () => ({ verdict: 'pass', confidence: 1, latencyMs: 1, ruleIds: [] }) } });
+  f.worker.intake([update(1, 'Question')]); await f.worker.drain(); await f.close();
+  const journal = openPreviewJournal(join(f.root, 'journal.encrypted'), new Uint8Array(32).fill(61));
+  try {
+    const worker = createJournalWorker(journal, { now: () => 2000, stopped: () => false,
+      model: async () => { throw Error('unexpected model replay'); },
+      send: async () => { throw Error('unexpected duplicate send'); }, checkOutbound: () => {},
+      replyReviewTiming: 'after-send', replyCheck: { elapsedMs: () => 0,
+        jev: async () => { throw Error('unexpected review replay'); },
+        escalate: async () => { throw Error('unexpected review replay'); } } });
+    await worker.drain();
+    expect(reviews).toBe(1); expect(journal.view.order[0]?.afterSendReview).toBe(true);
+    expect(journal.view.order[0]?.sent).toBe(1);
+  } finally { journal.close(); }
+});
+
+it('sends under the exact answer/session cap and records unavailable review without exceeding it', async () => {
+  let escalations = 0;
+  const f = fixture(true, true, 11, { replyReviewTiming: 'after-send', replyCheck: { elapsedMs: () => 0,
+    jev: async () => ({ value: {}, latencyMs: 0 }),
+    escalate: async () => { escalations++; return { verdict: 'pass', confidence: 1, latencyMs: 1, ruleIds: [] }; } } });
+  try {
+    f.worker.intake([update(1, 'Question')]); await f.worker.drain();
+    expect(f.sent).toEqual(['A useful answer.']);
+    expect(f.journal.view.calls).toBeLessThanOrEqual(11); expect(escalations).toBe(0);
+    expect(f.journal.view.order[0]?.replyChecks?.at(-1)?.verdict).toBe('unavailable');
   } finally { await f.close(); }
 });
