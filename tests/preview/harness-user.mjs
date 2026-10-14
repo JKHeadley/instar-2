@@ -17,6 +17,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { prepareSubscriptionInteractive } from '../../scripts/production-boot-io.mjs';
 
 export const HARNESS_USER = '_instarharness';
 export const HARNESS_BASE = '/Users/Shared/instar-harness';
@@ -154,6 +155,7 @@ export function setupHarnessArea({ user = HARNESS_USER, source, version, artifac
   const dirs = ['home', 'config', 'work'].map(name => join(profileBase, name));
   for (const dir of dirs) { ensureDirectory(dir, 0o700); chmodSync(dir, 0o700); }
   grantAcl(dirs, [harnessAcl.full(user), harnessAcl.full(runner)]);
+  prepareSubscriptionInteractive(dirs[1], dirs[2]);
   return { executable, home: dirs[0], configDirectory: dirs[1], workingDirectory: dirs[2] };
 }
 

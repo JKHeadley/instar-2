@@ -1,0 +1,24 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "conversation-lifecycle-io.installLifecycleHook",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Machine-local immutable content-addressed copies of the shipped Stop hook beside the admitted tool hook, readable by the local harness identity. One copy per shipped digest; no agent memory and no cross-machine identity authority. Upgrades can accumulate copies and this installer never deletes them."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      60
+    ],
+    "holds": []
+  }
+]
