@@ -138,11 +138,13 @@ it('the journal refuses the whole session reservation before launch when the par
   } finally { await f.close(); }
 });
 
-it('drains durable busy intake once across a completed-turn worker move', async () => {
+it.each(['before-send', 'after-send'] as const)('drains durable busy intake once across a completed-turn worker move with %s review', async timing => {
   let release!: () => void, started!: () => void, preparations = 0, firstWait = true;
   const waiting = new Promise<void>(resolve => { started = resolve; });
   const held = new Promise<void>(resolve => { release = resolve; });
-  const f = fixture(true, true, 200, {}, {
+  const f = fixture(true, true, 200, { replyReviewTiming: timing, replyCheck: { elapsedMs: () => 0,
+    jev: async () => ({ value: {}, latencyMs: 0 }),
+    escalate: async () => ({ verdict: 'pass', confidence: 1, latencyMs: 1, ruleIds: [] }) } }, {
     prepareTurn: async () => ++preparations === 2 ? 'replaced' : 'ready',
     wait: async () => { if (firstWait) { firstWait = false; started(); await held; } },
   });
