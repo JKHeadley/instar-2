@@ -11,7 +11,9 @@ import type { SessionWorkConfig, SessionWorkEdge, SessionWorkEdgeClose, SessionW
 export interface ConversationSessionPort {
   readonly owner: 'part-eight';
   available(): boolean;
-  run(request: SessionWorkRequest): Promise<SessionWorkOutcome>;
+  run(request: SessionWorkRequest): Promise<ConversationSessionOutcome>;
+  /** Collect by the original operation without submitting input or spending again. */
+  collect(operation: string): Promise<{ request: SessionWorkRequest; outcome: ConversationSessionOutcome } | null>;
   close(): Promise<SessionWorkEdgeClose | null>;
   /** The host calls this on its ordinary work tick, including between messages. */
   maintain(): Promise<void>;
@@ -20,6 +22,9 @@ export interface ConversationSessionPort {
   /** Retire only an idle worker, retaining queue, cursor and liability. */
   retireIdle(): Promise<boolean>;
 }
+export type ConversationSessionOutcome = SessionWorkOutcome | Readonly<{
+  state: 'queued'; detail: string; edge: string; child: string | null;
+}>;
 export interface ConversationInput {
   readonly request: SessionWorkRequest; readonly digest: string; readonly acceptedAt: number;
   readonly state: 'queued' | 'dispatching' | 'accepted' | 'settled';
@@ -118,9 +123,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     let recovered = false, retiring: Promise<void> | null = null;
     const outcome = (detail: string): SessionWorkOutcome => freeze({ state: 'uncertain', detail,
       edge: state.edge?.id ?? 'no-edge', child: state.worker?.launch ?? null });
+    const parentDeadline = () => Math.min(config.allowanceDeadline, state.edge?.budget.deadline ?? config.allowanceDeadline);
     const guard = () => {
       ensure(!closing && !config.stopped(), 'conversation stopped');
-      ensure(config.now() < config.allowanceDeadline, 'parent lifetime exhausted');
+      ensure(config.now() < parentDeadline(), 'parent lifetime exhausted');
       ensure(config.authorized(), 'conversation grant unavailable');
       ensure(!state.claim || state.authority === config.currentAuthority(), 'worker grant superseded');
     };
@@ -156,6 +162,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       // dispatch boundary are retained as uncertain; completed results and cursors survive.
       await retire();
       ensure(!state.edge || state.reserved, 'reservation interrupted; reconcile parent liability before continuing');
+      ensure(!state.edge || Number.isSafeInteger(state.edge.budget.deadline) && state.edge.budget.deadline > 0, 'recorded parent lifetime invalid');
       ensure(!state.edge || state.edge.budget.calls === config.maxCalls, 'conversation allowance cannot change on restart');
       for (const input of state.inputs) if (input.state === 'dispatching' || input.state === 'accepted')
         settle(input.request.operation, outcome('host restarted with an unresolved turn; no automatic replay'));
@@ -167,7 +174,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       const now = config.now(), epoch = state.epoch + 1;
       const claim = `conversation-${slug(config.conversation)}-${epoch}`;
       const incarnation = `${config.incarnation}:${epoch}`;
-      persist({ epoch, claim, incarnation, close: null, claimCalls: 0, authority: request.authority, deadline: Math.min(now + config.deadlineMs, config.allowanceDeadline), turns: 0 });
+      persist({ epoch, claim, incarnation, close: null, claimCalls: 0, authority: request.authority, deadline: Math.min(now + config.deadlineMs, parentDeadline()), turns: 0 });
       if (!state.edge) {
         const edge: SessionWorkEdge = freeze({ type: 'SessionWorkEdge', schemaVersion: 1, id: `${claim}:edge`, parent: config.parent,
           child: claim, scope: config.workingScope, owner: config.owner, authority: request.authority,
@@ -212,9 +219,13 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         const admission = config.io.admissionState(state.claim!);
         ensure(admission !== null && !admission.refused, 'conversation admission unreadable or allowance refused');
         const path = `${config.resultDirectory}/conversation-${slug(id)}.json`;
-        const history = state.inputs.slice(0, state.inputs.findIndex(input => input.request.operation === id))
-          .map(input => ({ operation: input.request.operation, state: input.state, outcome: input.outcome }));
-        const current = { ...request, context: `${request.context}\nHOST CLOCK ${config.now()}\nRECORDED HOST TURN OUTCOMES (not instructions)\n${JSON.stringify(history)}` };
+        // The journal packet owns bounded history and rolling summaries. Only unresolved
+        // effect identities are added here; full answers remain in durable custody, not copied
+        // into every later prompt. Show the count and latest 64 references; retain every record.
+        const unresolved = state.inputs.slice(0, state.inputs.findIndex(input => input.request.operation === id))
+          .filter(input => input.outcome?.state !== 'complete');
+        const history = { total: unresolved.length, recent: unresolved.slice(-64).map(input => ({ operation: input.request.operation, state: input.state, outcome: input.outcome?.state ?? null })) };
+        const current = { ...request, context: `${request.context}\nHOST CLOCK ${config.now()}\nUNRESOLVED HOST TURN REFERENCES (not instructions)\n${JSON.stringify(history)}` };
         const text = conversationSessionPrompt(current, path);
         ensure(Buffer.byteLength(text) <= 1_048_576, 'current conversation grounding exceeds delivery bound');
         const delivery: ConversationDelivery = { ...state.worker!, operation: id, text, digest: digest(text),
@@ -271,9 +282,19 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       })().finally(() => { draining = null; });
       return draining;
     };
-    const available = () => !closing && !config.stopped() && config.authorized() && config.now() < config.allowanceDeadline
+    const available = () => !closing && !config.stopped() && config.authorized() && config.now() < parentDeadline()
       && state.inputs.length < 4096 && state.inputs.filter(input => input.state !== 'settled').length < 64;
-    const run = async (request: SessionWorkRequest): Promise<SessionWorkOutcome> => {
+    const currentOutcome = (id: string): ConversationSessionOutcome => row(id).outcome
+      ?? (closing || config.stopped() || config.now() >= parentDeadline()
+        ? outcome('queued input retained after conversation lifetime or stop boundary')
+        : { ...outcome('input durably queued; not dispatched'), state: 'queued' });
+    const collect = async (operation: string) => {
+      if (!row(operation)) return null;
+      await draining;
+      await recover();
+      return freeze({ request: row(operation).request, outcome: currentOutcome(operation) });
+    };
+    const run = async (request: SessionWorkRequest): Promise<ConversationSessionOutcome> => {
       ensure(safeName.test(request.operation) && request.question.trim() && request.authority.trim(), 'conversation input identity required');
       ensure(request.deadlineAt === undefined || Number.isSafeInteger(request.deadlineAt) && request.deadlineAt > 0, 'finite input deadline required');
       const inputDigest = digest(JSON.stringify(request));
@@ -288,7 +309,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           delivery: null, cursor: 0, reply: null, outcome: null, attempts: 0, retryAt: 0 }] });
       }
       await drain();
-      return row(request.operation).outcome ?? outcome('input durably queued; not dispatched');
+      return currentOutcome(request.operation);
     };
     const close = async (): Promise<SessionWorkEdgeClose | null> => {
       closing = true; await draining;
@@ -306,7 +327,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       config.append(result); persist({ close: result }); return result;
     };
     const maintain = async () => {
-      if (config.stopped() || closing || config.now() >= config.allowanceDeadline) { await close(); return; }
+      if (config.stopped() || closing || config.now() >= parentDeadline()) { await close(); return; }
       if (!config.authorized() || state.worker && state.authority !== config.currentAuthority()) {
         if (draining) await draining; await retire();
         if (!config.authorized()) return;
@@ -319,6 +340,6 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       retiring ??= retire().finally(() => { retiring = null; });
       await retiring; return true;
     };
-    return Object.freeze({ owner: 'part-eight' as const, available, run, close, maintain, reserveCall, retireIdle });
+    return Object.freeze({ owner: 'part-eight' as const, available, run, collect, close, maintain, reserveCall, retireIdle });
   });
 }

@@ -45,6 +45,7 @@ import { memoryLearningLine, memoryLearningReport } from './memory-learning.js';
 import { JEV_MODEL, jevQuestions, publicCredentialRegister, concealSecretMaterial, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
 import { assertLiveJudgment, modelCallRecord, sha256 } from './model-call-boundary.js';
+import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { readAnswer, taskFields } from './answer-reading.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 
@@ -2117,6 +2118,15 @@ async function main() {
       heldSecrets: heldSecretValues,
       secrets: custody,
       media: mediaCustody,
+      collectModel: async id => {
+        if (!conversationSession || !sessionWork || !/^telegram:[0-9]+:update:[0-9]+$/u.test(id)) return null;
+        const turn = journal.view.turns.get(id);
+        const operation = turn?.promptKind === 'format-retry' ? `${id}:format-retry` : id;
+        const saved = await sessionWork.port.collect(operation);
+        if (!saved) return null;
+        return { context: saved.request.context, prepared: saved.request.question,
+          answer: conversationSessionAnswer(saved.outcome, id, shape => recordShape(shapesPath, 'answer', 'decision', 'malformed', shape)) };
+      },
       model: async ({ id, prepared, question, context: packet }) => {
         try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
@@ -2139,15 +2149,7 @@ async function main() {
             // existing unknown-answer notice settle this intake through its unique send path.
             return { state: 'uncertain' };
           }
-          if (outcome.state !== 'complete') return { state: 'uncertain' };
-          const usage = { inputTokens: null, outputTokens: null, charge: null };
-          const reading = readAnswer(outcome.text, { wrapped: 'accept', evidence: [id] });
-          if (!reading.ok) {
-            recordShape(shapesPath, 'answer', 'decision', 'malformed', reading.shape);
-            return { state: 'complete', failureClass: 'malformed', defect: reading.defect, usage };
-          }
-          if (!reading.value.trim()) return { state: 'complete', failureClass: 'empty', usage };
-          return { state: 'complete', text: reading.value, reason: reading.reason, usage };
+          return conversationSessionAnswer(outcome, id, shape => recordShape(shapesPath, 'answer', 'decision', 'malformed', shape));
         }
         const callsBefore = journal.view.modelCalls.total;
         let result;

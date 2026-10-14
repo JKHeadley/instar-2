@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { replyReviewContext, replyRevisionQuestion, parseReplyRevision, HOLDING_REPLY, type ReplyRule } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { readAnswer } from './answer-reading.js';
+import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
 import { createConversationTopicsPort, type ConversationTopicsState } from '../../src/assembly/conversation-topics.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
@@ -28,19 +29,26 @@ const update = (id: number, text: string) => ({ update_id: id,
 
 function fixture(enabled = true, checkIntake = true, maxCalls = 200, authority = 'existing-role', bot = '12345678', review?: PreviewPorts['replyCheck'], initialNow = 1000) {
   const root = mkdtempSync(join(tmpdir(), 'conversation-wiring-')); roots.push(root);
-  const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
+  const open = () => openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
     kind: 'genesis', bot, chat: '7654321', operator: '7654321', grant: 'grant:preview',
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls, maxReplies: 20,
     maxTurns: 30, maxBytes: 262144, cursor: 0 });
+  let journal = open();
   const f = assemblyRuntimeFixture();
   let now = initialNow, launches = 0, calls = 0, fallback = 0, stopped = false, edges = 0;
   let destination = '', answer = JSON.stringify({ reply: 'A useful answer.', memory: [] });
   const files = new Map<string, string>(), delivered: string[] = [], sent: string[] = [];
-  let state: ConversationTopicsState | null = null;
+  let state: ConversationTopicsState | null = null, busy = false;
+  let sources: readonly unknown[] = [];
   const adapt = (config: Omit<import('../../src/assembly/production-conversation-session.js').ConversationSessionConfig, 'store' | 'createAdapter'> & Pick<import('../../src/assembly/production-session-work.js').SessionWorkConfig, 'createDriver'>) => createConversationTopicsPort({ ...config, maxSessions: 2, idleMs: 5000,
     topicOf: Function('journal', `return operation => {${topicBody}}`)(journal) as (operation: string) => string,
     store: { load: () => state, save: next => { state = structuredClone(next); } },
-    createAdapter: (_topic, resolveDelivery) => createSessionConversationAdapter({ createDriver: config.createDriver, io: config.io, resolveDelivery }) });
+    createAdapter: (_topic, resolveDelivery) => {
+      const adapter = createSessionConversationAdapter({ createDriver: config.createDriver, io: config.io, resolveDelivery });
+      const deliver = adapter.deliver;
+      adapter.deliver = input => busy ? Promise.resolve({ state: 'busy-not-dispatched', evidence: 'proved busy' }) : deliver(input);
+      return adapter;
+    } });
   const config: Parameters<typeof adapt>[0] = { conversation: 'operator', allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => authority,
     createDriver: resolve => ({ owner: 'part-eight', launch: () => { launches++; return f.success('session:123:1'); },
       deliver: input => { if (checkIntake) expect(journal.view.order.some(turn => (turn.id === input.intake || `${turn.id}:format-retry` === input.intake && turn.answerRetried || `${turn.id}:reply-revision` === input.intake && turn.revisionReserved) && turn.reserved)).toBe(true);
@@ -56,12 +64,16 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authority =
     incarnation: 'one', deadlineMs: 10000, pollMs: 25, maxResultBytes: 65536, maxSteps: 8, maxCalls: 10 };
   let port = value(adapt(config));
   let intercept: ((request: Parameters<typeof port.run>[0]) => ReturnType<typeof port.run>) | undefined;
-  const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
+  const openModel = () => Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
     'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', 'conversationSession',
-    'sessionWork', 'ModelNotStarted', 'readAnswer', 'recordShape', 'shapesPath', `return (${signature}${body});`)(journal, async () => {}, () => false, () => false,
+    'sessionWork', 'ModelNotStarted', 'conversationSessionAnswer', 'readAnswer', 'recordShape', 'shapesPath', `return (${signature}${body});`)(journal, async () => {}, () => false, () => false,
     () => { throw Error('unexpected tools fallback'); }, async () => { fallback++; return { state: 'complete', value: answer, usage }; },
     (input: unknown) => input, ModelDisclosureRefused, createModelLaunchBoundary(), enabled,
-    { get port() { return { ...port, run: intercept ?? port.run }; }, authority }, ModelNotStarted, readAnswer, () => {}, '/unused') as PreviewPorts['model'];
+    { get port() { return { ...port, run: intercept ?? port.run }; }, authority }, ModelNotStarted, conversationSessionAnswer, readAnswer, () => {}, '/unused') as PreviewPorts['model'];
+  let model = openModel();
+  const collectBody = host.split('      collectModel: async id => {')[1]!.split('\n      model:')[0]!.trimEnd().replace(/,$/u, '');
+  const collectModel = (id: string) => Function('journal', 'conversationSession', 'sessionWork', 'conversationSessionAnswer', 'recordShape', 'shapesPath',
+    `return (async id => {${collectBody});`)(journal, enabled, { port }, conversationSessionAnswer, () => {}, '/unused')(id);
   const revisionBody = host.split('        revise: async (')[1]!.split('\n        summaryReview:')[0]!.trimEnd().replace(/,$/u, '');
   const revise = Function('replyReviewContext', 'credentialRegister', 'envelopeWriter', 'journal', 'wallNow',
     'modelEnvelope', 'replyRevisionQuestion', 'invokeSubscription', 'recordedUsage', 'parseReplyRevision',
@@ -70,12 +82,18 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authority =
     replyRevisionQuestion, async () => { throw Error('revision must use the continuing worker'); }, (input: unknown) => input,
     parseReplyRevision, enabled, async () => {}, { get port() { return { ...port, run: intercept ?? port.run }; }, authority }, readAnswer);
   let prepare: ((input: unknown) => string) | undefined;
-  const worker = createJournalWorker(journal, { now: () => now, stopped: () => stopped,
+  const openWorker = () => createJournalWorker(journal, { now: () => now, stopped: () => stopped,
     ...(review ? { replyCheck: { ...review, revise }, toolRoute: () => enabled } : {}),
-    prepareModel: input => prepare ? prepare(input) : review ? prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', now, 262144) : JSON.stringify({ ...input, responseContract: "decision-envelope-marker" }), model,
+    sources: () => sources, prepareModel: input => prepare ? prepare(input) : review ? prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', now, 262144) : JSON.stringify({ ...input, responseContract: "decision-envelope-marker" }), model, collectModel,
     send: async input => { sent.push(input.expectedText); return sent.length; },
     checkOutbound: text => { if (text.includes('SECRET')) throw Error('credential'); } });
-  return { journal, worker, model, port, sent, delivered, prepare: (next: typeof prepare) => { prepare = next; },
+  let worker = openWorker();
+  return { get journal() { return journal; }, get worker() { return worker; }, get model() { return model; }, get port() { return port; }, sent, delivered, edges: () => edges, counts: () => ({ launches, calls, fallback }),
+    evidence: (value: unknown) => { sources = [value]; },
+    busy: (value: boolean) => { busy = value; }, advance: (ms: number) => { now += ms; },
+    state: () => structuredClone(state!.topics.main!), topics: () => structuredClone(state!.topics), restore: (next: import('../../src/assembly/production-conversation-session.js').ConversationState) => { state = { ...state!, topics: { ...state!.topics, main: structuredClone(next) } }; },
+    restart: async (crash = false) => { if (!crash) await port.close(); journal.close(); journal = open(); port = value(adapt(config)); model = openModel(); worker = openWorker(); },
+    prepare: (next: typeof prepare) => { prepare = next; },
     replay: async () => {
       await port.close();
       journal.close();
@@ -89,7 +107,6 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authority =
       } finally { reopened.close(); }
     },
     intercept: (run: typeof intercept) => { intercept = run; },
-    restart: () => { port = value(adapt(config)); }, state: () => structuredClone(state!.topics.main!), topics: () => structuredClone(state!.topics), edges: () => edges, counts: () => ({ launches, calls, fallback }),
     answer: (text: string) => { answer = text; }, stop: () => { stopped = true; },
     close: async () => { await port.close(); journal.close(); } };
 }
@@ -241,7 +258,7 @@ it.each(repairRecords.records)('replays the recorded packets for $operation with
     expect(f.state().inputs.map(input => input.request.operation)).toEqual([row.operation, `${row.operation}:format-retry`]);
     expect(f.state().inputs[0]!.digest).toBe(row.storedDigest);
     expect(f.state().inputs[1]!.request.question).toBe(row.retryPrepared);
-    f.restart();
+    await f.restart();
     expect(await f.model(input)).toEqual(original);
     expect(await f.model(retry)).toMatchObject({ state: 'complete' });
     expect(f.counts().calls).toBe(2);
@@ -271,7 +288,7 @@ it.each(['malformed', 'uncertain', 'throw'] as const)('delivers one honest outco
     expect(f.journal.view.order[0]!.answerRetried).toBe(true);
     expect(f.sent).toHaveLength(1);
     expect(f.sent[0]).toMatch(/couldn't|did not complete|could not/);
-    f.restart(); await f.worker.drain();
+    await f.restart(); await f.worker.drain();
     expect(f.sent).toHaveLength(1); expect(attempted).toBe(2);
     expect(await f.replay()).toBe(1); expect(f.sent).toHaveLength(1);
   } finally { await f.close(); }
@@ -329,7 +346,7 @@ it.each(admissionRecords.records)('admits the exact rewalk $case packets (repair
     await expect(f.port.run({ ...inputs[1]!.request, context: 'changed bytes' })).rejects.toThrow(/conflicts/);
     expect(() => f.journal.append({ kind: 'format-retry', id: row.operation, role: 'answer', state: 'complete',
       failureClass: 'malformed', prompt: row.retryPrepared, at: 1002 })).toThrow(/retry order/);
-    f.restart();
+    await f.restart();
     await f.worker.drain();
     expect(await f.port.run(inputs[1]!.request)).toMatchObject({ state: 'complete' });
     expect(f.counts().calls).toBe(2);
@@ -458,5 +475,114 @@ it('refuses a revision suffix without its durable reservation', async () => {
     await expect(f.port.run({ operation: 'telegram:12345678:update:1:reply-revision', question: 'revise',
       context: '{}', authority: 'existing-role' })).rejects.toThrow(/not durably admitted/);
     expect(f.delivered).toEqual([]);
+  } finally { await f.close(); }
+});
+
+it.each(['same-host', 'queued-restart', 'completed-restart'] as const)('collects a deferred result through the ordinary answer/send path once (%s)', async mode => {
+  const f = fixture(true, true, 11); // existing turn + parent reservation fill the cap; collection spends nothing
+  try {
+    f.busy(true); f.worker.intake([update(1, 'First question')]); await f.worker.drain();
+    expect(f.sent).toEqual([]); expect(f.state().inputs[0]!.state).toBe('queued');
+    expect(f.journal.view.order[0]).toMatchObject({ reserved: true });
+    expect(f.journal.view.order[0]!.modelState).toBeUndefined();
+    await f.worker.drain(); expect(f.delivered).toHaveLength(0);
+    if (mode === 'queued-restart') await f.restart();
+    f.busy(false); f.advance(200); await f.port.maintain();
+    if (mode === 'completed-restart') await f.restart();
+    const calls = f.journal.view.calls;
+    await f.worker.drain(); await f.worker.drain(); await f.port.maintain();
+    expect(f.sent).toEqual(['A useful answer.']); expect(f.delivered).toHaveLength(1);
+    expect(f.journal.view.calls).toBe(calls);
+    expect(f.journal.view.order[0]!.modelState).toBe('complete');
+    expect(f.journal.view.order[0]!.noticeClass).toBeUndefined();
+    await f.restart(); await f.worker.drain(); expect(f.sent).toHaveLength(1);
+  } finally { await f.close(); }
+});
+
+it('an unresolved dispatched host turn is never replayed by the journal collector after restart', async () => {
+  const f = fixture();
+  try {
+    f.busy(true); f.worker.intake([update(1, 'Question')]); await f.worker.drain();
+    f.restore({ ...f.state(), inputs: f.state().inputs.map(row => ({ ...row, state: 'accepted', outcome: null })) });
+    await f.restart(true); f.busy(false); f.advance(200); await f.port.maintain(); await f.worker.drain();
+    expect(f.journal.view.order[0]!.modelState).toBe('uncertain');
+    await f.worker.drain(); expect(f.delivered).toHaveLength(0); expect(f.sent).not.toContain('A useful answer.');
+  } finally { await f.close(); }
+});
+
+it.each(recorded.records)('collects recorded frame $frame into the same consumer disposition as immediate delivery', async row => {
+  const deferred = fixture(), immediate = fixture();
+  try {
+    for (const f of [deferred, immediate]) {
+      f.advance(1791907200000 - 1000); f.answer(row.output);
+      f.busy(f === deferred); f.worker.intake([update(1, JSON.parse(row.output).dated[0].quote)]); await f.worker.drain();
+    }
+    await deferred.restart(); deferred.busy(false); deferred.advance(200);
+    await deferred.port.maintain(); await deferred.worker.drain();
+    expect(deferred.delivered).toHaveLength(immediate.delivered.length);
+    expect(deferred.state().inputs[0]!.outcome).toMatchObject({ state: 'complete', text: row.output });
+    expect(deferred.journal.view.order[0]!.modelState).toBe(immediate.journal.view.order[0]!.modelState);
+    expect(deferred.sent).toEqual(immediate.sent);
+    expect(deferred.journal.view.order[0]!.answerRetried).toBe(immediate.journal.view.order[0]!.answerRetried);
+    if (row.frame === 595) expect(deferred.sent.join('\n')).toContain(JSON.parse(row.output).reply);
+    await deferred.worker.drain(); expect(deferred.delivered).toHaveLength(immediate.delivered.length);
+  } finally { await deferred.close(); await immediate.close(); }
+});
+
+const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
+  otherShapes: { kind: string; id: string; raw: string }[] };
+it.each(shapes.otherShapes)('keeps recorded $kind ($id) in the original packet across deferred collection', async row => {
+  const f = fixture();
+  try {
+    // Archived summary/Jev/review bytes are quoted evidence, never reclassified as answer output.
+    // Delivered and empty historical reply bytes exercise the reply field, as in their original consumer tests.
+    f.evidence({ recordedShape: row });
+    if (row.kind === 'delivered-reply' || row.kind === 'empty-reply-in-recorded-context')
+      f.answer(JSON.stringify({ reply: row.raw, memory: [] }));
+    f.busy(true); f.worker.intake([update(1, 'Continue the conversation')]); await f.worker.drain();
+    const packet = f.state().inputs[0]!.request.context;
+    expect(packet).toContain(JSON.stringify(row.raw));
+    await f.restart(); f.busy(false); f.advance(200); await f.port.maintain(); await f.worker.drain();
+    expect(f.state().inputs[0]!.request.context).toBe(packet);
+    expect(f.delivered).toHaveLength(1); expect(f.sent).toHaveLength(1); expect(f.sent[0]!.trim()).not.toBe('');
+    expect(f.journal.view.order[0]!.failureClass).toBe(row.kind === 'empty-reply-in-recorded-context' ? 'empty' : undefined);
+    await f.worker.drain(); expect(f.sent).toHaveLength(1);
+  } finally { await f.close(); }
+});
+
+it('an older host result cannot settle a newer reserved packet, including after restart', async () => {
+  const f = fixture();
+  try {
+    f.busy(true); f.worker.intake([update(1, 'Question')]); await f.worker.drain();
+    f.journal.append({ kind: 'format-retry', id: f.journal.view.order[0]!.id, role: 'answer', state: 'complete',
+      failureClass: 'malformed', prompt: 'a different exact packet', at: 1000 });
+    await f.restart(); f.busy(false); f.advance(200); await f.port.maintain();
+    const calls = f.journal.view.calls;
+    await f.worker.drain(); await f.worker.drain();
+    expect(f.state().inputs[0]!.outcome?.state).toBe('complete');
+    expect(f.sent).toEqual([]); expect(f.delivered).toHaveLength(1); expect(f.journal.view.calls).toBe(calls);
+    expect(f.journal.view.order[0]!.modelState).toBeUndefined();
+  } finally { await f.close(); }
+});
+
+it('collects a queued reserved format repair under its child identity and sends only once', async () => {
+  const f = fixture();
+  try {
+    f.answer('not a decision');
+    const run = f.port.run.bind(f.port);
+    f.intercept(async request => {
+      if (request.operation.endsWith(':format-retry')) {
+        f.busy(true); f.answer(JSON.stringify({ reply: 'Delayed repair answer.', memory: [] }));
+      }
+      return run(request);
+    });
+    f.worker.intake([update(1, 'Please answer')]); await f.worker.drain();
+    expect(f.sent).toEqual([]);
+    expect(f.state().inputs[1]!.state).toBe('queued');
+    await f.restart(); f.busy(false); f.advance(200); await f.port.maintain();
+    await f.worker.drain(); await f.worker.drain();
+    expect(f.sent).toEqual(['Delayed repair answer.']);
+    expect(f.delivered).toHaveLength(2);
+    expect(await f.replay()).toBe(1); expect(f.sent).toHaveLength(1);
   } finally { await f.close(); }
 });

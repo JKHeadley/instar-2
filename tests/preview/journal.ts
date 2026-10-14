@@ -494,6 +494,10 @@ export const MODEL_NOT_STARTED_HOLD = 'model not started';
 export class ModelNotStarted extends Error {
   constructor() { super(MODEL_NOT_STARTED_HOLD); }
 }
+/** Host custody still owns this operation; the ordinary tick collects it without replay. */
+export class ModelPending extends Error {
+  constructor() { super('model result pending in durable host custody'); }
+}
 export const MODEL_NOT_STARTED_REPLY = "I couldn't start my model right now. Your message is saved; please resend it to try again.";
 export const MODEL_CAPACITY_HOLD = 'provider usage limit; resend required';
 export const MODEL_CAPACITY_ALERT = 'provider usage limit; saved turns need resend';
@@ -5458,6 +5462,11 @@ export interface PreviewPorts {
    * one-shot result settle the obligation through exactly one reader. Only long and scheduled work
    * is routed here; an operator answer is never delegated to a session. */
   sessionWork?(input: { question: string; context: string; id: string }): ReturnType<PreviewPorts['model']>;
+  /** Read an already reserved host result by identity, never invoke a model. Null means no
+   * host custody; ModelPending keeps the reservation open. The original packet accompanies
+   * the result so recovery uses the same answer consumer and grounding. */
+  collectModel?(id: string): Promise<{ context: string; prepared: string;
+    answer: Awaited<ReturnType<PreviewPorts['model']>> } | null>;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
     usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage;
       /** Exact zero-token provider quota refusal, carried separately from semantic rejection. */ capacity?: ModelCapacity;
@@ -7962,12 +7971,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             { role: 'user', content: redact(turn.text).text }] });
           journal.append({ kind: 'status-answer', id: turn.id, text: answer, prompt, at: ports.now() });
         }
-        if (turn.answer === undefined && !turn.reserved && !turn.noticeClass) {
+        let collected: Awaited<ReturnType<NonNullable<PreviewPorts['collectModel']>>> = null;
+        if (turn.reserved && turn.answer === undefined && turn.modelState === undefined && !turn.noticeClass && ports.collectModel) {
+          try { collected = await ports.collectModel(turn.id); }
+          catch { blockedEarlier = true; continue; } // pending or unreadable custody never authorizes replay
+          gate();
+          // A later format/lookup reservation has different bytes; an older host result
+          // cannot settle it. Keep that reservation UNKNOWN, never replay either one.
+          if (collected && collected.prepared !== turn.prompt) collected = null;
+        }
+        if (turn.answer === undefined && (!turn.reserved || collected) && !turn.noticeClass) {
           // Leave a shared-budget slot for a full-context review if Jev cannot pass.
-          if (journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
+          if (!collected && journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
           }
-          if (!turn.media) {
+          if (!collected && !turn.media) {
             const update = JSON.parse(turn.raw) as TelegramUpdate;
             const media = telegramInboundMedia(update.edited_message ?? update.message);
             if (media) {
@@ -7978,7 +7996,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               journal.append({ kind: 'media-custody', id: turn.id, result, at: ports.now() });
             }
           }
-          let selected = await prepareRecall(() => preparedFor(turn));
+          let selected: Awaited<ReturnType<typeof preparedFor>> = collected
+            ? { question: clean(redact(turn.text).text, true), context: collected.context, prepared: collected.prepared,
+              carried: turn.grounding?.corrections ?? [], dropped: turn.packetDropped ?? [], grounding: turn.grounding! }
+            : await prepareRecall(() => preparedFor(turn));
           if ('reason' in selected) {
             await summarizeIfNeeded(true);
             selected = await prepareRecall(() => preparedFor(turn));
@@ -8000,7 +8021,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             break;
           }
           if (!('reason' in selected)) {
-          if (journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
+          if (!collected && journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
           }
           const { question, carried, dropped, grounding } = selected;
@@ -8030,7 +8051,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             continue;
           }
           gate();
-          journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
+          if (!collected) journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
             corrections: carried, grounding, packetDropped: dropped, packetLimit: journal.view.limits.maxBytes,
             maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
 
@@ -8045,6 +8066,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               gate();
               result = await original.model(input);
             } catch (error) {
+              if (error instanceof ModelPending) blockedEarlier = true;
               if (error instanceof ModelDisclosureRefused || error instanceof ModelNotStarted)
                 journal.append({ kind: 'hold', id: turn.id,
                   reason: error instanceof ModelDisclosureRefused ? GROUP_DISCLOSURE_HOLD : MODEL_NOT_STARTED_HOLD,
@@ -8060,7 +8082,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             }
             return result;
           };
-          let answer = await attempt({ question, context, id: turn.id,
+          let answer = collected?.answer ?? await attempt({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) });
           if (answer === false) continue;
           // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
