@@ -7793,6 +7793,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     ...journal.view.order.filter(item => item.thread === turn.thread && item.waitingProgress)
       .map(item => item.waitingProgress!.at + WAITING_PROGRESS_AFTER_MS));
   const startProgress = (turn: Turn) => {
+    if (ports.topicConcurrency === undefined) return; // continuing topic host only
     if (progressTimers.has(turn) || turn.waitingProgress || turn.intent || turn.reserved || turn.editOf || turn.requestedAction
       || !fromOperator(turn) || outsideAllowance(journal.view, turn)) return;
     const after = ports.acknowledgementTimer ?? ((ms: number, run: () => void) => {
