@@ -36,9 +36,6 @@ Subject (8 paths): src/assembly/production-conversation-session.ts, src/assembly
 
 ## Closing block
 
-simplestRobustRoute: This is the simplest robust route: reuse the one durable revision reservation, topic owner, worker and parent send. A distinct reserved child operation prevents request-digest conflicts without weakening identity. A shortening-only request deadline prevents the worker using its hour-long parent lifetime for a sixty-second review. End guards are the contextual revision review and one honest terminal notice; existing secrets, spend, stop, intake and send floors remain. No unattended live acceptance of this changed build is claimed.
-80/20: Run changed tests and direct source consumers, typecheck, architecture, lint, register, change-review and pinned READY tests. No full suite, walks, sends or deliberate load.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Decision: step1j-revision | Route the reserved revision to its continuing worker and preserve its own digest and parent send ownership. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1j-hold-settles-1014-PROGRESS.md
 Decision: step1j-deadline | Shorten a revision input to the existing review deadline, with no new budget. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1j-hold-settles-1014-PROGRESS.md
@@ -48,3 +45,7 @@ Decision: step1j-grounding | Name live search/fetch from the session policy admi
 Generated register: shape-only replay from source commit 47aac40f9f1c260a01ba9ff66f87dfb0fc863cf6; no runtime certificate or authority declaration changed.
 
 Deadline validation: targeted tests also refuse zero, negative, fractional, NaN and infinite deadlines before custody or dispatch; finite positive revision deadlines execute under the same parent cap.
+
+simplestRobustRoute: This is the simplest robust route: reuse the one durable revision reservation, topic owner, worker and parent send. A distinct reserved child operation prevents request-digest conflicts without weakening identity. A shortening-only request deadline prevents the worker using its hour-long parent lifetime for a sixty-second review. End guards are the contextual revision review and one honest terminal notice; existing secrets, spend, stop, intake and send floors remain. No unattended live acceptance of this changed build is claimed.
+80/20: Run changed tests and direct source consumers, typecheck, architecture, lint, register, change-review and pinned READY tests. No full suite, walks, sends or deliberate load.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
