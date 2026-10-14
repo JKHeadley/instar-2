@@ -34,3 +34,21 @@ Decision: train-30-register | Regenerate owner pins and register using the downl
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges, local resolution preserving both behaviors, existing desk regeneration and consumer tests. No new host, pool, store or classifier. Durable intake and authority guard start; exact receipts guard completion; shared call allowance, lifetime and stop guard execution. The incompatible pool returns to its owning unit rather than growing an unreviewed replacement here. Offline recorded replay is not unattended live acceptance.
 80/20: Target changed tests, direct source consumers and named journal/pin checks only, in bounded foreground batches. Studio owns the full gate and copy walk.
 VERDICT: author submission; independent review belongs to the desk
+
+Deferral: tests/preview/journal-conversation-session.test.ts:393 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
+Deferral: tests/preview/journal-conversation-session.test.ts:426 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
+Deferral: tests/preview/journal-conversation-session.test.ts:428 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
+Deferral: tests/preview/journal-conversation-session.test.ts:430 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
+Deferral: tests/preview/journal-conversation-session.test.ts:432 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
+Deferral: tests/preview/journal-conversation-session.test.ts:433 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
+Deferral: tests/preview/journal-conversation-session.test.ts:434 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
+Deferral: tests/preview/journal-conversation-session.test.ts:435 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
+Deferral: tests/preview/journal-conversation-session.test.ts:436 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
+Deferral: tests/preview/journal-conversation-session.test.ts:437 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
+Deferral: tests/preview/journal-conversation-session.test.ts:438 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
+Deferral: tests/preview/journal-conversation-session.test.ts:439 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
+Deferral: tests/preview/journal-conversation-session.test.ts:440 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
+Deferral: tests/preview/journal-conversation-session.test.ts:441 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
+Deferral: tests/preview/journal-conversation-session.test.ts:446 | not-a-deferral=Executable delayed-completion regression using a deferred fixture; no work promise is postponed.
+
+Validation: Core consumer tests 163/163; architecture, build and typecheck pass; pinned-text checks 89/89; lint has no issues and register check is true. Register publication is regenerated from 0881f380. Broader physical-host results are reported separately.
