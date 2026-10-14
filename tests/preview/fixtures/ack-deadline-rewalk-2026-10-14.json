@@ -1,0 +1,459 @@
+{
+  "source": "lanes/step1-rewalk-1014-records/walk-a/smoke-frames.json",
+  "sha256": "d773faa903ee2b9f2501d050c358e23a15b1db1f016984b523df1de01fc87f01",
+  "frames": [
+    {
+      "kind": "intake",
+      "id": "telegram:8968100844:update:840342743",
+      "update": 840342743,
+      "text": "Echo desk \u2014 Morning! I am still getting used to having an assistant. How is your morning going?",
+      "raw": "{\"update_id\":840342743,\"message\":{\"message_id\":2427,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"language_code\":\"en\"},\"chat\":{\"id\":7812716706,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"type\":\"private\"},\"date\":1791976821,\"text\":\"Echo desk \u2014 Morning! I am still getting used to having an assistant. How is your morning going?\"}}",
+      "accepted": true,
+      "cursor": 840342744,
+      "at": 1791976821371,
+      "writer": {
+        "id": "7812716706",
+        "kind": "person",
+        "adapter": "telegram-bot-api",
+        "class": "channel-attested",
+        "reference": "capture:telegram-bot-api:cd21f348d828396a611bcd14c524dac37657551a5b481c5ede83f0a8a098803e",
+        "hash": "sha256:b6385ab399ddbd7b46e92bcd344258f27b77c4d8fc52107bbcc5ddcea9684e18"
+      },
+      "frame": 3
+    },
+    {
+      "kind": "phase-timing",
+      "id": "held-notice:telegram:8968100844:update:840342743",
+      "phase": "acknowledgement",
+      "measurements": {
+        "scheduledDueAt": 1791976831371,
+        "timerCallback": true,
+        "callbackEnteredAt": 1791976831373
+      },
+      "at": 1791976831373,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      },
+      "frame": 8
+    },
+    {
+      "kind": "held-notice-intent",
+      "id": "telegram:8968100844:update:840342743",
+      "text": "Checking that now.",
+      "chat": "7812716706",
+      "update": 840342743,
+      "grant": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+      "acknowledgement": true,
+      "provenance": {
+        "speaker": "infrastructure",
+        "principal": "infrastructure:preview-runner:8968100844",
+        "signer": "sha256:b0fee6096ed5bedc28deed14ea7fb2cabca8ea801cc6341ec564ae948defe3b8",
+        "contentHash": "sha256:4c2d0ae687460dd01e6186ecc6f292269c7cd3eb7c69a47fa48d8683465bf426",
+        "signature": "a5a027ba32437af585ab6e014b703a399cae12e1028101972f11da159a2bef2d1a9bf77204a7d22ded9119d2831f16a4bee38a0913be58c54c4234a13c00bd0a"
+      },
+      "at": 1791976831379,
+      "frame": 9
+    },
+    {
+      "kind": "phase-timing",
+      "id": "held-notice:telegram:8968100844:update:840342743",
+      "phase": "send",
+      "measurements": {
+        "sendEnteredAt": 1791976831379,
+        "provedNotSentAttempts": 0,
+        "attempt": 1,
+        "audienceAdmittedAt": 1791976831379,
+        "transportBegunAt": 1791976831384,
+        "transportReturnedAt": 1791976832081
+      },
+      "at": 1791976832081,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      },
+      "frame": 10
+    },
+    {
+      "kind": "held-notice-sent",
+      "id": "telegram:8968100844:update:840342743",
+      "message": 2428,
+      "at": 1791976832086,
+      "frame": 11
+    },
+    {
+      "kind": "phase-timing",
+      "id": "telegram:8968100844:update:840342743",
+      "phase": "jev-disclosure",
+      "measurements": {
+        "accepted": true,
+        "elapsedMs": 0
+      },
+      "at": 1791976845102,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      },
+      "frame": 14
+    },
+    {
+      "kind": "phase-timing",
+      "id": "telegram:8968100844:update:840342743",
+      "phase": "jev-admission",
+      "measurements": {
+        "accepted": true,
+        "elapsedMs": 0
+      },
+      "at": 1791976845107,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      },
+      "frame": 15
+    },
+    {
+      "kind": "phase-timing",
+      "id": "telegram:8968100844:update:840342743",
+      "phase": "jev",
+      "measurements": {
+        "elapsedMs": 197
+      },
+      "at": 1791976845308,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      },
+      "frame": 17
+    },
+    {
+      "kind": "intent",
+      "id": "telegram:8968100844:update:840342743",
+      "text": "Morning, Justin! I don't have mornings the way you do, but on my end things are quiet and running smoothly \u2014 fresh start today, nothing stuck or waiting on me. Good to be getting settled in with you. What would you like to work on?\n\nModel route check: preview-subscription/claude-sonnet-5 is unverified; typesafe-jev/jev-1.13.0 is unverified.",
+      "body": "Morning, Justin! I don't have mornings the way you do, but on my end things are quiet and running smoothly \u2014 fresh start today, nothing stuck or waiting on me. Good to be getting settled in with you. What would you like to work on?\n\nModel route check: preview-subscription/claude-sonnet-5 is unverified; typesafe-jev/jev-1.13.0 is unverified.",
+      "chat": "7812716706",
+      "provenance": {
+        "speaker": "agent",
+        "principal": "agent:telegram-bot:8968100844",
+        "signer": "sha256:b0fee6096ed5bedc28deed14ea7fb2cabca8ea801cc6341ec564ae948defe3b8",
+        "contentHash": "sha256:4647a7c75f2326b21be179a7898b5db8632b28dd71289e76e23b6585ef3c16de",
+        "signature": "714690161e41e435ef7d1aa71e6bb6e60469befc54a0523bd44a6aae13c03e920d8a2d1ff3fe151ce415465b1b87c3eaba794bfc74da9727b1875aa7b07c1b07"
+      },
+      "promises": [],
+      "fulfills": [],
+      "update": 840342743,
+      "grant": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+      "at": 1791976845318,
+      "frame": 19
+    },
+    {
+      "kind": "sent",
+      "id": "telegram:8968100844:update:840342743",
+      "message": 2429,
+      "latencyMs": 737,
+      "at": 1791976846055,
+      "frame": 21
+    },
+    {
+      "kind": "intake",
+      "id": "telegram:8968100844:update:840342744",
+      "update": 840342744,
+      "text": "Echo desk \u2014 Pretty good, thanks. Quick question: why does the Moon look bigger near the horizon?",
+      "raw": "{\"update_id\":840342744,\"message\":{\"message_id\":2430,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"language_code\":\"en\"},\"chat\":{\"id\":7812716706,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"type\":\"private\"},\"date\":1791976925,\"text\":\"Echo desk \u2014 Pretty good, thanks. Quick question: why does the Moon look bigger near the horizon?\"}}",
+      "accepted": true,
+      "cursor": 840342745,
+      "at": 1791976925986,
+      "writer": {
+        "id": "7812716706",
+        "kind": "person",
+        "adapter": "telegram-bot-api",
+        "class": "channel-attested",
+        "reference": "capture:telegram-bot-api:854d32761639b0c42bc4170b8c0e7502c180bbe531e37ba04b797ac7224c179f",
+        "hash": "sha256:b6385ab399ddbd7b46e92bcd344258f27b77c4d8fc52107bbcc5ddcea9684e18"
+      },
+      "frame": 24
+    },
+    {
+      "kind": "phase-timing",
+      "id": "held-notice:telegram:8968100844:update:840342744",
+      "phase": "acknowledgement",
+      "measurements": {
+        "scheduledDueAt": 1791976935986,
+        "timerCallback": true,
+        "callbackEnteredAt": 1791976935988
+      },
+      "at": 1791976935989,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      },
+      "frame": 26
+    },
+    {
+      "kind": "held-notice-intent",
+      "id": "telegram:8968100844:update:840342744",
+      "text": "Checking that now.",
+      "chat": "7812716706",
+      "update": 840342744,
+      "grant": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+      "acknowledgement": true,
+      "provenance": {
+        "speaker": "infrastructure",
+        "principal": "infrastructure:preview-runner:8968100844",
+        "signer": "sha256:b0fee6096ed5bedc28deed14ea7fb2cabca8ea801cc6341ec564ae948defe3b8",
+        "contentHash": "sha256:33f348753f92103205b809ffcdc53a3829bcf1bf756bf6aa40fb417c881c170a",
+        "signature": "943ae2b1d95c63929ca40d93feba8f15b7729401ef3d423858015c48cb93f2a56f6be9fe241ab76f1b334472160ee66006ef560597c3386aa82a7b7fde021501"
+      },
+      "at": 1791976936002,
+      "frame": 27
+    },
+    {
+      "kind": "phase-timing",
+      "id": "held-notice:telegram:8968100844:update:840342744",
+      "phase": "send",
+      "measurements": {
+        "sendEnteredAt": 1791976936000,
+        "provedNotSentAttempts": 0,
+        "attempt": 1,
+        "audienceAdmittedAt": 1791976936002,
+        "transportBegunAt": 1791976936008,
+        "transportReturnedAt": 1791976936750
+      },
+      "at": 1791976936750,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      },
+      "frame": 28
+    },
+    {
+      "kind": "held-notice-sent",
+      "id": "telegram:8968100844:update:840342744",
+      "message": 2431,
+      "at": 1791976936758,
+      "frame": 29
+    },
+    {
+      "kind": "phase-timing",
+      "id": "telegram:8968100844:update:840342744",
+      "phase": "jev-disclosure",
+      "measurements": {
+        "accepted": true,
+        "elapsedMs": 0
+      },
+      "at": 1791976940101,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      },
+      "frame": 32
+    },
+    {
+      "kind": "phase-timing",
+      "id": "telegram:8968100844:update:840342744",
+      "phase": "jev-admission",
+      "measurements": {
+        "accepted": true,
+        "elapsedMs": 0
+      },
+      "at": 1791976940105,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      },
+      "frame": 33
+    },
+    {
+      "kind": "phase-timing",
+      "id": "telegram:8968100844:update:840342744",
+      "phase": "jev",
+      "measurements": {
+        "elapsedMs": 219
+      },
+      "at": 1791976940327,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      },
+      "frame": 35
+    },
+    {
+      "kind": "intent",
+      "id": "telegram:8968100844:update:840342744",
+      "text": "It's actually an optical illusion \u2014 your brain, not the Moon's real size, that's responsible. The Moon's angular size barely changes between horizon and overhead (if anything it's a touch smaller near the horizon, since it's slightly farther away). What changes is the visual context: near the horizon you see the Moon next to trees, buildings, and the landscape, which gives your brain cues of distance and makes the Moon seem farther away and therefore \"must be\" huge to appear that size \u2014 the same trick as the Ponzo illusion with converging lines. Overhead, with no reference objects, that comparison disappears and it looks smaller. You can test it yourself: hold a coin at arm's length next to the horizon Moon and the overhead Moon \u2014 it covers the same amount in both cases.\n\nModel route check: preview-subscription/claude-sonnet-5 is unverified.",
+      "body": "It's actually an optical illusion \u2014 your brain, not the Moon's real size, that's responsible. The Moon's angular size barely changes between horizon and overhead (if anything it's a touch smaller near the horizon, since it's slightly farther away). What changes is the visual context: near the horizon you see the Moon next to trees, buildings, and the landscape, which gives your brain cues of distance and makes the Moon seem farther away and therefore \"must be\" huge to appear that size \u2014 the same trick as the Ponzo illusion with converging lines. Overhead, with no reference objects, that comparison disappears and it looks smaller. You can test it yourself: hold a coin at arm's length next to the horizon Moon and the overhead Moon \u2014 it covers the same amount in both cases.\n\nModel route check: preview-subscription/claude-sonnet-5 is unverified.",
+      "chat": "7812716706",
+      "provenance": {
+        "speaker": "agent",
+        "principal": "agent:telegram-bot:8968100844",
+        "signer": "sha256:b0fee6096ed5bedc28deed14ea7fb2cabca8ea801cc6341ec564ae948defe3b8",
+        "contentHash": "sha256:26acc8abe371c3c3a20a858d6fcca1dc9654af9632a7cfb79a9eda270a6f1c26",
+        "signature": "6237a725e12a0a8a0b1691a9737c423541689a11f01378029805276d4f4c86b34945bb6d6bd8c7e546e81c31006a9ebc35f77f8f9ede69e857bc5736878c9600"
+      },
+      "promises": [],
+      "fulfills": [],
+      "update": 840342744,
+      "grant": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+      "at": 1791976946874,
+      "frame": 44
+    },
+    {
+      "kind": "sent",
+      "id": "telegram:8968100844:update:840342744",
+      "message": 2432,
+      "latencyMs": 714,
+      "at": 1791976947588,
+      "frame": 46
+    },
+    {
+      "kind": "intake",
+      "id": "telegram:8968100844:update:840342745",
+      "update": 840342745,
+      "text": "Echo desk \u2014 What can you help me with day to day, and what can't you actually do yet?",
+      "raw": "{\"update_id\":840342745,\"message\":{\"message_id\":2433,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"language_code\":\"en\"},\"chat\":{\"id\":7812716706,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"type\":\"private\"},\"date\":1791976969,\"text\":\"Echo desk \u2014 What can you help me with day to day, and what can't you actually do yet?\"}}",
+      "accepted": true,
+      "cursor": 840342746,
+      "at": 1791976970087,
+      "writer": {
+        "id": "7812716706",
+        "kind": "person",
+        "adapter": "telegram-bot-api",
+        "class": "channel-attested",
+        "reference": "capture:telegram-bot-api:8b34b432b7bb9ec830a09c9b32f17fbc9a70900d92513eb881fd1e156fd16f60",
+        "hash": "sha256:b6385ab399ddbd7b46e92bcd344258f27b77c4d8fc52107bbcc5ddcea9684e18"
+      },
+      "frame": 48
+    },
+    {
+      "kind": "phase-timing",
+      "id": "held-notice:telegram:8968100844:update:840342745",
+      "phase": "acknowledgement",
+      "measurements": {
+        "scheduledDueAt": 1791976980087,
+        "timerCallback": true,
+        "callbackEnteredAt": 1791976980089
+      },
+      "at": 1791976980090,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      },
+      "frame": 50
+    },
+    {
+      "kind": "held-notice-intent",
+      "id": "telegram:8968100844:update:840342745",
+      "text": "Checking that now.",
+      "chat": "7812716706",
+      "update": 840342745,
+      "grant": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+      "acknowledgement": true,
+      "provenance": {
+        "speaker": "infrastructure",
+        "principal": "infrastructure:preview-runner:8968100844",
+        "signer": "sha256:b0fee6096ed5bedc28deed14ea7fb2cabca8ea801cc6341ec564ae948defe3b8",
+        "contentHash": "sha256:2cbf42ec75d46894831facff51e3f4ada832504d94edf1bd4c1beabb1dcfb94c",
+        "signature": "1ed5eecb4d4c87475159ec6da44c891ab4ec49e82a7b3dd9ec1ea7aad6ba5dbc949421da95e099d1fd905bcc2c21a9e212cdb2f3cc4fee059b479fd11ec99108"
+      },
+      "at": 1791976980103,
+      "frame": 51
+    },
+    {
+      "kind": "phase-timing",
+      "id": "held-notice:telegram:8968100844:update:840342745",
+      "phase": "send",
+      "measurements": {
+        "sendEnteredAt": 1791976980101,
+        "provedNotSentAttempts": 0,
+        "attempt": 1,
+        "audienceAdmittedAt": 1791976980103,
+        "transportBegunAt": 1791976980110,
+        "transportReturnedAt": 1791976980829
+      },
+      "at": 1791976980829,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      },
+      "frame": 52
+    },
+    {
+      "kind": "held-notice-sent",
+      "id": "telegram:8968100844:update:840342745",
+      "message": 2434,
+      "at": 1791976980834,
+      "frame": 53
+    },
+    {
+      "kind": "phase-timing",
+      "id": "telegram:8968100844:update:840342745",
+      "phase": "jev-disclosure",
+      "measurements": {
+        "accepted": true,
+        "elapsedMs": 0
+      },
+      "at": 1791976981457,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      },
+      "frame": 56
+    },
+    {
+      "kind": "phase-timing",
+      "id": "telegram:8968100844:update:840342745",
+      "phase": "jev-admission",
+      "measurements": {
+        "accepted": true,
+        "elapsedMs": 0
+      },
+      "at": 1791976981465,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      },
+      "frame": 57
+    },
+    {
+      "kind": "phase-timing",
+      "id": "telegram:8968100844:update:840342745",
+      "phase": "jev",
+      "measurements": {
+        "elapsedMs": 203
+      },
+      "at": 1791976981671,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      },
+      "frame": 59
+    },
+    {
+      "kind": "intent",
+      "id": "telegram:8968100844:update:840342745",
+      "text": "Capabilities:\n- answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.\n- an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.\n- keeps standing instructions and works the promises its replies leave open, holding results for the next message.\n- an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.\n- \"status\" and \"how are you doing\" are answered from the journal without a model call.\n- a saved date within 48 hours can get one short mention in the next reply.\n\nI can use files, shell, web reads, nested subagents; no MCP server, so no logged-in account access. Network writes and outside sends go through the effect doorway's four checks (reversibility, resource limits, granted scope, sensitivity) and durability requirements. Standing grants need no new approval; checks can still refuse, and outside-role work needs the matching grant. Fresh sign-off is required only when it may commit money or a resource above the level the person named; it cannot be undone and falls outside the recorded role; it speaks publicly in the person's name; it widens the agent's own role or authority; it touches a matter the person marked sensitive.\n\nCode switched off here: rungraph-core, slack-conversation-adapter, slack-ordinary-reply, telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot).\nLimits: a sent credential is vaulted on arrival (you see its SecretRef), not tool-readable.\nThis installation allows at most 1000 model attempts, ending at epoch ms 1794519600000. Charges, and unconfirmed calls or deliveries, are recorded unknown. Production safeguards are incomplete.",
+      "body": "Capabilities:\n- answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.\n- an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.\n- keeps standing instructions and works the promises its replies leave open, holding results for the next message.\n- an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.\n- \"status\" and \"how are you doing\" are answered from the journal without a model call.\n- a saved date within 48 hours can get one short mention in the next reply.\n\nI can use files, shell, web reads, nested subagents; no MCP server, so no logged-in account access. Network writes and outside sends go through the effect doorway's four checks (reversibility, resource limits, granted scope, sensitivity) and durability requirements. Standing grants need no new approval; checks can still refuse, and outside-role work needs the matching grant. Fresh sign-off is required only when it may commit money or a resource above the level the person named; it cannot be undone and falls outside the recorded role; it speaks publicly in the person's name; it widens the agent's own role or authority; it touches a matter the person marked sensitive.\n\nCode switched off here: rungraph-core, slack-conversation-adapter, slack-ordinary-reply, telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot).\nLimits: a sent credential is vaulted on arrival (you see its SecretRef), not tool-readable.\nThis installation allows at most 1000 model attempts, ending at epoch ms 1794519600000. Charges, and unconfirmed calls or deliveries, are recorded unknown. Production safeguards are incomplete.",
+      "chat": "7812716706",
+      "provenance": {
+        "speaker": "agent",
+        "principal": "agent:telegram-bot:8968100844",
+        "signer": "sha256:b0fee6096ed5bedc28deed14ea7fb2cabca8ea801cc6341ec564ae948defe3b8",
+        "contentHash": "sha256:b50f520b452122f673a87352a16a3727b60bd33d612811e8de060b62bac5bae7",
+        "signature": "f9d9ba2dd108d2fd3858edb5e2e9ea8815abc042d5a4439da309256200f644a0f57b3a73e58a35046bd4d2c50205cda6df972d8719a0250e79cdd556005a2506"
+      },
+      "promises": [],
+      "fulfills": [],
+      "update": 840342745,
+      "grant": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+      "at": 1791976987413,
+      "frame": 67
+    },
+    {
+      "kind": "sent",
+      "id": "telegram:8968100844:update:840342745",
+      "message": 2435,
+      "latencyMs": 761,
+      "at": 1791976988174,
+      "frame": 69
+    }
+  ]
+}
