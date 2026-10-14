@@ -24,6 +24,9 @@ Decision: summary-producer-1013-coverage | Persist exact received-message IDs, s
 Decision: summary-producer-1013-evidence | Reuse captured writer/Jev/review regressions and recorded-walk encrypted lifecycle tests; synthetic neighbors supplement rather than replace them. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/summary-producer-1013-PROGRESS.md
 Prompt review: The old audit regression expected a summary to commit across an operator correction; it now verifies the required stale-source refusal with intact correction audit lineage after reopen. No prompt wording or semantic threshold changes. Faithful descriptions of uncertainty are accepted; uncertain paid outcomes stay UNKNOWN. Exact coverage and source-revision checks are structural, never keyword judgments. Missing coverage refuses without dropping the source.
 
+Prompt finding: e8708c7fea24 | protocol-literal | The existing general recall instruction requires source attribution and disclosure of unknown sources; it is unchanged from the base and does not classify intent by a fixture phrase.
+Prompt finding: 849db3a6296a | protocol-literal | The existing fixed empty-memory-list response and its consumer are unchanged from the base; the fixture asserts the protocol response, not a semantic trigger.
+
 Subject: src/recall/README.md, src/recall/journal-summary-plan.md, src/recall/rolling-summary.ts, src/recall/summary-faithfulness.ts, src/recall/summary-check.ts, src/recall/model-json.ts, tests/preview/journal.ts, tests/preview/journal-history-adapter.ts, tests/preview/journal-history-adapter.test.ts, tests/preview/journal-audit.test.ts, tests/preview/summary-faithfulness.ts, tests/preview/summary-check.ts, tests/preview/model-json.ts, tests/recall/rolling-summary.test.ts, generated/
 
 ## Closing block
