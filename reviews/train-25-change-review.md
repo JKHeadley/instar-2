@@ -28,6 +28,14 @@ Decision: train-25-desk-B | Create the branch directly at ac3bd4d8874495f8b66b57
 Decision: train-25-desk-C | No product conflict and no member omitted; all resolved overlaps retain both behaviors, with generated output replaced by the existing publication chain. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-25-PROGRESS.md
 Decision: train-25-desk-D | Run changed tests, direct importers and named journal/register checks in bounded foreground chunks; report unchanged host-dependent failures and WSL exclusions for Studio acceptance. No full suite, serving login, live root or Studio write. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-25-PROGRESS.md
 
+Prompt finding: 034c5250da92 | protocol-literal | Existing role/trust instruction asserted by the self-description regression; no new lexical judgment or authority expansion.
+Prompt finding: 450c79237a95 | protocol-literal | Existing conflicting-memory instruction tested by journal-people; the merge changes no memory classifier or expected model answer.
+Prompt finding: 45e37ea2e9e9 | protocol-literal | Existing workspace/public-read capability instruction checked against shipped abilities, not a fixture-derived meaning test.
+Prompt finding: 6af48f94b789 | protocol-literal | Existing one-machine limitation text tested by self-description; the reviewed account switch stays off and this merge does not rewrite the instruction.
+Prompt finding: b00ed403060a | protocol-literal | Existing tool-route capability wording asserted by self-description, unchanged in this combination.
+Prompt finding: b1bb3946362d | protocol-literal | Existing generic Instar identity prefix checked by act-first; it identifies the agent rather than classifying user meaning.
+Deferral: src/assembly/README.md:132 | not-a-deferral=Retained member scope disclosure for existing named adapter-parity units; this combination adds no promise or postponed repair and makes no new parity claim.
+
 simplestRobustRoute: This is the simplest robust route: ordinary merges of the exact reviewed heads, retain both consumers at overlaps, and regenerate publications through the existing repin/build/rehash/replay chain. No new state machine or authority mechanism. Durable intake and current policy are the start guards; exact send/effect receipts and recoverable review findings are the end guards; secrets, stop, cumulative allowance and ownership remain limit guards. Unattended live acceptance belongs to the desk.
 80/20: Test the changed behavior and its direct consumers; use injected review delay, never a CPU burner. Separate WSL host evidence from Studio acceptance without weakening guards.
 VERDICT: author submission; independent review belongs to the desk
