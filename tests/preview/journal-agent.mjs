@@ -2074,7 +2074,7 @@ async function main() {
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
       toolRoute: id => conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id) ? true : preparation.active() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
-      // Only scheduled obligation work is delegated; an operator answer is never handed to a session.
+      // Scheduled obligations keep their existing route; continuing operator conversation is selected below.
       // The session route is taken only while its grant holds and the call allowance can hold the
       // step's whole reserved liability on top of the obligation's own start.
       ...(sessionWorkOf(options) === null ? {} : {
@@ -2118,7 +2118,7 @@ async function main() {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
         if (conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id)) {
           if (!sessionWork?.port.available()) throw new ModelNotStarted();
-          const outcome = await sessionWork.port.run({ operation: id, question, context: packet,
+          const outcome = await sessionWork.port.run({ operation: id, question: prepared, context: packet,
             authority: sessionWork.authority });
           if (outcome.state !== 'complete') return { state: 'uncertain' };
           const usage = { inputTokens: null, outputTokens: null, charge: null };

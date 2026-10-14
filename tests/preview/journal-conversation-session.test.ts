@@ -51,7 +51,7 @@ function fixture(enabled = true, checkIntake = true) {
     (input: unknown) => input, ModelDisclosureRefused, createModelLaunchBoundary(), enabled,
     { port, authority: 'existing-role' }, ModelNotStarted, readAnswer, () => {}, '/unused') as PreviewPorts['model'];
   const worker = createJournalWorker(journal, { now: () => now, stopped: () => stopped,
-    prepareModel: input => JSON.stringify(input), model,
+    prepareModel: input => JSON.stringify({ ...input, responseContract: "decision-envelope-marker" }), model,
     send: async input => { sent.push(input.expectedText); return sent.length; },
     checkOutbound: text => { if (text.includes('SECRET')) throw Error('credential'); } });
   return { journal, worker, model, port, sent, delivered, edges: () => edges, counts: () => ({ launches, calls, fallback }),
@@ -76,6 +76,7 @@ it.each([false, true])('uses the shipped model route, mode=%s, and sends each du
     expect(f.counts()).toEqual(enabled ? { launches: 1, calls: 2, fallback: 0 } : { launches: 0, calls: 0, fallback: 2 });
     if (enabled) {
       expect(f.delivered[0]).toContain('First question');
+      expect(f.delivered[0]).toContain('decision-envelope-marker');
       expect(f.delivered[1]).toContain('Second question'); expect(f.delivered[1]).toContain('A useful answer.');
       expect(f.delivered[0]).not.toContain('You have no tools');
       expect(f.edges()).toBe(1);
