@@ -238,7 +238,7 @@ it('the effect owner decides by the four tests: a granted operation passes, is r
   const registered = { effect: 'tool:mcp', target: 'mcp__x__y', consequence: 'data', reversibility: 'reversible', reach: 'world', costUsd: 0, source: 'test' };
   const grant = { id: 'g', effect: 'tool:mcp', target: 'mcp__x__y', approves: ['scope'], source: 'test', custodian: 'desk', recovery: 'remove grant' };
   const ordinary = { type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [], registered: [registered], grants: [grant] };
-  const s = await step({ policy: ordinary });
+  const s = await step({ policy: ordinary, accounts: false });
   expect(s.rows).toHaveLength(0);
   expect((await hook(s.state, call('mcp__x__y', {}, 'exec-1'))).decision).toBe('allow');
   expect(s.rows).toEqual([expect.objectContaining({ type: 'SessionWorkEffect', state: 'prepared', operation: 'mcp:x:y', edge: s.edge.id })]);
