@@ -132,6 +132,9 @@ journal's existing forum packet grounds in that topic's full projected history (
 its current summary and suffix), with shared agent memory and open work. Reply
 routing remains the intake record's chat/thread at the existing send doorway.
 
+The activation policy declares the four-worker cap and five-minute idle lifetime; the
+runner, coordinator and physical driver consume those same limits. A prior activation
+with the old one-worker policy digest refuses until a matching activation is installed.
 The runner admits at most four live topic workers. A fifth waits durably for a slot;
 an idle worker retires at five minutes or earlier when another topic needs its slot.
 Retirement keeps all records, and the next input launches a fresh worker from them.

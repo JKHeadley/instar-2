@@ -2063,7 +2063,7 @@ async function main() {
     bindPreviewBlockingSites({ journal: declarationsOf('journal.declarations'), replyCheck: declarationsOf('reply-check.declarations'),
       redact: JSON.parse(readFileSync(resolve(process.cwd(), 'src/recall/redact.declarations.json'), 'utf8')),
       resourceOwner: JSON.parse(readFileSync(resolve(process.cwd(), 'scripts/resource-owner.declarations.json'), 'utf8')) });
-    worker = createJournalWorker(journal, { ...(conversationSession ? { topicConcurrency: 4 } : {}), ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
+    worker = createJournalWorker(journal, { ...(conversationSession ? { topicConcurrency: sessionLimits.maxSessions } : {}), ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       groupDisclosure: async () => {
         if (journal.view.groupCarry) { await requireGroupDisclosure(journal.view); return true; }
         const scope = { sourceRoot: root, destinationRoot: root, chat: journal.view.genesis.chat,
@@ -2511,7 +2511,7 @@ async function main() {
         physical = physicalFor();
       }, get authority() { return `${conversationSession ? 'continuing conversation' : 'session work'} grant ${(conversationSession ? sessionActivation : loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}${conversationSession ? ` bytes ${sha256(sessionBytes)}` : ''}: ${conversationSession ? 'one bounded conversation' : 'one scheduled work step'} for the verified operator, `
         + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? config => createConversationTopicsPort({ ...config,
-          maxSessions: 4, idleMs: 300_000,
+          maxSessions: sessionLimits.maxSessions, idleMs: sessionLimits.idleMs,
           topicOf: operation => {
             const turn = journal.view.turns.get(operation);
             if (!turn?.accepted) throw Error('preview: topic input is not durably admitted');
@@ -2527,7 +2527,7 @@ async function main() {
             timeoutSeconds: Math.ceil(sessionLimits.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
           framework, executable: profile.executable, cwd: project, home: profile.home, configHome: profile.configDirectory,
           model: required(options, 'model'), context, io: physical, now: wallNow, stopped: stoppedNow, resolveIntake,
-          maxSessions: conversationSession ? 4 : sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
+          maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
           readyTimeoutMs: 30000, protectedSessions: [],
           ...(conversationSession ? { requireTurnHook: true, inboxDirectory: physical.inboxDirectory,
             hookScript: layout ? lifecycleHookPath(harnessHookPath()) : fileURLToPath(new URL('../../scripts/session-hooks/stop.mjs', import.meta.url)) } : {}),

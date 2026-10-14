@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { expect, it } from 'vitest';
-import { createConversationSessionPort, conversationSessionPrompt } from '../../src/assembly/production-conversation-session.js';
+import { createConversationSessionPort, conversationSessionPrompt, conversationSessionPolicy, CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
 import type { ConversationSessionConfig, ConversationState } from '../../src/assembly/production-conversation-session.js';
 import type { ConversationDelivery, ConversationWorker } from '../../src/assembly/conversation-harness-adapter.js';
 import type { HarnessAdapterPort } from '../../src/assembly/contracts.js';
@@ -371,4 +371,11 @@ it('an input arriving during idle retirement waits for exact stop before replace
   expect(await retirement).toBe(true); expect(await next).toMatchObject({ state: 'complete' });
   expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(2);
   await f.port.close();
+});
+
+it('the activation policy names the same topic cap and one shared allowance as the runner', () => {
+  const policy = conversationSessionPolicy({ framing: 'fixture', framework: 'claude-code', model: 'fixture', launch: [] });
+  expect(policy.limits).toEqual(CONVERSATION_SESSION_LIMITS);
+  expect(policy.limits).toMatchObject({ maxSessions: 4, idleMs: 300000, maxCallsPerStep: 128 });
+  expect(policy.admission.allowance).toBe(128);
 });

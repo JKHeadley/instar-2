@@ -61,7 +61,7 @@ export const CONVERSATION_SESSION_EXIT_TEST =
 /** One reserved allowance for a proof-room conversation. The parent cap still decides
  * whether it fits; a turn never refreshes it. */
 export const CONVERSATION_SESSION_LIMITS = Object.freeze({ ...SESSION_WORK_LIMITS,
-  maxStepsPerLaunch: 64, maxCallsPerStep: 128, deadlineMs: 3_600_000 });
+  maxStepsPerLaunch: 64, maxCallsPerStep: 128, deadlineMs: 3_600_000, maxSessions: 4, idleMs: 300_000 });
 export function conversationSessionPolicy(input: Parameters<typeof sessionWorkPolicy>[0]) {
   const base = sessionWorkPolicy(input);
   return Object.freeze({ ...base, admission: Object.freeze({ ...base.admission, allowance: CONVERSATION_SESSION_LIMITS.maxCallsPerStep }), limits: CONVERSATION_SESSION_LIMITS,
