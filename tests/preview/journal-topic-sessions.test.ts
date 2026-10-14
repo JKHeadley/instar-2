@@ -73,7 +73,7 @@ function fixture(forum = false, maxCalls = 200) {
     ModelNotStarted, conversationSessionAnswer, readAnswer, () => {}, '/unused') as PreviewPorts['model'];
   const collectBody = source.split('      collectModel: async id => {')[1]!.split('\n      model:')[0]!.trimEnd().replace(/,$/u, '');
   const collectModel = Function('conversationSession', 'sessionWork', 'conversationSessionAnswer', 'recordShape', 'shapesPath',
-    `return (async id => {${collectBody});`)(true, { port }, conversationSessionAnswer, () => {}, '/unused') as PreviewPorts['collectModel'];
+    `return (async id => {${collectBody});`)(true, { port }, conversationSessionAnswer, () => {}, '/unused') as NonNullable<PreviewPorts['collectModel']>;
   const worker = createJournalWorker(journal, { topicConcurrency: 2, groupDisclosure: async () => true, now: () => now, stopped: () => false, model, collectModel,
     prepareModel: input => JSON.stringify(input), checkOutbound: () => {},
     send: async input => { sent.push({ text: input.expectedText, thread: input.thread, update: input.update }); return sent.length; } });
