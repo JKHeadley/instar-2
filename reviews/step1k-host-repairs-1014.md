@@ -40,9 +40,6 @@ Deferral: tests/preview/journal-conversation-session.test.ts:443 | not-a-deferra
 
 ## Closing block
 
-simplestRobustRoute: This is the simplest route: merge the accepted host repairs, delegate collection through the existing topic port and select the reserved repair identity at the existing journal consumer. Earlier parent deadlines prevent restart or a new topic renewing authority. No new queue, sender, budget or policy. Admission and stop guard start; exact packet/receipt guard completion; parent bounds guard execution. No fresh live acceptance claimed.
-80/20: Targeted foreground host, topic, bridge, archived-shape, required single-file and pinned gate checks; the Studio owns full-suite and live acceptance.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Decision: step1k-merge | Merge train-24 rather than rewrite its accepted repairs; retain both parent histories and all step1h behavior. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1k-host-repairs-1014-PROGRESS.md
 Decision: step1k-topics | Delegate result collection through existing topic custody and clamp new topics to the persisted installation deadline. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1k-host-repairs-1014-PROGRESS.md
@@ -52,3 +49,7 @@ Decision: step1k-register | Regenerate publication and source hashes from combin
 Decision: step1k-test-portability | Supply the extracted decoder to the existing topic fixture; test runtime mismatch only on the declared platform and assert the adapter reports the actual host platform. Physical macOS confinement remains for Studio. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1k-host-repairs-1014-PROGRESS.md
 
 Validation: 148 host/topic/bridge and Astra reproduction cases pass; model-json 51/51; topic-journal 3/3; shipped-clients 5/5; native certification posture 1/1. Build, typecheck and architecture pass. Native physical confinement remains Studio-only. Register replay derives 291 entries and 116 rules from the combined source commit.
+
+simplestRobustRoute: This is the simplest route: merge the accepted host repairs, delegate collection through the existing topic port and select the reserved repair identity at the existing journal consumer. Earlier parent deadlines prevent restart or a new topic renewing authority. No new queue, sender, budget or policy. Admission and stop guard start; exact packet/receipt guard completion; parent bounds guard execution. No fresh live acceptance claimed.
+80/20: Targeted foreground host, topic, bridge, archived-shape, required single-file and pinned gate checks; the Studio owns full-suite and live acceptance.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
