@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Combine the exact live base with approved main design text, reserved repair topic admission and a receipt-aware acknowledgement deadline.
 Affected rules: Purpose 2/3/6; Rules 1, 4, 13, 26, 28, 29, 34, 36, 37, 42, 46, 49, 52, 55, 57, 63, 68, 70, 74, 75, 77, 87, 90, 91, 95, 101, 102, 111, 112, 113, 116.
-Affected floors: Secrets and stop retain their existing gates. Spend uses the existing bounded repair and notice reservations. Durable intake and parent send receipts remain authoritative; repair execution identities never become separate send identities.
+Affected floors: Secrets and stop retain their existing gates. Spend uses the existing bounded repair and notice reservations. Durable intake and no duplicate sends remain enforced by authoritative parent send receipts; repair execution identities never become separate send identities.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
