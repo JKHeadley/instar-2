@@ -25,5 +25,6 @@ Prompt finding: 849db3a6296a | quoted-evidence | Existing recorded empty-memory 
 Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label disclosure instruction is shared with its consumer test; no new literal-based acceptance rule is introduced.
 
 simplestRobustRoute: A normal merge with one combined test-fixture signature is the simplest robust route. It retains both independently useful test families without another helper, runtime mechanism or capability restriction. Existing durable admission is the start guard, one-send settlement/replay is the end guard, and existing spend and stop checkpoints remain limits. This is offline merge evidence, not an unattended shipped-agent completion claim.
+Register evidence: Generated outputs replay the merged source commit 4dae3b57f08ee325a1e08ec7b48242a1b1af0280. The subsequent commit publishes those outputs and this record.
 80/20: Resolve the actual collision, run the affected test file and cheap gates, regenerate evidence and hand the full platform gate to the Studio.
 VERDICT: author submission; independent review belongs to the desk
