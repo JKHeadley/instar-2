@@ -20,7 +20,9 @@ Hook bypass: none; core.hooksPath unset and common hooks directory contains samp
 Convergence: none
 Decision: train-26-repair-parser-inventory | Repair the stale exact parser-site test and pin the answer-only branch; preserve the reviewed continuing-session implementation and strict review-consumer policy. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-26-repair-004642-PROGRESS.md
 
-Subject: tests/preview/model-json.test.ts
+Decision: train-26-repair-repin | Run the delegated desk rehash and repin chain, then replay the generated register from committed source; no manual pin edits. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-26-repair-004642-PROGRESS.md
+
+Subject: tests/preview/model-json.test.ts; register-source/owner-references/preview.json; generated register replay
 
 simplestRobustRoute: This is the simplest robust route: update the existing wiring test to enumerate the two actual shared-reader calls and check the answer branch, without adding runtime machinery. The start guard is the continuing-session Telegram update predicate, the outcome guard requires completion, and existing strict consumer and malformed-output checks remain; this test-only change makes no autonomous completion claim.
 80/20: Reproduced the exact reported assertion locally, then passed all 51 tests in that file. Run typecheck and the required cheap checks; leave the full suite to the Studio gate as directed.
