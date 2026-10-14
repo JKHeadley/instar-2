@@ -2121,10 +2121,24 @@ async function main() {
         try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
         if (conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id)) {
-          sessionWork?.select?.();
-          if (!sessionWork?.port.available()) throw new ModelNotStarted();
-          const outcome = await sessionWork.port.run({ operation: id, question: prepared, context: packet,
-            authority: sessionWork.authority });
+          // The journal reserves the one format repair before this call. Its exact packet gets
+          // a durable child identity; replaying the original bytes still names the original turn.
+          // Never relax the host's same-identity request-digest check.
+          const turn = journal.view.turns.get(id);
+          const operation = turn?.promptKind === 'format-retry' && turn.prompt === prepared
+            ? `${id}:format-retry` : id;
+          let outcome;
+          try {
+            sessionWork?.select?.();
+            if (!sessionWork?.port.available()) throw new ModelNotStarted();
+            outcome = await sessionWork.port.run({ operation, question: prepared, context: packet,
+              authority: sessionWork.authority });
+          } catch (error) {
+            if (operation === id && error instanceof ModelNotStarted) throw error;
+            // A refused/unknown repair is not permission to replay tools. Let the journal's
+            // existing unknown-answer notice settle this intake through its unique send path.
+            return { state: 'uncertain' };
+          }
           if (outcome.state !== 'complete') return { state: 'uncertain' };
           const usage = { inputTokens: null, outputTokens: null, charge: null };
           const reading = readAnswer(outcome.text, { wrapped: 'accept', evidence: [id] });
