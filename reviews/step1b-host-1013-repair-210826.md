@@ -42,6 +42,8 @@ Deferral: tests/preview/journal-conversation-session.test.ts:259 | not-a-deferra
 
 Decision: step1b-repair-generated-wiring | Run the delegated desk tools and regenerate source wiring from the committed tree; the inherited public contracts pin is refreshed by the supplied chain script, never hand-edited. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1b-host-1013-repair-210826-PROGRESS.md
 
+Cap boundary: The three queued/same-host/restart consumer tests fill the entire parent journal call allowance before collection; all still deliver once without another reservation.
+
 Agreement fixture: PREVIEW-CONVERSATION-RESULT-COLLECTION resolves to the shipped-closure journal regression file; the artifact pin is computed by the delegated desk rehash tool.
 
 Generated register: Replay publication uses source commit 5b6304b4870f5f31b7cf47fbb92a03cba94f7348. Regenerated with the delegated desk scripts and build-register replay; source roster and grounding inventory pins track this branch. No runtime certificate is inferred from replay.

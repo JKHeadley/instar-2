@@ -204,7 +204,7 @@ it.each([false, true])('the shipped grant refresh validates changed bytes before
 });
 
 it.each(['same-host', 'queued-restart', 'completed-restart'] as const)('collects a deferred result through the ordinary answer/send path once (%s)', async mode => {
-  const f = fixture();
+  const f = fixture(true, true, 11); // existing turn + parent reservation fill the cap; collection spends nothing
   try {
     f.busy(true); f.worker.intake([update(1, 'First question')]); await f.worker.drain();
     expect(f.sent).toEqual([]); expect(f.state().inputs[0]!.state).toBe('queued');
