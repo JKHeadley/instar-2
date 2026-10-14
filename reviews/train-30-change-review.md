@@ -29,6 +29,7 @@ Decision: train-30-desk-A | Combine account and host behavior at each overlappin
 Decision: train-30-desk-B | Create a separate worktree directly at exact ac3bd4d8 and preserve its ancestry; merge only the reviewed heads in order. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-30-PROGRESS.md
 Decision: train-30-desk-C | Abort only the pool merge for the named ownership/state-machine conflict; continue the acknowledgement merge and disclose exclusion. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-30-PROGRESS.md
 Decision: train-30-desk-D | Run targeted direct consumers, journal and pinned checks on WSL; report untouched physical macOS/e2e/integration checks separately for Studio. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-30-PROGRESS.md
+Decision: train-30-ack-replay | Align the recorded eight-second send-stage replay with the seven-second acknowledgement deadline; retain final audience, stop, unknown-send and restart assertions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-30-PROGRESS.md
 Decision: train-30-register | Regenerate owner pins and register using the downloaded desk chain; generated conflicts temporarily retain the previous publication until replay. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-30-PROGRESS.md
 
 
