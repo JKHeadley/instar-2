@@ -12,7 +12,7 @@ const fixture = JSON.parse(readFileSync(new URL('./fixtures/rule10-a5a-revision-
   originalProposed: string; revisedDelivered: string };
 const original = fixture.originalProposed, revised = fixture.revisedDelivered;
 const key = new Uint8Array(32).fill(73), now = 1790000000000;
-async function replay(text: string, metadata: { promises?: unknown; fulfills?: unknown }, crash = false, seed = false, rejectRevision = false) {
+async function replay(text: string, metadata: { promises?: unknown; fulfills?: unknown }, crash = false, seed = false, rejectRevision = false, hideCommitment = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'revision-promises-')));
   const path = join(root, 'journal.encrypted'), sends: string[] = [];
   let revisions = 0;
@@ -22,7 +22,9 @@ async function replay(text: string, metadata: { promises?: unknown; fulfills?: u
       maxCalls: 20, maxReplies: 10, maxTurns: 10, maxBytes: 32768, cursor: 0 },
     crash ? stage => { if (stage === 'after:reply-revision') throw Error('crash'); } : undefined);
     const ports: PreviewPorts = { now: () => now, stopped: () => false,
-      prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', now),
+      prepareModel: input => prepareJournalEnvelope(hideCommitment && sends.length
+        ? { ...input, context: JSON.stringify({ ...JSON.parse(input.context), commitments: [] }) } : input,
+        'claude-sonnet-5', 'grant:preview', now),
       model: async () => JSON.stringify({ reply: original, promises: [{ quote: original }], memory: [] }),
       checkOutbound: () => {}, send: async input => { sends.push(input.expectedText); return 7234; },
       replyCheck: { elapsedMs: () => 0,
@@ -119,4 +121,11 @@ it('does not adopt declarations from a rejected revision', async () => {
   expect(result.sends).not.toContain(revised);
   expect(result.turn.heldReview).toBeDefined();
   expect(result.commitments).toEqual([]);
+});
+
+it('cannot fulfill a real promise omitted from the revision packet', async () => {
+  const result = await replay(revised, { promises: [], fulfills: [{ id: 0, quote: revised }] }, false, true, false, true);
+  expect(result.sends).toEqual([original, revised]);
+  expect(result.closed.has(0)).toBe(false);
+  expect(result.commitments).toHaveLength(1);
 });

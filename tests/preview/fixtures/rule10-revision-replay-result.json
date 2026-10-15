@@ -1,15 +1,15 @@
 {
-  "command": "nice -n 10 npx vitest run --maxWorkers 1 tests/preview/journal-revision-promises.test.ts",
+  "command": "nice -n 10 npx vitest run --maxWorkers 1 tests/preview/journal-revision-promises.test.ts tests/preview/reply-check.test.ts",
   "host": "WSL2 Linux",
-  "startTime": 1792049490961,
-  "passed": 7,
+  "startTime": 1792050026591,
+  "passed": 74,
   "failed": 0,
   "capturedUpdate": 715676157,
   "capturedDeliveredMessage": 7234,
   "scope": "Captured original/revised text replay; new metadata and reviews are synthetic. No live model or Telegram call.",
   "sha256": {
-    "tests/preview/journal-revision-promises.test.ts": "a71735e33facae0b97f6231c19ef1c619e29072a8b63149866fd98a2c37aa516",
-    "tests/preview/journal.ts": "0231c90ae292bca7a307bff294b986ca07fcc673ad523f9adff56711f52fb5c3",
+    "tests/preview/journal-revision-promises.test.ts": "e4deda5ce0d3c9f75aff8f105d342807ffeef693199fd2c58df5703e3210ca56",
+    "tests/preview/journal.ts": "db46f90239cbf1d600d0efc90d7f017ac52c37d318de55dcd1c94c988874aa42",
     "tests/preview/journal-agent.mjs": "bf76bb1091ae042a0f159f21dc2d6533f494cc2283cdb44d16135d6a6258dab8",
     "tests/preview/reply-check.ts": "5cf157e31af805e62c2977f19593d03ac41d63d0c94d44bbfba2cc8d4066a71f",
     "tests/preview/agent-commitment.ts": "6942beb341a15deab8dc21eced9278d226fee44101b1fc76d6495468f3ff9624"
@@ -41,6 +41,10 @@
     },
     {
       "name": "does not adopt declarations from a rejected revision",
+      "status": "passed"
+    },
+    {
+      "name": "cannot fulfill a real promise omitted from the revision packet",
       "status": "passed"
     }
   ]

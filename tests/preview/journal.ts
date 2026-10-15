@@ -21,7 +21,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { boundedCorrection, checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, REVIEW_INTERRUPTED_REASON, GROUP_REVIEW_FINAL_NOTICE, isGroupReviewFinalNotice, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, jevConfidentPass, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, confidentReplyNeedsReview, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
+import { boundedCorrection, checkReply, reviewReply, replyReviewContext, repeatsOperatorOnly, HOLDING_REPLY, REVIEW_INTERRUPTED_REASON, GROUP_REVIEW_FINAL_NOTICE, isGroupReviewFinalNotice, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, jevConfidentPass, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, confidentReplyNeedsReview, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { latestRecurringDay, nextRecurringDay, parseDatedItem, relativeDelay, resolvedDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -9150,13 +9150,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 // (same checks, quoted in the corrected text), only when the answer admitted none; anything
                 // else stays visibly refused when the corrected candidate is selected.
                 const revisionAt = ports.now();
+                // Match answer admission: a revision can fulfill only agent promises actually offered in its packet.
+                const revisionPacket = text ? JSON.parse(replyReviewContext(originalPrompt, text)) as {
+                  commitments?: { items?: { id?: number; owner?: string }[] }[] } : undefined;
+                const offered = new Set((revisionPacket?.commitments ?? []).flatMap(group => group.items ?? [])
+                  .filter(item => item.owner === 'agent' && Number.isSafeInteger(item.id)).map(item => item.id!));
                 const proposed = text && turn.answerBlocker === undefined && outcome.blocker !== undefined
                   ? obligationsFrom({ blocker: outcome.blocker }, turn, text, '{}', revisionAt) : undefined;
                 journal.append({ kind: 'reply-revision', id: turn.id,
                   state: outcome.state === 'complete' && !text ? 'failed' : outcome.state, ...(text ? { text } : {}),
                   ...(text && outcome.promises !== undefined ? { promises: promiseProposals(outcome.promises, text) ?? [] } : {}),
                   ...(text && outcome.fulfills !== undefined ? { fulfills: fulfillmentProposals(outcome.fulfills, text,
-                    item => fulfillmentSupported(item, text, journal.view.commitments)) ?? [] } : {}),
+                    item => offered.has(item.id) && fulfillmentSupported(item, text, journal.view.commitments)) ?? [] } : {}),
                   ...(answered ? { dispositions: answered } : {}), ...(proposed?.blocker ? { blocker: proposed.blocker } : {}),
                   ...(proposed?.rejected?.blocker ? { rejectedBlocker: true, blockerReason: proposed.rejected.blockerReason } : {}),
                   ...(outcome.usage ? { usage: outcome.usage } : {}), at: revisionAt });
