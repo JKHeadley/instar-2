@@ -15,7 +15,7 @@ import { authoritySealKey, sealAuthorityRecord } from './activation-authority.js
 import { subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';
 import { encoded } from '../../src/assembly/boundary.js';
 import { TOOLS_DEFAULT_ACTIVATION } from './tool-turn.mjs';
-import { FULL_TOOLS_CLASS } from './tools-policy-class.js';
+import { FULL_TOOLS_CLASS, GUIDANCE_ONLY_TOOLS_CLASS, guidanceOnlyPolicyPins } from './tools-policy-class.js';
 
 async function launch(name: string, authority: (record) => object | null, extra: string[] = [], nodeArgs: (directory: string) => string[] = () => []) {
   const world = successiveWorld(), root = join(world.directory, `${name}-journal`);
@@ -64,7 +64,8 @@ const withToolsGrant = (record, revoked = false, expiresAt = undefined, policyCl
   const grant = record.grants[0];
   const { invocationPolicyDigest: _conversation, ...subject } = grant.scope;
   const tools = { ...grant, id: 'offline-tools-grant', scope: policyClass === undefined
-    ? { ...grant.scope, invocationPolicyDigest: toolsDigest(grant.scope.model) } : { ...subject, invocationPolicyClass: policyClass },
+    ? { ...grant.scope, invocationPolicyDigest: toolsDigest(grant.scope.model) } : { ...subject, invocationPolicyClass: policyClass, ...(policyClass === GUIDANCE_ONLY_TOOLS_CLASS
+      ? { invocationPolicyPins: guidanceOnlyPolicyPins(subscriptionToolsPolicy(grant.scope.model)) } : {}) },
     ...(expiresAt === undefined ? {} : { expiresAt }) };
   return { ...record, grants: [...record.grants, tools],
     revocations: revoked ? [{ grantId: 'offline-tools-grant', at: grant.issuedAt + 1, by: grant.grantor, source: 'telegram 3' }] : [] };
@@ -92,13 +93,13 @@ it('derives and keeps the tools activation when the recorded grant covers the to
   expect(dated.status).toMatch(/Tools: the harness's full built-in set \(27 tools, each call decided at the admission hook\) and the root's MCP servers/u);
 });
 
-it('records the class grant at launch: one standing grant for the policy class turns tools on, with grant, class and digest recorded', { timeout: 60000 }, async () => {
-  const on = await launch('class', record => withToolsGrant(record, false, undefined, FULL_TOOLS_CLASS));
+it.each([FULL_TOOLS_CLASS, GUIDANCE_ONLY_TOOLS_CLASS])('records class %s at launch with tools on, grant, class and full digest', { timeout: 60000 }, async policyClass => {
+  const on = await launch('class', record => withToolsGrant(record, false, undefined, policyClass));
   expect(on.run.status, on.run.stderr).toBe(0);
   expect(on.derived.invocationPolicyDigest).toBe(toolsDigest(on.conversation.model));
-  expect(on.run.stderr).toContain(`preview: tools on: grant offline-tools-grant (class ${FULL_TOOLS_CLASS}) covers tools policy ${toolsDigest(on.conversation.model)}`);
+  expect(on.run.stderr).toContain(`preview: tools on: grant offline-tools-grant (class ${policyClass}) covers tools policy ${toolsDigest(on.conversation.model)}`);
   expect(on.status).toMatch(/Tools: the harness's full built-in set \(27 tools, each call decided at the admission hook\) and the root's MCP servers/u);
-  expect(on.runs.find(row => row.tools)?.tools).toEqual({ state: 'on', grant: 'offline-tools-grant', policyClass: FULL_TOOLS_CLASS,
+  expect(on.runs.find(row => row.tools)?.tools).toEqual({ state: 'on', grant: 'offline-tools-grant', policyClass,
     policyDigest: toolsDigest(on.conversation.model) });
   // The exact-digest grant is recorded as such.
   const exact = await launch('exact', record => withToolsGrant(record));
