@@ -29,6 +29,8 @@ Decision: train-44-publication | Use downloaded desk repin/build/rehash tools an
 
 Decision: train-44-floor-pin | Direct-consumer check found the old 2767-byte tool-policy growth pin; reviewed train-41 verification guidance adds exactly 508 bytes. Pin 3275, retaining PREVIEW_FIXED_PROMPT_BYTES and every floor inequality unchanged. No new prompt text or cap change. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-44-PROGRESS.md
 
+Decision: train-44-capture-pin | Preserve the literal-copy historical capture from update 715675751. Its system predates the same reviewed train-41 verification guidance; compare against current policy with exactly that known addition removed and assert the current policy contains it once. All recorded output and restart replay assertions remain. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-44-PROGRESS.md
+
 simplestRobustRoute: This is the simplest robust route: one exact-head merge, existing publication tools and direct consumer checks. No new runtime machinery. Existing secret, ownership, spend and stop admission guards remain; durable requests, exact result mapping, accepted-delivery fencing and bounded worker lifetime hold the exit and resource floors. Independent convergence and unattended live acceptance remain desk work, not claims of this integration.
 80/20: Changed tests, direct consumers, prescribed journal tests and pinned checks only; no full suite, transitive import closure, comparison worktree, live login or load generation.
 VERDICT: author submission for desk gate; no independent convergence or deployment claim
