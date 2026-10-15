@@ -12,6 +12,7 @@ export interface ConversationTopicsState {
   readonly legacy?: ConversationState; readonly legacyImported?: boolean;
 }
 export interface ConversationTopicsConfig extends Omit<ConversationSessionConfig, 'store' | 'createAdapter'> {
+  readonly topicConfig?: (topic: string) => Pick<ConversationSessionConfig, 'io' | 'resources' | 'authorized' | 'currentAuthority' | 'createAdapter' | 'prepareTurn'>;
   readonly maxSessions: number;
   readonly idleMs: number;
   readonly topicOf: (operation: string) => string;
@@ -55,13 +56,15 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       ensure(/^(?:main|[1-9][0-9]{0,15})$/u.test(topic), 'exact topic identity required');
       const existing = hosts.get(topic); if (existing) return existing;
       ensure(Object.keys(state.topics).length < 4096 || topic in state.topics, 'topic custody capacity reached');
-      const result = createConversationSessionPort({ ...config, conversation: `${config.conversation}:${topic}`, allowanceDeadline: parentDeadline(),
+      const local = config.topicConfig?.(topic);
+      const io = local?.io ?? config.io, resources = local?.resources ?? config.resources;
+      const result = createConversationSessionPort({ ...config, ...local, conversation: `${config.conversation}:${topic}`, allowanceDeadline: parentDeadline(),
         stopped: () => stopped || config.stopped(),
         store: { load: () => state.topics[topic] ?? null, save: next => {
           ensure(spent() - (state.topics[topic]?.spent ?? 0) + next.spent <= config.maxCalls, 'installation call allowance exhausted');
           persist({ topics: { ...state.topics, [topic]: next } });
         } },
-        createAdapter: resolve => config.createAdapter(topic, resolve),
+        createAdapter: local?.createAdapter ?? (resolve => config.createAdapter(topic, resolve)),
         append: record => {
           if (record.type === 'SessionWorkEdge' && !record.drawsOn) {
             if (!state.edge) {
@@ -72,13 +75,13 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
             config.append({ ...record, parent: state.edge!.id, drawsOn: state.edge!.id });
           } else config.append(record);
         },
-        io: { ...config.io,
+        io: { ...io,
           // All calls are durably charged by the existing dispatch checkpoint. A
           // directory-wide transcript count would charge other topics a second time.
           modelCalls: () => state.topics[topic]?.spent ?? 0,
           prepareAdmission: (claim, edge) => {
             const remaining = config.maxCalls - spent(); ensure(remaining > 0, 'installation call allowance exhausted');
-            return config.io.prepareAdmission(claim, { ...edge, budget: { ...edge.budget, calls: Math.min(edge.budget.calls, remaining) } });
+            return io.prepareAdmission(claim, { ...edge, budget: { ...edge.budget, calls: Math.min(edge.budget.calls, remaining) } });
           } },
         resources: { admit: async () => {
           const acquire = async () => {
@@ -89,12 +92,12 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
               ensure(config.now() < parentDeadline(), 'parent lifetime exhausted');
             }
             ensure(!stopped && !config.stopped() && config.authorized(), 'topic dispatch stopped or grant unavailable');
-            let lease = await config.resources.admit();
+            let lease = await resources.admit();
             if (!lease) {
               // The installation resource owner may have a tighter ceiling (or
               // another work family using it). Reclaim one idle topic and retry once.
               const idle = [...active].find(key => !busy.get(key));
-              if (idle !== undefined && await hosts.get(idle)!.retireIdle()) lease = await config.resources.admit();
+              if (idle !== undefined && await hosts.get(idle)!.retireIdle()) lease = await resources.admit();
             }
             if (!lease) return null;
             const held = lease;
