@@ -22,6 +22,8 @@ Convergence: none
 
 Verification: Named native contract passed on the old declaration before re-declaration; full tests/preview/native-harness-contract.test.ts then passed all 10 cases, including exact composition certification, stop, refusals, restart uniqueness and readiness deadline. Reports: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-38-tool-evidence/native-contract-before-redeclare.json and native-contract-redeclared.json. Typecheck and build pass. Post-build digest recheck remains sha256:22aceca3fa4437bf66c893914191956bcb3c4641d1a8e728579349862fbc5f23, complete 255-file closure. Delegated manifest/inventory refresh changed no pins.
 
+Register publication: Replayed generated/ from committed declaration 814a4a14; no hand-edited source or owner pins. The review range includes both the declaration and generated publication commits.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: run the existing named native contract on the supported Studio, re-declare with the existing desk digest tool, then test the exact certificate and regenerate the register. No new checker, exemption, handwritten digest, support downgrade or runtime change. The existing exact-composition comparison remains the guard.
