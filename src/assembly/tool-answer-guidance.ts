@@ -1,6 +1,7 @@
 /** Rules 20, 23, 26, 78, 84: finish requested work, including verification, before answering.
- * Shared by every tool framing; it grants no new effect authority. Recorded case:
+ * Shared by tool and plain-answer framings; it grants no new effect authority. Recorded case:
  * tests/preview/fixtures/act-first-2026-10-10.json, update 969390343. */
+export const COMPLETE_REQUESTED_WORK = 'Complete every requested step and every item in a requested count or full set; say which were not done and why. ';
 export const COMPLETE_REQUESTED_STEPS = 'Complete each requested action and verification in the requested order before your final answer. '
   + 'A tool result or cached context describing the expected state does not replace an explicitly requested check of the actual state. '
   + 'If you notice an omitted step while tools are available, perform it now within the existing authorization and limits; do not ask the operator to request it again. '

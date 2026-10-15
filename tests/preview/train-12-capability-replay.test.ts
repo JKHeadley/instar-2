@@ -6,12 +6,12 @@ import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { createHash } from 'node:crypto';
 import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, capabilitySentence, SELF_DESCRIPTION, SELF_IDENTITY } from './briefing.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { COMPLETE_REQUESTED_STEPS } from '../../src/assembly/tool-answer-guidance.js';
+import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS } from '../../src/assembly/tool-answer-guidance.js';
 import { readAnswer } from './answer-reading.js';
 
 // These provider captures predate train-41's requested-step verification guidance.
 // Preserve the captures; the dedicated guidance tests cover the added instruction.
-const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '');
+const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
 
 const evidence = JSON.parse(readFileSync(new URL('./fixtures/train-12-capability-2026-10-12.json', import.meta.url), 'utf8'));
 // Historical prompts remain immutable; translate self-description and add literal-copy guidance.

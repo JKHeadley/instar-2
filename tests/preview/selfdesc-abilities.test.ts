@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
-import { COMPLETE_REQUESTED_STEPS, READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
+import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS, READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, CAPABILITY_SENTENCE_LABEL, capabilitySentence, capabilityBriefing, SELF_DESCRIPTION, SELF_IDENTITY, SIGN_OFF, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 import { readAnswer } from './answer-reading.js';
@@ -99,7 +99,7 @@ it('binds the repaired answer and its explicitly reviewed identity and standing 
   expect(renderedNote(capture.note)).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
   expect(currentInstructions(capture.instructions).replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   // Preserve historical prompt bytes; requested-step guidance is covered by act-first.test.ts.
-  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, ''));
+  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, ''));
   const reading = readAnswer(capture.raw, { wrapped: 'accept' });
   expect(reading.ok).toBe(true);
   if (!reading.ok) throw Error(reading.defect);
@@ -204,7 +204,7 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   expect(current.system).not.toContain(READ_BEFORE_ANSWER);
   expect(current.system.split('Respond with one flat JSON object')).toHaveLength(2);
   expect(current.system.replace(" In this turn you have the harness's full built-in tool set",
-    ` ${READ_BEFORE_ANSWER}In this turn you have the harness's full built-in tool set`)
+    ` ${COMPLETE_REQUESTED_WORK}${READ_BEFORE_ANSWER}In this turn you have the harness's full built-in tool set`)
     .replace('Respond with one flat JSON object', 'First complete needed reads through the actual harness tool interface; '
       + 'the JSON format below applies only to your final answer. Respond with one flat JSON object')
     .replace(oldGrant, standingTrust)
@@ -282,7 +282,7 @@ it('replays five recorded answers with the rendered paragraph verbatim and diges
   // Preserve the prior instruction as historical evidence; only its self-description clause was superseded.
   expect(currentInstructions(capture.instructions).replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   // Preserve historical prompt bytes; requested-step guidance is covered by act-first.test.ts.
-  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, ''));
+  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, ''));
   expect(capture.runs).toHaveLength(5);
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits);
   const sentence = capabilitySentence(capture.limits);
@@ -322,7 +322,7 @@ it('binds every unchanged-question capability replay and its PASS or FAIL judgme
   expect(capture.recordedInputSha256).toBe('1f88dc781981771069954ea14617717942b77476acce76805d300344565a4b1a');
   expect(currentInstructions(capture.instructions).replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   // Preserve historical prompt bytes; requested-step guidance is covered by act-first.test.ts.
-  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, ''));
+  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, ''));
   expect(capture.runs).toHaveLength(10);
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits);
   const sentence = capabilitySentence(capture.limits);

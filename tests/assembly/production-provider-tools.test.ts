@@ -16,6 +16,8 @@ import { createClaudeCodeSubscriptionRoute, subscriptionConversationPolicy, subs
   validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord, SubscriptionToolTurn } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
+import { COMPLETE_REQUESTED_WORK } from '../../src/assembly/tool-answer-guidance.js';
+import { prepareJournalEnvelope } from '../preview/journal-envelope.js';
 import { factsFixture, value } from '../facts/fixtures.js';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
@@ -95,9 +97,8 @@ it('tells the model it has the whole tool set and how each call is bounded, and 
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('You have no tools and cannot act beyond this answer; never claim otherwise.');
   // Plan #510: the tool route runs without --safe-mode, so Claude Code injects its own account email; the prompt says that
   // login is never the operator (+187, live cint-L50 "Luna"). The bound stays: the tool sentence is still one paragraph.
-  // The prior 2800-character allowance covers 2767 characters of tool framing and read guidance. The reviewed
-  // COMPLETE_REQUESTED_STEPS adds 508, preserving the same 33-character headroom. default-context-floor pins the
-  // exact growth at 3275 bytes and tests both sides of the unchanged runtime answer budget.
+  // Shared completion guidance adds no tool-only growth; the inherited 508-character
+  // verification clause stays tool-only, with the same 33-character headroom.
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('is the subscription login running you, never the operator');
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(2800 + 508);
 });
@@ -303,4 +304,34 @@ it('admits the tool policy only under an activation bound to it: a conversation 
     SUBSCRIPTION_TOOLS_FRAMING)).toThrow(/policy differs/u);
   expect(() => validateSubscriptionActivation(f.activation(SUBSCRIPTION_TOOLS_FRAMING), f.profile, f.model, 1000,
     SUBSCRIPTION_TOOLS_FRAMING)).not.toThrow();
+});
+
+// Recorded user requests through the real adapter and its existing process stub. This proves
+// delivery of the guidance, not that a fresh model obeys it; no live provider is invoked.
+it('delivers complete-step/full-set guidance with the recorded T/t1 and c1 requests on both answer paths', async () => {
+  const tools = JSON.parse(readFileSync(new URL('../preview/fixtures/tool-verification-2026-10-15.json', import.meta.url), 'utf8'));
+  const fullSet = JSON.parse(readFileSync(new URL('../preview/fixtures/completion-full-set-2026-10-15.json', import.meta.url), 'utf8'));
+  const requests = [
+    { id: tools.cases[0].tools.operation, question: tools.cases[0].question },
+    { id: fullSet.intake.id, question: fullSet.intake.text },
+  ];
+  expect(requests.map(row => row.id)).toEqual(['telegram:8994258214:update:715676307', 'telegram:8993213212:update:46040043']);
+  for (const framing of [SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_CONVERSATION_FRAMING]) {
+    const f = fixture();
+    const route = value(createClaudeCodeSubscriptionRoute(f.input(framing,
+      framing === SUBSCRIPTION_TOOLS_FRAMING ? f.toolTurn : null)));
+    for (const request of requests) {
+      const envelope = prepareJournalEnvelope({ ...request, context: JSON.stringify({ history: [] }) }, f.model, 'grant:test', 1);
+      expect(await route.invoke(envelope, { ...f.bounds, maxTokens: framing === SUBSCRIPTION_TOOLS_FRAMING
+        ? subscriptionToolsPolicy(f.model).maxTokens : subscriptionConversationPolicy(f.model).maxTokens })).toMatchObject({ state: 'complete' });
+      const command = f.commands().at(-1)!;
+      const system = after(command.args, '--system-prompt')!;
+      expect(system.split(COMPLETE_REQUESTED_WORK)).toHaveLength(2);
+      expect(system).toContain('every item in a requested count or full set');
+      expect(system).toContain('say which were not done and why');
+      expect(JSON.parse(command.stdin).messages.find((message: { role: string }) => message.role === 'user').content)
+        .toBe(request.question);
+      expect(system.includes('You have no tools')).toBe(framing === SUBSCRIPTION_CONVERSATION_FRAMING);
+    }
+  }
 });

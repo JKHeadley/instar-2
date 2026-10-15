@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { expect, it } from 'vitest';
-import { COMPLETE_REQUESTED_STEPS, READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
+import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS, READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_NATIVE_SYSTEM_PROMPT,
   SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { CODEX_CONVERSATION_SYSTEM_PROMPT, CODEX_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-codex-provider.js';
@@ -20,7 +20,7 @@ const fixture = () => JSON.parse(readFileSync(new URL('./fixtures/act-first-2026
 // Historical captures predate the identity prefix and requested-step guidance.
 // Keep those bytes unchanged; bind the new guidance to all current tool routes below.
 const capturedSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(
-  "You are an Instar 2.0 agent,", 'You are Instar,').replace(COMPLETE_REQUESTED_STEPS, '');
+  "You are an Instar 2.0 agent,", 'You are Instar,').replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
 const decode = (run: Capture) => {
   const reading = readAnswer(JSON.parse(run.raw).result, { wrapped: 'accept' });
   expect(reading.ok, run.name).toBe(true);
@@ -36,13 +36,17 @@ it('delivers the same read guidance on all tool routes without claiming tools on
     expect(prompt).not.toContain(READ_BEFORE_ANSWER);
 });
 
-it('delivers requested verification guidance on every tool route, without changing authority or text-only routes', () => {
+it('delivers completion guidance once on every answer route within its existing authority', () => {
   for (const prompt of [SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, SUBSCRIPTION_NATIVE_SYSTEM_PROMPT, CODEX_TOOLS_SYSTEM_PROMPT]) {
+    expect(prompt.split(COMPLETE_REQUESTED_WORK)).toHaveLength(2);
     expect(prompt.split(COMPLETE_REQUESTED_STEPS)).toHaveLength(2);
     expect(prompt).toContain('Existing access, secret, spend and stop limits still apply');
   }
   for (const prompt of [SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, CODEX_CONVERSATION_SYSTEM_PROMPT])
-    expect(prompt).not.toContain(COMPLETE_REQUESTED_STEPS);
+    expect(prompt.split(COMPLETE_REQUESTED_WORK)).toHaveLength(2);
+  expect(Buffer.byteLength(COMPLETE_REQUESTED_WORK)).toBe(112);
+  expect(COMPLETE_REQUESTED_WORK).toContain('every item in a requested count or full set');
+  expect(COMPLETE_REQUESTED_WORK).toContain('say which were not done and why');
 });
 
 it('replays both recorded verification outcomes into the real envelope and review context', () => {
@@ -69,12 +73,34 @@ it('replays both recorded verification outcomes into the real envelope and revie
   }
 });
 
-it('replays fresh real tool results and final replies under the exact current guidance', () => {
+it('retains the real four-of-twelve answer and its historical false-clear as evidence', () => {
+  const row = JSON.parse(readFileSync(new URL('./fixtures/completion-full-set-2026-10-15.json', import.meta.url), 'utf8'));
+  expect(row.intake.update).toBe(46040043);
+  expect(row.intake.text).toContain('each of the twelve months');
+  const reading = readAnswer(row.modelCall.output, { wrapped: 'accept', evidence: [row.intake.id] });
+  expect(reading.ok).toBe(true);
+  if (!reading.ok) throw Error(reading.defect);
+  expect(reading.value).toBe(row.answer.text);
+  expect([...reading.value.matchAll(/\*\*(\w+)\*\*/gu)].map(match => match[1]))
+    .toEqual(['January', 'February', 'March', 'April']);
+  expect(row.modelCall.usage.outputTokens).toBe(984);
+  expect(row.modelCall.outcome).toBe('complete'); // readable output is not task fulfillment
+  expect(row.review.result.verdict).toBe('pass'); // preserve the recorded false-clear
+  const prepared = prepareJournalEnvelope({ question: row.intake.text, id: row.intake.id,
+    context: JSON.stringify({ audience: 'operator', history: [] }) }, 'claude-sonnet-5', 'grant:test', 1);
+  const context = JSON.parse(replyReviewContext(prepared, reading.value, []));
+  expect(context.operatorMessage).toBe(row.intake.text);
+  expect(context.candidateReply).toBe(row.answer.text);
+});
+
+it('replays recorded tool results and final replies under their exact historical guidance', () => {
   const captured = JSON.parse(readFileSync(new URL('./fixtures/tool-verification-2026-10-15.json', import.meta.url), 'utf8')) as {
     runs: Capture[] };
   expect(captured.runs.map(run => run.name)).toEqual(['requested-verification', 'no-verification-needed']);
   for (const run of captured.runs) {
-    expect(run.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+    // The recorded run predates only this full-set clause. Preserve the capture verbatim.
+    expect(run.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(
+      COMPLETE_REQUESTED_WORK, ''));
     const answer = decode(run);
     const trace = toolTrace(run.admission.trim().split('\n').filter(Boolean));
     expect(trace.consistent).toBe(true);
