@@ -72,6 +72,7 @@ it.each([['bounded', 0, false], ['oversized', 5000, false], ['forum', 0, true]])
       // already printed its final paused notice. Every assertion below is unchanged.
       { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env });
     expect(run.status, run.stderr).toBe(0);
+    expect(run.stderr.match(/^runner exiting: .+$/gm)).toEqual(['runner exiting: cycle limit reached']);
     expect(readFileSync(log, 'utf8')).toContain('getUpdates');
     journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY);
     expect(journal.view.order).toHaveLength(1);
@@ -158,6 +159,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       new Promise(done=>child.once('exit',(code,signal)=>done({code,signal}))),
       new Promise(done=>setTimeout(()=>done('timeout'),3000))]);
     expect(exit).not.toBe('timeout');
+    expect(stderr.match(/^runner exiting: .+$/gm)).toEqual([`runner exiting: paused by signal ${signal}`]);
     expect(readFileSync(log,'utf8').split('getUpdates').length-1).toBeLessThanOrEqual(pollsAtSignal+1);
     const status = spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
@@ -389,6 +391,7 @@ it('Rule 35: a test-endpoint composition refuses a production journal before tak
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: 'http://127.0.0.1:9' } });
   expect(run.status).toBe(1);
+  expect(run.stderr.match(/^runner exiting: .+$/gm)).toEqual(['runner exiting: error (details suppressed)']);
   expect(readFileSync(path).equals(before)).toBe(true);
   expect(existsSync(join(root, '.writer'))).toBe(false);
   // Refused before the writer lease: no startup-refusal record is written into the production root either.
@@ -411,6 +414,7 @@ it('Rules 2, 42: a launch refused under the writer lease records its scrubbed re
   { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env });
   expect(run.status).toBe(1);
   expect(run.stderr).toContain('details suppressed');
+  expect(run.stderr.match(/^runner exiting: .+$/gm)).toEqual(['runner exiting: refused before launch']);
   expect(run.stderr).not.toContain('configuration-digest');
   const rows = readFileSync(join(root, 'runs.jsonl'), 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
   expect(rows).toHaveLength(2);
