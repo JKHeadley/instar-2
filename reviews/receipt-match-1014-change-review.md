@@ -26,7 +26,9 @@ Decision: receipt-match-canonical | Normalize terminal whitespace in the existin
 Decision: receipt-match-evidence | Replay captured c1 answer with clearly labeled counterfactual receipts; do not claim the absent raw response proves provider normalization. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/receipt-match-1014-PROGRESS.md
 Decision: receipt-match-completeness | Report the separate semantic completeness defect and smallest candidate repair under brief item 3; do not guess a model-quality fix from a transport repair. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/receipt-match-1014-PROGRESS.md
 
-Subject (5 paths): tests/preview/fixtures/receipt-match-c1-2026-10-14.json, tests/preview/journal-topic-sessions.test.ts, tests/preview/journal.ts, tests/preview/receipt-match.test.ts, tests/preview/reply-parts.ts
+Decision: receipt-match-publication | Regenerate the register with the existing replay builder from the pushed source commit; change no native conformance declaration. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/receipt-match-1014-PROGRESS.md
+
+Subject (12 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/fixtures/receipt-match-c1-2026-10-14.json, tests/preview/journal-topic-sessions.test.ts, tests/preview/journal.ts, tests/preview/receipt-match.test.ts, tests/preview/reply-parts.ts
 
 simplestRobustRoute: This is the simplest route: trim terminal whitespace in the existing preparation, retaining the existing splitter, signing, journal, receipt classifier and no-resend guard. No added product machinery. Start guards remain authority, stop, spend and secret checks; end evidence remains exact provider receipts for every part. Offline replays prove the specified boundary, not live provider normalization or unattended deployment acceptance.
 80/20: Targeted reply/sending/batch tests and required typecheck, architecture, register, review and pinned-text checks. Full-suite and live-surface gates belong to the desk under this brief.
