@@ -48,9 +48,10 @@ export interface ActivationGrant { id: string; grantor: string; grantee: string;
   issuedAt: number; expiresAt?: number; actions: readonly ActivationAction[];
   /** The exact subject the yes covers: a changed field is a different act. The policy is named by exactly one of: its
    * digest (that one policy), or a policy class (`tools-policy-class.ts`: every policy the class admits, verified against
-   * the build's own policy at each resolution; plan #449). */
+   * the build's own policy at each resolution; plan #449). Guidance-only classes additionally require sealed
+   * invocationPolicyPins; full invocation digests remain evidence, never substituted by those pins. */
   scope: { trial: string; model: string; expectedAccount: string; executable: string; artifact: string; version: string;
-    invocationPolicyDigest?: string; invocationPolicyClass?: string; profileDigest: string };
+    invocationPolicyDigest?: string; invocationPolicyClass?: string; invocationPolicyPins?: string; profileDigest: string };
   /** Bounded recurrence: each renewal extends by at most this much, never past the latest expiry. */
   renewal?: { maxExtensionMs: number; latestExpiresAt: number } }
 export interface ActivationWaiver { reference: string; rules: readonly string[]; grantor: string; recordedAt: number; source: OperatorMessageRef; words: string }
@@ -209,7 +210,7 @@ export function resolveActivationAuthority(activation: ActivationFacts, record: 
     if (named === undefined) return g.scope.invocationPolicyDigest === s.invocationPolicyDigest;
     if (g.scope.invocationPolicyDigest !== undefined) return false;
     if (policy === undefined) { classOutside.push(`the grant names policy class ${String(named)}, and no policy was presented to check against it`); return false; }
-    const verdict = toolsPolicyClassVerdict(named, policy, s.invocationPolicyDigest);
+    const verdict = toolsPolicyClassVerdict(named, policy, s.invocationPolicyDigest, g.scope.invocationPolicyPins);
     if (verdict.kind !== 'covered') classOutside.push(`the policy ${s.invocationPolicyDigest} is outside the granted class ${String(named)}: ${verdict.reason}`);
     return verdict.kind === 'covered';
   });

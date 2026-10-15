@@ -4,12 +4,13 @@
 // live sealed authority names). One class grant covers L43 and L44 (the full tool set); L42's narrower six-tool policy
 // predates the subagent caps the class requires, so it stays covered only by its own exact-digest grant. Both sides: a policy with a checkpoint removed or a
 // cap raised is outside the class and refuses, naming why; the conversation policy is never covered by a tools class.
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
+import * as provider from '../../src/assembly/production-provider.js';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { authoritySealKey, PREVIEW_DESK, resolveActivationAuthority, sealAuthorityRecord, type ActivationAuthorityRecord,
   type ActivationFacts, type OperatorMessageRecords } from './activation-authority.js';
-import { claudeSettingsCheckpoints, codexDispatchCheckpoint, FULL_TOOLS_CLASS, toolsPolicyClassVerdict } from './tools-policy-class.js';
+import { claudeSettingsCheckpoints, codexDispatchCheckpoint, FULL_TOOLS_CLASS, GUIDANCE_ONLY_TOOLS_CLASS, guidanceOnlyPolicyPins, toolsPolicyClassVerdict } from './tools-policy-class.js';
 import { encoded } from '../../src/assembly/boundary.js';
 import { subscriptionConversationPolicy, subscriptionToolSettings, subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';
 import { codexToolHookArgs, codexToolsPolicy } from '../../src/assembly/production-codex-provider.js';
@@ -166,4 +167,76 @@ it('the class reads the effective checkpoints, not labels: a reopened read or a 
   // A policy whose own arguments select a direct provider is outside the class through the full verdict too.
   const direct = withArgs(codexToolsPolicy(MODEL) as unknown as Record<string, unknown>, args => [...args, '-c', 'model_provider=openai']);
   expect(toolsPolicyClassVerdict(FULL_TOOLS_CLASS, direct, digestOf(direct))).toMatchObject({ kind: 'outside', reason: expect.stringMatching(/dispatch checkpoint/u) });
+});
+
+// Observer #391: this is a NEW sealed class; the old permissive class keeps its meaning.
+it('guidance-only grants pin every execution field while full invocation evidence still changes with prose', () => {
+  const policy = subscriptionToolsPolicy(MODEL), digest = digestOf(policy);
+  const pins = guidanceOnlyPolicyPins(policy);
+  const grant = authority({ invocationPolicyClass: GUIDANCE_ONLY_TOOLS_CLASS, invocationPolicyPins: pins });
+  const changed = withArgs(policy, setFlag('--system-prompt', 'Revised guidance.'));
+  const agents = JSON.parse((policy.args as readonly string[])[policy.args.indexOf('--agents') + 1]!);
+  agents.worker.prompt = 'Revised helper guidance.';
+  agents.worker.description = 'Revised helper description.';
+  const prose = withArgs(changed, setFlag('--agents', JSON.stringify(agents)));
+  expect(digestOf(prose)).not.toBe(digest);
+  expect(resolve(grant, prose)).toMatchObject({ kind: 'resolved', policyClass: {
+    name: GUIDANCE_ONLY_TOOLS_CLASS, policyDigest: digestOf(prose) } });
+  expect(resolve(grant, policy)).toMatchObject({ kind: 'resolved' });
+  expect(resolve(grant, prose, digest)).toMatchObject({ kind: 'refused' });
+  const exact = authority({ invocationPolicyDigest: digest });
+  expect(resolve(exact, policy)).toMatchObject({ kind: 'resolved' });
+  expect(resolve(exact, prose)).toMatchObject({ kind: 'refused' });
+  const refused = (p: unknown) => expect(resolve(grant, p)).toMatchObject({ kind: 'refused' });
+  for (const [flag, value] of [['--tools', 'Read'], ['--permission-mode', 'acceptEdits'], ['--max-turns', '7'],
+    ['--max-budget-usd', '0.5'], ['--mcp-config', '{"mcpServers":{"extra":{}}}'], ['--model', 'other'],
+    ['--setting-sources', 'user']]) refused(withArgs(policy, setFlag(flag!, value!)));
+  for (const key of Object.keys(policy.limits)) refused({ ...policy, limits: { ...policy.limits,
+    [key]: policy.limits[key as keyof typeof policy.limits] - 1 } });
+  for (const [key, value] of Object.entries(policy)) {
+    if (key === 'args' || key === 'limits') continue;
+    refused({ ...policy, [key]: typeof value === 'number' ? value + 1 : `${String(value)}-changed` });
+  }
+  refused({ ...policy, newExecutionOption: true });
+  for (const [key, value] of [['model', 'other'], ['maxTurns', 3], ['background', true], ['tools', ['Read']]]) {
+    const changedAgents = structuredClone(agents); changedAgents.worker[key as string] = value;
+    refused(withArgs(policy, setFlag('--agents', JSON.stringify(changedAgents))));
+  }
+  refused(withArgs(policy, args => [...args, '--system-prompt', 'duplicate']));
+  refused(withArgs(policy, setFlag('--agents', '[]')));
+  for (const key of Object.keys(subject)) {
+    expect(resolveActivationAuthority({ ...facts(digest), [key]: 'different' }, grant, OPERATOR, BASE, NOW, owner, KEY, policy))
+      .toMatchObject({ kind: 'refused' });
+  }
+  expect(resolve(authority({ invocationPolicyClass: GUIDANCE_ONLY_TOOLS_CLASS }), policy)).toMatchObject({ kind: 'refused' });
+  expect(resolve(authority({ invocationPolicyClass: GUIDANCE_ONLY_TOOLS_CLASS, invocationPolicyPins: pins,
+    invocationPolicyDigest: digest }), policy)).toMatchObject({ kind: 'refused' });
+  const tampered = structuredClone(grant);
+  tampered.grants[0]!.scope.invocationPolicyPins = guidanceOnlyPolicyPins(withArgs(policy, setFlag('--tools', 'Read')));
+  expect(resolve(tampered, policy)).toMatchObject({ kind: 'refused', reason: expect.stringMatching(/sealed/u) });
+});
+
+it('guidance-only grants refuse a checkpoint-settings change even when the older class allows it', () => {
+  const policy = subscriptionToolsPolicy(MODEL);
+  const grant = authority({ invocationPolicyClass: GUIDANCE_ONLY_TOOLS_CLASS, invocationPolicyPins: guidanceOnlyPolicyPins(policy) });
+  const original = provider.subscriptionToolSettings;
+  const spy = vi.spyOn(provider, 'subscriptionToolSettings').mockImplementation((...args) =>
+    JSON.stringify({ ...JSON.parse(original(...args)), extraSetting: true }));
+  try {
+    expect(toolsPolicyClassVerdict(FULL_TOOLS_CLASS, policy, digestOf(policy)).kind).toBe('covered');
+    expect(resolve(grant, policy)).toMatchObject({ kind: 'refused' });
+  } finally { spy.mockRestore(); }
+  expect(resolve(grant, policy)).toMatchObject({ kind: 'resolved' });
+});
+
+it('replays the exact train-42 sealed subject and completion-guidance-1015 policy under the new class', () => {
+  const capture = JSON.parse(readFileSync('tests/preview/fixtures/tools-guidance-only-2026-10-15.json', 'utf8')) as
+    { builds: { digest: string; policy: Record<string, unknown> }[] };
+  const [base, changed] = capture.builds;
+  expect(base!.digest).toBe('sha256:5fed4bcfd823d950c1444a008a9c11d40824671dd8e68aa2f5908ed8534a2926');
+  for (const build of capture.builds) expect(digestOf(build.policy)).toBe(build.digest);
+  const grant = authority({ invocationPolicyClass: GUIDANCE_ONLY_TOOLS_CLASS, invocationPolicyPins: guidanceOnlyPolicyPins(base!.policy) });
+  expect(resolve(grant, changed!.policy)).toMatchObject({ kind: 'resolved', policyClass: { policyDigest: changed!.digest } });
+  expect(resolve(authority({ invocationPolicyDigest: base!.digest }), base!.policy)).toMatchObject({ kind: 'resolved' });
+  expect(resolve(authority({ invocationPolicyDigest: base!.digest }), changed!.policy)).toMatchObject({ kind: 'refused' });
 });
