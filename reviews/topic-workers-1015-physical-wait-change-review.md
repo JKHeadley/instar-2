@@ -21,6 +21,8 @@ Convergence: none
 Prompt review: No prompt, parser or semantic verdict changes. Seven existing real recorded shapes replay denial then restored-capacity dispatch with their exact bytes retained; the unchanged reviewer physical-wait pair fails before repair and passes afterward.
 Decision: topic-workers-1015-physical-wait | Move decisive headroom sampling after physical lease acquisition/retry and verify release on refusal or failed measurement, reusing existing durable queue and reclamation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/topic-workers-1015-repair-124723-PROGRESS.md
 
+Publication: Replayed generated register and source wiring against 895203358006d3844e090a256512fd8d96de4e57 using build-register; delegated owner-manifest rehash and grounding repin found zero stale pins.
+
 simplestRobustRoute: This is the simplest robust route: move the existing measurement past the demonstrated wait, release unused leases through their existing port, and retain the existing queued outcome. No scheduler or protocol is added. Start guards remain authority, stop, capacity and shared reservation; end evidence remains correlated closed turns; lifetime, calls and physical ceilings remain. Evidence is targeted offline regression, not a live-readiness or unattended installation claim.
 80/20: Repair the one must-fix with its healthy and restored-capacity neighbors, first-admission and retry paths, and unreadable-sample cleanup. Studio owns combined full-suite and live acceptance; this record claims no independent convergence.
 VERDICT: author submission; no independent convergence asserted
