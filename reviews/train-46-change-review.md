@@ -48,6 +48,8 @@ Decision: train-46-desk | Use downloaded desk repin/build/rehash/register replay
 
 Deferral: generated/register.json:1 | not-a-deferral=Mechanically replayed inherited declarations; no new deferred product work.
 
+Decision: train-46-inherited-review | Complete the open train43-strip-1015 review with the existing protocol-literal dispositions for restored wording; preserve every original line and no product source changes. The checker identified 17 missing dispositions while following merge ancestry. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-46-PROGRESS.md
+
 simplestRobustRoute: This is the simplest robust route: two ordinary exact-head merges, the existing desk generation chain and direct-consumer checks. No new machinery. Named base and reviewed heads guard entry; sealed authority, exact pins, durable cause, spend bounds, stop and uncertain-effect non-replay remain the runtime floors. Committed pushed composition with honest check results is the exit; the desk owns live acceptance.
 80/20: Test member changes, direct consumers, required journal regressions and pinned text; no full suite or unrelated host repair.
 VERDICT: author submission; no independent convergence or live acceptance claim
