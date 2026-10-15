@@ -60,12 +60,15 @@ function pieces(text: string, budget: number): string[] {
 }
 
 /** One reply as the messages that carry it, in order (the operator's direction of 2026-10-03: an answer too long for
- * one Telegram message is never refused; it is split, in order). A reply that fits is one message, unchanged. A longer
+ * one Telegram message is never refused; it is split, in order). Terminal whitespace is removed before measuring
+ * or preparing any part. A reply that fits is one message. A longer
  * one is cut at natural breaks; the first part ends " (1/N)" and each later part opens "(k/N) — ", so every
  * message's place is readable. `tail` is a suffix kept whole in the LAST part (an operator
  * request line and its disclosure, which the operator answers by replying to the message that carries it). Returns
  * null only for a reply needing more than MAX_REPLY_PARTS messages, or a tail no single message can carry. */
 export function splitReply(reply: string, tail = ''): string[] | null {
+  reply = reply.trimEnd();
+  tail = tail.trimEnd();
   if (fitsOneMessage(reply)) return [reply];
   const kept = tail && reply.endsWith(tail) ? tail.trim() : '';
   const main = (kept ? reply.slice(0, reply.length - tail.length) : reply).trimEnd();

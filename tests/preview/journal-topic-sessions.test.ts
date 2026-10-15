@@ -1,4 +1,6 @@
 import { afterEach, expect, it } from 'vitest';
+import { classifyTelegramSend } from './telegram-send-outcome.mjs';
+import { encodeReply, wholeReplySent } from './reply-parts.js';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -88,7 +90,14 @@ function fixture(forum = false) {
   const worker = createJournalWorker(journal, { topicConcurrency: 2, groupDisclosure: async () => true, now: () => now, stopped: () => false, model, modelBatch: async inputs => { if (batchFailure) throw batchFailure; return modelBatch(inputs); }, collectModel,
     sources: () => evidence ? [evidence] : [],
     prepareModel: input => JSON.stringify(input), checkOutbound: () => {},
-    send: async input => { sent.push({ text: input.expectedText, thread: input.thread, update: input.update }); return sent.length; } });
+    send: async input => {
+      sent.push({ text: input.expectedText, thread: input.thread, update: input.update });
+      expect(input.text).toBe(encodeReply(input.expectedText));
+      return classifyTelegramSend({ kind: 'response', status: 200, bytes: JSON.stringify({ ok: true, result: {
+        message_id: sent.length, chat: { id: Number(input.chat) }, text: input.expectedText.trimEnd(),
+        ...(input.thread === undefined ? {} : { message_thread_id: input.thread }),
+      } }) }, input);
+    } });
   return { root, journal, worker, held, deliveries, launches, sent, port, queuedAtDelivery, live: () => live, state: () => state!,
     failBatch: (error: Error | undefined) => { batchFailure = error; },
     evidence: (value: unknown) => { evidence = value; }, reply: (value: string) => { replyOverride = value; },
@@ -239,4 +248,30 @@ it('recovery reads the same process and child evidence after journal compaction 
     const reopened = openPreviewJournal(join(f.root, 'journal.encrypted'), new Uint8Array(32).fill(61), undefined, undefined, true);
     try { expect(reopened.sessionWorkRecords()).toEqual(before); } finally { reopened.close(); }
   } finally { await f.close(); }
+});
+
+
+it('a long answer finishes with batched follow-ups waiting: all canonical parts are accepted once in order', async () => {
+  const f = fixture();
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/receipt-match-c1-2026-10-14.json', import.meta.url), 'utf8')) as { answer: string };
+  // The captured fitting answer, repeated solely to force the multi-part boundary.
+  const long = recorded.answer.repeat(4) + ' \t\n';
+  try {
+    f.reply(long); f.held.add('7'); f.worker.intake([update(1, 'Give the detailed plan.', 7)]);
+    const drain = f.worker.drain(); await until(() => f.deliveries.length === 1);
+    f.worker.intake([update(2, 'And the next question.', 7), update(3, 'And another.', 7)]);
+    expect(f.journal.view.order.slice(1).every(turn => turn.sent === undefined)).toBe(true);
+    f.held.delete('7'); await drain;
+    expect(f.deliveries).toHaveLength(2);
+    expect(f.deliveries[1]!.input.text).toContain('exactly one {operation, answer}');
+    for (const turn of f.journal.view.order) {
+      expect(turn.answer).toBe(long);
+      expect(turn.intent).toBe(long.trimEnd());
+      expect(turn.replyParts!.length).toBeGreaterThan(0);
+      expect(wholeReplySent(turn)).toBe(true);
+    }
+    expect(f.sent.every(row => row.text === row.text.trimEnd())).toBe(true);
+    expect(f.sent.map(row => row.update)).toEqual([...f.sent.map(row => row.update)].sort((a, b) => a - b));
+    const count = f.sent.length; await f.worker.drain(); expect(f.sent).toHaveLength(count);
+  } finally { f.held.clear(); await f.close(); }
 });
