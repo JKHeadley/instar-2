@@ -95,10 +95,11 @@ it('tells the model it has the whole tool set and how each call is bounded, and 
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('You have no tools and cannot act beyond this answer; never claim otherwise.');
   // Plan #510: the tool route runs without --safe-mode, so Claude Code injects its own account email; the prompt says that
   // login is never the operator (+187, live cint-L50 "Luna"). The bound stays: the tool sentence is still one paragraph.
-  // sb-w4-selfdesc: w4-selfdesc's effect-doorway wording lands on top of that +187, so the 1500 bound (not the unit's
-  // 1400, which predates +187) plus 1202 bytes of read guidance and tool framing is the live one; default-context-floor measures the exact growth.
+  // The prior 2800-character allowance covers 2767 characters of tool framing and read guidance. The reviewed
+  // COMPLETE_REQUESTED_STEPS adds 508, preserving the same 33-character headroom. default-context-floor pins the
+  // exact growth at 3275 bytes and tests both sides of the unchanged runtime answer budget.
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('is the subscription login running you, never the operator');
-  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(2800);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(2800 + 508);
 });
 
 it('writes settings that refuse every read from the root down except the scratch volume and the runtime, writes outside the volume, network and unix sockets, with the mandatory hook on both events', () => {
