@@ -53,6 +53,8 @@ Decision: train-45-C | No unresolved product conflict and no head left out. The 
 Decision: train-45-D | Run portable direct consumers on WSL; report macOS and host-only omissions without weakening their checks. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-45-PROGRESS.md
 Decision: train-45-desk | Use downloaded desk repin/build/rehash/replay chain. Zero inventory or owner pins changed. Generated outputs are regenerated, never hand-merged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-45-PROGRESS.md
 
+Decision: train-45-reopen | Explicitly reopen the two inherited completion review rounds whose frozen subjects no longer match the merged composition and regenerated publication. Preserve their original commits and evidence; this train requests a new independent composition review. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-45-PROGRESS.md
+
 simplestRobustRoute: This is the simplest robust route: two ordinary exact-head merges, existing register generation and direct consumer tests. No new machinery. Start from the named live base, require reviewed membership and checked committed output, and leave activation to the desk. Existing authority, resource, stop, durable cause and unique-effect guards remain.
 80/20: Run changed tests, direct importing consumers, required journal and pinned checks in bounded foreground batches; no full suite or unrelated repair.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

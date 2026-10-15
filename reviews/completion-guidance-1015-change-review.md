@@ -1,8 +1,8 @@
 # Change review — Complete every requested step and item
 
 Subject base: f4d0ab668a29258408897648cbd3bca74ae76ee4
-Review state: frozen
-Reviewed content: sha256:d1152eeed6fe2b8f67dff6372cc441210c473cef7664f92a86ff296296d76c7f
+Review state: open
+Reviewed content: none
 Outcome: All answer routes receive one common instruction to complete requested steps and full sets, or identify omissions and reasons; inherited tool verification guidance is unchanged.
 Affected rules: 3, 4, 10, 12, 23, 26, 36, 49, 58, 70, 74, 78, 84, 101, 111, 113, 116; purpose Rules 2 and 3.
 Affected floors: secrets — unchanged custody and output checks; spend cap — unchanged call and token limits; stop — unchanged cancellation; no duplicate sends — unchanged effect/send path; durable intake — unchanged journal and intake.

@@ -1,8 +1,8 @@
 # Change review — Renew native Darwin conformance and publication
 
 Subject base: 072b1a537c49899ca5690b979a15184405d1dc71
-Review state: frozen
-Reviewed content: sha256:06d9ea8311f21e8cf3ff4285e8d51ccb37fddfd4f3a2ad9535db8c10370e263f
+Review state: open
+Reviewed content: none
 Outcome: Certify the current native composition with a real Studio contract run and publish its exact source generation so lint and register checks pass.
 Affected rules: 26, 34, 37, 42, 49, 70, 74, 90, 95, 101, 105, 107, 111, 112, 113, 115, 116.
 Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake keep their existing enforcement. Native contract verifies confined admission, stop before dispatch, unknown charge accounting and restart uniqueness.
