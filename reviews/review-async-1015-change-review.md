@@ -28,7 +28,7 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing fixed protocol/citati
 
 Subject (source plus generated publication): tests/preview/journal-agent.mjs, tests/preview/journal-conversation-session.test.ts, tests/preview/journal.ts, tests/preview/rule89-speakers.test.ts
 
-Publication: Existing desk rehash refreshed the changed test artifact pin in register-source/owner-references/preview.json. Shape-only replay from source commit 831a59ad6be8f45542c4e030d8abf0d3f7b43ac5 regenerated the seven existing generated outputs. Grounding inventory and policy bytes did not change.
+Publication: Existing desk rehash refreshed the changed test artifact pin in register-source/owner-references/preview.json. Shape-only replay from source commit ae9cb53d4e2c73dd6a32520d1e769b7ba5b8383d regenerated the seven existing generated outputs. Grounding inventory and policy bytes did not change.
 
 Recorded-output compatibility: Direct-import verification found literal-copy.test.ts and train-12-capability-replay.test.ts still equated historical captures with the current tools prompt. Base commit a7b5338945db8bdbab94e3e2ae09e1a778d6bdee added COMPLETE_REQUESTED_STEPS and already normalized other historical fixtures. Apply that same normalization here; no competing production fix or rewritten capture.
 
