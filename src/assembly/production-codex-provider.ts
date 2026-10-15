@@ -1,4 +1,4 @@
-import { CODEX_CONVERSATION_CONFIG } from '../harness-adapters/codex-conversation.js';
+import { CODEX_CONVERSATION_CONFIG } from '../harness-adapters/index.js';
 import { conversationSessionPolicy } from './production-conversation-session.js';
 import { READ_BEFORE_ANSWER } from './tool-answer-guidance.js';
 import { createHash } from 'node:crypto';

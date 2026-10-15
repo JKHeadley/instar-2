@@ -23,3 +23,6 @@ export { decodeHarnessValidationFloor } from './validation-floor.js';
 export * as holderLifecycle from './holder.js';
 export * as sessionAdapters from './adapter.js';
 export * as recoveryBoundaries from './regression-boundaries.js';
+export { CODEX_CONVERSATION_CONFIG } from './codex-conversation.js';
+export { createCodexConversationWorker } from './codex-conversation-worker.js';
+export type { SessionProtocolIO } from './session-protocol.js';

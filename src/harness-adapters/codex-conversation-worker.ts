@@ -2,10 +2,10 @@ import { createHash } from 'node:crypto';
 import { codexConversationRequests as requests, createCodexTurnReader, CODEX_CONVERSATION_CONFIG } from './codex-conversation.js';
 import type { CodexThreadOptions } from './codex-conversation.js';
 import type { SessionProtocolConnection, SessionProtocolIO } from './session-protocol.js';
-import type { HarnessAdapterPort, HarnessInputDelivery, HarnessNormalizedObservation } from '../assembly/contracts.js';
-import type { ProductionSessionConfig } from '../assembly/production-session-driver.js';
-import { admissionArgs, modelGateLaunch, sessionConnectorArgs } from '../assembly/production-session-driver.js';
-import { ensure } from '../assembly/boundary.js';
+import type { HarnessAdapterPort, HarnessInputDelivery, HarnessNormalizedObservation } from '../assembly/index.js';
+import type { ProductionSessionConfig } from '../assembly/index.js';
+import { admissionArgs, modelGateLaunch, sessionConnectorArgs } from '../assembly/index.js';
+function ensure(value: unknown, detail: string): asserts value { if (!value) throw new Error(detail); }
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === 'object'
   && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -15,7 +15,7 @@ const idOf = (value: unknown) => { ensure(typeof value === 'string' && /^[A-Za-z
  * process custody and timeout enforcement are the injected physical boundary's job. */
 export function createCodexConversationWorker(input: Readonly<{
   configuration(): ProductionSessionConfig; transport: SessionProtocolIO; resumeKey?: string;
-  io: Pick<import('../assembly/production-session-work.js').SessionWorkIO, 'readResult' | 'clearResult'>;
+  io: Pick<import('../assembly/index.js').SessionWorkIO, 'readResult' | 'clearResult'>;
   resolveDelivery(operation: string): HarnessInputDelivery | undefined;
   beforeLaunch?(claim: string): void; afterLaunch?(): void;
 }>): HarnessAdapterPort<2> {

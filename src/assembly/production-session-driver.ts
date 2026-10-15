@@ -1,6 +1,6 @@
-import { createCodexConversationWorker } from '../harness-adapters/codex-conversation-worker.js';
+import { createCodexConversationWorker } from '../harness-adapters/index.js';
 import { createSessionConversationAdapter } from './conversation-harness-adapter.js';
-import type { SessionProtocolIO } from '../harness-adapters/session-protocol.js';
+import type { SessionProtocolIO } from '../harness-adapters/index.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { boundary, ensure, take } from './boundary.js';
 import type { AssemblyDecodeContext, HarnessObservation } from './contracts.js';

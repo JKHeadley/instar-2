@@ -3,10 +3,10 @@ import { createConversationSessionPort, type ConversationState } from '../../src
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
 import { createHash } from 'node:crypto';
-import { createCodexConversationWorker } from '../../src/harness-adapters/codex-conversation-worker.js';
+import { createCodexConversationWorker } from '../../src/harness-adapters/index.js';
 import { createProductionConversationAdapter, type ProductionSessionConfig, type SessionJournal } from '../../src/assembly/production-session-driver.js';
 import type { HarnessInputDelivery } from '../../src/assembly/contracts.js';
-import type { SessionProtocolIO } from '../../src/harness-adapters/session-protocol.js';
+import type { SessionProtocolIO } from '../../src/harness-adapters/index.js';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
