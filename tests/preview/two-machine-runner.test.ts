@@ -4,7 +4,7 @@
  * Only the Telegram port and the model route are the file-backed fixtures every runner process test uses.
  * D1(a): a reply waits until the other machine acknowledged its record; it is never sent on local durability. */
 import { expect, it } from 'vitest';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { REPLY_ACKNOWLEDGEMENT } from './journal.js';
@@ -150,9 +150,11 @@ it.each([0, 1500])('an owner that stalls past its term and comes back is stale: 
   // authority's shipped 30-second term so takeover is caused by SIGSTOP below,
   // not by the receipt-gap injection during setup. The takeover wait stays bounded.
   const t = await twoMachines(30000);
+  const pollHold = join(t.world.directory, 'stale-owner-poll');
   const studio = t.harness.startRunner(t.rootOf('studio'), 'studio', 100000, ['--machine-posture', 'multi-machine', '--conversation-authority', t.url,
     '--replica-listen', `127.0.0.1:${t.ports.studio}`, '--replica-peer', `http://127.0.0.1:${t.ports.laptop}`, '--owner-machine', 'studio',
-    '--journal-lineage', 'seed'], { ...t.envOf('studio'), INSTAR_PREVIEW_CUTOVER_SEND_DELAY_MS: String(sendDelayMs) });
+    '--journal-lineage', 'seed'], { ...t.envOf('studio'), INSTAR_PREVIEW_CUTOVER_SEND_DELAY_MS: String(sendDelayMs),
+    INSTAR_PREVIEW_CUTOVER_POLL_HOLD: pollHold });
   started.push(studio.child);
   await until('the seeded machine serves', () => studio.output.stderr.includes('owner: epoch 1'));
   const laptop = t.start('laptop');
@@ -183,6 +185,9 @@ it.each([0, 1500])('an owner that stalls past its term and comes back is stale: 
     throw error;
   }
   expect((await t.view())).toMatchObject({ epoch: 1, holder: { machine: 'studio' } });
+  // Freeze during the awaited poll specifically: its return must recheck ownership before intake.
+  writeFileSync(pollHold, 'hold');
+  await until('the owner has an in-flight poll', () => existsSync(`${pollHold}.entered`));
   // The owner stalls (SIGSTOP by exact PID) for longer than its term; the standby takes over with the history.
   studio.child.kill('SIGSTOP');
   await until('the standby takes over', () => laptop.output.stderr.includes('owner: epoch 2; history adopted'), 60000);
@@ -193,6 +198,7 @@ it.each([0, 1500])('an owner that stalls past its term and comes back is stale: 
   const stalePolls = t.polls('studio').length;
 
   // The stale owner wakes: its lease is gone, so it neither polls nor sends again; it retires with a recorded reason.
+  unlinkSync(pollHold);
   studio.child.kill('SIGCONT');
   const ended = await studio.exited;
   // Rule 2: a non-zero exit here reached two gates with no evidence of its cause, because the child's

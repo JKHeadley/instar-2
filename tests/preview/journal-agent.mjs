@@ -2991,7 +2991,9 @@ async function main() {
         timeoutMs: 12000 }, token()); }
       catch { if (!await pollFailure(false, true)) break; continue; }
       await new Promise(done => setImmediate(done));
-      if (signalled || workerStop.value || existsSync(stopPath)) break;
+      // A poll may return after this machine's lease expired. Retire before intake's
+      // stop gate throws, just as after the other awaited exchanges in this loop.
+      if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
       if (result.kind !== 'response' || result.status !== 200) {
         // A temporary server failure (5xx, 429) is an outage like no answer at all: due work goes on (MUST-FIX 1).
         if (!await pollFailure(result.kind === 'response' && result.status === 409,

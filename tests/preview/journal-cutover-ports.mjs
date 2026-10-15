@@ -72,8 +72,14 @@ export function createProductionTelegramIO() {
     }
     throw Error('cutover fixture unexpected Telegram method');
   } };
-  if (process.env.INSTAR_PREVIEW_CUTOVER_POLL_DELAY_MS) port.poll = async input => {
-    await new Promise(resolve => setTimeout(resolve, Number(process.env.INSTAR_PREVIEW_CUTOVER_POLL_DELAY_MS)));
+  const pollHold = process.env.INSTAR_PREVIEW_CUTOVER_POLL_HOLD;
+  if (process.env.INSTAR_PREVIEW_CUTOVER_POLL_DELAY_MS || pollHold) port.poll = async input => {
+    // Hold a real in-flight poll across lease loss without relying on where SIGSTOP lands.
+    if (pollHold && existsSync(pollHold)) {
+      writeFileSync(`${pollHold}.entered`, String(process.pid));
+      while (existsSync(pollHold)) await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    await new Promise(resolve => setTimeout(resolve, Number(process.env.INSTAR_PREVIEW_CUTOVER_POLL_DELAY_MS ?? 0)));
     if (process.env.INSTAR_PREVIEW_CUTOVER_DRAIN_INTERLEAVE && polls !== 1) {
       // Let the prior audience read finish during the poll; the second poll alone delivers
       // while that read is pending. No CPU load: this is the live pre/post-poll lane race.
