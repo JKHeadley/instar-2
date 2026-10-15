@@ -19,6 +19,25 @@ Bug evidence: none
 Hook bypass: none; core.hooksPath unset and shared hooks directory contains sample files only.
 Convergence: none
 Prompt review: No new model-facing text or model-output judgment is authored by this composition. Member recorded policy captures and exact terminal warning/exhaustion fixtures exercise the changed paths. Journal and tool replay tests exercise carried real model shapes. Offline checks do not claim live deployment acceptance.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing source-citation protocol retained from the reviewed member.
+Prompt finding: 849db3a6296a | protocol-literal | Existing fixed empty-memory protocol retained from the reviewed member.
+Prompt finding: 034c5250da92 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 0abb3dc96311 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 42faf877ba82 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 45e37ea2e9e9 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 5b486d8bd247 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 5fa1a20c4031 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 6af48f94b789 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 7c45ffbe90ad | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 95e349aaf4ac | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: aef7d91bef51 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: b00ed403060a | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: b1bb3946362d | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: b288d6ef1604 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: e769ca9dd959 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: f6d7f3274c85 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: feadb66b8ad1 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
 Decision: train-46-grant | Ordinary merge of reviewed grant-class-1015 eb82a836d4c00dd517f26678696ec08883a6a0ee. Evidence: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/grant-class-1015-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-46-PROGRESS.md
 Decision: train-46-usage | Ordinary merge of reviewed usage-banner-1015 4183a91083c3352f664ce2d4d8271c9847095a73. Evidence: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/usage-banner-1015-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-46-PROGRESS.md
 Decision: train-46-A | Preserve both reviewed member source trees. Only generated publication conflicted; retain a temporary parent publication to finish the first ordinary merge, then regenerate all outputs from the combined source commit. No generated content was hand-edited. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-46-PROGRESS.md
