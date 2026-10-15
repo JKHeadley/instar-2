@@ -26,6 +26,8 @@ Decision: train-35-desk-D | Run targeted portable consumers and journal checks o
 
 Decision: train-35-graduation | Append a one-day deadline for the still-dark step-check observer, with reason, desk owner and rollback in the existing promotion record; retain all history and no stage claims. The elapsed October 15 deadline blocked register replay. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-35-PROGRESS.md
 
+Register publication: regenerated from d746452bbe60ac6f23d04daf0627f44dcf60a8d8 using the downloaded desk repin/build/rehash chain; shape-only evidence, not runtime certification.
+
 simplestRobustRoute: This is the simplest robust route: one ordinary exact-head merge and existing desk regeneration, with consumer checks. No new product machinery. Current grants and destination preflight guard start; durable completion and journal receipts guard outcomes; stop, deadline, retry brakes and shared allowance bound execution. No autonomous production-completion claim.
 80/20: Target changed tests, direct imports, journal regressions, fixed-context floor and prescribed portable gates; leave native-host acceptance to the Studio. No full suite or load burner.
 VERDICT: author submission for desk gate; no independent convergence or release acceptance claim
