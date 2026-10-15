@@ -2264,6 +2264,8 @@ async function main() {
           if (result.state !== 'complete' || result.failureClass) return { state: 'rejected', ...usage };
           const answered = parseReplyRevision(result.value, objections);
           return { state: 'complete', text: answered.text, dispositions: answered.dispositions,
+            ...(answered.promises === undefined ? {} : { promises: answered.promises }),
+            ...(answered.fulfills === undefined ? {} : { fulfills: answered.fulfills }),
             ...(answered.blocker === undefined ? {} : { blocker: answered.blocker }), ...usage };
         },
         summaryReview: async (state, through) => {
