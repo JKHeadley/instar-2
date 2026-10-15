@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { AgentPathRefused, assertAgentPaths } from '../../scripts/agent-paths.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createProductionTelegramIO, productionStorageIO, createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
@@ -166,6 +167,7 @@ async function interruptibleBackoff(milliseconds, state, stopped) {
 
 async function main() {
   const { command, options } = argumentsOf(process.argv.slice(2));
+  if (command === 'run') assertAgentPaths({ root: required(options, 'root') });
   const config = configuration(options);
   const stage = integer(options.stage ?? '1', 'stage', 1, 2);
   const state = stateFor(config, options, command === 'run');
@@ -392,8 +394,8 @@ async function runSuccessive(config, options, state) {
 
 try {
   process.exitCode = await main();
-} catch {
+} catch (error) {
   // No resolver/provider/child diagnostic is ever reflected to the terminal.
-  process.stderr.write('preview refused to start or continue; details suppressed\n');
+  process.stderr.write(error instanceof AgentPathRefused ? `${error.message}\n` : 'preview refused to start or continue; details suppressed\n');
   process.exitCode = 1;
 }

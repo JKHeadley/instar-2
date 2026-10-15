@@ -8,6 +8,7 @@
 //
 // The shared secret is bound by the host as INSTAR_SECRET_PREVIEW_AUTHORITY_SECRET (never an argument, never logged).
 import { resolve } from 'node:path';
+import { assertAgentPaths } from '../../scripts/agent-paths.mjs';
 import { openConversationAuthority, serveConversationAuthority } from './conversation-authority.js';
 
 const options = {};
@@ -20,6 +21,7 @@ const number = (value, name, minimum, maximum) => {
   const n = Number(value); if (!Number.isSafeInteger(n) || n < minimum || n > maximum) throw Error(`authority: invalid ${name}`); return n;
 };
 const secret = process.env.INSTAR_SECRET_PREVIEW_AUTHORITY_SECRET;
+assertAgentPaths({ state: resolve(required('path')) });
 if (!secret || secret.length < 16) throw Error('authority: SecretRef unavailable');
 // The same conversation key the runner derives from its journal's genesis.
 const conversation = `telegram/bot-${required('bot-id')}/chat-${required('chat-id')}`;
