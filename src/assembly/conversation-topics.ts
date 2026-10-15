@@ -75,7 +75,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
           const row = state.topics[topic];
           const replacement = !active.has(topic) || !row || config.now() >= row.deadline
             || row.turns >= config.maxSteps || row.authority !== (local?.currentAuthority ?? config.currentAuthority)();
-          if (replacement && config.capacity) {
+          if (replacement && row?.inputs.some(pending => pending.state === 'queued') && config.capacity) {
             let room = await config.capacity();
             if (room.memoryPressure && await reclaim()) room = await config.capacity();
             if (!room.admit) return false;
