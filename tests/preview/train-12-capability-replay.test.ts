@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { createHash } from 'node:crypto';
 import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, capabilitySentence, SELF_DESCRIPTION, SELF_IDENTITY } from './briefing.js';
+import { COMPLETE_REQUESTED_STEPS } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { readAnswer } from './answer-reading.js';
 
@@ -44,9 +45,12 @@ it('retains live paraphrase and malformed-key failures beside the fixed-sample r
   expect(evidence.negativeReplay.judge).toMatchObject({ verdict: 'FAIL', reason: 'rendered tools/outbound sentence missing, altered or duplicated' });
   expect(evidence.negativeReplay.answer.split('\n')).not.toContain(capabilitySentence(evidence.negativeReplay.limits));
   expect(currentInstructions(evidence.liveReplay.instructions)).toBe(ANSWER_INSTRUCTIONS);
-  expect(evidence.liveReplay.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  // These immutable recordings predate train-41's requested-verification guidance.
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.split(COMPLETE_REQUESTED_STEPS)).toHaveLength(2);
+  const historicalSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '');
+  expect(evidence.liveReplay.system).toBe(historicalSystem);
   expect(currentInstructions(evidence.instructions)).toBe(ANSWER_INSTRUCTIONS);
-  expect(evidence.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  expect(evidence.system).toBe(historicalSystem);
   expect(evidence.runs).toHaveLength(10);
   expect(evidence.question).toBe("What can you do in this chat, and what can't you do?");
   for (const run of [...evidence.runs, evidence.liveReplay]) {
