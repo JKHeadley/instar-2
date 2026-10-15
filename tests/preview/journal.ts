@@ -1170,6 +1170,7 @@ export type JournalRecord =
   /** One bounded revision of an objected draft, inside the existing call cap; no result is UNKNOWN, never repeated. */
   | { kind: 'reply-revision-reserve'; id: string; objections: string[]; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-revision'; id: string; state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string;
+    promises?: PromiseProposal[]; fulfills?: FulfillmentProposal[];
     /** The agent's answer to each reserved objection, in order; only a complete revision carries it. */
     dispositions?: ObjectionDisposition[];
     /** The investigation record the correction declares for a cannot-do claim its answer left unrecorded (plan
@@ -1392,7 +1393,7 @@ export interface Turn { waitingProgress?: { at: number; sent?: number }; id: str
   answerAt?: number; checkDoneAt?: number;
   reviewCandidate?: string; reviewMentionedDates?: string[];
   revisionReserved?: true; revisionReservedAt?: number; revisionObjections?: string[];
-  revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; dispositions?: ObjectionDisposition[]; blocker?: ProposedBlocker; rejectedBlocker?: true; blockerReason?: string };
+  revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; promises?: PromiseProposal[]; fulfills?: FulfillmentProposal[]; dispositions?: ObjectionDisposition[]; blocker?: ProposedBlocker; rejectedBlocker?: true; blockerReason?: string };
   release?: ReplyRelease; heldReview?: ReplyHeld;
   revisionReviewReserved?: true;
   /** Exact claim-trimmed candidate using the existing revision-review operation. */
@@ -4463,6 +4464,9 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   if (row.kind === 'reply-revision') {
     if (!turn.revisionReserved || turn.revision !== undefined || turn.intent !== undefined
       || (row.state === 'complete') !== (typeof row.text === 'string' && row.text.length > 0)
+      || row.promises !== undefined && (row.state !== 'complete' || promiseProposals(row.promises, row.text!) === undefined)
+      || row.fulfills !== undefined && (row.state !== 'complete' || fulfillmentProposals(row.fulfills, row.text!,
+        item => fulfillmentSupported(item, row.text!, view.commitments)) === undefined)
       || row.dispositions !== undefined && (row.state !== 'complete' || !validDispositions(row.dispositions, turn.revisionObjections ?? []))
       || row.rejectedBlocker !== undefined && (row.rejectedBlocker !== true || row.state !== 'complete'
         || row.blocker !== undefined || turn.answerBlocker !== undefined)
@@ -4471,6 +4475,8 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
         || !validBlocker(row.blocker, turn.reservedAt ?? row.at) || !row.text!.includes(row.blocker.claim)))
       throw Error('preview journal: revision result order');
     turn.revision = { state: row.state, ...(row.text === undefined ? {} : { text: row.text }),
+      ...(row.promises === undefined ? {} : { promises: row.promises }),
+      ...(row.fulfills === undefined ? {} : { fulfills: row.fulfills }),
       ...(row.dispositions === undefined ? {} : { dispositions: row.dispositions.map(item => ({ ...item })) }),
       ...(row.blocker === undefined ? {} : { blocker: row.blocker }),
       ...(row.rejectedBlocker ? { rejectedBlocker: true } : {}),
@@ -5583,7 +5589,7 @@ export interface PreviewPorts {
       objections?: string[]; findings?: ReplyFinding[]; deadlineAt?: number }): Promise<{
       state: 'complete' | 'rejected' | 'uncertain'; text?: string; dispositions?: ObjectionDisposition[];
       /** The raw blocker the correction declared; the runner admits it only through the answer's checks. */
-      blocker?: unknown; usage?: ModelUsage }> };
+      blocker?: unknown; promises?: unknown; fulfills?: unknown; usage?: ModelUsage }> };
   /** Uses the same pinned Jev route as reply supervision, only after exact preservation cannot decide. */
   summaryCheck?(evidence: string): Promise<unknown>;
 
@@ -9126,7 +9132,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 gate();
                 journal.append({ kind: 'reply-revision-reserve', id: turn.id, objections,
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
-                let outcome: Awaited<ReturnType<NonNullable<NonNullable<PreviewPorts['replyCheck']>['revise']>>> | { state: 'failed'; text?: undefined; usage?: undefined; dispositions?: undefined; blocker?: undefined };
+                let outcome: Awaited<ReturnType<NonNullable<NonNullable<PreviewPorts['replyCheck']>['revise']>>> | { state: 'failed'; text?: undefined; usage?: undefined; dispositions?: undefined; blocker?: undefined; promises?: undefined; fulfills?: undefined };
                 // The draft is revised without its Rule 110 disclosure, which code adds back to the final text, and
                 // without the runner's own result lines, which code attaches again verbatim below.
                 const draft = resultLines.reduce((text, line) => text.replace(line, ''),
@@ -9148,6 +9154,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   ? obligationsFrom({ blocker: outcome.blocker }, turn, text, '{}', revisionAt) : undefined;
                 journal.append({ kind: 'reply-revision', id: turn.id,
                   state: outcome.state === 'complete' && !text ? 'failed' : outcome.state, ...(text ? { text } : {}),
+                  ...(text && outcome.promises !== undefined ? { promises: promiseProposals(outcome.promises, text) ?? [] } : {}),
+                  ...(text && outcome.fulfills !== undefined ? { fulfills: fulfillmentProposals(outcome.fulfills, text,
+                    item => fulfillmentSupported(item, text, journal.view.commitments)) ?? [] } : {}),
                   ...(answered ? { dispositions: answered } : {}), ...(proposed?.blocker ? { blocker: proposed.blocker } : {}),
                   ...(proposed?.rejected?.blocker ? { rejectedBlocker: true, blockerReason: proposed.rejected.blockerReason } : {}),
                   ...(outcome.usage ? { usage: outcome.usage } : {}), at: revisionAt });
@@ -9363,8 +9372,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(reply === HOLDING_REPLY || heldBack || !mentionedKeys.length ? {} : { mentionedDates: mentionedKeys }),
           ...(release === undefined ? {} : { release }), ...(held === undefined ? {} : { heldReview: held }),
           // A desk probe's reply stays auditable, but its promises never become operator commitments.
-          promises: probeTurn(journal.view, turn) ? [] : recordedPromises(turn.proposedPromises ?? [], reply, turn.id, intentAt, ports.timeZone ?? 'America/Los_Angeles'),
-          fulfills: probeTurn(journal.view, turn) ? [] : (turn.proposedFulfills ?? []).filter(item => reply.includes(item.quote)
+          promises: probeTurn(journal.view, turn) ? [] : recordedPromises((release?.revised ? turn.revision?.promises : undefined) ?? turn.proposedPromises ?? [], reply, turn.id, intentAt, ports.timeZone ?? 'America/Los_Angeles'),
+          fulfills: probeTurn(journal.view, turn) ? [] : ((release?.revised ? turn.revision?.fulfills : undefined) ?? turn.proposedFulfills ?? []).filter(item => reply.includes(item.quote)
             && fulfillableCommitment(journal.view.commitments, item.id) && !journal.view.closed.has(item.id)
             && journal.view.commitments[item.id]!.source !== turn.id).map(item => item.id),
           ...(heldBack || reply === HOLDING_REPLY ? {} : sentObligations(turn, reply, intentAt)),
