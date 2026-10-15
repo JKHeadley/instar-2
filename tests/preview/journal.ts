@@ -1159,8 +1159,8 @@ export type JournalRecord =
   | { kind: 'held-notice-review'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'held-notice-intent'; id: string; text: string; chat: string; thread?: number; update: number; grant: string;
     /** Other held messages in this conversation the one notice also answers; none gets a second push (P-14). */
-    covers?: string[]; acknowledgement?: true; waitingProgress?: true; deliveryUnknown?: true; provenance?: OutboundProvenance; at: number }
-  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; waitingProgress?: true; at: number }
+    covers?: string[]; acknowledgement?: true; acknowledgementMode?: 'reaction-or-text'; waitingProgress?: true; deliveryUnknown?: true; provenance?: OutboundProvenance; at: number }
+  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
 
   // Non-additive: reservations/checks below may follow a sent reply; an older writer must refuse.
   | { kind: 'reply-review-after-send'; id: string; at: number }
@@ -1377,7 +1377,7 @@ export interface Turn { waitingProgress?: { at: number; sent?: number }; id: str
   toolRouted?: boolean;
   /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
   writer?: WriterRecord;
-  reserved: boolean; unusedToolCalls?: number; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentAt?: number; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; heldNoticeSentAt?: number; memoryPending?: true; memoryUnresolved?: true; memoryUndecided?: true; datedPending?: true;
+  reserved: boolean; unusedToolCalls?: number; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentAt?: number; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; acknowledgementMode?: 'reaction-or-text'; heldNoticeSent?: number; heldNoticeSentAt?: number; acknowledgementPath?: 'reaction' | 'text'; memoryPending?: true; memoryUnresolved?: true; memoryUndecided?: true; datedPending?: true;
   /** This turn's own answer decided what it withdrew: the keys it cancelled, or none. Rules 57, 93: a
    * recorded decision, including "withdraws none", settles the reminder question this turn opened. */
   reminderDecided?: true; askConflict?: string; lastNamedPerson?: string;
@@ -4344,12 +4344,20 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
         || item.heldNoticeIntent !== undefined || item.heldNoticeCoveredBy !== undefined || item.thread !== turn.thread)))
       throw Error('preview journal: held notice cover refused');
     for (const item of covered as Turn[]) item.heldNoticeCoveredBy = row.id;
-    turn.heldNoticeIntent = row.text; view.replies++; return;
+    if (row.acknowledgementMode !== undefined && (row.acknowledgementMode !== 'reaction-or-text'
+      || !acknowledgement || row.text !== REPLY_ACKNOWLEDGEMENT)) throw Error('preview journal: acknowledgement mode refused');
+    turn.heldNoticeIntent = row.text;
+    if (row.acknowledgementMode) turn.acknowledgementMode = row.acknowledgementMode;
+    view.replies++; return;
   }
   if (row.kind === 'held-notice-sent') {
     if (turn.heldNoticeIntent === undefined || turn.heldNoticeSent !== undefined
       || !Number.isSafeInteger(row.message) || row.message <= 0) throw Error('preview journal: held notice receipt order');
-    turn.heldNoticeSent = row.message; turn.heldNoticeSentAt = row.at; return;
+    if (row.acknowledgementPath !== undefined && (!['reaction', 'text'].includes(row.acknowledgementPath)
+      || turn.heldNoticeIntent !== REPLY_ACKNOWLEDGEMENT)) throw Error('preview journal: acknowledgement path refused');
+    turn.heldNoticeSent = row.message; turn.heldNoticeSentAt = row.at;
+    if (row.acknowledgementPath !== undefined) turn.acknowledgementPath = row.acknowledgementPath;
+    return;
   }
   if (row.kind === 'limited-intent') {
     const covered = Array.isArray(row.covers) ? row.covers.map(id => view.turns.get(id)) : [];
@@ -7799,10 +7807,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
       const outcome = await push('reply', target, provenance, { text, expectedText: text, chat, ...thread, update: turn.update, current }, () => {
         journal.append({ kind: 'held-notice-intent', id: turn.id, text, chat, ...thread, update: turn.update,
-          grant: journal.view.genesis.grant, acknowledgement: true, provenance, at: ports.now() });
+          grant: journal.view.genesis.grant, acknowledgement: true, acknowledgementMode: 'reaction-or-text', provenance, at: ports.now() });
       });
       if (outcome.kind === 'accepted') try {
-        journal.append({ kind: 'held-notice-sent', id: turn.id, message: outcome.message, at: ports.now() });
+        journal.append({ kind: 'held-notice-sent', id: turn.id, message: outcome.message,
+          acknowledgementPath: outcome.acknowledgementPath ?? 'text', at: ports.now() });
       } catch { /* exact acknowledgement intent remains UNKNOWN; never resent */ }
     };
     // A failure stays observable by the ordinary drain; timer and poll observers never throw unhandled rejections.
