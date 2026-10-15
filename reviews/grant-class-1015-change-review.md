@@ -20,9 +20,12 @@ Bug evidence: reproducer=tests/preview/tools-policy-class.test.ts
 Evidence details: Actual train-42 policy digest matches the live sealed grant. Completion-guidance head 7661a99b has different prose and digest but equal pinned execution fields; it refuses under the old record and resolves under the new sealed class record offline. Committed captures replay both real policy shapes. Negative tests change every non-policy subject, every policy field and cap, tools, permission mode, subagent execution settings and generated checkpoints. Exact-digest resolution remains green. No live provider call or deployment proof is claimed.
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains only sample hooks.
 Convergence: none
+Deferral: generated/register.json:1 | not-a-deferral=Inherited declarations are mechanically replayed; publication adds no deferred work.
 
 Decision: guidance-only-class | Reuse the existing sealed class-grant path with a new versioned class and exact policy/checkpoint projection; source citations and actual record evidence live in the desk progress report. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/grant-class-1015-PROGRESS.md
 
 simplestRobustRoute: This is the simplest robust route: one new case in the existing class resolver, with canonical pins excluding only system and subagent guidance prose. The broader existing class cannot prevent changes to tools or lower caps; silently aliasing the sealed digest would alter its recorded scope. Existing seal, authenticated source, grant liveness, exact subject checks and invocation digest guard entry; explicit pins and refusal tests guard the boundary. The actual candidate policy resolves offline. This is not an unattended model-execution or deployment claim.
+Publication: Regenerated the seven existing publication artifacts from source commit d4e15d413a7498d56c721db60b266735e81254eb using the existing replay generator; no declaration or approval was changed.
+
 80/20: Targeted direct consumers, exact recorded policy replay, architecture, typecheck, lint, register and required pinned tests; the pipeline owns the full suite.
 VERDICT: author submission; the independent desk records its own review
