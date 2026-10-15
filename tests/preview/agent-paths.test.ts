@@ -92,6 +92,13 @@ it.skipIf(process.platform !== 'darwin').each(folders)('setup and both boot comm
   expect(boot.status, boot.stderr).toBe(1); expect(boot.stderr).toContain(`~/${folder}`);
   const live = child(home, ['--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'run', '--root', root]);
   expect(live.status, live.stderr).toBe(1); expect(live.stderr).toContain(`~/${folder}`);
+  const legacy = child(home, ['--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/agent.mjs', 'run', '--root', root]);
+  expect(legacy.status, legacy.stderr).toBe(1); expect(legacy.stderr).toContain(`~/${folder}`);
+  const request = join(home, 'request.json'); writeFileSync(request, '{}');
+  const trust = child(home, ['scripts/setup-standing-trust.mjs', 'setup', root, request]);
+  expect(trust.status, trust.stderr).toBe(1); expect(trust.stderr).toContain(`~/${folder}`);
+  const authority = child(home, ['--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/conversation-authority-server.mjs', '--path', join(root, 'authority.log')]);
+  expect(authority.status, authority.stderr).toBe(1); expect(authority.stderr).toContain(`~/${folder}`);
   expect(existsSync(root)).toBe(false);
 }, 60000);
 it.skipIf(process.platform !== 'darwin')('physical storage, session and volume boundaries refuse independent unsafe paths', () => {

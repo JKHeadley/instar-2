@@ -785,6 +785,7 @@ async function main() {
   const ownersDirectory = () => {
     const directory = resolve(options['conversation-owners'] ?? process.env.INSTAR_CONVERSATION_OWNERS
       ?? join(homedir(), '.instar', 'conversation-owners'));
+    assertAgentPaths({ state: directory });
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     return realpathSync(directory);
   };

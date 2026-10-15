@@ -1,4 +1,5 @@
 // Operator setup for the existing effect doorway. This records authority; it never infers it.
+import { assertAgentPaths } from '../../scripts/agent-paths.mjs';
 import { readFileSync, renameSync, mkdirSync, openSync, closeSync, fsyncSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
@@ -66,6 +67,7 @@ function replace(path, value) {
  * Tighten can only remove grants/servers/reads or lower grant dollar ceilings; revoke removes all trust.
  * Existing runners reload the policy at each turn; restart after changing MCP configuration. */
 export function configureTrust(root, action, request) {
+  if (action === 'setup') assertAgentPaths({ root });
   const policyPath = join(root, 'effect-policy.json'), mcpPath = join(root, 'mcp.json');
   if (!['setup', 'revise', 'tighten', 'revoke'].includes(action)) throw Error('choose setup, revise, tighten or revoke');
   const oldRawPolicy = read(policyPath), oldPolicy = oldRawPolicy === null ? null : decodeEffectPolicy(oldRawPolicy), oldMcp = read(mcpPath);

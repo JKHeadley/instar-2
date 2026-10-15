@@ -22,8 +22,15 @@ Prompt review: No prompt, parser or model decision changed. Invocation policies 
 Decision: design-q-path-boundary | One shared physical helper called before setup/boot/storage/session/workspace mutation; no ambient IO added under src/. Preserve status/stop access and fail without changing user input. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/design-q-1015-PROGRESS.md
 Decision: design-q-awareness | Report the action-backed request coverage, missing tool-effect projection and in-flight snapshot gap with citations; do not implement Q1 changes, as instructed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/design-q-1015-PROGRESS.md
 
+Decision: design-q-alternate-entries | Reuse the guard at standing-trust initial setup, earlier preview run, independent conversation-owner state and conversation-authority startup, which could otherwise write before the existing guarded storage port. Preserve revise/tighten/revoke and stop. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/design-q-1015-PROGRESS.md
+Skip: tests/preview/agent-paths.test.ts:54 | scope=Permission-denial proof requires a non-root identity; root can traverse mode-000 directories.
+Skip: tests/preview/agent-paths.test.ts:71 | scope=Actual macOS command wiring; platform-independent helper and Linux no-op are tested without this skip.
+Skip: tests/preview/agent-paths.test.ts:78 | scope=Actual macOS misplaced-root emergency-stop command; no TCC guard exists on Linux.
+Skip: tests/preview/agent-paths.test.ts:85 | scope=Actual macOS install and boot refusal; Linux no-op has its own positive test.
+Skip: tests/preview/agent-paths.test.ts:104 | scope=Actual macOS physical storage/session/volume boundaries; Linux has no TCC restriction.
+
+Evidence: Build and typecheck pass. The actual entry tests pass 25/25, including independent workspace/state paths, symlinked and missing directories, Linux and emergency stop on an existing misplaced root. Canonical policy measurements match both required digests. Final pushed-head targeted/pinned checks and exact architecture/publication exceptions are recorded in the absolute desk PROGRESS file.
+
 simplestRobustRoute: This is the simplest robust route: one small real-path guard reused at the existing physical boundaries. Lexical checks alone miss aliases; a boot-only check misses first-install writes; a root-only check misses separately located session state and workspace mounts. These are the named failures each use prevents. No watcher, new store, policy digest, runtime model call or new core port. Start guard is the resolved allowed location; end evidence is actual isolated command refusal and accepted normal setup, with all five existing floors retained. No autonomous capability or live-user acceptance claim is made.
 80/20: Targeted foreground filesystem and command tests, architecture/lint/register checks, pinned READY checks and author diff review. The native macOS conformance certificate is byte-bound to the changed physical composition; only the desk may renew it under the builder charter.
 VERDICT: author submission; independent review pending
-
-Evidence: Build and typecheck pass. The actual entry tests pass 25/25, including independent workspace/state paths, symlinked and missing directories, Linux and emergency stop on an existing misplaced root. Canonical policy measurements match both required digests. Final pushed-head targeted/pinned checks and exact architecture/publication exceptions are recorded in the absolute desk PROGRESS file.
