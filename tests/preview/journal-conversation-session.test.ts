@@ -591,6 +591,21 @@ it('sends under the exact answer/session cap and records unavailable review with
   } finally { await f.close(); }
 });
 
+it('recovers queued reviews from durable sends after compaction and restart, without repeating delivery', async () => {
+  let reviews = 0;
+  const f = fixture(true, true, 200, { replyReviewTiming: 'after-send', replyCheck: {
+    elapsedMs: () => 0, jev: async () => { reviews++; return { value: {}, latencyMs: 0 }; },
+    escalate: async () => ({ verdict: 'pass', confidence: 1, latencyMs: 1, ruleIds: [] }) } });
+  try {
+    f.worker.intake([update(1, 'First question'), update(2, 'Second question')]); await f.worker.drain();
+    expect(f.sent).toHaveLength(2); expect(reviews).toBe(0);
+    f.worker.checkCoherence(); f.journal.compact(); await f.restart();
+    await f.worker.reviewReplies(); await f.worker.drain(); await f.worker.reviewReplies();
+    expect(reviews).toBe(2); expect(f.sent).toHaveLength(2);
+    expect(f.journal.view.order.every(turn => turn.afterSendReview && turn.checked !== undefined)).toBe(true);
+  } finally { await f.close(); }
+});
+
 it('recovers an interrupted paid review as an unavailable signal without dispatching it again', async () => {
   const f = fixture();
   f.worker.intake([update(1, 'Question')]); await f.worker.drain(); await f.worker.reviewReplies();

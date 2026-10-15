@@ -20,11 +20,12 @@ Hook bypass: none; core.hooksPath is unset; hooks directory inspection is record
 Convergence: none
 Decision: review-async-queue | Reuse durable reply intents as the review queue and run one serial host task outside the send drain; provider ceilings remain unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/review-async-1015-PROGRESS.md
 Decision: review-async-projection | Project only the completed or recovered review into its reply coherence record, so ordinary checks cannot prematurely hide findings. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/review-async-1015-PROGRESS.md
+Decision: review-async-publication | Refresh existing owner-source pins and regenerate the shape-only register after committing source changes; no policy or declaration is widened. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/review-async-1015-PROGRESS.md
 Prompt review: No prompt, parser, verdict policy or invocation-policy wording changed. Replay covers the recorded summary writer and uncertain summary, Jev unsure/undecided, reply-review and delivered/empty output shapes through the asynchronous consumer and unchanged readers; injected latency proves scheduling independently of machine load.
 Prompt finding: 849db3a6296a | protocol-literal | Existing fixed protocol/citation guidance in journal.ts; unchanged by this scheduling change.
 Prompt finding: e8708c7fea24 | protocol-literal | Existing fixed protocol/citation guidance in journal.ts; unchanged by this scheduling change.
 
-Subject (4 paths): tests/preview/journal-agent.mjs, tests/preview/journal-conversation-session.test.ts, tests/preview/journal.ts, tests/preview/rule89-speakers.test.ts
+Subject (source plus generated publication): tests/preview/journal-agent.mjs, tests/preview/journal-conversation-session.test.ts, tests/preview/journal.ts, tests/preview/rule89-speakers.test.ts
 
 ## Closing block
 
