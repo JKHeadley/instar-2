@@ -15,7 +15,7 @@ Undo and recovery: Revert this change and its publication together; no journal m
 Multi-machine posture: Exit stderr is deliberately machine-local, captured by that runner's launcher. Both standby and owner exit paths report their existing reason; shared authority, replication and send ownership remain unchanged.
 Layer below: Inspected default cycles, lane.settle, ordinary-lane pending wake and peer admission, journal intake/send persistence, exit revival disposition, launcher restart loop and login-pool selection. Read-only live runs and decrypted frame metadata match both reported exit timestamps.
 Bug class: integration
-Bug evidence: reproducer=runner-group-trial.log lines 449/460 show code=0 without reason while live runs.jsonl lines 1864/1880 record cycle limit reached; tests/preview/journal-agent.test.ts asserts exact one-line reasons for cycle, signals and refusal; tests/preview/runner-exit-reason.test.ts exercises queued intake and delayed send across three real process launches.
+Bug evidence: reproducer=tests/preview/journal-agent.test.ts
 Hook bypass: none
 Convergence: none
 Decision: runner-exit-observation | Mirror existing durable exit causes once on stderr; preserve lifecycle and recovery policy. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/runner-exit-reason-1014-PROGRESS.md
