@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Production journal metadata and model revision guidance change.
-Side effects: The existing register generator refreshes the committed source publication for the changed producer. Valid final-text declarations supersede stale answer declarations when the revision is selected. Legacy fields preserve existing behavior. Malformed declarations produce zero proposals through existing validators. Fulfillment retains exact-quote and commitment support checks.
+Side effects: The existing register generator refreshes the committed source publication, including the final offered-id admission repair. Valid final-text declarations supersede stale answer declarations when the revision is selected. Legacy fields preserve existing behavior. Malformed declarations produce zero proposals through existing validators. Fulfillment retains exact-quote and commitment support checks.
 Undo and recovery: Revert the three implementation files with their regression. Optional journal fields require no migration. Preserve sent receipts throughout rollback.
 Multi-machine posture: Metadata rides the existing encrypted shared journal and current conversation owner. Restart replay consumes the durable revision before sending once.
 Layer below: Inspected promiseProposals, fulfillmentProposals, fulfillmentSupported, recordedPromises, revision parsing, journal projection, revision selection and durable intent construction. agent-commitment.ts remains unchanged.
