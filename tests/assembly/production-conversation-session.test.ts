@@ -147,6 +147,20 @@ it('stop prevents launch, and stops an active turn without dispatching queued in
   expect(f.delivered).toHaveLength(1); expect(f.state().inputs[1]!.state).toBe('queued'); await f.port.close();
 });
 
+it('resource refusal retains queued input and liability without a phantom worker or charge', async () => {
+  const f = fixture(); const admit = f.config.resources.admit;
+  Object.assign(f.config.resources, { admit: async () => null });
+  expect(await f.port.run(f.request('one'))).toMatchObject({ state: 'queued' });
+  expect(f.state()).toMatchObject({ worker: null, claim: null, spent: 0, reserved: true });
+  expect(f.state().inputs[0]).toMatchObject({ state: 'queued', delivery: null, attempts: 0 });
+  expect(f.admissions).toHaveLength(0); expect(f.delivered).toHaveLength(0);
+  await f.port.maintain(); expect(f.closed).toHaveLength(0);
+  Object.assign(f.config.resources, { admit }); await f.port.maintain();
+  expect(await f.port.collect('one')).toMatchObject({ outcome: { state: 'complete' } });
+  expect(f.edges.filter(row => row.type === 'SessionWorkEdge' && !row.drawsOn)).toHaveLength(1);
+  expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1); await f.port.close();
+});
+
 it('close waits for admission and releases a late lease without launching', async () => {
   const f = fixture(); let release!: () => void; let entered!: () => void;
   const ready = new Promise<void>(resolve => { entered = resolve; });

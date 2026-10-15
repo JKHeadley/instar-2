@@ -17,7 +17,7 @@ async function until(test: () => boolean) { for (let i = 0; i < 500 && !test(); 
 function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16, lifetime = 2000) {
   let state: ConversationTopicsState | null = null, now = 1000, live = 0, peak = 0, stopped = false, authorized = true, saveFails = false;
   let batchOutput: string | undefined, evidenceUnreadable = false;
-  const held = new Set<string>(), launches: { topic: string; worker: HarnessWorkerHandle }[] = [];
+  const exited = new Set<string>(), held = new Set<string>(), launches: { topic: string; worker: HarnessWorkerHandle }[] = [];
   const delivered: { topic: string; input: HarnessInputDelivery }[] = [], closed: string[] = [];
   const edges: (SessionWorkEdge | SessionWorkEdgeClose)[] = [];
   const config: ConversationTopicsConfig = {
@@ -43,6 +43,7 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16, lifetime = 200
         delivered.push({ topic, input }); return { state: 'accepted', evidence: 'fake' };
       },
       observe: async input => {
+        if (!input.delivery && exited.has(topic)) return { observations: [{ kind: 'exit', evidence: 'exited:worker-exit' }], cursor: input.cursor + 1, complete: true };
         if (!input.delivery || held.has(topic)) return { observations: [], cursor: input.cursor, complete: true };
         const ids = state!.topics[topic]!.inputs.find(row => row.request.operation === input.delivery!.operation)!.batch ?? [];
         const text = batchOutput ?? (ids.length > 1 ? JSON.stringify({ results: ids.map(operation => ({ operation, answer: { reply: `answer to ${operation}`, memory: [] } })) }) : `answer in ${topic}`);
@@ -54,7 +55,7 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16, lifetime = 200
   };
   let port = value(createConversationTopicsPort(config));
   const request = (operation: string) => ({ operation, question: 'hello', context: 'shared memory: Wren; own topic history', authority: 'grant' });
-  return { get port() { return port; }, config, request, held, launches, delivered, closed, edges,
+  return { get port() { return port; }, config, request, held, exited, launches, delivered, closed, edges,
     batchOutput: (text: string) => { batchOutput = text; },
     unreadableEvidence: () => { evidenceUnreadable = true; },
     state: () => state!, counts: () => ({ live, peak }), advance: (ms: number) => { now += ms; },
@@ -393,6 +394,38 @@ it('a replacement also waits for headroom while a healthy retained worker can st
   room = true; await f.port.maintain();
   expect(await f.port.collect('7:c')).toMatchObject({ outcome: { state: 'complete' } });
   expect(f.launches).toHaveLength(2); await f.port.close();
+});
+
+it('an observed idle exit cannot replace a worker without current capacity', async () => {
+  const f = fixture(); let room = true;
+  Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: !room }) });
+  await f.port.run(f.request('7:a'));
+  room = false; f.exited.add('7');
+  expect(await f.port.run(f.request('7:b'))).toMatchObject({ state: 'queued' });
+  expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+  expect(f.state().topics['7']!.inputs[1]).toMatchObject({ state: 'queued', delivery: null, attempts: 0 });
+  room = true; f.exited.clear(); await f.port.maintain();
+  expect(await f.port.collect('7:b')).toMatchObject({ outcome: { state: 'complete' } });
+  expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(2);
+  await f.port.maintain(); expect(f.delivered).toHaveLength(2); await f.port.close();
+});
+
+it('capacity is measured after a busy slot wait and queued input drains when it returns', async () => {
+  const f = fixture(1); let room = true, waiting = false;
+  Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: !room }) });
+  f.held.add('7'); const first = f.port.run(f.request('7:a'));
+  await until(() => f.delivered.length === 1);
+  f.config.io.wait = async () => { waiting = true; await tick(); };
+  const second = f.port.run(f.request('8:b'));
+  await until(() => waiting);
+  room = false; f.held.clear(); await first;
+  expect(await second).toMatchObject({ state: 'queued' });
+  expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+  expect(f.state().topics['8']!.inputs[0]).toMatchObject({ state: 'queued', delivery: null, attempts: 0 });
+  room = true; await f.port.maintain();
+  expect(await f.port.collect('8:b')).toMatchObject({ outcome: { state: 'complete' } });
+  expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(2);
+  await f.port.maintain(); expect(f.delivered).toHaveLength(2); await f.port.close();
 });
 
 const recordedCapacityShapes = JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {

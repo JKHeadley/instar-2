@@ -68,20 +68,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       const io = local?.io ?? config.io, resources = local?.resources ?? config.resources;
       const result = createConversationSessionPort({ ...config, ...local, batchWaiting: true, conversation: `${config.conversation}:${topic}`, allowanceDeadline: parentDeadline(),
         stopped: () => stopped || config.stopped(),
-        prepareTurn: async input => {
-          // Existing workers keep their context. Pressure delays only a new worker;
-          // returning false uses the existing durable wait and honest notice path.
-          if (!await ((local?.prepareTurn ?? config.prepareTurn)?.(input) ?? true)) return false;
-          const row = state.topics[topic];
-          const replacement = !active.has(topic) || !row || config.now() >= row.deadline
-            || row.turns >= config.maxSteps || row.authority !== (local?.currentAuthority ?? config.currentAuthority)();
-          if (replacement && row?.inputs.some(pending => pending.state === 'queued') && config.capacity) {
-            let room = await config.capacity();
-            if (room.memoryPressure && await reclaim()) room = await config.capacity();
-            if (!room.admit) return false;
-          }
-          return true;
-        },
+        prepareTurn: async input => (local?.prepareTurn ?? config.prepareTurn)?.(input) ?? true,
         store: { load: () => state.topics[topic] ?? null, save: next => {
           ensure(spent() - (state.topics[topic]?.spent ?? 0) + next.spent <= config.maxCalls, 'installation call allowance exhausted');
           persist({ topics: { ...state.topics, [topic]: next } });
@@ -114,6 +101,13 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
               ensure(config.now() < parentDeadline(), 'parent lifetime exhausted');
             }
             ensure(!stopped && !config.stopped() && config.authorized(), 'topic dispatch stopped or grant unavailable');
+            // Only actual new workers pass here, after replacement is known and
+            // the serialized slot wait has ended. Resident turns keep their context.
+            if (config.capacity) {
+              let room = await config.capacity();
+              if (room.memoryPressure && await reclaim()) room = await config.capacity();
+              if (!room.admit) return null;
+            }
             let lease = await resources.admit();
             if (!lease) {
               // The installation resource owner may have a tighter ceiling (or

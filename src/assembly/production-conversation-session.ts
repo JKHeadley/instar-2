@@ -274,7 +274,13 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       }
       const edge = state.edge!;
       ensure(state.reserved, 'parent liability not confirmed; no worker may launch');
-      lease = await config.resources.admit(); ensure(lease !== null, 'host refused conversation resources'); guard();
+      lease = await config.resources.admit(); guard();
+      if (!lease) {
+        // No process admission or input dispatch occurred. Keep queued custody and
+        // the existing liability; no unlaunched claim needs process reconciliation.
+        persist({ claim: null, incarnation: null, authority: null });
+        return false;
+      }
       // A replacement claim draws on the existing parent liability. Admission receives only
       // the remaining allowance, including calls by every prior process, never a fresh cap.
       const processEdge: SessionWorkEdge = freeze({ ...edge, id: `${claim}:process`, child: claim,
@@ -285,6 +291,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       const worker = await adapter.launch({ operation: claim, claim, artifact: config.artifact, incarnation, workingScope: config.workingScope });
       ensure(worker.claim === claim && worker.incarnation === incarnation && worker.launch, 'launch identity differs from admission');
       persist({ worker }); await lease.attach(worker.launch); guard();
+      return true;
     };
     const work = async (waiting: readonly string[]) => {
       let ids = waiting;
@@ -303,7 +310,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           replaceNeeded = observed.observations.some(event => event.kind === 'exit');
           ensure(!observed.observations.some(event => event.kind === 'paused'), 'paused worker requires reconciliation');
         }
-        if (replaceNeeded) await replace(request);
+        if (replaceNeeded && !await replace(request)) return false;
         guard(); ensure(calls() < config.maxCalls, 'conversation call allowance exhausted');
         const admission = config.io.admissionState(state.claim!);
         ensure(admission !== null && !admission.refused, 'conversation admission unreadable or allowance refused');
