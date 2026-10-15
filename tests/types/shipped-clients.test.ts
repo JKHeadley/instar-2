@@ -32,12 +32,14 @@ function certifiedFixture() {
   return sources;
 }
 
-it('reports the combined build as unproven until the native Studio contract is rerun', () => {
+it('reports the Studio-certified composition and admits it only on its exact runtime', () => {
   const sources = registerDeclarationSources();
   const tuple = parityMatrix(sources).harnessTuples.find(tuple => tuple.harness === NATIVE_HARNESS && tuple.doorway === 'claude-code-subscription');
-  expect(tuple).toMatchObject({ status: 'unproven', reason: expect.stringContaining('desk owns the macOS contract') });
-  expect(tuple).not.toHaveProperty('conformance');
-  expect(selfHostCompositionEvidence().supported).toBe(false);
+  expect(tuple).toMatchObject({ status: 'supported', platform: 'darwin' });
+  const evidence = selfHostCompositionEvidence();
+  expect(tuple!.conformance).toEqual([evidence.declared]);
+  expect(evidence.declared).toBe(compositionDigest(tuple!.runtime[0]!, evidence.files, read));
+  expect(evidence.supported).toBe(currentRuntime() === tuple!.runtime[0]);
   expect(lintParityRegister(sources, read, ['claude-code-subscription'])).toEqual([]);
 });
 

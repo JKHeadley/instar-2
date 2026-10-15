@@ -16,12 +16,13 @@ Multi-machine posture: Shared declaration carries evidence only for the exact Da
 Layer below: Inspected compositionClosure, compositionDigest, currentRuntime and selfHostCompositionEvidence. The unchanged contract exercises the actual confined local build, test and install through owner admissions, plus provider refusal, stop, restart and bounded readiness.
 Bug class: none
 Bug evidence: Evidence maintenance only. Before renewal, all nine behavioral cases passed; only the stale certificate assertion failed. The clarified desk brief permits renewal in exactly this case and requires 10/10 afterward. Its exact certificate assertion and architecture R105 verify the resulting declaration; before/after logs are retained in the absolute PROGRESS location.
+Test expectation: The inherited shipped-clients assertion expected the combined build to remain unproven until this Studio rerun. It now requires the supported Darwin declaration, its computed composition digest and admission only on the exact runtime. Existing synthetic checker cases retain invalid-certificate coverage. Native contract passed 10/10 after renewal; shipped-clients passed 6/6 after this expectation repair.
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains samples only.
 Convergence: none
 
 Decision: train-31-darwin-conformance | train-31 Darwin conformance re-declared for its composition; use existing digest helpers after all behavioral cases pass, then verify the renewed certificate and replay publication. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-31-darwin-1014-PROGRESS.md
 
-Subject (1 paths): src/assembly/harness.declarations.json
+Subject (2 paths): src/assembly/harness.declarations.json, tests/types/shipped-clients.test.ts
 
 ## Closing block
 
