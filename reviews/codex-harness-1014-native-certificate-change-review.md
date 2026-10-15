@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: significant
 Tier rationale: Conformance evidence renewal after a source repair, with the existing real native contract and runtime/closure checks; no new capability or authority.
-Side effects: The supported native tuple certificate now names the successfully tested 259-file composition. Existing entries, runtime, ability and contract reference stay intact.
+Side effects: The supported native tuple certificate now names the successfully tested 259-file composition. Existing entries, runtime, ability and contract reference stay intact. The existing replay generator refreshed the seven generated register outputs from committed source d792291ec954e4071da192771496fd144aa38ecd; replay remains shape-only register evidence, while the native contract execution supplies conformance evidence.
 Undo and recovery: Revert this certificate if its supporting evidence is invalid; rerun the exact native contract before any replacement. Do not substitute a computed hash without execution or narrow supported ability.
 Multi-machine posture: Certificate binds the native darwin composition and exact runtime. Other machine/harness tuples are unchanged. Physical processes remain local; shared ownership and durable intake are unchanged.
 Layer below: Read compositionClosure/compositionDigest, native contract, native self-host driver and parity lint. Confirmed actual Studio host and Node 24.14.1 runtime. Captured the exact closure before the contract and checked it remained identical before recording the certificate.
@@ -20,7 +20,7 @@ Hook bypass: none; core.hooksPath and shared sample-only hooks directory checked
 Convergence: none
 Decision: codex-harness-1014-native-renewal | The desk requested renewal on the Studio: execute the actual named contract before updating the exact matching composition certificate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/codex-harness-1014-repair-PROGRESS.md
 
-Subject (1 paths): src/assembly/harness.declarations.json
+Subject (8 paths): src/assembly/harness.declarations.json, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 ## Closing block
 
