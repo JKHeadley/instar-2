@@ -287,11 +287,11 @@ const sendFunction = sendCode.slice(0, sendCode.lastIndexOf(' });'));
 
 it.each([true, false])('shipped send delivers answers and terminal notices when original exists: %s', async originalExists => {
   for (const text of ['A reviewed answer.', GROUP_REVIEW_FINAL_NOTICE]) {
-    let admitted = 0, networkSends = 0;
+    let admitted = 0, networkSends = 0, typingStops = 0;
     const outcomes: string[] = [], phases: string[] = [];
     const send = Function('journal', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'ownerHeld', 'shared',
       'GROUP_DISCLOSURE_HOLD_NOTICE', 'isGroupReviewFinalNotice', 'requireGroupDisclosure', 'physical', 'secretRef',
-      'token', 'classifyTelegramSend', 'g', `return (${sendFunction});`)(
+      'token', 'classifyTelegramSend', 'g', 'typing', `return (${sendFunction});`)(
       { verifyOutbound: () => true, view: { expires: friday9 + 1000, stop: false } },
       { value: false }, () => false, '/test/stop', () => friday9, () => true,
       { admit: async () => { expect(admitted).toBe(1); return null; },
@@ -309,11 +309,13 @@ it.each([true, false])('shipped send delivers answers and terminal notices when 
             description: 'Bad Request: message to be replied not found' }) };
         return { kind: 'response', status: 200, bytes: JSON.stringify({ ok: true, result: {
           chat: { id: Number(body.chat_id) }, text: body.text, message_thread_id: body.message_thread_id, message_id: 7 } }) };
-      } }, (x: string) => x, () => 'TEST', classifyTelegramSend, { forum: true });
+      } }, (x: string) => x, () => 'TEST', classifyTelegramSend, { forum: true }, { stop: (chat: string, thread: number) => {
+        expect(chat).toBe(scope.chat); expect(thread).toBe(3); typingStops++;
+      } });
     expect(await send({ text, expectedText: text, chat: scope.chat, thread: 3, replyTo: 6,
       target: 'TEST-reply', provenance: {}, admit: () => { admitted++; },
       observeSendPhase: (phase: string) => { phases.push(phase); } })).toEqual({ kind: 'accepted', message: 7 });
-    expect(networkSends).toBe(1); expect(admitted).toBe(1); expect(outcomes).toEqual(['accepted']);
+    expect(networkSends).toBe(1); expect(typingStops).toBe(1); expect(admitted).toBe(1); expect(outcomes).toEqual(['accepted']);
     expect(phases).toEqual(['audienceAdmittedAt', 'transportBegunAt', 'transportReturnedAt']);
   }
 });
@@ -344,10 +346,10 @@ it.each([['model', false], ['subscription', false], ['send', false], ['model', t
   const shared = { admit: async () => {
     expect(activeJournal.view.order.find(t => t.requestedAction)?.intent).toBeDefined(); claims++; return null;
   }, outcome: async () => {} };
-  const send = Function('journal', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'ownerHeld', 'shared', 'GROUP_DISCLOSURE_HOLD_NOTICE', 'isGroupReviewFinalNotice', 'requireGroupDisclosure', 'physical', 'secretRef', 'token', 'classifyTelegramSend', 'g', `return (${sendFunction});`)(
+  const send = Function('journal', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'ownerHeld', 'shared', 'GROUP_DISCLOSURE_HOLD_NOTICE', 'isGroupReviewFinalNotice', 'requireGroupDisclosure', 'physical', 'secretRef', 'token', 'classifyTelegramSend', 'g', 'typing', `return (${sendFunction});`)(
     journalProxy, { value: false }, () => false, '/test/stop', () => friday9, () => true, shared,
     GROUP_DISCLOSURE_HOLD_NOTICE, isGroupReviewFinalNotice, requireAt('send'), { invoke: () => { expect(claims).toBe(1); networkSends++; return {}; } },
-    (x: string) => x, () => 'TEST', () => ({ kind: 'accepted', message: 1 }), w.destination.view.genesis);
+    (x: string) => x, () => 'TEST', () => ({ kind: 'accepted', message: 1 }), w.destination.view.genesis, { stop: () => {} });
   const bindings = { now: () => friday9, stopped: () => false, timeZone: 'America/Los_Angeles',
     ...(host.includes('      sendAdmits: true,') ? { sendAdmits: true as const } : {}), checkOutbound: () => {}, groupDisclosure: async () => true, prepareModel: (input: Input) => JSON.stringify({ messages: [{ role: 'context', content: input.context }, { role: 'user', content: input.question }] }), model, send };
   await createJournalWorker(w.destination, bindings).sendRequested();
