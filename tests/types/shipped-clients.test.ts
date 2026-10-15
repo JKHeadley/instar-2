@@ -37,9 +37,9 @@ it('reports the Studio-certified composition and admits it only on its exact run
   const tuple = parityMatrix(sources).harnessTuples.find(tuple => tuple.harness === NATIVE_HARNESS && tuple.doorway === 'claude-code-subscription');
   expect(tuple).toMatchObject({ status: 'supported', platform: 'darwin' });
   const evidence = selfHostCompositionEvidence();
-  expect(tuple!.conformance).toEqual([evidence.declared]);
-  expect(evidence.declared).toBe(compositionDigest(tuple!.runtime[0]!, evidence.files, read));
-  expect(evidence.supported).toBe(currentRuntime() === tuple!.runtime[0]);
+  expect(tuple).toMatchObject({ conformance: [evidence.declared], runtime: [evidence.declaredRuntime] });
+  expect(evidence.declared).toBe(compositionDigest(evidence.declaredRuntime, evidence.files, read));
+  expect(evidence.supported).toBe(currentRuntime() === evidence.declaredRuntime);
   expect(lintParityRegister(sources, read, ['claude-code-subscription'])).toEqual([]);
 });
 
