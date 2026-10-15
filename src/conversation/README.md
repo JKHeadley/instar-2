@@ -11,6 +11,6 @@ Multi-machine posture: both ports use the same shared fact store and conversatio
 ## Capabilities
 
 - `telegram-conversation-adapter`: long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway.
-  Details: receives Telegram updates by long polling from the bound bot, authenticates the sender and chat, and hands one ordinary reply per admitted message to the effect doorway; media, reactions, typing, edits and deletions are inhibited.
+  Details: receives Telegram updates by long polling from the bound bot, authenticates the sender and chat, and hands one ordinary reply per admitted message to the effect doorway; general media, reaction, typing, edit and delete operations are inhibited. The journal runner has a narrower fixed acknowledgement: 👀 on the inbound message after seven seconds, with text fallback on definite rejection, and bounded reply typing. These are the acknowledgement-reaction and reply-typing parity rows; no arbitrary reaction or typing tool is granted.
 - `slack-conversation-adapter`: receives Slack Socket Mode messages from one bound direct message or thread into intake; it is dark and has no live proof.
 - `slack-ordinary-reply`: prepares a plain-text Slack reply to the bound direct message or thread; it is dark and refuses to send.

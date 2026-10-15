@@ -4,14 +4,14 @@
 // an operator message is stored before use; status reports all of it.
 import { expect, it } from 'vitest';
 import { spawn, spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, PER_RULE_PASS } from './successive-fixture.js';
 
 const TOKEN = 'ghp_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8';
 
-it.each([0, 6999, 7000, 8200, 10200])('PREVIEW-HOST-RESOURCE-FUNNEL records resources, custody and fixed slow acknowledgement (elapsed=%sms)', async elapsed => {
+it.each([[0, false], [6999, false], [7000, false], [8200, true], [10200, false]])('PREVIEW-HOST-RESOURCE-FUNNEL records resources, custody and acknowledgement (elapsed=%sms, fallback=%s)', async (elapsed, fallback) => {
   const acknowledgementDue = elapsed >= 7000;
   const world = successiveWorld(), root = join(world.directory, 'resource-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
@@ -77,7 +77,7 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     advanced = true; advance(${elapsed});
     // Keep the answer pending until both real HTTP acknowledgement sends have reached the endpoint.
     const deadline = performance.now() + 30000;
-    while (${acknowledgementDue} && (!existsSync(${JSON.stringify(`${log}.sends`)}) || readFileSync(${JSON.stringify(`${log}.sends`)}, 'utf8').trim().split('\\n').length < 2)) {
+    while (${acknowledgementDue} && (!existsSync(${JSON.stringify(`${log}.${fallback ? 'sends' : 'actions'}`)}) || readFileSync(${JSON.stringify(`${log}.${fallback ? 'sends' : 'actions'}`)}, 'utf8').trim().split('\\n').filter(line => ${fallback} || JSON.parse(line).method === 'setMessageReaction').length < 2)) {
       if (performance.now() >= deadline) throw Error('fixture acknowledgement delivery did not complete');
       await new Promise(resolve => setTimeout(resolve, 10));
     }
@@ -94,7 +94,7 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     return { url: ${JSON.stringify(pathToFileURL(provider).href)}, shortCircuit: true };
   return next(specifier, context);
 }\n`);
-  const endpoint = spawn(process.execPath, [join(process.cwd(), 'tests/preview/journal-poll-endpoint.mjs'), log, updates],
+  const endpoint = spawn(process.execPath, [join(process.cwd(), 'tests/preview/journal-poll-endpoint.mjs'), log, updates, '', '', fallback ? 'reaction-fail' : ''],
     { stdio: ['ignore', 'pipe', 'pipe'] });
   try {
     const port = await new Promise((done, fail) => {
@@ -114,14 +114,19 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     { cwd: process.cwd(), encoding: 'utf8', timeout: 90000, env });
     expect(run.error, run.stderr).toBeUndefined();
     expect(run.signal, run.stderr).toBeNull();
-    expect(run.status, run.stderr).toBe(0);
+    expect(run.status, `${run.stderr}\n${existsSync(join(root, 'runs.jsonl')) ? readFileSync(join(root, 'runs.jsonl'), 'utf8') : ''}`).toBe(0);
     const sent = readFileSync(`${log}.sends`, 'utf8');
     expect(sent).toContain('Noted.');
     expect(sent).not.toContain(TOKEN);
     const sends = readFileSync(`${log}.sends`, 'utf8').trim().split('\n').map(line => JSON.parse(line));
-    expect(sends.filter(row => row.text === 'Checking that now.')).toHaveLength(acknowledgementDue ? 2 : 0);
+    expect(sends.filter(row => row.text === 'Checking that now.')).toHaveLength(acknowledgementDue && fallback ? 2 : 0);
     // Both messages arrived together; the second also waited through the slow first turn.
-    expect(new Set(sends.filter(row => row.text === 'Checking that now.').map(row => row.reply_parameters.message_id)).size).toBe(acknowledgementDue ? 2 : 0);
+    expect(new Set(sends.filter(row => row.text === 'Checking that now.').map(row => row.reply_parameters.message_id)).size).toBe(acknowledgementDue && fallback ? 2 : 0);
+    const actions = existsSync(`${log}.actions`) ? readFileSync(`${log}.actions`, 'utf8').trim().split('\n').map(line => JSON.parse(line)) : [];
+    const reactions = actions.filter(row => row.method === 'setMessageReaction');
+    expect(reactions).toHaveLength(acknowledgementDue ? 2 : 0);
+    expect(new Set(reactions.map(row => row.message_id)).size).toBe(acknowledgementDue ? 2 : 0);
+    expect(reactions.every(row => row.reaction[0].emoji === '👀')).toBe(true);
     expect(sends.at(-1).text).toContain('Noted.');
     expect(sends.filter(row => row.text.includes('Noted.')), JSON.stringify(sends)).toHaveLength(2);
     // The model never received the secret; it saw the stored reference instead.

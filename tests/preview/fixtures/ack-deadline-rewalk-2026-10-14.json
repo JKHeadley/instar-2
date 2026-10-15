@@ -1,6 +1,7 @@
 {
   "source": "lanes/step1-rewalk-1014-records/walk-a/smoke-frames.json",
   "sha256": "d773faa903ee2b9f2501d050c358e23a15b1db1f016984b523df1de01fc87f01",
+  "replayMeasure": "acknowledged (reaction or text) under 10000 ms; captured historical text and timing remain unchanged",
   "frames": [
     {
       "kind": "intake",

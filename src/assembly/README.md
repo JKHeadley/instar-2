@@ -163,6 +163,12 @@ backpressure at 64 pending inputs, 4096 retained inputs and 1 MiB per input, pre
 all already accepted records. A queued input remains queued after a proved non-dispatch;
 a dispatched but unresolved input becomes uncertain on restart and is never replayed.
 A repeated exact input returns its recorded outcome; conflicting bytes refuse.
+Waiting messages use the largest arrival-order prefix whose serialized delivery fits
+1 MiB; the suffix stays queued and a lone message uses its ordinary prompt. On restart,
+a completed batch may be recovered from its correlated adapter receipt and the existing
+journal's process and completed child edges, even when the old admission gate is gone.
+Missing or invalid evidence retires the old worker and records uncertainty without
+replaying its tools or preventing later messages from draining.
 
 Each OS process gets a fresh claim and incarnation, its own 64-input/one-hour ceiling,
 and only the unused portion of the original 128-call reservation. Every process deadline
@@ -227,3 +233,19 @@ Continuing topic workers can use a host-supplied `prepareTurn` boundary and
 `topicConfig` binding for reviewed account-pool moves. The host serializes the
 boundary with its queue, retires only that worker, and keeps the shared allowance
 and durable intake. See [topic login pool](../../docs/topic-login-pool.md).
+
+Topic hosts take a snapshot of waiting messages in arrival order and deliver them in one
+continuing turn. The journal prepares and reserves each intake separately; the batch result
+names each operation, and the host persists every result in one atomic snapshot. Each answer
+then uses the existing journal validation and unique send intent. A lone waiting message
+keeps the original envelope. A closed batch whose result was not yet checkpointed is read
+through the correlated adapter before worker retirement; queued messages still drain after
+restart. An interrupted tool-bearing turn without a correlated completion remains uncertain,
+never automatically repeated as if its effects had not happened.
+
+While a message waits behind a reserved turn, the journal can send one fixed progress line
+after 45 seconds (Rule 87's bounded pace; the unit brief selects the interval). Durable
+progress intents bound it to one per message and one per topic per 45 seconds, including
+across restart. The ordinary send doorway still enforces audience, secrets, stop and reply
+allowance. Uncertain sends are not repeated. These additive custody fields retain existing
+records; rollback requires a reader that understands them, never deleting the journal.

@@ -6,12 +6,16 @@ import type { HarnessInputDelivery, HarnessWorkerHandle } from '../../src/assemb
 import type { SessionWorkEdge, SessionWorkEdgeClose } from '../../src/assembly/production-session-work.js';
 import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
+import { nestedSessionWorkEdge, nestedSessionWorkClose } from '../../src/assembly/production-session-work.js';
+// @ts-expect-error the shipped admission checkpoint is JavaScript
+import { createAdmissionGate } from '../preview/admission-gate.mjs';
 const digest = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const tick = () => new Promise<void>(resolve => setTimeout(resolve, 1));
 async function until(test: () => boolean) { for (let i = 0; i < 500 && !test(); i++) await tick(); expect(test()).toBe(true); }
 
 function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16) {
   let state: ConversationTopicsState | null = null, now = 1000, live = 0, peak = 0, stopped = false, authorized = true, saveFails = false;
+  let batchOutput: string | undefined, evidenceUnreadable = false;
   const held = new Set<string>(), launches: { topic: string; worker: HarnessWorkerHandle }[] = [];
   const delivered: { topic: string; input: HarnessInputDelivery }[] = [], closed: string[] = [];
   const edges: (SessionWorkEdge | SessionWorkEdgeClose)[] = [];
@@ -23,6 +27,7 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16) {
     workingScope: '/scope', resultDirectory: '/scope/results', artifact: 'artifact', incarnation: 'boot',
     store: { load: () => structuredClone(state), save: next => { if (saveFails) throw Error('disk'); state = structuredClone(next); } },
     append: row => { edges.push(row); },
+    recoveryEdges: () => { if (evidenceUnreadable) throw Error('unreadable journal'); return edges; },
     resources: { admit: async () => { if (live >= resourceCap) return null; live++; peak = Math.max(peak, live); return { attach: async () => {}, release: async () => { live--; return true; } }; } },
     io: { modelCalls: () => { throw Error('must not count another topic transcript'); }, wait: tick,
       readResult: () => null, clearResult: () => {}, prepareAdmission: () => {}, closeAdmission: () => {},
@@ -38,7 +43,8 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16) {
       },
       observe: async input => {
         if (!input.delivery || held.has(topic)) return { observations: [], cursor: input.cursor, complete: true };
-        const text = `answer in ${topic}`;
+        const ids = state!.topics[topic]!.inputs.find(row => row.request.operation === input.delivery!.operation)!.batch ?? [];
+        const text = batchOutput ?? (ids.length > 1 ? JSON.stringify({ results: ids.map(operation => ({ operation, answer: { reply: `answer to ${operation}`, memory: [] } })) }) : `answer in ${topic}`);
         return { observations: [{ kind: 'reply', delivery: input.delivery.operation, text, digest: digest(text) },
           { kind: 'turn-end', delivery: input.delivery.operation, state: 'completed' }], cursor: input.cursor + 2, complete: true };
       },
@@ -48,6 +54,8 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16) {
   let port = value(createConversationTopicsPort(config));
   const request = (operation: string) => ({ operation, question: 'hello', context: 'shared memory: Wren; own topic history', authority: 'grant' });
   return { get port() { return port; }, config, request, held, launches, delivered, closed, edges,
+    batchOutput: (text: string) => { batchOutput = text; },
+    unreadableEvidence: () => { evidenceUnreadable = true; },
     state: () => state!, counts: () => ({ live, peak }), advance: (ms: number) => { now += ms; },
     stop: () => { stopped = true; }, revoke: () => { authorized = false; }, failSave: () => { saveFails = true; },
     restart: (allowanceDeadline = config.allowanceDeadline) => { port = value(createConversationTopicsPort({ ...config, allowanceDeadline })); } };
@@ -190,4 +198,141 @@ it.each([200000, 50000])('reopened and new topics keep the earlier installation 
   expect(await f.port.collect('8:b')).toMatchObject({ outcome: { state: 'complete' } });
   expect(await f.port.collect('9:absent')).toBeNull();
   await f.port.maintain(); expect(f.counts().live).toBe(0);
+});
+
+
+it('three waiting messages share the next turn and retain three terminal outcomes in intake order', async () => {
+  const f = fixture(); f.held.add('7');
+  const first = f.port.run(f.request('7:first'));
+  await until(() => f.delivered.length === 1);
+  const waiting = ['7:two', '7:three', '7:four'].map(id => f.port.run(f.request(id)));
+  await until(() => f.state().topics['7']!.inputs.length === 4);
+  f.held.delete('7'); await Promise.all([first, ...waiting]);
+  expect(f.delivered.map(row => row.input.operation)).toEqual(['7:first', '7:two']);
+  expect(f.state().topics['7']!.inputs.slice(1).map(row => row.outcome?.text))
+    .toEqual(['7:two', '7:three', '7:four'].map(id => JSON.stringify({ reply: `answer to ${id}`, memory: [] })));
+  expect(f.state().topics['7']!.turns).toBe(2);
+  const saved = structuredClone(f.state());
+  await f.port.close(); f.restart(); await f.port.maintain();
+  expect(f.delivered).toHaveLength(2);
+  expect(f.state().topics['7']!.inputs.map(row => row.outcome)).toEqual(saved.topics['7']!.inputs.map(row => row.outcome));
+  await f.port.close();
+});
+
+it('recovers a closed batch before its terminal snapshot without dispatching any member twice', async () => {
+  const f = fixture();
+  const ids = ['7:one', '7:two', '7:three'];
+  await f.port.runBatch(ids.map(f.request));
+  const complete = structuredClone(f.state());
+  const interrupted = { ...complete, topics: { ...complete.topics, '7': { ...complete.topics['7']!,
+    inputs: complete.topics['7']!.inputs.map(row => ({ ...row, state: 'accepted' as const, outcome: null, reply: null, cursor: 0 })) } } };
+  const load = f.config.store.load;
+  f.config.store.load = () => interrupted; f.restart(); f.config.store.load = load;
+  await f.port.maintain();
+  expect(f.delivered).toHaveLength(1);
+  expect(f.state().topics['7']!.inputs.map(row => row.outcome?.text))
+    .toEqual(complete.topics['7']!.inputs.map(row => row.outcome?.text));
+  await f.port.close();
+});
+
+
+it.each([
+  '{}',
+  JSON.stringify({ results: [{ operation: '7:one', answer: { reply: 'one' } }] }),
+  JSON.stringify({ results: [{ operation: '7:two', answer: { reply: 'two' } }, { operation: '7:one', answer: { reply: 'one' } }] }),
+  JSON.stringify({ results: [{ operation: '7:one', answer: { reply: 'one' } }, { operation: '7:one', answer: { reply: 'duplicate' } }] }),
+])('a malformed or misattributed batch cannot partially settle as success: %s', async output => {
+  const f = fixture(); f.batchOutput(output);
+  const results = await f.port.runBatch(['7:one', '7:two'].map(f.request));
+  expect(results.every(result => result.state === 'uncertain')).toBe(true);
+  expect(f.state().topics['7']!.inputs.every(row => row.state === 'settled' && row.outcome?.state === 'uncertain')).toBe(true);
+  await f.port.close(); f.restart(); await f.port.maintain(); expect(f.delivered).toHaveLength(1); await f.port.close();
+});
+
+it('a batch cannot borrow another topic identity or bypass stop', async () => {
+  const f = fixture();
+  await expect(f.port.runBatch(['7:one', '8:two'].map(f.request))).rejects.toThrow(/one topic/);
+  expect(f.delivered).toHaveLength(0); f.stop();
+  await expect(f.port.runBatch(['7:one', '7:two'].map(f.request))).rejects.toThrow(/unavailable/);
+  expect(f.delivered).toHaveLength(0);
+});
+
+it('an invalid recovered batch settles uncertain and does not wedge later input', async () => {
+  const f = fixture(); await f.port.runBatch(['7:one', '7:two'].map(f.request));
+  const complete = structuredClone(f.state());
+  const interrupted = { ...complete, topics: { ...complete.topics, '7': { ...complete.topics['7']!,
+    inputs: complete.topics['7']!.inputs.map(row => ({ ...row, state: 'accepted' as const, outcome: null, reply: null, cursor: 0 })) } } };
+  const load = f.config.store.load;
+  f.config.store.load = () => interrupted; f.restart(); f.config.store.load = load; f.batchOutput('{}');
+  await f.port.maintain();
+  expect(f.state().topics['7']!.inputs.every(row => row.outcome?.state === 'uncertain')).toBe(true);
+  expect(f.delivered).toHaveLength(1);
+  expect((await f.port.run(f.request('7:later'))).state).toBe('complete');
+  await f.port.close();
+});
+
+// A process restart constructs a fresh, empty admission gate. It must neither block
+// other topics nor reopen a claim whose tools might already have executed.
+it.each(['complete', 'missing', 'unreadable', 'open-child', 'uncertain-child', 'wrong-parent', 'bad-receipt'] as const)(
+  'fresh real admission gate recovers a batch with %s durable evidence', async evidence => {
+    const f = fixture();
+    const makeGate = () => createAdmissionGate({ append: (row: SessionWorkEdge | SessionWorkEdgeClose) => f.edges.push(row),
+      effects: {}, stopped: () => false, now: () => 1000 });
+    let gate = await makeGate();
+    f.config.io.prepareAdmission = (claim, edge) => { gate.open(claim, { framework: 'claude-code', allowance: edge.budget.calls, edge }); };
+    f.config.io.admissionState = claim => gate.state(claim);
+    f.config.io.closeAdmission = claim => { gate.close(claim); };
+    try {
+      await f.port.runBatch(['7:one', '7:two'].map(f.request));
+      const complete = structuredClone(f.state()), old = complete.topics['7']!;
+      const process = f.edges.find((row): row is SessionWorkEdge => row.type === 'SessionWorkEdge' && row.id === `${old.claim}:process`)!;
+      const child = nestedSessionWorkEdge(process, { id: 'child-1', tool: 'Task' }, 1000);
+      f.edges.push(child);
+      if (evidence !== 'open-child') f.edges.push(nestedSessionWorkClose(child,
+        evidence === 'uncertain-child' ? 'uncertain' : 'complete', 'recorded child result', 'receipt:child', 3, 1001));
+      if (evidence === 'missing') f.edges.splice(0);
+      if (evidence === 'wrong-parent') f.edges.splice(f.edges.indexOf(process), 1, { ...process, parent: 'other' });
+      if (evidence === 'unreadable') f.unreadableEvidence();
+      await gate.stop(); gate = await makeGate();
+      expect(gate.state(old.claim)).toBeNull();
+      const load = f.config.store.load;
+      f.config.store.load = () => ({ ...complete, topics: { ...complete.topics, '7': { ...old,
+        inputs: old.inputs.map(row => ({ ...row, state: 'accepted', outcome: null, reply: null, cursor: 0 })) } } });
+      f.restart(); f.config.store.load = load;
+      if (evidence === 'bad-receipt') f.batchOutput('{}');
+      await f.port.maintain();
+      expect(gate.state(old.claim)).toBeNull(); // Recovery never reopens the old allowance.
+      expect(f.closed).toContain(old.claim);
+      expect(f.delivered).toHaveLength(1);
+      expect(f.state().topics['7']!.inputs.map(row => row.outcome?.state)).toEqual(
+        evidence === 'complete' ? ['complete', 'complete'] : ['uncertain', 'uncertain']);
+      if (evidence === 'complete') expect(f.state().topics['7']!.inputs.map(row => row.outcome?.text))
+        .toEqual(old.inputs.map(row => row.outcome?.text));
+      expect((await f.port.run(f.request('8:later'))).state).toBe('complete');
+      expect((await f.port.run(f.request('7:later'))).state).toBe('complete');
+      expect(f.delivered.map(row => row.input.operation)).toEqual(['7:one', '8:later', '7:later']);
+    } finally { await f.port.close(); await gate.stop(); }
+  });
+
+it('retains the waiting batch until the topic handoff is ready, then uses its new authority', async () => {
+  const f = fixture(); let ready = false, preparations = 0, authority = 'previous grant';
+  const topicConfig: NonNullable<ConversationTopicsConfig['topicConfig']> = () => ({ io: f.config.io, resources: f.config.resources,
+    authorized: () => true, currentAuthority: () => authority,
+    prepareTurn: async () => { preparations++; if (ready) authority = 'replacement grant'; return ready; },
+    createAdapter: resolve => f.config.createAdapter('7', resolve) });
+  Object.assign(f.config, { topicConfig });
+  const a = f.port.run(f.request('7:a')), b = f.port.run(f.request('7:b'));
+  await until(() => preparations > 0 && f.state().topics['7']?.inputs.length === 2);
+  expect(f.delivered).toHaveLength(0);
+  expect(f.state().topics['7']!.inputs.map(row => row.state)).toEqual(['queued', 'queued']);
+  expect(await a).toMatchObject({ state: 'queued' });
+  expect(await b).toMatchObject({ state: 'queued' });
+  ready = true; await f.port.maintain();
+  expect(await f.port.run(f.request('7:a'))).toMatchObject({ state: 'complete' });
+  expect(await f.port.run(f.request('7:b'))).toMatchObject({ state: 'complete' });
+  expect(f.delivered).toHaveLength(1);
+  expect(f.state().topics['7']!.inputs[0]!.batch).toEqual(['7:a', '7:b']);
+  expect(f.edges.filter(row => row.type === 'SessionWorkEdge').every(row => row.authority === 'replacement grant')).toBe(true);
+  expect(f.state().topics['7']!.spent).toBe(1);
+  await f.port.close();
 });

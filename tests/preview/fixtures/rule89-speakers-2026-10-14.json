@@ -1,0 +1,79 @@
+{
+  "source": ".instar/lanes/pipeline/live-proof/results/B-proofroom2-20261014-175650",
+  "scope": "Read-only status counters and delivered turn fields; not raw model output or a new live walk.",
+  "samples": [
+    {
+      "label": "b5",
+      "update": 6233227,
+      "at": 1792025845777,
+      "reply": "Third time for this one today \u2014 same answer: the standing calf stretch. Stand facing a wall, step one foot back and keep that leg straight with the heel on the ground, then lean forward into the wall until you feel a gentle pull in the back of your calf. Hold for 20\u201330 seconds per side. It's easy to do right after a walk and helps loosen up calves that tighten from repetitive walking.",
+      "sent": 5999,
+      "heldNoticeSent": 5998,
+      "before": {
+        "accepted": 212,
+        "refused": 0,
+        "unknown": 0,
+        "speakers": {
+          "agent": 114,
+          "infrastructure": 98
+        },
+        "lastRefusal": null,
+        "unknownReasons": {},
+        "lastUnknown": null
+      },
+      "after": {
+        "accepted": 214,
+        "refused": 0,
+        "unknown": 0,
+        "speakers": {
+          "agent": 115,
+          "infrastructure": 99
+        },
+        "lastRefusal": null,
+        "unknownReasons": {},
+        "lastUnknown": null
+      }
+    },
+    {
+      "label": "b8",
+      "update": 6233228,
+      "at": 1792025871746,
+      "reply": "Status (2026-10-14, America/Los_Angeles)\nTurns today: 19.\nHeld replies: none.\nPending memory decisions: 99 (updates 6233107, 6233108, 6233109, 6233110, 6233111, 6233115, 6233116, 6233117, 6233118, 6233120, and 89 later).\nNext dated item: none confirmed.\nOpen loops: 3 (1 commitment, 2 blockers); 0 due to resurface with your next message.\nBacklog: 1 unfinished (1 message, 0 due work steps); oldest 0 min.\nProgress: progressing; last 0 min ago.\nLast work attempt: 8 h 48 min ago; report; 0 failed attempts.\nScheduled work: 2 waiting for their time.\nOverdue: 0 check-ins, 0 blocker rechecks, 0 requested actions; corrections awaiting your next message: 0.\nDeclared obligations I could not record: 4 (a refused deferral or limit is sent only after a full review; a refused completion claim closes nothing).\nSentinels: context respawn episode recovered; presence watching 0 unanswered (0 holding notes due); promises 0 overdue reported, 0 waiting on someone else, 0 with work requested.\nRetrospective review: 35 completed pass(es), 1 UNKNOWN; last inspected 9 of 137 case(s), efficiency duty ran; open improvement items 70; pending grades 10.\nProofs: 10/13 healthy; store-agreements failed, reply-review-reached failed; 1 not currently observed.\nCapabilities: 4 confirmed, 4 unconfirmed, 1 dark (preview.step-check); 12 without a live proof at their current version; graduation overdue: preview.step-check.\nGraduation: preview.step-check \u2014 test-agent missing, development-agent missing, fleet missing; deadline 2026-10-15 (recorded 2026-09-28), overdue.\nServing: this runner on DaBombs-Mac-Studio.local owns this conversation (claimed 86 min ago); 2 duplicate launch(es) refused on this machine.\nStore checks: 2 disagreement(s) \u2014 memory-provenance: 2 untraced item(s): memory-change-unattributed, memory-replacement-source; serving-runner: 2 open launch(es) while one runner owns the conversation;\u2026\nPast a cap: each kept message gets one limited answer from the reserve.\nMemory failures: none recorded.\nSpend allowance: 2159/4000 subscription attempts; 125/4000 Jev checks. Dollar spend/cap: not recorded in this journal. Replies: 214/4000 used.\nReplies sent as your own words repeated back, without the second check: 3.\nBuild: 9d8c16f0 running since 2026-10-14 16:31; running code matches the installed files.\nHarness: preview-journal-native via claude-code-subscription; 9 of 9 silent-stop classes covered.\nUpdate: from 081a93f8; briefing unchanged; delivered in my reply to update 6233211.\nTools: the harness's full built-in set (27 tools, each call decided at the admission hook) and the root's MCP servers, in this conversation's private workspace (kept between turns, 128 MB); shell sandboxed,\u2026\nTool turns: 122 run (1830 model attempts reserved for them), 18 tool calls admitted, 0 refused, 0 turns answered without tools because the call allowance was short.\nKept session: 64 turns resumed it, 58 started a new one (23 after the journal changed a fact or the authority changed, 0 after a loss or an interrupted turn, 33 at its size or turn bound); 0 ended at a stop,\u2026\nEffect doorway: 0 effect(s) reached it from tool turns (0 ordinary, 0 admitted under an operator grant, 0 admitted in the accepted closed set, 0 refused); ordinary work in the turn's own workspace is\u2026\nHarness identity: Claude Code runs as its own macOS user (_instarharness). The kernel refuses its opens of the operator account's private files; its login and MCP credentials reach it only through a one-shot\u2026",
+      "sent": 6002,
+      "heldNoticeSent": 6001,
+      "before": {
+        "accepted": 214,
+        "refused": 0,
+        "unknown": 0,
+        "speakers": {
+          "agent": 115,
+          "infrastructure": 99
+        },
+        "lastRefusal": null,
+        "unknownReasons": {},
+        "lastUnknown": null
+      },
+      "after": {
+        "accepted": 216,
+        "refused": 0,
+        "unknown": 0,
+        "speakers": {
+          "agent": 115,
+          "infrastructure": 101
+        },
+        "lastRefusal": null,
+        "unknownReasons": {},
+        "lastUnknown": null
+      }
+    }
+  ],
+  "x4": {
+    "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/pipeline/live-proof/results/E-proofroom-20261001-103015",
+    "update": 715673071,
+    "holding": true,
+    "infrastructureDelta": 1,
+    "agentDelta": 0,
+    "acceptedDelta": 1,
+    "v4": true
+  }
+}
