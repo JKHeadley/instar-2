@@ -440,19 +440,22 @@ const c = spawn('/bin/sleep', ['20'], { detached: true, stdio: 'ignore' }); c.un
   expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
 });
 
-it('a refused allocation returns the debit it already prepared, so refused maintenance never takes the answer slot', () => {
-  const root = dir(), allocation = six(root);
+it.each([3, RESOURCE_CEILINGS.aggregate.launches])('a refused allocation returns its prepared debit and preserves the answer slot with %i launch slots', launchSlots => {
+  const root = dir(), allocation = six(root, ceilings({ aggregate: { launches: launchSlots }, reserveLaunches: 1 }));
   const reserve = (launch: string, work: string) => allocation.reserve({ launch, work, memoryBytes: 1024, processCount: 1 });
-  // Two maintenance launches still held (for example, their cleanup is unresolved).
-  expect(reserve('m1', 'maintenance').ok).toBe(true);
-  expect(reserve('m2', 'maintenance').ok).toBe(true);
-  // A third prepares the installation slot, then meets the maintenance-family ceiling.
-  const third = reserve('m3', 'maintenance');
-  expect(third.ok ? '' : third.reason).toMatch(/capacity exhausted/u);
-  expect(allocation.open().map(o => o.launch).sort()).toEqual(['m1', 'm2']);
-  // The answer reserve is intact, and the genuinely held launches stay reserved.
+  const held = Array.from({ length: launchSlots - 1 }, (_, i) => `m${i + 1}`);
+  // Fill the maintenance family, retaining each debit as unresolved cleanup would.
+  for (const launch of held) expect(reserve(launch, 'maintenance').ok).toBe(true);
+  // Each refused attempt prepares the final installation slot before meeting the family ceiling.
+  // Repeating proves that refunded debits do not accumulate between refusals.
+  for (const launch of ['refused-1', 'refused-2']) {
+    const refused = reserve(launch, 'maintenance');
+    expect(refused.ok ? '' : refused.reason).toMatch(/capacity exhausted/u);
+    expect(allocation.open().map(o => o.launch).sort()).toEqual([...held].sort());
+  }
+  // The answer reserve is intact, and genuinely held maintenance launches stay reserved.
   expect(reserve('a1', 'answer').ok).toBe(true);
-  expect(allocation.open().map(o => o.launch).sort()).toEqual(['a1', 'm1', 'm2']);
+  expect(allocation.open().map(o => o.launch).sort()).toEqual(['a1', ...held].sort());
 });
 
 it('recovery resumes a partial allocation return under its durable settlement, and a closed set counts as returned', { timeout: 30000 }, async () => {
