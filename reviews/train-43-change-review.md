@@ -48,6 +48,8 @@ Decision: train-43-desk | Use the downloaded desk repin, build, rehash and regis
 
 Decision: train-43-tool-growth-pin | The inherited COMPLETE_REQUESTED_STEPS guidance adds exactly 508 bytes; update the tool prompt growth measurement from 2767 to 3275 while leaving PREVIEW_FIXED_PROMPT_BYTES and every ceiling assertion unchanged. No product prompt or fixture capture changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-43-PROGRESS.md
 
+Publication: After the tool-growth measurement repair, repeat the unchanged desk chain (zero repins) and replay generated output from source commit 6aa511f0b01e39377d94fa26617f9196fc566b8f.
+
 simplestRobustRoute: This is the simplest robust route: one ordinary exact-head merge, the existing generation chain and targeted consumer verification. No new machinery or product policy. Existing source matching, owner admission, durable cause, spend bounds, stop and uncertain-effect non-replay remain the guards. Start at the named base, finish with committed and pushed checked composition; the desk owns live acceptance.
 80/20: Verify the reviewed union and direct consumers; no full suite and no unrelated repairs.
 VERDICT: author submission; no independent convergence or live acceptance claim
