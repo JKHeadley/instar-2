@@ -18,12 +18,15 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none; core.hooksPath unset and the common hooks directory contains only samples.
 Convergence: none
+Prompt review: The scanner classifies promotion-record.ts as a prompt source. Its only added text is the dated promotion decision, reason, desk owner and rollback; no model prompt, parser, accept/escalate/refuse decision or delegation dispatch changes. No fixture phrase is added as an intent trigger and no expected verdict is supplied to a reviewer.
 
 Decision: train-36-merge | Ordinary merge of exact reviewed 242d7b456c37d6748764fd6d6059558b25db1882; member report /Users/dabombstudio/.instar/agents/echo/.instar/lanes/register-stepcheck-deadline-1014-PROGRESS.md and reviews/register-stepcheck-deadline-1014-change-review.md define scope. Fast-forward, no conflicts. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-36-PROGRESS.md
 Decision: train-36-desk-A | Preserve reviewed member behavior byte for byte; prior promotion history remains intact and no live protection is claimed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-36-PROGRESS.md
 Decision: train-36-desk-B | Create the branch directly at exact live base 324d40539a76ce148ccfd6d74b0278e72571ae32, already containing main; no branch relocation or main merge. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-36-PROGRESS.md
 Decision: train-36-desk-C | No product conflict and no omitted head; generated publication is regenerated rather than hand-merged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-36-PROGRESS.md
 Decision: train-36-desk-chain | Use the downloaded cint-L37 desk chain: repin, build, rehash and register replay from 242d7b456c37d6748764fd6d6059558b25db1882. No new mechanism and no manually edited pin. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-36-PROGRESS.md
+Decision: train-36-desk-D | Preserve and report host-dependent results without changing their tests; use canonical /private/tmp for the macOS temporary-path alias refusal. Studio-only historical evidence paths are unavailable locally and remain the desk's check. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-36-PROGRESS.md
+Decision: train-36-review-fields | Add the required Prompt review field to this and the member's open review record after the scanner identified promotion-record.ts as a prompt source; document its actual non-model-facing scope without changing reviewed product bytes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-36-PROGRESS.md
 
 ## Closing block
 

@@ -18,6 +18,7 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains sample hooks only.
 Convergence: none
+Prompt review: The scanner classifies promotion-record.ts as a prompt source. The added entry records a deadline, reason, desk owner and rollback only; it changes no model instructions, output parser or accept/escalate/refuse decision. No fixture phrase becomes an intent trigger and no delegation dispatch supplies an expected verdict.
 Decision: stepcheck-deadline-extend | step-check graduation not yet proven; deadline extended 72 h so dated gates do not block unrelated builds; graduation work tracked by the desk. Keep dark status and append reason, owner and rollback to the existing promotion record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/register-stepcheck-deadline-1014-PROGRESS.md
 
 Publication: Regenerated the seven changed generated register/capability/source files through scripts/build-register.mjs --replay --commit 6b2e645230a839b8b141dcfdab87c615f2cd6d89. Desk owner rehash and repin tools found zero stale pins; no hashes were hand-edited.
