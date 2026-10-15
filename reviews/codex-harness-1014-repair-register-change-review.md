@@ -8,7 +8,7 @@ Affected rules: Rules 5, 49, 69, 74, 90, 101, 105, 113, 115, 116.
 Affected floors: secrets — no credential data added; spend cap — no policy change; stop — repair source now matches generated wiring; no duplicate sends — no dispatch change; durable intake — no store change.
 Operator questions: none
 Suggested tier: critical
-Declared tier: maintenance
+Declared tier: ordinary
 Tier rationale: Generated provenance-only refresh after committed source repair; no policy or runtime behavior changes in this commit.
 Side effects: Generated source commit and generation hashes change. Replay remains shape-only evidence and does not renew the native macOS conformance certificate.
 Undo and recovery: Regenerate from an intended committed source; do not hand-edit source pins or delete existing evidence.
