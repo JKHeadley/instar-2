@@ -2417,7 +2417,7 @@ export function validateSessionWorkRow(record: SessionWorkEdge | SessionWorkEdge
     if (record.schemaVersion !== 1 || ![record.id, record.edge, record.operation, record.digest, record.detail].every(value => text(value, 1024))
       || !/^sha256:[0-9a-f]{64}$/u.test(record.id) || !['prepared', 'observed'].includes(record.state) || !stamp(record.at)
       || record.cause !== undefined && !text(record.cause, 262144)
-      || record.topic !== undefined && !/^(?:main|[1-9][0-9]{0,15})$/u.test(record.topic)
+      || record.topic !== undefined && (typeof record.topic !== 'string' || !/^(?:main|[1-9][0-9]{0,15})$/u.test(record.topic))
       || [record.source, record.subject].some(value => value !== undefined && !/^sha256:[0-9a-f]{64}$/u.test(value)))
       throw Error('preview journal: session work effect incomplete');
     return;
@@ -7230,6 +7230,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const otherState = requestState ? liveRequests.filter(item => item.request.action !== requestState.request.action
       && (item.approved !== undefined && !item.applied || openNow(item) && requestBase(item) === approvalBase(journal.view))).at(-1) : undefined;
     const otherOperatorRequest = otherState ? describe(otherState, false) : undefined;
+    const actionFacts = currentActionFacts(journal.view, now, question !== undefined && fromOperator(question)
+      && (journal.view.genesis.forum !== true || operatorOnlyVerified));
     const packet = JSON.stringify({ now, clock: { utc: new Date(now).toISOString(), zone, day: localDay,
       time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`,
       weekday: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'long' }).format(now) },
@@ -7297,8 +7299,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ? ' audience.conversation is the topic of the current message and reply. Shared memory items name their source topic in conversation or sourceLabel; a remembered fact does not change the current topic. Use facts across topics and say where you learned them. Replies are visible to packet.audience. Only when operatorOnlyVerified is true may you use the operator’s own private information as in their private chat; protect third-party confidences and secrets.'
           : labelAll ? ' Every history item names the conversation of this private chat it was said in, with its date.'
           : crossed ? ' Items with a conversation field were said by the same operator in another conversation of this private chat, named there with its date; the operator is the only audience of every conversation, so they are your shared memory and may be used here.' : ''),
-      actionFacts: currentActionFacts(journal.view, now, question !== undefined && fromOperator(question)
-        && (journal.view.genesis.forum !== true || operatorOnlyVerified)),
+      ...(actionFacts.items.length ? { actionFacts } : {}),
       ...(operatorRequest ? { operatorRequest } : {}), ...(otherOperatorRequest ? { otherOperatorRequest } : {}),
       ...(pendingReminders.length ? { reminders: pendingReminders.map(item => ({ id: reminderId(item),
         quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}`,

@@ -1,4 +1,4 @@
-import { currentActionFacts, approvalBase } from './journal.js';
+import { currentActionFacts, approvalBase, validateSessionWorkRow } from './journal.js';
 import { proposeOperatorRequest, operatorRequestText } from './operator-yes.js';
 // @ts-expect-error the shipped admission checkpoint is JavaScript
 import { createToolEffectOwner } from './admission-gate.mjs';
@@ -338,6 +338,19 @@ it('projects an existing outbound approval request from topic A into topic B bef
     expect(f.journal.view.turns.get('telegram:12345678:update:2')!.prompt).toContain('awaiting approval');
     expect(f.deliveries.at(-1)!.input.text).toContain('awaiting approval');
     expect(JSON.stringify(facts)).not.toContain('PRIVATE');
+    const state = f.journal.view.operatorRequests[0]!;
+    const show = (patch: Partial<typeof state>, now = 1000) => currentActionFacts({ ...f.journal.view,
+      operatorRequests: [{ ...state, ...patch }] }, now, true).items;
+    const unsent = { ...state }; delete unsent.message;
+    expect(currentActionFacts({ ...f.journal.view, operatorRequests: [unsent] }, 1000, true).items[0]!.state)
+      .toBe('prepared, not delivered');
+    expect(show({}, state.request.expiresAt)[0]!.state).toBe('awaiting approval');
+    expect(show({}, state.request.expiresAt + 1)[0]!.state).toBe('expired');
+    expect(show({ refusals: [{ turn: 'refusal', detail: 'PRIVATE reason' }] })[0]!.state).toBe('refused');
+    const approved = { turn: 'yes', reference: 'ref', hash: 'hash', at: 1001 };
+    expect(show({ approved })[0]!.state).toBe('approved, not applied');
+    expect(show({ approved, applied: true })[0]!.state).toBe('applied');
+    expect(show({ superseded: true })).toEqual([]);
   } finally { await f.close(); }
 });
 
@@ -397,4 +410,14 @@ it('the wired dispatch reader withholds cross-topic action facts for an unverifi
     expect(f.deliveries[0]!.input.text).not.toContain('mcp:mail:send');
     expect(f.deliveries[0]!.input.text).toContain('withheld');
   } finally { await f.close(); }
+});
+
+it('validates optional effect provenance without inventing it for legacy records', () => {
+  const record: SessionWorkEffect = { type: 'SessionWorkEffect', schemaVersion: 1, id: `sha256:${'a'.repeat(64)}`,
+    edge: 'edge', operation: 'mcp:mail:send', digest: 'digest', detail: 'admitted', state: 'prepared', at: 1000 };
+  expect(() => validateSessionWorkRow(record)).not.toThrow();
+  const metadata = { topic: '7', source: `sha256:${'b'.repeat(64)}`, subject: `sha256:${'c'.repeat(64)}` };
+  expect(() => validateSessionWorkRow({ ...record, ...metadata })).not.toThrow();
+  for (const patch of [{ topic: 'private topic name' }, { topic: 7 }, { source: 'private source' }, { subject: 'PRIVATE body' }])
+    expect(() => validateSessionWorkRow({ ...record, ...metadata, ...patch } as SessionWorkEffect)).toThrow('effect incomplete');
 });
