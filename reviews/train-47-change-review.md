@@ -34,6 +34,8 @@ Skip: tests/preview/agent-paths.test.ts:78 | scope=Actual macOS misplaced-root e
 Skip: tests/preview/agent-paths.test.ts:85 | scope=Actual macOS install and boot refusal; Linux no-op has its own positive test.
 Skip: tests/preview/agent-paths.test.ts:104 | scope=Actual macOS physical storage/session/volume boundaries; Linux has no TCC restriction.
 
+Decision: train-47-policy-test | Update the direct provider-consumer assertion from one hour to the reviewed four-hour continuing-session policy; keep the independent scheduled policy digest assertion and all runtime bounds unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-47-PROGRESS.md
+
 simplestRobustRoute: This is the simplest robust route: two ordinary exact-head merges, existing desk generation and direct consumer verification. No new runtime machinery or policy. Existing admission, resource, stop, durable intake and uniqueness owners hold the floors. The start is the pinned live base, the end is a pushed checked composition; the desk owns native certification and live acceptance.
 80/20: Check changed tests and direct consumers in bounded foreground chunks; no full suite or unrelated fixes.
 VERDICT: author submission; no independent convergence or deployment claim
