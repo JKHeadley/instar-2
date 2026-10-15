@@ -57,7 +57,7 @@ Decision: train-45-reopen | Explicitly reopen the two inherited completion revie
 
 Decision: train-45-memory-replay | Preserve the recorded plain-answer prompt hashes for updates 715675444 and 715675448 by removing only the new completion sentence alongside the existing identity normalization; the real intake, answer and restart assertions stay intact. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-45-PROGRESS.md
 
-Decision: train-45-canary-policy | Pin the reviewed completion conversation policy and reject the predecessor digest in the offline activation canary; no live approval is changed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-45-PROGRESS.md
+Decision: train-45-canary-policy | Pin the reviewed completion conversation policy and reject the predecessor digest in the offline activation canary, and align the renewal test pin; no live approval is changed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-45-PROGRESS.md
 
 simplestRobustRoute: This is the simplest robust route: two ordinary exact-head merges, existing register generation and direct consumer tests. No new machinery. Start from the named live base, require reviewed membership and checked committed output, and leave activation to the desk. Existing authority, resource, stop, durable cause and unique-effect guards remain.
 80/20: Run changed tests, direct importing consumers, required journal and pinned checks in bounded foreground batches; no full suite or unrelated repair.

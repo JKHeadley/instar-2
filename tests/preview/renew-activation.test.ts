@@ -38,13 +38,13 @@ const observation = { reference: profile.activationReference, reviewedHead: 'bl-
 const conversation = (record, p = profile, now = NOW) =>
   validateSubscriptionActivation(record, p, model, now, SUBSCRIPTION_CONVERSATION_FRAMING);
 
-it('pins the reviewed expiry and identity policy while keeping expiry out of invocation policies', () => {
+it('pins the reviewed expiry and completion policy while keeping expiry out of invocation policies', () => {
   expect(SUBSCRIPTION_PREVIEW_EXPIRY).toBe(Date.UTC(2026, 10, 12, 21, 40));
   expect(SUBSCRIPTION_PREVIEW_EXPIRY - PRIOR_EXPIRY).toBe(31 * 24 * 3600 * 1000 + 3600 * 1000);
-  // The identity wording changes the policy, so existing installations need a policy-successor record.
+  // The completion wording changes the policy, so existing installations need a policy-successor record.
   // The expiry itself never enters an invocation policy.
   expect(encoded(subscriptionConversationPolicy(model)).hash)
-    .toBe('sha256:3598cc7514f4be6ffec52f1d321e1596cd2db420a67fd7958281f3862dd9ce8c');
+    .toBe('sha256:7b1d9af257f848e9cef4abad31771394af1cb4e1b6062a4538d3442a2045f220');
   expect(JSON.stringify([subscriptionConversationPolicy(model), subscriptionInvocationPolicy(model)]))
     .not.toMatch(new RegExp(`${PRIOR_EXPIRY}|${SUBSCRIPTION_PREVIEW_EXPIRY}`));
 });
