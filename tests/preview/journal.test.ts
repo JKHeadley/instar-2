@@ -804,7 +804,8 @@ it('bounds each rolling chunk by measured prepared prompt bytes and reported out
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
       { ...genesis(64), maxBytes: 131072, maxTurns: 30 });
     for (let n = 1; n <= 20; n++) {
-      const id = `telegram:12345678:update:${n}`, message = `turn ${n}: ${'a'.repeat(1600)}`;
+      // Exceed the complete-history threshold so this exercises automatic rolling, not the short-history path.
+      const id = `telegram:12345678:update:${n}`, message = `turn ${n}: ${'a'.repeat(3600)}`;
       journal.append({ kind: 'intake', id, update: n, text: message, raw: JSON.stringify(update(n, message)),
         accepted: true, cursor: n + 1, at: 1000 });
       journal.append({ kind: 'reserve', id, at: 1000 });
