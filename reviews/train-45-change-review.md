@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Compose the exact reviewed promise-revision metadata and requested-work completion heads on the named live train-43 base.
 Affected rules: 1, 4, 8, 10, 12, 26, 34, 36, 37, 41, 49, 69, 74, 75, 83, 84, 90, 101, 102, 105, 111, 112, 113, 116
-Affected floors: Secrets, spend caps, stop, durable intake and unique send intent/receipt enforcement retain their existing paths. No new authority, calls, store or retry.
+Affected floors: Secrets, spend caps, stop, durable intake and no duplicate sends via unique send intent/receipt enforcement retain their existing paths. No new authority, calls, store or retry.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
@@ -43,11 +43,7 @@ Deferral: generated/register.json:1 | not-a-deferral=Generated governance or imm
 Deferral: tests/preview/fixtures/completion-full-set-2026-10-15.json:22 | not-a-deferral=Generated governance or immutable captured answer text, not a promise by this builder.
 
 
-## Closing block
 
-simplestRobustRoute: This is the simplest robust route: two ordinary exact-head merges, existing register generation and direct consumer tests. No new machinery. Start from the named live base, require reviewed membership and checked committed output, and leave activation to the desk. Existing authority, resource, stop, durable cause and unique-effect guards remain.
-80/20: Run changed tests, direct importing consumers, required journal and pinned checks in bounded foreground batches; no full suite or unrelated repair.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Decision: train-45-merge-rule10 | Merge exact reviewed 6b1c07d87c9399a97478495975e7cb28eb0742fc; report /Users/dabombstudio/.instar/agents/echo/.instar/lanes/rule10-promise-1014-PROGRESS.md. Preserve automatic journal merge and regenerate generated conflicts. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-45-PROGRESS.md
 Decision: train-45-merge-completion | Merge exact reviewed 7661a99b76ea47e0ae24b362ad6f135416b3bef0; report /Users/dabombstudio/.instar/agents/echo/.instar/lanes/completion-guidance-1015-PROGRESS.md. Restore reviewed completion wording and historical comparisons removed by train43-strip. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-45-PROGRESS.md
@@ -56,3 +52,7 @@ Decision: train-45-B | Keep dcf3a5160cb92ede56f70f8b1048f27b2d6e5ef5 as ancestor
 Decision: train-45-C | No unresolved product conflict and no head left out. The base strip review explicitly assigns completion guidance to this separate unit; live activation remains separately approved. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-45-PROGRESS.md
 Decision: train-45-D | Run portable direct consumers on WSL; report macOS and host-only omissions without weakening their checks. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-45-PROGRESS.md
 Decision: train-45-desk | Use downloaded desk repin/build/rehash/replay chain. Zero inventory or owner pins changed. Generated outputs are regenerated, never hand-merged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-45-PROGRESS.md
+
+simplestRobustRoute: This is the simplest robust route: two ordinary exact-head merges, existing register generation and direct consumer tests. No new machinery. Start from the named live base, require reviewed membership and checked committed output, and leave activation to the desk. Existing authority, resource, stop, durable cause and unique-effect guards remain.
+80/20: Run changed tests, direct importing consumers, required journal and pinned checks in bounded foreground batches; no full suite or unrelated repair.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
