@@ -20,6 +20,7 @@ Bug evidence: reproducer=tests/preview/tools-policy-class.test.ts
 Evidence details: Actual train-42 policy digest matches the live sealed grant. Completion-guidance head 7661a99b has different prose and digest but equal pinned execution fields; it refuses under the old record and resolves under the new sealed class record offline. Committed captures replay both real policy shapes. Negative tests change every non-policy subject, every policy field and cap, tools, permission mode, subagent execution settings and generated checkpoints. Exact-digest resolution remains green. No live provider call or deployment proof is claimed.
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains only sample hooks.
 Convergence: none
+Prompt review: Reviewed fixture triggers and neutral dispatch: no prompt, model-output parser or model judgment text changes. Prompt/description fields are identified structurally by exact argument/JSON keys; no fixture phrase or expected verdict is injected into a model.
 Deferral: generated/register.json:1 | not-a-deferral=Inherited declarations are mechanically replayed; publication adds no deferred work.
 
 Decision: guidance-only-class | Reuse the existing sealed class-grant path with a new versioned class and exact policy/checkpoint projection; source citations and actual record evidence live in the desk progress report. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/grant-class-1015-PROGRESS.md
