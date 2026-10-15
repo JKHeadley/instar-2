@@ -15,7 +15,7 @@ Undo and recovery: Revert with the corresponding composition and regenerate publ
 Multi-machine posture: Shared declaration certifies only the exact Darwin runtime and composition tested here; no new platform support or remote authority.
 Layer below: Inspected compositionClosure, compositionDigest, currentRuntime and the native contract certificate consumer. The unchanged contract exercises actual confined build, test and install through owner admissions, provider refusal, stop, restart and bounded readiness.
 Bug class: none
-Bug evidence: Evidence maintenance only. Initial contract passes all nine behavioral cases; its sole failure is the stale certificate assertion at line 147. Desk clarification expressly permits renewal for this case; the complete contract must pass after renewal. Before/after evidence is in the absolute PROGRESS location.
+Bug evidence: Evidence maintenance only. Initial contract passes all nine behavioral cases; its sole failure is the stale certificate assertion at line 147. Desk clarification expressly permits renewal for this case; the renewed contract passed 10/10, shipped-clients passed 5/5, and architecture passed. Publication was regenerated from source commit d1ea7122962c3162103eddb36fb0d64aa6559f67. Before/after evidence is in the absolute PROGRESS location.
 Hook bypass: none; core.hooksPath checked unset and common hooks directory contains samples only.
 Convergence: none
 Deferral: generated/register.json:1 | not-a-deferral=Inherited register descriptions are mechanically replayed; publication introduces no deferred work.
