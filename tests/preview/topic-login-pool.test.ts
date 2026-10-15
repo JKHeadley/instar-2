@@ -222,7 +222,8 @@ it('the shipped configuration captures each topic account for launch, observatio
   const factory = source.split('      const configurationFor = ')[1].split('\n      const defaultBinding = ')[0]
     .replaceAll('import.meta.url', JSON.stringify(new URL('./journal-agent.mjs', import.meta.url).href));
   const drivers = [], observed = [], admitted = [], stopped = [], bound = [];
-  const journal = { view: { expires: 100000, order: [] } };
+  let recovery = [{ claim: 'durable-claim' }];
+  const journal = { view: { expires: 100000, order: [] }, sessionWorkRecords: () => recovery };
   const env = { conversationSession: true, sessionAdapter: {}, sha256: () => 'a'.repeat(64), conversationOf: () => 'operator', g: {}, journal,
     sessionWork: { authority: 'grant' }, createProductionSessionDriver: config => {
       drivers.push(config); return { owner: 'part-eight', launch: () => ({ kind: 'Success', value: 'worker' }),
@@ -247,6 +248,13 @@ it('the shipped configuration captures each topic account for launch, observatio
   const a = make('7', binding(0));
   const b = make('8', binding(null), { prepareTurn: async () => true, bindClaim: claim => bound.push(claim),
     get resumeAllowed() { return false; }, get continuing() { return true; }, launched: () => { resumed = true; } });
+  expect(a.recoveryEdges()).toBe(recovery); expect(b.recoveryEdges()).toBe(recovery);
+  recovery = [{ claim: 'later-claim' }];
+  expect(a.recoveryEdges()).toBe(recovery);
+  const stepEnv = { ...env, conversationSession: false };
+  const makeStep = Function(...Object.keys(stepEnv), `return ${factory}`)(...Object.values(stepEnv));
+  expect(makeStep('7', binding(0)).recoveryEdges).toBeUndefined();
+  expect(a.sessionConfiguration(() => '').configHome).toBe('/config-0');
   const da = a.createDriver(() => ''), db = b.createDriver(() => '');
   selected = 1;
   db.launch({ claim: 'claim-8' }); da.launch({ claim: 'claim-7' });
