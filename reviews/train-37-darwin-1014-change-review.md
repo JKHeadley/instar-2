@@ -18,10 +18,11 @@ Bug class: none
 Bug evidence: Evidence maintenance only. Before renewal nine tests passed and only the stale certificate assertion failed; the desk explicitly authorizes renewal in this case. Before/after evidence is retained in the absolute PROGRESS location.
 Hook bypass: none; core.hooksPath checked unset and common hooks directory contains samples only.
 Convergence: none
+Deferral: generated/register.json:1 | not-a-deferral=Inherited register descriptions are mechanically replayed; this publication introduces no deferred work.
 
 Decision: train-37-darwin-conformance | train-37 Darwin conformance re-declared for its composition; use the existing helpers after the behavioral contract passes, then verify the certificate and dependent publication. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-37-darwin-1014-PROGRESS.md
 
-Subject (1 paths): src/assembly/harness.declarations.json
+Subject (8 paths): src/assembly/harness.declarations.json, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 ## Closing block
 
