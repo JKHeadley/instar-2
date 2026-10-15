@@ -8,6 +8,7 @@ import { createJournalWorker, openPreviewJournal } from './journal-test-worker.j
 import { prepareJournalEnvelope, toolPreparation } from './journal-envelope.js';
 import { createHash } from 'node:crypto';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { COMPLETE_REQUESTED_WORK } from '../../src/assembly/tool-answer-guidance.js';
 import { readAnswer } from './answer-reading.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/inrole-memory-live-2026-10-11.json', import.meta.url), 'utf8')) as {
@@ -20,10 +21,10 @@ const genesis = { kind: 'genesis' as const, bot: '8994258214', chat: '-100436755
   maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 32768, cursor: 0 };
 
 for (const recorded of fixture.cases) it(`replays real update ${recorded.update} through intake, answer and restart`, async () => {
-  // Preserve the real capture's digest while accounting for the sole system identity edit.
+  // Preserve the captured digest; identity and completion guidance were added afterward.
   // Check outside the model port: the worker records thrown model errors as unknown outcomes.
   const capturedSystem = SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(
-    "You are an Instar 2.0 agent,", 'You are Instar,');
+    "You are an Instar 2.0 agent,", 'You are Instar,').replace(COMPLETE_REQUESTED_WORK, '');
   expect(createHash('sha256').update(capturedSystem).digest('hex')).toBe(recorded.systemSha256);
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'inrole-memory-'))), path = join(root, 'journal');
   let journal = openPreviewJournal(path, key, genesis);
