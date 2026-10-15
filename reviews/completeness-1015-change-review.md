@@ -66,3 +66,5 @@ Decision: completeness-test-budget | The unchanged 200-turn assertions exceeded 
 Compatibility: Summary and reply Jev test doubles distinguish the summary_integrity question rather than the presence of any question argument. No production summary behavior changes.
 
 Verification: Focused completion/review/recorded-shape tests and the unchanged context floor pass. The bounded 200-turn test passes in 123.7 seconds: 200 sends, no held turn, 3/3 early facts, 199 contextual reviews, maximum answer/review envelopes 16734/26468 bytes below 32768. Initial 120-second timeouts remain documented. Final direct-consumer, typecheck, register and pin outputs are in the canonical PROGRESS report.
+
+Register publication: Existing shape-only replay regenerated from source commit 266ad4b50fbcb7c96dad7221e7cabdbeb537ddc1, generation sha256:a6fd9e6f3ae68145aa89d8cce20b1353858fa9adfd476e766e2983f93e6b6993. Seven derived register outputs change only their source/generation pins. No native certificate or runtime authority declaration is changed.
