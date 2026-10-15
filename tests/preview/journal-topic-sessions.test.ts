@@ -1,3 +1,4 @@
+import { prepareJournalEnvelope } from './journal-envelope.js';
 import { afterEach, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -24,7 +25,7 @@ const topicOfBody = source.split('topicOf: operation => {')[1]!.split('\n       
 const update = (id: number, text: string, thread?: number) => ({ update_id: id,
   message: { message_id: id, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
     ...(thread === undefined ? {} : { message_thread_id: thread, is_topic_message: true }) } });
-function fixture(forum = false) {
+function fixture(forum = false, prepared = false) {
   const root = mkdtempSync(join(tmpdir(), 'topic-session-journal-')); roots.push(root);
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
     kind: 'genesis', bot: '12345678', chat: forum ? '-7654321' : '7654321', operator: '7654321', ...(forum ? { forum: true } : {}), grant: 'grant:preview',
@@ -87,7 +88,7 @@ function fixture(forum = false) {
   };
   const worker = createJournalWorker(journal, { topicConcurrency: 2, groupDisclosure: async () => true, now: () => now, stopped: () => false, model, modelBatch: async inputs => { if (batchFailure) throw batchFailure; return modelBatch(inputs); }, collectModel,
     sources: () => evidence ? [evidence] : [],
-    prepareModel: input => JSON.stringify(input), checkOutbound: () => {},
+    prepareModel: input => prepared ? prepareJournalEnvelope(input, 'offline-model', 'grant:offline', now, 262144) : JSON.stringify(input), checkOutbound: () => {},
     send: async input => { sent.push({ text: input.expectedText, thread: input.thread, update: input.update }); return sent.length; } });
   return { root, journal, worker, held, deliveries, launches, sent, port, queuedAtDelivery, live: () => live, state: () => state!,
     failBatch: (error: Error | undefined) => { batchFailure = error; },
@@ -165,13 +166,26 @@ it('the shipped journal host batches three messages arriving behind one busy tur
 const recordedBatchShapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
   otherShapes: { kind: string; id: string; raw: string; source: unknown }[] };
 it.each(recordedBatchShapes.otherShapes)('batch path preserves recorded $kind from $id and terminalizes each intake', async sample => {
-  const f = fixture();
+  const f = fixture(false, true);
   try {
     f.evidence({ recordedShape: sample });
     if (sample.kind === 'delivered-reply' || sample.kind === 'empty-reply-in-recorded-context') f.reply(sample.raw);
     f.worker.intake([update(1, 'Continue this conversation.', 7), update(2, 'And this next message.', 7)]);
     await f.worker.drain();
     expect(f.deliveries[0]!.input.text).toContain('exactly one {operation, answer}');
+    const text = f.deliveries[0]!.input.text;
+    const members = JSON.parse(text.split('OWNER MESSAGE\n')[1]!.split('\n')[1]!) as { envelope: string; context?: string }[];
+    expect(members).toHaveLength(2);
+    members.forEach((member, index) => {
+      expect(member.context).toBeUndefined();
+      const request = f.state().topics['7']!.inputs[index]!.request;
+      expect(member.envelope).toBe(request.question);
+      expect(text.split(JSON.stringify(member.envelope).slice(1, -1))).toHaveLength(2);
+      const envelope = JSON.parse(member.envelope);
+      const content = JSON.parse(envelope.messages.find((m: { role: string }) => m.role === 'context').content);
+      expect(content.packet).toEqual(JSON.parse(request.context));
+    });
+    expect(text).not.toContain('MEMORY AND OPEN WORK');
     expect(f.state().topics['7']!.inputs.every(input => input.request.context.includes(JSON.stringify(sample.raw)))).toBe(true);
     expect(f.journal.view.order.every(turn => turn.sent !== undefined)).toBe(true);
     expect(f.sent.every(row => row.text.trim().length > 0)).toBe(true);
@@ -214,9 +228,9 @@ it.each([20_000, 120_000, 210_000])('journal batches only a fitting prefix with 
     expect(f.state().topics['7']!.inputs.every(row => row.outcome?.state === 'complete')).toBe(true);
     expect(f.deliveries.every(row => Buffer.byteLength(row.input.text) <= 1_048_576)).toBe(true);
     expect(f.state().topics['7']!.inputs.every(row => Buffer.byteLength(row.request.question) <= 262_144)).toBe(true);
-    if (bytes === 20_000) { expect(f.deliveries).toHaveLength(1); expect(f.queuedAtDelivery[0]).toEqual([]); }
-    else { expect(f.deliveries).toHaveLength(bytes === 120_000 ? 2 : 4); expect(f.queuedAtDelivery[0]!.length).toBeGreaterThan(0); }
-    if (bytes === 210_000) expect(f.deliveries.some(row => !row.input.text.includes('exactly one {operation, answer}'))).toBe(true);
+    if (bytes <= 120_000) { expect(f.deliveries).toHaveLength(1); expect(f.queuedAtDelivery[0]).toEqual([]); }
+    else { expect(f.deliveries).toHaveLength(2); expect(f.queuedAtDelivery[0]!.length).toBeGreaterThan(0); }
+    if (bytes === 210_000) expect(f.deliveries.every(row => row.input.text.includes('exactly one {operation, answer}'))).toBe(true);
     const count = f.deliveries.length; await f.worker.drain();
     expect(f.sent).toHaveLength(4); expect(f.deliveries).toHaveLength(count);
   } finally { await f.close(); }

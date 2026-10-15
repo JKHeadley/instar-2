@@ -22,6 +22,8 @@ authority or resource limit; text-only turns retain their no-tools instruction.
 
 ## Continuing conversation session
 
+The conversation prompt keeps each prepared grounding packet once, with host clock and unresolved references separate. Ordinary questions retain their separate context; a batch preserves each complete envelope and arrival order.
+
 `production-conversation-session.ts` composes the existing Eight-owned session
 driver with the session-work admission, resource lease and durable edge interfaces.
 Unlike scheduled work, successive inputs use the same child. One reserved call
