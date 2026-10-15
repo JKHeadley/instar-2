@@ -1,3 +1,5 @@
+import { CODEX_CONVERSATION_CONFIG } from '../harness-adapters/codex-conversation.js';
+import { conversationSessionPolicy } from './production-conversation-session.js';
 import { READ_BEFORE_ANSWER } from './tool-answer-guidance.js';
 import { createHash } from 'node:crypto';
 import { hashBytes } from '../facts/index.js';
@@ -289,9 +291,12 @@ function checkCodexActivation(record: SubscriptionActivationRecord, profile: Pro
 export const CODEX_SESSION_FRAMING = 'preview-codex-session-work-v1';
 export const codexSessionPolicy = (model: string) => sessionWorkPolicy({ framing: CODEX_SESSION_FRAMING,
   framework: 'codex-cli', model, launch: sessionLaunchFlags('codex-cli', true) });
+export const codexConversationSessionPolicy = (model: string) => Object.freeze({
+  ...conversationSessionPolicy({ framing: CODEX_SESSION_FRAMING, framework: 'codex-cli', model, launch: ['app-server', '--listen', 'stdio://'] }),
+  protocol: Object.freeze({ threadConfiguration: CODEX_CONVERSATION_CONFIG }) });
 export function validateCodexSessionActivation(record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfile,
-  model: string, now: number, journalEnd?: number): void {
-  checkCodexActivation(record, profile, model, now, encoded(codexSessionPolicy(model)).hash, journalEnd);
+  model: string, now: number, journalEnd?: number, conversation = false): void {
+  checkCodexActivation(record, profile, model, now, encoded((conversation ? codexConversationSessionPolicy : codexSessionPolicy)(model)).hash, journalEnd);
   ensure(record.acceptedResiduals.includes(SESSION_WORK_RESIDUAL), 'session work grant does not accept the admitted-session residual');
 }
 /** Before every delegated Codex session: the exact executable, the login home's identity and
@@ -493,5 +498,8 @@ export function codexSubscriptionDoorway(): SubscriptionDoorway {
     validateActivation: validateCodexActivation,
     create: createCodexSubscriptionRoute,
     session: Object.freeze({ framing: CODEX_SESSION_FRAMING, framework: 'codex-cli' as const, harness: 'codex',
-      validateActivation: validateCodexSessionActivation, admit: admitCodexSubscriptionSession }) });
+      validateActivation: validateCodexSessionActivation, admit: admitCodexSubscriptionSession,
+      conversation: Object.freeze({ transport: 'private protocol pipes on this machine', policy: codexConversationSessionPolicy,
+        validateActivation: (record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfile, model: string, now: number, journalEnd?: number) =>
+          validateCodexSessionActivation(record, profile, model, now, journalEnd, true) }) }) });
 }

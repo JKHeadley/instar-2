@@ -1,0 +1,24 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "session-protocol-io.createSessionProtocolIO",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Machine-local exact PID/start-stamp records and private raw protocol captures for the worker this host owns. Peers cannot reuse these process identities or pipes. Each capture is bounded to 16 MiB, but historical captures and process rows are retained and total history is unbounded. These are execution evidence, not agent memory; conversation history remains in the existing agent-owned journal."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      60
+    ],
+    "holds": []
+  }
+]
