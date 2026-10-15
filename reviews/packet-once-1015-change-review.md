@@ -25,6 +25,6 @@ Decision: packet-once-batch | Retain complete envelopes and arrival order; omit 
 
 Subject (4 paths): src/assembly/README.md, src/assembly/production-conversation-session.ts, tests/assembly/production-conversation-session.test.ts, tests/preview/journal-topic-sessions.test.ts
 
-simplestRobustRoute: This is the simplest robust route: remove exact duplicate renderings in the existing builder, retaining unknown shapes in full. The small exact envelope check prevents loss for ordinary callers; no new store, scheduler or protocol. Existing authority, stop, cap, durable dispatch and correlated completion guards remain. Recorded offline replay proves rendering, not live compaction or latency improvement; the desk owns that walk.
+simplestRobustRoute: This is the simplest robust route: remove exact duplicate renderings in the existing builder, retaining unknown shapes in full. The small exact envelope check prevents loss for ordinary callers; no new store, scheduler or protocol. Canonical results use the existing take/consumeResult boundary. Existing authority, stop, cap, durable dispatch and correlated completion guards remain. Recorded offline replay proves rendering, not live compaction or latency improvement; the desk owns that walk.
 80/20: Targeted source-consumer tests and recorded-shape replay, typecheck and architecture/register/change-review checks; no full suite or live room run.
 VERDICT: author submission; no independent convergence or live acceptance claim

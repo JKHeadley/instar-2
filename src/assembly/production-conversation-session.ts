@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { boundary, ensure, freeze } from './boundary.js';
+import { boundary, ensure, freeze, take } from './boundary.js';
 import type { HarnessInputDelivery as ConversationDelivery, HarnessAdapterPort, HarnessWorkerHandle as ConversationWorker } from './contracts.js';
 import { canonical, type Result } from '../index.js';
 import { sessionWorkPolicy, SESSION_WORK_LIMITS } from './production-session-work.js';
@@ -107,8 +107,8 @@ function separateContext(request: Pick<SessionWorkRequest, 'question' | 'context
           || !('content' in message) || typeof message.content !== 'string') continue;
         const content: unknown = JSON.parse(message.content);
         if (content !== null && typeof content === 'object' && 'packet' in content) {
-          const packet = canonical(content.packet), context = canonical(JSON.parse(request.context));
-          if (packet.kind === 'Success' && context.kind === 'Success' && packet.value.bytes === context.value.bytes) return '';
+          const packet = take(canonical(content.packet)), context = take(canonical(JSON.parse(request.context)));
+          if (packet.bytes === context.bytes) return '';
         }
       }
     }
