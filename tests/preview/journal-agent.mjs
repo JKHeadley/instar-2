@@ -2128,6 +2128,15 @@ async function main() {
       heldSecrets: heldSecretValues,
       secrets: custody,
       media: mediaCustody,
+      ...(conversationSession ? { modelBatch: async inputs => {
+        await requireGroupDisclosure(journal.view);
+        sessionWork?.select?.();
+        if (!sessionWork?.port.available()) throw new ModelNotStarted();
+        const outcomes = await sessionWork.port.runBatch(inputs.map(input => ({ operation: input.id,
+          question: input.prepared, context: input.context, authority: sessionWork.authority })));
+        return outcomes.map((outcome, index) => conversationSessionAnswer(outcome, inputs[index].id,
+          shape => recordShape(shapesPath, 'answer', 'decision', 'malformed', shape)));
+      } } : {}),
       collectModel: async id => {
         if (!conversationSession || !sessionWork || !/^telegram:[0-9]+:update:[0-9]+$/u.test(id)) return null;
         const turn = journal.view.turns.get(id);
@@ -2522,7 +2531,7 @@ async function main() {
       const admissionBase = layout ? layout.admission : join(root, 'session-work-state', 'admission');
       const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
       const configurationFor = (topic, binding, handoff = null) => ({
-        ...(conversationSession ? { conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
+        ...(conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
           authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
           ...(handoff ? { prepareTurn: handoff.prepareTurn } : {}) } : {}),
         createDriver: resolveIntake => {
