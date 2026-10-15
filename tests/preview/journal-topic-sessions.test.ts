@@ -477,6 +477,12 @@ it('bounds sibling excerpts, keeps newest first, scrubs secrets and forgetting, 
     expect(words.items.every(item => item.excerpt.length <= 240)).toBe(true);
     expect(words.omitted).toBeGreaterThan(0);
     expect(Buffer.byteLength(JSON.stringify(currentActionFacts(f.journal.view, 2000, true, '8')))).toBeLessThan(32768);
+    for (const turn of f.journal.view.order) turn.sentAt = 1000;
+    expect(currentActionFacts(f.journal.view, 2000, true, '8').siblingWords!.items[0]!.source).toBe(latest.id);
+    const grouped = f.journal.view.order[0]!;
+    grouped.groupedInto = f.journal.view.order[1]!.id;
+    expect(currentActionFacts(f.journal.view, 2000, true, '8').siblingWords!.items)
+      .toContainEqual(expect.objectContaining({ kind: 'promise', source: grouped.id, state: 'open' }));
     latest.intent = 'Authorization: Bearer sk-test-abcdefghijklmnopqrstuvwxyz123456789';
     expect(JSON.stringify(currentActionFacts(f.journal.view, 2000, true, '8'))).not.toContain('sk-test-abcdefghijklmnopqrstuvwxyz123456789');
     f.journal.view.memory.push({ mode: 'forget', source: latest.id, quote: latest.intent, trigger: latest.id });

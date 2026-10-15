@@ -2386,7 +2386,7 @@ export function currentActionFacts(view: JournalView, now: number, operatorOnly:
  * another person's message, or a second store. Called only after the operator audience check. */
 function currentSiblingWords(view: JournalView, currentTopic: string, maxBytes: number) {
   const eligible = (turn: Turn) => operatorWriter(view, turn, true) && String(turn.thread ?? 'main') !== currentTopic
-    && !turn.noticeClass && !turn.groupedInto && !probeTurn(view, turn) && wholeReplyReceipt(view, turn) !== null;
+    && !turn.noticeClass && !probeTurn(view, turn) && wholeReplyReceipt(view, turn) !== null;
   const excerpt = (turn: Turn, text: string) => {
     // Match the existing reply-history withholding, including linked/repeated promises.
     const retired = view.memory.some(change => (change.mode === 'correct' || change.mode === 'forget')
@@ -2400,15 +2400,15 @@ function currentSiblingWords(view: JournalView, currentTopic: string, maxBytes: 
   };
   const origin = (turn: Turn) => ({ topic: String(turn.thread ?? 'main'), source: turn.id,
     at: wholeReplyReceipt(view, turn)!.at ?? null });
-  const statements = view.order.filter(eligible).filter(turn => turn.intent?.trim())
+  const statements = view.order.filter(eligible).filter(turn => !turn.groupedInto && turn.intent?.trim())
     .map(turn => ({ kind: 'statement', ...origin(turn), state: 'API accepted, not proof of reading or action',
-      ...excerpt(turn, turn.intent!) }));
+      ...excerpt(turn, turn.intent!) })).reverse();
   const promises = view.commitments.flatMap((note, id) => {
     const turn = view.turns.get(note.source);
     if (note.in !== 'reply' || !turn || !eligible(turn)) return [];
     const state = view.closed.has(id) ? 'closed' : commitmentOpen(view, id) ? 'open' : 'withdrawn';
     return [{ kind: 'promise', ...origin(turn), id, state, ...excerpt(turn, note.quote) }];
-  });
+  }).reverse();
   const newest = <T extends { at: number | null }>(rows: T[]) => rows.sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
   const candidates = newest([...newest(statements).slice(0, 12),
     ...newest(promises.filter(item => item.state === 'open')).slice(0, 12),
