@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: The production journal chooses declarations for the durable send intent.
-Side effects: Explicit empty metadata now overrides original metadata for unchanged selected text. Missing legacy fields still fall back. Rejected, held and excised candidates cannot supply revision declarations. Source publication and existing owner pins are regenerated using desk tooling.
+Side effects: Explicit empty metadata now overrides original metadata for unchanged selected text. Missing legacy fields still fall back. Rejected, held and excised candidates cannot supply revision declarations. Source publication is regenerated at 73c2bd655ea99b6560bcb7cb0af4279d79383d41 using the existing register builder. Desk owner/inventory rehash found no changed pins.
 Undo and recovery: Revert the journal selection change and regression together and regenerate publication. Keep durable revision, intent and receipt records; no schema migration or resend is required.
 Multi-machine posture: No new store or owner. Selection reconstructs from the existing shared encrypted journal under the current conversation owner. Crash after revision recording and drain after reopen preserve once-only delivery.
 Layer below: Inspected revision completion/projection, final candidate selection including holding and scoped excision, promiseProposals, fulfillmentProposals with offered ids, final quote filtering, and receipt-based settlement. Existing validators remain the admission authority.
