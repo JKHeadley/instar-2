@@ -101,13 +101,6 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
               ensure(config.now() < parentDeadline(), 'parent lifetime exhausted');
             }
             ensure(!stopped && !config.stopped() && config.authorized(), 'topic dispatch stopped or grant unavailable');
-            // Only actual new workers pass here, after replacement is known and
-            // the serialized slot wait has ended. Resident turns keep their context.
-            if (config.capacity) {
-              let room = await config.capacity();
-              if (room.memoryPressure && await reclaim()) room = await config.capacity();
-              if (!room.admit) return null;
-            }
             let lease = await resources.admit();
             if (!lease) {
               // The installation resource owner may have a tighter ceiling (or
@@ -116,6 +109,19 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
               if (idle !== undefined && await hosts.get(idle)!.retireIdle()) lease = await resources.admit();
             }
             if (!lease) return null;
+            // Physical admission can wait too. Measure after its final retry,
+            // before this lease becomes a worker. Resident turns keep their context.
+            if (config.capacity) {
+              let admitted = false;
+              try {
+                let room = await config.capacity();
+                if (room.memoryPressure && await reclaim()) room = await config.capacity();
+                admitted = room.admit;
+              } finally {
+                if (!admitted) ensure(await lease.release(), 'unlaunched resource release unconfirmed');
+              }
+              if (!admitted) return null;
+            }
             const held = lease;
             active.add(topic);
             return { attach: held.attach, release: async () => {

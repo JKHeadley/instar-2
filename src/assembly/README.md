@@ -141,9 +141,10 @@ driver consume the same limit. A prior activation with the old policy digest ref
 until the matching activation is installed. New workers require sampled CPU idle of
 at least 12 percent and free memory of at least 2 GiB and 10 percent of physical RAM,
 through `scripts/topic-worker-capacity.mjs`; unknown measurements retain queued work.
-The serialized resource admission samples after any slot wait and after the host has
-observed whether its worker needs replacement. Refusal keeps the input queued without
-dispatch, including an idle worker's observed exit; healthy resident turns retain context.
+The serialized resource admission samples after the topic slot wait and physical lease
+acquisition or retry, once the host knows its worker needs replacement. Refusal releases
+the unlaunched lease and keeps the input queued without dispatch, including an idle
+worker's observed exit; healthy resident turns retain context.
 Account capacity continues through the reviewed login pool and its between-turn
 handoff. The host resource owner retains its answer reserve, with nine total slots
 and the same per-worker bounds. These ceilings do not replace physical headroom.

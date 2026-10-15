@@ -441,3 +441,65 @@ it.each(recordedCapacityShapes.otherShapes)('capacity wait preserves recorded $k
   expect(f.delivered).toHaveLength(1); expect(f.delivered[0]!.input.text).toContain(request.context);
   await f.port.maintain(); expect(f.delivered).toHaveLength(1); await f.port.close();
 });
+
+// The review reproduction also covers the retry after reclaiming an idle topic.
+it.each([false, true])('physical lease wait rechecks headroom (retry=%s)', async retry => {
+  const f = fixture(); let room = true, entered = false, calls = 0;
+  Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: !room }) });
+  if (retry) await f.port.run(f.request('8:resident'));
+  const before = f.delivered.length;
+  let resume!: () => void;
+  const waiting = new Promise<void>(resolve => { resume = resolve; });
+  const admit = f.config.resources.admit;
+  Object.assign(f.config.resources, { admit: async () => {
+    calls++;
+    if (retry && calls === 1) return null;
+    entered = true; await waiting; return admit();
+  } });
+  const request = f.request('7:physical');
+  const pending = f.port.run(request);
+  await until(() => entered);
+  const reservation = structuredClone(f.state().edge);
+  const input = structuredClone(f.state().topics['7']!.inputs[0]!);
+  room = false; resume();
+  expect(await pending).toMatchObject({ state: 'queued' });
+  expect(f.launches).toHaveLength(before); expect(f.delivered).toHaveLength(before);
+  expect(f.counts().live).toBe(0);
+  expect(f.state().edge).toEqual(reservation);
+  expect(f.state().topics['7']).toMatchObject({ spent: 0, worker: null, claim: null, reserved: true });
+  expect(f.state().topics['7']!.inputs[0]).toMatchObject({ request, digest: input.digest, state: 'queued', delivery: null, attempts: 0 });
+  room = true; await f.port.maintain();
+  expect(await f.port.collect(request.operation)).toMatchObject({ outcome: { state: 'complete' } });
+  expect(f.launches).toHaveLength(before + 1); expect(f.delivered).toHaveLength(before + 1);
+  expect(f.state().edge).toEqual(reservation);
+  await f.port.maintain(); expect(f.delivered).toHaveLength(before + 1);
+  await f.port.close(); expect(f.counts().live).toBe(0);
+});
+
+it('an unreadable post-admission capacity sample releases the unused lease', async () => {
+  const f = fixture();
+  Object.assign(f.config, { capacity: async () => { throw Error('measurement unavailable'); } });
+  expect(await f.port.run(f.request('7:a'))).toMatchObject({ state: 'uncertain' });
+  expect(f.launches).toHaveLength(0); expect(f.delivered).toHaveLength(0);
+  expect(f.counts().live).toBe(0); await f.port.close();
+});
+
+it.each([false, true])('review: physical lease wait uses current headroom %s', async roomAfterWait => {
+  const f = fixture(); let room = true, entered = false;
+  let releaseWait!: () => void;
+  const waitForLease = new Promise<void>(resolve => { releaseWait = resolve; });
+  const originalAdmit = f.config.resources.admit;
+  Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: !room }) });
+  Object.assign(f.config.resources, { admit: async () => {
+    entered = true; await waitForLease; return originalAdmit();
+  } });
+  const pending = f.port.run(f.request('7:a'));
+  await until(() => entered);
+  room = roomAfterWait; releaseWait();
+  const result = await pending;
+  const evidence = { state: result.state, launches: f.launches.length, deliveries: f.delivered.length, live: f.counts().live };
+  await f.port.close();
+  expect(evidence).toEqual(roomAfterWait
+    ? { state: 'complete', launches: 1, deliveries: 1, live: 1 }
+    : { state: 'queued', launches: 0, deliveries: 0, live: 0 });
+});
