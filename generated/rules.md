@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:78664b1616d55afe82b744232577fe6da91d8368438a7dbe5b3dc0e4411c10f6
-Source commit: ae9cb53d4e2c73dd6a32520d1e769b7ba5b8383d
+Register generation: sha256:951076f12157f5fe89a57ddd5f6770bf9c3c57695f56c251c52e47e15cfa0eb8
+Source commit: 57db128c192a2e504ea8f53ab32b35ea8f88db95
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
