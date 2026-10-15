@@ -8939,6 +8939,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (labels.length) reply += ` Upcoming: ${labels.join('; ')}.`;
         let mentionedKeys = mentioned.map(datedKey), heldBack = false, resultsOnly = false;
         let release: ReplyRelease | undefined, held: ReplyHeld | undefined;
+        let revisionDeclarationsSelected = false;
         /** The review objection that removed or rewrote text this reply would otherwise have sent (Rules 8, 22, 46). */
         let objection: string | undefined;
         // Rule 106 before the send: the link-shape predicate over the model-written text, and a named
@@ -9115,7 +9116,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // answers each objection. An UNKNOWN revision is never repeated: the original is kept. A held
             // candidate gets the same one bounded correction, then its required evidence is revalidated
             // below; nothing the agent says releases a mandatory floor on its own (Rules 4, 57, 86).
-            let revised: string | undefined;
+            let revised: string | undefined, unchangedRevision: string | undefined;
             const originalPrompt = projectedReplyPrompt(turn.prompt) ?? reviewPrompt;
             // Rules 8, 22, 92: the finished results this reply carries are the runner's lines, not the agent's draft. A
             // revision rewrites only the agent's prose; each result line is attached again exactly as written, so the
@@ -9173,8 +9174,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 const candidate = `${prose.trimEnd()}${resultLines.filter(line => !prose.includes(line)).join('')}`;
                 // The agent keeping its draft unchanged is its answer, not a new candidate: nothing to re-review.
                 // The same text with a newly declared investigation record is a new candidate (plan #104).
-                if ((candidate !== reply || turn.revision.blocker !== undefined) && !redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate))
-                  revised = candidate;
+                if (!redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate)) {
+                  if (candidate !== reply || turn.revision.blocker !== undefined) revised = candidate;
+                  else if (!lacksBlockerRecord(turn.revision.rejectedBlocker)) unchangedRevision = candidate;
+                }
               }
             }
             // Claim excision changes the answer's meaning. Reuse the one revision-review slot to judge
@@ -9276,6 +9279,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 : `${actionHeader}\n${CREDENTIAL_SHAPE_NOTICE.replace(/^PREVIEW — /u, '')}`;
               heldBack = true; speaker = 'infrastructure';
             }
+            // Declaration provenance follows the selected revision, even when its text did not change.
+            // A held reply, excised remainder or runner-only result never adopts an unselected declaration.
+            revisionDeclarationsSelected = revised !== undefined || unchangedRevision === reply
+              && !heldBack && scoped === undefined && !resultsOnly;
             if (!held) release = { review: decision, objections, ...(note === undefined ? {} : { reason: note }),
               revised: revised !== undefined, dispositions, ...(skipped ? { responseSkipped: skipped } : {}),
               ...(withheld === undefined ? {} : { withheld }) };
@@ -9377,8 +9384,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(reply === HOLDING_REPLY || heldBack || !mentionedKeys.length ? {} : { mentionedDates: mentionedKeys }),
           ...(release === undefined ? {} : { release }), ...(held === undefined ? {} : { heldReview: held }),
           // A desk probe's reply stays auditable, but its promises never become operator commitments.
-          promises: probeTurn(journal.view, turn) ? [] : recordedPromises((release?.revised ? turn.revision?.promises : undefined) ?? turn.proposedPromises ?? [], reply, turn.id, intentAt, ports.timeZone ?? 'America/Los_Angeles'),
-          fulfills: probeTurn(journal.view, turn) ? [] : ((release?.revised ? turn.revision?.fulfills : undefined) ?? turn.proposedFulfills ?? []).filter(item => reply.includes(item.quote)
+          promises: probeTurn(journal.view, turn) ? [] : recordedPromises((revisionDeclarationsSelected ? turn.revision?.promises : undefined) ?? turn.proposedPromises ?? [], reply, turn.id, intentAt, ports.timeZone ?? 'America/Los_Angeles'),
+          fulfills: probeTurn(journal.view, turn) ? [] : ((revisionDeclarationsSelected ? turn.revision?.fulfills : undefined) ?? turn.proposedFulfills ?? []).filter(item => reply.includes(item.quote)
             && fulfillableCommitment(journal.view.commitments, item.id) && !journal.view.closed.has(item.id)
             && journal.view.commitments[item.id]!.source !== turn.id).map(item => item.id),
           ...(heldBack || reply === HOLDING_REPLY ? {} : sentObligations(turn, reply, intentAt)),
