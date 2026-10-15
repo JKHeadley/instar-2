@@ -397,6 +397,7 @@ it('records a visible refusal and starts no fresh session when continuation is u
 
 it('also refuses a prior topic with no recorded native resume', () => {
   const f = fixture(); f.launch();
+  f.config.io.save({ ...f.journal, resumes: {} }); // Exercise a legacy journal lacking native handles.
   const driver = createProductionSessionDriver({ ...f.config, maxSessions: 2, continuation: undefined });
   refused(driver.launch({ operation: 'next', claim: 'topic', artifact: 'sha256:test',
     incarnation: 'next', workingScope: '/work', handles: [] }), 'continuation provider unavailable');
@@ -454,7 +455,8 @@ it('compacts an idle context wall once and then respawns through agent-owned con
   expect(f.calls.some(row => row[0] === 'kill-session' && row[2]?.endsWith(':'))).toBe(true);
   expect(f.journal.sessions.find(row => row.identity === next)?.continuation?.state).toBe('completed');
   expect(f.calls.filter(row => row[0] === 'new-session')).toHaveLength(2);
-  expect(f.journal.resumes.topic).toBeUndefined();
+  expect(f.journal.resumes.topic).toBe(f.journal.sessions.find(row => row.identity === next)?.resumeId);
+  expect(f.journal.resumes.topic).toMatch(/^[a-f0-9-]{36}$/u);
 });
 
 it('retains context-wall continuation intent across a cut immediately after kill', () => {
@@ -600,4 +602,26 @@ it.each(['claude-code', 'codex-cli'] as const)('prepared connectors launch on th
   expect(command.join(' ')).toContain('PreToolUse');
   if (framework === 'claude-code') expect(command).toEqual(expect.arrayContaining(['--strict-mcp-config', '--mcp-config', '/private/mcp.json']));
   else expect(command.join(' ')).toContain('mcp_servers.mail=');
+});
+
+
+it('retains a fresh native transcript handle without a lifecycle hook for later topic replacement', () => {
+  const f = fixture(), id = f.launch();
+  const launched = f.calls.find(row => row[0] === 'new-session')!;
+  const native = launched[launched.indexOf('--session-id') + 1];
+  expect(native).toMatch(/^[a-f0-9-]{36}$/u);
+  expect(f.journal.resumes.topic).toBe(native);
+  expect(f.journal.sessions.find(row => row.identity === id)?.resumeId).toBe(native);
+});
+
+it('a new topic claim with prior history requires continuation even without a native handle', () => {
+  const f = fixture();
+  const driver = createProductionSessionDriver({ ...f.config, continuationRequired: () => true });
+  const id = value(driver.launch({ operation: 'new-claim', claim: 'new-claim', artifact: 'sha256:test',
+    incarnation: 'next', workingScope: '/work', handles: [] }));
+  expect(f.journal.sessions.find(row => row.identity === id)?.continuation?.state).toBe('completed');
+  expect(f.calls.some(row => row.includes('--resume'))).toBe(false);
+  const missing = createProductionSessionDriver({ ...f.config, maxSessions: 2, continuationRequired: () => true, continuation: undefined });
+  refused(missing.launch({ operation: 'another', claim: 'another', artifact: 'sha256:test', incarnation: 'next', workingScope: '/work', handles: [] }),
+    'continuation provider unavailable');
 });
