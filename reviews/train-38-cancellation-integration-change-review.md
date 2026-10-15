@@ -27,6 +27,9 @@ Deferral: tests/preview/journal.ts:753 | not-a-deferral=describes implemented ow
 Deferral: tests/preview/journal.ts:4687 | not-a-deferral=validates the implemented durable follow-up record
 Deferral: tests/preview/journal.ts:11186 | not-a-deferral=delivers recovery instructions to the implemented obligation worker
 
+Register publication: Existing desk rehash/repin reported zero owner/inventory changes. Replayed generated/ from fdde5efddc4ac37bf76a75532751053b13e3e4f2, generation sha256:49fa43ace12e905e98f99482c524bbde5f5fe600c02a04b37c93c7fa486b1209. Targeted replay/diagnostic/cache/egress/notice suite passes 84/84; native contract passes 10/10. New regression fails both cases on the pre-repair journal and passes both after integration.
+Deferral: generated/register.json:1 | not-a-deferral=generated projection of implemented declarations
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: merge the existing source repair, preserve current train additions, add this incident to recorded replay, and regenerate evidence. Existing cancellation polling, answer replacement and obligation machinery do the work. The bounded read allowance prevents transient read failures masquerading as withdrawal; complete trace evidence prevents duplicate uncertain effects; pre-dispatch ownership prevents a second interrupted process losing the task. Start guards are strict authority/admission and stop; end guards are delivered answer or owned recovery, verified cleanup and send fence; limits remain 200ms/nine observations, one replacement and existing caps. Offline replay and the Studio native contract are evidence here; the pipeline supplies fresh live answer and full-suite acceptance.
