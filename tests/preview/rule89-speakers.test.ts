@@ -90,7 +90,7 @@ for (const sample of evidence.samples) {
         worker.intake([{ update_id: sample.update, message: { chat: { id: 7654321, type: 'private' },
           from: { id: 7654321 }, text: sample.label === 'b8' ? 'status' : 'What is one easy stretch to do after a long walk?' } }]);
         if (acknowledge) { now += 7000; await worker.minimal(); }
-        await worker.drain(); await worker.minimal();
+        await worker.drain(); await worker.reviewReplies(); await worker.minimal();
         const speakers = { agent: sample.label === 'b5' ? 1 : 0,
           infrastructure: Number(sample.label === 'b8') + Number(acknowledge) };
         expect(journal.view.speakers).toEqual(speakers);
