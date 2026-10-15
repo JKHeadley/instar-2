@@ -160,9 +160,42 @@ export function codexDispatchCheckpoint(args: readonly string[]): string | null 
   return null;
 }
 
+/** Rules 18/82/103/104: a separately sealed disposition may allow guidance edits only.
+ * The pins retain every policy field and generated checkpoint; only the two prose fields of
+ * each existing subagent and the system prompt vary. This never reinterprets an old class. */
+export const GUIDANCE_ONLY_TOOLS_CLASS = 'tools-guidance-only-v1';
+export function guidanceOnlyPolicyPins(policy: unknown): string {
+  const p = record(policy);
+  if (p.framing !== SUBSCRIPTION_TOOLS_FRAMING || !Array.isArray(p.args)
+    || !p.args.every(arg => typeof arg === 'string')) throw Error('not a subscription tools policy');
+  const args: unknown[] = [...p.args];
+  const prose = valueAfter(p.args as string[], '--system-prompt');
+  const agents = valueAfter(p.args as string[], '--agents');
+  if (typeof prose !== 'string' || typeof agents !== 'string') throw Error('missing or repeated guidance flags');
+  args[p.args.indexOf('--system-prompt') + 1] = '';
+  const definitions: unknown = JSON.parse(agents);
+  if (!definitions || typeof definitions !== 'object' || Array.isArray(definitions)) throw Error('invalid subagents');
+  args[p.args.indexOf('--agents') + 1] = Object.fromEntries(Object.entries(definitions).map(([name, value]) => {
+    const agent = record(value);
+    if (typeof agent.prompt !== 'string' || typeof agent.description !== 'string') throw Error('invalid subagent prose');
+    return [name, { ...agent, prompt: '', description: '' }];
+  }));
+  return (encoded({ policy: { ...p, args }, checkpoints: [undefined, PROBE_EGRESS].map(egress =>
+    JSON.parse(subscriptionToolSettings({ ...PROBE, ...(egress ? { egress } : {}) }, PROBE_HOME))) }) as { hash: string }).hash;
+}
+
 /** Whether `policy` (the build's own tools policy, whose canonical digest must be `digest`) lies in `policyClass`. */
-export function toolsPolicyClassVerdict(policyClass: unknown, policy: unknown, digest: string): ToolsClassVerdict {
+export function toolsPolicyClassVerdict(policyClass: unknown, policy: unknown, digest: string, pins?: unknown): ToolsClassVerdict {
   const outside = (reason: string): ToolsClassVerdict => ({ kind: 'outside', reason });
+  if (policyClass === GUIDANCE_ONLY_TOOLS_CLASS) {
+    const checkpoints = toolsPolicyClassVerdict(FULL_TOOLS_CLASS, policy, digest);
+    if (checkpoints.kind !== 'covered') return checkpoints;
+    try {
+      if (typeof pins !== 'string' || guidanceOnlyPolicyPins(policy) !== pins)
+        return outside('the policy or checkpoints differ from the sealed guidance-only pins');
+    } catch { return outside('the guidance-only policy is malformed'); }
+    return { ...checkpoints, policyClass };
+  }
   if (policyClass !== FULL_TOOLS_CLASS) return outside(`the granted policy class ${String(policyClass)} is not known to this build`);
   let hash: string;
   try { hash = (encoded(policy) as { hash: string }).hash; } catch { return outside('the presented policy is not canonical'); }

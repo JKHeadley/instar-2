@@ -178,7 +178,8 @@ export function classifyStuckSignature(capture: string): 'policy-wedge' | 'conte
   const wedge = classifyWedgeTail(capture);
   if (wedge) return wedge === 'aup-rejection' ? 'policy-wedge' : 'context-wedge';
   const live = tail(capture);
-  if (/you'?ve (?:hit|reached) your (?:session|usage|5-hour) limit|usage limit reached|\blimit\b[^.\n]{0,30}\bresets?\b/i.test(live)) return 'rate-limited';
+  // A usage-percentage warning also names the reset time; only an actual limit hit pauses work.
+  if (/you['’]?ve (?:hit|reached) your (?:(?:session|usage|5-hour|weekly) )?limit\b|usage limit reached/i.test(live)) return 'rate-limited';
   if (/conversation (?:is )?too long|error during compaction[^.\n]{0,40}too long|press esc twice to go up a few messages/i.test(live)
     && !/conversation compacted|paused for context compaction|compaction[^.\n]{0,20}resumed/i.test(live)) return 'context-too-long';
   return null;
