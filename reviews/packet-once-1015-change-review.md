@@ -23,7 +23,9 @@ Deferral: tests/assembly/production-conversation-session.test.ts:480 | not-a-def
 Decision: packet-once-exact | Omit only a canonically byte-exact embedded context-role packet; preserve all separate context when recognition fails, and keep host facts outside packet deduplication. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/packet-once-1015-PROGRESS.md
 Decision: packet-once-batch | Retain complete envelopes and arrival order; omit duplicate per-member and outer lead context while sizing the actual remaining prompt. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/packet-once-1015-PROGRESS.md
 
-Subject (4 paths): src/assembly/README.md, src/assembly/production-conversation-session.ts, tests/assembly/production-conversation-session.test.ts, tests/preview/journal-topic-sessions.test.ts
+Decision: packet-once-publication | Regenerate the register from the committed source head; leave the byte-bound Darwin certificate for the Studio contract run. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/packet-once-1015-PROGRESS.md
+
+Subject (11 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, src/assembly/README.md, src/assembly/production-conversation-session.ts, tests/assembly/production-conversation-session.test.ts, tests/preview/journal-topic-sessions.test.ts
 
 simplestRobustRoute: This is the simplest robust route: remove exact duplicate renderings in the existing builder, retaining unknown shapes in full. The small exact envelope check prevents loss for ordinary callers; no new store, scheduler or protocol. Canonical results use the existing take/consumeResult boundary. Existing authority, stop, cap, durable dispatch and correlated completion guards remain. Recorded offline replay proves rendering, not live compaction or latency improvement; the desk owns that walk.
 80/20: Targeted source-consumer tests and recorded-shape replay, typecheck and architecture/register/change-review checks; no full suite or live room run.
