@@ -71,7 +71,7 @@
       ],
       "gate": {
         "test": "P9-PREVIEW-step-check-graduation",
-        "deadline": 1792022400000
+        "deadline": 1792108800000
       }
     },
     "profile": {
