@@ -23,6 +23,8 @@ Decision: train-41-084602-owner | Reuse the existing ownerHeld checkpoint immedi
 Decision: train-41-084602-budget | Pin the already accepted 3275-byte prompt growth exactly, keeping the independent real packet and answer-budget checks and all prompt bytes unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-41-repair-084602-PROGRESS.md
 Decision: train-41-084602-pins | Use the delegated desk rehash and repin tools, then regenerate the register from the committed source; never hand-edit pins. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-41-repair-084602-PROGRESS.md
 
+Register publication: Replayed committed source 7e1177e03b8f7fdf1cf185cf96ba9938b79ebc81; generation sha256:ebb5bfa9c08998e4b0e25408087e5f06281ad919ab1527514fd79e083b24099d, 292 entries, shape-only replay. Desk rehash and repin changed zero pins.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reuse the existing stop/ownership check at the one missing asynchronous boundary and correct the stale size assertion. No new product machinery, prompt, capability restriction, timer or recovery protocol. The test-only held poll selects the failing interleaving under its parent test watchdog and exact-PID cleanup; the original process assertions still require retirement, retained history and exactly-once successor delivery. No new autonomous-capability or live acceptance claim.
