@@ -8,7 +8,7 @@ Affected rules: 26, 49, 69, 74, 90, 101, 111, 112, 113, 116
 Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake are unchanged; this is derived publication only.
 Operator questions: none
 Suggested tier: critical
-Declared tier: editorial
+Declared tier: ordinary
 Tier rationale: Existing register replay reproduces committed source; no governing claim or runtime behavior is added.
 Side effects: Generated source pins now bind the restored tool instruction and exact Darwin certificate. Existing entry population and checks remain.
 Undo and recovery: Regenerate from the desired reviewed source commit; never hand-edit generated outputs.
