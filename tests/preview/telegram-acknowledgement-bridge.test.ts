@@ -7,10 +7,11 @@ import { reactionAcknowledgement } from './telegram-acknowledgement.mjs';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 
 // Real confined-child bridge and loopback HTTP, with the bridge's fixed offline token only.
+// Successful reaction receipts are deliberately delayed past the old 500 ms bound.
 // The host's macOS resource shim is tested separately by journal-agent-resources on the gate host.
 it.each([false, true])('real bridge delivers acknowledgement with fallback=%s and typing', async fallback => {
   const root = mkdtempSync(join(tmpdir(), 'reaction-bridge-')), log = join(root, 'http.log');
-  const endpoint = spawn(process.execPath, [resolve('tests/preview/journal-poll-endpoint.mjs'), log, '', '', '', fallback ? 'reaction-fail' : ''],
+  const endpoint = spawn(process.execPath, [resolve('tests/preview/journal-poll-endpoint.mjs'), log, '', '', '', fallback ? 'reaction-fail' : '', '800'],
     { stdio: ['ignore', 'pipe', 'pipe'] });
   try {
     const port = await new Promise<number>((resolvePort, reject) => {

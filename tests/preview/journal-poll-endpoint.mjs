@@ -20,7 +20,7 @@ const server = createServer((request, response) => {
     // Opt-in `long-poll`: an empty getUpdates waits its `timeout` as Telegram does, so a bounded
     // cycle count spans real time and a fast host cannot run out of cycles before its drain passes.
     const wait = process.argv[5] === 'long-poll' && method === 'getUpdates' && pending.length === 0
-      ? Math.min(Number(body.timeout) || 0, 5) * 1000 : 0;
+      ? Math.min(Number(body.timeout) || 0, 5) * 1000 : method === 'setMessageReaction' ? Number(process.argv[7] ?? 0) : 0;
     setTimeout(() => response.end(JSON.stringify({ ok: true, result: method === 'getMe'
       ? { id: 12345678, is_bot: true, username: 'echo_mmtest_seam_b27x_bot' }
       : method === 'getUpdates' ? pending.slice(0,body.limit)
