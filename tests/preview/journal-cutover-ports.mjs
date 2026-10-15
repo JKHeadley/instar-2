@@ -25,6 +25,11 @@ export function createProductionTelegramIO() {
   let polls = 0;
   const port = { invoke(input) {
     if (input.method === 'getMe') return { kind: 'identity', identity: { id: 12345678 } };
+    // This fixture models a chat without reactions: explicit refusal permits the existing
+    // text acknowledgement. Throwing here instead means UNKNOWN, which must not fall back.
+    if (input.method === 'setMessageReaction') return { kind: 'response', status: 400,
+      bytes: '{"ok":false,"error_code":400,"description":"Bad Request: REACTION_INVALID"}' };
+    if (input.method === 'sendChatAction') return { kind: 'response', status: 200, bytes: '{"ok":true,"result":true}' };
     if (input.method === 'getUpdates') {
       if (process.env.INSTAR_PREVIEW_CUTOVER_ROLE === 'canary') {
         log({ kind: 'poll', outcome: 'held', role: 'canary', offset: input.body.offset });
