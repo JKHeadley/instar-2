@@ -9336,6 +9336,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           && check.candidateDigest === reviewedDigest && check.approvalReport?.request === shown.request.id
           && check.approvalReport.answer === 'no');
         if (shown && !reportedNo && !reply.includes(SHARED_ACCESS_NOTE)) reply = `${reply.trimEnd()}\n\n${approvalDisclosureText(shown)}`;
+        // Prepare the canonical text before signing and recording the intent; the original answer stays intact.
+        reply = reply.trimEnd();
         const split = splitReply(reply, reply.slice(answerEnd));
         if (!split) {
           journal.append({kind:'hold',id:turn.id,reason:'encoded reply size',at:ports.now()}); continue;
