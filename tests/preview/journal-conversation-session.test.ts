@@ -1,3 +1,7 @@
+// @ts-ignore -- physical pool boundary is JavaScript.
+import { createTopicLoginHandoff } from '../../scripts/topic-login-pool.mjs';
+// @ts-ignore -- existing reviewed account pool is JavaScript.
+import { createHarnessLoginPool } from './harness-login-pool.mjs';
 import { createHash } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
@@ -43,6 +47,7 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
   const files = new Map<string, string>(), delivered: string[] = [], sent: string[] = [];
   let state: ConversationTopicsState | null = null, busy = false;
   let sources: readonly unknown[] = [];
+  let turnBoundary: NonNullable<import('../../src/assembly/production-conversation-session.js').ConversationSessionConfig['prepareTurn']> = async () => true;
   const adapt = (config: Omit<import('../../src/assembly/production-conversation-session.js').ConversationSessionConfig, 'store' | 'createAdapter'> & Pick<import('../../src/assembly/production-session-work.js').SessionWorkConfig, 'createDriver'>) => createConversationTopicsPort({ ...config, maxSessions: 2, idleMs: 5000,
     topicOf: Function('journal', `return operation => {${topicBody}}`)(journal) as (operation: string) => string,
     store: { load: () => state, save: next => { state = structuredClone(next); } },
@@ -52,7 +57,7 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
       adapter.deliver = input => busy ? Promise.resolve({ state: 'busy-not-dispatched', evidence: 'proved busy' }) : deliver(input);
       return adapter;
     } });
-  const config: Parameters<typeof adapt>[0] = { conversation: 'operator', allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => authority,
+  const config: Parameters<typeof adapt>[0] = { prepareTurn: input => turnBoundary(input), conversation: 'operator', allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => authority,
     createDriver: resolve => ({ owner: 'part-eight', launch: () => { launches++; return f.success('session:123:1'); },
       deliver: input => { if (checkIntake) expect(journal.view.order.some(turn => (turn.id === input.intake || `${turn.id}:format-retry` === input.intake && turn.answerRetried || `${turn.id}:reply-revision` === input.intake && turn.revisionReserved) && turn.reserved)).toBe(true);
         delivered.push(resolve(input.intake, input.digest)); calls++; files.set(destination, answer); return f.success('accepted'); },
@@ -92,6 +97,7 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
     checkOutbound: text => { if (text.includes('SECRET')) throw Error('credential'); }, ...extra });
   let worker = openWorker();
   return { root, get journal() { return journal; }, get worker() { return worker; }, get model() { return model; }, get port() { return port; }, sent, delivered, edges: () => edges, counts: () => ({ launches, calls, fallback }),
+    boundary: (next: typeof turnBoundary) => { turnBoundary = next; },
     evidence: (value: unknown) => { sources = [value]; },
     busy: (value: boolean) => { busy = value; }, advance: (ms: number) => { now += ms; },
     state: () => structuredClone(state!.topics.main!), topics: () => structuredClone(state!.topics), restore: (next: import('../../src/assembly/production-conversation-session.js').ConversationState) => { state = { ...state!, topics: { ...state!.topics, main: structuredClone(next) } }; },
@@ -789,4 +795,35 @@ it('keeps a known Jev objection when a later paid review was interrupted', async
   expect(recovered.packet).toContain('defers_work');
   expect(recovered.packet).toContain(result.reason);
   expect(recovered.packet).toContain('retrospective review interrupted');
+});
+
+
+it('the journal sends each answer once across a real pool boundary and host/journal reopening', async () => {
+  const f = fixture();
+  const entries = ['a', 'b'].map((name, index) => ({ index, profile: {
+    reference: name, expectedAccount: `${name}@example.invalid`, configDirectory: `/fixture-${name}` } }));
+  let pressure = false, poolState: unknown, topicState: unknown;
+  const pool = createHarnessLoginPool({ configuration: { entries, identity: 'fixture-journal', threshold: 95, current: () => true },
+    statePath: 'unused', now: () => 1000, validate: () => {},
+    readText: () => { const error = new Error('absent') as Error & { code: string }; error.code = 'ENOENT'; throw error; },
+    write: (_path: string, next: unknown) => { poolState = structuredClone(next); }, usage: () => ({ version: 1,
+      accounts: entries.map(entry => ({ email: entry.profile.expectedAccount, configHome: entry.profile.configDirectory,
+        lastQuota: { measuredAt: new Date(1000).toISOString(), fiveHour: { utilizationPct: pressure && entry.index === 0 ? 99 : 10, resetsAt: new Date(100000).toISOString() },
+          sevenDay: { utilizationPct: pressure && entry.index === 0 ? 99 : 10, resetsAt: new Date(100000).toISOString() } } })) }) });
+  const handoff = createTopicLoginHandoff({ topic: 'main', pool, entries,
+    store: { load: () => topicState ?? null, save: (next: unknown) => { topicState = structuredClone(next); } },
+    physical: () => ({ load: () => ({ resumes: {} }) }), project: '/fixture', framework: 'claude-code', admit: async () => {} });
+  f.boundary(handoff.prepareTurn);
+  try {
+    f.worker.intake([update(1, 'First question')]); await f.worker.drain();
+    pressure = true;
+    f.worker.intake([update(2, 'Second question')]); await f.worker.drain();
+    expect(handoff.current().index).toBe(1); expect(pool.state.handoffs).toHaveLength(1);
+    expect(poolState).toBeDefined(); expect(f.sent).toHaveLength(2); expect(f.delivered).toHaveLength(2);
+    expect(f.counts().launches).toBe(2);
+    await f.restart(); await f.worker.drain();
+    f.worker.intake([update(1, 'First question'), update(2, 'Second question')]); await f.worker.drain();
+    expect(f.sent).toHaveLength(2); expect(f.delivered).toHaveLength(2);
+    expect(pool.state.handoffs).toHaveLength(1); expect(await f.replay()).toBe(1); expect(f.sent).toHaveLength(2);
+  } finally { await f.close(); }
 });

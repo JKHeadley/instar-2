@@ -9,7 +9,7 @@ import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
 
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
-function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | 'maxSteps' | 'maxResultBytes'>> = {}) {
+function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | 'maxSteps' | 'maxResultBytes' | 'prepareTurn'>> = {}) {
   const f = assemblyRuntimeFixture();
   let clock = 1000, stopped = false, authorized = true, authority = 'existing-role', used: number | null = 0, dead = false, paused = false, finish = true;
   let state: ConversationState | null = null, answer = '{"answer":"hello"}', active: ConversationDelivery | null = null;
@@ -467,4 +467,17 @@ it('bounds unresolved prompt references while preserving all uncertain records',
   expect(text).toContain('"operation":"uncertain-6"'); expect(text).toContain('"operation":"uncertain-69"');
   expect(f.state().inputs).toHaveLength(71); expect(f.state().inputs[0]!.outcome!.detail).toBe('effect unknown');
   await next.close();
+});
+
+it('checks the input deadline before login handoff and uses the handoff authority for a live input', async () => {
+  let prepared = 0;
+  const f = fixture({ prepareTurn: async () => { prepared++; f.grant('replacement-login-grant'); return true; } });
+  expect(await f.port.run({ ...f.request('expired-handoff'), deadlineAt: 1000 })).toMatchObject({ state: 'uncertain', detail: expect.stringContaining('input deadline exceeded') });
+  expect(prepared).toBe(0);
+  expect(f.launches).toHaveLength(0);
+  expect(await f.port.run({ ...f.request('live-handoff'), deadlineAt: 2000 })).toMatchObject({ state: 'complete' });
+  expect(prepared).toBe(1);
+  expect(f.admissions[0]!.authority).toBe('replacement-login-grant');
+  expect(f.delivered).toHaveLength(1);
+  await f.port.close();
 });

@@ -47,6 +47,9 @@ export interface ConversationSessionStore {
   save(state: ConversationState): void;
 }
 export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'createDriver'> {
+  /** Called only between turns, serialized with queue draining and idle maintenance.
+   * False retains the queued input without dispatch; the ordinary host tick retries. */
+  readonly prepareTurn?: (input: Readonly<{ claim: string | null; retire: () => Promise<void> }>) => Promise<boolean>;
   readonly conversation: string;
   /** The already-admitted parent lifetime; replacing a process cannot extend it. */
   readonly allowanceDeadline: number;
@@ -202,10 +205,11 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       persist({ worker }); await lease.attach(worker.launch); guard();
     };
     const work = async (id: string) => {
-      const request = { ...row(id).request, authority: config.currentAuthority() };
       try {
         ensure(!closing && !config.stopped() && config.authorized(), 'conversation stopped or grant unavailable');
-        ensure(config.now() < (request.deadlineAt ?? config.allowanceDeadline), 'input deadline exceeded');
+        ensure(config.now() < (row(id).request.deadlineAt ?? config.allowanceDeadline), 'input deadline exceeded');
+        if (config.prepareTurn && !await config.prepareTurn({ claim: state.claim, retire })) return false;
+        const request = { ...row(id).request, authority: config.currentAuthority() };
         let replaceNeeded = !state.worker || state.turns >= config.maxSteps || config.now() >= state.deadline || state.authority !== request.authority;
         if (state.worker && !replaceNeeded) {
           const observed = await adapter.observe({ ...state.worker, delivery: null, cursor: 0, limit: 2 });
@@ -275,6 +279,9 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       if (draining) return draining;
       draining = (async () => {
         await retiring; await recover();
+        if (config.prepareTurn && !state.inputs.some(input => input.state === 'queued')) {
+          guard(); await config.prepareTurn({ claim: state.claim, retire });
+        }
         while (!closing && !config.stopped()) {
           const next = state.inputs.find(input => input.state === 'queued');
           if (!next || config.now() < next.retryAt || !await work(next.request.operation)) break;

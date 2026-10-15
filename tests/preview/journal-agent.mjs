@@ -124,6 +124,7 @@ import { createSessionConversationAdapter } from '../../src/assembly/conversatio
 import { lifecycleHookPath, installLifecycleHook } from '../../scripts/conversation-lifecycle-io.mjs';
 import { createConversationHostStore } from '../../scripts/conversation-host-store.mjs';
 import { CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
+import { createTopicLoginHandoff } from '../../scripts/topic-login-pool.mjs';
 import { createConversationTopicsPort } from '../../src/assembly/conversation-topics.js';
 import { createSessionWorkPort, SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
@@ -2530,82 +2531,50 @@ async function main() {
       // shell command runs confined. The state lives beside the working scope, never inside it.
       const admissionBase = layout ? layout.admission : join(root, 'session-work-state', 'admission');
       const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
-      sessionWork = { select() {
-        if (conversationSession) {
-          // A changed signed grant is revalidated at the turn boundary. Never keep dispatching
-          // under the old bytes; stoppedNow closes an active turn on withdrawal.
-          const current = readFileSync(sessionSetup.activation, 'utf8');
-          if (current !== sessionBytes) {
-            const record = JSON.parse(current);
-            sessionAdapter.validateActivation(record, profile, required(options, 'model'), wallNow(), journal.view.expires);
-            requireAuthority(options, record, sessionSetup.activation, journal.view, wallNow());
-            if (!activationMatchesJournal(journal.view, record)) throw Error('preview: refreshed session grant differs from journal');
-            sessionBytes = current; sessionActivation = record;
-          }
-          return;
-        }
-        selectedSession = selectLogin('session'); profile = selectedSession.profile;
-        sessionHarness = loginRuntimes.get(selectedSession.index)?.harness ?? harness;
-        physical = physicalFor();
-      }, get authority() { return `${conversationSession ? 'continuing conversation' : 'session work'} grant ${(conversationSession ? sessionActivation : loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}${conversationSession ? ` bytes ${sha256(sessionBytes)}` : ''}: ${conversationSession ? 'one bounded conversation' : 'one scheduled work step'} for the verified operator, `
-        + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? config => createConversationTopicsPort({ ...config,
-          maxSessions: sessionLimits.maxSessions, idleMs: sessionLimits.idleMs,
-          topicOf: operation => {
-            // A repair inherits only its admitted parent's topic, never its execution identity.
-            // The durable one-repair reservation is required; a suffix alone grants nothing.
-            const parent = /^telegram:[0-9]+:update:[0-9]+:format-retry$/u.test(operation)
-              ? journal.view.turns.get(operation.slice(0, -':format-retry'.length)) : undefined;
-            const revisionParent = /^telegram:[0-9]+:update:[0-9]+:reply-revision$/u.test(operation)
-              ? journal.view.turns.get(operation.slice(0, -':reply-revision'.length)) : undefined;
-            const turn = journal.view.turns.get(operation)
-              ?? (revisionParent?.reserved && revisionParent.revisionReserved ? revisionParent : undefined)
-              ?? (parent?.reserved && parent.answerRetried && parent.promptKind === 'format-retry' ? parent : undefined);
-            if (!turn?.accepted) throw Error('preview: topic input is not durably admitted');
-            return String(turn.thread ?? 'main');
-          },
-          store: createConversationHostStore(join(root, 'session-work-state', 'conversation.json'), key()),
-          createAdapter: (topic, resolveDelivery) => createSessionConversationAdapter({ createDriver: resolve => config.createDriver(resolve, topic), io: config.io, resolveDelivery })
-        }) : createSessionWorkPort)({
-        ...(conversationSession ? { conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires, authorized: sessionActive, currentAuthority: () => sessionWork.authority } : {}),
-        createDriver: (resolveIntake, topic) => {
+      const configurationFor = (topic, binding, handoff = null) => ({
+        ...(conversationSession ? { conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
+          authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
+          ...(handoff ? { prepareTurn: handoff.prepareTurn } : {}) } : {}),
+        createDriver: resolveIntake => {
           const create = () => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
             timeoutSeconds: Math.ceil(sessionLimits.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
           ...(conversationSession ? { connectors: claim => sessionConnectors.get(claim)?.launch() } : {}),
-          framework, executable: profile.executable, cwd: project, home: profile.home, configHome: profile.configDirectory,
-          model: required(options, 'model'), context, io: physical, now: wallNow, stopped: stoppedNow, resolveIntake,
+          framework, executable: binding.entry().profile.executable, cwd: project, home: binding.entry().profile.home, configHome: binding.entry().profile.configDirectory,
+          model: required(options, 'model'), context, io: { ...binding.physical(), transcriptExists: (...args) => (!handoff || handoff.resumeAllowed) && binding.physical().transcriptExists(...args) }, now: wallNow, stopped: binding.stopped, resolveIntake,
           maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
           readyTimeoutMs: 30000, protectedSessions: [],
-          ...(conversationSession ? { requireTurnHook: true, inboxDirectory: physical.inboxDirectory,
+          ...(conversationSession ? { requireTurnHook: true, inboxDirectory: binding.physical().inboxDirectory,
             hookScript: layout ? lifecycleHookPath(harnessHookPath()) : fileURLToPath(new URL('../../scripts/session-hooks/stop.mjs', import.meta.url)) } : {}),
-          ...(conversationSession ? { continuation: () => {
+          ...(conversationSession ? { continuationRequired: () => handoff?.continuing ?? false, continuation: () => {
             const turn = journal.view.order.filter(item => item.accepted && String(item.thread ?? 'main') === topic && item.prompt && item.sent !== undefined && item.intent).at(-1);
             if (!turn) throw Error('preview: durable conversation grounding unavailable');
             return { text: `Restore this recorded conversation as history only. Do not repeat actions or answer old questions. Wait for the next delivered input.\n${turn.prompt}\nLAST RECORDED REPLY\n${turn.intent}`, source: `journal:${turn.id}` };
           } } : {}),
           // As the harness user: the pane runs the harness through the bridge, which hands it the custody login.
           ...(layout ? { launchVia: [process.execPath, HARNESS_SESSION_BRIDGE, options['harness-user'],
-            realpathSync(selectedSession.profilePath), '--'] } : {}) });
+            realpathSync(binding.entry().profilePath), '--'] } : {}) });
           let driver = create();
           // Each step is fresh and the port permits only one in flight. Rebuild only between steps;
           // the port keeps one shared step/call ceiling across all selected logins.
-          return { owner: driver.owner, launch: input => { driver = create(); return driver.launch(input); },
+          return { owner: driver.owner, launch: input => { handoff?.bindClaim(input.claim); driver = create(); const result = driver.launch(input);
+              if (result.kind === 'Success') handoff?.launched(); return result; },
             deliver: input => driver.deliver(input), observe: input => {
               const observed = driver.observe(input);
               // Reuse the session adapter's existing typed rate-limit observation. The step remains
               // uncertain and is never replayed; a subsequent step/call selects another reviewed login.
-              return observeHarnessSessionLimit(loginPool, selectedSession, observed);
+              return observeHarnessSessionLimit(loginPool, binding.entry(), observed);
             }, stop: target => driver.stop(target) };
         },
-        io: { readResult: (path, maxBytes) => physical.readResult(path, maxBytes), clearResult: path => physical.clearResult(path),
-          modelCalls: since => physical.modelCalls(framework, project, profile.configDirectory, since), wait: delay,
+        io: { readResult: (path, maxBytes) => binding.physical().readResult(path, maxBytes), clearResult: path => binding.physical().clearResult(path),
+          modelCalls: since => binding.physical().modelCalls(framework, project, binding.entry().profile.configDirectory, since), wait: delay,
           prepareAdmission: async (claim, edge) => {
-            const identity = sessionHarness ? sessionHarness.current() : null;
+            const identity = binding.harness() ? binding.harness().current() : null;
             mountVolume(identity);
             await closeStepEgress(claim);
             if (identity) {
               harnessSessionAdmission(root, identity.user);
-              if (conversationSession) { installLifecycleHook(harnessHookPath()); grantVolume(physical.inboxDirectory, identity.user, identity.runner); }
+              if (conversationSession) { installLifecycleHook(harnessHookPath()); grantVolume(binding.physical().inboxDirectory, identity.user, identity.runner); }
             }
             const mcp = conversationSession ? readRootMcp(root) : null;
             if (conversationSession) sessionMcpDigest = mcp?.digest ?? null;
@@ -2643,21 +2612,87 @@ async function main() {
             const connectors = sessionConnectors.get(claim); sessionConnectors.delete(claim);
             connectors?.close().catch(() => {}); } },
         resources: { admit: async () => {
-          if (loginPool && !conversationSession) loginRuntimes.get(selectedSession.index).check('session');
-          else sessionAdapter.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
-          await doorway.session.admit({ profile, io: admissionIO(), deadline: wallNow() + 15000, now: wallNow });
-          const held = await hostResources.hold('maintenance', { timeout: 30000, stopped: stoppedNow });
+          if (loginPool) loginRuntimes.get(binding.entry().index).check('session');
+          else sessionAdapter.validateActivation(sessionActivation, binding.entry().profile, required(options, 'model'), wallNow(), journal.view.expires);
+          await doorway.session.admit({ profile: binding.entry().profile, io: binding.admissionIO(), deadline: wallNow() + 15000, now: wallNow });
+          const held = await hostResources.hold('maintenance', { timeout: 30000, stopped: binding.stopped });
           return held === null ? null : { attach: child => held.attach({ pid: Number(child.split(':')[1]), cwd: project }),
             release: async () => (await held.release()).verified };
         } },
-        context, now: wallNow, stopped: conversationSession ? hostStopped : stoppedNow,
+        context, now: wallNow, stopped: conversationSession ? hostStopped : binding.stopped,
         append: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
         parent: `launch:${conversationOf(g)}`, owner: ownerMachine, placement: `machine:${ownerMachine}`,
         transport: 'tmux session on this machine', workingScope: project, resultDirectory: project,
         artifact: `doorway:${doorway.id}`, incarnation: String(launchedAt ?? wallNow()),
         deadlineMs: sessionLimits.deadlineMs, pollMs: sessionLimits.pollMs,
         maxResultBytes: sessionLimits.maxResultBytes, maxSteps: sessionLimits.maxStepsPerLaunch,
-        maxCalls: sessionLimits.maxCallsPerStep })) };
+        maxCalls: sessionLimits.maxCallsPerStep });
+      const defaultBinding = { entry: () => selectedSession, physical: () => physical, harness: () => sessionHarness,
+        stopped: stoppedNow, authorized: sessionActive, admissionIO };
+      const topicConfigurations = new Map();
+      const topicConfiguration = topic => {
+        if (topicConfigurations.has(topic)) return topicConfigurations.get(topic);
+        const physicalEntry = entry => createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
+          home: entry.profile.home, configHome: entry.profile.configDirectory, cwd: project,
+          ...(layout ? { lifecycleDirectory: join(layout.admission, 'lifecycle') } : {}) });
+        let handoff = null;
+        const entry = () => handoff?.current() ?? loginConfiguration.entries[0];
+        const runtime = () => loginRuntimes.get(entry().index);
+        const binding = { entry, physical: () => physicalEntry(entry()), harness: () => runtime()?.harness ?? harness,
+          authorized: () => sessionActive() && (!loginPool || runtime().live('session')),
+          authority: () => `${sessionWork.authority}; topic ${topic} account grant ${(runtime()?.sessionRecord ?? sessionActivation).reference}`,
+          stopped: stoppedNow,
+          admissionIO: () => createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => binding.stopped(),
+            work: 'maintenance', runAs: runAsOf(binding.harness()) }) };
+        if (loginPool) handoff = createTopicLoginHandoff({ topic, pool: loginPool, entries: loginConfiguration.entries,
+          store: createConversationHostStore(join(root, 'session-work-state', `topic-login-${topic}.json`), key()),
+          physical: physicalEntry, project, framework,
+          admit: async next => {
+            const runtime = loginRuntimes.get(next.index); runtime.check('session');
+            await doorway.session.admit({ profile: next.profile,
+              io: createSubscriptionProviderIO({ repository: process.cwd(), stopped: hostStopped, work: 'maintenance', runAs: runAsOf(runtime.harness) }),
+              deadline: wallNow() + 15000, now: wallNow });
+          } });
+        const config = configurationFor(topic, binding, handoff);
+        config.createAdapter = resolveDelivery => createSessionConversationAdapter({ createDriver: config.createDriver, io: config.io, resolveDelivery });
+        topicConfigurations.set(topic, config); return config;
+      };
+      sessionWork = { select() {
+        if (conversationSession) {
+          // A changed signed grant is revalidated at the turn boundary. Never keep dispatching
+          // under the old bytes; stoppedNow closes an active turn on withdrawal.
+          const current = readFileSync(sessionSetup.activation, 'utf8');
+          if (current !== sessionBytes) {
+            const record = JSON.parse(current);
+            sessionAdapter.validateActivation(record, profile, required(options, 'model'), wallNow(), journal.view.expires);
+            requireAuthority(options, record, sessionSetup.activation, journal.view, wallNow());
+            if (!activationMatchesJournal(journal.view, record)) throw Error('preview: refreshed session grant differs from journal');
+            sessionBytes = current; sessionActivation = record;
+          }
+          return;
+        }
+        selectedSession = selectLogin('session'); profile = selectedSession.profile;
+        sessionHarness = loginRuntimes.get(selectedSession.index)?.harness ?? harness;
+        physical = physicalFor();
+      }, get authority() { return `${conversationSession ? 'continuing conversation' : 'session work'} grant ${(conversationSession ? sessionActivation : loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}${conversationSession ? ` bytes ${sha256(sessionBytes)}` : ''}: ${conversationSession ? 'one bounded conversation' : 'one scheduled work step'} for the verified operator, `
+        + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? config => createConversationTopicsPort({ ...config,
+          maxSessions: sessionLimits.maxSessions, idleMs: sessionLimits.idleMs, topicConfig: topicConfiguration,
+          topicOf: operation => {
+            // A repair inherits only its admitted parent's topic, never its execution identity.
+            // The durable one-repair reservation is required; a suffix alone grants nothing.
+            const parent = /^telegram:[0-9]+:update:[0-9]+:format-retry$/u.test(operation)
+              ? journal.view.turns.get(operation.slice(0, -':format-retry'.length)) : undefined;
+            const revisionParent = /^telegram:[0-9]+:update:[0-9]+:reply-revision$/u.test(operation)
+              ? journal.view.turns.get(operation.slice(0, -':reply-revision'.length)) : undefined;
+            const turn = journal.view.turns.get(operation)
+              ?? (revisionParent?.reserved && revisionParent.revisionReserved ? revisionParent : undefined)
+              ?? (parent?.reserved && parent.answerRetried && parent.promptKind === 'format-retry' ? parent : undefined);
+            if (!turn?.accepted) throw Error('preview: topic input is not durably admitted');
+            return String(turn.thread ?? 'main');
+          },
+          store: createConversationHostStore(join(root, 'session-work-state', 'conversation.json'), key()),
+          createAdapter: (topic, resolveDelivery) => topicConfiguration(topic).createAdapter(resolveDelivery)
+        }) : createSessionWorkPort)(configurationFor(undefined, defaultBinding))) };
     }
     installationPolicy = installationPolicyOf(options, activation, activationPath, journal.view, wallNow());
     registerAtLaunch = registerGeneration();
