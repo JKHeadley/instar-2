@@ -7,6 +7,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { readAnswer } from './answer-reading.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { COMPLETE_REQUESTED_STEPS } from '../../src/assembly/tool-answer-guidance.js';
 
 // Captured read-only from the failed forum answer copy, update 715675751. The
 // three new outputs are real, bounded model replays of that same recorded packet.
@@ -30,7 +31,9 @@ it('retains the delivered error and captured copying guidance while replay uses 
   expect(capture.instructions.split('\n')).toContain(historicalSelfDescription);
   expect(capture.instructions).toContain(LITERAL_COPY_INSTRUCTIONS);
   expect(capture.instructions.replace(historicalSelfDescription, SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
-  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  // Preserve captured prompt bytes; only the later requested-verification guidance differs.
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.split(COMPLETE_REQUESTED_STEPS)).toHaveLength(2);
+  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, ''));
   expect(LITERAL_COPY_INSTRUCTIONS).not.toContain('probe');
   expect(capture.runs).toHaveLength(3);
 });
