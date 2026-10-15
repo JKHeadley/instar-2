@@ -111,9 +111,9 @@ it('spawns the synthetic subscription CLI with exact bytes, args and allowlisted
 // The conversation digest is int11's policy (reviewer-compact-call and related fields);
 // the live frozen14 build pins sha256:557a62fa…, so an int11 switch needs a new record.
 const CURRENT_DIGESTS = { 'preview-decision-system-v2': 'sha256:ddf74607ea84a54ad11e7db935e7516d8a4bad0065087402afdc2ecec334e074',
-  // 2026-10-09 agent identity repair retains the flat answer protocol.
+  // Completeness guidance changes the conversation policy; flat answer protocol is retained.
   // The preceding sha256:5817ae4b… policy needs the existing policy-successor record.
-  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:3598cc7514f4be6ffec52f1d321e1596cd2db420a67fd7958281f3862dd9ce8c' } as const;
+  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:50e405d0c8cc969e008e76e96e1a0709ec1258e86c6390586e15961d1f5c90a2' } as const;
 for (const conversation of [false, true]) it(`sends thinking off on the ${conversation ? 'conversation' : 'decision'} framing, args unchanged`, async () => {
   const f = fixture({ conversation });
   expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('complete');

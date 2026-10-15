@@ -97,7 +97,7 @@ it.each([['pass', true], ['violation', false]])('runs a rolling summary and its 
       : 'I will remember the launch.',
     send: async () => 1, checkOutbound: () => {},
     replyCheck: { elapsedMs: () => at, jev: async (_state, questions) => ({
-      value: questions ? summarySignal(0.9) : scores(), latencyMs: 1 }),
+      value: questions?.summary_integrity ? summarySignal(0.9) : scores(), latencyMs: 1 }),
       escalate: async () => { throw Error('unexpected reply review'); },
       summaryReview: async state => {
         reviews++;
@@ -143,7 +143,7 @@ it('validates renewal and policy-successor records against the pinned policy, wi
     loginProfileIdentity: 'offline-identity', executable: '/offline/cli', artifact: 'sha256:offline',
     version: '2.1.280', activationReference: 'offline-activation', managedConfigurationDigest: 'sha256:offline' };
   const digest = encoded(subscriptionConversationPolicy(model)).hash;
-  expect(digest).toBe('sha256:3598cc7514f4be6ffec52f1d321e1596cd2db420a67fd7958281f3862dd9ce8c');
+  expect(digest).toBe('sha256:50e405d0c8cc969e008e76e96e1a0709ec1258e86c6390586e15961d1f5c90a2');
   const base = { type: 'SubscriptionActivationRecord', schemaVersion: 1, reference: profile.activationReference,
     waiver: 'waiver', p11: 'p11', reviewedHead: 'frozen predecessor', trial: genesis().grant,
     baseConfigurationDigest: genesis().configurationDigest, profileDigest: encoded(profile).hash,

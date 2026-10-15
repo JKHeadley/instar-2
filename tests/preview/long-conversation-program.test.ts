@@ -83,7 +83,7 @@ it('answers 200 mixed-length turns in one day with bounded review context and ea
           ? `I hear you. ${'Details noted. '.repeat(115)}` : 'I hear you.';
       },
       summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }),
-      replyCheck: { elapsedMs: () => 0, jev: async (state, questions) => ({ value: questions
+      replyCheck: { elapsedMs: () => 0, jev: async (state, questions) => ({ value: questions?.summary_integrity
         ? { model: 'jev-1.13.0', answers: { summary_integrity: { type: 'noul', noul: 0.01 } } }
         : state.includes('I hear you.') ? { ...scores, answers: { ...scores.answers,
           parks_on_user: { type: 'noul', noul: 0.5 } } } : scores, latencyMs: 1 }),
@@ -122,4 +122,6 @@ it('answers 200 mixed-length turns in one day with bounded review context and ea
     expect(reopened.view.summaries.at(-1)?.text).toContain(earlyFacts[0]);
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-}, 120000);
+// The 200 real journal/review turns exceed 120 s on the WSL builder even in an isolated run.
+// Keep every turn, byte ceiling, recall and reopen assertion; only the finite test wall allowance changes.
+}, 300000);

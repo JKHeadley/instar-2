@@ -60,7 +60,7 @@ it('keeps superseded clauses out of later packets, hints, summary inputs and mod
       summaryCheck: async (evidence: string) => { check('faithfulness audit', evidence); return jevPass; },
       replyCheck: { elapsedMs: () => 1,
         jev: async (state: string, questions?: Record<string, unknown>) => {
-          if (questions) {
+          if (questions?.summary_integrity) {
             check('summary supervisor', state);
             return { value: { model: 'jev-1.13.0', answers: { summary_integrity: { type: 'noul', noul: stale.size ? 0.99 : 0.01 } } }, latencyMs: 1 };
           }
@@ -182,8 +182,8 @@ it('keeps a newly saved preference visible to summary supervision', async () => 
         : JSON.stringify({ reply: 'Understood.', memory: [{ mode: 'prefer', source: input.id, quote }] }),
       summaryCheck: async () => jevPass,
       replyCheck: { elapsedMs: () => 1, jev: async (state, questions) => {
-        if (questions) supervised.push(state);
-        return { value: { model: 'jev-1.13.0', answers: questions
+        if (questions?.summary_integrity) supervised.push(state);
+        return { value: { model: 'jev-1.13.0', answers: questions?.summary_integrity
           ? { summary_integrity: { type: 'noul', noul: 0.01 } } : replyPass.answers }, latencyMs: 1 };
       }, escalate: async () => ({ verdict: 'pass' as const, ruleIds: [], confidence: 1, latencyMs: 1 }) },
       send: async () => 1, checkOutbound: () => {} });

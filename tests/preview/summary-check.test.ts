@@ -45,7 +45,7 @@ async function caseRun(score: number | 'unavailable', review: 'pass' | 'violatio
     send: async () => 1, checkOutbound: () => {},
     replyCheck: { elapsedMs: () => 100,
       jev: async (state, questions) => {
-        if (!questions) return { value: { model: JEV_MODEL, answers: replyScores() }, latencyMs: 10 };
+        if (!questions?.summary_integrity) return { value: { model: JEV_MODEL, answers: replyScores() }, latencyMs: 10 };
         expect(questions).toEqual(SUMMARY_QUESTION);
         observed = state; summaryChecks++;
         if (score === 'unavailable') throw Error('TypeSafe unavailable');
@@ -127,7 +127,7 @@ it('redacts quoted summary secrets before serializing the supervisor payload and
         : 'The studio trial continues.',
       summaryCheck: async () => ({ model: JEV_MODEL, answers: { lost_memory: { type: 'noul', noul: 0.01 } } }),
       replyCheck: { elapsedMs: () => 100, jev: async (state, questions) => {
-        if (questions) { supervised = state; return { value: jevAnswer(0.05), latencyMs: 1 }; }
+        if (questions?.summary_integrity) { supervised = state; return { value: jevAnswer(0.05), latencyMs: 1 }; }
         return { value: { model: JEV_MODEL, answers: replyScores() }, latencyMs: 1 };
       }, escalate: async () => { throw Error('unexpected review'); } },
       send: async () => 1, checkOutbound: () => {} });
@@ -212,7 +212,7 @@ it('does not reserve a paid review or accept a summary after stop during Jev', a
       send: async () => 1, checkOutbound: () => {},
       replyCheck: { elapsedMs: () => 100,
         jev: async (_state, questions) => {
-          if (questions) { stopped = true; return { value: jevAnswer(0.9), latencyMs: 20 }; }
+          if (questions?.summary_integrity) { stopped = true; return { value: jevAnswer(0.9), latencyMs: 20 }; }
           return { value: { model: JEV_MODEL, answers: replyScores() }, latencyMs: 10 };
         },
         escalate: async () => { throw Error('unexpected reply review'); },
@@ -244,8 +244,8 @@ it.each(['stop', 'expiry'] as const)('retains completed summary usage when %s ar
     }, send: async () => 1, checkOutbound: () => {},
     replyCheck: { elapsedMs: () => 100,
       jev: async (_state, questions) => {
-        if (questions) checks++;
-        return { value: questions ? jevAnswer(0.05)
+        if (questions?.summary_integrity) checks++;
+        return { value: questions?.summary_integrity ? jevAnswer(0.05)
           : { model: JEV_MODEL, answers: replyScores() }, latencyMs: 1 };
       }, escalate: async () => { throw Error('unexpected reply review'); },
       summaryReview: async () => { reviews++; return { verdict: 'pass', latencyMs: 1 }; } } });
@@ -287,7 +287,7 @@ it('keeps rejected and accepted candidate packets out of status and the next mod
         : 'ok';
     }, send: async () => 1, checkOutbound: () => {},
     replyCheck: { elapsedMs: () => 100,
-      jev: async (_state, questions) => ({ value: questions ? jevAnswer(++checks === 1 ? 0.9 : 0.05)
+      jev: async (_state, questions) => ({ value: questions?.summary_integrity ? jevAnswer(++checks === 1 ? 0.9 : 0.05)
         : { model: JEV_MODEL, answers: replyScores() }, latencyMs: 1 }),
       escalate: async () => { throw Error('unexpected reply review'); },
       summaryReview: async () => ({ verdict: 'violation', latencyMs: 1 }) } });
@@ -331,8 +331,8 @@ it.each([
       : 'ok', send: async () => 1, checkOutbound: () => {},
     replyCheck: { elapsedMs: () => 100,
       jev: async (_state, questions) => {
-        if (questions && score === 'unavailable') throw Error('Jev outage');
-        return { value: questions ? jevAnswer(score as number)
+        if (questions?.summary_integrity && score === 'unavailable') throw Error('Jev outage');
+        return { value: questions?.summary_integrity ? jevAnswer(score as number)
           : { model: JEV_MODEL, answers: replyScores() }, latencyMs: 1 };
       }, escalate: async () => { throw Error('unexpected reply review'); },
       summaryReview: async () => outcome === 'unknown'
@@ -372,7 +372,7 @@ it('keeps a completed faithfulness verdict in the journal before a supervisor in
       summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } },
         usage: { input_tokens: 777, output_tokens: 7 } }),
       replyCheck: { elapsedMs: () => 100, jev: async (_state, questions) => {
-        if (questions) { entered(); return interrupted; }
+        if (questions?.summary_integrity) { entered(); return interrupted; }
         return { value: { model: JEV_MODEL, answers: replyScores() }, latencyMs: 1 };
       }, escalate: async () => { throw Error('unexpected review'); } },
       send: async () => 1, checkOutbound: () => {} });

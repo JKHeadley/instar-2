@@ -212,13 +212,13 @@ it.each([['lost', 0.99], ['supervisor outage', 0.01]] as const)(
           : 'Understood.',
         summaryCheck: async () => ({ ...jev(score), usage: { input_tokens: 777, output_tokens: 7 } }),
         replyCheck: { elapsedMs: () => 100, jev: async (_state, questions) => {
-          if (questions && score < 0.85) {
+          if (questions?.summary_integrity && score < 0.85) {
             const prefix = durableRows(path);
             expect(prefix.find(row => row.kind === 'summary-faithfulness' && row.through === 1)?.result?.usage)
               .toMatchObject({ inputTokens: 777, outputTokens: 7 });
             expect(prefix.some(row => row.kind === 'summary')).toBe(false);
           }
-          if (questions) throw Error('supervisor unavailable');
+          if (questions?.summary_integrity) throw Error('supervisor unavailable');
           return { value: { model: 'jev-1.13.0', answers: Object.fromEntries(
             ['raw_path', 'cli_command', 'config_key', 'credential', 'api_endpoint', 'quits_on_self', 'claims_blocked', 'parks_on_user', 'defers_work', 'unrecorded_blocker']
               .map(id => [id, { type: 'noul', noul: 0 }])) }, latencyMs: 1 };

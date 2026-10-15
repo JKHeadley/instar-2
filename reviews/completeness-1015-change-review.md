@@ -42,10 +42,27 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing protocol wording pinn
 Prompt finding: f6d7f3274c85 | protocol-literal | Existing protocol wording pinned by consumer tests; no copied test answer or phrase classifier — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "restating a recorded, still-open limit needs no duplicate record. a capability n"
 Prompt finding: feadb66b8ad1 | protocol-literal | Existing protocol wording pinned by consumer tests; no copied test answer or phrase classifier — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "any live authentication secret reaching anyone but the verified operator who sup"
 
-Subject (3 paths): src/assembly/production-provider.ts, tests/preview/journal.ts, tests/preview/reply-check.ts
 
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: one completion instruction plus the existing unfinished-work question and revision. The named failure was a four-of-twelve answer passing a reviewer blind to the request. Passing the request and reserving its bytes fixes that blind input without another call or subsystem. Start guards are the existing intake and spend/stop floors; end guards remain review/revision/send. No unattended live-model success is claimed.
 80/20: Targeted foreground tests, one worker, no full suite or live provider; desk owns native certificate and live acceptance.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
+
+Prompt finding: 1679f75a5561 | protocol-literal | Exact prompt delta pinned by historical-capture consumer assertions, not a fixed-answer classifier — fixture-phrase src/assembly/production-provider.ts <- tests/preview/act-first.test.ts: "before finishing, check that your answer covers every requested item and categor"
+Prompt finding: 42faf877ba82 | protocol-literal | Exact prompt delta pinned by historical-capture consumer assertions, not a fixed-answer classifier — fixture-phrase src/assembly/production-codex-provider.ts <- tests/preview/act-first.test.ts: "you are an instar 2.0 agent,"
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Exact prompt delta pinned by historical-capture consumer assertions, not a fixed-answer classifier — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "tools: full claude code set"
+Prompt finding: 95e349aaf4ac | protocol-literal | Exact prompt delta pinned by historical-capture consumer assertions, not a fixed-answer classifier — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "via the doorway's four tests; standing grants need no new approval."
+Prompt finding: 979f5ade569a | protocol-literal | Exact prompt delta pinned by historical-capture consumer assertions, not a fixed-answer classifier — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "the writer hands back work they could do."
+Prompt finding: b6fd2475ca1a | protocol-literal | Exact prompt delta pinned by historical-capture consumer assertions, not a fixed-answer classifier — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "silently omitting requested items or categories is unfinished work. the writer h"
+Prompt finding: cc2d55239d77 | protocol-literal | Exact prompt delta pinned by historical-capture consumer assertions, not a fixed-answer classifier — fixture-phrase src/assembly/production-codex-provider.ts <- tests/preview/act-first.test.ts: "before finishing, check that your answer covers every requested item and categor"
+
+Pin rationale: Historical capture bytes stay immutable; tests translate only the added completion instruction and unfinished-work question. Conversation policy digest becomes sha256:50e405d0c8cc969e008e76e96e1a0709ec1258e86c6390586e15961d1f5c90a2. Refresh the owner artifact hash for the adjusted summary-question stub. Native macOS conformance is left for the desk.
+
+Evidence boundary: The default-context test found the longer question exceeded existing review headroom; the same omission judgment is stated compactly, preserving the 40-byte margin and all existing context/call bounds. No floor was widened.
+
+Decision: completeness-test-budget | The unchanged 200-turn assertions exceeded the 120-second wall allowance twice on WSL, including in isolation. Allow 300 seconds for this test only; keep every turn, byte limit, recall and reopen check. Product call deadlines stay unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/completeness-1015-PROGRESS.md
+
+Compatibility: Summary and reply Jev test doubles distinguish the summary_integrity question rather than the presence of any question argument. No production summary behavior changes.
+
+Verification: Focused completion/review/recorded-shape tests and the unchanged context floor pass. The bounded 200-turn test passes in 123.7 seconds: 200 sends, no held turn, 3/3 early facts, 199 contextual reviews, maximum answer/review envelopes 16734/26468 bytes below 32768. Initial 120-second timeouts remain documented. Final direct-consumer, typecheck, register and pin outputs are in the canonical PROGRESS report.

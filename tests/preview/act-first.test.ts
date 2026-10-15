@@ -86,7 +86,7 @@ it('replays the real reviewer on both the unperformed lookup and actual read out
     // This replays historical outputs; it does not claim a fresh model quality judgment.
     let question = run.question;
     for (const [before, after] of [
-      ['The writer hands back work they could do.', 'Compare packet.candidateReply with packet.operatorMessage: silently omitting requested items or categories from a count or full set is also unfinished work; complete condensed coverage or an explicit explanation of what is missing and why is not this omission. The writer hands back work they could do.'],
+      ['The writer hands back work they could do.', 'Silently omitting requested items or categories is unfinished work. The writer hands back work they could do.'],
     // Admitted reminder evidence; keep historical captures and verdicts unchanged.
     ["The writer defers work to later (saying they will do it, check it, decide it or report back later) and packet.declaredObligations.loops does not record that deferral as an exact quote of this reply.",
       "The writer promises later work without a matching record: packet.declaredObligations.loops quotes this reply exactly, or packet.declaredObligations.dated records that requested action at that time. Neither supports unrelated promises."],

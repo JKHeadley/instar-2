@@ -77,7 +77,7 @@ it.each([
     escalate: async (candidate, _id, grounding, rules) => {
       reviews++;
       expect(rules).toContain('parks_on_user');
-      expect(replyReviewQuestion(rules!)).toContain('silently omitting requested items');
+      expect(replyReviewQuestion(rules!)).toContain('Silently omitting requested items or categories');
       const context = JSON.parse(replyReviewContext(grounding!, candidate, rules));
       expect(context.operatorMessage).toBe(captured.request);
       expect(context.history.map((row: { source: string }) => row.source)).toEqual(shapes.otherShapes.map(row => row.id));
@@ -97,6 +97,9 @@ it('quotes arbitrary full-set requests without a keyword selector and preserves 
     expect(questions).toHaveProperty('approval_report');
     expect(questions.credential).toEqual(jevQuestions.credential);
   }
+  const redacted = replyJevQuestions(prompt('password=TEST-only-secret; compare every option'));
+  expect(redacted.parks_on_user?.instructions).not.toContain('TEST-only-secret');
+  expect(redacted.parks_on_user?.instructions).toContain('[redacted credential]');
   expect(replyJevQuestions()).toEqual(jevQuestions);
   expect(replyJevQuestions('{')).toEqual(jevQuestions);
   expect(replyJevQuestions(JSON.stringify({ messages: [] }))).toEqual(jevQuestions);

@@ -190,7 +190,7 @@ it.each(['complete', 'uncertain'] as const)('meters a supervised summary and its
       },
       replyCheck: { elapsedMs: () => 10,
         jev: async (_text, questions) => {
-          const summary = questions !== undefined;
+          const summary = questions?.summary_integrity !== undefined;
           invoked.push(summary ? 'summary Jev' : 'reply Jev');
           return { value: { model: JEV_MODEL, answers: summary
             ? { summary_integrity: { type: 'noul', noul: 0.5 } }
