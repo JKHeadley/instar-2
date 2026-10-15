@@ -15,7 +15,7 @@ Undo and recovery: Revert this change and use the corresponding previously autho
 Multi-machine posture: Same pure prompt composition on every host; no new machine-local state, transport, ownership or synchronization.
 Layer below: Audited subscription/codex policy composition and tool sentence replacement; each route carries exactly one common instruction, tools retain actual verification guidance, plain routes retain no-tools limits. Stubbed real adapter records exact launch prompt and user requests.
 Bug class: integration
-Bug evidence: reproducer=tests/assembly/production-provider-tools.test.ts and tests/preview/act-first.test.ts replay updates 715676307, 46040062 and 46040043; prompt-delivery evidence only, no new live-model efficacy claim.
+Bug evidence: reproducer=tests/assembly/production-provider-tools.test.ts
 Hook bypass: none
 Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
