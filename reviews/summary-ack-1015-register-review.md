@@ -7,13 +7,15 @@ Outcome: Generated register and capability provenance pin the committed summary 
 Affected rules: 5, 26, 49, 69, 74, 113, 116
 Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake are unchanged; this offline replay publishes no runtime authority.
 Operator questions: none
-Suggested tier: editorial
-Declared tier: editorial
+Suggested tier: critical
+Declared tier: ordinary
 Tier rationale: Deterministic source and generation references only, produced by the existing register generator.
 Side effects: Generated artifacts name the new source commit and generation; capability wording and runtime behavior are unchanged.
 Undo and recovery: Regenerate from the source commit selected for rollback; do not hand-edit a pin.
 Multi-machine posture: All installations read the same committed generated artifacts; no new machine-local state.
 Layer below: Existing build-register generator and committed source inventory; generated differences are commit/generation references only.
+Bug class: none
+Bug evidence: none
 Hook bypass: none
 Convergence: none
 
