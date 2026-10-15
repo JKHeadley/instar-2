@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Exact native conformance evidence changes; executable behavior does not.
-Side effects: The Claude Code Darwin self-hosting tuple becomes supported for the measured composition. Other tuples retain their existing posture. Generated publication must follow committed declaration bytes.
+Side effects: The Claude Code Darwin self-hosting tuple becomes supported for the measured composition. Other tuples retain their existing posture. Generated publication follows committed declaration bytes in 485558f7afaae953dd1fa991bc85e6cd30538e0a through the existing replay builder.
 Undo and recovery: Revert this declaration with its matching composition and regenerate publication; reverting only the certificate correctly exposes a stale-evidence failure. A changed composition requires its own native contract evidence.
 Multi-machine posture: Shared declaration carries evidence only for the exact Darwin runtime and composition tested here; no remote authority or other platform claim.
 Layer below: Inspected compositionClosure, compositionDigest, currentRuntime and selfHostCompositionEvidence. The unchanged contract exercises the actual confined local build, test and install through owner admissions, plus provider refusal, stop, restart and bounded readiness.
@@ -18,10 +18,11 @@ Bug class: none
 Bug evidence: Evidence maintenance only. The native contract passed 9/10 before re-declaration, failing only the exact certificate assertion. The desk clarification explicitly authorizes this stale-pin renewal after all behavioral assertions pass; The post-renewal run passed 10/10; architecture passed. Its exact certificate assertion and architecture R105 verify the resulting declaration; before/after logs are retained in the absolute PROGRESS location.
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains samples only.
 Convergence: none
+Deferral: generated/register.json:1 | not-a-deferral=Inherited register descriptions are mechanically replayed; this publication introduces no deferred work.
 
 Decision: train-35-darwin-conformance | train-35 Darwin conformance re-declared for its composition. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-35-darwin-1014-PROGRESS.md
 
-Subject (1 paths): src/assembly/harness.declarations.json
+Subject (8 paths): src/assembly/harness.declarations.json, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 ## Closing block
 
