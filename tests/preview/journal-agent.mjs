@@ -392,6 +392,11 @@ const minimalPathOf = runsText => {
 };
 const take = result => { if (result.kind !== 'Success') throw Error(`preview: adapter refused ${result.detail ?? ''}`); return result.value; };
 const secretRef = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name });
+// The launcher captures stderr; mirror the durable end reason once, even if cleanup fails.
+let exitReported = false;
+const reportExit = reason => {
+  if (!exitReported) { exitReported = true; process.stderr.write(`runner exiting: ${reason}\n`); }
+};
 const delay = ms => new Promise(done => setTimeout(done, ms));
 /** Rules 34/62/76 classify capabilities through the committed register shape: one definition, read, never restated. */
 const shapeTerms = () => ({ owner: 'part-three',
@@ -1576,8 +1581,10 @@ async function main() {
       if (!waited) appendRun(runsPath, { v: 1, launch: standbyAt, pid: process.pid });
       // A standby that reached its cycle limit is still wanted (it holds the copy and is the failover): the host
       // supervisor relaunches it (`queued`). A stop, a signal pause or unestablishable history is not relaunched.
-      appendRun(runsPath, { v: 1, launch: standbyAt, exit: wallNow(), reason: signalName ? `paused by signal ${signalName}`
-        : existsSync(stopPath) ? 'operator stop latched' : fatal ? `inhibited: ${role.reason}` : `standby: ${role.reason}`,
+      const reason = signalName ? `paused by signal ${signalName}`
+        : existsSync(stopPath) ? 'operator stop latched' : fatal ? `inhibited: ${role.reason}` : `standby: ${role.reason}`;
+      reportExit(reason);
+      appendRun(runsPath, { v: 1, launch: standbyAt, exit: wallNow(), reason,
         revival: paused || fatal ? 'inhibited' : 'queued',
         ...(fatal ? { inhibited: role.reason } : { nonowner: { machine: null, since: null } }) });
       if (fatal && !signalled) {
@@ -1782,6 +1789,7 @@ async function main() {
       appendRun(runsPath, { v: 1, launch: at, pid: process.pid });
       appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: `inhibited: ${topology.reason}`, revival: 'inhibited',
         inhibited: `unsupported topology: ${posture}` });
+      reportExit(`inhibited: ${topology.reason}`);
       process.stderr.write('preview: the declared multi-machine posture has no shared conversation authority; nothing was polled or sent\n');
       process.exitCode = 4;
       return;
@@ -1795,6 +1803,7 @@ async function main() {
         // The authority could not be read or written: not evidence that anyone serves. Inhibited, work preserved.
         appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: `inhibited: ${ownerClaim.reason}`, revival: 'inhibited',
           inhibited: ownerClaim.reason });
+        reportExit(`inhibited: ${ownerClaim.reason}`);
         process.stderr.write('preview: conversation ownership could not be established; nothing was polled or sent\n');
         process.exitCode = 4;
         return;
@@ -1804,6 +1813,7 @@ async function main() {
       catch { /* the root's own run log still records the refusal */ }
       appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: `not the conversation owner: ${ownerClaim.reason}`,
         revival: 'none', nonowner: { machine: holder?.machine ?? null, since: holder?.since ?? null } });
+      reportExit(`not the conversation owner: ${ownerClaim.reason}`);
       process.stderr.write(`preview: this conversation is held by another runner (${ownerClaim.reason}); this launch retired without polling or sending\n`);
       process.exitCode = 3;
       return;
@@ -2707,7 +2717,10 @@ async function main() {
     const physical = createProductionTelegramIO(join(root, '.writer'), { preserve(ref, bytes) {
       if (captures.has(ref) && captures.get(ref) !== bytes) return false; captures.set(ref, bytes); return true;
     }, read: ref => captures.get(ref) ?? null }, offlineEndpoint);
-    if (signalled || existsSync(stopPath)) return;
+    if (signalled || existsSync(stopPath)) {
+      reportExit(signalName ? `paused by signal ${signalName}` : 'operator stop latched');
+      return;
+    }
     const identity = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getMe', body: {}, timeoutMs: 30000,
       identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
     if (identity.kind !== 'identity' || identity.identity.id !== Number(g.bot)) throw Error('preview: bot identity refused');
@@ -3052,13 +3065,17 @@ async function main() {
         ...(journal.view.limits.maxBytes > doorway.policyFor(options.model, doorway.conversationFraming).maxPromptBytes
           ? { raisedPromptBytes: journal.view.limits.maxBytes, promptAuthority: journal.view.capAuthority } : {}) }));
     }
-  } catch (error) { if (!signalled) { startupFailure = error; throw error; } }
+  } catch (error) {
+    if (!signalled) { startupFailure = error; throw error; }
+    reportExit(`paused by signal ${signalName}`);
+  }
   finally {
     try {
       // Rules 2, 42: a launch refused before it launched is still a launch with a recorded end. The
       // scrubbed reason is written while this process holds the root's writer lease (a composition or
       // lease refusal never reaches here, so it writes nothing); stderr and the fixed `reason` stay terse.
       if (launchedAt === null && startupFailure !== null) try {
+        reportExit('refused before launch');
         const at = wallNow(), detail = redact(String(startupFailure?.message ?? startupFailure)).text.split('\n')[0].slice(0, 240);
         appendRun(runsPath, { v: 1, launch: at, pid: process.pid });
         appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: 'refused before launch', refused: detail || 'unknown' });
@@ -3068,6 +3085,7 @@ async function main() {
       if (launchedAt !== null) {
         const reason = signalName ? `paused by signal ${signalName}` : journal?.view.stop === 'trial expired' ? 'trial expired'
           : existsSync(stopPath) || journal?.view.stop ? 'operator stop latched' : endReason ?? 'error (details suppressed)';
+        reportExit(reason);
         // Rule 68: eligible accepted work left behind is queued for the next launch unless a stop, expiry,
         // allowance or signal pause inhibits it; either way it stays visible, never counted as done.
         // Scheduled obligation work not yet due also needs a live runner when its time comes.
@@ -3100,4 +3118,4 @@ async function main() {
   }
 }
 
-try { await main(); } catch { process.stderr.write('preview refused to start or continue; details suppressed\n'); process.exitCode = 1; }
+try { await main(); } catch { reportExit('error (details suppressed)'); process.stderr.write('preview refused to start or continue; details suppressed\n'); process.exitCode = 1; }
