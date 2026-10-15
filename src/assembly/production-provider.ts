@@ -822,7 +822,7 @@ export interface SubscriptionSessionDoorway {
   /** The harness executable's name, which the admission hook stops by exact PID at the call ceiling. */
   readonly harness: string;
   /** Adapter-owned conversation policy; absent for workers not yet installed for it. */
-  readonly conversation?: Readonly<{ policy(model: string): ReturnType<typeof conversationSessionPolicy>;
+  readonly conversation?: Readonly<{ transport?: string; policy(model: string): ReturnType<typeof conversationSessionPolicy>;
     validateActivation(record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfileRef,
       model: string, now: number, journalEnd?: number): void }>;
   validateActivation(record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfileRef,

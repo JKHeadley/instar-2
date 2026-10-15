@@ -615,6 +615,16 @@ describe('a delegated session as the harness user', () => {
     expect(lstatSync(state).mode & 0o777).toBe(0o700);
     expect(existsSync(join(state, 'config.json'))).toBe(true);
   });
+  it('keeps protocol stdin open through the same custody hand-off without terminal mode', () => {
+    const command = harnessSessionCommand({ user: '_instarharness', stdio: true,
+      profile: { reference: 'test-stdio', expectedAccount: 'a@example.invalid', organization: 'org', plan: 'max', configDirectory: fresh('stdio-profile') },
+      executable: '/h/bin/worker', args: ['app-server', '--listen', 'stdio://'], env: { HOME: '/h/home' },
+      cwd: fresh('stdio-workspace'), login: () => 'synthetic-profile-token' });
+    expect(command.args).not.toContain('--tty');
+    expect(command.args).toContain('--handoff');
+    expect(command.stdin).toBe(`${JSON.stringify({ login: 'synthetic-profile-token' })}\n`);
+    expect(command.args.join(' ')).not.toContain('synthetic-profile-token');
+  });
   it('runs the pane\'s harness as the harness user in the launcher\'s terminal mode, the login only in the stdin hand-off', () => {
     const profile = { reference: 'test-a', expectedAccount: 'a@example.invalid', organization: 'org', plan: 'max',
       configDirectory: fresh('interactive-profile') };

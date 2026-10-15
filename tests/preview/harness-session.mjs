@@ -19,11 +19,12 @@ import { harnessCommand, prepareSubscriptionInteractive } from '../../scripts/pr
 import { HARNESS_LAUNCHER, readHarnessLogin } from './harness-user.mjs';
 
 /** The sudo command for one interactive harness launch: harnessCommand's, in the launcher's terminal mode. */
-export function harnessSessionCommand({ user, profile, executable, args, env, login = readHarnessLogin, cwd = process.cwd() }) {
+export function harnessSessionCommand({ user, profile, executable, args, env, login = readHarnessLogin, cwd = process.cwd(), stdio = false }) {
   const command = harnessCommand({ executable, args, env, stdin: '' },
     { user, launcher: HARNESS_LAUNCHER, login: () => login(profile), plan: profile.plan });
   // Upgrade profiles installed before interactive bootstrap, only after custody validated.
   prepareSubscriptionInteractive(profile.configDirectory, cwd);
+  if (stdio) return command;
   const at = command.args.indexOf('--handoff');
   if (at < 0) throw Error('preview: the harness command has no hand-off');
   return { ...command, args: [...command.args.slice(0, at + 1), '--tty', ...command.args.slice(at + 1)] };
@@ -33,6 +34,8 @@ const invoked = process.argv[1] && realpathSync(process.argv[1]) === fileURLToPa
 if (invoked) {
   const words = process.argv.slice(2);
   const custody = words[0] === '--custody' ? words.splice(0, 2)[1] : undefined;
+  const stdio = words[2] === '--stdio';
+  if (stdio) words.splice(2, 1);
   const [user, profilePath, split, executable, ...args] = words;
   if ((custody !== undefined && !custody.startsWith('/')) || !user || !profilePath || split !== '--' || !executable) {
     process.stderr.write('usage: harness-session.mjs [--custody LOGIN.json] USER PROFILE.json -- EXECUTABLE ARG ...\n');
@@ -41,11 +44,12 @@ if (invoked) {
   let command;
   try {
     command = harnessSessionCommand({ user, profile: JSON.parse(readFileSync(profilePath, 'utf8')), executable, args,
-      env: { ...process.env }, login: profile => readHarnessLogin(profile, custody) });
+      stdio, env: { ...process.env }, login: profile => readHarnessLogin(profile, custody) });
   } catch (error) { process.stderr.write(`harness-session: ${String(error?.message ?? error)}\n`); process.exit(125); }
   const child = spawn(command.executable, command.args, { env: command.env, stdio: ['pipe', 'inherit', 'inherit'] });
   child.stdin.on('error', () => {});
-  child.stdin.end(command.stdin, 'utf8');
+  if (stdio) { child.stdin.write(command.stdin, 'utf8'); process.stdin.pipe(child.stdin); }
+  else child.stdin.end(command.stdin, 'utf8');
   child.on('error', () => process.exit(126));
   child.on('exit', (code, signal) => { if (signal) process.kill(process.pid, signal); process.exit(code ?? 1); });
 }
