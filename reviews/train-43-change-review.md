@@ -21,6 +21,23 @@ Convergence: none
 Prompt review: No new model-facing text authored by this train. The exact member carries train-41 guidance and historical capture normalization; replay its real recorded shapes and direct consumers. Offline verification is not live deployment acceptance.
 Prompt finding: e8708c7fea24 | protocol-literal | Existing source-citation protocol retained from the reviewed member.
 Prompt finding: 849db3a6296a | protocol-literal | Existing fixed empty-memory protocol retained from the reviewed member.
+Prompt finding: 034c5250da92 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 0abb3dc96311 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 42faf877ba82 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 45e37ea2e9e9 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 5b486d8bd247 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 5fa1a20c4031 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 6af48f94b789 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 7c45ffbe90ad | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: 95e349aaf4ac | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: aef7d91bef51 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: b00ed403060a | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: b1bb3946362d | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: b288d6ef1604 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: e769ca9dd959 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: f6d7f3274c85 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
+Prompt finding: feadb66b8ad1 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
 Deferral: tests/assembly/production-conversation-session.test.ts:482 | not-a-deferral=Test input exercises history retention, not a commitment to postpone work.
 Decision: train-43-merge | Ordinary merge of exact reviewed review-async-1015 head 57db128c192a2e504ea8f53ab32b35ea8f88db95 fast-forwarded from the exact live base. Evidence: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/review-async-1015-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-43-PROGRESS.md
 Decision: train-43-A | Preserve every member behavior unchanged; no merge conflicts and no handwritten source resolution. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-43-PROGRESS.md
