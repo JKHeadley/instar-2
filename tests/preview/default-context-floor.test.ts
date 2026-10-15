@@ -278,8 +278,9 @@ it('keeps a tool turn\'s always-sent parts inside the same measured floor (Part 
   // whose tool sentence names "reasoning" instead of "reason.value" (-3); 1474 with plan #510's sentence that the account
   // email the harness itself injects is the subscription login, never the operator (+187); 1544 at sb-w4-selfdesc,
   // whose sentence says a network write goes to the effect doorway and a consequential effect runs once the operator
-  // registers and grants it (+70); read-first adds 1202 and standing-trust guidance adds 21.
-  expect(growth).toBe(2767);
+  // registers and grants it (+70); read-first adds 1202, standing-trust guidance adds 21,
+  // and the reviewed COMPLETE_REQUESTED_STEPS instruction adds 508.
+  expect(growth).toBe(3275);
   // The packet names what the call really has (review round 1, finding 5): the text-only route keeps the no-tools read and
   // its "attempted nothing" guidance; the tool route says the tools are listed (in the note's tools item) and that only its recorded calls ran.
   expect(plain.packet?.capabilities?.externalTools).toBe('none');

@@ -46,6 +46,8 @@ Decision: train-43-C | No genuine product conflict and no omitted head; the ordi
 Decision: train-43-D | Run portable targeted and recorded-shape checks on WSL; list macOS and physical-host failures for the Studio gate without changing their assertions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-43-PROGRESS.md
 Decision: train-43-desk | Use the downloaded desk repin, build, rehash and register replay chain at exact member SHA 57db128c192a2e504ea8f53ab32b35ea8f88db95. Repin and rehash changed zero pins; seven generated outputs are regenerated, never hand-merged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-43-PROGRESS.md
 
+Decision: train-43-tool-growth-pin | The inherited COMPLETE_REQUESTED_STEPS guidance adds exactly 508 bytes; update the tool prompt growth measurement from 2767 to 3275 while leaving PREVIEW_FIXED_PROMPT_BYTES and every ceiling assertion unchanged. No product prompt or fixture capture changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-43-PROGRESS.md
+
 simplestRobustRoute: This is the simplest robust route: one ordinary exact-head merge, the existing generation chain and targeted consumer verification. No new machinery or product policy. Existing source matching, owner admission, durable cause, spend bounds, stop and uncertain-effect non-replay remain the guards. Start at the named base, finish with committed and pushed checked composition; the desk owns live acceptance.
 80/20: Verify the reviewed union and direct consumers; no full suite and no unrelated repairs.
 VERDICT: author submission; no independent convergence or live acceptance claim
