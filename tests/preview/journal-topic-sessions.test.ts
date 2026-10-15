@@ -14,7 +14,7 @@ import { value } from '../facts/fixtures.js';
 import { nestedSessionWorkEdge, nestedSessionWorkClose } from '../../src/assembly/production-session-work.js';
 import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { readAnswer } from './answer-reading.js';
-import { createJournalWorker, openPreviewJournal, ModelNotStarted, ModelDisclosureRefused, createModelLaunchBoundary,
+import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, ModelNotStarted, ModelDisclosureRefused, createModelLaunchBoundary,
   type PreviewPorts } from './journal-test-worker.js';
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -27,7 +27,7 @@ const topicOfBody = source.split('topicOf: operation => {')[1]!.split('\n       
 const update = (id: number, text: string, thread?: number) => ({ update_id: id,
   message: { message_id: id, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
     ...(thread === undefined ? {} : { message_thread_id: thread, is_topic_message: true }) } });
-function fixture(forum = false, prepared = false) {
+function fixture(forum = false, prepared = false, maxSessions = 2) {
   const root = mkdtempSync(join(tmpdir(), 'topic-session-journal-')); roots.push(root);
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
     kind: 'genesis', bot: '12345678', chat: forum ? '-7654321' : '7654321', operator: '7654321', ...(forum ? { forum: true } : {}), grant: 'grant:preview',
@@ -35,6 +35,7 @@ function fixture(forum = false, prepared = false) {
     maxTurns: 30, maxBytes: 262144, cursor: 0 });
   const topicOf = Function('journal', `return operation => {${topicOfBody}}`)(journal) as (operation: string) => string;
   let evidence: unknown = null, replyOverride: string | undefined, batchFailure: Error | undefined;
+  let capacity = true, quota = true;
   let now = 1000, state: ConversationTopicsState | null = null, live = 0;
   const held = new Set<string>(), deliveries: { topic: string; input: HarnessInputDelivery }[] = [];
   const launches: string[] = [], sent: { text: string; thread: number | undefined; update: number }[] = [];
@@ -42,7 +43,8 @@ function fixture(forum = false, prepared = false) {
   const port = value(createConversationTopicsPort({
     context: assemblyRuntimeFixture().c, conversation: 'operator', topicOf,
     allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => 'grant',
-    maxSessions: 2, idleMs: 500, deadlineMs: 2000, pollMs: 25, maxSteps: 3, maxCalls: 10, maxResultBytes: 65536,
+    prepareTurn: async () => quota,
+    maxSessions, capacity: async () => ({ admit: capacity, memoryPressure: false }), idleMs: 500, deadlineMs: 2000, pollMs: 25, maxSteps: 3, maxCalls: 10, maxResultBytes: 65536,
     now: () => now, stopped: () => journal.view.stop !== null, parent: 'run', owner: 'machine', placement: 'local', transport: 'fake',
     workingScope: '/scope', resultDirectory: '/scope/results', artifact: 'artifact', incarnation: 'boot',
     store: { load: () => state, save: next => { state = structuredClone(next); } },
@@ -88,7 +90,7 @@ function fixture(forum = false, prepared = false) {
     return saved && { context: saved.request.context, prepared: saved.request.question,
       answer: conversationSessionAnswer(saved.outcome, id, () => {}) };
   };
-  const worker = createJournalWorker(journal, { topicConcurrency: 2, groupDisclosure: async () => true, now: () => now, stopped: () => false, model, modelBatch: async inputs => { if (batchFailure) throw batchFailure; return modelBatch(inputs); }, collectModel,
+  const worker = createJournalWorker(journal, { topicConcurrency: maxSessions, groupDisclosure: async () => true, now: () => now, stopped: () => false, model, modelBatch: async inputs => { if (batchFailure) throw batchFailure; return modelBatch(inputs); }, collectModel,
     sources: () => evidence ? [evidence] : [],
     prepareModel: input => prepared ? prepareJournalEnvelope(input, 'offline-model', 'grant:offline', now, 262144) : JSON.stringify(input), checkOutbound: () => {},
     send: async input => {
@@ -99,7 +101,7 @@ function fixture(forum = false, prepared = false) {
         ...(input.thread === undefined ? {} : { message_thread_id: input.thread }),
       } }) }, input);
     } });
-  return { root, journal, worker, held, deliveries, launches, sent, port, queuedAtDelivery, live: () => live, state: () => state!,
+  return { quota: (value: boolean) => { quota = value; }, capacity: (value: boolean) => { capacity = value; }, root, journal, worker, held, deliveries, launches, sent, port, queuedAtDelivery, live: () => live, state: () => state!,
     failBatch: (error: Error | undefined) => { batchFailure = error; },
     evidence: (value: unknown) => { evidence = value; }, reply: (value: string) => { replyOverride = value; },
     advance: (ms: number) => { now += ms; }, close: async () => { await port.close(); journal.close(); } };
@@ -288,4 +290,31 @@ it('a long answer finishes with batched follow-ups waiting: all canonical parts 
     expect(f.sent.map(row => row.update)).toEqual([...f.sent.map(row => row.update)].sort((a, b) => a - b));
     const count = f.sent.length; await f.worker.drain(); expect(f.sent).toHaveLength(count);
   } finally { f.held.clear(); await f.close(); }
+});
+
+it('four journal topics dispatch concurrently and each sends exactly one reply to its own topic', async () => {
+  const f = fixture(false, false, 8);
+  try {
+    for (const topic of ['7', '8', '9', '10']) f.held.add(topic);
+    f.worker.intake([7, 8, 9, 10].map(topic => update(topic, `Question in ${topic}`, topic)));
+    const drain = f.worker.drain(); await until(() => f.deliveries.length === 4);
+    expect(f.live()).toBe(4); f.held.clear(); await drain;
+    expect(f.sent.map(row => row.thread).sort()).toEqual([10, 7, 8, 9]);
+    await f.worker.drain(); expect(f.sent).toHaveLength(4);
+  } finally { f.held.clear(); await f.close(); }
+});
+
+it.each(['capacity', 'quota'] as const)('%s wait sends an honest acknowledgement, then collects one answer when available', async cause => {
+  const f = fixture(false, false, 8);
+  try {
+    f[cause](false); f.worker.intake([update(1, 'Please answer when you can.', 7)]);
+    await f.worker.drain(); expect(f.deliveries).toHaveLength(0);
+    expect(f.state().topics['7']!.inputs[0]!.state).toBe('queued');
+    expect(f.journal.view.order[0]!.reserved).toBe(true);
+    f.advance(7000); await f.worker.drain();
+    expect(f.sent.map(row => row.text)).toEqual([REPLY_ACKNOWLEDGEMENT]);
+    f[cause](true); await f.port.maintain(); await f.worker.drain(); await f.worker.drain();
+    expect(f.sent).toHaveLength(2); expect(f.sent.every(row => row.thread === 7)).toBe(true);
+    expect(f.deliveries).toHaveLength(1);
+  } finally { await f.close(); }
 });

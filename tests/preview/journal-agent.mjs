@@ -125,6 +125,7 @@ import { createSessionProtocolIO } from '../../scripts/session-protocol-io.mjs';
 import { lifecycleHookPath, installLifecycleHook } from '../../scripts/conversation-lifecycle-io.mjs';
 import { createConversationHostStore } from '../../scripts/conversation-host-store.mjs';
 import { CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
+import { createTopicWorkerCapacity } from '../../scripts/topic-worker-capacity.mjs';
 import { createTopicLoginHandoff } from '../../scripts/topic-login-pool.mjs';
 import { createConversationTopicsPort } from '../../src/assembly/conversation-topics.js';
 import { createSessionWorkPort, SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
@@ -1488,7 +1489,9 @@ async function main() {
     sessionWork = null, gate = null;
   const conversationSession = conversationSessionOf(options);
   const accountActions = conversationAccountActions(options);
-  const sessionLimits = conversationSession ? CONVERSATION_SESSION_LIMITS : SESSION_WORK_LIMITS;
+  const sessionLimits = conversationSession ? { ...CONVERSATION_SESSION_LIMITS,
+    maxSessions: options['topic-worker-ceiling'] === undefined ? CONVERSATION_SESSION_LIMITS.maxSessions
+      : number(options['topic-worker-ceiling'], 'topic-worker-ceiling', 1, CONVERSATION_SESSION_LIMITS.maxSessions) } : SESSION_WORK_LIMITS;
   const sessionAdapter = conversationSession ? doorway.session.conversation : doorway.session;
   if (!sessionAdapter) throw Error('preview: this doorway has no installed conversation worker');
   /** Each delegated session step's shell network checkpoint, by claim: closed with the step's claim and at shutdown. */
@@ -2726,6 +2729,7 @@ async function main() {
       }, get authority() { return `${conversationSession ? 'continuing conversation' : 'session work'} grant ${(conversationSession ? sessionActivation : loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}${conversationSession ? ` bytes ${sha256(sessionBytes)}` : ''}: ${conversationSession ? 'one bounded conversation' : 'one scheduled work step'} for the verified operator, `
         + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? config => createConversationTopicsPort({ ...config,
           maxSessions: sessionLimits.maxSessions, idleMs: sessionLimits.idleMs, topicConfig: topicConfiguration,
+          capacity: createTopicWorkerCapacity(sessionLimits),
           topicOf: operation => {
             // A repair inherits only its admitted parent's topic, never its execution identity.
             // The durable one-repair reservation is required; a suffix alone grants nothing.

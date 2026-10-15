@@ -134,16 +134,25 @@ journal's existing forum packet grounds in that topic's full projected history (
 its current summary and suffix), with shared agent memory and open work. Reply
 routing remains the intake record's chat/thread at the existing send doorway.
 
-The activation policy declares the two-worker cap and five-minute idle lifetime; the
-runner, coordinator and physical driver consume those same limits. A prior activation
-with the old one-worker policy digest refuses until a matching activation is installed.
-The runner admits at most two live topic workers. A third waits durably for a slot;
-an idle worker retires at five minutes or earlier when another topic needs its slot.
-Retirement keeps all records, and the next input launches a fresh worker from them.
-Independent topic drains also accept newly arriving topics while another awaits a
-reply, with one FIFO drain per topic and two drains at once. The serial compatibility
-path is unchanged when the conversation option is off. All drains settle before the
-journal writer guard is released, including on error.
+The activation policy declares an eight-worker safety ceiling and four-hour worker
+and idle lifetimes. `--topic-worker-ceiling 1..8` can lower the installation ceiling;
+raising it requires a new policy disposition. The runner, coordinator and physical
+driver consume the same limit. A prior activation with the old policy digest refuses
+until the matching activation is installed. New workers require sampled CPU idle of
+at least 12 percent and free memory of at least 2 GiB and 10 percent of physical RAM,
+through `scripts/topic-worker-capacity.mjs`; unknown measurements retain queued work.
+Account capacity continues through the reviewed login pool and its between-turn
+handoff. The host resource owner retains its answer reserve, with nine total slots
+and the same per-worker bounds. These ceilings do not replace physical headroom.
+
+Idle workers keep their context for up to four hours, within their admitted parent
+lifetime. Memory pressure reclaims the least-recently-used idle worker per maintenance
+tick; a needed slot reclaims the oldest idle worker first. Busy workers are never
+retired for these reasons. Retirement retains records and charges. Capacity waits
+keep durable intake and use the existing acknowledgement/progress and collection
+path. Independent topic drains run up to the configured ceiling. The serial
+compatibility path is unchanged when conversation sessions are off. All drains
+settle before the journal writer guard is released, including on error.
 
 The encrypted snapshot holds all topic states and ONE installation reservation.
 Topic and process edges draw on it; the checkpoint atomically sums durable charges

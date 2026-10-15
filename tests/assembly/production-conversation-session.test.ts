@@ -176,7 +176,7 @@ it.each(['stop', 'release'] as const)('reports %s cleanup uncertainty and never 
 it('conflicting identity, escaped paths, invalid bounds and missing durable storage refuse', async () => {
   const f = fixture(); await f.port.run(f.request('one'));
   await expect(f.port.run({ ...f.request('one'), question: 'different' })).rejects.toThrow(/conflicts/);
-  for (const patch of [{ maxCalls: 0 }, { maxCalls: 257 }, { maxSteps: 65 }, { pollMs: 0 }, { deadlineMs: 3600001 },
+  for (const patch of [{ maxCalls: 0 }, { maxCalls: 257 }, { maxSteps: 65 }, { pollMs: 0 }, { deadlineMs: 14400001 },
     { resultDirectory: '/scope/../elsewhere' }, { resultDirectory: '/outside' }, { conversation: '../escape' },
     { store: undefined as never }]) expect(createConversationSessionPort({ ...f.config, ...patch }).kind).toBe('Refused');
   await f.port.close();
@@ -381,7 +381,7 @@ it('an input arriving during idle retirement waits for exact stop before replace
 it('the activation policy names the same topic cap and one shared allowance as the runner', () => {
   const policy = conversationSessionPolicy({ framing: 'fixture', framework: 'claude-code', model: 'fixture', launch: [] });
   expect(policy.limits).toEqual(CONVERSATION_SESSION_LIMITS);
-  expect(policy.limits).toMatchObject({ maxSessions: 2, idleMs: 300000, maxCallsPerStep: 128 });
+  expect(policy.limits).toMatchObject({ maxSessions: 8, idleMs: 14400000, maxCallsPerStep: 128 });
   expect(policy.admission.allowance).toBe(128);
 });
 

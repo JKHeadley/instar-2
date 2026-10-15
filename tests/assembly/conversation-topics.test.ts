@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createConversationTopicsPort } from '../../src/assembly/conversation-topics.js';
 import type { ConversationTopicsConfig, ConversationTopicsState } from '../../src/assembly/conversation-topics.js';
 import type { HarnessInputDelivery, HarnessWorkerHandle } from '../../src/assembly/contracts.js';
@@ -13,7 +14,7 @@ const digest = (text: string) => `sha256:${createHash('sha256').update(text).dig
 const tick = () => new Promise<void>(resolve => setTimeout(resolve, 1));
 async function until(test: () => boolean) { for (let i = 0; i < 500 && !test(); i++) await tick(); expect(test()).toBe(true); }
 
-function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16) {
+function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16, lifetime = 2000) {
   let state: ConversationTopicsState | null = null, now = 1000, live = 0, peak = 0, stopped = false, authorized = true, saveFails = false;
   let batchOutput: string | undefined, evidenceUnreadable = false;
   const held = new Set<string>(), launches: { topic: string; worker: HarnessWorkerHandle }[] = [];
@@ -21,8 +22,8 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16) {
   const edges: (SessionWorkEdge | SessionWorkEdgeClose)[] = [];
   const config: ConversationTopicsConfig = {
     context: assemblyRuntimeFixture().c, conversation: 'operator', topicOf: operation => operation.split(':')[0]!,
-    allowanceDeadline: 100000, authorized: () => authorized, currentAuthority: () => 'grant',
-    maxSessions, idleMs: 500, deadlineMs: 2000, pollMs: 25, maxSteps: 3, maxCalls, maxResultBytes: 65536,
+    allowanceDeadline: Math.max(100000, lifetime * 2), authorized: () => authorized, currentAuthority: () => 'grant',
+    maxSessions, idleMs: lifetime === 2000 ? 500 : lifetime, deadlineMs: lifetime, pollMs: 25, maxSteps: 3, maxCalls, maxResultBytes: 65536,
     now: () => now, stopped: () => stopped, parent: 'run', owner: 'machine', placement: 'local', transport: 'fake',
     workingScope: '/scope', resultDirectory: '/scope/results', artifact: 'artifact', incarnation: 'boot',
     store: { load: () => structuredClone(state), save: next => { if (saveFails) throw Error('disk'); state = structuredClone(next); } },
@@ -335,4 +336,75 @@ it('retains the waiting batch until the topic handoff is ready, then uses its ne
   expect(f.edges.filter(row => row.type === 'SessionWorkEdge').every(row => row.authority === 'replacement grant')).toBe(true);
   expect(f.state().topics['7']!.spent).toBe(1);
   await f.port.close();
+});
+
+it('four busy topics all receive workers when measured headroom exists', async () => {
+  const f = fixture(8); Object.assign(f.config, { capacity: async () => ({ admit: true, memoryPressure: false }) });
+  for (const topic of ['7', '8', '9', '10']) f.held.add(topic);
+  const runs = [...f.held].map(topic => f.port.run(f.request(`${topic}:a`)));
+  await until(() => f.delivered.length === 4);
+  expect(f.counts()).toEqual({ live: 4, peak: 4 });
+  f.held.clear(); await Promise.all(runs); await f.port.close();
+});
+
+it('low CPU headroom preserves input queued, then drains without resubmission', async () => {
+  const f = fixture(8); let room = false;
+  Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: false }) });
+  expect(await f.port.run(f.request('7:a'))).toMatchObject({ state: 'queued' });
+  expect(f.state().topics['7']!.inputs[0]).toMatchObject({ state: 'queued', delivery: null, attempts: 0 });
+  expect(f.launches).toHaveLength(0);
+  room = true; await f.port.maintain();
+  expect(await f.port.collect('7:a')).toMatchObject({ outcome: { state: 'complete' } });
+  expect(f.delivered).toHaveLength(1); await f.port.close();
+});
+
+it('idle context survives six minutes and two hours, with the same worker on return', async () => {
+  const f = fixture(8, 6, 16, 14_400_000);
+  await f.port.run(f.request('7:a')); f.advance(360000); await f.port.maintain();
+  expect(f.counts().live).toBe(1);
+  f.advance(7_200_000); await f.port.maintain();
+  await f.port.run(f.request('7:b')); expect(f.launches).toHaveLength(1);
+  await f.port.close();
+});
+
+it('memory pressure retires the oldest idle worker, never a busy worker', async () => {
+  const f = fixture(8); let pressure = false;
+  Object.assign(f.config, { capacity: async () => ({ admit: !pressure, memoryPressure: pressure }) });
+  await f.port.run(f.request('7:a')); f.advance(1);
+  await f.port.run(f.request('8:a')); f.advance(1);
+  f.held.add('9'); const busy = f.port.run(f.request('9:a'));
+  await until(() => f.delivered.length === 3);
+  // Refresh 7, so 8 is LRU despite map insertion order.
+  await f.port.run(f.request('7:b')); pressure = true;
+  await f.port.maintain();
+  expect(f.closed).toEqual([f.launches[1]!.worker.claim]);
+  expect(f.counts().live).toBe(2);
+  f.held.clear(); await busy; await f.port.close();
+});
+
+it('a replacement also waits for headroom while a healthy retained worker can still answer', async () => {
+  const f = fixture(8); let room = true;
+  Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: false }) });
+  await f.port.run(f.request('7:a')); room = false;
+  expect(await f.port.run(f.request('7:b'))).toMatchObject({ state: 'complete' });
+  f.advance(2000);
+  expect(await f.port.run(f.request('7:c'))).toMatchObject({ state: 'queued' });
+  expect(f.launches).toHaveLength(1);
+  room = true; await f.port.maintain();
+  expect(await f.port.collect('7:c')).toMatchObject({ outcome: { state: 'complete' } });
+  expect(f.launches).toHaveLength(2); await f.port.close();
+});
+
+const recordedCapacityShapes = JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
+  otherShapes: { kind: string; id: string; raw: string }[] };
+it.each(recordedCapacityShapes.otherShapes)('capacity wait preserves recorded $kind ($id) before dispatch', async sample => {
+  const f = fixture(8); let room = false;
+  Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: false }) });
+  const request = { ...f.request('7:recorded'), context: JSON.stringify({ recorded: sample.raw }) };
+  expect(await f.port.run(request)).toMatchObject({ state: 'queued' });
+  expect(f.state().topics['7']!.inputs[0]!.request).toEqual(request);
+  expect(f.delivered).toHaveLength(0);
+  room = true; await f.port.maintain();
+  expect(f.delivered).toHaveLength(1); expect(f.delivered[0]!.input.text).toContain(request.context);
+  await f.port.maintain(); expect(f.delivered).toHaveLength(1); await f.port.close();
 });
