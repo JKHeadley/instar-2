@@ -1471,6 +1471,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   /** Rules 1, 114: identities the effect owner prepared for a delegated child's consequential tool calls. Absent until one
    * applies, so the projection digest of every journal without one is unchanged. */
   toolEffects?: string[];
+  /** Bounded latest action states; full evidence remains in the journal. */
+  actionEffects?: Pick<SessionWorkEffect, 'id' | 'operation' | 'topic' | 'source' | 'subject' | 'state'>[];
   capReports: Set<string>;
   /** Rule 11 index-only work: every offer of a source (one entry per offer, so a source appears up to
    * `INDEX_ATTEMPT_LIMIT` times), terms admitted, the reservation awaiting its result, and earlier
@@ -2356,6 +2358,27 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
     if (row.recheckAt !== undefined) note.recheckAt = row.recheckAt;
   }
 }
+/** Rules 28/29/96: action-backed context for the verified operator only. Opaque references
+ * allow correlation without copying another topic's private text or tool arguments. This is
+ * a bounded view, never authority or evidence that omitted work does not exist. */
+export function currentActionFacts(view: JournalView, now: number, operatorOnly: boolean) {
+  const ref = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
+  if (!operatorOnly) return { items: [], withheld: true };
+  const requests = view.operatorRequests.filter(item => !item.superseded).slice(-32).map(item => ({
+    kind: 'operator-request', operation: item.request.action, topic: String(item.thread ?? 'main'),
+    source: ref(item.carrier), subject: ref(item.request.id),
+    state: item.applied ? 'applied' : item.approved ? 'approved, not applied' : now > item.request.expiresAt ? 'expired'
+      : item.refusals.length ? 'refused' : item.message === undefined ? 'prepared, not delivered' : 'awaiting approval',
+    ...(item.approved?.sharedAccess ? { approvalDisclosure: SHARED_ACCESS_NOTE } : {}),
+  }));
+  const effects = (view.actionEffects ?? []).filter(item => item.topic !== undefined && item.source && item.subject).slice(-32).map(item => ({
+    kind: 'effect', operation: redact(item.operation).text.slice(0, 160), topic: item.topic,
+    source: item.source, subject: item.subject, state: item.state === 'prepared' ? 'prepared, outcome unknown' : 'tool returned, success not established',
+  }));
+  return { items: [...requests, ...effects], bounded: true,
+    guidance: 'Action records, not summaries or authorization. Opaque subject references identify exact requests or inputs, not semantic equivalence. Omitted work may exist. A returned tool result does not establish success.' };
+}
+
 /** Rules 60, 61, 114: an edge reserves its step's whole model-call liability before the child
  * exists, and refuses when the call allowance cannot hold it. */
 function projectSessionWork(view: JournalView, record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkEffect): void {
@@ -2367,6 +2390,10 @@ function projectSessionWork(view: JournalView, record: SessionWorkEdge | Session
       if (prepared.includes(record.id)) throw Error('preview journal: tool effect already prepared');
       prepared.push(record.id);
     } else if (!prepared.includes(record.id)) throw Error('preview journal: tool effect observed before it was prepared');
+    const { id, operation, topic, source, subject, state } = record;
+    view.actionEffects = [...(view.actionEffects ?? []).filter(item => item.id !== id),
+      { id, operation, ...(topic === undefined ? {} : { topic }), ...(source === undefined ? {} : { source }),
+        ...(subject === undefined ? {} : { subject }), state }].slice(-64);
     return;
   }
   // A delegation inside a step draws on its parent's reservation (the model-dispatch checkpoint counts its calls there).
@@ -2389,7 +2416,9 @@ export function validateSessionWorkRow(record: SessionWorkEdge | SessionWorkEdge
   if (record?.type === 'SessionWorkEffect') {
     if (record.schemaVersion !== 1 || ![record.id, record.edge, record.operation, record.digest, record.detail].every(value => text(value, 1024))
       || !/^sha256:[0-9a-f]{64}$/u.test(record.id) || !['prepared', 'observed'].includes(record.state) || !stamp(record.at)
-      || record.cause !== undefined && !text(record.cause, 262144))
+      || record.cause !== undefined && !text(record.cause, 262144)
+      || record.topic !== undefined && !/^(?:main|[1-9][0-9]{0,15})$/u.test(record.topic)
+      || [record.source, record.subject].some(value => value !== undefined && !/^sha256:[0-9a-f]{64}$/u.test(value)))
       throw Error('preview journal: session work effect incomplete');
     return;
   }
@@ -7268,6 +7297,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ? ' audience.conversation is the topic of the current message and reply. Shared memory items name their source topic in conversation or sourceLabel; a remembered fact does not change the current topic. Use facts across topics and say where you learned them. Replies are visible to packet.audience. Only when operatorOnlyVerified is true may you use the operator’s own private information as in their private chat; protect third-party confidences and secrets.'
           : labelAll ? ' Every history item names the conversation of this private chat it was said in, with its date.'
           : crossed ? ' Items with a conversation field were said by the same operator in another conversation of this private chat, named there with its date; the operator is the only audience of every conversation, so they are your shared memory and may be used here.' : ''),
+      actionFacts: currentActionFacts(journal.view, now, question !== undefined && fromOperator(question)
+        && (journal.view.genesis.forum !== true || operatorOnlyVerified)),
       ...(operatorRequest ? { operatorRequest } : {}), ...(otherOperatorRequest ? { otherOperatorRequest } : {}),
       ...(pendingReminders.length ? { reminders: pendingReminders.map(item => ({ id: reminderId(item),
         quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}`,

@@ -81,7 +81,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
           modelCalls: () => state.topics[topic]?.spent ?? 0,
           prepareAdmission: (claim, edge) => {
             const remaining = config.maxCalls - spent(); ensure(remaining > 0, 'installation call allowance exhausted');
-            return io.prepareAdmission(claim, { ...edge, budget: { ...edge.budget, calls: Math.min(edge.budget.calls, remaining) } });
+            return io.prepareAdmission(claim, { ...edge, topic, budget: { ...edge.budget, calls: Math.min(edge.budget.calls, remaining) } });
           } },
         resources: { admit: async () => {
           const acquire = async () => {
