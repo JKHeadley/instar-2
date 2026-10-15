@@ -134,7 +134,7 @@ async function conversation(maxBytes: number, texts: readonly string[],
       replyCheck: { elapsedMs: () => 100,
         jev: async (text, questions) => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(
           Object.keys(questions ?? jevQuestions).map(id => [id, { type: 'noul',
-            noul: questions === undefined || questions === jevQuestions ? live?.jevScore(id, text) ?? 0.01 : 0.01 }])) }, latencyMs: 10 }),
+            noul: questions?.summary_integrity ? 0.01 : live?.jevScore(id, text) ?? 0.01 }])) }, latencyMs: 10 }),
         // The live escalation builds the full-context review prompt before it calls the model, and a prompt over
         // the limit throws there (journal-agent's escalate -> modelEnvelope). Built here the same way, so a review
         // that cannot fit is the real unavailable outcome rather than a stub that always passes.

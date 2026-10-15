@@ -30,7 +30,7 @@ it('retains the delivered error and captured copying guidance while replay uses 
   expect(capture.instructions.split('\n')).toContain(historicalSelfDescription);
   expect(capture.instructions).toContain(LITERAL_COPY_INSTRUCTIONS);
   expect(capture.instructions.replace(historicalSelfDescription, SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
-  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(' Before finishing, check that your answer covers every requested item and category, including an explicit count or full set; condense detail across the whole set to fit, or state exactly what is missing and why in the answer, never silently stop partway.', ''));
   expect(LITERAL_COPY_INSTRUCTIONS).not.toContain('probe');
   expect(capture.runs).toHaveLength(3);
 });

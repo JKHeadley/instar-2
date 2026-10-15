@@ -44,9 +44,9 @@ it('retains live paraphrase and malformed-key failures beside the fixed-sample r
   expect(evidence.negativeReplay.judge).toMatchObject({ verdict: 'FAIL', reason: 'rendered tools/outbound sentence missing, altered or duplicated' });
   expect(evidence.negativeReplay.answer.split('\n')).not.toContain(capabilitySentence(evidence.negativeReplay.limits));
   expect(currentInstructions(evidence.liveReplay.instructions)).toBe(ANSWER_INSTRUCTIONS);
-  expect(evidence.liveReplay.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  expect(evidence.liveReplay.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(' Before finishing, check that your answer covers every requested item and category, including an explicit count or full set; condense detail across the whole set to fit, or state exactly what is missing and why in the answer, never silently stop partway.', ''));
   expect(currentInstructions(evidence.instructions)).toBe(ANSWER_INSTRUCTIONS);
-  expect(evidence.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  expect(evidence.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(' Before finishing, check that your answer covers every requested item and category, including an explicit count or full set; condense detail across the whole set to fit, or state exactly what is missing and why in the answer, never silently stop partway.', ''));
   expect(evidence.runs).toHaveLength(10);
   expect(evidence.question).toBe("What can you do in this chat, and what can't you do?");
   for (const run of [...evidence.runs, evidence.liveReplay]) {

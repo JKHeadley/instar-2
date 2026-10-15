@@ -43,11 +43,6 @@ Prompt finding: f6d7f3274c85 | protocol-literal | Existing protocol wording pinn
 Prompt finding: feadb66b8ad1 | protocol-literal | Existing protocol wording pinned by consumer tests; no copied test answer or phrase classifier — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "any live authentication secret reaching anyone but the verified operator who sup"
 
 
-## Closing block
-
-simplestRobustRoute: This is the simplest robust route: one completion instruction plus the existing unfinished-work question and revision. The named failure was a four-of-twelve answer passing a reviewer blind to the request. Passing the request and reserving its bytes fixes that blind input without another call or subsystem. Start guards are the existing intake and spend/stop floors; end guards remain review/revision/send. No unattended live-model success is claimed.
-80/20: Targeted foreground tests, one worker, no full suite or live provider; desk owns native certificate and live acceptance.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Prompt finding: 1679f75a5561 | protocol-literal | Exact prompt delta pinned by historical-capture consumer assertions, not a fixed-answer classifier — fixture-phrase src/assembly/production-provider.ts <- tests/preview/act-first.test.ts: "before finishing, check that your answer covers every requested item and categor"
 Prompt finding: 42faf877ba82 | protocol-literal | Exact prompt delta pinned by historical-capture consumer assertions, not a fixed-answer classifier — fixture-phrase src/assembly/production-codex-provider.ts <- tests/preview/act-first.test.ts: "you are an instar 2.0 agent,"
@@ -68,3 +63,9 @@ Compatibility: Summary and reply Jev test doubles distinguish the summary_integr
 Verification: Focused completion/review/recorded-shape tests and the unchanged context floor pass. The bounded 200-turn test passes in 123.7 seconds: 200 sends, no held turn, 3/3 early facts, 199 contextual reviews, maximum answer/review envelopes 16734/26468 bytes below 32768. Initial 120-second timeouts remain documented. Final direct-consumer, typecheck, register and pin outputs are in the canonical PROGRESS report.
 
 Register publication: Existing shape-only replay regenerated from source commit 266ad4b50fbcb7c96dad7221e7cabdbeb537ddc1, generation sha256:a6fd9e6f3ae68145aa89d8cce20b1353858fa9adfd476e766e2983f93e6b6993. Seven derived register outputs change only their source/generation pins. No native certificate or runtime authority declaration is changed.
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: one completion instruction plus the existing unfinished-work question and revision. The named failure was a four-of-twelve answer passing a reviewer blind to the request. Passing the request and reserving its bytes fixes that blind input without another call or subsystem. Start guards are the existing intake and spend/stop floors; end guards remain review/revision/send. No unattended live-model success is claimed.
+80/20: Targeted foreground tests, one worker, no full suite or live provider; desk owns native certificate and live acceptance.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
