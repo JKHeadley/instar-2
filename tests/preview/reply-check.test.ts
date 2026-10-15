@@ -838,7 +838,7 @@ it('answers a long, summarized conversation when Jev is unsure: grounded review 
         : input.context.includes('orchid') && input.question.includes('first unique memory') ? 'I recall it was orchid.' : 'ok',
       checkOutbound: () => {}, send: async input => { sent.push(input.expectedText); return input.update; },
       replyCheck: { elapsedMs: () => 100,
-        jev: async (text, questions) => ({ value: questions
+        jev: async (text, questions) => ({ value: questions?.summary_integrity
           ? { model: 'jev-1.13.0', answers: { summary_integrity: { type: 'noul', noul: 0.05 } } }
           : text.includes('orchid') && ++jevMemoryChecks === 1
             ? scores({ claims_blocked: 0.5 }) : scores(), latencyMs: 150 }),

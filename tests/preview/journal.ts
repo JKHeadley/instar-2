@@ -7982,7 +7982,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const shared = fromOperator(turn) ? disclosedApproval(journal.view) : undefined;
       const facts = shared && approvalFacts(shared);
       journal.append({ kind: 'reply-jev-reserve', id: turn.id,
-        maxInputTokens: Buffer.byteLength(jevRequestBody(text, facts)), maxOutputTokens: jevOutputMaximum, at: ports.now() });
+        maxInputTokens: Buffer.byteLength(jevRequestBody(text, facts, projectedReplyPrompt(turn.prompt))), maxOutputTokens: jevOutputMaximum, at: ports.now() });
       await checkReply(text, turn.id, checkPorts, projectedReplyPrompt(turn.prompt), facts);
     }
     checkCoherence();
@@ -9018,7 +9018,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 gate();
                 const shared = fromOperator(turn) ? disclosedApproval(journal.view) : undefined;
                 journal.append({ kind: 'reply-jev-reserve', id: turn.id, retry: true,
-                  maxInputTokens: Buffer.byteLength(jevRequestBody(reply, shared && approvalFacts(shared))),
+                  maxInputTokens: Buffer.byteLength(jevRequestBody(reply, shared && approvalFacts(shared), reviewPrompt)),
                   maxOutputTokens: jevOutputMaximum, at: ports.now() });
                 return true; },
               reserveEscalation: (candidate: string, originalPrompt?: string) => {
@@ -9058,7 +9058,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const shared = fromOperator(turn) ? disclosedApproval(journal.view) : undefined;
               const facts = shared && approvalFacts(shared);
               journal.append({ kind: 'reply-jev-reserve', id: turn.id,
-                maxInputTokens: Buffer.byteLength(jevRequestBody(reply, facts)), maxOutputTokens: jevOutputMaximum, at: ports.now() });
+                maxInputTokens: Buffer.byteLength(jevRequestBody(reply, facts, reviewPrompt)), maxOutputTokens: jevOutputMaximum, at: ports.now() });
               checked = await checkReply(reply, turn.id, checkPorts, reviewPrompt, facts);
 
             }
