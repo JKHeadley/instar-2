@@ -23,7 +23,9 @@ Prompt review: No prompt, parser or decision-path change. The original repair re
 
 Evidence: Absolute lanes/train-41-repair-evidence/r105-before.log, r105-after.log and r105-redeclare.log record the real contract and helper output. No hand-edited digest.
 
-Subject (1 paths): src/assembly/harness.declarations.json
+Publication: Standard desk rehash/repin changed zero owner or inventory pins. Register replay publishes the renewed declaration from commit 8451211a.
+
+Subject: src/assembly/harness.declarations.json and seven generated register artifacts.
 
 ## Closing block
 
