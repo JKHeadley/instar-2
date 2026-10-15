@@ -1,0 +1,68 @@
+{
+  "provenance": {
+    "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/preview-trial-root/forum-answer-copy-20261015-010503",
+    "update": 715676215,
+    "head": "2c1a275e2db3568020cbdff0fac01ea040efeee7",
+    "encryptedJournalSha256": "049296a94dffd1d7e6c14c40caa07d17b565e49b3fe07805ae72da189f7d2a42",
+    "note": "Read-only projection; no plaintext prompt, credentials or operator records exported."
+  },
+  "request": "From Echo (the desk), test: Canary check 2c1a275e: automated desk check (Forum answer check), nothing here to remember or act on. Please reply with exactly this text: probe-e2b78fdf",
+  "outcome": {
+    "exitCode": null,
+    "localLimit": null,
+    "elapsedMs": 2499,
+    "type": null,
+    "subtype": null,
+    "isError": null,
+    "outputTokens": null,
+    "promptBytes": 21944,
+    "diagnostic": {
+      "signal": "SIGKILL",
+      "cancellationReason": "stopped",
+      "limited": true,
+      "rawOutputExcerpt": ""
+    },
+    "resources": {
+      "enforcement": {
+        "cpuPerProcess": "hard",
+        "handlesPerProcess": "hard",
+        "processGrowth": "sampled",
+        "treeHandles": "unsupported",
+        "memory": "sampled",
+        "treeCpu": "sampled"
+      },
+      "uidProcesses": {
+        "state": "hard",
+        "subject": "uid:501",
+        "limit": 544
+      },
+      "admission": {
+        "work": "answer",
+        "concurrent": 1,
+        "waitedMs": 152
+      },
+      "peakMemoryBytes": 260554752,
+      "peakProcesses": 3,
+      "treeCpuMilliseconds": 260,
+      "census": "complete",
+      "leakedDescendants": 0,
+      "cleanup": "verified",
+      "membership": "working-area-joined",
+      "allocation": {
+        "set": "allocation:sha256:7838695b9ae697f3738e8a1c4dd90ba0a08a72a19652048cff509d61976a1eef",
+        "state": "returned"
+      }
+    }
+  },
+  "turn": {
+    "toolRouted": true,
+    "toolAttempts": [],
+    "toolRecoveryReadOnly": true,
+    "toolRecoveryEvidenceComplete": false,
+    "noticeClass": "unknown-answer",
+    "modelState": "uncertain",
+    "intent": "The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.",
+    "sent": 532
+  },
+  "stop": null
+}

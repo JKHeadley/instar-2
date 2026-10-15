@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { prepareSessionConnectors, conversationAccountActions, admitSessionConnector } from './session-connectors.mjs';
+import { cancellationProbe, recordLiveness } from './answer-cancellation.mjs';
 import { recordPhaseTiming } from './phase-timing.js';
 import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice } from './reply-check.js';
 import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin } from './installed-harness-logins.mjs';
@@ -344,9 +345,11 @@ const operatorRecords = directory => {
 const requireAuthority = (options, activation, activationPath, view, now, policy = undefined) => {
   const path = options['authority-record'] ?? join(dirname(resolve(activationPath)), 'activation-authority.json');
   let record = null;
-  try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { record = null; }
+  try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { throw Object.assign(Error('preview: authority records unreadable'), { code: 'RECORDS_UNREADABLE' }); }
+  const records = operatorRecords(options['operator-records']);
+  if (records === null) throw Object.assign(Error('preview: operator records unreadable'), { code: 'RECORDS_UNREADABLE' });
   const resolution = resolveActivationAuthority(activation, record, view.genesis.operator, view.genesis.expires, now,
-    operatorRecords(options['operator-records']), authoritySealKey(key()), policy);
+    records, authoritySealKey(key()), policy);
   if (resolution.kind !== 'resolved') throw Error(`preview: ${resolution.reason}`);
   return resolution;
 };
@@ -2387,7 +2390,8 @@ async function main() {
     const activationBytes = readFileSync(activationPath, 'utf8');
     const activation = JSON.parse(activationBytes), profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
     loginConfiguration ??= loadHarnessLogins(options);
-    active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
+    const activationLive = recordLiveness(() => readFileSync(activationPath, 'utf8'), activationBytes, 'activation-not-live');
+    active = Object.assign(() => activationLive() === null, { probe: activationLive });
     doorway.validateActivation(activation, profile, required(options, 'model'), wallNow(), doorway.conversationFraming, journal.view.expires);
     requireAuthority(options, activation, activationPath, journal.view, wallNow());
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
@@ -2418,15 +2422,17 @@ async function main() {
     // A revoked, changed, expired or unreadable grant withdraws tools live: every check resolves the sealed authority again
     // at the current time (a grant's liveness depends on the clock, not only on the record's bytes), and a refusal ends
     // tools (no new tool turn, and a live one stops) until a later launch resolves them.
-    const stillGranted = (toolsActivationPath, toolsBytes) => () => {
-      try { adoptTools(toolsActivationPath, toolsBytes); return true; } catch { return false; }
+    const stillGranted = (toolsActivationPath, toolsBytes) => () => adoptTools(toolsActivationPath, toolsBytes);
+    const liveTools = (path, bytes, granted) => {
+      const probe = recordLiveness(() => readFileSync(path, 'utf8'), bytes, 'tools-grant-not-live', granted);
+      return Object.assign(() => probe() === null, { probe });
     };
     if (options['tools-activation'] !== undefined) {
       const toolsActivationPath = options['tools-activation'];
       const toolsBytes = readFileSync(toolsActivationPath, 'utf8');
       toolsRecord = adoptTools(toolsActivationPath, toolsBytes);
       const granted = stillGranted(toolsActivationPath, toolsBytes);
-      toolsActive = () => { try { return readFileSync(toolsActivationPath, 'utf8') === toolsBytes && granted(); } catch { return false; } };
+      toolsActive = liveTools(toolsActivationPath, toolsBytes, granted);
     } else if (toolsMode === 'off') toolsOff = 'refused at launch with --tools off';
     else {
       const toolsActivationPath = join(root, TOOLS_DEFAULT_ACTIVATION);
@@ -2439,7 +2445,7 @@ async function main() {
         try { current = readFileSync(toolsActivationPath, 'utf8'); } catch { current = null; }
         if (current !== toolsBytes) writeToolsDefaultActivation(toolsActivationPath, toolsBytes);
         const granted = stillGranted(activationPath, toolsBytes);
-        toolsActive = () => { try { return readFileSync(toolsActivationPath, 'utf8') === toolsBytes && granted(); } catch { return false; } };
+        toolsActive = liveTools(toolsActivationPath, toolsBytes, granted);
       } catch (error) {
         // Never a silent text-only start: the operator granted the full tool set, so a launch nothing covers is refused, loudly.
         // The reason is the resolver's fixed text with digests and class names (no secret), so it goes to stderr whole, as the
@@ -3082,9 +3088,21 @@ async function main() {
       const work = operation.startsWith('summary:') ? 'maintenance' : operation.endsWith(':reply-review') || operation.endsWith(':held-notice-review') ? 'review' : 'answer';
       // A tool turn also ends on the journal's latched /stop and on tool-activation withdrawal: the resource
       // owner polls this every 25 ms and SIGKILLs the launch's own process group by its exact pid.
+      const cancelled = cancellationProbe({
+        stop: () => workerStop.value ? 'worker-stop' : existsSync(stopPath) ? 'stop-file'
+          : journal.view.stop !== null ? 'journal-stop' : false,
+        activation: () => {
+          const state = active.probe();
+          if (state || !runtime) return state;
+          try { runtime.check(Boolean(toolTurn)); return null; }
+          catch (error) { return error?.code === 'RECORDS_UNREADABLE' || error?.code?.startsWith('E') || error instanceof SyntaxError
+            ? 'records-unreadable' : 'activation-not-live'; }
+        },
+        ...(toolTurn !== undefined ? { tools: () => toolsActive.probe ? toolsActive.probe() : toolsActive() ? null : 'tools-grant-not-live' } : {}),
+        now: () => performance.now(),
+      });
       const launchIO = createSubscriptionProviderIO({ repository: process.cwd(), runAs: runAsOf(selectedHarness),
-        stopped: () => workerStop.value || existsSync(stopPath) || !selectedActive()
-          || (toolTurn !== undefined && (journal.view.stop !== null || !toolsActive())), work });
+        stopped: cancelled, work });
       const physicalIO = { ...launchIO, execute: async input => {
         if (typeof input.stdin === 'string' && input.stdin.length > 0) modelLaunch.started();
         const result = await launchIO.execute(input);

@@ -132,3 +132,21 @@ it('never reuses one directory\'s evidence for another or caches a failed parse'
   writeOperatorRecords(b.directory); expect(b.check(h).kind).toBe('resolved');
   expect(a.check(h).kind).toBe('resolved');
 });
+
+it('keeps an admitted call live across one failed owner-record read, but cancels a real revocation immediately', async () => {
+  const { cancellationProbe, recordLiveness } = await import('./answer-cancellation.mjs');
+  const f = fixture(); let unavailable = false, now = 0;
+  const h = host(readFileSync, (...args) => {
+    if (unavailable) { unavailable = false; throw Error('concurrent owner rewrite'); }
+    return statSync(...args);
+  });
+  expect(f.check(h).kind).toBe('resolved');
+  const tools = recordLiveness(() => '{}', '{}', 'tools-grant-not-live', () => f.check(h));
+  const poll = cancellationProbe({ stop: () => false, activation: () => null, tools, now: () => now });
+  unavailable = true; expect(poll()).toBe(false);
+  now = 25; expect(poll()).toBe(false);
+  const { seal: _, ...record } = f.record;
+  f.seal({ ...record, revocations: [{ grantId: record.grants[0].id, at: f.now,
+    by: record.grants[0].grantor, source: 'offline revocation' }] });
+  expect(poll()).toBe('tools-grant-not-live');
+});

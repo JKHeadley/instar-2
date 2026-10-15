@@ -737,6 +737,24 @@ const timedOutCall = (view: JournalView, id: string): boolean => {
   }
   return false;
 };
+/** A locally ended empty answer is still UNKNOWN, including any tool it began.
+ * A replacement or follow-up has its own reservation; the original paid call stays UNKNOWN. */
+const cancelledEmptyAnswer = (view: JournalView, id: string): boolean => {
+  const row = [...view.callOutcomes].reverse().find(item => item.id === id && item.role === 'model');
+  const diagnostic = row?.outcome.diagnostic;
+  return diagnostic?.signal === 'SIGKILL' && diagnostic.limited === true && diagnostic.rawOutputExcerpt === ''
+    && ['stopped', 'records-unreadable', 'activation-not-live', 'tools-grant-not-live'].includes(diagnostic.cancellationReason ?? '');
+};
+const replaceableAnswerCall = (view: JournalView, id: string, recordedLegacy = false): boolean => {
+  if (timedOutCall(view, id)) return true;
+  const row = [...view.callOutcomes].reverse().find(item => item.id === id && item.role === 'model');
+  const turn = view.turns.get(id);
+  // Empty stdout does not prove a tool had no effect. Only a complete read-only trace
+  // (or a text-only call) may be replaced; uncertain writes remain owned follow-up work.
+  const readOnly = !(turn?.toolRouted || turn?.toolAttempts) || turn.toolRecoveryReadOnly === true && (recordedLegacy || turn.toolRecoveryEvidenceComplete === true);
+  return cancelledEmptyAnswer(view, id) && row?.outcome.resources?.cleanup === 'verified' && readOnly
+    && !view.toolTurns?.open.some(key => key.startsWith(`${id}#`));
+};
 export interface CallOutcome { exitCode: number | null; localLimit: 'timeout' | 'size' | 'output-cap' | 'memory' | 'processes' | 'cpu' | 'aggregate' | 'capacity' | null;
   elapsedMs: number; type: 'result' | 'other' | null; subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd' | 'other' | null;
   isError: boolean | null; outputTokens: number | null; promptBytes: number; resources?: LaunchResources;
@@ -776,7 +794,7 @@ export interface PersonMerge { left: number; right: number; trigger: string; con
 export interface CommitmentNote { in: 'message' | 'reply'; source: string; quote: string;
   sources?: { source: string; quote: string }[]; agentPromise?: AgentPromise;
   /** Rule 83: declared at creation for every source; absent only on records written before it was required. */
-  owner?: 'agent'; waitsOn?: CommitmentWaitsOn;
+  owner?: 'agent'; waitsOn?: CommitmentWaitsOn; interruptedAnswer?: true;
   /** What an agent-declared loop in its own reply records (Rules 6, 22): a deferral, a judgment gap or a promise. */
   loop?: ReplyLoop['kind'] }
 /** What an open commitment waits on; `nothing` is an explicit declaration, never a default. */
@@ -1152,7 +1170,7 @@ export type JournalRecord =
     memoryFailure?: MemoryFailureProposal;
     at: number }
   | { kind: 'status-answer'; id: string; text: string; prompt: string; at: number }
-  | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; latencyMs?: number; at: number }
+  | { kind: 'model-uncertain'; id: string; state: 'uncertain'; followUp?: true; usage?: ModelUsage; latencyMs?: number; at: number }
   | { kind: 'notice'; id: string; noticeClass: 'unknown-answer' | 'too-long-input'; at: number }
   // Non-additive: skipping this reservation would lose spend and the no-repeat fence.
   | { kind: 'held-notice-review-reserve'; id: string; prompt: string; at: number }
@@ -1190,7 +1208,7 @@ export type JournalRecord =
   | { kind: 'format-retry'; id: string; role: 'answer' | 'reply-review'; state?: 'complete'; failureClass?: 'malformed'; undecided?: true; prompt?: string; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   /** The one replacement of an answer call that ended at the local timeout (docs/09: a replacement takes separate
    * capacity). The timed-out call stays UNKNOWN and charged; the replacement is reserved under the same cap. */
-  | { kind: 'answer-replace'; id: string; state: 'uncertain'; prompt?: string; usage?: ModelUsage; latencyMs?: number; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'answer-replace'; id: string; state: 'uncertain'; followUp?: true; prompt?: string; usage?: ModelUsage; latencyMs?: number; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'call-outcome'; id: string; role: 'model' | 'summary' | 'reply-review'; outcome: CallOutcome; at: number }
 
 
@@ -1292,7 +1310,7 @@ export type JournalRecord =
   | { kind: 'tool-turn'; phase: 'reserved'; id: string; attempt: number; calls: number; delegation?: ToolDelegation;
       mcp?: { servers: string[]; reads: number; digest: string }; workspace?: ToolWorkspaceRow; at: number }
   | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size' | 'mcp credential unavailable' | 'harness identity unavailable'; at: number }
-  | { kind: 'tool-turn'; phase: 'trace'; id: string; attempt: number; calls: ToolTraceCall[]; consistent: boolean;
+  | { kind: 'tool-turn'; phase: 'trace'; id: string; attempt: number; calls: ToolTraceCall[]; consistent: boolean; evidenceComplete?: boolean;
       edges?: ToolChildEdge[]; egress?: ToolEgressRequest[]; egressRequests?: number; egressLimited?: string; workspaceBytes: number | null;
       session?: ToolSessionRow; volume?: ToolVolumeRow; harness?: ToolHarnessRow; at: number }
   | { kind: 'legacy-reply'; at: number }
@@ -1369,6 +1387,8 @@ export interface Turn { waitingProgress?: { at: number; sent?: number }; id: str
   mediaClaim?: string;
   /** Part Thirteen §9: the scoped-tool calls of every attempt of this turn's answer, in order (bounded), read by its reply review. */
   toolAttempts?: ToolAttempt[];
+  /** Whole-trace proof for replacement of a locally cancelled answer; never inferred from clipped excerpts. */
+  toolRecoveryReadOnly?: boolean; toolRecoveryEvidenceComplete?: boolean;
   /** The later messages of a reply split across several (part 2 onward, in order), with each one's dispatch start and receipt. */
   replyParts?: (ReplyPart & { started?: true; sent?: number; sentAt?: number })[];
   /** Calls the turn made beyond `toolAttempts` (the review bound); the review is told its excerpt is incomplete. */
@@ -2207,6 +2227,8 @@ export function loopRevisits(view: JournalView): Map<number, number> {
   }
   return seen;
 }
+const interruptedAnswerOwned = (view: JournalView, id: string): boolean =>
+  view.commitments.some((note, index) => note.source === id && note.interruptedAnswer === true && !view.closed.has(index));
 /** A commitment is open until a recorded closure, an operator forgetting, or its source's removal ends it. */
 export function commitmentOpen(view: JournalView, id: number): boolean {
   const note = view.commitments[id], source = note && view.turns.get(note.source);
@@ -2972,7 +2994,7 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
     || ![null, 'success', 'error_max_turns', 'error_during_execution', 'error_max_budget_usd', 'other'].includes(o.subtype)
     || ![null, true, false].includes(o.isError)
     || o.diagnostic !== undefined && (!o.diagnostic
-      || ![null, 'stopped', 'stdin-error', 'gate-error', 'spawn-error', 'physical-error'].includes(o.diagnostic.cancellationReason)
+      || ![null, 'stopped', 'worker-stop', 'stop-file', 'journal-stop', 'activation-not-live', 'tools-grant-not-live', 'records-unreadable', 'stdin-error', 'gate-error', 'spawn-error', 'physical-error'].includes(o.diagnostic.cancellationReason)
       || o.diagnostic.signal !== null && (typeof o.diagnostic.signal !== 'string' || !/^SIG[A-Z0-9]{1,16}$/u.test(o.diagnostic.signal))
       || typeof o.diagnostic.limited !== 'boolean' || typeof o.diagnostic.rawOutputExcerpt !== 'string'
       || Buffer.byteLength(o.diagnostic.rawOutputExcerpt) > 4096 || redact(o.diagnostic.rawOutputExcerpt).count > 0
@@ -3249,6 +3271,11 @@ function operatorResultIntent(view: JournalView, row: Extract<JournalRecord, { k
  * carries any operator request line): the request it carries is bound to that message, results bound to it are delivered,
  * and the promises it says it carries out close. Until then a part that is refused or UNKNOWN settles none of them. */
 function settleDeliveredReply(view: JournalView, turn: Turn, message: number, at: number): void {
+  // Only a delivered answer resolves interruption ownership; a loss/failure notice does not.
+  if (turn.answer?.trim() && !turn.failureClass && !turn.answerRejected && !turn.noticeClass)
+    view.commitments.forEach((note, id) => {
+      if (note.source === turn.id && note.interruptedAnswer) view.closed.set(id, { id, source: turn.id, quote: turn.intent! });
+    });
   sentOperatorRequest(view, turn.id, 'reply', message);
   // Evidenced settlement: a result bound to this reply's intent is delivered, and its commitment closed, only now.
   for (const [key, work] of Object.entries(view.obligationWork)) if (work.report?.boundTo === turn.id && work.report.delivered === undefined) {
@@ -3507,7 +3534,8 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     return;
   }
   if (row.phase !== 'trace' || !stats.open.includes(key) || !Array.isArray(row.calls) || row.calls.length > 64
-    || typeof row.consistent !== 'boolean' || !(row.workspaceBytes === null || Number.isSafeInteger(row.workspaceBytes) && row.workspaceBytes >= 0))
+    || typeof row.consistent !== 'boolean' || (row.evidenceComplete !== undefined && typeof row.evidenceComplete !== 'boolean')
+    || !(row.workspaceBytes === null || Number.isSafeInteger(row.workspaceBytes) && row.workspaceBytes >= 0))
     throw Error('preview journal: tool trace order');
   const edges = row.edges ?? [];
   if (!Array.isArray(edges) || edges.length > 8 || !edges.every(edge => edge && boundedText(edge.child, 1, 256)
@@ -3523,6 +3551,12 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   const admitted = row.calls.filter(call => call.decision === 'allow').length;
   const turn = view.turns.get(row.id);
   if (turn) {
+    turn.toolRecoveryEvidenceComplete = (turn.toolRecoveryEvidenceComplete ?? true) && row.evidenceComplete === true;
+    turn.toolRecoveryReadOnly = (turn.toolRecoveryReadOnly ?? true) && row.consistent && edges.length === 0
+      && !row.egressLimited && (row.egressRequests ?? egress.length) === egress.length
+      && egress.every(entry => entry.decision !== 'allow' || entry.kind === 'tunnel' || ['GET', 'HEAD'].includes(entry.method))
+      && row.calls.every(call => call.decision !== 'allow' || call.kind === 'network-read'
+        || call.tool === 'ToolSearch' && call.reason === 'harness bookkeeping');
     // Every attempt's calls accumulate in order (a format re-ask's second tool attempt does not erase the first's):
     // the excerpt keeps the first calls up to the bound and counts every later one as omitted (Rules 45, 58, 84).
     const shown = turn.toolAttempts ?? [], room = Math.max(0, TOOL_ATTEMPTS_REVIEWED - shown.length);
@@ -4541,8 +4575,16 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     // docs/09 "a reservation survives uncertain execution": the timed-out call keeps its full reservation (never
     // settled here), and its replacement takes separate capacity under the same cap, once per turn (Rule 55).
     if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined || turn.intent !== undefined
-      || turn.answerReplaced || row.state !== 'uncertain' || view.calls >= view.limits.maxCalls || !timedOutCall(view, row.id))
+      || turn.answerReplaced || row.state !== 'uncertain' || view.calls >= view.limits.maxCalls
+      || !replaceableAnswerCall(view, row.id, row.followUp === undefined))
       throw Error('preview journal: answer replacement order or cap');
+    // Old replacement rows replay their recorded decision; new dispatch always requires complete evidence.
+    if (row.followUp !== undefined) {
+      if (row.followUp !== true || view.stop !== null || !operatorTurn(view, turn) || probeTurn(view, turn)
+        || !cancelledEmptyAnswer(view, turn.id)) throw Error('preview journal: unsupported interrupted answer replacement');
+      view.commitments.push({ in: 'message', source: turn.id, quote: turn.text,
+        owner: 'agent', waitsOn: 'nothing', interruptedAnswer: true });
+    }
     const timedOut = view.tokenCurrent.get(`answer:${row.id}`);
     if (timedOut !== undefined) { view.tokenCurrent.delete(`answer:${row.id}`); view.tokenCurrent.set(`answer-replaced:${row.id}`, timedOut); }
     reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
@@ -4640,6 +4682,12 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   }
   if (row.kind === 'model-uncertain') {
     if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: uncertain model order');
+    if (row.followUp !== undefined) {
+      if (row.followUp !== true || view.stop !== null || !operatorTurn(view, turn) || probeTurn(view, turn)
+        || !(cancelledEmptyAnswer(view, turn.id) || interruptedAnswerOwned(view, turn.id))) throw Error('preview journal: unsupported interrupted answer follow-up');
+      if (!interruptedAnswerOwned(view, turn.id)) view.commitments.push({ in: 'message', source: turn.id, quote: turn.text,
+        owner: 'agent', waitsOn: 'nothing', interruptedAnswer: true });
+    }
     turn.modelState = row.state;
     if (row.latencyMs !== undefined) turn.answerMs = row.latencyMs;
     // This durable observation of the local invocation ending is also the notice due time.
@@ -8384,12 +8432,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           };
           // docs/09, live 2026-10-02 (S update 6230861 after its lookup, A update 6230665, S update 6230832): an answer
           // call the local timeout ended stays UNKNOWN and charged, and the turn asks once more under the same cap, on
-          // the same packet, before any send. Only a recorded timeout with confirmed cleanup qualifies; any other
+          // the same packet, before any send. A recorded timeout, or a locally cancelled empty answer with verified cleanup, qualifies; any other
           // UNKNOWN outcome, or a second one, keeps the loss notice. Returns false when the replacement's own outcome
           // is unknown (its reservation then stays UNKNOWN).
-          const replaceTimedOut = async (given: Answer): Promise<Answer | false> => {
+          const replaceEndedAnswer = async (given: Answer): Promise<Answer | false> => {
             if (typeof given === 'string' || !('state' in given) || given.state !== 'uncertain' || turn.answerReplaced
-              || !timedOutCall(journal.view, turn.id) || halted()
+              || !replaceableAnswerCall(journal.view, turn.id) || halted()
               || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) return given;
             const replaceContext = routedContext(context);
             let replacePrepared = prepared;
@@ -8397,6 +8445,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               try { replacePrepared = ports.prepareModel?.({ question, context: replaceContext, id: turn.id, ...(writer ? { writer } : {}) }); } catch { return given; }
             }
             journal.append({ kind: 'answer-replace', id: turn.id, state: 'uncertain',
+              ...(fromOperator(turn) && !probeTurn(journal.view, turn) && cancelledEmptyAnswer(journal.view, turn.id) ? { followUp: true as const } : {}),
               ...(replacePrepared === undefined || replacePrepared === prepared ? {} : { prompt: replacePrepared }),
               ...('usage' in given && given.usage ? { usage: given.usage } : {}), latencyMs: duration(answerStarted),
               maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
@@ -8405,10 +8454,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           };
           /** One answer call's settled result: a timed-out call replaced once, then a format miss re-asked once. */
           const settled = async (given: Answer): Promise<Answer | false> => {
-            const replaced = await replaceTimedOut(given);
+            const replaced = await replaceEndedAnswer(given);
             if (replaced === false) return false;
             const reasked = await formatReask(replaced);
-            return reasked === false ? false : replaceTimedOut(reasked);
+            return reasked === false ? false : replaceEndedAnswer(reasked);
           };
           const answerText = (given: Answer) => typeof given === 'string' ? given : 'text' in given ? given.text : undefined;
           const first = await settled(answer);
@@ -8455,6 +8504,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const answerMs = duration(answerStarted);
           if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') {
             journal.append({ kind: 'model-uncertain', id: turn.id, state: 'uncertain',
+              ...(!halted() && fromOperator(turn) && !probeTurn(journal.view, turn) && (cancelledEmptyAnswer(journal.view, turn.id) || interruptedAnswerOwned(journal.view, turn.id)) ? { followUp: true as const } : {}),
               ...('usage' in answer && answer.usage ? { usage: answer.usage } : {}), latencyMs: answerMs, at: ports.now() });
           } else if (typeof answer !== 'string' && 'failureClass' in answer) {
             journal.append({ kind: 'answer', id: turn.id, text: MODEL_FAILURE_REPLY,
@@ -8867,6 +8917,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           }
         }
         if (turn.answer === undefined && !turn.noticeClass) {
+          if (turn.reserved && turn.modelState === undefined && interruptedAnswerOwned(journal.view, turn.id)) {
+            gate();
+            journal.append({ kind: 'model-uncertain', id: turn.id, state: 'uncertain', followUp: true, at: ports.now() });
+          }
           if (turn.modelState !== 'uncertain' || turn.noticeDueAt === undefined || ports.now() < turn.noticeDueAt) continue;
           gate();
           if (!turn.noticeClass) journal.append({ kind: 'notice', id: turn.id, noticeClass: 'unknown-answer', at: ports.now() });
@@ -11129,6 +11183,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const note = journal.view.commitments[item.id]!, source = journal.view.turns.get(note.source)!;
         return { kind: note.loop ?? (note.agentPromise ? 'promise' : note.in === 'message' ? 'request' : 'promise'),
           quote: clean(redact(note.quote).text, true, note.source), waitsOn: commitmentWaitsOn(journal.view, item.id),
+          ...(note.interruptedAnswer ? { interruptedAnswer: 'The earlier answer process was locally cancelled with no output. Its paid call and any started tools remain UNKNOWN, not proven absent. Do not repeat uncertain effects. Recover from recorded evidence and safe reads where possible, or give an honest follow-up explaining what remains unresolved.' } : {}),
           since: dated(source), operatorMessage: clip(clean(redact(source.text).text, true, source.id), 2000),
           ...(sentText(source) ? { yourReply: clip(clean(redact(sentText(source)!).text, true), 2000) } : {}) };
       })() : (() => {

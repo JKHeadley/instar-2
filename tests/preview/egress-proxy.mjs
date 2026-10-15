@@ -102,6 +102,8 @@ const resolveAll = async host => (await lookup(host, { all: true, verbatim: true
 export async function startEgressProxy({ stateDirectory, caPath, admission, held: secrets = UNCHECKED, limits = EGRESS_LIMITS, resolve = resolveAll,
   openssl = EGRESS_OPENSSL, upstream = {}, dial = (address, port) => ({ host: address, port }) }) {
   const root = await createTrustRoot(join(stateDirectory, 'egress-trust'), caPath, openssl);
+  // Preserve an existing record; initialize the observed-empty case before serving requests.
+  closeSync(openSync(join(stateDirectory, EGRESS_RECORD), 'a', 0o600));
   const contexts = new Map(), targets = new WeakMap(), open = new Set(), advertised = new Set();
   const stats = { requests: 0, admitted: 0, refused: 0, bytes: 0, limited: null };
   let closed = false;
@@ -306,7 +308,7 @@ export async function startEgressProxy({ stateDirectory, caPath, admission, held
 /** The record of a turn's checkpoint, read back after the turn: one entry per request, its decision and its outcome. */
 export function readEgressRecord(stateDirectory) {
   let text = '';
-  try { text = readFileSync(join(stateDirectory, EGRESS_RECORD), 'utf8'); } catch { return { requests: [], limited: null, malformed: 0 }; }
+  try { text = readFileSync(join(stateDirectory, EGRESS_RECORD), 'utf8'); } catch { return { requests: [], limited: null, malformed: 0, complete: false }; }
   const requests = [], byN = new Map();
   let limited = null, malformed = 0;
   for (const line of text.split('\n').filter(Boolean)) {
@@ -322,5 +324,5 @@ export function readEgressRecord(stateDirectory) {
     } else if (row?.phase === 'limit') limited = String(row.reason);
     else malformed++;
   }
-  return { requests, limited, malformed };
+  return { requests, limited, malformed, complete: malformed === 0 };
 }
