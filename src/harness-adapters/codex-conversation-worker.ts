@@ -70,7 +70,11 @@ export function createCodexConversationWorker(input: Readonly<{
         reader = null; operation = '';
         input.afterLaunch?.();
         return { launch: connection.identity, claim, incarnation };
-      } catch (error) { await connection.close(); throw error; }
+      } catch (error) {
+        await connection.close();
+        connection = null; reader = null;
+        throw error;
+      }
     },
     async deliver(delivery) {
       verify(delivery); guard(); feed();

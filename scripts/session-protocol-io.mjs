@@ -5,8 +5,12 @@ import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const stamp = pid => {
-  try { return execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', timeout: 2000 }).trim() || null; }
-  catch { return null; }
+  try {
+    const value = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', timeout: 2000 }).trim();
+    if (value) return value;
+  } catch { /* A failed observer is not evidence that the process is gone. */ }
+  try { process.kill(pid, 0); } catch (error) { if (error.code === 'ESRCH') return null; }
+  throw Error('protocol process identity unavailable');
 };
 const sync = path => { const fd = openSync(path, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } };
 export function createSessionProtocolIO(directory, stopped = () => false) {
@@ -20,8 +24,10 @@ export function createSessionProtocolIO(directory, stopped = () => false) {
   async function close(claim, incarnation, identity) {
     for (const row of load().filter(row => row.claim === claim && row.incarnation === incarnation && (!identity || row.identity === identity))) {
       const connection = connections.get(row.identity);
-      connection?.end();
-      if (live(row)) { try { process.kill(row.pid, 'SIGTERM'); } catch (error) { if (error.code !== 'ESRCH') throw error; } }
+      if (live(row)) {
+        connection?.end();
+        try { process.kill(row.pid, 'SIGTERM'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+      }
       for (let n = 0; n < 20 && live(row); n++) await pause(25);
       if (live(row)) { process.kill(row.pid, 'SIGKILL'); for (let n = 0; n < 20 && live(row); n++) await pause(25); }
       if (live(row)) throw Error('exact protocol worker stop unconfirmed');
@@ -37,8 +43,9 @@ export function createSessionProtocolIO(directory, stopped = () => false) {
       if (load().filter(live).length >= input.maxProcesses) throw Error('protocol worker capacity exhausted');
       const child = spawn(input.executable, input.args, { cwd: input.cwd, env: input.env, stdio: ['pipe', 'pipe', 'pipe'] });
       await new Promise((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject); });
-      const started = stamp(child.pid);
-      if (!started) { child.kill('SIGTERM'); throw Error('protocol process identity unavailable'); }
+      let started;
+      try { started = stamp(child.pid); if (!started) throw Error('protocol process identity unavailable'); }
+      catch (error) { child.kill('SIGTERM'); throw error; }
       const identity = `protocol:${child.pid}:${randomUUID()}`;
       const row = { claim: input.claim, incarnation: input.incarnation, identity, pid: child.pid, stamp: started };
       try { save([...load(), row]); } catch (error) { child.kill('SIGTERM'); throw error; }
@@ -48,7 +55,9 @@ export function createSessionProtocolIO(directory, stopped = () => false) {
       const fail = error => {
         const first = !dead; failure ??= error; dead = true;
         clearInterval(watch);
-        if (first) killTimer = setTimeout(() => { if (live(row)) child.kill('SIGKILL'); }, 500);
+        if (first) killTimer = setTimeout(() => {
+          try { if (live(row)) child.kill('SIGKILL'); } catch { /* Retain uncertain identity for explicit close. */ }
+        }, 500);
         for (const value of pending.values()) { clearTimeout(value.timer); value.reject(error); } pending.clear();
         child.stdin.destroy(); if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
       };

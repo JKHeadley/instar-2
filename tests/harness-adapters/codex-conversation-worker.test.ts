@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { createConversationSessionPort, type ConversationState } from '../../src/assembly/production-conversation-session.js';
+import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
+import { value } from '../facts/fixtures.js';
 import { createHash } from 'node:crypto';
 import { createCodexConversationWorker } from '../../src/harness-adapters/codex-conversation-worker.js';
 import { createProductionConversationAdapter, type ProductionSessionConfig, type SessionJournal } from '../../src/assembly/production-session-driver.js';
@@ -40,7 +43,7 @@ function fixture(run = captured.runs[0]!) {
       save: value => { journal = value; }, readInbox: () => [], transcriptExists: () => cache, armDeadline: () => {} },
   };
   const io = { clearResult: () => { file = null; }, readResult: () => file };
-  const make = (selectedTransport = transport) => createCodexConversationWorker({ configuration: () => config, transport: selectedTransport, io, resumeKey: 'topic:one', resolveDelivery: operation => deliveries.get(operation) });
+  const make = (selectedTransport = transport, resolveDelivery = (operation: string) => deliveries.get(operation)) => createCodexConversationWorker({ configuration: () => config, transport: selectedTransport, io, resumeKey: 'topic:one', resolveDelivery });
   const spec = { operation: 'launch', claim: 'claim1', incarnation: 'inc1', artifact: 'artifact', workingScope: '/scope' };
   const delivery = (worker: Awaited<ReturnType<ReturnType<typeof make>['launch']>>, operation = 'input1') => {
     const text = `owner message ${operation}`; const value = { ...worker, operation, text, digest: hash(text), resultPath: '/scope/result', maxBytes: 65536 };
@@ -70,6 +73,53 @@ describe('registered continuing protocol worker', () => {
     expect(f.opens[0]!.args.join(' ')).toContain('model_providers.instar-gate');
     expect(f.opens[0]!.args.join(' ')).toContain('mcp_servers.account');
     expect(f.journal.resumes['topic:one']).toBe(f.terminals[0]!.threadId);
+  });
+  it.each(['initialize', 'thread/start', 'thread/resume'])('retires a failed %s launch and reuses the adapter through the common host', async method => {
+    const f = fixture();
+    if (method === 'thread/resume') f.config.io.save({ ...f.journal, resumes: { 'topic:one': f.terminals[0]!.threadId } });
+    let fail = true, released = 0, physicalCloses = 0;
+    let state: ConversationState | null = null;
+    const transport: SessionProtocolIO = { close: f.transport.close, async open(spec) {
+      const connection = await f.transport.open(spec);
+      return { ...connection, async request(name, params) {
+        if (fail && name === method) { fail = false; throw Error('injected launch failure'); }
+        return connection.request(name, params);
+      }, async close() { physicalCloses++; await connection.close(); } };
+    } };
+    let adapter: ReturnType<typeof f.make>;
+    const host = value(createConversationSessionPort({
+      conversation: 'recovery', allowanceDeadline: 100000, authorized: () => true, currentAuthority: () => 'grant',
+      store: { load: () => state, save: next => { state = next; } },
+      createAdapter: resolve => (adapter = f.make(transport, resolve)),
+      io: { ...f.io, modelCalls: () => 0, wait: async () => {}, prepareAdmission: () => {}, closeAdmission: () => {},
+        admissionState: () => ({ refused: false, openDelegations: [] }) },
+      resources: { admit: async () => ({ attach: async () => {}, release: async () => { released++; return true; } }) },
+      context: assemblyRuntimeFixture().c, now: () => 1, stopped: () => false, append: () => {},
+      parent: 'parent', owner: 'machine', placement: 'local', transport: 'protocol', workingScope: '/scope',
+      resultDirectory: '/scope/results', artifact: 'artifact', incarnation: 'inc',
+      deadlineMs: 2000, pollMs: 100, maxCalls: 6, maxSteps: 3, maxResultBytes: 65536,
+    }));
+    const request = (operation: string) => ({ operation, question: 'continue', context: '', authority: 'grant' });
+    expect((await host.run(request('first'))).state).toBe('uncertain');
+    expect(physicalCloses).toBe(1);
+    expect(released).toBe(1);
+    expect((state as ConversationState | null)?.claim).toBeNull();
+    expect(await host.run(request('next'))).toMatchObject({ state: 'complete', text: 'LOCAL_PROTOCOL_OK' });
+    expect(f.opens).toHaveLength(2);
+    const worker = (state as ConversationState | null)!.worker!;
+    await expect(adapter!.control({ ...worker, incarnation: 'stale', action: 'close', authority: 'grant', reason: 'test' })).rejects.toThrow('stale');
+    await host.close(); expect(released).toBe(2);
+  });
+  it('does not clear an unconfirmed failed-launch connection', async () => {
+    const f = fixture();
+    const adapter = f.make({ close: async () => { throw Error('stop unconfirmed'); }, async open(spec) {
+      const connection = await f.transport.open(spec);
+      return { ...connection, request: async () => { throw Error('initialize failed'); },
+        close: async () => { throw Error('stop unconfirmed'); } };
+    } });
+    await expect(adapter.launch(f.spec)).rejects.toThrow('stop unconfirmed');
+    await expect(adapter.control({ ...f.spec, launch: '', action: 'close', authority: 'grant', reason: 'retire' })).rejects.toThrow('stale');
+    await expect(adapter.control({ ...f.spec, launch: 'protocol:123:nonce', action: 'close', authority: 'grant', reason: 'retire' })).rejects.toThrow('stop unconfirmed');
   });
   it('checkpoint survives adapter replacement and a new admission claim without replay', async () => {
     const f = fixture(), a = f.make(), first = await a.launch(f.spec);

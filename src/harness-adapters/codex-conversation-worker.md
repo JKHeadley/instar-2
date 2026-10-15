@@ -13,6 +13,8 @@ notifications are captured in the host directory before projection. No RPC is re
 The common host records dispatch intent before delivery and retains uncertain inputs
 through restart. The transport closes only the recorded PID with the matching start
 stamp, and a reconstructed transport can retire the previous incarnation. Process
+inspection that cannot establish identity retains uncertainty and capacity; only observed
+absence or a different start stamp retires a reconstructed identity without signaling. Process
 records and protocol captures are machine-local; conversation ownership and durable
 intake remain with the existing host and its replication policy.
 
@@ -28,6 +30,10 @@ authorize a retry or a successful answer.
 The host closes admission before control. Control interrupts the exact active turn and
 closes the exact physical process. A host stop or finite lifetime also closes the pipe
 process. The model checkpoint, not cumulative protocol token usage, holds spend limits.
+
+A failed initialization/start/resume clears its local connection only after physical closure
+succeeds, so the host can retire its claim and lease before a fresh launch. Unconfirmed
+closure remains a failure and cannot release the host lease.
 
 Stall coverage: unanswered RPC -> bounded timeout, uncertain input retained; lost/malformed
 transport -> exit/paused, no replay; open turn -> host/physical deadline; missing cache ->
