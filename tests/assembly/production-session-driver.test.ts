@@ -92,6 +92,34 @@ it('ports byte bounded tmux chunks, menu precedence, and tail gated stuck signat
   expect(classifyStuckSignature('conversation is too long')).toBe('context-too-long');
 });
 
+it('keeps recorded weekly usage warnings advisory while preserving real quota walls', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../fixtures/claude-usage-warning.json', import.meta.url), 'utf8'));
+  const exhausted = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8'));
+  expect(recorded.captures.map((row: { updateId: number }) => row.updateId)).toEqual([840343021, 840343022]);
+  expect(classifyStuckSignature(exhausted.result)).toBe('rate-limited');
+  for (const row of recorded.captures) {
+    const warning = row.capture.split('\n').find((line: string) => line.includes("You've used 76%"));
+    expect(warning).toBeDefined();
+    expect(classifyStuckSignature(warning)).toBeNull();
+    expect(classifyStuckSignature(row.capture)).toBeNull();
+    expect(classifyStuckSignature(`${row.capture}\n${exhausted.result}`)).toBe('rate-limited');
+    const f = fixture(); const identity = f.launch(); value(f.deliver(identity));
+    f.changePane(row.capture);
+    expect(value(f.driver.observe({ operation: 'warning', processIdentity: identity })).phase).toBe('launched');
+    expect(f.journal.sessions[0]?.turnDeadline).not.toBeNull();
+    f.changePane(`${row.capture}\n${exhausted.result}`);
+    expect(value(f.driver.observe({ operation: 'wall', processIdentity: identity })))
+      .toMatchObject({ phase: 'pause-observed', detail: 'rate-limited' });
+  }
+});
+
+it.each([
+  "You've hit your session limit", "You've reached your usage limit", "You've hit your 5-hour limit",
+  "You've reached your weekly limit", "You've hit your limit", 'Usage limit reached',
+])('continues detecting exhausted quota: %s', message => {
+  expect(classifyStuckSignature(message)).toBe('rate-limited');
+});
+
 it('reports the recorded first-run startup menu even when its syntax preview hides the options', () => {
   const recorded = JSON.parse(readFileSync(new URL('../fixtures/claude-first-run-2.1.280.json', import.meta.url), 'utf8'));
   expect(recorded.updateId).toBe(840342689);

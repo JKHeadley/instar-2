@@ -1,0 +1,17 @@
+{
+  "source": "step1-rewalk7-1015-records/walk/pane-captures.jsonl",
+  "captures": [
+    {
+      "updateId": 840343021,
+      "line": 19,
+      "at": 1792087564.477519,
+      "capture": "\n· Brewing… (9s · ↓ 576 tokens · thought for 7s)\n                 You've used 76% of your weekly limit · resets Oct 20 at 7pm (America/Los_Angeles)\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt · ← for agents\n"
+    },
+    {
+      "updateId": 840343022,
+      "line": 37,
+      "at": 1792087667.245278,
+      "capture": "\n✢ Dilly-dallying… (9s · thinking)\n                 You've used 76% of your weekly limit · resets Oct 20 at 7pm (America/Los_Angeles)\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt · ← for agents\n"
+    }
+  ]
+}
