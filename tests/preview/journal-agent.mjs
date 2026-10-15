@@ -120,8 +120,8 @@ import { auditJournal } from './journal-audit.mjs';
 
 import { memoryReport } from './memory-export.js';
 
-import { createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
-import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
+import { createProductionSessionDriver, createProductionConversationAdapter } from '../../src/assembly/production-session-driver.js';
+import { createSessionProtocolIO } from '../../scripts/session-protocol-io.mjs';
 import { lifecycleHookPath, installLifecycleHook } from '../../scripts/conversation-lifecycle-io.mjs';
 import { createConversationHostStore } from '../../scripts/conversation-host-store.mjs';
 import { CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
@@ -2563,12 +2563,8 @@ async function main() {
       // shell command runs confined. The state lives beside the working scope, never inside it.
       const admissionBase = layout ? layout.admission : join(root, 'session-work-state', 'admission');
       const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
-      const configurationFor = (topic, binding, handoff = null) => ({
-        ...(conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
-          authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
-          ...(handoff ? { prepareTurn: handoff.prepareTurn } : {}) } : {}),
-        createDriver: resolveIntake => {
-          const create = () => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
+      const configurationFor = (topic, binding, handoff = null) => {
+        const driverConfiguration = resolveIntake => ({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
             timeoutSeconds: Math.ceil(sessionLimits.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
           ...(conversationSession ? { connectors: claim => sessionConnectors.get(claim)?.launch() } : {}),
@@ -2586,6 +2582,12 @@ async function main() {
           // As the harness user: the pane runs the harness through the bridge, which hands it the custody login.
           ...(layout ? { launchVia: [process.execPath, HARNESS_SESSION_BRIDGE, options['harness-user'],
             realpathSync(binding.entry().profilePath), '--'] } : {}) });
+        return ({
+        ...(conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
+          authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
+          ...(handoff ? { prepareTurn: handoff.prepareTurn } : {}) } : {}),
+        createDriver: resolveIntake => {
+          const create = () => createProductionSessionDriver(driverConfiguration(resolveIntake));
           let driver = create();
           // Each step is fresh and the port permits only one in flight. Rebuild only between steps;
           // the port keeps one shared step/call ceiling across all selected logins.
@@ -2654,11 +2656,13 @@ async function main() {
         context, now: wallNow, stopped: conversationSession ? hostStopped : binding.stopped,
         append: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
         parent: `launch:${conversationOf(g)}`, owner: ownerMachine, placement: `machine:${ownerMachine}`,
-        transport: 'tmux session on this machine', workingScope: project, resultDirectory: project,
+        transport: sessionAdapter.transport ?? 'tmux session on this machine', workingScope: project, resultDirectory: project,
         artifact: `doorway:${doorway.id}`, incarnation: String(launchedAt ?? wallNow()),
         deadlineMs: sessionLimits.deadlineMs, pollMs: sessionLimits.pollMs,
         maxResultBytes: sessionLimits.maxResultBytes, maxSteps: sessionLimits.maxStepsPerLaunch,
-        maxCalls: sessionLimits.maxCallsPerStep });
+        maxCalls: sessionLimits.maxCallsPerStep,
+        sessionConfiguration: () => driverConfiguration(() => { throw Error('protocol uses durable delivery'); }),
+      }); };
       const defaultBinding = { entry: () => selectedSession, physical: () => physical, harness: () => sessionHarness,
         stopped: stoppedNow, authorized: sessionActive, admissionIO };
       const topicConfigurations = new Map();
@@ -2686,7 +2690,10 @@ async function main() {
               deadline: wallNow() + 15000, now: wallNow });
           } });
         const config = configurationFor(topic, binding, handoff);
-        config.createAdapter = resolveDelivery => createSessionConversationAdapter({ createDriver: config.createDriver, io: config.io, resolveDelivery });
+        config.createAdapter = resolveDelivery => createProductionConversationAdapter({ createDriver: config.createDriver, io: config.io,
+          resolveDelivery, configuration: config.sessionConfiguration,
+          transport: () => createSessionProtocolIO(join(root, 'session-work-state', 'protocol'), binding.stopped),
+          resumeKey: `topic:${topic}`, beforeLaunch: claim => handoff?.bindClaim(claim), afterLaunch: () => handoff?.launched() });
         topicConfigurations.set(topic, config); return config;
       };
       sessionWork = { select() {

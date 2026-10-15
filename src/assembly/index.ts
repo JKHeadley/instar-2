@@ -62,3 +62,6 @@ export { importPreparedInstallationPackage, isIssuedInstallationImportPlan, plan
 export { decodeProcessInventory, joinSandbox, joinWorkingArea, launchMembership, startSeconds } from './process-inventory.js';
 export type { InventoryProcess, InventoryResource, InventoryStatus, LaunchRoot, Membership, MembershipReason, ProcessInventorySnapshot,
   ResourceObservationState, SandboxReading, WorkingDirectory } from './process-inventory.js';
+export { admissionArgs, modelGateLaunch, sessionConnectorArgs } from './production-session-driver.js';
+export type { ProductionSessionConfig } from './production-session-driver.js';
+export type { SessionWorkIO } from './production-session-work.js';

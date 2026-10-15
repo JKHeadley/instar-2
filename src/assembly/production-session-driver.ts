@@ -1,3 +1,6 @@
+import { createCodexConversationWorker } from '../harness-adapters/index.js';
+import { createSessionConversationAdapter } from './conversation-harness-adapter.js';
+import type { SessionProtocolIO } from '../harness-adapters/index.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { boundary, ensure, take } from './boundary.js';
 import type { AssemblyDecodeContext, HarnessObservation } from './contracts.js';
@@ -621,4 +624,14 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     },
   };
   return Object.freeze(api);
+}
+
+/** Registered conversation selection at the existing session-driver boundary. The default
+ * terminal mapping and its flags remain unchanged. */
+export function createProductionConversationAdapter(input: Parameters<typeof createSessionConversationAdapter>[0] & Readonly<{
+  configuration(): ProductionSessionConfig; transport(): SessionProtocolIO; resumeKey?: string;
+  beforeLaunch?(claim: string): void; afterLaunch?(): void;
+}>): import('./contracts.js').HarnessAdapterPort<2> {
+  return input.configuration().framework === 'codex-cli'
+    ? createCodexConversationWorker({ ...input, transport: input.transport() }) : createSessionConversationAdapter(input);
 }
