@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: ordinary
 Tier rationale: Reuse a named owning metadata repair, without changing acknowledgement behavior or any model-facing decision.
-Side effects: The still-dark step-check deadline moves one day to October 16 under the existing append-only promotion record. No stage, protection, or live evidence is claimed. Register artifacts reflect current source bytes.
+Side effects: The still-dark step-check deadline moves one day to October 16 under the existing append-only promotion record. No stage, protection, or live evidence is claimed. Register artifacts reflect current source bytes replayed from commit 4470f8c52d5dbae8a993ac1f51ef4658a73b0eb4; the desk tools found no additional manifest or chain pin changes necessary.
 Undo and recovery: Revert this repair's metadata and regenerate the register; retain promotion history. The prior deadline then correctly reports overdue again. No live state migration or journal rewrite.
 Multi-machine posture: Repository metadata is shared through git. Native macOS composition evidence remains owned by the Studio contract run; WSL cannot certify it.
 Layer below: Inspected the existing promotion-record latest-deadline projection, declaration binding, overdue checks, named owning commit d746452bbe60ac6f23d04daf0627f44dcf60a8d8, and register source-pin validation. The prior review's acknowledgement behavior is preserved.
