@@ -10,10 +10,10 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: changes context seen by the model across topics, not authorization or send policy.
-Side effects: equal receipt timestamps retain newest journal order, and grouped replies retain their promises without duplicating the statement. Bounded additional context can consume packet space; the existing packet and delivery limits remain. Unknown or partial sends are omitted rather than described as delivered. Promise quotations retain explicit lifecycle status. Cross-topic promise and recent-reply candidate context no longer carries the operator's original question alongside it. No private inbound text is added by this projection.
+Side effects: equal receipt timestamps retain newest journal order, and grouped replies retain their promises without duplicating the statement. Bounded additional context yields before required packet guidance or history under byte pressure; the actual dispatch reader still refreshes it separately. The existing packet and delivery limits remain. Unknown or partial sends are omitted rather than described as delivered. Promise quotations retain explicit lifecycle status. Cross-topic promise and recent-reply candidate context no longer carries the operator's original question alongside it. No private inbound text is added by this projection.
 Undo and recovery: revert this change; no journal schema change or migration. Existing receipts and commitments remain the only sources; reopening or compaction reconstructs the same projection.
 Multi-machine posture: existing journal replication and conversation ownership apply. This read reflects the owner journal at dispatch; no claim of instantaneous knowledge across disconnected machines, no new store or writer.
-Layer below: examined wholeReplyReceipt and multipart outcomes, operatorWriter verification, commitmentOpen and closure records, memory projection and redaction, dispatch admission and custody persistence, and existing cross-topic commitment rendering.
+Layer below: the journal auditor now accepts the exact cross-topic message omission marker and absent cross-topic promise question, while still checking the reply and rejecting same-topic omissions or invented text. Examined wholeReplyReceipt and multipart outcomes, operatorWriter verification, commitmentOpen and closure records, memory projection and redaction, dispatch admission and custody persistence, and existing cross-topic commitment rendering.
 Bug class: unit
 Bug evidence: reproducer=tests/preview/journal-topic-sessions.test.ts
 Hook bypass: none
@@ -24,6 +24,10 @@ Decision: sibling-words-private-question | omit the operator's original question
 Prompt review: recorded summary-writer, uncertain summary, Jev undecided/unsure, reply-review, delivered reply and empty reply shapes from retrospective-duty-followup-train-1-2026-10-08.json are replayed in actual prepared dispatch envelopes with sibling words present. No changed output parser or semantic gate. Live model consistency and the desk proof-room switch check remain desk-owned; no live-provider or Telegram proof claimed.
 Prompt finding: 849db3a6296a | protocol-literal | existing saved-memory response in journal.ts, unchanged by this change.
 Prompt finding: e8708c7fea24 | protocol-literal | existing memory source-label guidance in journal.ts, unchanged by this change.
+
+Decision: sibling-words-audit | teach the existing journal auditor the exact cross-topic omission shape while keeping same-topic and forged-text checks | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sibling-words-1015-PROGRESS.md
+
+Decision: sibling-words-packet-floor | yield optional sibling packet evidence before required guidance or history under byte pressure; refresh separately at actual dispatch | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sibling-words-1015-PROGRESS.md
 
 ## Closing block
 

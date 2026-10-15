@@ -7724,9 +7724,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const withoutOffer = (value: string) => { const packet = JSON.parse(value) as Record<string, unknown>;
           if (!('memoryFailureDecision' in packet)) return undefined;
           delete packet.memoryFailureDecision; delete packet.searchedTurn; return JSON.stringify(packet); };
-        const variants = ordinaries.flatMap(ordinary => { const bare = withoutOffer(ordinary), base = bare ?? ordinary;
+        // Sibling words are optional packet evidence; the dispatch reader refreshes them separately.
+        // Yield them before required guidance or history so a small envelope can still answer.
+        const withoutSiblingWords = (value: string) => {
+          const packet = JSON.parse(value) as { actionFacts?: { items: unknown[]; siblingWords?: unknown } };
+          if (!packet.actionFacts?.siblingWords) return undefined;
+          delete packet.actionFacts.siblingWords;
+          if (!packet.actionFacts.items.length) delete packet.actionFacts;
+          return JSON.stringify(packet);
+        };
+        const variants = ordinaries.flatMap(ordinary => { const siblingFree = withoutSiblingWords(ordinary);
+          const bare = withoutOffer(siblingFree ?? ordinary), base = bare ?? siblingFree ?? ordinary;
           const cut = yieldSources(base);
-          return [ordinary, ...(bare ? [bare] : []), ...cut, ...floorGuide(cut[0] ?? base)]; });
+          return [ordinary, ...(siblingFree ? [siblingFree] : []), ...(bare ? [bare] : []), ...cut, ...floorGuide(cut[0] ?? base)]; });
         for (const context of variants.flatMap(searchVariants)) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
