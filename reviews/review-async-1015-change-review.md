@@ -27,6 +27,8 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing fixed protocol/citati
 
 Subject (source plus generated publication): tests/preview/journal-agent.mjs, tests/preview/journal-conversation-session.test.ts, tests/preview/journal.ts, tests/preview/rule89-speakers.test.ts
 
+Publication: Existing desk rehash refreshed the changed test artifact pin in register-source/owner-references/preview.json. Shape-only replay from source commit 831a59ad6be8f45542c4e030d8abf0d3f7b43ac5 regenerated the seven existing generated outputs. Grounding inventory and policy bytes did not change.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: move the existing review pass into the existing host background-task pattern and use durable intents as its queue. The one shared promise prevents concurrent duplicate review dispatch; delayed coherence projection prevents lost findings. Existing stop, ownership, disclosure and spend guards apply; terminal review or explicit interrupted/unavailable recovery closes each record. Offline evidence is not a live unattended acceptance claim.
