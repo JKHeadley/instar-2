@@ -7,9 +7,9 @@ Outcome: Complete explicitly requested verification before answering, even when 
 Affected rules: 12, 20, 23, 26, 30, 36, 49, 58, 70, 74, 84, 101, 111, 113, 116
 Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake keep their existing checkpoints; full tool availability and effect admission remain unchanged.
 Operator questions: none
-Suggested tier: significant
-Declared tier: significant
-Tier rationale: Shared model-facing tool guidance changes on all three tool routes; verify real recorded failures and fresh model outcomes.
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Shared model-facing tool guidance changes on all three tool routes and its generated register is refreshed; verify real recorded failures and fresh model outcomes.
 Side effects: May perform an explicitly requested check that cached context previously caused the model to omit. Uses the same bounded allowance. Text-only review cannot execute missing work, so prevention belongs in the writer tool framing. Existing parser and review decisions are unchanged. Historical prompt captures remain immutable; tests account explicitly for this new guidance.
 Undo and recovery: Revert this guidance and associated regression updates through the normal release process. No schema or durable state migration. Do not repeat uncertain effects during rollback.
 Multi-machine posture: Pure shared prompt composition ships on each machine. Existing conversation ownership, machine-local tool workspaces and durable trace recording remain unchanged; no new store or distributed coordination.
@@ -37,7 +37,9 @@ Prompt finding: e769ca9dd959 | protocol-literal | Historical capture comparison 
 Prompt finding: f6d7f3274c85 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
 Prompt finding: feadb66b8ad1 | protocol-literal | Historical capture comparison binds existing identity, authority and review-protocol wording; it is not a trigger used to decide the operator request.
 
-Subject (6 paths): src/assembly/README.md, src/assembly/tool-answer-guidance.ts, tests/integration/act-first-live.test.ts, tests/preview/act-first.test.ts, tests/preview/fixtures/tool-verification-2026-10-15.json, tests/preview/selfdesc-abilities.test.ts
+Register replay: Standard desk rehash and repin scripts changed no owner or inventory pins. Replayed seven generated artifacts from source commit a7b5338945db8bdbab94e3e2ae09e1a778d6bdee; no hand-edited pins.
+
+Subject source paths: src/assembly/README.md, src/assembly/tool-answer-guidance.ts, tests/integration/act-first-live.test.ts, tests/preview/act-first.test.ts, tests/preview/fixtures/tool-verification-2026-10-15.json, tests/preview/selfdesc-abilities.test.ts
 
 ## Closing block
 
