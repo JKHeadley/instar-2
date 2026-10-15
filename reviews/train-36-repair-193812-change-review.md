@@ -23,5 +23,6 @@ Decision: train-36-repair-history | Preserve both deadline decisions verbatim in
 Decision: train-36-repair-register | Regenerate publication through the supplied desk scripts and register replay after merging; preserve all member history and use the existing generator rather than hand-edit hashes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-36-repair-193812-PROGRESS.md
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge, chronological union of existing decisions, existing generator and targeted consumer tests. No new machinery or runtime limits; current admission, stop, cap, ownership and durable receipt guards remain in place. No unattended live-completion claim.
+Register publication: replayed from merge commit 59e3acf3dbe3b37327aa15ca3ae6417e173e028b; generated output is shape-only evidence.
 80/20: Test the resolved conflict and imported changed consumers, then cheap portable gates; the Studio owns full-run and native evidence.
 VERDICT: author submission; no independent convergence or deployment claim
