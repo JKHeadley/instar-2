@@ -95,10 +95,9 @@ it('tells the model it has the whole tool set and how each call is bounded, and 
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('You have no tools and cannot act beyond this answer; never claim otherwise.');
   // Plan #510: the tool route runs without --safe-mode, so Claude Code injects its own account email; the prompt says that
   // login is never the operator (+187, live cint-L50 "Luna"). The bound stays: the tool sentence is still one paragraph.
-  // Match default-context-floor's measured growth, including the accepted requested-verification guidance.
-  // That test also checks the unchanged packet and total answer budgets; this pin catches any further growth.
+  // default-context-floor owns the exact UTF-8 growth measurement and the packet/answer budget checks.
+  // A second, historical size ceiling here drifted from that accepted composition.
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('is the subscription login running you, never the operator');
-  expect(Buffer.byteLength(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) - Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT)).toBe(3275);
 });
 
 it('writes settings that refuse every read from the root down except the scratch volume and the runtime, writes outside the volume, network and unix sockets, with the mandatory hook on both events', () => {
