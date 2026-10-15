@@ -48,7 +48,10 @@ export function parseDatedItem(source: string, quote: string, when: string, at: 
   const today = localParts(at, zone), localToday = dayKey(today.year, today.month, today.day);
   let day: string | undefined, ambiguity: string | undefined;
   const phrase = when.trim();
-  const expression = phrase.replace(/\.$/u, '');
+  // An explicit Portland zone is exact only in the configured Portland/Los Angeles zone.
+  // Other named zones stay unresolved for model interpretation; no machine-local zone is used.
+  const expression = (zone === 'America/Los_Angeles'
+    ? phrase.replace(/,?\s+Portland time$/iu, '') : phrase).replace(/\.$/u, '');
   const timed = /^(.+?)\s+at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/iu.exec(expression);
   const date = timed?.[1] ?? expression;
   const recurrence = /^(?:every day|daily|every morning)$/iu.test(date) ? 'daily' as const
@@ -103,6 +106,17 @@ export function parseDatedItem(source: string, quote: string, when: string, at: 
   return { source, quote, when: phrase, zone, ...(recurrence ? { recurrence } : {}), ...(day ? { day } : {}), ...(time ? { time } : {}),
     ...(weekday?.[1]?.toLowerCase() === 'every' && day ? { repeat: 'weekly' as const } : {}),
     ...(ambiguity ? { ambiguity } : {}) };
+}
+
+/** Exact duration arithmetic, not reminder-intent detection. The model still selects the
+ * operator clause and whether it requests action. Relative deadlines use durable intake. */
+export function relativeDelay(when: string): number | undefined {
+  const match = /^in\s+(?:about\s+)?(a|an|one|two|three|four|five|ten|twelve|\d+)\s+(minutes?|hours?)$/iu.exec(when.trim());
+  if (!match) return undefined;
+  const words: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, ten: 10, twelve: 12 };
+  const amount = words[match[1]!.toLowerCase()] ?? Number(match[1]);
+  const delay = amount * (match[2]!.toLowerCase().startsWith('hour') ? 3600000 : 60000);
+  return Number.isSafeInteger(delay) && delay > 0 ? delay : undefined;
 }
 
 /** Model interpretation of a phrase outside the calendar grammar. The quote remains the
