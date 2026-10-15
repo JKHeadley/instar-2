@@ -16,7 +16,7 @@ Undo and recovery: Revert this repair and regenerate publication; that restores 
 Multi-machine posture: Shared source exports only; physical process handles and injected IO retain their existing machine-local scope. No new state, transport or ownership.
 Layer below: Inspected both private-import checkers, assembly assertions, session launch helpers, adapter worker configuration and public barrel initialization. Existing worker and driver tests cover initialization, stop, admission and uncertain closure through the repaired composition.
 Bug class: unit
-Bug evidence: reproducer=tests/assembly/telegram-bot-api-round7-private-import-guard.test.ts, tests/rungraph/production-grounding-boundary.test.ts, tests/harness-adapters/contract-map.test.ts and tests/harness-adapters/a2-governance-and-additivity.test.ts reproduce all five supplied failures; all 32 assertions now pass, including forbidden-import negative controls.
+Bug evidence: reproducer=tests/harness-adapters/codex-conversation-worker.test.ts; detail=The changed test imports the worker and protocol IO from the public index, absent before repair, and passes all 13 lifecycle cases. The four original boundary test files reproduce all five supplied failures and pass all 32 assertions after repair, including forbidden-import negative controls.
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains sample files only.
 Convergence: none
 Prompt review: No prompt, parser, acceptance or refusal policy changed. Only import/export paths and an identical local assertion helper changed.
