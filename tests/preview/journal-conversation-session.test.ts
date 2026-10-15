@@ -505,30 +505,43 @@ it('collects a queued reserved format repair under its child identity and sends 
   } finally { await f.close(); }
 });
 
-it('sends at turn end before slow review, persists objections for the next turn, and never sends twice', async () => {
+it('drains two queued sends and a later send while the first review is slow; records each advisory result once', async () => {
   let release!: () => void;
   const delayed = new Promise<void>(resolve => { release = resolve; });
   const events: string[] = [];
+  let started!: () => void;
+  const reviewStarted = new Promise<void>(resolve => { started = resolve; });
   const f = fixture(true, true, 200, { replyReviewTiming: 'after-send',
     replyCheck: { elapsedMs: () => 0,
-      jev: async () => { events.push('jev'); await delayed; return { value: {}, latencyMs: 1 }; },
+      jev: async () => { events.push('jev'); started(); await delayed; return { value: {}, latencyMs: 1 }; },
       escalate: async () => { events.push('review'); return { verdict: 'violation', confidence: 1, latencyMs: 1, ruleIds: ['self_state_claim'],
         reason: 'The answer claims work without evidence.' }; } } });
   try {
-    f.worker.intake([update(1, 'First question')]);
-    const draining = f.worker.drain();
-    for (let i = 0; i < 100 && !events.length; i++) await new Promise(resolve => setTimeout(resolve, 1));
-    expect(f.sent).toEqual(['A useful answer.']); // The reviewer is still awaiting the injected slow path.
+    f.worker.intake([update(1, 'First question'), update(2, 'Second question')]);
+    await f.worker.drain();
+    expect(f.sent).toHaveLength(2);
+    const reviewing = f.worker.reviewReplies();
+    expect(f.worker.reviewReplies()).toBe(reviewing); // Re-entry shares the one bounded pass.
+    await reviewStarted;
     expect(events).toEqual(['jev']);
-    release(); await draining;
-    expect(events).toEqual(['jev', 'review']);
-    expect(f.journal.view.order[0]?.replyChecks?.at(-1)?.verdict).toBe('violation');
-    expect(f.journal.view.order[0]?.afterSendReview).toBe(true);
-    expect(f.journal.view.order[0]?.checked).toBeDefined();
-    await f.worker.drain(); expect(f.sent).toHaveLength(1); expect(events).toHaveLength(2);
-    f.worker.intake([update(2, 'Second question')]); await f.worker.drain();
-    expect(f.delivered[1]).toContain('self_state_claim');
-  } finally { release(); await f.close(); }
+    f.worker.checkCoherence();
+    expect(f.journal.view.order.every(turn => turn.checked === undefined)).toBe(true);
+    f.worker.intake([update(3, 'Third question')]); await f.worker.drain();
+    expect(f.sent).toHaveLength(3); // Neither this drain nor the earlier queued send waited for review.
+    expect(events).toEqual(['jev']);
+    release(); await reviewing;
+    expect(events).toEqual(['jev', 'review', 'jev', 'review', 'jev', 'review']);
+    for (const turn of f.journal.view.order) {
+      expect(turn.replyChecks?.at(-1)?.verdict).toBe('violation');
+      expect(turn.afterSendReview).toBe(true);
+      expect(JSON.stringify(turn.checked)).toContain('self_state_claim');
+      expect(turn.replyChecks?.at(-1)?.candidateDigest).toBe(createHash('sha256').update(turn.intent!).digest('hex'));
+    }
+    await f.worker.drain(); await f.worker.reviewReplies();
+    expect(f.sent).toHaveLength(3); expect(events).toHaveLength(6);
+    f.worker.intake([update(4, 'What did the review find?')]); await f.worker.drain(); await f.worker.reviewReplies();
+    expect(f.delivered[3]).toContain('self_state_claim');
+  } finally { release(); await f.worker.reviewReplies(); await f.close(); }
 });
 
 it.each(['SECRET', 'stop'] as const)('after-send review preserves the %s wall', async kind => {
@@ -540,7 +553,7 @@ it.each(['SECRET', 'stop'] as const)('after-send review preserves the %s wall', 
     if (kind === 'SECRET') f.answer(JSON.stringify({ reply: 'SECRET', memory: [] }));
     f.worker.intake([update(1, 'Question')]);
     if (kind === 'stop') f.stop();
-    try { await f.worker.drain(); } catch { /* stop is an explicit refusal */ }
+    try { await f.worker.drain(); await f.worker.reviewReplies(); } catch { /* stop is an explicit refusal */ }
     expect(f.sent).toHaveLength(0); expect(reviews).toBe(0);
   } finally { await f.close(); }
 });
@@ -550,7 +563,7 @@ it('reopens the post-send journal without repeating review or delivery', async (
   const f = fixture(true, true, 200, { replyReviewTiming: 'after-send', replyCheck: {
     elapsedMs: () => 0, jev: async () => { reviews++; return { value: {}, latencyMs: 0 }; },
     escalate: async () => ({ verdict: 'pass', confidence: 1, latencyMs: 1, ruleIds: [] }) } });
-  f.worker.intake([update(1, 'Question')]); await f.worker.drain(); await f.close();
+  f.worker.intake([update(1, 'Question')]); await f.worker.drain(); await f.worker.reviewReplies(); await f.close();
   const journal = openPreviewJournal(join(f.root, 'journal.encrypted'), new Uint8Array(32).fill(61));
   try {
     const worker = createJournalWorker(journal, { now: () => 2000, stopped: () => false,
@@ -559,7 +572,7 @@ it('reopens the post-send journal without repeating review or delivery', async (
       replyReviewTiming: 'after-send', replyCheck: { elapsedMs: () => 0,
         jev: async () => { throw Error('unexpected review replay'); },
         escalate: async () => { throw Error('unexpected review replay'); } } });
-    await worker.drain();
+    await worker.drain(); await worker.reviewReplies();
     expect(reviews).toBe(1); expect(journal.view.order[0]?.afterSendReview).toBe(true);
     expect(journal.view.order[0]?.sent).toBe(1);
   } finally { journal.close(); }
@@ -571,7 +584,7 @@ it('sends under the exact answer/session cap and records unavailable review with
     jev: async () => ({ value: {}, latencyMs: 0 }),
     escalate: async () => { escalations++; return { verdict: 'pass', confidence: 1, latencyMs: 1, ruleIds: [] }; } } });
   try {
-    f.worker.intake([update(1, 'Question')]); await f.worker.drain();
+    f.worker.intake([update(1, 'Question')]); await f.worker.drain(); await f.worker.reviewReplies();
     expect(f.sent).toEqual(['A useful answer.']);
     expect(f.journal.view.calls).toBeLessThanOrEqual(11); expect(escalations).toBe(0);
     expect(f.journal.view.order[0]?.replyChecks?.at(-1)?.verdict).toBe('unavailable');
@@ -580,7 +593,7 @@ it('sends under the exact answer/session cap and records unavailable review with
 
 it('recovers an interrupted paid review as an unavailable signal without dispatching it again', async () => {
   const f = fixture();
-  f.worker.intake([update(1, 'Question')]); await f.worker.drain();
+  f.worker.intake([update(1, 'Question')]); await f.worker.drain(); await f.worker.reviewReplies();
   const id = f.journal.view.order[0]!.id;
   f.journal.append({ kind: 'reply-review-after-send', id, at: 1500 });
   f.journal.append({ kind: 'reply-jev-reserve', id, at: 1500 });
@@ -593,7 +606,7 @@ it('recovers an interrupted paid review as an unavailable signal without dispatc
       replyReviewTiming: 'after-send', replyCheck: { elapsedMs: () => 0,
         jev: async () => { throw Error('paid call repeated'); },
         escalate: async () => { throw Error('paid call repeated'); } } });
-    await worker.drain(); await worker.drain();
+    await worker.drain(); await worker.reviewReplies(); await worker.drain(); await worker.reviewReplies();
     expect(journal.view.order[0]?.replyChecks).toHaveLength(1);
     expect(journal.view.order[0]?.replyChecks?.[0]).toMatchObject({ verdict: 'unavailable', path: 'holding' });
     expect(journal.view.order[0]?.checked).toBeDefined();
@@ -604,7 +617,7 @@ it('recovers an interrupted paid review as an unavailable signal without dispatc
 async function recoverReview(results: ReplyCheckResult[], subscriptionReserved = false, shared = false) {
   const f = fixture(true, true, 200, shared ? { prepareModel: () => JSON.stringify({ messages: [{ role: 'context',
     content: JSON.stringify({ packet: { audience: { surface: 'telegram-group-topic', operatorOnlyVerified: false } } }) }] }) } : {});
-  f.worker.intake([update(1, 'Question')]); await f.worker.drain();
+  f.worker.intake([update(1, 'Question')]); await f.worker.drain(); await f.worker.reviewReplies();
   const id = f.journal.view.order[0]!.id;
   f.journal.append({ kind: 'reply-review-after-send', id, at: 1500 });
   f.journal.append({ kind: 'reply-jev-reserve', id, at: 1500 });
@@ -625,7 +638,7 @@ async function recoverReview(results: ReplyCheckResult[], subscriptionReserved =
       replyReviewTiming: 'after-send', replyCheck: { elapsedMs: () => 0,
         jev: async () => { throw Error('unexpected review replay'); },
         escalate: async () => { throw Error('unexpected review replay'); } } });
-    await worker.drain(); await worker.drain();
+    await worker.drain(); await worker.reviewReplies(); await worker.drain(); await worker.reviewReplies();
     expect(journal.view.calls).toBe(calls);
     expect(journal.view.order[0]!.sent).toBe(1);
     expect(journal.view.order[0]!.checked).toBeDefined();
@@ -696,6 +709,43 @@ it.each(reviewArchive.otherShapes)('recovery preserves recorded $kind ($id) at t
   if (row.kind === 'reply-review') expect(recovered.packet).toContain('breaks_preference');
 });
 
+it.each(reviewArchive.otherShapes)('runs the asynchronous consumer on recorded $kind ($id) without holding sends', async row => {
+  let release!: () => void;
+  const delayed = new Promise<void>(resolve => { release = resolve; });
+  let calls = 0;
+  const f = fixture(true, true, 200, { replyReviewTiming: 'after-send', replyCheck: {
+    elapsedMs: () => 0, jev: async () => { await delayed; return { value: JSON.parse(row.raw), latencyMs: 1 }; },
+    escalate: async () => {
+      calls++;
+      const read = readAnswer(row.raw, { wrapped: 'refuse', object: true });
+      return { ...parseReplyReviewVerdict(read.ok ? read.value : row.raw,
+        ['defers_work', 'self_state_claim', 'breaks_preference']), confidence: 1, latencyMs: 1 };
+    } } });
+  try {
+    f.worker.intake([update(1, 'First question')]); await f.worker.drain();
+    // Execute the shipped host's callback; it must launch review without returning its promise
+    // to the ordinary lane, and re-entry must leave the one pass in charge.
+    const body = host.split('    const summarizeLater = () => {')[1]!.split('\n    // A reached cap')[0]!;
+    const callback = Function('worker', `let replyReviewJob = null, summaryJob = null;
+      const checkStepsLater = () => {}, retrospectLater = () => {};
+      const summarizeLater = () => {${body}
+      return { run: summarizeLater, settle: () => replyReviewJob };` )({ ...f.worker, summarizeIfNeeded: async () => {} }) as
+      { run(): void; settle(): Promise<void> };
+    expect(callback.run()).toBeUndefined(); callback.run();
+    f.worker.intake([update(2, 'Second question')]); await f.worker.drain();
+    expect(f.sent).toHaveLength(2);
+    expect(f.journal.view.order.every(turn => turn.checked === undefined)).toBe(true);
+    release(); await callback.settle();
+    expect(calls).toBe(2);
+    for (const turn of f.journal.view.order) {
+      expect(turn.afterSendReview).toBe(true);
+      expect(turn.replyChecks?.at(-1)?.verdict).toBe(row.kind === 'reply-review' ? 'violation' : 'unavailable');
+      expect(turn.checked).toBeDefined();
+    }
+    if (row.kind === 'reply-review') expect(JSON.stringify(f.journal.view.order[0]!.checked)).toContain('breaks_preference');
+  } finally { release(); await f.worker.reviewReplies(); await f.close(); }
+});
+
 it('keeps a known Jev objection when a later paid review was interrupted', async () => {
   const result: ReplyCheckResult = { verdict: 'violation', ruleIds: ['defers_work'], path: 'jev', confidence: 0.99,
     latencyMs: 1, reason: 'The answer promises later work.' };
@@ -724,14 +774,14 @@ it('the journal sends each answer once across a real pool boundary and host/jour
     physical: () => ({ load: () => ({ resumes: {} }) }), project: '/fixture', framework: 'claude-code', admit: async () => {} });
   f.boundary(handoff.prepareTurn);
   try {
-    f.worker.intake([update(1, 'First question')]); await f.worker.drain();
+    f.worker.intake([update(1, 'First question')]); await f.worker.drain(); await f.worker.reviewReplies();
     pressure = true;
-    f.worker.intake([update(2, 'Second question')]); await f.worker.drain();
+    f.worker.intake([update(2, 'Second question')]); await f.worker.drain(); await f.worker.reviewReplies();
     expect(handoff.current().index).toBe(1); expect(pool.state.handoffs).toHaveLength(1);
     expect(poolState).toBeDefined(); expect(f.sent).toHaveLength(2); expect(f.delivered).toHaveLength(2);
     expect(f.counts().launches).toBe(2);
-    await f.restart(); await f.worker.drain();
-    f.worker.intake([update(1, 'First question'), update(2, 'Second question')]); await f.worker.drain();
+    await f.restart(); await f.worker.drain(); await f.worker.reviewReplies();
+    f.worker.intake([update(1, 'First question'), update(2, 'Second question')]); await f.worker.drain(); await f.worker.reviewReplies();
     expect(f.sent).toHaveLength(2); expect(f.delivered).toHaveLength(2);
     expect(pool.state.handoffs).toHaveLength(1); expect(await f.replay()).toBe(1); expect(f.sent).toHaveLength(2);
   } finally { await f.close(); }

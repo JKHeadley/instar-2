@@ -2850,7 +2850,7 @@ async function main() {
       while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
         await delay(Math.min(100, until - clock.elapsed()));
     }
-        let summaryJob = null, stepJob = null, retroJob = null;
+        let summaryJob = null, stepJob = null, retroJob = null, replyReviewJob = null;
     const checkStepsLater = () => {
       if (!stepCheckEnabled || stepJob) return;
       stepJob = worker.checkSteps().catch(() => {}).finally(() => { stepJob = null; });
@@ -2863,6 +2863,9 @@ async function main() {
 
     const sourceState = options['agent-state-dir'] ? agentState(options['agent-state-dir']) : null;
     const summarizeLater = () => {
+      // Reviews advise after delivery and never occupy the ordinary send lane. The worker
+      // owns one serial pass and rebuilds pending work from durable intents after restart.
+      if (!replyReviewJob) replyReviewJob = worker.reviewReplies().catch(() => {}).finally(() => { replyReviewJob = null; });
       // After the reply: the deterministic coherence check records its findings for the next
       // packet. It makes no call and cannot hold the reply already attempted;
       // its synchronous journal write can slightly delay the next poll.
@@ -3045,6 +3048,7 @@ async function main() {
     try {
       await lane.settle();
       if (lane.error() && !signalled) throw lane.error();
+      await replyReviewJob;
       await summaryJob;
       await stepJob;
       await retroJob;

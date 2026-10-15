@@ -7958,7 +7958,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           reason: 'retrospective review interrupted; no paid call replayed'
             + (review ? `; recorded ${review.path} ${review.verdict}: ${review.reason ?? 'no reason recorded'}` : ''),
         }, at: ports.now() });
-        checkCoherence();
+        checkCoherence(turn);
       }
       return;
     }
@@ -7985,7 +7985,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         maxInputTokens: Buffer.byteLength(jevRequestBody(text, facts)), maxOutputTokens: jevOutputMaximum, at: ports.now() });
       await checkReply(text, turn.id, checkPorts, projectedReplyPrompt(turn.prompt), facts);
     }
-    checkCoherence();
+    checkCoherence(turn);
+  };
+  // The durable intents are the queue. One serial review pass runs beside the send drain,
+  // within its existing concurrency ceiling; provider admission and spend limits still apply.
+  // A crash retains the intent/reservation, and reviewAfterSend recovers without replaying spend.
+  let replyReviewJob: Promise<void> | null = null;
+  const reviewReplies = (): Promise<void> => {
+    if (replyReviewJob) return replyReviewJob;
+    replyReviewJob = (async () => {
+      for (const turn of journal.view.order) await reviewAfterSend(turn);
+    })().finally(() => { replyReviewJob = null; });
+    return replyReviewJob;
   };
   /** Ordinary answers drain on every cycle. A requested action is proactive: it is created and answered only at
    * the due point `sendRequested()`, or just after admitting an already-late relative request.
@@ -8018,7 +8029,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       completeApprovals();
       // A split reply left part-way by a restart continues before anything new is answered.
       for (const turn of journal.view.order) if (turn.replyParts?.length) await sendReplyParts(turn);
-      for (const turn of journal.view.order) await reviewAfterSend(turn);
       if (due) scheduleRequests();
       const concurrency = ports.topicConcurrency ?? 1;
       if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 16)
@@ -9393,7 +9403,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         } catch { /* exact intent stays UNKNOWN */ }
         // The rest of a split reply follows at once, before any later reply.
         if (parts.length) await sendReplyParts(turn);
-        if (retrospective) await reviewAfterSend(turn);
       }
       };
       if (concurrency === 1) await drainTopic(null);
@@ -10845,9 +10854,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** After replies: checks every prepared reply not yet checked, deterministically and
    * with no model call, and records the result, clean or not. A reply whose send is
    * UNKNOWN is checked too, because it may have reached the operator. */
-  const checkCoherence = () => {
+  const checkCoherence = (reviewed?: Turn) => {
     for (const turn of journal.view.order) {
       if (turn.intent === undefined || turn.checked !== undefined || turn.answer === undefined) continue;
+      // A pending asynchronous review must not acquire a terminal coherence projection before
+      // its judgment exists. Only that review's completion/recovery projects its own findings.
+      if (ports.replyReviewTiming === 'after-send' && ports.replyCheck && !turn.requestedAction
+        && !turn.jevReserved && !turn.reviewReserved && !turn.afterSendReview && turn !== reviewed) continue;
+      if (turn.afterSendReview && turn !== reviewed) continue;
       const earlier = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update < turn.update).map(item => item.text);
       let findings: CoherenceFinding[], failed = false;
       try { findings = checkCoherenceOf({ reply: sentText(turn)!, earlier }); } catch { findings = []; failed = true; }
@@ -11266,7 +11280,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     for (const turn of acknowledgementTimers.keys()) void acknowledgeReply(turn).catch(() => {});
     await answerLimited();
     await pollReviewRequests(); await issueRetractRequest(); };
-  return { intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
+  return { intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, reviewReplies, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };
