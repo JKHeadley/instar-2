@@ -17,7 +17,9 @@ episode and close only on a complete measured exit workload.
 
 `tool-answer-guidance.ts` supplies the shared read-before-answer instruction for
 Claude, Codex and native tool turns: acquire missing information through existing
-authorized reads, cite it, and report actual failed attempts. It changes no tool
+authorized reads, cite it, and report actual failed attempts. Complete each requested
+action and verification; a requested read-back observes the stored artifact after
+the write, rather than inferring its contents from a receipt or size. It changes no tool
 authority or resource limit; text-only turns retain their no-tools instruction.
 
 ## Continuing conversation session

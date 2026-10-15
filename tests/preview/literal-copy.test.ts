@@ -6,6 +6,7 @@ import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, SELF_DESCRIPTION } from
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { readAnswer } from './answer-reading.js';
+import { TOOL_TASK_COMPLETION } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 
 // Captured read-only from the failed forum answer copy, update 715675751. The
@@ -30,7 +31,8 @@ it('retains the delivered error and captured copying guidance while replay uses 
   expect(capture.instructions.split('\n')).toContain(historicalSelfDescription);
   expect(capture.instructions).toContain(LITERAL_COPY_INSTRUCTIONS);
   expect(capture.instructions.replace(historicalSelfDescription, SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
-  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  // Preserve historical bytes; only the later step-completion guidance differs.
+  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(TOOL_TASK_COMPLETION, ''));
   expect(LITERAL_COPY_INSTRUCTIONS).not.toContain('probe');
   expect(capture.runs).toHaveLength(3);
 });

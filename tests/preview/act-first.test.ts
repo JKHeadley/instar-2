@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { expect, it } from 'vitest';
-import { READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
+import { READ_BEFORE_ANSWER, TOOL_TASK_COMPLETION } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_NATIVE_SYSTEM_PROMPT,
   SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { CODEX_CONVERSATION_SYSTEM_PROMPT, CODEX_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-codex-provider.js';
@@ -18,8 +18,8 @@ const fixture = () => JSON.parse(readFileSync(new URL('./fixtures/act-first-2026
   runs: Capture[]; formatFailure: Capture;
 };
 // Historical captures keep their original identity. Only the identity prefix changed;
-// the read-first, tool, authority and response contracts must still match byte for byte.
-const capturedSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(
+// Apart from the later step-completion guidance, tool/authority/response contracts stay exact.
+const capturedSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(TOOL_TASK_COMPLETION, '').replace(
   "You are an Instar 2.0 agent,", 'You are Instar,');
 const decode = (run: Capture) => {
   const reading = readAnswer(JSON.parse(run.raw).result, { wrapped: 'accept' });

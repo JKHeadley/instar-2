@@ -1,0 +1,46 @@
+# Change review — train-38 requested tool verification
+
+Subject base: 33f9a453366af115f25eadd54a02e9c14bca1de7
+Review state: open
+Reviewed content: none
+Outcome: Complete explicitly requested verification steps before reporting a tool task done; retain real failed/live traces and two fresh successful replays.
+Affected rules: Purpose coherence and agency; Rules 10, 12, 26, 30, 34, 36, 37, 47, 49, 58, 62, 70, 74, 78, 84, 101, 102, 111, 112, 113, 116.
+Affected floors: secrets — admission and outbound checks unchanged; spend cap — existing caps unchanged, each fresh replay limited to $2 and 120 seconds; stop — existing checkpoint unchanged; no duplicate sends — no send path changes or replay Telegram sends; durable intake — journal read-only, no format or persistence changes.
+Operator questions: none
+Suggested tier: significant
+Declared tier: ordinary
+Tier rationale: One shared instruction addition and recorded regression evidence. No tool restriction, new gate, effect, state, parser or classifier.
+Side effects: All three tool-capable routes receive 409 added bytes instructing requested-step completion and explicit read-back; text-only routes unchanged. Exact historical prompt comparisons remove only this new clause and preserve all captures. Measured prompt-growth assertion updated without increasing the serving floor. Changes to tool policy digest require the normal deployment activation and native macOS conformance refresh; no declaration is changed here.
+Undo and recovery: Revert this repair and regenerate owner manifests/register through existing scripts. No state migration or live journal mutation.
+Multi-machine posture: No new state or ownership change; guidance ships on every host and harness. Fresh replay workspaces and audit artifacts are deliberately machine-local, and no effect or send is replayed across machines.
+Layer below: Read candidate update 715676207 admission evidence and delivered reply, plus live update 46040044 positive neighbor. Candidate calls Write then wc only: no attempted/refused Read. Inspected provider framing, readToolTrace/toolTrace and hooks. Train delta is runner exit reporting only; no unsupported causal claim that it broke tools. Two fresh model calls use exact recorded envelope, shipped tool settings/admission and real filesystem results.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/tool-readback.test.ts
+Hook bypass: none; core.hooksPath unset and common hooks directory has only sample hooks; plain git commit.
+Convergence: none
+Decision: train38-completion | Correct general task guidance, preserving full tool ability and checkpoint enforcement. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-38-repair-PROGRESS.md
+Prompt review: General completion and verification guidance uses no incident filename, answer or literal trigger. Fresh claude-sonnet-5 replays of recorded update 715676207 produced read-back and count in both compound-shell and separate-tool forms; captures retained. act-first replays real summary-writer, uncertain summary, unsure/undecided Jev, reply-review, delivered and empty shapes with source update ids in PROGRESS. Historical captures remain unchanged. Targeted recorded-output regression evidence does not assert a fresh deployment pass.
+Prompt finding: 034c5250da92 | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "run without another yes. the operator can tighten or revoke trust through setup-"
+Prompt finding: 0abb3dc96311 | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "an unresolved date or unrecorded scheduling claim is no admitted reminder."
+Prompt finding: 42faf877ba82 | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase src/assembly/production-codex-provider.ts <- tests/preview/act-first.test.ts: "you are an instar 2.0 agent,"
+Prompt finding: 45e37ea2e9e9 | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
+Prompt finding: 4b98dc2a1b9f | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "tools: full claude code set"
+Prompt finding: 5b486d8bd247 | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "prioritize verdicts; do not repeat rules or context."
+Prompt finding: 5fa1a20c4031 | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "an illustrative or quoted literal the verified operator explicitly requested or "
+Prompt finding: 6af48f94b789 | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "sends remain outside the one-machine closed set. the effect doorway reports any "
+Prompt finding: 7c45ffbe90ad | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "loops the deferrals, judgments and promises it will track, dated this turn's adm"
+Prompt finding: 95e349aaf4ac | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "via the doorway's four tests; standing grants need no new approval."
+Prompt finding: aef7d91bef51 | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "give each listed rule, and no others, one verdict"
+Prompt finding: b00ed403060a | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
+Prompt finding: b1bb3946362d | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase src/assembly/production-provider.ts <- tests/preview/act-first.test.ts: "you are an instar 2.0 agent,"
+Prompt finding: b288d6ef1604 | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "keep reasoning under 400 characters and all json under 4000 so every verdict fit"
+Prompt finding: e769ca9dd959 | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "pass means no breach; violation means a breach, named in its reason."
+Prompt finding: f6d7f3274c85 | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "restating a recorded, still-open limit needs no duplicate record. a capability n"
+Prompt finding: feadb66b8ad1 | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "any live authentication secret reaching anyone but the verified operator who sup"
+
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: improve existing shared tool instructions and measure actual model tool behavior. No extra model gate, keyword classifier, tool restriction, retry loop or completion state. The credible failure is a model treating the final requested measurement as completion while omitting intermediate verification. Existing admission, secret, spend, stop and durable effect boundaries retain their guards. Two unattended isolated real tool trials passed; deployed live proof remains with the pipeline.
+80/20: Only touched targeted tests, typecheck/build and cheap gates; no full suite or load tests. Native macOS conformance composition certificate is the charter-authorized desk-owned exception.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
