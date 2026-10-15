@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { AgentPathRefused, assertAgentPaths } from '../../scripts/agent-paths.mjs';
 import { prepareSessionConnectors, conversationAccountActions, admitSessionConnector } from './session-connectors.mjs';
 import { recordPhaseTiming } from './phase-timing.js';
 import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice } from './reply-check.js';
@@ -752,6 +753,7 @@ async function main() {
   const doorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY);
 
   const root = resolve(required(options, 'root'));
+  if (['run', 'install-login', 'prepare-logins'].includes(command)) assertAgentPaths({ root });
   if (['run', 'install-login', 'prepare-logins'].includes(command)) mkdirSync(root, { recursive: true, mode: 0o700 });
   if (realpathSync(root) !== root || lstatSync(root).isSymbolicLink()) throw Error('preview: substituted root');
   const verifyInstalledLogin = view => (row, profile, activation = JSON.parse(readFileSync(row.activation, 'utf8')), tools = undefined) => {
@@ -3171,4 +3173,8 @@ async function main() {
   }
 }
 
-try { await main(); } catch { reportExit('error (details suppressed)'); process.stderr.write('preview refused to start or continue; details suppressed\n'); process.exitCode = 1; }
+try { await main(); } catch (error) {
+  reportExit('error (details suppressed)');
+  process.stderr.write(error instanceof AgentPathRefused ? `${error.message}\n` : 'preview refused to start or continue; details suppressed\n');
+  process.exitCode = 1;
+}
