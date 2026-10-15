@@ -6,7 +6,7 @@ it('reacts to exactly the admitted inbound message with a bounded transport call
   const invoke = vi.fn(() => response(true));
   expect(reactionAcknowledgement(invoke, '-42', 91)).toEqual({ kind: 'accepted', message: 91, acknowledgementPath: 'reaction' });
   expect(invoke).toHaveBeenCalledExactlyOnceWith('setMessageReaction', { chat_id: '-42', message_id: 91,
-    reaction: [{ type: 'emoji', emoji: '👀' }] }, 500);
+    reaction: [{ type: 'emoji', emoji: '👀' }] }, 10000);
 });
 it.each([response(null, 400, false), response(null, 403, false), response(null, 500, false),
   { kind: 'uncertain', sent: false }])('only definite non-delivery permits text fallback (%j)', reply => {

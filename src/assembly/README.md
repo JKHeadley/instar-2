@@ -15,12 +15,14 @@ revalidate Part One standing on every chunk. Local packages are decoded and
 hashed before any code can execute. Growth breaches coalesce into one owned
 episode and close only on a complete measured exit workload.
 
-`tool-answer-guidance.ts` supplies the shared read-before-answer instruction for
+`tool-answer-guidance.ts` supplies shared requested-action/verification completion and read-before-answer instructions for
 Claude, Codex and native tool turns: acquire missing information through existing
 authorized reads, cite it, and report actual failed attempts. It changes no tool
 authority or resource limit; text-only turns retain their no-tools instruction.
 
 ## Continuing conversation session
+
+The conversation prompt keeps each prepared grounding packet once, with host clock and unresolved references separate. Ordinary questions retain their separate context. A continuing native worker receives references to exactly repeated packets and instructions, while distinct packets, current bindings and batch result identities remain complete. Its first input and the first after a compaction receipt are full. The host writes the full current input to the existing SessionStart(compact) hook before dispatch, so in-place compaction can restore it immediately. Worker replacement clears the transient cache; an adapter without this recovery contract receives full inputs. No delta changes durable requests or their digests.
 
 `production-conversation-session.ts` composes the existing Eight-owned session
 driver with the session-work admission, resource lease and durable edge interfaces.

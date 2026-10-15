@@ -22,9 +22,11 @@ import { redact } from '../../src/recall/redact.js';
 import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { runToolTurn, scratchMounted } from '../preview/tool-turn.mjs';
+// @ts-expect-error Physical tool trace reader.
+import { toolTrace } from '../preview/tool-admission.mjs';
 
 // @ts-expect-error Physical host JavaScript.
-import { HARNESS_CUSTODY, HARNESS_LOGIN, harnessGate, harnessReadiness, readHarnessLogin } from '../preview/harness-user.mjs';
+import { HARNESS_CUSTODY, harnessGate, harnessReadiness, readHarnessLogin } from '../preview/harness-user.mjs';
 // @ts-expect-error Physical host JavaScript.
 import { hostResources } from '../../scripts/resource-owner.mjs';
 
@@ -35,7 +37,7 @@ const CUSTODY = process.env.INSTAR_ACT_FIRST_CUSTODY ?? '';
 const MODEL = 'claude-sonnet-5';
 const RECORD = process.env.INSTAR_ACT_FIRST_RECORD ?? '';
 const CAPTURE = process.env.INSTAR_ACT_FIRST_CAPTURE ?? '';
-if (LIVE && (!PROFILE || !CUSTODY.startsWith('/') || CUSTODY === HARNESS_LOGIN
+if (LIVE && (!PROFILE || !CUSTODY.startsWith('/') || CUSTODY.startsWith(`${HARNESS_CUSTODY}/`)
   || !RECORD.startsWith('/') || !CAPTURE.startsWith('/')))
   throw Error('Live replay requires an explicit builder profile, isolated custody and absolute capture/evidence paths');
 const scratch = LIVE ? realpathSync(mkdtempSync('/private/tmp/act-first-live-')) : '';
@@ -50,7 +52,7 @@ async function liveCase(name: string, question: string, options: { prepared?: st
   const profile: ProviderSubscriptionProfile = Object.freeze(JSON.parse(readFileSync(PROFILE, 'utf8')));
   const login = (selected: ProviderSubscriptionProfile) => readHarnessLogin(selected, CUSTODY);
   const gate = harnessGate({ profile, denied: [realpathSync(root), homedir(), process.cwd()], clock: () => performance.now(),
-    login, check: (input: object) => harnessReadiness({ ...input, login, custody: [HARNESS_CUSTODY, HARNESS_LOGIN, dirname(CUSTODY), CUSTODY] }) });
+    login, check: (input: object) => harnessReadiness({ ...input, login, custody: [HARNESS_CUSTODY, dirname(CUSTODY), CUSTODY] }) });
   expect(gate.state, gate.state.reason).toMatchObject({ ready: true });
   const harness = gate.current();
   if (!attached) { await hostResources.attach({ harnessUid: harness.uid }); attached = true; }
@@ -119,6 +121,32 @@ async function liveCase(name: string, question: string, options: { prepared?: st
 
 const toolCalls = (record: Awaited<ReturnType<typeof liveCase>>) => record.admission.trim().split('\n').filter(Boolean)
   .map(line => JSON.parse(line)).filter(row => row.phase === 'pre');
+
+it.runIf(LIVE)('completes the recorded explicit verification despite cached write state', { timeout: 400000 }, async () => {
+  const captured = JSON.parse(readFileSync(new URL('../preview/fixtures/tool-verification-2026-10-15.json', import.meta.url), 'utf8'));
+  const record = await liveCase('requested-verification', captured.cases[0].question);
+  expect(record.error).toBeNull();
+  const trace = toolTrace(record.admission.trim().split('\n'));
+  expect(trace.consistent).toBe(true);
+  const calls = trace.calls as { tool: string; decision: string; input: string; result: string | null }[];
+  const admitted = calls.filter(row => row.decision === 'allow' && row.result !== null && row.input.includes('tools-ba9794.txt'));
+  // The live gate accepts both file tools and a shell sequence. Judge the recorded
+  // effects, not a preferred tool count: a single printf/cat/wc command is valid.
+  expect(admitted.some(row => row.input.includes('hello from the tool test')
+    && (row.tool === 'Write' || (row.tool === 'Bash' && row.input.includes('>'))))).toBe(true);
+  expect(admitted.some(row => ['Read', 'Bash'].includes(row.tool) && row.result!.includes('hello from the tool test'))).toBe(true);
+  expect(admitted.some(row => row.tool === 'Bash' && row.input.includes('wc -c') && /\b25\b/u.test(row.result!))).toBe(true);
+  expect(record.answer).toMatch(/\b25\b/u);
+  expect(record.answer).not.toMatch(/if you want|shall I|would you like/iu);
+  expect(record.mountedAfter).toBe(false);
+});
+
+it.runIf(LIVE)('does not invent verification work for a request that explicitly needs no tools', { timeout: 400000 }, async () => {
+  const record = await liveCase('no-verification-needed', 'Reply with the word hello. Do not use tools.');
+  expect(record.error).toBeNull();
+  expect(toolCalls(record)).toEqual([]);
+  expect(record.answer?.trim()).toBe('hello');
+});
 
 it.runIf(LIVE)('replays the recorded comparison through web reads before a cited answer', { timeout: 400000 }, async () => {
   const captured = JSON.parse(readFileSync(CAPTURE, 'utf8')).turns.find((turn: { update: number }) => turn.update === 969390343);

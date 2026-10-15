@@ -1,9 +1,12 @@
 // Rules 42, 63, 87: called only after the existing signed notice intent and dispatch claim.
 // An ambiguous reaction is not followed by text: it might already have reached the user.
+// The rewalk4 capture (updates 840342886–840342918) saw reactions at 7–8 seconds
+// from intake, but every 500 ms API wait expired. Allow ten seconds for a receipt;
+// this is a bounded engineering allowance, not a measured transport percentile.
 export function reactionAcknowledgement(invoke, chat, message) {
   let reply;
   try { reply = invoke('setMessageReaction', { chat_id: chat, message_id: message,
-    reaction: [{ type: 'emoji', emoji: '👀' }] }, 500); }
+    reaction: [{ type: 'emoji', emoji: '👀' }] }, 10000); }
   catch { return { kind: 'unknown', reason: 'reaction transport failed' }; }
   if (reply?.kind === 'uncertain' && reply.sent === false) return null;
   if (reply?.kind !== 'response') return { kind: 'unknown', reason: 'reaction transport uncertain' };

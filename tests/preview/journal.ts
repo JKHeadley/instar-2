@@ -10335,7 +10335,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // The answer envelope, source briefing and next operator message also use
       // the 32 KiB packet allowance. Start rolling before the history alone
       // consumes that headroom; the existing summary path remains bounded.
-      if (!force && !unreviewedQuestions(last.update).length && smallest(full) < Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_START_BYTES)) {
+      // Rule 96: answers already prefer the complete history below this bound. Rewalk4 spent 40 summary
+      // calls on a conversation that still fit that path: the old 24 KiB trigger counted the briefing too.
+      // Keep the original history until it needs compression, with the same packet headroom and explicit
+      // memory/question recovery. Do not re-judge old memory changes merely to produce an unused summary.
+      // Once compression has started, retain its existing catch-up threshold; a short remaining tail
+      // does not turn a long conversation back into the complete-history path.
+      const historyBytes = Buffer.byteLength(JSON.stringify((JSON.parse(full) as { history: unknown[] }).history));
+      const startBytes = previous < 0 && historyBytes < PREVIEW_FULL_HISTORY_BYTES
+        ? Math.floor(journal.view.limits.maxBytes * .45)
+        : Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_START_BYTES);
+      if (!force && !unreviewedQuestions(last.update).length && smallest(full) < startBytes) {
         // Rule 11: messages summarized before their meaning terms existed (Part 21 §6) would
         // otherwise wait for history to grow; index them without summarizing anything new. A summary
         // that just ran was already asked for these terms, so indexing waits for a later call.

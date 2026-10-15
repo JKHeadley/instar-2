@@ -255,7 +255,9 @@ export type HarnessNormalizedObservation =
   | Readonly<{ kind: 'turn-end'; delivery: string; state: 'completed' | 'no-reply' | 'uncertain' }>
   | Readonly<{ kind: 'exit' | 'paused'; evidence: string }>;
 interface ContinuingHarnessAdapterPort {
-  describe(): Readonly<{ version: 2; subsequentInput: true; output: 'reply-and-turn-end'; resume: boolean }>;
+  describe(): Readonly<{ version: 2; subsequentInput: true; output: 'reply-and-turn-end'; resume: boolean;
+    /** Supports the host's full-input SessionStart snapshot and compaction receipts. */
+    contextRecovery?: 'host-snapshot' }>;
   launch(input: Readonly<{ operation: string; claim: string; artifact: string; incarnation: string; workingScope: string }>): Promise<HarnessWorkerHandle>;
   deliver(input: HarnessInputDelivery): Promise<Readonly<{ state: 'accepted' | 'busy-not-dispatched' | 'refused-not-dispatched' | 'uncertain'; evidence: string }>>;
   observe(input: HarnessWorkerHandle & Readonly<{ delivery: HarnessInputDelivery | null; cursor: number; limit: number }>): Promise<Readonly<{
