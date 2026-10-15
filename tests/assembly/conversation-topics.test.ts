@@ -315,10 +315,10 @@ it.each(['complete', 'missing', 'unreadable', 'open-child', 'uncertain-child', '
   });
 
 it('retains the waiting batch until the topic handoff is ready, then uses its new authority', async () => {
-  const f = fixture(); let ready = false, preparations = 0;
+  const f = fixture(); let ready = false, preparations = 0, authority = 'previous grant';
   const topicConfig: NonNullable<ConversationTopicsConfig['topicConfig']> = () => ({ io: f.config.io, resources: f.config.resources,
-    authorized: () => true, currentAuthority: () => 'replacement grant',
-    prepareTurn: async () => { preparations++; return ready; },
+    authorized: () => true, currentAuthority: () => authority,
+    prepareTurn: async () => { preparations++; if (ready) authority = 'replacement grant'; return ready; },
     createAdapter: resolve => f.config.createAdapter('7', resolve) });
   Object.assign(f.config, { topicConfig });
   const a = f.port.run(f.request('7:a')), b = f.port.run(f.request('7:b'));
