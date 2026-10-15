@@ -14,8 +14,8 @@ Side effects: The existing supported tuple now certifies current bytes instead o
 Undo and recovery: Restore the earlier source composition and its matching certificate together, or rerun the native contract for whichever composition is restored. Rebuild and replay the register; never repeat uncertain effects.
 Multi-machine posture: The certificate is specific to native Darwin and the exact declared Node runtime. Other harness and platform tuples retain their declared state. Shared source and publication change; ownership and transport do not.
 Layer below: Inspected native-harness-contract.test.ts, doorway-conformance.ts, parityMatrix, compositionClosure, compositionDigest, currentRuntime and the existing desk merge-live-conformance helper. The closure is complete, includes 264 files, and matches the declared runtime. Before renewal 9/10 passed with only stale certification failing; after renewal 10/10 passed, including real confined build/test/install and negative stop/refusal/timeout cases using recorded provider frames.
-Bug class: integration
-Bug evidence: reproducer=tests/preview/native-harness-contract.test.ts
+Bug class: none
+Bug evidence: Certificate evidence maintenance only; no product implementation change. Existing native-harness-contract.test.ts was rerun unchanged: 9/10 before with only stale certification failing, 10/10 after. Exact logs are cited below.
 Hook bypass: none; prior checked core.hooksPath is unset and common hooks contains samples only; plain git commits.
 Convergence: none
 
