@@ -6,7 +6,6 @@ import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, SELF_DESCRIPTION } from
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { readAnswer } from './answer-reading.js';
-import { COMPLETE_REQUESTED_STEPS } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 
 // Captured read-only from the failed forum answer copy, update 715675751. The
@@ -22,8 +21,7 @@ it('retains the delivered error and captured copying guidance while replay uses 
   expect(capture.original.answer).not.toContain('probe-7d09d28a');
   expect(capture.original.answerReason).toContain('probe-7d09d38a');
   // These model runs predate train-18's whole-answer capability reference. Keep
-  // the capture intact; explicitly account for that instruction and train-41's
-  // separately tested requested-step system guidance. This
+  // the capture intact; only that separately tested instruction differs. This
   // is recorded-output replay under today's prompt, not a fresh provider trial.
   const historicalSelfDescription = 'You are an Instar 2.0 agent with lasting memory and values. Correct errors; omit preview/harness/model labels. '
     + 'Self-description: put {{capability-tools-outbound}} in its own paragraph for tools/outbound; the runner inserts the capability-note line. '
@@ -32,8 +30,7 @@ it('retains the delivered error and captured copying guidance while replay uses 
   expect(capture.instructions.split('\n')).toContain(historicalSelfDescription);
   expect(capture.instructions).toContain(LITERAL_COPY_INSTRUCTIONS);
   expect(capture.instructions.replace(historicalSelfDescription, SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
-  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.split(COMPLETE_REQUESTED_STEPS)).toHaveLength(2);
-  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, ''));
+  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(LITERAL_COPY_INSTRUCTIONS).not.toContain('probe');
   expect(capture.runs).toHaveLength(3);
 });

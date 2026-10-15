@@ -1,14 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { expect, it } from 'vitest';
-import { COMPLETE_REQUESTED_STEPS, READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
+import { READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_NATIVE_SYSTEM_PROMPT,
   SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { CODEX_CONVERSATION_SYSTEM_PROMPT, CODEX_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-codex-provider.js';
 import { ANSWER_INSTRUCTIONS, MEMORY_LOOKUP_INSTRUCTIONS } from './briefing.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { readAnswer } from './answer-reading.js';
-import { parseReplyReviewVerdict, substantiveReply, guidanceReviewRules, replyReviewQuestion, replyReviewContext } from './reply-check.js';
+import { parseReplyReviewVerdict, substantiveReply, guidanceReviewRules, replyReviewQuestion } from './reply-check.js';
 // @ts-expect-error Physical tool trace reader stays outside the pure core.
 import { toolTrace } from './tool-admission.mjs';
 
@@ -17,10 +17,10 @@ const fixture = () => JSON.parse(readFileSync(new URL('./fixtures/act-first-2026
   original: { update: number; answer: string; toolAttempts: unknown[]; review: { verdict: string } };
   runs: Capture[]; formatFailure: Capture;
 };
-// Historical captures predate the identity prefix and requested-step guidance.
-// Keep those bytes unchanged; bind the new guidance to all current tool routes below.
+// Historical captures keep their original identity. Only the identity prefix changed;
+// the read-first, tool, authority and response contracts must still match byte for byte.
 const capturedSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(
-  "You are an Instar 2.0 agent,", 'You are Instar,').replace(COMPLETE_REQUESTED_STEPS, '');
+  "You are an Instar 2.0 agent,", 'You are Instar,');
 const decode = (run: Capture) => {
   const reading = readAnswer(JSON.parse(run.raw).result, { wrapped: 'accept' });
   expect(reading.ok, run.name).toBe(true);
@@ -34,62 +34,6 @@ it('delivers the same read guidance on all tool routes without claiming tools on
     expect(prompt.split(READ_BEFORE_ANSWER)).toHaveLength(2);
   for (const prompt of [SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, CODEX_CONVERSATION_SYSTEM_PROMPT])
     expect(prompt).not.toContain(READ_BEFORE_ANSWER);
-});
-
-it('delivers requested verification guidance on every tool route, without changing authority or text-only routes', () => {
-  for (const prompt of [SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, SUBSCRIPTION_NATIVE_SYSTEM_PROMPT, CODEX_TOOLS_SYSTEM_PROMPT]) {
-    expect(prompt.split(COMPLETE_REQUESTED_STEPS)).toHaveLength(2);
-    expect(prompt).toContain('Existing access, secret, spend and stop limits still apply');
-  }
-  for (const prompt of [SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, CODEX_CONVERSATION_SYSTEM_PROMPT])
-    expect(prompt).not.toContain(COMPLETE_REQUESTED_STEPS);
-});
-
-it('replays both recorded verification outcomes into the real envelope and review context', () => {
-  const captured = JSON.parse(readFileSync(new URL('./fixtures/tool-verification-2026-10-15.json', import.meta.url), 'utf8')) as {
-    cases: { name: string; question: string; tools: { update: number; operation: string;
-      calls: { tool: string; decision: string; result: string }[] }; delivered: { reply: string }; reasoning: string;
-      review: { verdict: string; ruleIds: string[] } }[] };
-  expect(captured.cases.map(row => row.tools.update)).toEqual([715676307, 46040062]);
-  for (const row of captured.cases) {
-    const prepared = prepareJournalEnvelope({ question: row.question, id: row.tools.operation,
-      context: JSON.stringify({ audience: 'operator', history: [] }) }, 'claude-sonnet-5', 'grant:test', 1);
-    const context = JSON.parse(replyReviewContext(prepared, row.delivered.reply, ['self_state_claim'],
-      { blocker: null, loops: [], toolAttempts: row.tools.calls }));
-    expect(context.operatorMessage).toBe(row.question);
-    expect(context.declaredObligations.toolAttempts).toEqual(row.tools.calls);
-    expect(substantiveReply(context.candidateReply)).toBe(true);
-    expect(row.tools.calls.every(call => call.decision === 'allow' && call.result !== null)).toBe(true);
-    expect(row.tools.calls.map(call => call.tool)).toEqual(row.name === 'candidate' ? ['Write', 'Bash'] : ['Write', 'Read', 'Bash']);
-    if (row.name === 'candidate') {
-      expect(row.reasoning).toContain("a separate Read wasn't necessary");
-      expect(row.review.ruleIds).toContain('self_state_claim');
-      expect(row.delivered.reply).toContain("I didn't do that");
-    } else expect(row.review.verdict).toBe('pass');
-  }
-});
-
-it('replays fresh real tool results and final replies under the exact current guidance', () => {
-  const captured = JSON.parse(readFileSync(new URL('./fixtures/tool-verification-2026-10-15.json', import.meta.url), 'utf8')) as {
-    runs: Capture[] };
-  expect(captured.runs.map(run => run.name)).toEqual(['requested-verification', 'no-verification-needed']);
-  for (const run of captured.runs) {
-    expect(run.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
-    const answer = decode(run);
-    const trace = toolTrace(run.admission.trim().split('\n').filter(Boolean));
-    expect(trace.consistent).toBe(true);
-    if (run.name === 'requested-verification') {
-      const calls = trace.calls as { tool: string; decision: string; input: string; result: string | null }[];
-      expect(calls.some(call => call.decision === 'allow' && ['Read', 'Bash'].includes(call.tool)
-        && call.input.includes('tools-ba9794.txt') && call.result?.includes('hello from the tool test'))).toBe(true);
-      expect(calls.some(call => call.decision === 'allow' && call.tool === 'Bash'
-        && call.input.includes('wc -c') && /\b25\b/u.test(call.result ?? ''))).toBe(true);
-      expect(answer).toMatch(/\b25\b/u);
-    } else {
-      expect(trace.calls).toEqual([]);
-      expect(answer.trim()).toBe('hello');
-    }
-  }
 });
 
 it('offers the memory lookup protocol exactly when available, equally before and after compaction', () => {
