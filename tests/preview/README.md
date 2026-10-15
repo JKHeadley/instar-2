@@ -3792,6 +3792,17 @@ The supervised procedure on two real machines is [two-machine-live-test.md](two-
 
 ### Tool turns (journal runner)
 
+A separate sealed `tools-guidance-only-v1` class uses `scope.invocationPolicyPins`, computed by
+`guidanceOnlyPolicyPins` from the approved policy. It pins every policy field and the generated
+checkpoint settings, except the system prompt and each existing subagent's prompt and description.
+Tool set, permission mode, all caps (including lower caps), subagent execution settings, settings
+labels, runtime fields and checkpoints must match exactly. Trial, model, account, executable,
+artifact, version and profile remain exact grant subjects. A changed pinned field needs a new
+disposition. Full prompt bytes and the full invocation digest remain execution evidence; the
+resolver checks that digest before applying the class. Existing digest grants and the broader
+`full-tools-checkpointed-v1` class retain their recorded meanings.
+
+
 On by default under the operator's recorded grant. At launch the runner derives the tools activation from the
 conversation activation (the same record with `invocationPolicyDigest` = the digest of `subscriptionToolsPolicy(model)`,
 framing `preview-tools-v1`) and keeps it only when the sealed authority record resolves it; it is written to
