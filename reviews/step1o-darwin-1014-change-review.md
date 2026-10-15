@@ -15,13 +15,13 @@ Undo and recovery: Revert this certificate refresh; the old composition certific
 Multi-machine posture: Shared declaration certifies only the exact Darwin runtime and composition tested on the Studio; no other platform or remote authority claim.
 Layer below: Read compositionClosure, compositionDigest, currentRuntime and the exact certificate consumer in the native contract. Real confined build/test/install, owner admissions, stop, refused/timed-out/over-cap provider results, journal restart and readiness limits are exercised with captured provider frames.
 Bug class: none
-Bug evidence: Evidence maintenance only. Before renewal, 9/10 tests passed with only the stale certificate assertion failing; architecture reported that same single R105 mismatch. The desk clarification permits re-declaration in precisely this case and requires a final 10/10 contract pass.
+Bug evidence: Evidence maintenance only. Before renewal, 9/10 tests passed with only the stale certificate assertion failing; architecture reported that same single R105 mismatch. The desk clarification permits re-declaration in precisely this case. After renewal the contract passed 10/10 and architecture passed; register replay succeeded from source commit 3f60db56830dc0bce8a4b6912d31f844eb396876.
 Hook bypass: none; core.hooksPath unset, common hooks directory contains samples only.
 Convergence: none
 
 Decision: step1o-darwin-conformance | step1o-reaction-ack-1014 Darwin conformance re-declared for its composition | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1o-darwin-1014-PROGRESS.md
 
-Subject (1 paths): src/assembly/harness.declarations.json
+Subject (8 paths): src/assembly/harness.declarations.json, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 ## Closing block
 
