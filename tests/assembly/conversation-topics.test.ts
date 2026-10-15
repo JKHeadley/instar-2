@@ -313,3 +313,25 @@ it.each(['complete', 'missing', 'unreadable', 'open-child', 'uncertain-child', '
       expect(f.delivered.map(row => row.input.operation)).toEqual(['7:one', '8:later', '7:later']);
     } finally { await f.port.close(); await gate.stop(); }
   });
+
+it('retains the waiting batch until the topic handoff is ready, then uses its new authority', async () => {
+  const f = fixture(); let ready = false, preparations = 0;
+  f.config.topicConfig = () => ({ io: f.config.io, resources: f.config.resources,
+    authorized: () => true, currentAuthority: () => 'replacement grant',
+    prepareTurn: async () => { preparations++; return ready; },
+    createAdapter: resolve => f.config.createAdapter('7', resolve) });
+  const a = f.port.run(f.request('7:a')), b = f.port.run(f.request('7:b'));
+  await until(() => preparations > 0 && f.state().topics['7']?.inputs.length === 2);
+  expect(f.delivered).toHaveLength(0);
+  expect(f.state().topics['7']!.inputs.map(row => row.state)).toEqual(['queued', 'queued']);
+  expect(await a).toMatchObject({ state: 'queued' });
+  expect(await b).toMatchObject({ state: 'queued' });
+  ready = true; await f.port.maintain();
+  expect(await f.port.run(f.request('7:a'))).toMatchObject({ state: 'complete' });
+  expect(await f.port.run(f.request('7:b'))).toMatchObject({ state: 'complete' });
+  expect(f.delivered).toHaveLength(1);
+  expect(f.state().topics['7']!.inputs[0]!.batch).toEqual(['7:a', '7:b']);
+  expect(f.edges.filter(row => row.type === 'SessionWorkEdge').every(row => row.authority === 'replacement grant')).toBe(true);
+  expect(f.state().topics['7']!.spent).toBe(1);
+  await f.port.close();
+});
