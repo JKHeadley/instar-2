@@ -20,6 +20,8 @@ Hook bypass: none; core.hooksPath is unset and the common hooks directory contai
 Convergence: none
 Decision: stepcheck-deadline-extend | step-check graduation not yet proven; deadline extended 72 h so dated gates do not block unrelated builds; graduation work tracked by the desk. Keep dark status and append reason, owner and rollback to the existing promotion record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/register-stepcheck-deadline-1014-PROGRESS.md
 
+Publication: Regenerated the seven changed generated register/capability/source files through scripts/build-register.mjs --replay --commit 6b2e645230a839b8b141dcfdab87c615f2cd6d89. Desk owner rehash and repin tools found zero stale pins; no hashes were hand-edited.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: change the source deadline and append its owned decision using existing mechanisms, update consuming assertions and documentation, then regenerate dependent pins and publication with the project tools. No new machinery. The existing stage-evidence requirement guards graduation; the existing strict deadline check guards the new end date. No autonomous completion or live protection is claimed.
