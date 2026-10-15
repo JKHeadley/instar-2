@@ -10,6 +10,7 @@ Operator questions: none
 Suggested tier: significant
 Declared tier: significant
 Tier rationale: Public module composition changes, without new behavior or model-facing text.
+Publication: Owner pins and the grounding inventory were refreshed by the delegated desk scripts; generated publication replays source commit 240cc0cf814aa104aea093cb2ef28189d5bffa93.
 Side effects: Public barrel loading gains the existing session helpers and Codex worker; the worker tests now exercise the public entry point. Native composition certificate requires Studio renewal.
 Undo and recovery: Revert this repair and regenerate publication; that restores the known private-import failures. Preserve all runtime records and unknown effects.
 Multi-machine posture: Shared source exports only; physical process handles and injected IO retain their existing machine-local scope. No new state, transport or ownership.
