@@ -10,12 +10,12 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Production journal metadata and model revision guidance change.
-Side effects: Valid final-text declarations supersede stale answer declarations when the revision is selected. Legacy fields preserve existing behavior. Malformed declarations produce zero proposals through existing validators. Fulfillment retains exact-quote and commitment support checks.
+Side effects: The existing register generator refreshes the committed source publication for the changed producer. Valid final-text declarations supersede stale answer declarations when the revision is selected. Legacy fields preserve existing behavior. Malformed declarations produce zero proposals through existing validators. Fulfillment retains exact-quote and commitment support checks.
 Undo and recovery: Revert the three implementation files with their regression. Optional journal fields require no migration. Preserve sent receipts throughout rollback.
 Multi-machine posture: Metadata rides the existing encrypted shared journal and current conversation owner. Restart replay consumes the durable revision before sending once.
 Layer below: Inspected promiseProposals, fulfillmentProposals, fulfillmentSupported, recordedPromises, revision parsing, journal projection, revision selection and durable intent construction. agent-commitment.ts remains unchanged.
 Bug class: durability
-Bug evidence: reproducer and restart: journal-revision-promises.test.ts replays captured update 715676157 including crash after the durable revision. Positive, unchanged, legacy, non-promise, altered and unsupported quote neighbors pass. Seven regression cases additionally cover fulfillment across restart, unsupported fulfillment ids/quotes, and withholding a rejected revision without adopting its declarations. Final-metadata/review results are labelled synthetic. The first crash test used an incorrect boundary name; corrected to after:reply-revision, then all 99 focused tests passed.
+Bug evidence: reproducer=tests/preview/journal-revision-promises.test.ts; restart=tests/preview/fixtures/rule10-revision-replay-result.json
 Hook bypass: none; inspected core.hooksPath (unset) and common hooks directory (sample hooks only).
 Convergence: none
 Prompt review: The reviser declares final-text metadata using the existing exact-excerpt contract. canary-review-replay and held-cascade-replay exercise recorded outputs. The findings below refer to unchanged protocol instructions, checked against the diff and their consumer tests. This record describes verified positive and negative behavior, not a search yielding no results.
@@ -32,6 +32,8 @@ Prompt finding: e769ca9dd959 | protocol-literal | Existing PASS/VIOLATION protoc
 Prompt finding: e8708c7fea24 | protocol-literal | Existing source attribution instruction; unchanged by this diff.
 Prompt finding: f6d7f3274c85 | protocol-literal | Existing blocker deduplication instruction; unchanged by this diff.
 Prompt finding: feadb66b8ad1 | protocol-literal | Existing credential boundary; unchanged by this diff.
+
+Verification notes: reproducer and restart: journal-revision-promises.test.ts replays captured update 715676157 including crash after the durable revision. Positive, unchanged, legacy, non-promise, altered and unsupported quote neighbors pass. Seven regression cases additionally cover fulfillment across restart, unsupported fulfillment ids/quotes, and withholding a rejected revision without adopting its declarations. Final-metadata/review results are labelled synthetic. The first crash test used an incorrect boundary name; corrected to after:reply-revision, then all 99 focused tests passed.
 
 simplestRobustRoute: This is the simplest robust route: the reviser already authors final text, so carry its metadata through the existing record and validators. Start guards remain bounded call admission and exact quote/type checks; end guards remain final filtering and durable send evidence. Recorded shipped-path bytes establish the regression; live acceptance belongs to the desk.
 80/20: Targeted regression, direct consumers and required local checks. The desk owns live proof and full-suite acceptance.

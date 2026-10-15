@@ -39,7 +39,8 @@ async function replay(text: string, metadata: { promises?: unknown; fulfills?: u
           return { state: 'complete', ...parseReplyRevision(JSON.stringify({ reply: text, ...metadata,
             dispositions: { defers_work: { decision: 'accept' } } }), ['defers_work']) }; } } };
     if (seed) {
-      const initial = createJournalWorker(journal, { ...ports, replyCheck: undefined });
+      const { replyCheck: _review, ...initialPorts } = ports;
+      const initial = createJournalWorker(journal, initialPorts);
       initial.intake([{ update_id: 715676156, message: { chat: { id: 7654321, type: 'private' },
         from: { id: 7654321 }, text: 'First request.' } }]);
       await initial.drain();
