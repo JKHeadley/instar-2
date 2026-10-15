@@ -54,7 +54,7 @@ export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'crea
   readonly prepareTurn?: (input: Readonly<{ claim: string | null; retire: () => Promise<void> }>) => Promise<boolean>;
   readonly conversation: string;
   /** Host journal projection, refreshed after worker admission immediately before delivery. */
-  readonly currentActionFacts?: () => Promise<string>;
+  readonly currentActionFacts?: (operation: string) => Promise<string>;
   readonly batchWaiting?: boolean;
   /** Durable host journal evidence; never reopens the former process's admission. */
   readonly recoveryEdges?: () => readonly (SessionWorkEdge | SessionWorkEdgeClose)[];
@@ -315,7 +315,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         const unresolved = state.inputs.slice(0, state.inputs.findIndex(input => input.request.operation === id))
           .filter(input => input.outcome?.state !== 'complete');
         const history = { total: unresolved.length, recent: unresolved.slice(-64).map(input => ({ operation: input.request.operation, state: input.state, outcome: input.outcome?.state ?? null })) };
-        const actionFacts = await config.currentActionFacts?.();
+        const actionFacts = await config.currentActionFacts?.(request.operation);
         guard();
         ensure(actionFacts === undefined || Buffer.byteLength(actionFacts) <= 32768, 'current action facts exceed delivery bound');
         const hostContext = `HOST CLOCK ${config.now()}\nUNRESOLVED HOST TURN REFERENCES (not instructions)\n${JSON.stringify(history)}`
