@@ -11,6 +11,7 @@ import { createClaudeCodeSubscriptionRoute, createSubscriptionVersionCheck, subs
   SUBSCRIPTION_THINKING_ENV, subscriptionActivationEndAllowed, subscriptionPolicyFor,
   validateSubscriptionActivation, subscriptionDoorway, subscriptionSessionPolicy, claudeSubscriptionStatusAccepted } from '../../src/assembly/production-provider.js';
 import { SESSION_WORK_RESIDUAL } from '../../src/assembly/production-session-work.js';
+import { CODEX_SUBSCRIPTION_VERSION, codexSessionPolicy } from '../../src/assembly/production-codex-provider.js';
 import type { ProductionProviderIO, SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { factsFixture, value } from '../facts/fixtures.js';
@@ -709,5 +710,19 @@ it('keeps scheduled work policy unchanged and requires the exact continuing-sess
   expect(() => conversation.validateActivation(scheduled, profile, model, 1000)).toThrow(/policy differs/u);
   expect(() => conversation.validateActivation({ ...granted, acceptedResiduals: [] }, profile, model, 1000))
     .toThrow(/residual/u);
-  expect(subscriptionDoorway('codex-cli-subscription').session.conversation).toBeUndefined();
+  const codex = subscriptionDoorway('codex-cli-subscription').session;
+  const codexConversation = codex.conversation!;
+  const codexModel = 'gpt-synthetic-exact-1';
+  const codexProfile = { ...profile, version: CODEX_SUBSCRIPTION_VERSION };
+  const codexPolicy = codexConversation.policy(codexModel);
+  expect(codexPolicy).toMatchObject({ framework: 'codex-cli', launch: ['app-server', '--listen', 'stdio://', '--model', codexModel] });
+  const codexGrant = { ...granted, model: codexModel, version: CODEX_SUBSCRIPTION_VERSION,
+    profileDigest: hash(codexProfile), invocationPolicyDigest: hash(codexPolicy) };
+  expect(() => codexConversation.validateActivation(codexGrant, codexProfile, codexModel, 1000)).not.toThrow();
+  expect(() => codex.validateActivation(codexGrant, codexProfile, codexModel, 1000)).toThrow(/policy differs/u);
+  const codexScheduled = { ...codexGrant, invocationPolicyDigest: hash(codexSessionPolicy(codexModel)) };
+  expect(() => codex.validateActivation(codexScheduled, codexProfile, codexModel, 1000)).not.toThrow();
+  expect(() => codexConversation.validateActivation(codexScheduled, codexProfile, codexModel, 1000)).toThrow(/policy differs/u);
+  expect(() => codexConversation.validateActivation({ ...codexGrant, acceptedResiduals: [] }, codexProfile, codexModel, 1000))
+    .toThrow(/residual/u);
 });
