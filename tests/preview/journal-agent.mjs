@@ -2486,7 +2486,8 @@ async function main() {
             if (session) sessionAdapter.validateActivation(target, entry.profile, options.model, wallNow(), journal.view.expires);
             else doorway.validateActivation(target, entry.profile, options.model, wallNow(), framing, journal.view.expires);
             requireAuthority(entry.options, target, session ? sessionPath : tools && toolPath ? toolPath : entry.activation,
-              journal.view, wallNow(), tools ? doorway.policyFor(options.model, framing) : undefined);
+              journal.view, wallNow(), session && conversationSession ? sessionAdapter.policy(options.model)
+                : tools ? doorway.policyFor(options.model, framing) : undefined);
             if (!activationMatchesJournal(journal.view, target)) throw Error('preview: pool activation differs from journal');
           };
           const live = tools => { try { check(tools); return true; } catch { return false; } };
@@ -2542,7 +2543,8 @@ async function main() {
       let sessionHarness = harness;
       let sessionBytes = readFileSync(sessionSetup.activation, 'utf8'), sessionActivation = JSON.parse(sessionBytes);
       sessionAdapter.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
-      requireAuthority(options, sessionActivation, sessionSetup.activation, journal.view, wallNow());
+      requireAuthority(options, sessionActivation, sessionSetup.activation, journal.view, wallNow(),
+        conversationSession ? sessionAdapter.policy(options.model) : undefined);
       if (!activationMatchesJournal(journal.view, sessionActivation)) throw Error('preview: session work activation differs from journal');
       const sessionActive = () => { try { return loginPool && !conversationSession ? loginRuntimes.get(selectedSession.index).live('session') : readFileSync(sessionSetup.activation, 'utf8') === sessionBytes; } catch { return false; } };
       // Rule 60: the session's working scope is a persistent fixed-size volume (tool-turn.mjs attachSessionVolume), mounted
@@ -2714,7 +2716,8 @@ async function main() {
           if (current !== sessionBytes) {
             const record = JSON.parse(current);
             sessionAdapter.validateActivation(record, profile, required(options, 'model'), wallNow(), journal.view.expires);
-            requireAuthority(options, record, sessionSetup.activation, journal.view, wallNow());
+            requireAuthority(options, record, sessionSetup.activation, journal.view, wallNow(),
+              conversationSession ? sessionAdapter.policy(options.model) : undefined);
             if (!activationMatchesJournal(journal.view, record)) throw Error('preview: refreshed session grant differs from journal');
             sessionBytes = current; sessionActivation = record;
           }
