@@ -12,34 +12,28 @@ const original = JSON.parse(frame(404).output);
 const intake = frame(399);
 const at = JSON.parse(intake.raw).message.date * 1000;
 const zone = 'America/Los_Angeles';
-// The old capture has the interpretation in reasoning only. This is an explicitly constructed
-// response to the NEW format repair, not a claim that the historical model emitted these fields.
 const resolution = { instant: new Date(at + 12 * 60_000).toISOString(), at, zone };
-const repaired = JSON.stringify({ ...original, dated: [{ ...original.dated[0], resolution }] });
 const genesis = { kind: 'genesis' as const, bot: '8989505249', chat: '7812716706', operator: '7812716706',
   grant: 'grant:relative-replay', configurationDigest: 'sha256:relative-replay', expires: at + 86400_000,
   maxCalls: 30, maxReplies: 20, maxTurns: 20, maxBytes: 24000, cursor: 0 };
 const key = new Uint8Array(32).fill(41);
 
-it('replays raw 404 through bounded repair, admitted review evidence, due work and restart without a duplicate', async () => {
+it('replays raw 404 with intake duration arithmetic, admitted review evidence, due work and restart without a duplicate', async () => {
   const root = mkdtempSync(join(tmpdir(), 'relative-replay-')), path = join(root, 'journal.encrypted');
-  let journal = openPreviewJournal(path, key, genesis), now = intake.at, calls = 0, repairs = 0;
+  let journal = openPreviewJournal(path, key, genesis), now = intake.at, calls = 0;
   const sent: string[] = [];
   const ports = { now: () => now, stopped: () => false, timeZone: zone,
     model: async (input: { id: string; context: string }) => {
       if (input.id.startsWith('requested-action:')) return frame(983).output;
       calls++;
       const packet = JSON.parse(input.context);
-      if (calls === 1) { expect(packet.datedClock).toEqual({ at, zone }); return frame(404).output; }
-      repairs++;
-      expect(JSON.stringify(packet)).toContain('dated needs a model resolution');
-      expect(JSON.stringify(packet)).toContain(String(at));
-      return repaired;
+      expect(packet.datedClock).toEqual({ at, zone });
+      return frame(404).output;
     }, send: async (input: { text: string }) => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} };
   try {
     let worker = createJournalWorker(journal, ports);
     worker.intake([JSON.parse(intake.raw)]); await worker.drain();
-    expect(repairs).toBe(1);
+    expect(calls).toBe(1);
     expect(openRequests(journal.view)).toMatchObject([{ quote: original.dated[0].quote, when: 'in about 12 minutes',
       day: '2026-10-13', time: '09:12', zone, remind: true }]);
     const declared = declaredObligations(journal.view, intake.id, now);
@@ -98,18 +92,22 @@ it('preserves ambiguous/invalid time refusals and rejects stale clock, zone, mal
 it.each(['stop', 'cap', 'wrong-sender'] as const)('keeps the %s floor for the recorded relative proposal', async floor => {
   const root = mkdtempSync(join(tmpdir(), 'relative-floor-'));
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxCalls: floor === 'cap' ? 1 : 30 });
-  let stopped = false, calls = 0;
+  let stopped = false, calls = 0, sends = 0, now = intake.at;
   try {
-    const worker = createJournalWorker(journal, { now: () => intake.at, stopped: () => stopped,
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => stopped,
       model: async () => { calls++; if (floor === 'stop') stopped = true; return frame(404).output; },
-      send: async () => 1, checkOutbound: () => {} });
+      send: async () => ++sends, checkOutbound: () => {} });
     const raw = JSON.parse(intake.raw); if (floor === 'wrong-sender') raw.message.from.id = 1234;
     worker.intake([raw]);
     if (floor === 'stop') await expect(worker.drain()).rejects.toThrow('preview stopped');
     else await worker.drain();
     expect(calls).toBeLessThanOrEqual(1);
-    expect(openRequests(journal.view)).toEqual([]);
-    expect(journal.view.order).toHaveLength(1);
+    expect(openRequests(journal.view)).toHaveLength(floor === 'wrong-sender' ? 0 : 1);
+    const before = sends;
+    now += 13 * 60_000;
+    await worker.sendRequested();
+    expect(sends).toBe(before); // admission is allowed; stop/cap still prevent the due effect
+    expect(calls).toBeLessThanOrEqual(1);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
