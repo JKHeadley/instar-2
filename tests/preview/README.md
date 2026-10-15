@@ -4295,21 +4295,33 @@ Both run in the same private per-transcription directory, removed after completi
 ## Slow-reply acknowledgement
 
 Durable intake arms one cancellable timer per accepted operator message, independently of the
-serial answer worker. Its deadline uses the message's intake time. At ten
-seconds it may send the fixed, reviewed-once sentence “Checking that now.” in reply to that exact
-message. It contains no answer, private fact, request for user action or claim of completed work.
-Rule 87 and the rule book's retrospective-review principle admit this fixed template without a
-per-send model review; Part 12 §9's deterministic secret, disclosure, authority, stop, ownership,
-allowance and durable-send checks still apply. An answer already recorded suppresses the acknowledgement, even while review or delivery is pending.
-The answer cancels the timer when ready. Dispatch
-rechecks cancellation after asynchronous audience or replication admission. Once a transport has
-started, delivery cannot be recalled; the final answer waits for that in-flight send to settle.
+serial answer worker. At seven seconds the admitted host dispatch sets 👀 on that exact inbound
+message with `setMessageReaction`. The timing measure is **acknowledged (reaction or text) under
+ten seconds**, including admission and transport. The signed held-notice intent declares
+`acknowledgementMode: reaction-or-text`; the receipt records `acknowledgementPath: reaction | text`.
+A reaction receipt uses the inbound message id, not an invented outgoing message id. Old records
+remain readable. Existing stop, disclosure, ownership, replication, allowance and UNKNOWN fences
+remain in force. A crash after dispatch never repeats the reaction or sends fallback text.
 
-The existing held-notice intent and UNKNOWN fence prevent duplicate sends across restart. Earlier
-reviewed acknowledgement records remain readable without changing their text or verdict. Timer
-state is process-local; durable intake and send state remain in the existing replicated journal.
-Recorded timing cases 969390407–969390410 and crash/admission neighbours are exercised by the
-reply-acknowledgement tests. Fully parallel answers are outside this change.
+A definite reaction rejection (including unsupported chats) or transport proof that nothing was
+sent falls back to the existing “Checking that now.” template. The reaction call has a 500 ms
+transport timeout, preserving the deadline reserve for fallback. A lost or malformed response is
+UNKNOWN and cannot safely trigger fallback: the reaction may already have landed. No new model
+call or semantic judgment is involved. Final dispatch readiness suppresses an unadmitted ack;
+review still pending remains eligible. Final dispatch waits for an already dispatched ack.
+
+After acknowledgement, `telegram-acknowledgement.mjs` refreshes `sendChatAction: typing` every four
+seconds. Each refresh rechecks current work, stop, ownership, expiry and disclosure. The loop
+stops on answer/progress dispatch, a failed refresh, or two minutes / 30 calls, whichever comes
+first; Telegram expires the last indicator naturally. Timers are local, ephemeral, and never
+replayed as send obligations. The existing slow progress and earlier-message notices remain.
+The completion reaction remains 👀; no separate completion effect or durable state is added.
+
+Recorded timing cases 969390407–969390410 and 840342743–840342745, restart/crash neighbours,
+reaction and fallback transport, and typing cancellation are covered by the acknowledgement
+tests. Captured source frames retain their historical text; replay measures the new dispatch.
+No new store or ownership protocol is introduced. Journal intent and receipt state retain their
+existing replication; the current conversation owner alone creates ephemeral typing activity.
 
 The encrypted journal's `phase-timing` diagnostics expose numeric/boolean measurements through
 `status.phaseTimings` (the latest 100; original frames remain in retained journal evidence).

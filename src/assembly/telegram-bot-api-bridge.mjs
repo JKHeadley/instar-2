@@ -35,7 +35,7 @@ if (testEndpoint !== undefined && (token !== TEST_TOKEN || !testMatch
   || Number(testMatch[1]) < 1 || Number(testMatch[1]) > 65535)) process.exit(2);
 // answerCallbackQuery only clears a pressed button with a short toast; it carries no message.
 const validMethod = request?.method === 'getMe' || request?.method === 'getUpdates' || request?.method === 'sendMessage'
-  || request?.method === 'answerCallbackQuery'
+  || request?.method === 'answerCallbackQuery' || request?.method === 'setMessageReaction' || request?.method === 'sendChatAction'
   || request?.method === 'getChat' || request?.method === 'getChatMemberCount' || request?.method === 'getChatMember';
 const identityRequestPresent = request?.method !== 'getMe' || (
   typeof request.captureDirectory === 'string' && request.captureDirectory.length > 0
@@ -244,7 +244,7 @@ function scanCredential(bytes) {
 // complete outbound body before the irreversible network call, including the
 // bounded representations above. Other credentials need exact evidence from
 // protected custody; a credential-shaped string alone cannot block a send.
-if (request.method === 'sendMessage') {
+if (request.method === 'sendMessage' || request.method === 'setMessageReaction' || request.method === 'sendChatAction') {
   const outgoing = JSON.stringify(request.body);
   if (scanCredential(outgoing) !== null) {
     uncertain('scan-policy'); process.exit(0);

@@ -56,6 +56,7 @@ import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason, pollBackoffMs, pollEndsRun, temporaryPollStatus } from './poll-failure-reason.mjs';
 import { loopHealth } from './obligations.js';
+import { createReplyTyping, reactionAcknowledgement } from './telegram-acknowledgement.mjs';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 import { authoritySealKey, resolveActivationAuthority, resolveInstallationPolicy, sealAuthorityRecord, singleMachineProfileDigest, SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { deriveProfile } from '../../src/index.js';
@@ -2072,6 +2073,16 @@ async function main() {
     bindPreviewBlockingSites({ journal: declarationsOf('journal.declarations'), replyCheck: declarationsOf('reply-check.declarations'),
       redact: JSON.parse(readFileSync(resolve(process.cwd(), 'src/recall/redact.declarations.json'), 'utf8')),
       resourceOwner: JSON.parse(readFileSync(resolve(process.cwd(), 'scripts/resource-owner.declarations.json'), 'utf8')) });
+    const noticeInvoke = (method, body, timeoutMs) => physical.invoke({ token: secretRef('telegram-bot-token'),
+      method, body, timeoutMs }, token());
+    const noticeAllowed = () => !workerStop.value && !existsSync(stopPath) && ownerHeld()
+      && !journal.view.stop && wallNow() < journal.view.expires;
+    const typing = createReplyTyping({ invoke: noticeInvoke, now: wallNow,
+      allowed: async () => {
+        if (!noticeAllowed()) return false;
+        try { await requireGroupDisclosure(journal.view); } catch { return false; }
+        return noticeAllowed();
+      }, after: (ms, run) => { const timer = setTimeout(run, ms); timer.unref(); return () => clearTimeout(timer); } });
     worker = createJournalWorker(journal, { ...(conversationSession ? { topicConcurrency: sessionLimits.maxSessions } : {}), ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       groupDisclosure: async () => {
         if (journal.view.groupCarry) { await requireGroupDisclosure(journal.view); return true; }
@@ -2315,9 +2326,27 @@ async function main() {
         if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
           return { kind: 'refused', reason: 'stopped before physical dispatch' };
         if (current && !current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
+        const noticeTurn = target?.startsWith('held-notice:') ? journal.view.turns.get(target.slice('held-notice:'.length)) : null;
+        const reaction = noticeTurn?.acknowledgementMode === 'reaction-or-text'
+          && noticeTurn.heldNoticeIntent === expectedText && text === expectedText && Number.isSafeInteger(replyTo);
+        if (!reaction) typing.stop(chat, thread); // answers and progress lines end the indicator
         let outcome = { kind: 'unknown', reason: 'send port failed' };
         try {
           observeSendPhase?.('transportBegunAt');
+          if (reaction) {
+            const reactionOutcome = reactionAcknowledgement(noticeInvoke, chat, replyTo);
+            if (reactionOutcome !== null) {
+              outcome = reactionOutcome;
+              observeSendPhase?.('transportReturnedAt');
+              if (outcome.kind === 'accepted') typing.start(chat, thread, current ?? (() => false));
+              return outcome;
+            }
+            // Only a proved rejection reaches text fallback; recheck stop/ownership after the call.
+            if (!noticeAllowed() || current && !current()) {
+              outcome = { kind: 'refused', reason: 'acknowledgement cancelled after reaction rejection' }; return outcome;
+            }
+          }
+          outcome = { kind: 'unknown', reason: 'send port failed' };
           let reply;
           try { reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
             body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }),
@@ -2326,6 +2355,10 @@ async function main() {
             timeoutMs: 30000 }, token()); }
           finally { observeSendPhase?.('transportReturnedAt'); }
           outcome = classifyTelegramSend(reply, { chat, expectedText, forum: g.forum === true, ...(thread === undefined ? {} : { thread }) });
+          if (reaction && outcome.kind === 'accepted') {
+            outcome = { ...outcome, acknowledgementPath: 'text' };
+            typing.start(chat, thread, current ?? (() => false));
+          }
           return outcome;
         } finally { if (shared) await shared.outcome(target, outcome.kind); }
       } });

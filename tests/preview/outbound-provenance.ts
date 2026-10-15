@@ -12,7 +12,7 @@ export interface OutboundSubject { target: string; chat: string; thread?: number
 /** A definite refusal and an unknown outcome stay distinct from delivery and from each other. */
 /** `not-sent` is the transport's proof that the network call was never made, so this exact intent may
  * be dispatched again. It never reaches the journal: the one outbound funnel settles it (Rule 42). */
-export type SendOutcome = { kind: 'accepted'; message: number } | { kind: 'refused'; reason: string }
+export type SendOutcome = { kind: 'accepted'; message: number; acknowledgementPath?: 'reaction' | 'text' } | { kind: 'refused'; reason: string }
   | { kind: 'unknown'; reason: string } | { kind: 'not-sent'; reason: string };
 /** What a dispatch settles to, and the only outcomes the journal records. */
 export type SettledSendOutcome = Exclude<SendOutcome, { kind: 'not-sent' }>;

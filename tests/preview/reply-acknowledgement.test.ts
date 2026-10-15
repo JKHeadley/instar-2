@@ -8,6 +8,7 @@ import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, unknown
   type PreviewPorts } from './journal-test-worker.js';
 import { readAnswer } from './answer-reading.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
+import { reactionAcknowledgement } from './telegram-acknowledgement.mjs';
 import { jevQuestions } from './reply-check.js';
 
 const key = new Uint8Array(32).fill(71);
@@ -148,12 +149,21 @@ const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-fo
   otherShapes: { kind: string; id: string; raw: string }[] };
 for (const shape of shapes.otherShapes) it(`acknowledges once while replaying recorded ${shape.kind} ${shape.id}`, async () => {
   const f = fixture({ tool: true });
+  let reactions = 0;
+  const send = f.ports.send;
+  f.ports.send = async input => {
+    const result = await send(input);
+    if (input.expectedText !== REPLY_ACKNOWLEDGEMENT) return result;
+    return reactionAcknowledgement(() => { reactions++; return { kind: 'response', status: 200,
+      bytes: JSON.stringify({ ok: true, result: true }) }; }, input.chat, input.replyTo!);
+  };
   f.ports.model = async () => { f.entered.resolve(); await f.answer.promise;
     return shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw) as { state: 'uncertain' } : shape.raw; };
   const worker = createJournalWorker(f.journal, f.ports);
   try { worker.intake([update()]); const drain = worker.drain(); await f.entered.promise;
     f.advance(10000); await worker.minimal(); await new Promise<void>(done => setImmediate(done));
     expect(f.sent.map(row => row.expectedText)).toEqual([REPLY_ACKNOWLEDGEMENT]);
+    expect(reactions).toBe(1); expect(f.journal.view.order[0]?.acknowledgementPath).toBe('reaction');
     f.answer.resolve('release recorded output'); await drain;
     expect(f.sent.filter(row => row.expectedText === REPLY_ACKNOWLEDGEMENT)).toHaveLength(1);
     expect(f.sent.every(row => row.expectedText.trim().length > 0)).toBe(true);
