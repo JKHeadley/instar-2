@@ -39,6 +39,8 @@ Prompt finding: f6d7f3274c85 | quoted-evidence | Historical prompt wording compa
 Prompt finding: feadb66b8ad1 | quoted-evidence | Historical prompt wording compared to current source, not a behavioral trigger or demanded answer — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "any live authentication secret reaching anyone but the verified operator who sup"
 
 
+Register publication: Delegated owner-manifest rehash and inventory repin found zero stale pins. Replayed generated/ from source commit 29feaa2d509f25a30b14efe91501aff8f2a3206d, generation sha256:cd807a5ccde7caa043da637e26dc06b5ad36313c49a294a45f84f4a26bfefdb3. No pin hand-edited. Targeted 29 tests, typecheck and build pass. Native macOS composition-certificate R105 remains the explicitly allowed desk-owned exception.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: improve existing shared tool instructions and measure actual model tool behavior. No extra model gate, keyword classifier, tool restriction, retry loop or completion state. The credible failure is a model treating the final requested measurement as completion while omitting intermediate verification. Existing admission, secret, spend, stop and durable effect boundaries retain their guards. Two unattended isolated real tool trials passed; deployed live proof remains with the pipeline.
