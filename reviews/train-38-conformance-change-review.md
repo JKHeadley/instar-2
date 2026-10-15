@@ -14,8 +14,8 @@ Side effects: The existing native Claude subscription self-hosting tuple now bin
 Undo and recovery: Revert declaration and generated publication together; the original stale-certificate failure returns. If composition changes again, rerun the native contract on the supported runtime before using the existing re-declaration script.
 Multi-machine posture: Certification is deliberately bound to the macOS runtime recorded in the tuple. No new machine-local state, replication or ownership behavior. Other doorway/platform tuples retain their existing states.
 Layer below: Inspected lintParityRegister, compositionClosure/compositionDigest/currentRuntime, selfHostCompositionEvidence, the named native contract and its captured-frame provider fixture. Host Darwin / DaBombs-Mac-Studio.local. The named contract passed before re-declaration; existing desk merge-live-conformance.mjs computed a complete 255-file closure and changed only the stale conformance value.
-Bug class: integration
-Bug evidence: reproducer=tests/preview/native-harness-contract.test.ts
+Bug class: none
+Bug evidence: none; this is conformance evidence publication, not a runtime behavior fix. The unchanged native contract and exact certification checks passed; their actual reports are named in Verification.
 Hook bypass: none; ordinary commits with the previously verified unset hooksPath and sample-only hooks directory.
 Convergence: none
 
