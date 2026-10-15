@@ -25,6 +25,8 @@ Evidence: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/delta-turns-1015
 
 Decision: native-conformance-renewal | The desk explicitly requested this repair on the Studio. Renew the existing native certificate using the guarded helper and real before/after contract, then publish through the existing register generator. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/delta-turns-1015-PROGRESS.md
 
+Publication: Replayed the register from source commit 632dd904bba12849a63a0af265bcf142e9f84cb9. Seven generated artifacts publish the renewed declaration; no owner or inventory pin changes.
+
 Subject: src/assembly/harness.declarations.json and seven generated register artifacts.
 
 ## Closing block
