@@ -23,7 +23,7 @@ Prompt review: No model prompt, parser or judgment text changes. The committed f
 Deferral: generated/register.json:1 | not-a-deferral=Existing declarations are mechanically replayed; publication adds no deferred work.
 Decision: conversation-limits-class | Extend the existing sealed class resolver with exact session-policy pins and bounded worker fields. The ordinary conversation digest is a distinct unchanged subject; the new disposition records the reviewed train-46 session baseline explicitly. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/grant-limits-1015-PROGRESS.md
 
-Publication: Refresh the existing preview fixture pin and mechanically regenerate the seven register publication files from committed sources; no declaration or authority is changed.
+Publication: Refreshed one existing preview fixture pin and regenerated seven register publication files from source commit 3af7112c1ae899dec3d11d65efbb32529118cbde using the existing replay generator; no declaration or authority changed.
 
 simplestRobustRoute: This is the simplest robust route: one new case in the existing resolver, plus passing the existing adapter policy at three session callers. A digest alias would silently reinterpret an old grant; ignoring the remaining policy fields would admit unauthorized changes; omitting caller wiring would leave the new class unusable. Seal/source/subject/liveness checks guard entry, exact pins and finite bounds guard scope, and actual candidate resolution with negative neighbors guards completion. No autonomous model execution claim.
 80/20: Targeted changed files and consumers, architecture/typecheck, lint/register and mandatory pinned tests; the pipeline owns the full suite.
