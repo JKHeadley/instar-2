@@ -201,3 +201,21 @@ it('a one-turn span keeps its second attempt under the over-cap ceiling, and a s
       .toThrow('repeated summary reservation');
   } finally { w.close(); }
 });
+
+it('proactively compacts the recorded room at idle pressure, retaining facts and owed work without a forced recovery', async () => {
+  const w = world([{ kind: 'over-cap', index: 0 }, { kind: 'complete', output: WRITER_484 }]);
+  try {
+    w.replayLiveRoom();
+    const before = w.journal.view.summaries.length;
+    await w.worker.summarizeIfNeeded();
+    expect(w.journal.view.summaries.length).toBeGreaterThan(before);
+    expect(w.log).toContain('jev-faithfulness');
+    expect(w.log).toContain('review');
+    const accepted = w.journal.view.summaries.slice(before);
+    expect(accepted.some(item => item.text.includes('probe-5f1ba73c'))).toBe(true);
+    expect(accepted.some(item => /tomato/iu.test(item.text))).toBe(true);
+    expect(w.journal.view.commitments.some(item => /tomato/iu.test(item.quote))).toBe(true);
+    // All original inbound/reply/unknown rows remain replayable, including malformed/empty replies.
+    expect(w.journal.view.order.map(item => item.update)).toEqual(expect.arrayContaining([715672480, 715672483, 715672484]));
+  } finally { w.close(); }
+});

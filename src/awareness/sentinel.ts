@@ -101,6 +101,20 @@ export const defaultSentinelConfig: SentinelConfig = Object.freeze({
 
 const open = (status: EpisodeStatus) => status === 'awaiting-receipt' || status === 'deferring' || status === 'verifying';
 
+/** D18 §10: proactive compaction uses the owner's existing summary/effect path. It may
+ * start only at an idle boundary, under pressure and outside the prior attempt's cooldown.
+ * The owner supplies durable attempt time, keeps originals and verifies continuity (R47/96/110).
+ * This decision neither interrupts a turn nor grants authority to force context-wall recovery. */
+export function decideProactiveCompaction(input: Readonly<{
+  now: number; stopped: boolean; idle: boolean; pressure: boolean; lastAttemptAt: number | null;
+}>): 'compact' | 'stopped' | 'busy' | 'below-threshold' | 'cooldown' {
+  if (input.stopped) return 'stopped';
+  if (!input.idle) return 'busy';
+  if (!input.pressure) return 'below-threshold';
+  if (input.lastAttemptAt !== null && input.now - input.lastAttemptAt < defaultSentinelConfig.recoveryCooldownMs) return 'cooldown';
+  return 'compact';
+}
+
 export function decideContext(input: Readonly<{
   now: number; stopped: boolean; state: SentinelState; observations: readonly SessionObservation[];
   groundings: readonly TopicGroundingStatus[]; config?: Partial<SentinelConfig>;

@@ -1,3 +1,4 @@
+import { decideProactiveCompaction } from '../../src/awareness/sentinel.js';
 import { currentWorkingActivity, workingProgressDue, type WorkingActivity, type WorkingProgress } from './working-progress.js';
 import { admitJev, JEV_ADMISSION_MS } from './reply-check.js';
 import { checkPhaseTiming, recordPhaseTiming, type PhaseTiming } from './phase-timing.js';
@@ -10640,6 +10641,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * so a writer obeying the question is never refused for the length it was told to keep. */
   const summaryTextCeiling = () => Math.min(SUMMARY_TEXT_CEILING_BYTES, Math.floor(journal.view.limits.maxBytes / 4));
   const runSummary = async (force: boolean) => {
+    // Snapshot before this bounded pass: retries within the pass retain their existing cap;
+    // later passes (also after restart) cool down from recorded successes/failures/UNKNOWNs.
+    const priorSummaryAt = Math.max(-Infinity, ...journal.view.summaries.map(item => item.at),
+      journal.view.lastSummaryFailure?.at ?? -Infinity, ...journal.view.summaryReservations.values());
     const memoryRequest = pendingMemory();
     const last = memoryRequest ?? journal.view.order.filter(turn => turn.sent).at(-1);
     if (!last) return;
@@ -10774,7 +10779,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const startBytes = previous < 0 && historyBytes < PREVIEW_FULL_HISTORY_BYTES
         ? Math.floor(journal.view.limits.maxBytes * .45)
         : Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_START_BYTES);
-      if (!force && !unreviewedQuestions(last.update).length && smallest(full) < startBytes) {
+      const proactive = decideProactiveCompaction({ now: ports.now(), stopped: ports.stopped() || journal.view.stop !== null,
+        idle: !working, pressure: unreviewedQuestions(last.update).length > 0 || smallest(full) >= startBytes,
+        lastAttemptAt: Number.isFinite(priorSummaryAt) ? priorSummaryAt : null });
+      if (!force && proactive !== 'compact' && proactive !== 'below-threshold') return;
+      if (!force && proactive === 'below-threshold') {
         // Rule 11: messages summarized before their meaning terms existed (Part 21 §6) would
         // otherwise wait for history to grow; index them without summarizing anything new. A summary
         // that just ran was already asked for these terms, so indexing waits for a later call.
@@ -11242,6 +11251,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(!ports.replyCheck && typeof summary !== 'string' ? { usage: summary.usage } : {}), at: ports.now() });
         return;
       }
+      // A new turn may have arrived while the background model/review was running.
+      // Do not replace its frontier or delay its reply. Retain the outcome and originals;
+      // a later idle pass uses the ordinary bounded retry path (Rules 14/47/55/96).
+      if (!force && working) {
+        journal.append({ kind: 'summary-failed', through, state: 'complete',
+          reason: 'proactive summary deferred: ordinary turn active',
+          ...(!ports.replyCheck && typeof summary !== 'string' ? { usage: summary.usage } : {}), at: ports.now() });
+        return;
+      }
       journal.append({kind:'summary',through,text:candidate,...(memoryItems.length ? { memoryItems } : {}),...(concepts.length ? { concepts } : {}),faithfulness: ports.replyCheck
         ? { path: faithfulness.path, verdict: faithfulness.verdict, score: faithfulness.score } : faithfulness,
 
@@ -11264,6 +11282,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   let summaryJob: Promise<void> | null = null;
   const summarizeIfNeeded = async (force = false): Promise<void> => {
+    // Explicit memory handling and at-the-wall recovery are called by the turn itself;
+    // only the automatic background caller must wait for the next idle boundary.
+    if (!force && working) return;
     if (summaryJob) {
       await summaryJob;
       if (!force) return;
