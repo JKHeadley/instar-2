@@ -31,3 +31,5 @@ simplestRobustRoute: This is the simplest robust route: resolve the five overlap
 VERDICT: author submission; no independent convergence asserted
 
 Publication: Existing desk rehash and repin scripts found zero stale owner or inventory pins. Compute the combined anchor digest with canonical() and compact excerpt digest with SHA-256 from actual bytes, never a hand-entered hash. Replay generation 31117fefacae1655ef9d8965ab3c8617a3b7ef8bc9057b5330606b495c038f8b binds source commit c0eca19eb135bf727bc89b6a9cfb04db788be4a6, 293 entries and 117 rules. No native conformance declaration changed.
+
+Decision: train-50-220329-review-scope | Bind the conflicted deadline review to the integration base; preserve both original records at their exact parent commits and retain their decisions. This prevents an unrelated 2484-commit subject while the existing commit-coverage gate still verifies every historical commit. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-50-repair-220329-PROGRESS.md

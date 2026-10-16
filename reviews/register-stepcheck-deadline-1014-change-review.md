@@ -1,32 +1,34 @@
-# Change review — extend the dark step-check graduation deadline
+# Change review — deadline history integration on train-50
 
-Subject base: d3fa88c4771b0934672c3fec1c39ae680c0336a4
+Subject base: 77dbef80748da0d11eb6ad2b3752983c1eebaaf2
 Review state: open
 Reviewed content: none
-Outcome: Import the owning repair 6b2e645230a839b8b141dcfdab87c615f2cd6d89 with an identical product patch on this branch’s baseline, authorized by the desk on 2026-10-15 at 17:20 for PR #166. Restore register replay after the step-check deadline expired by extending the declared target exactly 72 hours to 2026-10-18T00:00:00Z, retaining dark status and the outstanding graduation obligation.
-Affected rules: Rules 8, 26, 39, 49, 72, 73, 74, 90, 101, 102, 111, 113 and 116.
-Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake are unchanged; this change adds no runtime authority, model calls or enabled features.
+Outcome: Merge main d0944dba into train-50, preserving both promotion histories and the approved concurrent-coherency wording with its matching briefing pin.
+Affected rules: 26, 34, 36, 37, 49, 69, 74, 84, 90, 91, 101, 102, 111, 112, 113, 116, 117.
+Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake retain their existing enforcement; this merge changes no runtime authorization or effects.
 Operator questions: none
-Suggested tier: ordinary
-Declared tier: ordinary
-Tier rationale: Bounded declaration repair through the existing promotion record and register generator; no execution or judgment logic changes.
-Side effects: The existing fail-closed graduation check allows builds until the new target and still refuses at or after it. Status and documentation show the same new deadline. The feature remains dark and protects nothing until graduation is actually evidenced.
-Undo and recovery: Revert the declaration and appended promotion entry together and regenerate the register; the old expired deadline will again refuse builds. Keep prior promotion history intact.
-Multi-machine posture: Shared repository declaration and generated publication; all machines use the same deadline and unchanged clock comparison. No new machine-local runtime state.
-Layer below: Inspected Rules 72/73, docs/02-the-register.md, checkDeadlines in src/rulegraph/graph.ts, scripts/register-owner-references.mjs fixture mapping, and the append-only promotion record. The linked step-check unit suite passes with mocked Jev outputs, but the record has no reached graduation stages and the live procedure explicitly belongs to the desk. Unit metrics do not establish live graduation.
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Integration carries approved governing wording and its model-facing excerpt; no new wording is authored.
+Side effects: Main's concurrent-coherency excerpt replaces the prior digest while candidate compact source rendering remains. Both dated step-check decisions remain ordered; the latest deadline stays October 18 with no graduation claimed. Generated publications must match combined sources.
+Undo and recovery: Revert the merge through the desk release process, retaining journals and uncertain effect evidence; do not replay unknown sends. No live deployment is performed here.
+Multi-machine posture: Shared repository composition; existing ownership, replication and effect admission remain unchanged. Concurrent session awareness is the imported constitutional requirement, not a new claim of implemented runtime coverage.
+Layer below: Full main constitution, both merge parents, sourcePacket excerpt verification, promotionOf history projection, bootstrap anchor and replay publication tooling, captured declaration fixture.
 Bug class: none
 Bug evidence: none
-Hook bypass: none; core.hooksPath is unset and the common hooks directory contains sample hooks only.
+Hook bypass: none; core.hooksPath unset and the common hooks directory contains sample hooks only.
 Convergence: none
-Prompt review: The scanner classifies promotion-record.ts as a prompt source. The added entry records a deadline, reason, desk owner and rollback only; it changes no model instructions, output parser or accept/escalate/refuse decision. No fixture phrase becomes an intent trigger and no delegation dispatch supplies an expected verdict.
-Decision: stepcheck-deadline-extend | step-check graduation not yet proven; deadline extended 72 h so dated gates do not block unrelated builds; graduation work tracked by the desk. Keep dark status and append reason, owner and rollback to the existing promotion record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/register-stepcheck-deadline-1014-PROGRESS.md
+Prompt review: Preserve accepted parent wording and compact packet shape. The reported capability assertion is already repaired in the candidate; replay its captured answers and reviews rather than changing the protocol. Imported constitutional text retains stale-source refusal and positive current-source coverage.
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Existing capability description is asserted by a self-description test; no fixture answer or intent trigger is added.
+Prompt finding: 95e349aaf4ac | protocol-literal | Existing effect-doorway protocol describes standing grants; the test checks the protocol, not a scenario answer.
+Deferral: generated/conversion.json:1 | not-a-deferral=Generated publication records approved source conversion; no work is deferred.
 
-Publication: Regenerated the seven changed generated register/capability/source files through scripts/build-register.mjs --replay --commit 6b2e645230a839b8b141dcfdab87c615f2cd6d89. Desk owner rehash and repin tools found zero stale pins; no hashes were hand-edited.
+simplestRobustRoute: This is the simplest robust route: resolve the five overlaps additively and regenerate derived publications with existing tools. No new mechanism. The two exact parent commits guard entry; targeted positive and refusal tests guard the repair; the existing five safety floors remain unchanged. Builder readiness is pushed integration evidence, not live acceptance.
+80/20: Run targeted conflict consumers, the named constitutional prompt floors and cheap gate checks; the Studio owns full-suite and live acceptance evidence.
+VERDICT: author submission; no independent convergence asserted
 
-Decision: owner-repair-import | Import the existing owning repair instead of writing a second fix; bind this review to the receiving branch while preserving the owner decision and its promotion history. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/const-onemind-1015-PROGRESS.md
+Publication: Existing desk rehash and repin scripts found zero stale owner or inventory pins. Compute the combined anchor digest with canonical() and compact excerpt digest with SHA-256 from actual bytes, never a hand-entered hash. Replay generation 31117fefacae1655ef9d8965ab3c8617a3b7ef8bc9057b5330606b495c038f8b binds source commit c0eca19eb135bf727bc89b6a9cfb04db788be4a6, 293 entries and 117 rules. No native conformance declaration changed.
 
-## Closing block
-
-simplestRobustRoute: This is the simplest robust route: change the source deadline and append its owned decision using existing mechanisms, update consuming assertions and documentation, then regenerate dependent pins and publication with the project tools. No new machinery. The existing stage-evidence requirement guards graduation; the existing strict deadline check guards the new end date. No autonomous completion or live protection is claimed.
-80/20: Verify the linked step-check tests, promotion and inventory consumers, register/rulegraph tests, typecheck, architecture, lint, register replay and the desk's pinned ready tests; leave the actual graduation procedure with its recorded desk owner.
-VERDICT: author submission; no independent convergence claim — the review desk records its judgment
+Historical owner review: The exact original deadline review remains at 77dbef80748da0d11eb6ad2b3752983c1eebaaf2:reviews/register-stepcheck-deadline-1014-change-review.md; the main import review remains at d0944dbaee4acee514c53c25c3f1ba13026953d6:reviews/register-stepcheck-deadline-1014-change-review.md. This current record covers their integration rather than retrospectively reviewing all source differences from main’s older import baseline. No deadline or graduation state changes in this repair.
+Decision: stepcheck-deadline-extend | step-check graduation not yet proven; deadline extended 72 h so dated gates do not block unrelated builds; graduation work tracked by the desk. Keep dark status and append reason, owner and rollback to the existing promotion record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-50-repair-220329-PROGRESS.md
+Decision: owner-repair-import | Import the existing owning repair instead of writing a second fix; bind this review to the receiving branch while preserving the owner decision and its promotion history. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-50-repair-220329-PROGRESS.md
