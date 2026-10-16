@@ -26,6 +26,8 @@ Prompt finding: 4106b49fff07 | protocol-literal | existing topic-awareness evide
 Prompt finding: 849db3a6296a | protocol-literal | existing saved-memory response protocol, unchanged by this unit.
 Prompt finding: e8708c7fea24 | protocol-literal | existing source-label uncertainty guidance, unchanged by this unit.
 
+Register regeneration: replayed generated artifacts from product commit f7476086f1579d369fc9d1dae7896b5d63c20a51 with scripts/build-register.mjs; no declaration or certificate was changed.
+
 ## Closing block
 
 simplestRobustRoute: extend the existing reader, timer and signed journal send path. This is that route: fresh observed step identity prevents stale polls posing as activity; one additive clock projection prevents unrelated sends being followed by redundant liveness; the existing episode count supplies a finite cap. No new service, store, watcher or model call. Start requires admitted current work, end is final answer or stop, and existing owner/audience/spend/durable-send floors remain. Unattended live acceptance is not claimed.
