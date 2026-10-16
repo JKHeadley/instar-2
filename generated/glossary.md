@@ -1,7 +1,7 @@
 # Generated glossary
 
-Register generation: sha256:878a1cc784b2bbba764140588d4eab3337c2a4f683d78af8ded0cc3769c68a10
-Source commit: e9dd13caed9131219623ee1316b65a4f94a517a4
+Register generation: sha256:fcfdbd145d2fee863463614352aca78a326ba245249a6eeb656ea612e49e80bb
+Source commit: 30336bfbbe8d1a314b7c276d304e86c467ea844e
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -67,7 +67,7 @@ A feature is done when its register entry is `live`, its profile is declared, it
 required facts are present, and — if user-facing — its live proof exists. "Done" said in chat is
 a claim; "done" in the register is a fact. (Rule 62, and step one's "merged is approved".)
 
-Used by: rule:116, rule:20, rule:62, rule:65, rule:8, rule:99
+Used by: rule:116, rule:117, rule:20, rule:62, rule:65, rule:8, rule:99
 
 ## feature
 
@@ -132,7 +132,7 @@ A principal holding *operator* standing for a scope. **In one conversation there
 exactly one** — the verified person the conversation is bound to. **Across the organization there
 may be several**, each for their scope. Both are true once operator is a standing.
 
-Used by: rule:101, rule:102, rule:103, rule:104, rule:28, rule:4, rule:62, rule:79, rule:80, rule:81, rule:82, rule:88, rule:91, rule:93, rule:94, rule:98
+Used by: rule:101, rule:102, rule:103, rule:104, rule:117, rule:28, rule:4, rule:62, rule:79, rule:80, rule:81, rule:82, rule:88, rule:91, rule:93, rule:94, rule:98
 
 ## pending-landing
 
