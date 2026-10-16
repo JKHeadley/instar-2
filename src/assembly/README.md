@@ -251,3 +251,17 @@ progress intents bound it to one per message and one per topic per 45 seconds, i
 across restart. The ordinary send doorway still enforces audience, secrets, stop and reply
 allowance. Uncertain sends are not repeated. These additive custody fields retain existing
 records; rollback requires a reader that understands them, never deleting the journal.
+
+
+While a continuing conversation is answering an admitted operator message, its live adapter
+observations feed the host's current tool-admission projection. The journal may send one short
+`Status:` line per real tool step at about 2, 5 and 10 minutes from intake, then every 10
+minutes. The tool's own description is preferred; otherwise the line names its tool and target.
+Between tools, a self-written description may be quoted as the latest step, never as a still-running tool.
+There is no extra model call. Missing activity, a stale observation, a paused or dead worker,
+stop or expiry produces no progress line. The existing failure path handles failed workers.
+Final dispatch cancels pending progress and waits for an in-flight status send before sending
+the answer. Progress uses signed agent provenance, the ordinary reply cap (leaving one answer
+slot), durable unique intents and the existing retrospective review population. UNKNOWN sends
+are not retried. The journal and its replicated ownership path own the durable cadence; the
+activity projection is deliberately ephemeral and must be freshly observed after a restart.

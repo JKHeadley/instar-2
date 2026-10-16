@@ -1,3 +1,4 @@
+import { currentWorkingActivity, workingProgressDue, type WorkingActivity, type WorkingProgress } from './working-progress.js';
 import { admitJev, JEV_ADMISSION_MS } from './reply-check.js';
 import { checkPhaseTiming, recordPhaseTiming, type PhaseTiming } from './phase-timing.js';
 import { groupCarryPacket, validCarriedMemory, type CarriedMemory } from './group-carry.js';
@@ -1159,8 +1160,8 @@ export type JournalRecord =
   | { kind: 'held-notice-review'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'held-notice-intent'; id: string; text: string; chat: string; thread?: number; update: number; grant: string;
     /** Other held messages in this conversation the one notice also answers; none gets a second push (P-14). */
-    covers?: string[]; acknowledgement?: true; acknowledgementMode?: 'reaction-or-text'; waitingProgress?: true; deliveryUnknown?: true; provenance?: OutboundProvenance; at: number }
-  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
+    covers?: string[]; acknowledgement?: true; acknowledgementMode?: 'reaction-or-text'; workingProgress?: WorkingProgress; waitingProgress?: true; deliveryUnknown?: true; provenance?: OutboundProvenance; at: number }
+  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; workingProgress?: number; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
 
   // Non-additive: reservations/checks below may follow a sent reply; an older writer must refuse.
   | { kind: 'reply-review-after-send'; id: string; at: number }
@@ -1363,7 +1364,23 @@ export interface PacketDrop { kind: string; source: string; reason: string }
 export type IntakeCustody = { state: 'stored'; arrival: string; capture: string; secrets: string[] } | { state: 'failed' };
 /** One later message of a reply split across several: its plain text, its Telegram body, and its own signed provenance. */
 export interface ReplyPart { text: string; body: string; provenance: OutboundProvenance }
-export interface Turn { waitingProgress?: { at: number; sent?: number }; id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
+/** Rules 52/87: overlapping answers share one topic cadence, including UNKNOWN intents.
+ * A sibling completing after this intake remains in the window, so completion/replay cannot
+ * reset its spacing. Answers already complete before intake start a separate window. */
+function workingProgressAt(view: JournalView, turn: Turn): number {
+  const topic = view.order.filter(item => item.thread === turn.thread && item.reserved).sort((a, b) => b.at - a.at);
+  let startedAt = turn.at;
+  // Follow overlapping intake-to-answer intervals back to the start of this continuous work.
+  // A later intake must not reset the bound when an earlier batch member has already answered.
+  for (const item of topic) if (item.intentAt === undefined || item.intentAt >= startedAt)
+    startedAt = Math.min(startedAt, item.at);
+  const prior = topic.filter(item => item.intentAt === undefined || item.intentAt >= startedAt)
+    .flatMap(item => item.workingProgress ?? []).sort((a, b) => a.at - b.at);
+  const ordinal = prior.length;
+  return Math.max(workingProgressDue(startedAt, ordinal), (prior.at(-1)?.at ?? 0)
+    + (ordinal === 0 ? 0 : ordinal === 1 ? 180_000 : ordinal === 2 ? 300_000 : 600_000));
+}
+export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: { at: number; sent?: number }; id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
   media?: MediaCustodyResult;
   /** Expected causal prefix, retained before the first media request. */
   mediaClaim?: string;
@@ -3003,6 +3020,8 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
   const [kind, ...rest] = target.split(':'), key = rest.join(':');
   if (kind === 'reply') { const turn = view.turns.get(key);
     return turn?.intent !== undefined && turn.groupedInto === undefined ? { sent: turn.sent } : undefined; }
+  if (kind === 'working-progress') { const progress = view.turns.get(rest.slice(1).join(':'))?.workingProgress?.[Number(rest[0])];
+    return progress ? { sent: progress.sent } : undefined; }
   if (kind === 'waiting-progress') { const progress = view.turns.get(key)?.waitingProgress;
     return progress ? { sent: progress.sent } : undefined; }
   if (kind === 'delivery-notice') { const notice = view.turns.get(key)?.deliveryNotice;
@@ -3100,6 +3119,7 @@ export function sendOutcomeCounts(view: JournalView) {
     if (turn.intent !== undefined) settle(replyTarget(turn), turn.sent);
     for (const [index, part] of (turn.replyParts ?? []).entries()) if (part.started) settle(replyPartTarget(turn.id, index + 2), part.sent);
     if (turn.deliveryNotice?.lead === turn.id) settle(`delivery-notice:${turn.id}`, turn.deliveryNotice.sent);
+    for (const progress of turn.workingProgress ?? []) settle(`working-progress:${progress.ordinal}:${turn.id}`, progress.sent);
     if (turn.waitingProgress) settle(`waiting-progress:${turn.id}`, turn.waitingProgress.sent);
     if (turn.heldNoticeIntent !== undefined) settle(`held-notice:${turn.id}`, turn.heldNoticeSent);
     if (turn.limited?.lead === turn.id) settle(`limited:${turn.id}`, turn.limitedSent);
@@ -3145,7 +3165,7 @@ export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' |
   if (row.kind === 'operator-result-intent') return { target: `operator-result:${row.request}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'limited-intent') return { target: `limited:${row.id}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'intent') return { target: `reply:${row.id}`, chat: row.chat, ...thread, body: row.body ?? row.text };
-  if (row.kind === 'held-notice-intent') return { target: `${row.waitingProgress ? 'waiting-progress' : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.text };
+  if (row.kind === 'held-notice-intent') return { target: `${row.workingProgress ? `working-progress:${row.workingProgress.ordinal}` : row.waitingProgress ? 'waiting-progress' : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.workingProgress ? encodeReply(row.text) : row.text };
   return { target: `requested-reminder:${String(row.batch)}`, chat: row.chat, ...thread, body: row.body };
 }
 /** Verifies a recorded system writer's owner signature over its exact occurrence. */
@@ -4280,6 +4300,26 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     turn.heldNoticeReview = row.result;
     if (row.result.verdict !== 'unavailable') settleTokens(view, `held-notice-review:${row.id}`, row.result.usage);
     return;
+  }
+  if (row.kind === 'held-notice-intent' && row.workingProgress) {
+    const progress = row.workingProgress, prior = turn.workingProgress ?? [];
+    if (!turn.accepted || !operatorWriter(view, turn, true) || !turn.reserved || turn.intent !== undefined
+      || turn.held !== undefined || turn.limited !== undefined || turn.requestedAction || turn.editOf
+      || view.stop !== null || row.at >= view.expires || view.replies >= view.limits.maxReplies - 1
+      || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
+      || row.grant !== view.genesis.grant || row.waitingProgress || row.deliveryUnknown || row.acknowledgement || row.covers
+      || row.provenance?.speaker !== 'agent' || !currentWorkingActivity(progress, row.at)
+      || progress.ordinal !== prior.length || progress.at !== row.at || progress.sent !== undefined
+      || view.order.some(item => item.thread === turn.thread && item.workingProgress?.some(saved => saved.step === progress.step)) || row.text !== progress.text
+      || row.at < workingProgressAt(view, turn))
+      throw Error('preview journal: working progress refused');
+    turn.workingProgress = [...prior, { ...progress }]; view.replies++; return;
+  }
+  if (row.kind === 'held-notice-sent' && row.workingProgress !== undefined) {
+    const progress = turn.workingProgress?.[row.workingProgress];
+    if (!progress || progress.sent !== undefined || row.waitingProgress || row.deliveryUnknown
+      || !Number.isSafeInteger(row.message) || row.message <= 0) throw Error('preview journal: working progress receipt order');
+    progress.sent = row.message; return;
   }
   if (row.kind === 'held-notice-intent' && row.waitingProgress) {
     const last = Math.max(0, ...view.order.filter(item => item.thread === turn.thread).map(item => item.waitingProgress?.at ?? 0));
@@ -5483,6 +5523,7 @@ export interface PreviewPorts {
   groupDisclosure?(): Promise<boolean>;
   now(): number; stopped(): boolean;
   /** One-shot clock boundary; returns cancellation. Tests can advance it without host load. */
+  workingActivity?(id: string): WorkingActivity | null;
   acknowledgementTimer?(delayMs: number, run: () => void): () => void;
   /** Part 18: whether the presence sentinel is enabled this launch (its off-switch); absent means enabled. A disabled
    * family keeps its recorded decisions for audit, but a holding note it marked due earlier no longer goes out. */
@@ -5686,6 +5727,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
 
   // Bounded by admitted turn slots. Intake arms these independently of the serial answer worker.
+  const workingTimers = new Map<Turn, () => void>();
+  const workingInFlight = new Map<Turn, Promise<void>>();
+  const workingEnded = new Set<Turn>();
+  const cancelWorkingProgress = (turn: Turn) => { workingEnded.add(turn); workingTimers.get(turn)?.(); workingTimers.delete(turn); };
   const progressTimers = new Map<Turn, () => void>();
   const progressInFlight = new Map<Turn, Promise<void>>();
   const acknowledgementTimers = new Map<Turn, () => void>();
@@ -7201,7 +7246,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const otherState = requestState ? liveRequests.filter(item => item.request.action !== requestState.request.action
       && (item.approved !== undefined && !item.applied || openNow(item) && requestBase(item) === approvalBase(journal.view))).at(-1) : undefined;
     const otherOperatorRequest = otherState ? describe(otherState, false) : undefined;
-    const packet = JSON.stringify({ now, clock: { utc: new Date(now).toISOString(), zone, day: localDay,
+    const packet = JSON.stringify({ now, ...(ports.workingActivity ? { progressReplies: {
+      cadenceMinutes: [2, 5, 10], thereafterMinutes: 10, source: 'your current tool description or tool and target; between tools, your latest self-written description',
+      note: 'While your answer is in progress, the host may quote one short status per tool step while the session is live. Describe tool steps accurately. The final answer ends these status lines.' } } : {}), clock: { utc: new Date(now).toISOString(), zone, day: localDay,
       time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`,
       weekday: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'long' }).format(now) },
       ...(resume ? { resume: { previous: turnLabel(journal.view.turns.get(resume.previous)!), elapsedHours: resume.elapsedHours,
@@ -7858,8 +7905,54 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       progressInFlight.set(turn, job);
     }));
   };
+  const workingCurrent = (turn: Turn) => !workingEnded.has(turn) && !halted() && fromOperator(turn)
+    && turn.reserved && !turn.intent && turn.held === undefined && turn.limited === undefined
+    && !turn.editOf && !turn.requestedAction && !outsideAllowance(journal.view, turn)
+    && journal.view.replies < journal.view.limits.maxReplies - 1;
+  const workingAt = (turn: Turn) => workingProgressAt(journal.view, turn);
+  const startWorkingProgress = (turn: Turn) => {
+    if (!ports.workingActivity || workingEnded.has(turn) || workingTimers.has(turn) || turn.intent
+      || !fromOperator(turn) || turn.editOf || turn.requestedAction || outsideAllowance(journal.view, turn)) return;
+    const after = ports.acknowledgementTimer ?? ((ms: number, run: () => void) => {
+      const timer = setTimeout(run, ms); timer.unref(); return () => clearTimeout(timer);
+    });
+    workingTimers.set(turn, after(Math.max(1000, workingAt(turn) - ports.now()), () => {
+      workingTimers.delete(turn);
+      const run = async () => {
+        if (!workingCurrent(turn)) return;
+        const activity = ports.workingActivity!(turn.id), now = ports.now();
+        if (!currentWorkingActivity(activity, now) || now < workingAt(turn)
+          || journal.view.order.some(item => item.thread === turn.thread && item.workingProgress?.some(saved => saved.step === activity.step))) return;
+        const text = activity.text, ordinal = turn.workingProgress?.length ?? 0;
+        ports.checkOutbound(text);
+        const chat = journal.view.genesis.chat, thread = turn.thread === undefined ? {} : { thread: turn.thread };
+        const target = `working-progress:${ordinal}:${turn.id}`, body = encodeReply(text);
+        ports.checkOutbound(body);
+        const provenance = journal.signOutbound('agent', { target, chat, ...thread, body });
+        let admitted = false;
+        const current = () => (admitted ? !workingEnded.has(turn) && !halted() && !turn.intent : workingCurrent(turn)) && currentWorkingActivity(ports.workingActivity!(turn.id), ports.now())
+          && ports.workingActivity!(turn.id)?.step === activity.step && ports.workingActivity!(turn.id)?.text === text
+          && (admitted || ports.now() >= workingAt(turn));
+        const outcome = await push('reply', target, provenance, { text: body, expectedText: text, chat, ...thread,
+          update: turn.update, current }, () => {
+          const at = ports.now();
+          journal.append({ kind: 'held-notice-intent', id: turn.id, text, chat, ...thread, update: turn.update,
+            grant: journal.view.genesis.grant, provenance, workingProgress: { ...activity, ordinal, at }, at });
+          admitted = true;
+        });
+        if (outcome.kind === 'accepted') journal.append({ kind: 'held-notice-sent', id: turn.id,
+          workingProgress: ordinal, message: outcome.message, at: ports.now() });
+      };
+      const job = run().catch(() => {}).finally(() => {
+        workingInFlight.delete(turn);
+        if (workingCurrent(turn)) startWorkingProgress(turn);
+      });
+      workingInFlight.set(turn, job);
+    }));
+  };
   const startAcknowledgement = (turn: Turn) => {
     startProgress(turn);
+    startWorkingProgress(turn);
     if (acknowledgementTimers.has(turn) || !fromOperator(turn) || turn.requestedAction || turn.editOf
       || ((turn.reserved || turn.answer !== undefined) && turn.modelState !== 'complete')
       || turn.intent !== undefined || outsideAllowance(journal.view, turn)) return;
@@ -9359,6 +9452,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Review is complete: dispatch owns the reply now. Cancel an unadmitted acknowledgement,
         // but wait for an already dispatched one so it can never arrive after the answer.
         cancelAcknowledgement(turn);
+        cancelWorkingProgress(turn);
+        await workingInFlight.get(turn);
         await acknowledgementsInFlight.get(turn);
         const intentAt = ports.now();
         const stopBase = approvalBase(journal.view);
@@ -9435,7 +9530,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (!due && pendingMemory()?.editOf) settleBehind();
       if (!due && pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
     } finally {
-      try { await Promise.all([...acknowledgementsInFlight.values(), ...progressInFlight.values()]); } finally {
+      try { await Promise.all([...acknowledgementsInFlight.values(), ...progressInFlight.values(), ...workingInFlight.values()]); } finally {
+        for (const cancel of workingTimers.values()) cancel();
+        workingTimers.clear();
         for (const cancel of progressTimers.values()) cancel();
         progressTimers.clear();
         wakeTopicDrain = null;
