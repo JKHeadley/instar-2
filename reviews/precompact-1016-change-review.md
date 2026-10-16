@@ -23,9 +23,6 @@ Prompt review: No model prompt or output parser changed. Recorded bytes feed the
 Decision: precompact-existing-path | Extend the existing holder and journal summary path rather than add a service, store or model call; retain its pressure threshold and forced recovery. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/precompact-1016-PROGRESS.md
 Decision: precompact-idle-cooldown | Recheck idle before publishing a summary instead of delaying ordinary replies, and derive the ten-minute cooldown from durable summary outcomes/reservations so a restart cannot reset pacing. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/precompact-1016-PROGRESS.md
 
-simplestRobustRoute: This is the simplest robust route: one pure idle/pressure/cooldown decision in the existing context holder, consumed by the already scheduled journal summary pass. Checking idle before starting and publishing prevents the reproduced mid-turn compaction race without delaying replies; reading existing durable rows prevents rapid repeated passes and cooldown reset after restart without adding state. Existing ownership, stop, spend and reservation guards admit work; faithful accepted summaries, retained originals and first-reply accounting establish continuity. Actual unattended live proof belongs to the desk proof room and is not claimed here.
-80/20: Red/green regressions, direct consumers, recorded replay, typecheck, architecture, register and pinned checks on WSL; the desk owns host-dependent and live proof-room checks.
-VERDICT: author submission; the independent desk records its own review
 
 Prompt finding: 4106b49fff07 | protocol-literal | Existing source-bound claim instruction is unchanged; its mirrored test checks the protocol, and no expected model verdict was added.
 Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory display literal is unchanged; this change does not alter its model prompt or parser.
@@ -33,3 +30,7 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing sourceLabel provenanc
 Deferral: src/awareness/README.md:28 | not-a-deferral=Describes the implemented idle boundary and durable cooldown, not postponed development.
 Deferral: tests/preview/journal.ts:11259 | not-a-deferral=Recorded runtime outcome when an ordinary turn owns the boundary; originals and bounded retry remain implemented.
 Deferral: tests/preview/proactive-compaction.test.ts:105 | not-a-deferral=Assertion of the actual runtime deferral outcome, followed by the successful idle retry.
+
+simplestRobustRoute: This is the simplest robust route: one pure idle/pressure/cooldown decision in the existing context holder, consumed by the already scheduled journal summary pass. Checking idle before starting and publishing prevents the reproduced mid-turn compaction race without delaying replies; reading existing durable rows prevents rapid repeated passes and cooldown reset after restart without adding state. Existing ownership, stop, spend and reservation guards admit work; faithful accepted summaries, retained originals and first-reply accounting establish continuity. Actual unattended live proof belongs to the desk proof room and is not claimed here.
+80/20: Red/green regressions, direct consumers, recorded replay, typecheck, architecture, register and pinned checks on WSL; the desk owns host-dependent and live proof-room checks.
+VERDICT: author submission; the independent desk records its own review
