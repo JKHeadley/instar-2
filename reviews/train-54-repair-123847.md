@@ -28,6 +28,8 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing grounding instruction
 
 Subject (25 paths): tests/preview/credential-self-state.test.ts, tests/preview/dated-memory.ts, tests/preview/group-carry.test.ts, tests/preview/group-carry.ts, tests/preview/journal-agent.mjs, tests/preview/journal-audit.mjs, tests/preview/journal-channel-memory.test.ts, tests/preview/journal-commitments.test.ts, tests/preview/journal-conversations.test.ts, tests/preview/journal-memory-dedupe.test.ts, tests/preview/journal-memory-inventory.test.ts, tests/preview/journal-memory-search.test.ts, tests/preview/journal-overlap.test.ts, tests/preview/journal-packet-time.test.ts, tests/preview/journal-people.test.ts, tests/preview/journal-person-attributes.test.ts, tests/preview/journal-recall-by-date.test.ts, tests/preview/journal-recall-lookup.test.ts, tests/preview/journal-sibling-replay.test.ts, tests/preview/journal-topic-sessions.test.ts, tests/preview/journal-upgrade-compat.test.ts, tests/preview/journal.test.ts, tests/preview/journal.ts, tests/preview/recall-latency.test.ts, tests/preview/topic-awareness.test.ts
 
+Validation: 44 tests in five targeted files passed; typecheck, build and architecture passed. Delegated owner and support-source pin tools changed zero pins. Generated publications replayed from merge 1f5a022e7c6ac929fa0108d3794f7898475e0414.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: preserve both imports and merge the exact live commit, then regenerate existing publications. Adds no mechanism. Start guard is the exact parent ancestry, end guards are targeted tests and register checks, limit guards remain existing caps/stop/send admission. No new autonomous-product acceptance is claimed.
