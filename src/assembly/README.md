@@ -265,3 +265,9 @@ the answer. Progress uses signed agent provenance, the ordinary reply cap (leavi
 slot), durable unique intents and the existing retrospective review population. UNKNOWN sends
 are not retried. The journal and its replicated ownership path own the durable cadence; the
 activity projection is deliberately ephemeral and must be freshly observed after a restart.
+The session driver's optional activity observation carries only the owned claim, capture digest,
+observation time and existing typed wait signature. Empty captures are unknown. The preview's
+existing presence cycle records each registered work subject even while its ordinary lane is busy;
+unchanged observed activity becomes an advisory stall after one minute. Registered helper waits,
+unavailable observations and advancing work never authorize a restart or termination. The existing
+step deadline, result receipt, stop, resource owner and effect identities remain authoritative.

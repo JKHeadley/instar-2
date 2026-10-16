@@ -1530,6 +1530,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   commitmentRefusals: number;
   /** Scheduled work per obligation key (`commitment:N` / `blocker:N`), and answer proposals the runner refused. */
   obligationWork: Record<string, ObligationWork>; rejectedObligations: number;
+  /** Open registered children, including helpers; replay and snapshots retain ownership without a new store. */
+  activeSessionWork?: Record<string, SessionWorkEdge>;
   changeHistory: RecordedChange[]; undos: { change: number; trigger: string; at: number }[];
 
 
@@ -1848,9 +1850,18 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
   if (saved.order.length !== turns.size || new Set(saved.order).size !== saved.order.length
     || saved.order.some(id => !turns.has(id) || turns.get(id)?.id !== id))
     throw Error('preview journal: snapshot turn index differs');
+  // Older compacted journals retained child records but did not project their active population.
+  // Rebuild only ownership, never the already charged allowance or any effect.
+  const activeSessionWork = saved.activeSessionWork ?? {};
+  if (saved.activeSessionWork === undefined) for (const row of snapshot.retained) {
+    if (row.kind !== 'session-work') continue;
+    if (row.record.type === 'SessionWorkEdge') activeSessionWork[row.record.id] = row.record;
+    else if (row.record.type === 'SessionWorkEdgeClose') delete activeSessionWork[row.record.edge];
+  }
   const legacyFloor = snapshot.retained.reduce((max, row) => 'at' in row ? Math.max(max, row.at) : max, 0);
   const clockFloor = saved.clockFloor ?? saved.turns.reduce((max, [, turn]) => Math.max(max, turn.at), legacyFloor);
-  const view: JournalView = { ...saved, forwardFrames: [], personAttributes: saved.personAttributes ?? [], clockFloor, expires: saved.expires ?? genesis.expires, expiryAuthority: saved.expiryAuthority ?? null, operatorRequests: saved.operatorRequests ?? [],
+  const view: JournalView = { ...saved, ...(saved.activeSessionWork !== undefined || Object.keys(activeSessionWork).length
+    ? { activeSessionWork } : {}), forwardFrames: [], personAttributes: saved.personAttributes ?? [], clockFloor, expires: saved.expires ?? genesis.expires, expiryAuthority: saved.expiryAuthority ?? null, operatorRequests: saved.operatorRequests ?? [],
     tokenTotals: saved.tokenTotals ?? emptyTokenTotals(), tokenCalls: saved.tokenCalls ?? [],
     replyCheckPaths: { ...saved.replyCheckPaths, 'operator-echo': saved.replyCheckPaths?.['operator-echo'] ?? 0 },
     changeHistory: saved.changeHistory ?? [], undos: saved.undos ?? [],
@@ -2386,6 +2397,11 @@ function projectSessionWork(view: JournalView, record: SessionWorkEdge | Session
     } else if (!prepared.includes(record.id)) throw Error('preview journal: tool effect observed before it was prepared');
     return;
   }
+  if (record.type === 'SessionWorkEdge' && record.drawsOn === undefined
+    && view.calls + record.budget.calls > view.limits.maxCalls) throw Error('preview journal: session work call cap');
+  const active = view.activeSessionWork ?? (view.activeSessionWork = {});
+  if (record.type === 'SessionWorkEdge') active[record.id] = record;
+  else delete active[record.edge];
   // A delegation inside a step draws on its parent's reservation (the model-dispatch checkpoint counts its calls there).
   if (record.type === 'SessionWorkEdge' && record.drawsOn !== undefined) return;
   // A close whose child made more model calls than its edge reserved charges the excess, so the remaining
@@ -2395,7 +2411,6 @@ function projectSessionWork(view: JournalView, record: SessionWorkEdge | Session
       view.calls += record.calls - record.reserved;
     return;
   }
-  if (view.calls + record.budget.calls > view.limits.maxCalls) throw Error('preview journal: session work call cap');
   view.calls += record.budget.calls;
 }
 /** Rules 2, 60, 114: a delegated-session edge or close is accepted only complete and bounded, so a

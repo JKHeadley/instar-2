@@ -7,12 +7,12 @@ import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value, refused } from '../facts/fixtures.js';
 import { buildLiteralSendArgs, chunkLiteralForTmux, classifyPaneIdle, classifyPaneReadiness, classifyStuckSignature,
   createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
-import type { SessionIO, SessionJournal } from '../../src/assembly/production-session-driver.js';
+import type { ProductionSessionConfig, SessionIO, SessionJournal } from '../../src/assembly/production-session-driver.js';
 
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const fixtureRoots: string[] = [];
 afterEach(() => { for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: Readonly<{ launchVia?: readonly string[]; requireTurnHook?: boolean }> = {}) {
+function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: Readonly<{ launchVia?: readonly string[]; requireTurnHook?: boolean; observeActivity?: NonNullable<ProductionSessionConfig['observeActivity']> }> = {}) {
   const f = assemblyRuntimeFixture(); let now = 1000, stopped = false, pane = '❯ ', sends = 0;
   const root = mkdtempSync(join(tmpdir(), 'instar-session-test-')); fixtureRoots.push(root);
   const homes = { a: join(root, 'login-a'), b: join(root, 'login-b') };
@@ -652,4 +652,27 @@ it('a new topic claim with prior history requires continuation even without a na
   const missing = createProductionSessionDriver({ ...f.config, maxSessions: 2, continuationRequired: () => true, continuation: undefined });
   refused(missing.launch({ operation: 'another', claim: 'another', artifact: 'sha256:test', incarnation: 'next', workingScope: '/work', handles: [] }),
     'continuation provider unavailable');
+});
+
+it('reports recorded pane activity per owned claim without treating activity or empty captures as completion', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/work-silence-terminal-2026-10-14.json', import.meta.url), 'utf8'));
+  const observations: Parameters<NonNullable<ProductionSessionConfig['observeActivity']>>[0][] = [];
+  const f = fixture('claude-code', { requireTurnHook: true, observeActivity: row => observations.push(row) });
+  const identity = f.launch(); value(f.deliver(identity));
+  for (const row of recorded.captures) {
+    f.changePane(row.capture);
+    expect(value(f.driver.observe({ operation: 'work', processIdentity: identity })).phase).toBe('launched');
+  }
+  expect(observations[0]).toMatchObject({ subject: 'topic', progress: null, wait: null });
+  expect(observations[1]).toMatchObject({ subject: 'topic', progress: hash(recorded.captures[1].capture.trim()), wait: null });
+  expect(observations[2]?.progress).not.toBe(observations[1]?.progress);
+  expect(JSON.stringify(observations)).not.toContain('Hullaballooing');
+  expect(f.calls.filter(call => call[0] === 'kill-session')).toHaveLength(0);
+});
+
+it('an unavailable advisory activity sink cannot interrupt the observed worker', () => {
+  const f = fixture('claude-code', { observeActivity: () => { throw Error('observer unavailable'); } });
+  const identity = f.launch(); value(f.deliver(identity));
+  expect(value(f.driver.observe({ operation: 'work', processIdentity: identity })).phase).toBe('launched');
+  expect(f.calls.filter(call => call[0] === 'kill-session')).toHaveLength(0);
 });

@@ -1,0 +1,23 @@
+{
+  "provenance": "Verbatim final nine lines of desk-recorded Claude Code pane captures. Time is original epoch seconds; tests inject the clock. No Codex-specific pane is asserted.",
+  "captures": [
+    {
+      "source": "step1-rewalk4-1014-records/walk/pane-captures.jsonl",
+      "line": 1,
+      "at": 1792045567.7055092,
+      "capture": "\n\n\n\n\n\n\n\n"
+    },
+    {
+      "source": "step1-rewalk4-1014-records/walk/pane-captures.jsonl",
+      "line": 14,
+      "at": 1792045576.474987,
+      "capture": "  this same conversation.\n\n✶ Hullaballooing… (7s · thinking)\n                                                                                  ● high · /effort\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt · ← for agents\n"
+    },
+    {
+      "source": "step1-rewalk4-1014-records/walk/pane-captures.jsonl",
+      "line": 31,
+      "at": 1792045585.4693918,
+      "capture": "  this same conversation.\n\n✢ Hullaballooing… (16s · ↓ 1.0k tokens · thought for 14s)\n\n────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt · ← for agents\n"
+    }
+  ]
+}

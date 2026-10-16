@@ -1487,6 +1487,7 @@ async function main() {
   let failedPolls = 0, conflictedPolls = 0;
   let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsResolution = null, toolsOff = null,
     sessionWork = null, gate = null;
+  const workActivity = new Map();
   const conversationSession = conversationSessionOf(options);
   const accountActions = conversationAccountActions(options);
   const sessionLimits = conversationSession ? CONVERSATION_SESSION_LIMITS : SESSION_WORK_LIMITS;
@@ -2586,6 +2587,7 @@ async function main() {
           ...(conversationSession ? { connectors: claim => sessionConnectors.get(claim)?.launch() } : {}),
           framework, executable: binding.entry().profile.executable, cwd: project, home: binding.entry().profile.home, configHome: binding.entry().profile.configDirectory,
           model: required(options, 'model'), context, io: { ...binding.physical(), transcriptExists: (...args) => (!handoff || handoff.resumeAllowed) && binding.physical().transcriptExists(...args) }, now: wallNow, stopped: binding.stopped, resolveIntake,
+          observeActivity: observation => workActivity.set(observation.subject, observation),
           maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
           readyTimeoutMs: 30000, protectedSessions: [],
           ...(conversationSession ? { requireTurnHook: true, inboxDirectory: binding.physical().inboxDirectory,
@@ -2929,6 +2931,11 @@ async function main() {
     const sentinelSteps = [];
     const sentinels = createLiveSentinels(journal, { now: wallNow, startedAt: launchedAt, families: sentinelFamilies,
       stopped: () => signalled || workerStop.value || existsSync(stopPath) || !ownerHeld(),
+      workActivity: () => {
+        const active = new Set(Object.values(journal.view.activeSessionWork ?? {}).map(edge => edge.child));
+        for (const subject of workActivity.keys()) if (!active.has(subject)) workActivity.delete(subject);
+        return [...workActivity.values()];
+      },
       reground: () => sentinelSteps.push(() => worker.drain()),
       recoverContext: () => sentinelSteps.push(() => worker.summarizeIfNeeded(true)),
       selfHeal: () => sentinelSteps.push(() => worker.drain()),
@@ -2943,6 +2950,8 @@ async function main() {
     // the Telegram connection or on an inbound message; only delivery of its result does.
     const workCycle = (requested = false, wake = false) => {
       if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
+      // Work observation shares this cycle but must run while the ordinary work lane is busy.
+      if (!journal.readOnly) sentinels.observeWork();
       sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: async () => {
         if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
         if (conversationSession) {
