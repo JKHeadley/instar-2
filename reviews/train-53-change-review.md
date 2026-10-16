@@ -31,6 +31,8 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing memory source-label g
 Prompt finding: 4106b49fff07 | protocol-literal | Existing historical grounding instruction restored for packet-pin verification, not a new model trigger.
 Prompt finding: 450c79237a95 | protocol-literal | Existing person-history disambiguation instruction; only timestamp expectations changed.
 
+Validation: Replayed the register at 0235ef1498cb57fd92b41fbdcbec9cb4bc11ad97 after the compatibility expectation repair; inventory and owner-manifest tools refreshed zero pins. Targeted and host-bound results are recorded in the report.
+
 simplestRobustRoute: This is the simplest robust route: one ordinary exact-head merge and the established desk regeneration chain, with targeted consumer and recorded-shape verification. No new machinery. Exact live base and reviewed head guard entry; secrets, spend, stop, durable intake and unique effects remain floors. Builder completion is a pushed composition with classified checks, not live acceptance or independent convergence.
 80/20: Run changed tests, direct consumers, required journal and register cases, and required machine checks; the desk owns the combined full-suite and live gate.
 VERDICT: author submission; independent landing review remains desk-owned
