@@ -24,6 +24,8 @@ Decision: crashloop-scope | extend the existing supervisor and notice driver wit
 
 Decision: crashloop-publication | refresh the changed owner-reference hash and regenerate the existing shape-only register from committed source; leave the Studio-owned native certificate untouched | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/crashloop-pause-1016-PROGRESS.md
 
+Register publication: generated outputs replay committed source 863abf06419c303841b7e7e376fa289b0cf946eb; authority remains shape-only. The owner-reference helper changed one pre-existing test hash; grounding inventory changed zero pins. Native macOS self-host certification remains desk-owned.
+
 simplestRobustRoute: this is the simplest robust route for the named host-restart budget reset: persist the window and pause in the holder that already records every failed launch, reuse its existing confined notice driver, and add an exact local resume. The pure reducer performs only arithmetic over supplied observations; the host owns time and I/O. Start, stop, grant, budget and unknown-effect guards remain. Recorded launch/worker replays and injected-clock positives/negative neighbours are offline evidence; the desk owns the unattended proof-room result and independent landing review.
 80/20: targeted changed/direct-importer tests, typecheck, architecture/register/change-review checks and pinned READY tests; no full-suite sweep, second baseline tree or live mutations. The remaining live proof is an explicit desk acceptance step, not claimed performed.
 VERDICT: author submission; no independent convergence or live acceptance claim
