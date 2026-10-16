@@ -5,7 +5,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { createJournalWorker, openPreviewJournal, sendOutcomeCounts, MODEL_FAILURE_REPLY, UNKNOWN_SEND_NOTICE } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, sendOutcomeCounts, MODEL_FAILURE_REPLY, UNKNOWN_SEND_NOTICE, REFUSED_SEND_NOTICE } from './journal-test-worker.js';
 import { outboundSigner, settleSendOutcome, type SendOutcome } from './outbound-provenance.js';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 import { createServer } from 'node:net';
@@ -82,7 +82,8 @@ it.each(['real-connect-recovery', 'real-connect-persistent', 'real-lost-receipt'
 it('persistent native connection refusal stops after one outer retry and remains refused after restart', async () => {
   const dir = root();
   try {
-    const w = world(dir, () => {
+    const w = world(dir, input => {
+      if (input.target?.startsWith('delivery-notice:')) return 99;
       const count = join(dir, 'count.json');
       const request = Buffer.from(JSON.stringify({ method: 'sendMessage', body: {}, timeoutMs: 10_000 })).toString('base64url');
       const child = spawnSync(process.execPath, ['--import', resolve('tests/assembly/telegram-bot-api-round6-transport.mjs'),
@@ -96,7 +97,8 @@ it('persistent native connection refusal stops after one outer retry and remains
       return classifyTelegramSend(reply, { chat: genesis.chat, expectedText: 'an answer' });
     });
     w.worker.intake([update(1)]); await w.worker.drain();
-    expect(w.seen).toHaveLength(2);
+    expect(w.seen).toHaveLength(3);
+    expect(w.seen[2]).toMatchObject({ expectedText: REFUSED_SEND_NOTICE });
     expect(w.journal.view.sendOutcomes).toHaveLength(1);
     expect(w.journal.view.sendOutcomes[0]).toMatchObject({ outcome: 'refused',
       reason: expect.stringContaining('ECONNREFUSED/connect') });
@@ -128,12 +130,13 @@ const launcher = (dir: string, command: 'status' | 'inspect') => {
 it('keeps a definite refusal distinct from UNKNOWN and from delivery, through the journal, replay and status', async () => {
   const dir = root();
   try {
-    const first = world(dir, () => ({ kind: 'refused', reason: 'telegram 403: Forbidden: bot was blocked by the user' }));
+    const first = world(dir, input => input.target?.startsWith('delivery-notice:') ? 99
+      : ({ kind: 'refused', reason: 'telegram 403: Forbidden: bot was blocked by the user' }));
     first.worker.intake([update(1)]); await first.worker.drain();
     const turn = first.journal.view.order[0]!;
     expect(turn.intent).toBeDefined();
     expect(turn.sent).toBeUndefined();
-    expect(sendOutcomeCounts(first.journal.view)).toMatchObject({ accepted: 0, refused: 1, unknown: 0,
+    expect(sendOutcomeCounts(first.journal.view)).toMatchObject({ accepted: 1, refused: 1, unknown: 0,
       lastRefusal: { target: `reply:${turn.id}`, outcome: 'refused' } });
     first.journal.close();
     // Replay keeps the refusal, and a refused intent is never redispatched.
@@ -148,7 +151,7 @@ it('keeps a definite refusal distinct from UNKNOWN and from delivery, through th
     // The neighbouring case: an unknown dispatch stays UNKNOWN, not refused.
     const unknown = world(dir, input => input.target?.startsWith('delivery-notice:') ? 99 : ({ kind: 'unknown', reason: 'transport timeout' }));
     unknown.worker.intake([update(2)]); await unknown.worker.drain();
-    expect(sendOutcomeCounts(unknown.journal.view)).toMatchObject({ accepted: 1, refused: 1, unknown: 1 });
+    expect(sendOutcomeCounts(unknown.journal.view)).toMatchObject({ accepted: 2, refused: 1, unknown: 1 });
     expect(unknown.journal.view.sendOutcomes.map(item => item.outcome)).toEqual(['refused', 'unknown']);
     // The next turn's history labels the earlier answer as refused, never as delivery UNKNOWN.
     const history = JSON.parse(unknown.contexts.at(-1)!).history as { outcome?: string }[];
@@ -346,14 +349,15 @@ it('dispatches a never-sent reply once more and accepts it; a repeat proof is re
     expect(sendOutcomeCounts(once.journal.view)).toMatchObject({ accepted: 1, refused: 0, unknown: 0, unknownReasons: {} });
     once.journal.close();
     // A second proof settles as a definite non-delivery with its reason, and is never dispatched a third time.
-    const twice = world(dir, () => neverSent);
+    const twice = world(dir, input => input.target?.startsWith('delivery-notice:') ? 99 : neverSent);
     twice.worker.intake([update(2)]); await twice.worker.drain();
-    expect(twice.seen).toHaveLength(2);
+    expect(twice.seen).toHaveLength(3);
+    expect(twice.seen[2]).toMatchObject({ expectedText: REFUSED_SEND_NOTICE });
     const turn = twice.journal.view.order[1]!;
     expect(turn.sent).toBeUndefined();
     expect(twice.journal.view.sendOutcomes).toEqual([{ target: `reply:${turn.id}`, outcome: 'refused',
       reason: neverSent.reason, at: 1000 }]);
-    expect(sendOutcomeCounts(twice.journal.view)).toMatchObject({ accepted: 1, refused: 1, unknown: 0, unknownReasons: {},
+    expect(sendOutcomeCounts(twice.journal.view)).toMatchObject({ accepted: 2, refused: 1, unknown: 0, unknownReasons: {},
       lastRefusal: { target: `reply:${turn.id}`, outcome: 'refused', reason: neverSent.reason }, lastUnknown: null });
     twice.journal.close();
     // Replay keeps that refusal and never dispatches the intent again.
@@ -365,7 +369,7 @@ it('dispatches a never-sent reply once more and accepts it; a repeat proof is re
     // The operator views agree: refused, with the reason that says it was never sent.
     expect(launcher(dir, 'inspect').reply).toMatchObject({ update: 2, outcome: 'send-refused', refusal: neverSent.reason });
     expect(launcher(dir, 'status')).toMatchObject({ unknownSends: 0,
-      sendOutcomes: { accepted: 1, refused: 1, unknown: 0, unknownReasons: {}, lastUnknown: null } });
+      sendOutcomes: { accepted: 2, refused: 1, unknown: 0, unknownReasons: {}, lastUnknown: null } });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }, 60000);
 

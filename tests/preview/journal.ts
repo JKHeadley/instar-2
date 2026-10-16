@@ -302,6 +302,7 @@ export const CARRIED_MEMORY_ITEM_SOURCE = 'A source may also be a source from pr
 export const MEMORY_UNDECIDED_REPLY = 'Your message is retained, but I could not validate and save the requested memory change.';
 export const WAITING_PROGRESS_AFTER_MS = 45_000;
 export const WAITING_PROGRESS = "Still on your earlier message; I'll get to this one next.";
+export const REFUSED_SEND_NOTICE = 'I could not send my complete answer. Your request and the answer remain in the conversation record. You can ask me for the answer again.';
 export const UNKNOWN_SEND_NOTICE = 'My answer may not have arrived. Your request and the answer remain in the conversation record. You can ask me for the answer again.';
 export const UNKNOWN_ANSWER_NOTICE = 'The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.';
 export const TOO_LONG_INPUT_NOTICE = 'Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
@@ -3199,11 +3200,11 @@ export function sendOutcomeOf(view: JournalView, target: string, sent: number | 
   const recorded = view.sendOutcomes.find(item => item.target === target);
   return recorded?.outcome === 'refused' ? { kind: 'refused', reason: recorded.reason } : { kind: 'unknown', reason: recorded?.reason ?? null };
 }
-/** An unknown answer keeps its original intent fenced. Its separate content-free notice may start once. */
+/** A failed or unknown answer keeps its original intent fenced. Its separate content-free notice may start once. */
 function needsDeliveryNotice(view: JournalView, turn: Turn): boolean {
   if (!turn.accepted || turn.editOf || turn.groupedInto || turn.intent === undefined || turn.answer === undefined || turn.deliveryNotice) return false;
   const whole = replyOutcomeOf(view, turn);
-  return whole.started && whole.outcome.kind === 'unknown';
+  return whole.started && whole.outcome.kind !== 'accepted';
 }
 /** The reply target a turn's intent was dispatched under (a grouped turn shares its leader's send). */
 export const replyTarget = (turn: Turn) => `reply:${turn.groupedInto ?? turn.id}`;
@@ -4526,7 +4527,11 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   }
   if (row.kind === 'held-notice-intent' && row.deliveryUnknown) {
     const covered = [turn, ...(row.covers ?? []).map(id => view.turns.get(id))];
-    if (row.deliveryUnknown !== true || row.acknowledgement !== undefined || row.text !== UNKNOWN_SEND_NOTICE
+    // deliveryUnknown is the historical discriminator for the durable delivery-notice slot.
+    // Keep it readable; the exact retained outcomes determine the wording, never the marker.
+    const text = covered.every(item => item && replyOutcomeOf(view, item).outcome.kind === 'refused')
+      ? REFUSED_SEND_NOTICE : UNKNOWN_SEND_NOTICE;
+    if (row.deliveryUnknown !== true || row.acknowledgement !== undefined || row.text !== text
       || view.stop !== null || view.replies >= view.limits.maxReplies || row.at >= view.expires
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
       || row.grant !== view.genesis.grant || new Set(covered).size !== covered.length
@@ -8259,13 +8264,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   // Reuse the durable notice doorway, with a separate slot because the acknowledgement may
   // already have used heldNoticeIntent. A notice's own UNKNOWN never creates another notice.
-  const noticeUnknownReplies = async () => {
+  const noticeFailedReplies = async () => {
     for (const turn of journal.view.order) {
       if (halted() || journal.view.replies >= journal.view.limits.maxReplies) return;
       if (!needsDeliveryNotice(journal.view, turn) || !await disclosure()) continue;
       const covers = journal.view.order.filter(item => item !== turn && item.thread === turn.thread
         && needsDeliveryNotice(journal.view, item)).map(item => item.id);
-      const text = UNKNOWN_SEND_NOTICE, chat = journal.view.genesis.chat, target = `delivery-notice:${turn.id}`;
+      const text = [turn, ...covers.map(id => journal.view.turns.get(id)!)].every(item =>
+        replyOutcomeOf(journal.view, item).outcome.kind === 'refused') ? REFUSED_SEND_NOTICE : UNKNOWN_SEND_NOTICE;
+      const chat = journal.view.genesis.chat, target = `delivery-notice:${turn.id}`;
       const thread = turn.thread === undefined ? {} : { thread: turn.thread };
       ports.checkOutbound(text);
       const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
@@ -9834,7 +9841,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         };
         wakeTopicDrain = pump; pump();
       });
-      await noticeUnknownReplies();
+      await noticeFailedReplies();
       if (!audienceHolds) await noticeDisclosureHolds();
       // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
       // held-notice rows still replay; no other held notice is ever pushed.
