@@ -23,9 +23,6 @@ Decision: no-handback-existing-review | Extend the existing parks_on_user and qu
 Decision: no-handback-revision-evidence | Give revision the same admitted obligations and tool attempts as review; remove the false blanket assertion that no attempt occurred, without granting tools to revision. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/no-handback-1016-PROGRESS.md
 Decision: no-handback-proof-scope | Replay repository captures through the actual journal worker and retain uncertain/empty shapes; leave fresh model-quality and live channel acceptance to the desk proof room. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/no-handback-1016-PROGRESS.md
 
-simplestRobustRoute: This is the simplest robust route: reuse the existing semantic questions, bounded revision, admitted evidence projection and journal. The concrete wiring defect is that revision lacked the evidence the reviewer had while being told no work had been attempted. Passing that existing projection repairs the gap without a new mechanism. Start guards remain recorded scope and reservation; end guards remain revision review and exact send receipts; limits remain stop, secrets, caps and the one shared deadline. Offline replay is not an unattended shipped-path acceptance claim.
-80/20: Run changed suites and direct imports, architecture, typecheck, lint, register, change review and desk pinned tests. The desk owns the full gate and fresh proof-room conversation.
-VERDICT: author submission; independent desk review is not asserted
 Prompt finding: 0abb3dc96311 | protocol-literal | Test quotes the current instruction contract or normalizes historical prompt prose; no scenario answer or expected verdict is inserted as a trigger.
 Prompt finding: 42faf877ba82 | protocol-literal | Test quotes the current instruction contract or normalizes historical prompt prose; no scenario answer or expected verdict is inserted as a trigger.
 Prompt finding: 5b486d8bd247 | protocol-literal | Test quotes the current instruction contract or normalizes historical prompt prose; no scenario answer or expected verdict is inserted as a trigger.
@@ -41,3 +38,7 @@ Prompt finding: feadb66b8ad1 | protocol-literal | Test quotes the current instru
 
 Publication: Regenerated the seven existing generated publication files from source commit b5a46be0e27d53e2f9d858f4ac7fe1d50eca7e8f using the existing replay generator with an exact --commit; no declaration, approval or conformance certificate changed.
 Deferral: generated/register.json:1 | not-a-deferral=Existing declarations are mechanically replayed; publication adds no deferred work.
+
+simplestRobustRoute: This is the simplest robust route: reuse the existing semantic questions, bounded revision, admitted evidence projection and journal. The concrete wiring defect is that revision lacked the evidence the reviewer had while being told no work had been attempted. Passing that existing projection repairs the gap without a new mechanism. Start guards remain recorded scope and reservation; end guards remain revision review and exact send receipts; limits remain stop, secrets, caps and the one shared deadline. Offline replay is not an unattended shipped-path acceptance claim.
+80/20: Run changed suites and direct imports, architecture, typecheck, lint, register, change review and desk pinned tests. The desk owns the full gate and fresh proof-room conversation.
+VERDICT: author submission; independent desk review is not asserted
