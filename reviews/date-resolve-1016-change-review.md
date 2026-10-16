@@ -7,7 +7,7 @@ Outcome: An operator date proposal with a missing or mismatched original clock, 
 Affected rules: 1, 4, 26, 32, 34, 36, 49, 57, 70, 74, 83, 96, 101, 107, 111, 112, 113, 116.
 Affected floors: secrets — unchanged redaction and outbound checking; spend cap — repair retains the existing call reservation and cap; stop — repair and send retain their stop checks; no duplicate sends — repair precedes the single answer, with restart replay coverage; durable intake — original accepted message remains journaled across repair and restart.
 Operator questions: none
-Suggested tier: ordinary
+Suggested tier: critical
 Declared tier: ordinary
 Tier rationale: One validation branch joins the existing bounded declaration repair. No new service, parser grammar, authority, clock source, or durable state. Generated register artifacts repin the committed source in the existing shape-only replay mode; they grant no runtime authority.
 Side effects: Invalid resolution bindings can spend one additional model call within the existing allowance. A second invalid response stays unresolved. Correct bindings and explicit model ambiguity spend no repair call. No date is admitted by overwriting model evidence; the corrected response must pass the unchanged date validator. The existing timeout, worker ceiling, context-wall, rate-limit and socket paths are untouched.
@@ -20,6 +20,10 @@ Hook bypass: none; core.hooksPath is unset and the common hooks directory contai
 Convergence: none
 Prompt review: No prompt wording changes. The existing original-clock repair instruction now also reaches malformed bindings. Exact native-session outputs from updates 715676630 and 715676632 are replayed. The corrected second response is explicitly counterfactual, changing only the clock binding; it is not claimed as a new live model result. Recorded summary, uncertain, Jev undecided/unsure, reviewer, delivered and empty shapes exercise repair-result handling without invented dates or duplicate sends.
 Decision: date-resolution-reask | Reuse the single declaration repair for the existing binding-validation failure; supply original message clock and operator zone in its existing instruction. Do not silently replace a model clock, because its instant may have been calculated against the wrong day. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/date-resolve-1016-PROGRESS.md
+
+Prompt finding: 4106b49fff07 | protocol-literal | Existing tested truthfulness instruction about attempted avenues, unchanged by this repair; it is not an expected model answer or an intent keyword test.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing tested source-label and unknown-source instruction, unchanged by this repair; it is not an expected model answer or an intent keyword test.
+Prompt finding: 849db3a6296a | protocol-literal | Existing truthful empty-memory-list protocol text asserted by its test, unchanged by this repair; no date interpretation or answer is keyed to this phrase.
 
 ## Closing block
 
