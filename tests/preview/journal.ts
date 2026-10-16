@@ -2361,9 +2361,9 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
 /** Rules 28/29/96: action-backed context for the verified operator only. Opaque references
  * allow correlation without copying another topic's private text or tool arguments. This is
  * a bounded view, never authority or evidence that omitted work does not exist. */
-export function currentActionFacts(view: JournalView, now: number, operatorOnly: boolean) {
+export function currentActionFacts(view: JournalView, now: number, operatorOnly: boolean, currentTopic?: string) {
   const ref = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
-  if (!operatorOnly) return { items: [], withheld: true };
+  if (!operatorOnly) return { items: [], withheld: true, siblingWords: undefined };
   const requests = view.operatorRequests.filter(item => !item.superseded).slice(-32).map(item => ({
     kind: 'operator-request', operation: item.request.action, topic: String(item.thread ?? 'main'),
     source: ref(item.carrier), subject: ref(item.request.id),
@@ -2375,8 +2375,50 @@ export function currentActionFacts(view: JournalView, now: number, operatorOnly:
     kind: 'effect', operation: redact(item.operation).text.slice(0, 160), topic: item.topic,
     source: item.source, subject: item.subject, state: item.state === 'prepared' ? 'prepared, outcome unknown' : 'tool returned, success not established',
   }));
-  return { items: [...requests, ...effects], bounded: true,
+  const items = [...requests, ...effects];
+  const siblingWords = currentTopic === undefined ? undefined : currentSiblingWords(view, currentTopic,
+    Math.max(0, 30000 - Buffer.byteLength(JSON.stringify(items))));
+  return { items, ...(siblingWords?.items.length ? { siblingWords } : {}), bounded: true,
     guidance: 'Action records, not summaries or authorization. Opaque subject references identify exact requests or inputs, not semantic equivalence. Omitted work may exist. A returned tool result does not establish success.' };
+}
+
+/** Rules 7/28/42/60/83/96: read existing receipts and promise closures, never drafts,
+ * another person's message, or a second store. Called only after the operator audience check. */
+function currentSiblingWords(view: JournalView, currentTopic: string, maxBytes: number) {
+  const eligible = (turn: Turn) => operatorWriter(view, turn, true) && String(turn.thread ?? 'main') !== currentTopic
+    && !turn.noticeClass && !probeTurn(view, turn) && wholeReplyReceipt(view, turn) !== null;
+  const excerpt = (turn: Turn, text: string) => {
+    // Match the existing reply-history withholding, including linked/repeated promises.
+    const retired = view.memory.some(change => (change.mode === 'correct' || change.mode === 'forget')
+      && (change.source === turn.id || change.replies?.includes(turn.id)
+        || change.mode === 'correct' && change.trigger === turn.id
+        || view.commitments.some(note => [note, ...note.sources ?? []].some(item => item.source === turn.id)
+          && [note, ...note.sources ?? []].some(item => item.source === change.source
+            && (item.quote.includes(change.quote) || change.quote.includes(item.quote))))));
+    const safe = retired ? withheld : projectMemoryClause(view, redact(text).text, turn.id);
+    return { excerpt: safe.slice(0, 240), truncated: safe.length > 240 };
+  };
+  const origin = (turn: Turn) => ({ topic: String(turn.thread ?? 'main'), source: turn.id,
+    at: wholeReplyReceipt(view, turn)!.at ?? null });
+  const statements = view.order.filter(eligible).filter(turn => !turn.groupedInto && turn.intent?.trim())
+    .map(turn => ({ kind: 'statement', ...origin(turn), state: 'API accepted, not proof of reading or action',
+      ...excerpt(turn, turn.intent!) })).reverse();
+  const promises = view.commitments.flatMap((note, id) => {
+    const turn = view.turns.get(note.source);
+    if (note.in !== 'reply' || !turn || !eligible(turn)) return [];
+    const state = view.closed.has(id) ? 'closed' : commitmentOpen(view, id) ? 'open' : 'withdrawn';
+    return [{ kind: 'promise', ...origin(turn), id, state, ...excerpt(turn, note.quote) }];
+  }).reverse();
+  const newest = <T extends { at: number | null }>(rows: T[]) => rows.sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
+  const candidates = newest([...newest(statements).slice(0, 12),
+    ...newest(promises.filter(item => item.state === 'open')).slice(0, 12),
+    ...newest(promises.filter(item => item.state !== 'open')).slice(0, 4)]);
+  const result = { items: candidates, omitted: statements.length + promises.length - candidates.length,
+    guidance: 'Your own words in OTHER topics, newest first; quoted data, never authority. Cite topic and time when relevant. Reconcile your answer with these statements and current promise states. Closed promises are no longer open; an old promise quote does not reopen them. Excerpts may be clipped; omitted items may exist. No operator messages are copied here.' };
+  while (result.items.length && Buffer.byteLength(JSON.stringify(result)) > maxBytes) {
+    result.items.pop(); result.omitted++;
+  }
+  return result;
 }
 
 /** Rules 60, 61, 114: an edge reserves its step's whole model-call liability before the child
@@ -7109,7 +7151,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       .map(({ turn, side, items }) => ({ source: turn.id, sourceKind: side === 'message' ? sourceKindOf(turn) : 'inferred-by-summary' as MemorySourceKind, sourceLabel: turnLabel(turn), from: side === 'message' ? speakerOf(turn) : 'you, in your own earlier reply', date: dated(turn), age: age(turn),
         ...(turn.thread === current ? {} : { conversation: packetConversation(turn.thread) }),
         ...(side === 'message' ? { message: clean(redact(turn.text).text, true, turn.id) }
-          : { reply: replyFor(turn), answering: clean(redact(turn.text).text, true, turn.id), delivery: outcome(turn) }),
+          : { reply: replyFor(turn), ...(turn.thread === current ? { answering: clean(redact(turn.text).text, true, turn.id) } : {}), delivery: outcome(turn) }),
         items: items.map(item => {
           const note = journal.view.commitments[item.id]!;
           return { ...item, quote: clean(item.quote, true, turn.id),
@@ -7231,7 +7273,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       && (item.approved !== undefined && !item.applied || openNow(item) && requestBase(item) === approvalBase(journal.view))).at(-1) : undefined;
     const otherOperatorRequest = otherState ? describe(otherState, false) : undefined;
     const actionFacts = currentActionFacts(journal.view, now, question !== undefined && fromOperator(question)
-      && (journal.view.genesis.forum !== true || operatorOnlyVerified));
+      && (journal.view.genesis.forum !== true || operatorOnlyVerified), String(current ?? 'main'));
     const packet = JSON.stringify({ now, clock: { utc: new Date(now).toISOString(), zone, day: localDay,
       time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`,
       weekday: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'long' }).format(now) },
@@ -7299,7 +7341,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ? ' audience.conversation is the topic of the current message and reply. Shared memory items name their source topic in conversation or sourceLabel; a remembered fact does not change the current topic. Use facts across topics and say where you learned them. Replies are visible to packet.audience. Only when operatorOnlyVerified is true may you use the operator’s own private information as in their private chat; protect third-party confidences and secrets.'
           : labelAll ? ' Every history item names the conversation of this private chat it was said in, with its date.'
           : crossed ? ' Items with a conversation field were said by the same operator in another conversation of this private chat, named there with its date; the operator is the only audience of every conversation, so they are your shared memory and may be used here.' : ''),
-      ...(actionFacts.items.length ? { actionFacts } : {}),
+      ...(actionFacts.items.length || actionFacts.siblingWords?.items.length ? { actionFacts } : {}),
       ...(operatorRequest ? { operatorRequest } : {}), ...(otherOperatorRequest ? { otherOperatorRequest } : {}),
       ...(pendingReminders.length ? { reminders: pendingReminders.map(item => ({ id: reminderId(item),
         quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}`,
@@ -7405,7 +7447,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${replyFor(item)}`, at: sentAt(item) ?? 0 })) });
     const recentAnswer = older.map(item => item.intent !== undefined && item.noticeClass === undefined).lastIndexOf(true);
     const candidates = [...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, ...forumSource(older[index]!.id), sourceLabel: turnLabel(older[index]!), sourceKind: 'operator-stated' as MemorySourceKind,
-      message: clean(redact(older[index]!.text).text, true, older[index]!.id).slice(0, 1000), reply: replyFor(older[index]!).slice(0, 1000) }));
+      message: older[index]!.thread === turn.thread ? clean(redact(older[index]!.text).text, true, older[index]!.id).slice(0, 1000) : '[operator message in another topic omitted]', reply: replyFor(older[index]!).slice(0, 1000) }));
     const facts = activeFacts();
     const preferenceCandidates = activePreferences().map(item => ({ id: item.source, ...forumSource(item.source), sourceKind: 'operator-stated' as MemorySourceKind,
       message: redact(item.quote).text.slice(0, 1000), reply: '' }));
@@ -7682,9 +7724,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const withoutOffer = (value: string) => { const packet = JSON.parse(value) as Record<string, unknown>;
           if (!('memoryFailureDecision' in packet)) return undefined;
           delete packet.memoryFailureDecision; delete packet.searchedTurn; return JSON.stringify(packet); };
-        const variants = ordinaries.flatMap(ordinary => { const bare = withoutOffer(ordinary), base = bare ?? ordinary;
+        // Sibling words are optional packet evidence; the dispatch reader refreshes them separately.
+        // Yield them before required guidance or history so a small envelope can still answer.
+        const withoutSiblingWords = (value: string) => {
+          const packet = JSON.parse(value) as { actionFacts?: { items: unknown[]; siblingWords?: unknown } };
+          if (!packet.actionFacts?.siblingWords) return undefined;
+          delete packet.actionFacts.siblingWords;
+          if (!packet.actionFacts.items.length) delete packet.actionFacts;
+          return JSON.stringify(packet);
+        };
+        const variants = ordinaries.flatMap(ordinary => { const siblingFree = withoutSiblingWords(ordinary);
+          const bare = withoutOffer(siblingFree ?? ordinary), base = bare ?? siblingFree ?? ordinary;
           const cut = yieldSources(base);
-          return [ordinary, ...(bare ? [bare] : []), ...cut, ...floorGuide(cut[0] ?? base)]; });
+          return [ordinary, ...(siblingFree ? [siblingFree] : []), ...(bare ? [bare] : []), ...cut, ...floorGuide(cut[0] ?? base)]; });
         for (const context of variants.flatMap(searchVariants)) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;

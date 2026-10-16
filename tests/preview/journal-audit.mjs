@@ -217,7 +217,8 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       fault('commitment-attribution', at);
     if (found && item.date !== dated(found)) fault('commitment-date-source', at);
     if (found && item.message !== undefined && item.message !== clean(found.text, found.id)) fault('commitment-message-source', at);
-    if (found && item.reply !== undefined && (item.reply !== replyFor(found) || item.answering !== clean(found.text, found.id)))
+    if (found && item.reply !== undefined && (item.reply !== replyFor(found) || item.answering !== clean(found.text, found.id)
+      && !(found.thread !== turn.thread && item.answering === undefined)))
       fault('commitment-reply-source', at);
     for (const [m, note] of list(item?.items, `${at}.items`).entries()) {
       const place = `${at}.items[${m}]`, stored = view.commitments[note?.id];
@@ -278,7 +279,8 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
         && projectMemoryClause(projection, change.quote, change.source) === change.quote)].some(active => active.source === found.id
         && (active.quote === item.message || redact(active.quote).text.slice(0, 1000) === item.message)
         && (found.text.includes(active.quote) || redact(found.text).text.includes(active.quote)));
-      if (found && item.message !== clean(found.text, found.id).slice(0, 1000) && item.message !== clean(found.text, found.id) && !preference)
+      if (found && item.message !== clean(found.text, found.id).slice(0, 1000) && item.message !== clean(found.text, found.id) && !preference
+        && !(found.thread !== turn.thread && item.message === '[operator message in another topic omitted]'))
         fault('candidate-text-source', at);
       if (found && item.reply !== replyFor(found).slice(0, 1000)
         && item.reply !== replyFor(found) && !(preference && item.reply === ''))

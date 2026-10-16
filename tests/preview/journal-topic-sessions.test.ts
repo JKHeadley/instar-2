@@ -26,7 +26,7 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 const tick = () => new Promise<void>(resolve => setTimeout(resolve, 1));
 async function until(test: () => boolean) { for (let i = 0; i < 1000 && !test(); i++) await tick(); expect(test()).toBe(true); }
 const source = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
-const actionFactsBody = source.split('currentActionFacts: async () => ')[1]!.split(',\n          ...(handoff')[0]!;
+const actionFactsBody = source.split('currentActionFacts: async operation => ')[1]!.split(',\n          ...(handoff')[0]!;
 const signature = 'async ({ id, prepared, question, context: packet }) => {';
 const body = source.split(`      model: ${signature}`)[1]!.split('\n      summaryCheck:')[0]!.trimEnd().replace(/,$/u, '');
 const topicOfBody = source.split('topicOf: operation => {')[1]!.split('\n          },')[0]!;
@@ -47,7 +47,7 @@ function fixture(forum = false, prepared = false) {
   const launches: string[] = [], sent: { text: string; thread: number | undefined; update: number }[] = [];
   const queuedAtDelivery: string[][] = [];
   const readFacts = Function('currentActionFacts', 'journal', 'wallNow', 'verifiedActionAudience',
-    `return async () => ${actionFactsBody}`)(currentActionFacts, journal, () => now, async () => verifiedAudience) as () => Promise<string>;
+    `return async operation => ${actionFactsBody}`)(currentActionFacts, journal, () => now, async () => verifiedAudience) as (operation: string) => Promise<string>;
   const port = value(createConversationTopicsPort({
     context: assemblyRuntimeFixture().c, conversation: 'operator', topicOf,
     allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => 'grant',
@@ -57,7 +57,7 @@ function fixture(forum = false, prepared = false) {
     store: { load: () => state, save: next => { state = structuredClone(next); } },
     append: record => journal.append({ kind: 'session-work', record, at: now }),
     recoveryEdges: () => journal.sessionWorkRecords(),
-    currentActionFacts: async () => { beforeFacts?.(); beforeFacts = undefined; return readFacts(); },
+    currentActionFacts: async operation => { beforeFacts?.(); beforeFacts = undefined; return readFacts(operation); },
     resources: { admit: async () => { live++; return { attach: async () => {}, release: async () => { live--; return true; } }; } },
     io: { modelCalls: () => 0, wait: tick, readResult: () => null, clearResult: () => {},
       prepareAdmission: () => {}, closeAdmission: () => {}, admissionState: () => ({ refused: false, openDelegations: [] }) },
@@ -420,4 +420,90 @@ it('validates optional effect provenance without inventing it for legacy records
   expect(() => validateSessionWorkRow({ ...record, ...metadata })).not.toThrow();
   for (const patch of [{ topic: 'private topic name' }, { topic: 7 }, { source: 'private source' }, { subject: 'PRIVATE body' }])
     expect(() => validateSessionWorkRow({ ...record, ...metadata, ...patch } as SessionWorkEffect)).toThrow('effect incomplete');
+});
+
+function siblingUpdate(f: ReturnType<typeof fixture>, id: number, text: string, thread: number) {
+  const incoming = update(id, text, thread);
+  return f.journal.view.genesis.forum ? { ...incoming, message: { ...incoming.message,
+    chat: { id: -7654321, type: 'supergroup', is_forum: true } } } : incoming;
+}
+
+function siblingReply(f: ReturnType<typeof fixture>, updateId: number, text: string, thread = 7, promise = false, receipt = true, fulfills?: number[]) {
+  const id = `telegram:12345678:update:${updateId}`, at = 1000 + updateId;
+  f.worker.intake([siblingUpdate(f, updateId, 'PRIVATE operator words from sibling', thread)]);
+  const loops = promise ? [{ kind: 'promise' as const, quote: text, waitsOn: 'external' as const }] : undefined;
+  f.journal.append({ kind: 'reserve', id, at });
+  f.journal.append({ kind: 'answer', id, text, ...(loops ? { loops } : {}), at });
+  f.journal.append({ kind: 'intent', id, text, chat: f.journal.view.genesis.chat, thread, update: updateId, grant: 'grant:preview',
+    ...(loops ? { loops, promises: [{ quote: text, action: 'promised', owner: 'agent', waitsOn: 'next-relevant-reply' }] } : {}), ...(fulfills ? { fulfills } : {}), at });
+  if (receipt) f.journal.append({ kind: 'sent', id, message: updateId, at });
+  return id;
+}
+
+it('refreshes sibling words at dispatch, excludes operator text and the current topic, and replays receipts', async () => {
+  const f = fixture(true, true);
+  try {
+    f.worker.intake([siblingUpdate(f, 1, 'Hello', 8)]); await f.worker.drain();
+    siblingReply(f, 3, 'I will hold the restart until 5 pm.', 7, true, false);
+    const prior = f.journal.view.order.at(-1)!;
+    f.beforeFacts(() => f.journal.append({ kind: 'sent', id: prior.id, message: 3, at: 1003 }));
+    f.worker.intake([siblingUpdate(f, 2, 'What about the restart?', 8)]); await f.worker.drain();
+    const delivered = f.deliveries.at(-1)!.input.text;
+    expect(delivered).toContain('I will hold the restart until 5 pm.');
+    expect(delivered).not.toContain('PRIVATE operator words');
+    expect(f.journal.view.turns.get('telegram:12345678:update:2')!.prompt).not.toContain('I will hold the restart');
+    const words = currentActionFacts(f.journal.view, 2000, true, '8').siblingWords!;
+    expect(words.items).toContainEqual(expect.objectContaining({ kind: 'promise', topic: '7', at: 1003, state: 'open' }));
+    expect(words.items.every(item => item.topic !== '8')).toBe(true);
+    expect(currentActionFacts(f.journal.view, 2000, false, '8')).toEqual({ items: [], withheld: true });
+    const reread = openPreviewJournal(join(f.root, 'journal.encrypted'), new Uint8Array(32).fill(61));
+    try { expect(currentActionFacts(reread.view, 2000, true, '8').siblingWords).toEqual(words); }
+    finally { reread.close(); }
+    // Existing lifecycle owns closure; projection never infers completion from a statement.
+    siblingReply(f, 4, 'The restart was held until 5 pm.', 7, false, true, [0]);
+    expect(currentActionFacts(f.journal.view, 2000, true, '8').siblingWords!.items)
+      .toContainEqual(expect.objectContaining({ kind: 'promise', state: 'closed' }));
+  } finally { await f.close(); }
+});
+
+it('bounds sibling excerpts, keeps newest first, scrubs secrets and forgetting, and excludes unknown receipts', async () => {
+  const f = fixture();
+  try {
+    for (let n = 1; n <= 20; n++) siblingReply(f, n, `Advice ${n}: ` + 'a'.repeat(400), 7, n < 4);
+    const latest = f.journal.view.order.at(-1)!;
+    const words = currentActionFacts(f.journal.view, 2000, true, '8').siblingWords!;
+    expect(words.items.filter(item => item.kind === 'statement')).toHaveLength(12);
+    expect(words.items[0]!.source).toBe(latest.id);
+    expect(words.items.every(item => item.excerpt.length <= 240)).toBe(true);
+    expect(words.omitted).toBeGreaterThan(0);
+    expect(Buffer.byteLength(JSON.stringify(currentActionFacts(f.journal.view, 2000, true, '8')))).toBeLessThan(32768);
+    for (const turn of f.journal.view.order) turn.sentAt = 1000;
+    expect(currentActionFacts(f.journal.view, 2000, true, '8').siblingWords!.items[0]!.source).toBe(latest.id);
+    const grouped = f.journal.view.order[0]!;
+    grouped.groupedInto = f.journal.view.order[1]!.id;
+    expect(currentActionFacts(f.journal.view, 2000, true, '8').siblingWords!.items)
+      .toContainEqual(expect.objectContaining({ kind: 'promise', source: grouped.id, state: 'open' }));
+    latest.intent = 'Authorization: Bearer sk-test-abcdefghijklmnopqrstuvwxyz123456789';
+    expect(JSON.stringify(currentActionFacts(f.journal.view, 2000, true, '8'))).not.toContain('sk-test-abcdefghijklmnopqrstuvwxyz123456789');
+    f.journal.view.memory.push({ mode: 'forget', source: latest.id, quote: latest.intent, trigger: latest.id });
+    expect(currentActionFacts(f.journal.view, 2000, true, '8').siblingWords!.items[0]!.excerpt).toContain('withheld');
+    delete latest.sent;
+    expect(currentActionFacts(f.journal.view, 2000, true, '8').siblingWords!.items.some(item => item.source === latest.id)).toBe(false);
+  } finally { await f.close(); }
+});
+
+it.each(recordedBatchShapes.otherShapes)('refreshes sibling words with recorded $kind $id', async sample => {
+  const f = fixture(true, true);
+  try {
+    siblingReply(f, 1, 'I will hold the restart until 5 pm.', 7, true);
+    f.evidence({ recordedShape: sample });
+    if (sample.kind === 'delivered-reply' || sample.kind === 'empty-reply-in-recorded-context') f.reply(sample.raw);
+    f.worker.intake([siblingUpdate(f, 2, 'What about the restart?', 8)]); await f.worker.drain();
+    const delivery = f.deliveries.at(-1)!.input.text;
+    expect(delivery).toContain('I will hold the restart until 5 pm.');
+    expect(delivery).toContain('siblingWords');
+    expect(delivery).not.toContain('PRIVATE operator words');
+    expect(f.state().topics['8']!.inputs[0]!.request.context).toContain(JSON.stringify(sample.raw));
+    expect(f.journal.view.order.at(-1)!.sent).toBeDefined();
+  } finally { await f.close(); }
 });

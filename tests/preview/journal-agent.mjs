@@ -2599,8 +2599,9 @@ async function main() {
         ...(conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
           authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
           grounding,
-          currentActionFacts: async () => JSON.stringify(currentActionFacts(journal.view, wallNow(),
-            journal.view.genesis.forum !== true || await verifiedActionAudience())),
+          currentActionFacts: async operation => JSON.stringify(currentActionFacts(journal.view, wallNow(),
+            journal.view.genesis.forum !== true || await verifiedActionAudience(),
+            String(journal.view.turns.get(operation)?.thread ?? 'main'))),
           ...(handoff ? { prepareTurn: handoff.prepareTurn } : {}) } : {}),
         createDriver: resolveIntake => {
           const create = () => createProductionSessionDriver(driverConfiguration(resolveIntake));
