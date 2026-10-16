@@ -28,3 +28,6 @@ simplestRobustRoute: This is the simplest robust route: additive cause fields in
 VERDICT: author submission; independent desk review remains separate
 
 Publication: Refreshed the existing preview owner-reference hash for the changed journal conversation test and the grounding inventory hashes for contracts/harness, with the inventory checker digest. Used the desk-provided rehash/repin scripts without changing populations or declarations. Native macOS self-host conformance is intentionally left for the desk's actual contract run. Register publication is regenerated from the committed source.
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged no-tools briefing sentence from the base: the tool-aware renderer removes this exact instruction when tools are active. The test checks that rendering boundary; it does not introduce a phrase-based semantic verdict.
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged recall/sourceLabel evidence instruction from the base. The fixture checks that source-attribution guidance is delivered; this change adds no model decision keyed to those words.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged fixed rendering for an empty saved-memory list and its exact history classification. It is a deterministic store-empty result, not a semantic gate or a fixture-derived answer to arbitrary input.
