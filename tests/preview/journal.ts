@@ -4294,7 +4294,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       || row.grant !== view.genesis.grant || row.waitingProgress || row.deliveryUnknown || row.acknowledgement || row.covers
       || row.provenance?.speaker !== 'agent' || !currentWorkingActivity(progress, row.at)
       || progress.ordinal !== prior.length || progress.at !== row.at || progress.sent !== undefined
-      || prior.some(item => item.step === progress.step) || row.text !== progress.text
+      || view.order.some(item => item.thread === turn.thread && item.workingProgress?.some(saved => saved.step === progress.step)) || row.text !== progress.text
       || row.at < workingProgressDue(turn.at, progress.ordinal)
       || prior.length > 0 && row.at < prior.at(-1)!.at + (progress.ordinal === 1 ? 180_000 : progress.ordinal === 2 ? 300_000 : 600_000))
       throw Error('preview journal: working progress refused');
@@ -7232,7 +7232,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       && (item.approved !== undefined && !item.applied || openNow(item) && requestBase(item) === approvalBase(journal.view))).at(-1) : undefined;
     const otherOperatorRequest = otherState ? describe(otherState, false) : undefined;
     const packet = JSON.stringify({ now, ...(ports.workingActivity ? { progressReplies: {
-      cadenceMinutes: [2, 5, 10], thereafterMinutes: 10, source: 'your currently admitted tool description or tool and target',
+      cadenceMinutes: [2, 5, 10], thereafterMinutes: 10, source: 'your current tool description or tool and target; between tools, your latest self-written description',
       note: 'While your answer is in progress, the host may quote one short status per tool step while the session is live. Describe tool steps accurately. The final answer ends these status lines.' } } : {}), clock: { utc: new Date(now).toISOString(), zone, day: localDay,
       time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`,
       weekday: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'long' }).format(now) },
@@ -7911,7 +7911,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (!workingCurrent(turn)) return;
         const activity = ports.workingActivity!(turn.id), now = ports.now();
         if (!currentWorkingActivity(activity, now) || now < workingAt(turn)
-          || turn.workingProgress?.some(item => item.step === activity.step)) return;
+          || journal.view.order.some(item => item.thread === turn.thread && item.workingProgress?.some(saved => saved.step === activity.step))) return;
         const text = activity.text, ordinal = turn.workingProgress?.length ?? 0;
         ports.checkOutbound(text);
         const chat = journal.view.genesis.chat, thread = turn.thread === undefined ? {} : { thread: turn.thread };
@@ -7919,7 +7919,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const provenance = journal.signOutbound('agent', { target, chat, ...thread, body: text });
         let admitted = false;
         const current = () => (admitted ? !workingEnded.has(turn) && !halted() && !turn.intent : workingCurrent(turn)) && currentWorkingActivity(ports.workingActivity!(turn.id), ports.now())
-          && ports.workingActivity!(turn.id)?.step === activity.step
+          && ports.workingActivity!(turn.id)?.step === activity.step && ports.workingActivity!(turn.id)?.text === text
           && (admitted || now >= workingAt(turn));
         const outcome = await push('reply', target, provenance, { text, expectedText: text, chat, ...thread,
           update: turn.update, current }, () => {

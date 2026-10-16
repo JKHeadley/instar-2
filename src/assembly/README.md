@@ -257,6 +257,7 @@ While a continuing conversation is answering an admitted operator message, its l
 observations feed the host's current tool-admission projection. The journal may send one short
 `Status:` line per real tool step at about 2, 5 and 10 minutes from intake, then every 10
 minutes. The tool's own description is preferred; otherwise the line names its tool and target.
+Between tools, a self-written description may be quoted as the latest step, never as a still-running tool.
 There is no extra model call. Missing activity, a stale observation, a paused or dead worker,
 stop or expiry produces no progress line. The existing failure path handles failed workers.
 Final dispatch cancels pending progress and waits for an in-flight status send before sending

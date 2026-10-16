@@ -6,7 +6,8 @@ const pre = (id: string, input: object = { description: 'Run the build', command
 const post = (id: string) => JSON.stringify({ phase: 'post', id, tool: 'Bash' }) + '\n';
 it('prefers the self-written description; completion, malformed, denied or empty activity is silent', () => {
   expect(admissionActivity(pre('a'), 0, 'claim')).toMatchObject({ text: 'Status: Run the build' });
-  expect(admissionActivity(pre('a') + post('a'), 0, 'claim')).toBeNull();
+  expect(admissionActivity(pre('a') + post('a'), 0, 'claim')?.text).toBe('Status: latest step — Run the build');
+  expect(admissionActivity(pre('a', { command: 'npm run build' }) + post('a'), 0, 'claim')).toBeNull();
   expect(admissionActivity(pre('a').replace('allow', 'deny'), 0, 'claim')).toBeNull();
   expect(admissionActivity(pre('a', {}), 0, 'claim')).toBeNull();
   expect(admissionActivity('{bad}\n', 0, 'claim')).toBeNull();
@@ -21,7 +22,7 @@ it('a current admission and fresh live observation are both required, scoped to 
   expect(reader.current('two')).toBeNull();
   now = 10002; expect(reader.current('one')).toBeNull();
   reader.observe('one', 'claim', 'working'); expect(reader.current('one')).not.toBeNull();
-  bytes += post('current'); expect(reader.current('one')).toBeNull();
+  bytes += post('current'); expect(reader.current('one')?.text).toBe('Status: latest step — Run the build');
   bytes += pre('next'); reader.observe('one', null, 'end'); expect(reader.current('one')).toBeNull();
 });
 it('replays real native tool admission bytes from the 2026-10-03 live task, without fabricated activity', () => {

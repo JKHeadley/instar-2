@@ -2097,7 +2097,7 @@ async function main() {
       }, after: (ms, run) => { const timer = setTimeout(run, ms); timer.unref(); return () => clearTimeout(timer); } });
     const workingActivities = createWorkingActivities({ now: wallNow, read: claim => readWorkingAdmission(
       harness ? harnessSessionLayout(root).admission : join(root, 'session-work-state', 'admission'), claim) });
-    worker = createJournalWorker(journal, { ...(conversationSession ? { topicConcurrency: sessionLimits.maxSessions } : {}), ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, workingActivity: id => workingActivities.current(id), elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
+    worker = createJournalWorker(journal, { ...(conversationSession ? { topicConcurrency: sessionLimits.maxSessions } : {}), ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, ...(conversationSession ? { workingActivity: id => workingActivities.current(id) } : {}), elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       groupDisclosure: async () => {
         if (journal.view.groupCarry) { await requireGroupDisclosure(journal.view); return true; }
         const scope = { sourceRoot: root, destinationRoot: root, chat: journal.view.genesis.chat,
