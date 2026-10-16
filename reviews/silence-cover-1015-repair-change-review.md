@@ -27,5 +27,7 @@ Prompt finding: e8708c7fea24 | quoted-evidence | Existing source instruction unt
 ## Closing block
 
 simplestRobustRoute: This is the simplest route: reuse the durable attempt slot, recovery-held flag, exact evidence collector and bounded work cadence. No additional store, watcher, model call or effect retry is introduced. Stop and owner checks remain admission guards; a single recovered report or proven non-launch resolves the hold; unknown evidence stays execution-held. Tests replay real recorded output, not an unattended live-delivery claim; isolated live proof remains desk-owned.
+Register publication: Regenerated existing owner reference hashes with the delegated desk scripts and generated/ from source commit dff0fb0316ce3c39a2fd364465ce7bdfc4d154d8; no policy or declaration changes.
+
 80/20: Repair the single demonstrated dead end, test both persistent unknown and later resolved evidence, and regenerate existing source pins.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
