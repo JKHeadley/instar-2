@@ -22,6 +22,8 @@ Decision: reconcile-history-pages | reuse durable grades for an exact commitment
 Decision: reconcile-history-snapshot | bind validation to the page actually planned; omitted/failed reviews cannot advance and newly appended commitments require another page | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/work-reconcile-1015-repair-183343-PROGRESS.md
 Prompt review: model-facing. Replay summary-ack-walk-2026-10-15.json through delivered update 840342898 and neighboring 840342917; promise-fulfilment-a5b-2026-10-03.json for the existing undated promise; retrospective-duty-followup-train-1-2026-10-08.json for recorded uncertain summary, Jev uncertain/undecided, reply-review and empty-bubble shapes. Additional explicit test judgments cover 60 closed commitments, last-page semantic duplicates, restart and failed or widening pages. These are offline captured-input replays, not live-model acceptance; the combined desk retains its assigned live check.
 
+Register regeneration: generated output is replayed from product commit d229d5276a50cf44a753df195dced1647504296b; the delegated owner-manifest and inventory repin scripts reported zero changed pins.
+
 ## Closing block
 
 simplestRobustRoute: use the existing bounded retrospective consumer and durable grades to check one history page per pass, keeping candidates out of schedulable promises until coverage completes. This is that route: no new worker, model-call path, store, retrieval service or permission. The cursor prevents the named lifetime-history admission barrier; shrinking candidates prevent unseen pages from being mistaken for proof of absence. Existing start/cap/stop/effect guards remain. Live autonomous acceptance is not asserted by this unit submission.
