@@ -30,4 +30,5 @@ Prompt finding: 4106b49fff07 | protocol-literal | unchanged historical grounding
 
 simplestRobustRoute: this is the simplest robust route: render existing timestamps with Intl in the already-configured operator zone at the context boundary. No new config, clock, journal field, watcher or model call. It prevents the observed UTC-as-Pacific error without asking the model to do timezone conversion. Start guards remain audience and receipt verification; the end state is local zoned text in the actual dispatch; limits remain existing measured packet budgets. No autonomous shipped-path completion claim.
 80/20: prove PDT, PST and UTC neighbors, actual dispatch wiring and recorded model shapes; run targeted consumers and required machine checks before desk gate. No independent convergence claimed.
+Validation: targeted packet/dispatch tests and repaired date expectations pass; typecheck, build, architecture, lint and register checks passed. Broader consumer evidence and host-specific limitations are recorded in the report.
 VERDICT: author submission; independent desk review pending
