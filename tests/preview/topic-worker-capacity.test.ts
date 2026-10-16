@@ -44,3 +44,39 @@ it('the host owner admits eight topic leases and preserves the ninth slot for an
     expect(await owner.hold('answer', { timeout: 1, stopped: () => false })).toBeNull();
   } finally { for (const lease of leases) await lease.release(); }
 });
+
+// Group U regressed after f692c56a: four answers no longer saturate the nine-slot owner.
+// Hold leases explicitly so the boundary is tested without timing, child processes or host load.
+it('pins the shipped Rule 60 vector and reaches and holds both launch and answer-reserve boundaries', async () => {
+  // @ts-expect-error host owner is JavaScript
+  const { RESOURCE_CEILINGS, createResourceOwner } = await import('../../scripts/resource-owner.mjs');
+  expect(RESOURCE_CEILINGS).toMatchObject({
+    launch: { memoryBytes: 2 * 1024 ** 3, processCount: 32, handleCount: 1024, cpuMilliseconds: 600_000 },
+    aggregate: { memoryBytes: 18 * 1024 ** 3, processCount: 288, launches: 9 }, reserveLaunches: 1,
+  });
+  for (const ceiling of [9, 2]) {
+    const owner = createResourceOwner({ ...RESOURCE_CEILINGS,
+      aggregate: { ...RESOURCE_CEILINGS.aggregate, launches: ceiling } });
+    const leases = [];
+    const hold = (work: string) => owner.hold(work, { timeout: 1, stopped: () => false });
+    try {
+      for (let index = 0; index < ceiling - 1; index++) {
+        const lease = await hold('answer');
+        expect(lease).not.toBeNull(); leases.push(lease!);
+      }
+      expect(await hold('maintenance')).toBeNull();
+      expect(owner.snapshot().active).toHaveLength(ceiling - 1);
+      const answer = await hold('answer');
+      expect(answer).not.toBeNull(); leases.push(answer!);
+      expect(await hold('answer')).toBeNull();
+      expect(owner.snapshot().active).toHaveLength(ceiling);
+      expect(owner.snapshot().peak.launches).toBe(ceiling);
+    } finally { for (const lease of leases) await lease.release(); }
+    expect(owner.snapshot().active).toHaveLength(0);
+    const maintenance = await hold('maintenance');
+    try {
+      expect(maintenance).not.toBeNull();
+      expect(owner.snapshot().active).toHaveLength(1);
+    } finally { await maintenance?.release(); }
+  }
+});
