@@ -81,7 +81,7 @@ export const SOURCE_PINS = Object.freeze({
   'rules:87': 'sha256:5702b6b29974a4a397a234de77bffdc84eb8f342b22c8048f9bad5c59b4dcc60',
   'purpose:name': 'sha256:936d4bdf6dc13976f7af73e0d48f9d11b78b9b844fa16beac9e950dbe7bf495e',
   'purpose:purpose': 'sha256:5d4b2142593c5a9569cb90cbffe20242c5ab2cf8d13f6929c888ec4166f87e51',
-  'purpose:coherency': 'sha256:c04dbb447bf6298459cbe15fe4696ef88bd1bf632f2b422cbebbd49c174c27c4',
+  'purpose:coherency': 'sha256:721cc87ceef7b21590a3c325a98c11e10760cede60d48ad52d5e40179602d5b1',
 });
 
 /** The desk's current-state report on other Instar 2.0 work: an optional plain file
