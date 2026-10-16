@@ -23,9 +23,9 @@ Decision: repair-native-conformance | Refresh the supported native declaration o
 Decision: repair-publication | Use the delegated desk repin tools and replay register generation to publish this source. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ratelimit-recover-1016-repair-PROGRESS.md
 Prompt review: No model prompt or semantic parser changes. Real recorded summary/uncertain, Jev undecided/unsure, reply-review, delivered and empty shapes exercise the changed result boundary; lifecycle evidence is not a model verdict.
 
-Subject (10 paths): src/assembly/README.md, src/assembly/conversation-harness-adapter.ts, src/assembly/harness.declarations.json, src/assembly/harness.ts, src/assembly/production-session-driver.ts, src/assembly/production-session-work.ts, tests/assembly/production-session-driver.test.ts, tests/assembly/production-session-work.test.ts, tests/assembly/production-grounding-inventory.json, scripts/check-assembly-contracts.mjs
+Subject (17 paths): src/assembly/README.md, src/assembly/conversation-harness-adapter.ts, src/assembly/harness.declarations.json, src/assembly/harness.ts, src/assembly/production-session-driver.ts, src/assembly/production-session-work.ts, tests/assembly/production-session-driver.test.ts, tests/assembly/production-session-work.test.ts, tests/assembly/production-grounding-inventory.json, scripts/check-assembly-contracts.mjs, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
-Publication: The delegated desk tool refreshed the reviewed harness.ts support-source digest in production-grounding-inventory.json and its enclosing digest in check-assembly-contracts.mjs after the source commit. Owner-reference manifests needed no changes.
+Publication: The delegated desk tool refreshed the reviewed harness.ts support-source digest in production-grounding-inventory.json and its enclosing digest in check-assembly-contracts.mjs after the source commit. Owner-reference manifests needed no changes. The seven generated register artifacts were replayed from c7f90830855e65b7e800d7264d29ce4a94410223, generation sha256:33f1194b1d5aa2008b1df9eea0b23ef8a6a598260c189aae332010ba8c405540; this is shape-only publication, not runtime authority.
 
 ## Closing block
 
