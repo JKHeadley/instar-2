@@ -28,9 +28,10 @@ Deferral: tests/preview/README.md:32 | not-a-deferral=documents retained reports
 Deferral: tests/preview/journal.ts:2464 | not-a-deferral=the work prompt states the implemented boundary between requested and next-message delivery.
 Deferral: tests/preview/owed-delivery.test.ts:134 | not-a-deferral=identifies the captured deferred-answer fixture being replayed, not unfinished builder work.
 
+Register publication: generated register and capability artifacts bind source commit cbd671a23a613524e16e2e742b0ac998fc1277c4; the regenerated capability, historical packet and fixed context-floor checks pass 26/26 tests.
+
 ## Closing block
 
 simplestRobustRoute: this is the simplest robust route through the existing bounded obligation and requested-action machinery. An optional exact source clause prevents a promise from authorizing an unsolicited message. A signed result-set identity prevents a restart or a withdrawn batch from duplicating or stranding its results. Existing source, spend, stop and audience guards admit the start; durable intent prevents repetition; complete transport receipts alone establish delivery. No extra service, outbox or universal reviewer was added. Live unattended acceptance is reserved for the desk and not claimed here.
-Register publication: generated register and capability artifacts bind source commit cbd671a23a613524e16e2e742b0ac998fc1277c4; the regenerated capability, historical packet and fixed context-floor checks pass 26/26 tests.
 80/20: the final targeted group passed 145 tests with one existing skip; the generated capability line is kept inside 130 characters and the original private-packet digest remains unchanged. Targeted tests cover positive and negative authority, restart before intent and after uncertainty, receipt closure, cancellation, audience, secret and spend/stop boundaries, and recorded model shapes. The fixed prompt floor remains unchanged; repeated wording was shortened to keep all required context.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
