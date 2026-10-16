@@ -11353,6 +11353,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const turn = journal.view.turns.get(stepId.slice('answer:'.length))!;
       return { step: stepId, request: clean(redact(turn.text).text, true, turn.id), modelOutput: turn.answer, journal: { answerRecorded: true,
         completion: journal.view.commitments.flatMap((item, id) => item.source === turn.id || turn.requestedAction?.owed?.some(ref => ref.key === `commitment:${id}`)
+          || commitmentOpen(journal.view, id) && completionPending(journal.view, id)
           ? [{ obligation: `commitment:${id}`, work: journal.view.obligationWork[`commitment:${id}`] ?? null, open: commitmentOpen(journal.view, id) }] : []),
         halt: journal.view.stop ?? (ports.now() >= journal.view.expires ? 'trial expired'
           : journal.view.calls >= journal.view.limits.maxCalls ? 'model-call allowance used' : null),

@@ -51,6 +51,8 @@ it.each([false, true])('a delivered reply only fulfills a promise once created w
     await worker.checkSteps();
     const answerCheck = checks.map(text => JSON.parse(text)).find(state => state.step === 'answer:telegram:12345678:update:2');
     expect(answerCheck.request).toBe('What did you finish?');
+    if (!complete) expect(answerCheck.journal.completion).toContainEqual(expect.objectContaining({
+      obligation: 'commitment:0', open: true, work: expect.objectContaining({ completion: [item] }) }));
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
