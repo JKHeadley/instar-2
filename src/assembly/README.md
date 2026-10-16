@@ -251,3 +251,33 @@ progress intents bound it to one per message and one per topic per 45 seconds, i
 across restart. The ordinary send doorway still enforces audience, secrets, stop and reply
 allowance. Uncertain sends are not repeated. These additive custody fields retain existing
 records; rollback requires a reader that understands them, never deleting the journal.
+
+The read-only worktree census in `scripts/worktree-inventory.mjs` complements the
+process inventory. `src/assembly/worktree-inventory.ts` classifies dirty checkouts
+only with complete, fresh, same-machine process and worktree observations, resolved
+ownership for each candidate checkout, and full quiet-window activity coverage.
+The caller resolves `ownership(checkout)` to PID ownership for that checkout; an
+owner elsewhere does not veto it, while missing or unknown candidate ownership
+keeps it excluded even when the process working directory is elsewhere. Missing activity is unknown,
+never inferred from an old timestamp. The adapter re-enumerates paths and heads
+before returning; a changed enumeration stays partial. Findings carry the exact
+path, head, machine and process sample, and grant no mutation or launch authority.
+
+`createWorktreeRecovery` consumes these observations on the owner's existing
+bounded cycle. Its installed observer route submits one ordinary request to
+Part Four's existing durable intake and work owner. The machine/path/head/last
+activity identifies the quiet episode; fresh census timestamps never create
+another item. A new activity episode can create new work at the same head.
+Intake retains the exact checkout location and assigns reconciliation before
+returning. Restart uses intake's existing deduplication and custody. Refused
+intake stays refused; a stopped caller or unknown evidence opens no work.
+
+The caller supplies its authenticated observer intake, same-machine census and
+positive ownership/activity history. Missing observations are never replaced
+by file age, transcript content or a guessed dead owner. This is observation
+and assignment, not permission to take over the checkout: a worker rechecks
+current ownership and uses existing admitted effects for preservation and
+result delivery. No new store, watcher, model call, commit, cleanup or send
+path is introduced. The automated test uses real temporary git state and
+recorded journal shapes; live deployment and user delivery are proved by the
+desk's proof-room run, not asserted by the library test.
