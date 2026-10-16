@@ -328,25 +328,33 @@ export async function superviseJournal(config, io = {}) {
       }
     }
     if (previous.crashLoop) recordScheduledCrash(previous.crashLoop, { at: started, kind: 'no-work' }, crashPolicy);
+    const priorLaunch = lastJournalRun(config.root)?.launch;
     const outcome = await launch(config);
     const at = now(), episode = read();
     if (episode.version !== 1 || episode.mode !== 'journal') throw Error('host watch: corrupt journal episode');
     const clean = outcome.code === 0 && outcome.signal === null && outcome.hung !== true;
     const last = lastJournalRun(config.root);
     const stopped = journalStopped(config.root);
-    const kind = stopped ? 'cancelled' : !clean ? (outcome.hung === true ? 'hung'
+    // The runner's explicit ownership/capacity dispositions are expected outcomes, even with nonzero exits.
+    // Bind them to this launch: an old inhibited row cannot explain a new crash.
+    const expectedExit = last?.launch !== priorLaunch && outcome.signal === null && outcome.hung !== true
+      && ((outcome.code === 4 && last?.revival === 'inhibited') || (outcome.code === 3 && last?.revival === 'none'));
+    const kind = stopped ? 'cancelled' : expectedExit ? 'capacity-applied' : !clean ? (outcome.hung === true ? 'hung'
       : outcome.signal === 'launch-error' ? 'spawn-refused' : 'failure')
       : last?.revival === 'queued' && at - started < 60000 ? 'rapid-exit' : 'success';
     const crashLoop = recordScheduledCrash(episode.crashLoop ?? null, { at, kind }, crashPolicy);
-    if (stopped || (clean && kind !== 'rapid-exit')) {
+    if (stopped || expectedExit || (clean && kind !== 'rapid-exit')) {
       if (episode.open || episode.crashLoop) writeDurable(path, { ...episode, crashLoop, open: false, closedAt: at });
     }
     else {
-      const failedAttempts = (episode.open ? episode.failedAttempts : 0) + 1;
+      // An intervening clean exit cannot buy a second notice for the same retained crash pressure.
+      const reuseIncident = episode.open || (episode.phase !== 'recovering'
+        && episode.crashLoop?.failures.length > 0 && crashLoop.failures.length > 1);
+      const failedAttempts = (reuseIncident ? episode.failedAttempts : 0) + 1;
       let next = { ...episode, crashLoop,
-        nextLaunchAt: at + Math.min(maximum, base * 2 ** Math.min(crashLoop.failures.length - 1, 16)), open: true, id: episode.open ? episode.id : randomUUID(), openedAt: episode.open ? episode.openedAt : at,
-        phase: episode.open ? episode.phase : 'recovering', failedAttempts,
-        failures: [...(episode.open ? episode.failures : []), { at, code: outcome.code, signal: outcome.signal,
+        nextLaunchAt: at + Math.min(maximum, base * 2 ** Math.min(crashLoop.failures.length - 1, 16)), open: true, id: reuseIncident ? episode.id : randomUUID(), openedAt: reuseIncident ? episode.openedAt : at,
+        phase: reuseIncident ? episode.phase : 'recovering', failedAttempts,
+        failures: [...(reuseIncident ? episode.failures : []), { at, code: outcome.code, signal: outcome.signal,
           runReason: outcome.hung === true ? `no progress beat for ${Math.round(hangAfterMs / 1000)}s` : lastRun(config.root)?.reason ?? null,
           ...(outcome.hung === true ? { hung: true } : {}) }].slice(-10) };
       if (next.phase === 'recovering' && (failedAttempts >= limits.incidentAfter || crashLoop.pausedAt !== null)) {

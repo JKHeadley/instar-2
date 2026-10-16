@@ -289,3 +289,28 @@ it('does not revive expired pre-update failure pressure and retains restart back
     spawnRunner: script(root, [], 'stop') });
   expect(waited).toBe(due - 200);
 });
+
+
+it.each([[4, 'inhibited'], [3, 'none']] as const)('excludes fresh recorded admission exit %s (%s), but not stale dispositions', async (code, revival) => {
+  const { root, config } = fixture();
+  Object.assign(config, { maxRestarts: 1 });
+  const record = (launch: number) => appendFileSync(join(root, 'runs.jsonl'),
+    JSON.stringify({ v: 1, launch }) + '\n' + JSON.stringify({ v: 1, launch, exit: launch + 1, revival }) + '\n');
+  await superviseJournal(config, { now: () => 100, spawnRunner: async () => { record(100); return { code, signal: null }; } });
+  expect(existsSync(join(root, 'host-watch.json'))).toBe(false);
+  await superviseJournal(config, { now: () => 200, spawnRunner: async () => ({ code, signal: null }) });
+  expect(episode(root).crashLoop.pausedAt).toBe(200);
+});
+
+
+it('sends only one notice for the shared window even when a clean exit separates failure bursts', async () => {
+  const { root, config } = fixture(ALERTS);
+  Object.assign(config, { maxRestarts: 6 });
+  const requests = await telegram(root, 'ok');
+  let at = 100;
+  await superviseJournal(config, { now: () => at++, wait: async () => {},
+    spawnRunner: script(root, [fail, fail, fail, ok, fail, fail, fail], 'crash') });
+  expect(episode(root).crashLoop.pausedAt).not.toBeNull();
+  expect(episode(root).crashLoop.failures).toHaveLength(6);
+  expect(requests()).toHaveLength(1);
+});
