@@ -224,8 +224,13 @@ hook restores the full permitted pending envelope and its last inbound identity.
 compact receipt continues that answer in the same worker. A recorded compaction failure
 retires the exact old worker and verifies resource cleanup before admitting a fresh worker
 with the same input, original deadline and remaining cumulative allowance. Both paths retain
-durable continuation intent before submission and add a transition disclosure only to a
-nonempty decoded answer. Missing history, uncertain submission, unknown/busy terminal state,
+durable continuation intent before submission and restore the exact admitted packet, including
+its pending input identity and history, without an additional model-facing recovery wrapper.
+The host carries recovery evidence separately
+from the model's answer schema and records it with a nonempty decoded answer. The journal adds
+the transition disclosure to the final reply after memory acknowledgements and rewriting,
+before the durable send intent; an unknown send is never replayed. Empty output remains an
+answer failure. Missing history, uncertain submission, unknown/busy terminal state,
 policy refusal, active stop and repeated context triggers retain uncertainty without replay.
 This recovery uses the current conversation owner on its owning machine; it creates no service.
 

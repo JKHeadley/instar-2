@@ -1135,6 +1135,8 @@ export type JournalRecord =
   | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; peopleUsed?: number[]; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; maxInputTokens?: number; maxOutputTokens?: number; at: number }
 
   | { kind: 'answer'; id: string; text: string; correction?: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass;
+    /** Exact input whose host-owned worker recovery produced this answer (Rule 110). */
+    contextRecovery?: string;
     memory?: MemoryChange[]; personMerges?: PersonMerge[]; personAttributes?: PersonAttribute[]; memoryPending?: true; memoryUnresolved?: true; closedQuestions?: string[]; dated?: DatedItem[]; datedPending?: true; reminderCancels?: string[];
     /** Legacy (removed requested summaries): read on replay, never acted on. */
     summaryGrants?: LegacySummaryGrant[]; summaryCancels?: string[]; undo?: UndoTarget; unlabeledRecall?: boolean;
@@ -1390,6 +1392,7 @@ function workingProgressAt(view: JournalView, turn: Turn): number {
     + (ordinal === 0 ? 0 : ordinal === 1 ? 180_000 : ordinal === 2 ? 300_000 : 600_000));
 }
 export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: { at: number; sent?: number }; id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
+  contextRecovery?: string;
   media?: MediaCustodyResult;
   /** Expected causal prefix, retained before the first media request. */
   mediaClaim?: string;
@@ -4887,6 +4890,11 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   }
   if (row.kind === 'answer') { if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: answer order');
     if (row.failureClass && row.text !== MODEL_FAILURE_REPLY) throw Error('preview journal: failure reply differs');
+    if (row.contextRecovery !== undefined) {
+      if (row.contextRecovery !== row.id || row.state !== 'complete' || row.failureClass || !row.text.trim())
+        throw Error('preview journal: context recovery answer differs');
+      turn.contextRecovery = row.contextRecovery;
+    }
     if (row.deliveryCancels !== undefined) {
       if (!Array.isArray(row.deliveryCancels) || row.deliveryCancels.length > 5
         || row.deliveryCancels.some(item => !deliveryCancellationSupported(view, turn, item)))
@@ -5796,6 +5804,7 @@ export interface PreviewPorts {
     answer: Awaited<ReturnType<PreviewPorts['model']>> } | null>;
   modelBatch?(inputs: readonly Parameters<PreviewPorts['model']>[0][]): Promise<readonly Awaited<ReturnType<PreviewPorts['model']>>[]>;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
+    /** Host recovery evidence, never parsed from the model's output. */ contextRecovery?: string;
     usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage;
       /** Exact zero-token provider quota refusal, carried separately from semantic rejection. */ capacity?: ModelCapacity;
       /** A malformed answer's exact protocol defect (answer-reading.ts), named in the one format re-ask. */ defect?: string;
@@ -9232,6 +9241,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const rejectedNow: RejectedObligations = { ...obligations.rejected,
               ...(refusedDeclarations ? { fulfills: refusedDeclarations } : {}) };
             journal.append({ kind: 'answer', id: turn.id, text: written,
+              ...(text.trim() && typeof answer !== 'string' && answer.contextRecovery === turn.id ? { contextRecovery: turn.id } : {}),
               ...(correction === undefined ? {} : { correction }),
               state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
               ...(memory === undefined ? {} : { memory }), ...(closedQuestions?.length ? { closedQuestions } : {}), ...(memoryFailure ? { memoryFailure } : {}), ...(personMerges?.length ? { personMerges } : {}), ...(personAttributes?.length ? { personAttributes } : {}), ...(dated === undefined ? {} : { dated }),
@@ -9716,6 +9726,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Rules 57, 93: a due turn is rechecked just before its send intent: never sent once withdrawn, and
         // held back while a later operator turn that may withdraw one of its requests is unsettled.
         if (actionHeader !== undefined && actionBlocked(turn)) continue;
+        // Rule 110: host recovery survives every supported reply shape, memory acknowledgement
+        // and downstream rewrite. Empty/failed model output never records this evidence. Bind
+        // the disclosure to the durable send intent so an unknown send is never replayed.
+        if (turn.contextRecovery === turn.id)
+          reply = withDisclosure(reply, 'I restored this conversation after a context limit and continued your last message.');
         if (!fits(reply)) { journal.append({kind:'hold',id:turn.id,reason:'reply size',at:ports.now()}); continue; }
         // Rule 106 on the final candidate: a revision or assembly can introduce a link the first check
         // never saw. The findings are recorded against this exact text; they advise, never hold.

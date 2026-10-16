@@ -759,6 +759,36 @@ it('replays the captured wall through adapter compact control before requesting 
   expect(f.journal.sessions[0]?.continuation).toMatchObject({ state: 'prepared', pending: { operation: delivery.operation, deadline: 1900 } });
 });
 
+it('restores the real refused recipe envelope byte-for-byte as the admitted task', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/context-recovery-envelope-1016106-2026-10-16.json', import.meta.url), 'utf8')) as {
+    operation: string; pendingText: string; digest: string; wall: string; compactFailure: string };
+  const f = fixture('claude-code', { requireTurnHook: true });
+  let delivery: import('../../src/assembly/contracts.js').HarnessInputDelivery | undefined;
+  const adapter = createSessionConversationAdapter({
+    createDriver: resolveIntake => createProductionSessionDriver({ ...f.config, resolveIntake,
+      continuation: ({ operation, pendingDigest }) => ({ text: resolveIntake(operation, pendingDigest!), source: 'journal:1016106' }) }),
+    resolveDelivery: () => delivery,
+    io: { clearResult: () => {}, readResult: () => null, modelCalls: () => 1,
+      wait: async ms => f.time(f.config.now() + ms), prepareAdmission: () => {}, closeAdmission: () => {},
+      admissionState: () => ({ refused: false, uncertainEffects: 0, openDelegations: [] }) },
+  });
+  const old = await adapter.launch({ operation: 'claim', claim: 'topic', artifact: 'sha256:test', incarnation: 'inc', workingScope: '/work' });
+  delivery = { ...old, operation: recorded.operation, text: recorded.pendingText, digest: recorded.digest, resultPath: '/work/answer', maxBytes: 4096 };
+  expect(recorded.digest).toBe(hash(recorded.pendingText));
+  await adapter.deliver(delivery); f.changePane(recorded.wall);
+  await adapter.observe({ ...old, delivery, cursor: 0, limit: 16 });
+  f.onEnter(() => f.changePane(recorded.compactFailure));
+  expect((await adapter.control({ ...old, action: 'compact', authority: 'role', reason: 'context-too-long', delivery, deadline: 1900 })).state).toBe('replace-required');
+  await adapter.control({ ...old, action: 'close', authority: 'role', reason: 'failed compact' }); f.changePane('❯ ');
+  const start = f.calls.length;
+  await adapter.launch({ operation: 'next', claim: 'next', artifact: 'sha256:test', incarnation: 'next', workingScope: '/work',
+    restore: { operation: recorded.operation, digest: recorded.digest, deadline: 1900 } });
+  const text = f.calls.slice(start).filter(call => call[0] === 'send-keys' && call.includes('-l')).map(call => call.at(-1)).join('');
+  expect(text).toBe(recorded.pendingText);
+  expect(text).toContain(recorded.operation);
+  expect(f.calls.filter(call => call.includes('/compact'))).toHaveLength(1);
+});
+
 it.each(['busy', 'unknown', 'menu', 'policy', 'rate', 'stop', 'history', 'uncertain', 'deadline'] as const)(
   'never compacts or replaces an unsafe context recovery neighbor: %s', mode => {
     const f = fixture(), identity = f.launch(); value(f.deliver(identity));
@@ -792,8 +822,11 @@ it('restores only after exact retirement, submits once without blocking the chec
   const identity = value(f.driver.launch(next));
   expect(identity).not.toBe(old);
   expect(f.journal.sessions.at(-1)).toMatchObject({ turnDeadline: 1900, continuation: { state: 'accepted', pending } });
-  const submits = f.calls.filter(call => call.some(word => word.includes('Context recovery for last inbound deliver')));
+  const submits = f.calls.filter(call => call[0] === 'send-keys' && call.includes('-l')
+    && call.at(-1) === f.journal.sessions.at(-1)!.continuation!.text);
   expect(submits).toHaveLength(1);
+  const restored = submits[0]!.at(-1)!;
+  expect(restored).toBe(f.journal.sessions.at(-1)!.continuation!.text);
   expect(value(f.driver.launch(next))).toBe(identity);
   refused(f.driver.launch({ ...next, operation: 'third', claim: 'topic-third', incarnation: 'third' }), 'already submitted');
   expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('launched');
