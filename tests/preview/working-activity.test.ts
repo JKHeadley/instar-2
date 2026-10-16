@@ -18,11 +18,11 @@ it('a current admission and fresh live observation are both required, scoped to 
   const reader = createWorkingActivities({ read: () => bytes, now: () => now });
   reader.observe('one', 'claim', 'start'); reader.observe('one', 'claim', 'working');
   expect(reader.current('one')).toBeNull(); // previous turn is never activity for this message
-  bytes += pre('current'); expect(reader.current('one')?.text).toBe('Status: Run the build');
+  bytes += pre('current'); reader.observe('one', 'claim', 'working'); expect(reader.current('one')?.text).toBe('Status: Run the build');
   expect(reader.current('two')).toBeNull();
   now = 10002; expect(reader.current('one')).toBeNull();
-  reader.observe('one', 'claim', 'working'); expect(reader.current('one')).not.toBeNull();
-  bytes += post('current'); expect(reader.current('one')?.text).toBe('Status: latest step — Run the build');
+  reader.observe('one', 'claim', 'working'); expect(reader.current('one')).toBeNull();
+  bytes += post('current'); reader.observe('one', 'claim', 'working'); expect(reader.current('one')).toBeNull();
   bytes += pre('next'); reader.observe('one', null, 'end'); expect(reader.current('one')).toBeNull();
 });
 it('replays real native tool admission bytes from the 2026-10-03 live task, without fabricated activity', () => {
@@ -32,4 +32,33 @@ it('replays real native tool admission bytes from the 2026-10-03 live task, with
   expect(admissionActivity(rows.slice(0, 2).join('\n') + '\n', 0, 'live-task')).toBeNull();
   expect(admissionActivity(rows.slice(0, 3).join('\n') + '\n', 0, 'live-task')?.text).toBe('Status: Bash: wc -c note.txt');
   expect(admissionActivity(record.admission, 0, 'live-task')).toBeNull();
+});
+it('fresh polls cannot renew unchanged tool evidence; only advancing admitted work renews liveness', () => {
+  let bytes = '', now = 1;
+  const reader = createWorkingActivities({ read: () => bytes, now: () => now });
+  reader.observe('one', 'claim', 'start');
+  bytes = pre('a'); reader.observe('one', 'claim', 'working');
+  expect(reader.current('one')?.text).toBe('Status: Run the build');
+  now = 120001; reader.observe('one', 'claim', 'working');
+  expect(reader.current('one')).toBeNull();
+  bytes += pre('b'); reader.observe('one', 'claim', 'working');
+  expect(reader.current('one')?.text).toBe('Status: Run the build');
+});
+it('unreadable start establishes a baseline on recovery instead of announcing old work', () => {
+  let bytes: string | null = null;
+  const reader = createWorkingActivities({ read: () => bytes, now: () => 1 });
+  reader.observe('one', 'claim', 'start');
+  bytes = pre('old'); reader.observe('one', 'claim', 'working');
+  expect(reader.current('one')).toBeNull();
+  bytes += pre('new'); reader.observe('one', 'claim', 'working');
+  expect(reader.current('one')).not.toBeNull();
+});
+it('a failed observation and recovery do not freshen the same stale step', () => {
+  let bytes: string | null = '', now = 1;
+  const reader = createWorkingActivities({ read: () => bytes, now: () => now });
+  reader.observe('one', 'claim', 'start');
+  bytes = pre('old'); reader.observe('one', 'claim', 'working');
+  now = 20000; bytes = null; reader.observe('one', 'claim', 'working');
+  bytes = pre('old'); reader.observe('one', 'claim', 'working');
+  expect(reader.current('one')).toBeNull();
 });
