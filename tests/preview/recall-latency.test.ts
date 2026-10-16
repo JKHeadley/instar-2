@@ -134,7 +134,7 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     expect(Buffer.byteLength(packetText)).toBeLessThanOrEqual(32768);
     expect(bounded.actionFacts.siblingWords.items[0]).toMatchObject({
       topic: '7', source: 'telegram:12345678:update:1998',
-      excerpt: 'PREVIEW — I remember the cedar plan 1998.',
+      ownWords: expect.stringContaining('my words: "PREVIEW — I remember the cedar plan 1998."'),
     });
     expect(bounded.memorySearch).toBeUndefined();
     // train-51: retained sibling statements displace optional search/guidance at 32 KiB.
