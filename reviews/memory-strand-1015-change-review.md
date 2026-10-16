@@ -26,3 +26,5 @@ Evidence: The committed fixture preserves exact room inputs and summary excerpts
 Prompt review: No prompt or parser text changes. The existing unresolved warning remains model-visible; recorded shapes exercise the released path and its failure neighbors.
 80/20: Targeted regression and direct journal consumer tests, architecture, typecheck and required pinned publication checks. Independent desk review owns convergence and live acceptance.
 VERDICT: author submission; independent convergence is not claimed
+
+Publication: Regenerated seven existing shape-only register publications from source commit e08c4b2efef19d3a6c032207714b850daa7bbae4; generation sha256:5aced2c2c9883ca7b1d472b41415b7bc2f1979055507536d465d38d57bc34a7e. No policy, declaration or runtime authority change. Tools policy sha256:5fed4bcfd823d950c1444a008a9c11d40824671dd8e68aa2f5908ed8534a2926 and conversation policy sha256:3598cc7514f4be6ffec52f1d321e1596cd2db420a67fd7958281f3862dd9ce8c are unchanged.
