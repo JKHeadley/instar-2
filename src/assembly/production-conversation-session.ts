@@ -350,7 +350,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         ensure(Buffer.byteLength(text) <= 1_048_576, 'current conversation grounding exceeds delivery bound');
         let delivery: ConversationDelivery = { ...state.worker!, operation: id, text, digest: digest(text),
           resultPath: path, maxBytes: config.maxResultBytes };
-        updateBatch({ state: 'dispatching', delivery, batch: ids, ...(admission.effectsPrepared === undefined ? {} : { effectsAtDispatch: admission.effectsPrepared }), attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
+        updateBatch({ state: 'dispatching', delivery, batch: ids, ...(admission.toolPreparations === undefined ? {} : { effectsAtDispatch: admission.toolPreparations }), attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
         for (const operation of ids) config.workingActivity?.(operation, state.claim, 'start');
         const accepted = await adapter.deliver(delivery);
         if (accepted.state === 'busy-not-dispatched' || accepted.state === 'refused-not-dispatched') {
@@ -373,7 +373,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
             ensure(recoveryAdmission !== null && !recoveryAdmission.refused, 'context recovery admission unavailable');
             ensure(!row(id).contextRecovery && ids.length === 1, 'context recovery already attempted or batched input requires reconciliation');
             ensure(config.contextRecoveryAllowed?.() === true && recoveryAdmission.uncertainEffects === 0
-              && Number.isSafeInteger(row(id).effectsAtDispatch) && recoveryAdmission.effectsPrepared === row(id).effectsAtDispatch
+              && Number.isSafeInteger(row(id).effectsAtDispatch) && recoveryAdmission.toolPreparations === row(id).effectsAtDispatch
               && recoveryAdmission.openDelegations.length === 0 && calls() < config.maxCalls,
             'context recovery requires known sends, no tool effects since dispatch, no child work and remaining allowance');
             updateBatch({ contextRecovery: 'compacting' }); // durable before any control input

@@ -106,7 +106,7 @@ export interface SessionWorkIO {
   prepareAdmission(claim: string, edge: SessionWorkEdge): void | Promise<void>;
   /** The checkpoint's view of the claim: whether a call past the allowance was refused, and the child edges still
    * open. Null when unread. */
-  admissionState(claim: string): Readonly<{ refused: boolean; uncertainEffects?: number; effectsPrepared?: number; openDelegations: readonly SessionWorkEdge[] }> | null;
+  admissionState(claim: string): Readonly<{ refused: boolean; uncertainEffects?: number; toolPreparations?: number; openDelegations: readonly SessionWorkEdge[] }> | null;
   /** Closes the claim at the checkpoint: no further model call or admission of the child passes. */
   closeAdmission(claim: string): void;
   /** Resolves after at least `ms`, without blocking the host's timers. */

@@ -673,7 +673,7 @@ it('keeps intake when fresh action grounding exceeds its bound or its reader fai
 
 it.each(['resumed', 'replace-required'] as const)('continues one accepted turn after %s without a second delivery or refreshed liability', async disposition => {
   const f = fixture(); Object.assign(f.config, { contextRecoveryAllowed: () => true });
-  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, effectsPrepared: 0, openDelegations: [] });
+  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
   const observe = f.adapter.observe, control = f.adapter.control, launch = f.adapter.launch;
   let paused = false, restored = false, originalDeadline = 0;
   f.adapter.observe = async input => {
@@ -710,7 +710,7 @@ it.each(['resumed', 'replace-required'] as const)('continues one accepted turn a
 it.each(['unknown-effects', 'uncertain-tool', 'completed-tool', 'uncertain-send', 'exhausted', 'repeated', 'rate', 'policy', 'stop'] as const)(
   'retains uncertainty without context replay for %s', async mode => {
     const f = fixture(); Object.assign(f.config, { contextRecoveryAllowed: () => mode !== 'uncertain-send' });
-    f.config.io.admissionState = () => ({ refused: false, openDelegations: [], effectsPrepared: 0,
+    f.config.io.admissionState = () => ({ refused: false, openDelegations: [], toolPreparations: 0,
       ...(mode === 'unknown-effects' ? {} : { uncertainEffects: mode === 'uncertain-tool' ? 1 : 0 }) });
     let compacts = 0;
     const control = f.adapter.control;
@@ -720,7 +720,7 @@ it.each(['unknown-effects', 'uncertain-tool', 'completed-tool', 'uncertain-send'
     };
     f.adapter.observe = async input => {
       if (!input.delivery) return { observations: [], cursor: 0, complete: true };
-      if (mode === 'completed-tool') f.config.io.admissionState = () => ({ refused: false, openDelegations: [], uncertainEffects: 0, effectsPrepared: 1 });
+      if (mode === 'completed-tool') f.config.io.admissionState = () => ({ refused: false, openDelegations: [], uncertainEffects: 0, toolPreparations: 1 });
       if (mode === 'exhausted') f.calls(6);
       if (mode === 'stop') f.stop();
       return { observations: [{ kind: 'paused', evidence: 'recorded', reason: mode === 'rate' ? 'rate-limited' : mode === 'policy' ? 'policy-wedge' : 'context-too-long' }], cursor: input.cursor, complete: true };
@@ -734,7 +734,7 @@ it.each(['unknown-effects', 'uncertain-tool', 'completed-tool', 'uncertain-send'
 
 it.each(capturedShapes.otherShapes)('restores recorded $kind ($id) through the context recovery path with the exact pending input', async sample => {
   const f = fixture(); Object.assign(f.config, { contextRecoveryAllowed: () => true });
-  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, effectsPrepared: 0, openDelegations: [] });
+  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
   const request = preparedRequest(sample.id, JSON.stringify({ recorded: sample.raw }));
   const observe = f.adapter.observe, control = f.adapter.control, launch = f.adapter.launch;
   let paused = false, restored = false;

@@ -116,14 +116,17 @@ it('exposes unfinished effects and retains the prepared count after completion f
   w.gate.open('claim-effects', { framework: 'claude-code', allowance: 3, edge: w.edge });
   const url = `${w.gate.base('claim-effects')}/admit`;
   const call = { kind: 'effect', phase: 'pre', tool_name: 'webrun', tool_use_id: 'read-1', tool_input: { open: [{ ref_id: 'https://8.8.8.8/' }] } };
-  expect(w.gate.state('claim-effects')).toMatchObject({ uncertainEffects: 0, effectsPrepared: 0 });
+  expect(w.gate.state('claim-effects')).toMatchObject({ uncertainEffects: 0, toolPreparations: 0 });
   const admitted = JSON.parse((await w.send(url, 'POST', JSON.stringify(call))).body);
   expect(admitted, admitted.reason).toMatchObject({ decision: 'allow' });
-  expect(w.gate.state('claim-effects')).toMatchObject({ uncertainEffects: 1, effectsPrepared: 1 });
+  expect(w.gate.state('claim-effects')).toMatchObject({ uncertainEffects: 1, toolPreparations: 1 });
   expect(JSON.parse((await w.send(url, 'POST', JSON.stringify(call))).body).decision).toBe('deny');
-  expect(w.gate.state('claim-effects')).toMatchObject({ uncertainEffects: 1, effectsPrepared: 1 });
+  expect(w.gate.state('claim-effects')).toMatchObject({ uncertainEffects: 1, toolPreparations: 1 });
   expect(JSON.parse((await w.send(url, 'POST', JSON.stringify({ ...call, phase: 'post', result_bytes: 5 }))).body).decision).toBe('allow');
-  expect(w.gate.state('claim-effects')).toMatchObject({ uncertainEffects: 0, effectsPrepared: 1 });
+  expect(w.gate.state('claim-effects')).toMatchObject({ uncertainEffects: 0, toolPreparations: 1 });
+  // Ordinary work has no consequential-effect receipt, but must still prevent packet replay.
+  expect(JSON.parse((await w.send(url, 'POST', JSON.stringify({ kind: 'tool', tool_name: 'Write', tool_use_id: 'write-1' }))).body).decision).toBe('allow');
+  expect(w.gate.state('claim-effects')).toMatchObject({ uncertainEffects: 0, toolPreparations: 2 });
 });
 
 it('persists conversation charges before forwarding and refuses a failed durable reservation', async () => {
