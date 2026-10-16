@@ -1,9 +1,9 @@
 # Change review — extend the dark step-check graduation deadline
 
-Subject base: 324d40539a76ce148ccfd6d74b0278e72571ae32
+Subject base: d3fa88c4771b0934672c3fec1c39ae680c0336a4
 Review state: open
 Reviewed content: none
-Outcome: Restore register replay after the step-check deadline expired by extending the declared target exactly 72 hours to 2026-10-18T00:00:00Z, retaining dark status and the outstanding graduation obligation.
+Outcome: Import the owning repair 6b2e645230a839b8b141dcfdab87c615f2cd6d89 with an identical product patch on this branch’s baseline, authorized by the desk on 2026-10-15 at 17:20 for PR #166. Restore register replay after the step-check deadline expired by extending the declared target exactly 72 hours to 2026-10-18T00:00:00Z, retaining dark status and the outstanding graduation obligation.
 Affected rules: Rules 8, 26, 39, 49, 72, 73, 74, 90, 101, 102, 111, 113 and 116.
 Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake are unchanged; this change adds no runtime authority, model calls or enabled features.
 Operator questions: none
@@ -18,10 +18,10 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains sample hooks only.
 Convergence: none
-Prompt review: The scanner classifies promotion-record.ts as a prompt source. The added entry records a deadline, reason, desk owner and rollback only; it changes no model instructions, output parser or accept/escalate/refuse decision. No fixture phrase becomes an intent trigger and no delegation dispatch supplies an expected verdict.
+Prompt review: The promotion record appends the owner’s deadline, reason and rollback as status metadata. These strings contain neither a fixture trigger nor an asserted dispatch answer; no model prompt or output interpretation is changed.
 Decision: stepcheck-deadline-extend | step-check graduation not yet proven; deadline extended 72 h so dated gates do not block unrelated builds; graduation work tracked by the desk. Keep dark status and append reason, owner and rollback to the existing promotion record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/register-stepcheck-deadline-1014-PROGRESS.md
 
-Publication: Regenerated the seven changed generated register/capability/source files through scripts/build-register.mjs --replay --commit 6b2e645230a839b8b141dcfdab87c615f2cd6d89. Desk owner rehash and repin tools found zero stale pins; no hashes were hand-edited.
+Decision: owner-repair-import | Import the existing owning repair instead of writing a second fix; bind this review to the receiving branch while preserving the owner decision and its promotion history. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/const-onemind-1015-PROGRESS.md
 
 ## Closing block
 
