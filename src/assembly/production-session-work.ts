@@ -84,6 +84,8 @@ export function sessionWorkEffect(input: Omit<SessionWorkEffect, 'type' | 'schem
  * is `failed`, and an interrupted or unobservable one is `uncertain` — never a guessed answer. */
 export interface SessionWorkOutcome {
   readonly state: 'complete' | 'uncertain' | 'failed';
+  /** Infrastructure safety halt; unfinished work and uncertain effects remain retained. */
+  readonly safetyCeiling?: 'deadline' | 'calls';
   readonly text?: string; readonly detail: string;
   readonly edge: string; readonly child: string | null;
 }

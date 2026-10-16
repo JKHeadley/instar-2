@@ -410,7 +410,7 @@ it.each([200000, 50000])('reopen enforces the earlier persisted/admitted parent 
   next.reserveCall(f.state().claim!, 1);
   f.advance(500);
   expect(next.available()).toBe(false);
-  expect(() => next.reserveCall(f.state().claim!, 2)).toThrow(/parent lifetime/);
+  expect(() => next.reserveCall(f.state().claim!, 2)).toThrow(/safety ceiling: deadline/);
   await expect(next.run(f.request('three'))).rejects.toThrow(/unavailable/);
   await next.maintain(); expect(f.state().worker).toBeNull();
   expect(f.launches).toHaveLength(2);
@@ -669,4 +669,65 @@ it('keeps intake when fresh action grounding exceeds its bound or its reader fai
     expect(f.state().inputs[0]!.request.operation).toBe('first');
     await f.port.close();
   }
+});
+
+it('durably halts deadline-exhausted work before resource closure and never revives it on restart', async () => {
+  const f = fixture(); f.finish(false);
+  const control = f.adapter.control;
+  f.adapter.control = async input => {
+    if (f.state().inputs.some(row => row.state === 'accepted')) expect(f.state().halt).toMatchObject({ reason: 'deadline' });
+    return control(input);
+  };
+  expect(await f.port.run(f.request('ceiling'))).toMatchObject({ state: 'uncertain', safetyCeiling: 'deadline' });
+  expect(f.state().halt).toMatchObject({ reason: 'deadline', limit: 3000 });
+  expect(f.state().worker).toBeNull(); expect(f.closed).toHaveLength(1);
+  expect(f.counts().releases).toBe(1); expect(f.port.available()).toBe(false);
+  const next = f.restart(); await next.maintain();
+  expect((await next.collect('ceiling'))?.outcome).toMatchObject({ state: 'uncertain', safetyCeiling: 'deadline' });
+  expect(f.launches).toHaveLength(1); expect(next.available()).toBe(false);
+});
+
+it('records a refused spend ceiling as infrastructure halt but unknown accounting is not a ceiling', async () => {
+  for (const refused of [true, false]) {
+    const f = fixture(); await f.port.run(f.request('one'));
+    if (refused) f.refuse(); else f.calls(null);
+    const result = await f.port.run(f.request('two'));
+    expect(result.state).toBe('uncertain');
+    expect('safetyCeiling' in result ? result.safetyCeiling : undefined).toBe(refused ? 'calls' : undefined);
+    expect(f.state().halt?.reason).toBe(refused ? 'calls' : undefined);
+    expect(f.delivered).toHaveLength(1);
+  }
+});
+
+it('replays recorded worker and model shapes without mistaking available bytes for finished work at the ceiling', async () => {
+  const capture = JSON.parse(readFileSync(new URL('../preview/fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  expect(capture.workerRecords.some((row: { record: { type: string } }) => row.record.type === 'SessionWorkEdge')).toBe(true);
+  for (const recorded of capture.negativeOutputs as { id: string; shape: string; output: string | null }[]) {
+    const f = fixture(); f.answer(recorded.output ?? ''); f.finish(false);
+    const result = await f.port.run({ ...f.request(`recorded-${recorded.id.replace(/[^a-zA-Z0-9:-]/gu, '-').slice(-90)}`),
+      context: JSON.stringify({ recordedWorker: capture.workerRecords[0], recordedShape: recorded.shape }) });
+    expect(result).toMatchObject({ state: 'uncertain', safetyCeiling: 'deadline' });
+    expect(f.state().worker).toBeNull(); expect(f.counts().releases).toBe(1);
+    expect((await f.restart().collect(f.state().inputs[0]!.request.operation))?.outcome).toEqual(result);
+  }
+});
+
+it('keeps a safety halt and exact worker identity when closure cannot be confirmed', async () => {
+  const f = fixture(); f.finish(false); f.stopFailure();
+  expect(await f.port.run(f.request('ceiling'))).toMatchObject({ state: 'uncertain', safetyCeiling: 'deadline' });
+  expect(f.state().worker).not.toBeNull(); expect(f.port.available()).toBe(false);
+  expect(f.counts().releases).toBe(0);
+});
+
+it.each([false, true])('the independent watchdog halt prevents worker replacement, restarted=%s', async restart => {
+  const f = fixture(); await f.port.run(f.request('one'));
+  const observe = f.adapter.observe;
+  f.adapter.observe = async input => input.delivery ? observe(input)
+    : { observations: [{ kind: 'exit', evidence: 'exact-driver-deadline', safetyDeadline: 1750 }], cursor: 0, complete: true };
+  const next = restart ? f.restart() : f.port;
+  if (restart) {
+    await next.maintain(); expect(next.available()).toBe(false);
+  } else expect(await next.run(f.request('two'))).toMatchObject({ state: 'uncertain', safetyCeiling: 'deadline' });
+  expect(f.state().halt).toMatchObject({ reason: 'deadline', limit: 1750 }); expect(f.state().worker).toBeNull();
+  expect(f.launches).toHaveLength(1);
 });

@@ -18,6 +18,7 @@ export interface SessionRecord {
   readonly closedAt: number | null; readonly turnBaseline?: string; readonly turnReceiptIds?: readonly string[];
   readonly continuation?: SessionContinuation;
   readonly turnCloseEvidence?: string | null;
+  readonly deadlineHalt?: Readonly<{ deadline: number; at: number }>;
 }
 export interface SessionContinuation {
   readonly text: string; readonly source: string; readonly state: 'prepared' | 'sending' | 'accepted' | 'completed';
@@ -284,6 +285,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     }
   };
   const armTurn = (session: SessionRecord, recovery = session.recovery): SessionRecord => {
+    ensure(!session.deadlineHalt, 'session safety halt requires reconciliation');
     const started = config.now();
     const deadline = started + config.turnDeadlineMs;
     const armed = { ...session, recovery, turnStartedAt: started, turnDeadline: deadline, closedAt: null, turnCloseEvidence: null,
@@ -499,10 +501,11 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         return delivery.evidence;
       });
     },
-    observe(input: { operation: string; processIdentity: string }): Result<Readonly<{ phase: HarnessObservation['phase']; evidence: string; detail: string }>> {
+    observe(input: { operation: string; processIdentity: string }): Result<Readonly<{ phase: HarnessObservation['phase']; evidence: string; detail: string; safetyDeadline?: number }>> {
       return lockedBoundary('ProductionSessionObserve', input, () => {
         const session = loadSession(input.processIdentity);
         if (config.stopped()) { stop(); return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'stop authority active' }; }
+        if (session.deadlineHalt) return { phase: 'exit-observed' as const, evidence: `safety-ceiling:deadline:${session.identity}`, detail: 'per-turn deadline exceeded; closure must be reconciled', safetyDeadline: session.deadlineHalt.deadline };
         if (!alive(session.name)) return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'tmux session exited' };
         verifyLive(session);
         const pane = capture(session.name);
@@ -515,7 +518,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         const hook = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
           && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
         if (hook && session.turnStartedAt !== null && hook.at >= session.turnStartedAt
-          && session.turnDeadline !== null && hook.at <= config.now()) {
+          && session.turnDeadline !== null && hook.at <= config.now() && hook.at <= session.turnDeadline) {
           config.io.save(replaceSession(config.io.load(), { ...closeTurn(session, hook.at),
             turnCloseEvidence: `turn-closed:${session.name}:${hook.at}` }));
           if (uuid.test(hook.sessionId)) {
@@ -526,8 +529,9 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
             detail: 'Stop hook closed turn' };
         }
         if (session.turnDeadline !== null && config.now() >= session.turnDeadline) {
+          config.io.save(replaceSession(config.io.load(), { ...session, deadlineHalt: { deadline: session.turnDeadline, at: config.now() } }));
           run(['kill-session', '-t', literalTarget(session.name)]);
-          return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'per-turn deadline exceeded' };
+          return { phase: 'exit-observed' as const, evidence: `safety-ceiling:deadline:${session.identity}`, detail: 'per-turn deadline exceeded', safetyDeadline: session.turnDeadline };
         }
         const baseline = session.turnBaseline ?? config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1)?.baseline;
         const idle = classifyPaneIdle(pane, config.framework) && (!baseline || digestOf(pane) !== baseline);
