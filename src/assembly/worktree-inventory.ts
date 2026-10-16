@@ -29,8 +29,8 @@ const inside = (path: string, area: string) => path === area || path.startsWith(
  * the existing work owner must admit reconciliation with its own authority and durable identity. */
 export function abandonedWorktrees(input: Readonly<{ now: number; quietMs: number;
   worktrees: WorktreeInventory; processes: ProcessInventorySnapshot;
-  /** Every live process must have an independently resolved ownership join. */
-  ownership: ReadonlyMap<number, 'non-owner' | 'owner' | 'unknown'>;
+  /** Resolve each live process against this candidate, independently of its cwd. */
+  ownership: (checkout: string) => ReadonlyMap<number, 'non-owner' | 'owner' | 'unknown'>;
 }>): readonly WorktreeFinding[] {
   const { now, quietMs, worktrees, processes, ownership } = input;
   if (!instant(now) || !instant(quietMs) || quietMs === 0 || worktrees.status !== 'complete'
@@ -41,15 +41,16 @@ export function abandonedWorktrees(input: Readonly<{ now: number; quietMs: numbe
   if (new Set(worktrees.worktrees.map(row => row.path)).size !== worktrees.worktrees.length
     || worktrees.worktrees.some(row => !canonical(row.path))) return [];
   const live = processes.processes.filter(row => !row.zombie);
-  if (live.some(row => row.cwd.state !== 'observed' || !canonical(row.cwd.path) && row.cwd.path !== '/'
-    || ownership.get(row.pid) !== 'non-owner')) return [];
+  if (live.some(row => row.cwd.state !== 'observed' || !canonical(row.cwd.path) && row.cwd.path !== '/')) return [];
   return worktrees.worktrees.flatMap(checkout => {
     const activity = checkout.activity;
+    const candidateOwnership = ownership(checkout.path);
     if (!checkout.dirty || checkout.owner !== 'absent' || !checkout.head || !activity
       || ![activity.coveredFrom, activity.coveredThrough, activity.lastActivity].every(instant)
       || activity.coveredFrom > worktrees.sourceTime - quietMs || activity.coveredThrough < worktrees.sourceTime
       || activity.coveredThrough > now || activity.lastActivity > worktrees.sourceTime - quietMs
-      || live.some(row => row.cwd.state === 'observed' && inside(row.cwd.path, checkout.path))) return [];
+      || live.some(row => candidateOwnership.get(row.pid) !== 'non-owner'
+        || row.cwd.state === 'observed' && inside(row.cwd.path, checkout.path))) return [];
     return [{ machine: worktrees.machine, path: checkout.path, head: checkout.head,
       lastActivity: activity.lastActivity, observedAt: worktrees.sourceTime, processSample: processes.id }];
   });

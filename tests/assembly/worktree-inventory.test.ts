@@ -16,12 +16,34 @@ const processes = () => decodeProcessInventory({ type: 'ProcessInventory', schem
     zombie: false, cwd: { state: 'observed', path: '/work/neighbor' },
     resource: { state: 'reported', sourceSample: 'inventory:1', cumulativeCpuMs: 0, rssBytes: 1, heap: 'unsupported' } }] });
 const input = () => ({ now: 10000, quietMs: 5000, worktrees: worktrees(), processes: processes(),
-  ownership: new Map<number, 'non-owner' | 'owner' | 'unknown'>([[100, 'non-owner']]) });
+  ownership: (_checkout: string) => new Map<number, 'non-owner' | 'owner' | 'unknown'>([[100, 'non-owner']]) });
 
 describe('dirty orphan worktree observation', () => {
   it('finds only a dirty, quiet checkout after complete fresh exclusion of live ownership', () => {
     expect(abandonedWorktrees(input())).toEqual([{ machine: 'm', path: '/work/abandoned', head: 'abc',
       lastActivity: 1000, observedAt: 10000, processSample: 'inventory:1' }]);
+  });
+  it('finds the abandoned checkout while another observed checkout has a live owner', () => {
+    const x = input();
+    x.worktrees = { ...x.worktrees, worktrees: [...x.worktrees.worktrees, {
+      ...x.worktrees.worktrees[0]!, path: '/work/neighbor', owner: 'live',
+      activity: { coveredFrom: 0, coveredThrough: 10000, lastActivity: 9999 },
+    }] };
+    x.ownership = checkout => new Map([[100, checkout === '/work/neighbor' ? 'owner' : 'non-owner']]);
+    expect(abandonedWorktrees(x).map(row => row.path)).toEqual(['/work/abandoned']);
+    for (const path of ['/work/abandoned', '/work/abandoned/sub']) {
+      const candidateOwner = { ...x, processes: { ...x.processes,
+        processes: [{ ...x.processes.processes[0]!, cwd: { state: 'observed' as const, path } }] } };
+      expect(abandonedWorktrees(candidateOwner)).toEqual([]);
+    }
+    x.ownership = () => new Map([[100, 'unknown']]);
+    expect(abandonedWorktrees(x)).toEqual([]);
+    x.ownership = () => new Map();
+    expect(abandonedWorktrees(x)).toEqual([]);
+  });
+  it.each(['owner', 'unknown'] as const)('keeps a candidate with %s ownership even when the process cwd is elsewhere', state => {
+    const x = input(); x.ownership = () => new Map([[100, state]]);
+    expect(abandonedWorktrees(x)).toEqual([]);
   });
   it.each(['live', 'unknown'] as const)('keeps a %s owner', owner => {
     const x = input(); x.worktrees = { ...x.worktrees, worktrees: [{ ...x.worktrees.worktrees[0]!, owner }] };
@@ -40,7 +62,7 @@ describe('dirty orphan worktree observation', () => {
   });
   it('keeps unknown process directory and missing ownership joins', () => {
     const x = input();
-    expect(abandonedWorktrees({ ...x, ownership: new Map() })).toEqual([]);
+    expect(abandonedWorktrees({ ...x, ownership: () => new Map() })).toEqual([]);
     expect(abandonedWorktrees({ ...x, processes: { ...x.processes,
       processes: [{ ...x.processes.processes[0]!, cwd: { state: 'unavailable' } }] } })).toEqual([]);
   });

@@ -18,7 +18,7 @@ const snapshot = (): WorktreeInventory => ({ machine: 'm', sourceTime: 10000, fr
 const processes = () => decodeProcessInventory({ type: 'ProcessInventory', schemaVersion: 1, id: 'inventory:1',
   machine: 'm', hardwareProfile: 'h', adapter: 'a', adapterDigest: 'd', sourceTime: 10000, monotonicAt: 10,
   freshForMs: 100, cpuBasis: 'process-cpu-time', status: 'complete', examined: 0, omitted: 0, processes: [] });
-const observation = () => ({ quietMs: 5000, worktrees: snapshot(), processes: processes(), ownership: new Map() });
+const observation = () => ({ quietMs: 5000, worktrees: snapshot(), processes: processes(), ownership: (_checkout: string) => new Map() });
 const ports = (intake: ReturnType<ReturnType<typeof intakeFixture>['port']>) => ({ intake, route, machine: 'm',
   now: () => 10000, stopped: () => false, observe: async () => observation() });
 
@@ -116,7 +116,16 @@ describe('owned dirty-worktree recovery', () => {
         query: async (file: string, args: string[]) => execFileSync(file, args, { encoding: 'utf8', timeout: 5000 }),
         observe: async () => ({ owner: 'absent', activity }) });
       const f = intakeFixture({ directory: join(directory, 'intake') }), p = ports(f.port());
-      p.observe = async () => ({ ...observation(), worktrees: await census.census(repository) });
+      // The neighboring dirty checkout has a live owner; only the abandoned one enters intake.
+      writeFileSync(join(repository, 'active.txt'), 'active work\n');
+      p.observe = async () => ({ ...observation(), worktrees: await census.census(repository),
+        processes: { ...processes(), examined: 1, processes: [{ pid: 100, ppid: 1, pgid: 100,
+          uid: 501, start: 'Thu Oct 15 17:00:00 2026', command: 'worker', zombie: false,
+          cwd: { state: 'observed', path: repository },
+          resource: { state: 'unavailable', sourceSample: 'inventory:1', cumulativeCpuMs: null,
+            rssBytes: null, heap: 'unsupported' } }] },
+        ownership: candidate => new Map([[100, candidate === repository ? 'owner' : 'non-owner']]),
+      });
       const report = await createWorktreeRecovery(p).tick();
       expect(report).toHaveLength(1); expect(value(report[0]!.disposition).kind).toBe('admitted');
       expect(report[0]!.finding.path).toBe(checkout);
@@ -133,7 +142,8 @@ describe('owned dirty-worktree recovery', () => {
       expect(shapes.otherShapes.at(-1)!.raw).toBe('');
       expect(git('rev-parse', 'HEAD').trim()).toBe(head);
       expect(git('-C', checkout, 'status', '--porcelain')).toContain('?? retained-work.json');
-      expect(git('status', '--porcelain')).toBe('');
+      expect(git('status', '--porcelain')).toBe('?? active.txt\n');
+      expect(readFileSync(join(repository, 'active.txt'), 'utf8')).toBe('active work\n');
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });
