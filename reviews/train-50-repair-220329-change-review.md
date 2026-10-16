@@ -26,10 +26,11 @@ Decision: train-50-220329-merge | Merge main d0944dba without dropping candidate
 Decision: train-50-220329-evidence | The bounded failing capability assertion was already fixed on the candidate; verify its real recorded-shape test without introducing a duplicate fix or new model instructions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-50-repair-220329-PROGRESS.md
 Decision: train-50-220329-publication | Rebuild combined publications using existing owner rehash, repin and register replay tools; do not hand-edit hashes or redeclare the native certificate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-50-repair-220329-PROGRESS.md
 
-simplestRobustRoute: This is the simplest robust route: resolve the five overlaps additively and regenerate derived publications with existing tools. No new mechanism. The two exact parent commits guard entry; targeted positive and refusal tests guard the repair; the existing five safety floors remain unchanged. Builder readiness is pushed integration evidence, not live acceptance.
-80/20: Run targeted conflict consumers, the named constitutional prompt floors and cheap gate checks; the Studio owns full-suite and live acceptance evidence.
-VERDICT: author submission; no independent convergence asserted
 
 Publication: Existing desk rehash and repin scripts found zero stale owner or inventory pins. Compute the combined anchor digest with canonical() and compact excerpt digest with SHA-256 from actual bytes, never a hand-entered hash. Replay generation 31117fefacae1655ef9d8965ab3c8617a3b7ef8bc9057b5330606b495c038f8b binds source commit c0eca19eb135bf727bc89b6a9cfb04db788be4a6, 293 entries and 117 rules. No native conformance declaration changed.
 
 Decision: train-50-220329-review-scope | Bind the conflicted deadline review to the integration base; preserve both original records at their exact parent commits and retain their decisions. This prevents an unrelated 2484-commit subject while the existing commit-coverage gate still verifies every historical commit. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-50-repair-220329-PROGRESS.md
+
+simplestRobustRoute: This is the simplest robust route: resolve the five overlaps additively and regenerate derived publications with existing tools. No new mechanism. The two exact parent commits guard entry; targeted positive and refusal tests guard the repair; the existing five safety floors remain unchanged. Builder readiness is pushed integration evidence, not live acceptance.
+80/20: Run targeted conflict consumers, the named constitutional prompt floors and cheap gate checks; the Studio owns full-suite and live acceptance evidence.
+VERDICT: author submission; no independent convergence asserted

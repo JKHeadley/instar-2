@@ -23,12 +23,13 @@ Prompt finding: 4b98dc2a1b9f | protocol-literal | Existing capability descriptio
 Prompt finding: 95e349aaf4ac | protocol-literal | Existing effect-doorway protocol describes standing grants; the test checks the protocol, not a scenario answer.
 Deferral: generated/conversion.json:1 | not-a-deferral=Generated publication records approved source conversion; no work is deferred.
 
-simplestRobustRoute: This is the simplest robust route: resolve the five overlaps additively and regenerate derived publications with existing tools. No new mechanism. The two exact parent commits guard entry; targeted positive and refusal tests guard the repair; the existing five safety floors remain unchanged. Builder readiness is pushed integration evidence, not live acceptance.
-80/20: Run targeted conflict consumers, the named constitutional prompt floors and cheap gate checks; the Studio owns full-suite and live acceptance evidence.
-VERDICT: author submission; no independent convergence asserted
 
 Publication: Existing desk rehash and repin scripts found zero stale owner or inventory pins. Compute the combined anchor digest with canonical() and compact excerpt digest with SHA-256 from actual bytes, never a hand-entered hash. Replay generation 31117fefacae1655ef9d8965ab3c8617a3b7ef8bc9057b5330606b495c038f8b binds source commit c0eca19eb135bf727bc89b6a9cfb04db788be4a6, 293 entries and 117 rules. No native conformance declaration changed.
 
 Historical owner review: The exact original deadline review remains at 77dbef80748da0d11eb6ad2b3752983c1eebaaf2:reviews/register-stepcheck-deadline-1014-change-review.md; the main import review remains at d0944dbaee4acee514c53c25c3f1ba13026953d6:reviews/register-stepcheck-deadline-1014-change-review.md. This current record covers their integration rather than retrospectively reviewing all source differences from main’s older import baseline. No deadline or graduation state changes in this repair.
 Decision: stepcheck-deadline-extend | step-check graduation not yet proven; deadline extended 72 h so dated gates do not block unrelated builds; graduation work tracked by the desk. Keep dark status and append reason, owner and rollback to the existing promotion record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-50-repair-220329-PROGRESS.md
 Decision: owner-repair-import | Import the existing owning repair instead of writing a second fix; bind this review to the receiving branch while preserving the owner decision and its promotion history. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-50-repair-220329-PROGRESS.md
+
+simplestRobustRoute: This is the simplest robust route: resolve the five overlaps additively and regenerate derived publications with existing tools. No new mechanism. The two exact parent commits guard entry; targeted positive and refusal tests guard the repair; the existing five safety floors remain unchanged. Builder readiness is pushed integration evidence, not live acceptance.
+80/20: Run targeted conflict consumers, the named constitutional prompt floors and cheap gate checks; the Studio owns full-suite and live acceptance evidence.
+VERDICT: author submission; no independent convergence asserted
