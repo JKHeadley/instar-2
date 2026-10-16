@@ -291,6 +291,7 @@ it('catches a far-behind root up pass after pass with no operator message, each 
     for (let pass = 0; pass < 12; pass++) {
       const before = w.calls.length;
       await w.worker.summarizeIfNeeded();
+      w.clock.now += 600_000;
       perPass.push(frames(w.calls.slice(before)).length);
       frontier.push(journal.view.summaries.at(-1)?.through ?? -1);
     }
@@ -424,7 +425,7 @@ it('stops a catch-up at the call cap with the existing cap report', async () => 
     expect(journal.view.calls).toBe(330);
     const w = world(journal, plain);
     w.clock.elapsed += SUMMARY_UNKNOWN_RECOVERY_MS;
-    for (let pass = 0; pass < 6; pass++) await w.worker.summarizeIfNeeded();
+    for (let pass = 0; pass < 6; pass++) { await w.worker.summarizeIfNeeded(); w.clock.now += 600_000; }
     expect(journal.view.calls).toBe(350);
     expect(w.calls).toHaveLength(20);
     const frontier = journal.view.summaries.at(-1)!.through;
@@ -447,6 +448,7 @@ it('resumes a catch-up across a restart without repeating a decided call or losi
     let w = world(journal, plain);
     w.clock.elapsed += SUMMARY_UNKNOWN_RECOVERY_MS;
     await w.worker.summarizeIfNeeded();
+    w.clock.now += 600_000;
     await w.worker.summarizeIfNeeded();
     const kept = journal.view.summaries.map(item => item.through);
     expect(kept.at(-1)).toBe(65);
@@ -461,7 +463,7 @@ it('resumes a catch-up across a restart without repeating a decided call or losi
     await w.worker.summarizeIfNeeded();
     expect(w.calls).toEqual([]);
     w.clock.elapsed += SUMMARY_UNKNOWN_RECOVERY_MS;
-    for (let pass = 0; pass < 12; pass++) await w.worker.summarizeIfNeeded();
+    for (let pass = 0; pass < 12; pass++) { await w.worker.summarizeIfNeeded(); w.clock.now += 600_000; }
     expect(w.prepared).not.toContain('summary:69');
     expect(w.prepared).not.toContain('summary:31');
     expect(frames(w.calls).filter(id => dispatched.has(id))).toEqual([]);
