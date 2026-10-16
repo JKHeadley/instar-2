@@ -32,6 +32,8 @@ const script = (root: string, outcomes: Outcome[], end: 'stop' | 'crash' = 'stop
 };
 const fail = { code: 1, signal: null }, ok = { code: 0, signal: null };
 const episode = (root: string) => JSON.parse(readFileSync(join(root, 'host-watch.json'), 'utf8'));
+const recordRun = (root: string, launch: number, revival: string) => appendFileSync(join(root, 'runs.jsonl'),
+  JSON.stringify({ v: 1, launch }) + '\n' + JSON.stringify({ v: 1, launch, exit: launch + 1, revival }) + '\n');
 
 it('records one evidenced incident after self-heal is exhausted, inhibited without an alerts destination, preserved across relaunch', async () => {
   const { root, config } = fixture({ grant: 'deployment:alerts-dm' });
@@ -53,8 +55,13 @@ it('records one evidenced incident after self-heal is exhausted, inhibited witho
 
 it('stays quiet when a restart heals, and closes the episode on a clean run', async () => {
   const { root, config } = fixture({ grant: 'deployment:alerts-dm' });
-  await superviseJournal(config, { spawnRunner: script(root, [fail, fail, ok, fail]), now: () => Date.now(), wait: async () => {} });
-  expect(episode(root)).toMatchObject({ failedAttempts: 1, phase: 'recovering' });
+  let launches = 0;
+  await superviseJournal(config, { spawnRunner: async () => {
+    if (++launches < 3) return fail;
+    recordRun(root, 100, 'none'); return ok;
+  }, now: () => Date.now(), wait: async () => {} });
+  expect(launches).toBe(3);
+  expect(episode(root)).toMatchObject({ failedAttempts: 2, phase: 'recovering', open: false });
 });
 
 it('keeps an incident local when no alerts grant is recorded, and refuses an empty grant', async () => {
@@ -266,6 +273,7 @@ it('keeps healthy recorded work completion outside the host crash population', a
   let at = completed.record.closedAt;
   await superviseJournal(config, { now: () => at++, wait: async () => {}, spawnRunner: async () => {
     // Recorded worker result and durable work result are not failed host-launch evidence.
+    appendFileSync(join(root, 'runs.jsonl'), JSON.stringify({ v: 1, launch: at }) + '\n');
     appendFileSync(join(root, 'runs.jsonl'), JSON.stringify({ v: 1, launch: at, exit: at + 1, revival: 'none',
       work: [capture.workResult, completed] }) + '\n');
     return ok;
@@ -308,9 +316,107 @@ it('sends only one notice for the shared window even when a clean exit separates
   Object.assign(config, { maxRestarts: 6 });
   const requests = await telegram(root, 'ok');
   let at = 100;
+  let launches = 0;
+  await superviseJournal(config, { now: () => at++, wait: async () => {}, spawnRunner: async () => {
+    if (++launches <= 3) return fail;
+    recordRun(root, at, 'none'); return ok;
+  } });
+  expect(episode(root).open).toBe(false);
   await superviseJournal(config, { now: () => at++, wait: async () => {},
-    spawnRunner: script(root, [fail, fail, fail, ok, fail, fail, fail], 'crash') });
+    spawnRunner: script(root, [fail, fail, fail], 'crash') });
   expect(episode(root).crashLoop.pausedAt).not.toBeNull();
   expect(episode(root).crashLoop.failures).toHaveLength(6);
   expect(requests()).toHaveLength(1);
+});
+
+
+it.each(['missing', 'unrecorded', 'none', 'inhibited', 'queued'])('persists zero-code %s ends across supervisor restarts', async disposition => {
+  const { root, config } = fixture();
+  Object.assign(config, { maxRestarts: 2 });
+  if (['none', 'inhibited', 'queued'].includes(disposition)) recordRun(root, 1, disposition);
+  let at = 100, launches = 0;
+  const launch = async () => {
+    launches++;
+    if (disposition === 'unrecorded') appendFileSync(join(root, 'runs.jsonl'), JSON.stringify({ v: 1, launch: at }) + '\n');
+    return ok;
+  };
+  const io = { now: () => at++, wait: async () => {} };
+  await expect(superviseJournal(config, { ...io, spawnRunner: async () => {
+    if (launches === 1) throw Error('supervisor killed');
+    return launch();
+  } })).rejects.toThrow('supervisor killed');
+  expect(episode(root).crashLoop.failures).toHaveLength(1);
+  await superviseJournal(config, { ...io, spawnRunner: launch });
+  expect(launches).toBe(2);
+  expect(episode(root).crashLoop.pausedAt).not.toBeNull();
+  expect(episode(root).crashLoop.failures).toHaveLength(2);
+  await superviseJournal(config, { ...io, spawnRunner: launch });
+  expect(launches).toBe(2);
+});
+
+it.each(['none', 'inhibited'])('excludes a fresh zero-code %s disposition from the crash window', async revival => {
+  const { root, config } = fixture();
+  Object.assign(config, { maxRestarts: 1 });
+  let launches = 0;
+  await superviseJournal(config, { now: () => 100, spawnRunner: async () => {
+    launches++; recordRun(root, 100, revival); return ok;
+  } });
+  expect(launches).toBe(1);
+  expect(existsSync(join(root, 'host-watch.json'))).toBe(false);
+});
+
+it('recovers a prepared undispatched notice while paused, once per invocation, through the confined driver', async () => {
+  const { root, config } = fixture(ALERTS);
+  Object.assign(config, { maxRestarts: 2 });
+  const requests = await telegram(root, 'ok');
+  let at = 100, launches = 0, attempts = 0;
+  const io = { now: () => at++, wait: async () => {}, spawnRunner: async () => { launches++; return fail; },
+    notify: () => { attempts++; return null; } };
+  await superviseJournal(config, io);
+  const saved = episode(root);
+  expect(saved.phase).toBe('prepared');
+  expect(saved.crashLoop.pausedAt).not.toBeNull();
+  expect(attempts).toBe(1);
+  await superviseJournal(config, io);
+  expect(attempts).toBe(2);
+  expect(launches).toBe(2);
+  expect(requests()).toHaveLength(0);
+  // Use the shipped confined child on the next invocation: its durable ledger settles delivery.
+  await superviseJournal(config, { ...io, notify: undefined });
+  expect(episode(root)).toMatchObject({ id: saved.id, phase: 'notified', crashLoop: saved.crashLoop });
+  expect(requests()).toHaveLength(1);
+  await superviseJournal(config, io);
+  expect(attempts).toBe(2);
+  expect(launches).toBe(2);
+  expect(requests()).toHaveLength(1);
+}, 60000);
+
+it.each(['dispatching', 'uncertain', 'delivered'])('settles a paused prepared notice from its %s ledger without replay', async state => {
+  const { root, config } = fixture(ALERTS);
+  Object.assign(config, { maxRestarts: 2 });
+  let at = 100, launches = 0, attempts = 0;
+  const io = { now: () => at++, wait: async () => {}, spawnRunner: async () => { launches++; return fail; },
+    notify: () => { attempts++; return null; } };
+  await superviseJournal(config, io);
+  const saved = episode(root);
+  writeFileSync(join(root, NOTICE_LEDGER_FILE), JSON.stringify({ v: 1,
+    entries: { [saved.notice.episode]: { episode: saved.notice.episode, state, at, messageId: 123 } } }));
+  await superviseJournal(config, io);
+  expect(episode(root)).toMatchObject({ phase: state === 'delivered' ? 'notified' : 'notice-uncertain', crashLoop: saved.crashLoop });
+  expect(attempts).toBe(1);
+  expect(launches).toBe(2);
+  await superviseJournal(config, io);
+  expect(attempts).toBe(1);
+});
+
+it('does not recover a paused prepared notice while stop is latched', async () => {
+  const { root, config } = fixture(ALERTS);
+  Object.assign(config, { maxRestarts: 1 });
+  let attempts = 0;
+  const io = { now: () => 100, spawnRunner: async () => fail, notify: () => { attempts++; return null; } };
+  await superviseJournal(config, io);
+  writeFileSync(join(root, 'preview-stop.json'), '{}');
+  await superviseJournal(config, io);
+  expect(attempts).toBe(1);
+  expect(episode(root).phase).toBe('prepared');
 });

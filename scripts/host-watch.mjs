@@ -300,11 +300,27 @@ export async function superviseJournal(config, io = {}) {
   const limits = { ...JOURNAL_INCIDENT_LIMITS, ...(config.limits ?? {}) };
   const path = join(config.root, 'host-watch.json');
   const read = () => existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : { version: 1, mode: 'journal', open: false };
+  const recoverNotice = async episode => {
+    if (episode.phase !== 'prepared' || journalStopped(config.root)) return;
+    let settled;
+    try { settled = noticePhase(config.root, episode, null); } catch { settled = { phase: 'notice-uncertain' }; }
+    // A dispatch claim is authoritative even if the supervisor crashed before settling its phase.
+    if (settled.phase === 'prepared' && config.alerts?.chat) {
+      let answer = null;
+      try { answer = await notify(config, episode); } catch { /* the ledger decides what happened */ }
+      try { settled = noticePhase(config.root, episode, answer); } catch { settled = { phase: 'notice-uncertain' }; }
+    }
+    if (settled.phase !== 'prepared') writeDurable(path, { ...episode, ...settled });
+  };
   let failures = 0, firstLaunch = true;
   while (!journalStopped(config.root)) {
     let previous = read();
     if (previous.version !== 1 || previous.mode !== 'journal') throw Error('host watch: corrupt journal episode');
-    if (previous.crashLoop?.pausedAt !== null && previous.crashLoop?.pausedAt !== undefined) return 0;
+    if (previous.crashLoop?.pausedAt !== null && previous.crashLoop?.pausedAt !== undefined) {
+      // One bounded recovery attempt per invocation; the launch brake stays latched.
+      await recoverNotice(previous);
+      return 0;
+    }
     if (firstLaunch && Number.isSafeInteger(previous.nextLaunchAt) && previous.nextLaunchAt > now()) {
       await wait(config.root, previous.nextLaunchAt - now());
       if (journalStopped(config.root)) return 0;
@@ -324,7 +340,10 @@ export async function superviseJournal(config, io = {}) {
       if (migrated) {
         previous = { ...previous, crashLoop: recordScheduledCrash(migrated, { at: started, kind: 'no-work' }, crashPolicy) };
         writeDurable(path, previous);
-        if (previous.crashLoop.pausedAt !== null) return 0;
+        if (previous.crashLoop.pausedAt !== null) {
+          await recoverNotice(previous);
+          return 0;
+        }
       }
     }
     if (previous.crashLoop) recordScheduledCrash(previous.crashLoop, { at: started, kind: 'no-work' }, crashPolicy);
@@ -333,17 +352,18 @@ export async function superviseJournal(config, io = {}) {
     const at = now(), episode = read();
     if (episode.version !== 1 || episode.mode !== 'journal') throw Error('host watch: corrupt journal episode');
     const clean = outcome.code === 0 && outcome.signal === null && outcome.hung !== true;
-    const last = lastJournalRun(config.root);
+    const recorded = lastJournalRun(config.root);
+    const last = recorded?.launch !== priorLaunch ? recorded : null;
     const stopped = journalStopped(config.root);
     // The runner's explicit ownership/capacity dispositions are expected outcomes, even with nonzero exits.
     // Bind them to this launch: an old inhibited row cannot explain a new crash.
-    const expectedExit = last?.launch !== priorLaunch && outcome.signal === null && outcome.hung !== true
+    const expectedExit = outcome.signal === null && outcome.hung !== true
       && ((outcome.code === 4 && last?.revival === 'inhibited') || (outcome.code === 3 && last?.revival === 'none'));
-    const kind = stopped ? 'cancelled' : expectedExit ? 'capacity-applied' : !clean ? (outcome.hung === true ? 'hung'
+    const kind = stopped ? 'cancelled' : expectedExit ? 'capacity-applied' : !clean || !last || last.revival === 'unrecorded' ? (outcome.hung === true ? 'hung'
       : outcome.signal === 'launch-error' ? 'spawn-refused' : 'failure')
       : last?.revival === 'queued' && at - started < 60000 ? 'rapid-exit' : 'success';
     const crashLoop = recordScheduledCrash(episode.crashLoop ?? null, { at, kind }, crashPolicy);
-    if (stopped || expectedExit || (clean && kind !== 'rapid-exit')) {
+    if (stopped || expectedExit || kind === 'success') {
       if (episode.open || episode.crashLoop) writeDurable(path, { ...episode, crashLoop, open: false, closedAt: at });
     }
     else {
@@ -366,13 +386,7 @@ export async function superviseJournal(config, io = {}) {
       // The prepared notice is durable before the driver can dispatch it; a notice prepared by an earlier
       // supervisor whose driver never recorded a dispatch is still unsent and is attempted again.
       writeDurable(path, next);
-      if (next.phase === 'prepared' && config.alerts?.chat) {
-        let answer = null;
-        try { answer = await notify(config, next); } catch { /* the ledger decides what happened */ }
-        let settled;
-        try { settled = noticePhase(config.root, next, answer); } catch { settled = { phase: 'notice-uncertain' }; }
-        if (settled.phase !== 'prepared') writeDurable(path, { ...next, ...settled });
-      }
+      await recoverNotice(next);
     }
     if (journalStopped(config.root)) return 0;
     if (crashLoop.pausedAt !== null) return 0;
