@@ -1314,7 +1314,7 @@ export type JournalRecord =
    * source is offered here at most once; an unanswered reservation stays charged and is never repeated. */
   | { kind: 'index-reserve'; sources: string[]; maxInputTokens: number; maxOutputTokens: number; at: number }
   | { kind: 'meaning-index'; concepts: SummaryConcept[]; usage?: ModelUsage; at: number }
-  | { kind: 'memory-undecided'; id: string; reason: 'summary-uncertain' | 'summary-failed' | 'summary-behind'; at: number }
+  | { kind: 'memory-undecided'; id: string; reason: 'summary-uncertain' | 'summary-failed' | 'summary-behind' | 'summary-covered'; at: number }
   | { kind: 'summary'; through: number; text: string; memoryItems?: SummaryMemoryItem[];
     /** Meaning terms for summarized operator messages (Rule 11): a retrieval index, never shown as fact. */
     concepts?: SummaryConcept[]; people?: PersonNote[]; personAttributes?: PersonAttribute[]; memoryFor?: string[]; memory?: MemoryChange[];
@@ -6558,6 +6558,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const settleBehind = () => {
     for (let request = pendingMemory(); request; request = pendingMemory()) {
       const previous = summaryFor(request.update)?.through ?? -1;
+      // Room 4, 46040116: the eligible frontier reached this request but decided another one.
+      // runSummary cannot select it again. Coverage is not a memory judgment; preserve the
+      // unresolved warning and release the ordinary answer path (Rules 14, 15, 46, 95).
+      if (previous >= request.update) {
+        journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-covered', at: ports.now() });
+        continue;
+      }
       const behind = journal.view.order.filter(turn => turn.accepted && turn.update > previous && turn.update <= request!.update).length;
       if (behind <= SUMMARY_PASS_ATTEMPTS * SUMMARY_MAX_TURNS) return;
       journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-behind', at: ports.now() });
