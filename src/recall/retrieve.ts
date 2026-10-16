@@ -152,6 +152,9 @@ export interface ComposeInput {
 export interface ComposedRecall {
   /** Candidate indexes, best first, at most `maxResults`. */
   readonly order: readonly number[];
+  /** Selected sources supported by the semantic stage or generated cues, in composed order.
+   * Packet trimming must not discard these merely because their original words differ from the query. */
+  readonly meaningOrder: readonly number[];
   readonly rerank: RecallManifest['rerank']; readonly charge: number;
   /** Indexable candidates, how many carry derived cues, and whether meaning coverage is complete. */
   readonly coverage: { readonly indexable: number; readonly indexed: number };
@@ -207,6 +210,6 @@ export function composeRecall(input: ComposeInput): ComposedRecall {
     }
   const indexable = input.candidates.filter(c => c.indexable).length;
   const indexed = input.candidates.filter(c => c.indexable && c.cues?.length).length;
-  return { order, rerank, charge, coverage: { indexable, indexed },
+  return { order, meaningOrder: order.filter(index => semantic.includes(index) || derived.includes(index)), rerank, charge, coverage: { indexable, indexed },
     disposition: indexed === indexable && rerank !== 'failed' ? 'complete' : 'degraded' };
 }
