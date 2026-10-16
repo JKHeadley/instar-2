@@ -93,10 +93,21 @@ it('on the tools route the review packet is route-true, and the same two sides h
     'review-r2-neighbour-input.json', 'review-r2-decline-input.json'];
   for (const input of inputs) {
     const { packet } = packetOf(input);
-    expect(packet.capabilities, input).toEqual(previewCapabilities(true));
-    expect(packet.declaredObligations.capabilities, input).toEqual(previewCapabilities(true));
-    expect(packet.governingConstraints, input).toEqual(governingConstraints(true));
-    expect(packet.obligationDecision, input).toBe(OBLIGATION_DECISION_TOOLS);
+    // Historical send inventory predates requested-result delivery; all other capabilities remain exact.
+    expect(previewCapabilities(true).sends).toBe('bot: replies and explicitly requested follow-ups');
+    expect(packet.capabilities, input).toEqual({ ...previewCapabilities(true), sends: 'bot: replies and requested reminders or summaries' });
+    expect(packet.declaredObligations.capabilities, input).toEqual({ ...previewCapabilities(true), sends: 'bot: replies and requested reminders or summaries' });
+    expect(packet.governingConstraints, input).toEqual({ ...governingConstraints(true), 'reply-only-grant': 'bot: replies and requested reminders or summaries' });
+    // Preserve recorded guidance; translate compacted prose and the explicit delivery/withdrawal fields.
+    expect(packet.obligationDecision
+      .replace('When one applies, return:', 'For withdrawals: cancelDeliveries:[{id:listed commitment id,quote:exact operator withdrawal}]. When applicable:')
+      .replace('exact clause of this message setting a standing instruction beyond this reply', 'exact operator standing instruction')
+      .replaceAll('a sentence of your reply copied word for word', 'exact reply sentence')
+      .replace('"external"|"date"}]', '"external"|"date",deliveryRequest?:exact operator request to send the finished result without another message}]')
+      .replace('for work your reply leaves open (prefer deciding now)', 'for unfinished work')
+      .replace('for a cannot-do or needs-a-person claim surviving every lawful avenue', 'for an inability claim after checking every lawful avenue')
+      .replace('one packet.capabilities key such as "externalTools"', 'packet.capabilities key')
+      .replace('smallest step a person must take', 'smallest human step'), input).toBe(OBLIGATION_DECISION_TOOLS);
     expect(packet.declaredObligations.toolAttempts, input).toEqual({ meaning: TOOL_ATTEMPTS_MEANING, calls: [] });
     // Retain historical capture; translate only the clarified standing-grant condition.
     expect(packet.sources.find(source => source.id === 'capability-note')!.text

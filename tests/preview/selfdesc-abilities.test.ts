@@ -25,8 +25,11 @@ const live = (update: number) => ({ turns: new Map([[`telegram:8989505249:update
   { prompt: read(`recorded-prompt-${update}.json`) }]]) }) as unknown as JournalView;
 const wall = (update: number, constraint: string) => ({ source: `telegram:8989505249:update:${update}`, constraint, rechecks: [] }) as unknown as BlockerNote;
 
-// Translate only superseded guidance, keeping captured bytes and the capability inventory intact.
+// Translate declared guidance changes only; captured bytes and historical judge digests stay intact.
+// Requested result delivery is tested separately in owed-delivery.test.ts; historical PASS does not certify it.
 const currentChannelNote = (text: string) => compactRecordedNote(text)
+  .replace('keeps standing instructions and works the promises its replies leave open, holding results for the next message.',
+    'keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.')
   .replace('In the code but switched off here, so not available:', 'Code switched off here:')
   .replace('telegram-conversation-adapter.', 'telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot).');
 const renderedNote = (text: string) => currentChannelNote(text).replace(`- ${toolsBriefing(0)}`, CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }))
@@ -65,7 +68,7 @@ const compactRecordedNote = (text: string) => text
   .replace('What you can do for the operator here:', 'Capabilities:')
   .replace('Internal machinery running under you:', 'Internal:');
 
-it('replays preswitch update 840342287 with current self-description and the unchanged K11 rubric and capability inventory', () => {
+it('replays preswitch update 840342287 with current self-description and the unchanged K11 rubric and declared capability revisions', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-outward-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text;
@@ -167,7 +170,7 @@ it('reads the wording each live wall was settled behind from its recorded answer
   expect(settledConstraintWording(live(6232224), wall(6232224, 'no-such-constraint'))).toBeUndefined();
 });
 
-it('the recorded K11a briefing differs only in the declared conversation, media, recurring-request capabilities and read-first and standing-trust guidance', () => {
+it('the recorded K11a briefing differs only in the declared conversation, media, recurring-request and result-delivery capabilities and read-first and standing-trust guidance', () => {
   const note = capabilityBriefing(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
     { providerAttempts: 1000, expiresAt: 1791232800000, tools: true, mcp: 0 }).text;
   const replays = JSON.parse(read('k11a-replays.json')) as { note: string; runs: { kind: string; input: string; verdict: string; reply: string }[] };
@@ -213,8 +216,8 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   for (const run of current.runs) {
     const packet = packetOf(run.input);
     expect(packet.sources.find(source => source.id === 'capability-note')!.text).toBe(current.note);
-    expect(packet.capabilities).toEqual(previewCapabilities(true));
-    expect(packet.governingConstraints).toEqual(governingConstraints(true));
+    expect(packet.capabilities).toEqual({ ...previewCapabilities(true), sends: 'bot: replies and requested reminders or summaries' });
+    expect(packet.governingConstraints).toEqual({ ...governingConstraints(true), 'reply-only-grant': 'bot: replies and requested reminders or summaries' });
     expect(JSON.parse(run.raw).answer).toBe(run.reply);
     expect(run.judge).toMatchObject({ verdict: 'PASS', rubric: 'k11a-rubric-v2' });
   }
@@ -225,8 +228,8 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   for (const name of ['k11a-worst-input.json', 'k11a-chain-input.json']) {
     const packet = packetOf(JSON.parse(read(name)) as Envelope);
     expect(packet.sources.find(source => source.id === 'capability-note')!.text, name).toBe(replays.note);
-    expect(packet.capabilities, name).toEqual(previewCapabilities(true));
-    expect(packet.governingConstraints, name).toEqual(governingConstraints(true));
+    expect(packet.capabilities, name).toEqual({ ...previewCapabilities(true), sends: 'bot: replies and requested reminders or summaries' });
+    expect(packet.governingConstraints, name).toEqual({ ...governingConstraints(true), 'reply-only-grant': 'bot: replies and requested reminders or summaries' });
     expect(packet.capability, name).toMatch(/^Your capabilities are the capability-note source; describing yourself, give only its items and limits\. /u);
     // The live packet's two walls were settled behind wording this build changed, so neither is offered; the chain's walls
     // were declared by turns re-answered under this build, behind its own constraint keys.
