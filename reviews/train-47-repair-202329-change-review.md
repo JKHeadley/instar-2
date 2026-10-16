@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Merge composition includes native grounding, capacity admission and production wiring; no new policy or authority is introduced by the resolution.
-Side effects: The topic config type retains grounding alongside the injected capacity callback. Both existing runtime paths survive. Generated register publications are rebuilt from the combined source. The native macOS certificate is not evidence for this new composition.
+Side effects: The topic config type retains grounding alongside the injected capacity callback. Both existing runtime paths survive. Generated register publications are rebuilt from combined source commit 311297d6576a4e9e803782b9d0325859a5be7e29. The native macOS certificate is not evidence for this new composition.
 Undo and recovery: Revert the merge through the desk release procedure, retaining durable journals and never replaying uncertain sends. No new store or schema.
 Multi-machine posture: Capacity measurement remains machine-local beneath existing ownership. Grounding is topic/worker-local and rebuilt from durable custody; no replicated authority or transport changes.
 Layer below: Inspected topic host configuration spread, serialized physical resource admission and lease release, grounding snapshot-before-dispatch and the native adapter recovery declaration. Verified named live/source ancestry and generated-source provenance.
