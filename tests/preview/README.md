@@ -1340,7 +1340,7 @@ in `--time-zone` (an IANA zone, default `America/Los_Angeles`; an unknown zone r
 the zone is stated in the text. The counts include the message being answered; its
 own reply is not yet sent. Imported turns from an older root may have unknown
 times. Launches before this change were not recorded, and the text says so. It is
-recomputed from memory each turn (no model call or extra read). The 2000-turn
+counts are recomputed from memory each turn without a model call. The access snapshot below additionally reads existing local enrollment and custody. The 2000-turn
 timing check is quarantined under Rule 37 while its wall-clock flake is diagnosed;
 functional self-state checks remain active. `status` prints the same text as `self`
 plus the last three `launches`, so an answer can be checked against it (status, read after the reply,
@@ -4385,3 +4385,26 @@ pinned profile, including the executable artifact. Changed profiles/artifacts re
 checks are discarded. The observation is process-local and disappears on restart. It does not
 cache authorization or authentication: every invocation still checks the current artifact,
 authority, stop, login identity and `auth status --json` before dispatching its model command.
+
+### Check held access before escalating
+
+The answer writer's existing self-state source includes a fresh machine-local read of
+credential names, registered account identities, vault-object presence, expiry status,
+and configured MCP connectors with their credential references. An explicit connector
+`--user-data-dir` option records browser-profile presence; paths and cookies are never
+included. Other browser enrollment remains unknown. The snapshot does not prove a live
+login, ownership of a registered account, or authority to act.
+
+The existing guidance tells the agent to inspect relevant scoped tools and the capability
+and grant records before asking for access, say what it checked, and use already held
+usable access without another request. A genuine missing prerequisite is asked for once
+at the lowest rung, using existing blocker/request records; a secret goes through secure
+intake. An out-of-scope action remains refused by the existing effect doorway.
+
+Each inventory is bounded to 16 entries and 1536 serialized bytes; omitted and unreadable
+entries are explicitly distinguished from an empty inventory. Held-secret screening applies
+to metadata as well as values. The snapshot rides the existing durable answer prompt and
+its reply review, with no new store, watcher or model call. A compact rendering of the same
+self-state counts pays for the fixed instructions within the existing context floor.
+`self-unblock.test.ts` replays recorded update 46039927 and the recorded uncertain/review/
+empty-output shapes; live account behavior still requires the desk's proof-room check.
