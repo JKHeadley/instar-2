@@ -8,7 +8,7 @@ Affected rules: Purpose coherence and least revelation; Rules 1/4/7/10/12/19/34/
 Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake retain the existing exact checks, caps, ownership and encrypted journal. No new call, effect, store, gate or authority.
 Operator questions: none
 Suggested tier: critical
-Declared tier: standard
+Declared tier: significant
 Tier rationale: Repairs delivery of model guidance using the existing memory and advisory review contracts; no schema or permission change.
 Side effects: Consolidated memory wording keeps reply instructions bounded; the summary request gains the shared semantic distinction. Context fitting still measures the whole packet. Model interpretation of durable versus one-off instructions remains contextual judgment; this change does not purport to deterministically classify natural language. Previously misclassified preferences are not silently deleted.
 Undo and recovery: Revert the guidance and its unconditional delivery together. Existing prefer/correct/forget records remain readable by older code; no data migration or new replay schema is introduced.
