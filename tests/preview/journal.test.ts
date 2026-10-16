@@ -1457,7 +1457,7 @@ it('recalls an original turn far beyond the envelope across a restart in a 200-t
     expect(packet.summary.through).toBeGreaterThan(5);
     expect(packet.summary.sourceLabel).toMatch(/^summary:all conversations\/.+\/through #\d+$/u);
     expect(packet.history.some((turn: { user: string }) => turn.user.includes('QUASAR'))).toBe(false);
-    expect(packet.recalled).toContainEqual(expect.objectContaining({ id: 'telegram:12345678:update:5', date: '2026-09-21T14:18Z', user: fact, answer: 'noted',
+    expect(packet.recalled).toContainEqual(expect.objectContaining({ id: 'telegram:12345678:update:5', date: '2026-09-21 07:18 PDT', user: fact, answer: 'noted',
       outcome: 'Telegram API accepted' }));
     expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(8192);
     const p95 = (values: number[]) => values.slice().sort((a,b) => a-b)[Math.ceil(values.length * .95)-1]!;
@@ -1497,7 +1497,7 @@ it('recalls imported old-root turns with their original Telegram dates and drops
       model: async input => { contexts.push(input.context); return 'ok'; }, send: async () => 1, checkOutbound: () => {} });
     worker.intake([update(10, 'Which pier does the ferry leave from?')]); await worker.drain();
     const packet = JSON.parse(contexts[0]!);
-    expect(packet.recalled).toMatchObject([{ id: 'telegram:12345678:update:1', date: '2026-09-10T00:26Z', user: 'The ferry leaves from pier NINETEEN.',
+    expect(packet.recalled).toMatchObject([{ id: 'telegram:12345678:update:1', date: '2026-09-09 17:26 PDT', user: 'The ferry leaves from pier NINETEEN.',
       answer: 'old answer 1', outcome: 'Telegram API accepted' }]);
     // A narrower provider envelope still fits recall, after optional candidates yield.
     // int12: bound relative to the full first packet (which carries the old quote), so added

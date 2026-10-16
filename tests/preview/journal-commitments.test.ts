@@ -310,9 +310,9 @@ it('brings open items back after compaction with who said them and when, says it
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user === LOCKER || turn.user === DENTIST)).toBe(false);
     expect(packet.commitments).toMatchObject([
-      { source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message: LOCKER, items: [{ id: 1, quote: LOCKER }] },
-      { source: 'telegram:12345678:update:2', from: 'the operator (verified sender)', date: '2026-09-21T14:15Z', message: DENTIST, items: [{ id: 2, quote: DENTIST }] },
-      { source: 'telegram:12345678:update:2', from: 'you, in your own earlier reply', date: '2026-09-21T14:15Z', reply: `Noted. ${PROMISE}`, answering: DENTIST,
+      { source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21 07:14 PDT', message: LOCKER, items: [{ id: 1, quote: LOCKER }] },
+      { source: 'telegram:12345678:update:2', from: 'the operator (verified sender)', date: '2026-09-21 07:15 PDT', message: DENTIST, items: [{ id: 2, quote: DENTIST }] },
+      { source: 'telegram:12345678:update:2', from: 'you, in your own earlier reply', date: '2026-09-21 07:15 PDT', reply: `Noted. ${PROMISE}`, answering: DENTIST,
         delivery: 'Telegram API accepted', items: [{ id: 0, quote: PROMISE }] }]);
     expect(packet.capability).toContain('a promise itself grants no send');
     expect(packet.capability).toContain('Absence from this bounded list proves nothing');

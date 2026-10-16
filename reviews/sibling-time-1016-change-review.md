@@ -24,6 +24,8 @@ Prompt review: real recorded summary, uncertain summary, Jev undecided/unsure, r
 Prompt finding: 849db3a6296a | protocol-literal | existing saved-memory response in journal.ts, unchanged.
 Prompt finding: e8708c7fea24 | protocol-literal | existing memory source-label guidance in journal.ts, unchanged.
 
+Prompt finding: 4106b49fff07 | protocol-literal | unchanged historical grounding instruction restored by the pre-existing topic-awareness packet-pin test, not a new model trigger.
+
 ## Closing block
 
 simplestRobustRoute: this is the simplest robust route: render existing timestamps with Intl in the already-configured operator zone at the context boundary. No new config, clock, journal field, watcher or model call. It prevents the observed UTC-as-Pacific error without asking the model to do timezone conversion. Start guards remain audience and receipt verification; the end state is local zoned text in the actual dispatch; limits remain existing measured packet budgets. No autonomous shipped-path completion claim.

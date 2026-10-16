@@ -474,7 +474,8 @@ it.each([['America/Los_Angeles', '1969-12-31 16:00 PST'], ['UTC', '1970-01-01 00
     try {
       siblingReply(f, 1, 'The restart is on hold.', 7);
       f.worker.intake([siblingUpdate(f, 2, 'What about the restart?', 8)]); await f.worker.drain();
-      expect(f.deliveries.at(-1)!.input.text).toContain(expected);
+      const refreshed = JSON.parse(f.deliveries.at(-1)!.input.text.split('CURRENT ACTION FACTS')[1]!.split('\n')[1]!);
+      expect(refreshed.siblingWords.items[0].at).toBe(expected);
     } finally { await f.close(); }
   });
 
