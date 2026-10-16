@@ -40,7 +40,11 @@ Prompt finding: 45e37ea2e9e9 | protocol-literal | Existing authority/compatibili
 Prompt finding: 6af48f94b789 | protocol-literal | Existing authority/compatibility protocol text in the provider and historical fixture, unchanged by this unit; the fixture translation only adds the declared evidence guidance — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "sends remain outside the one-machine closed set. the effect doorway reports any "
 Prompt finding: b00ed403060a | protocol-literal | Existing authority/compatibility protocol text in the provider and historical fixture, unchanged by this unit; the fixture translation only adds the declared evidence guidance — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
 
-Subject (14 paths): tests/preview/answer-provenance-live-test.md, tests/preview/answer-provenance.ts, tests/preview/briefing.ts, tests/preview/claim-evidence.test.ts, tests/preview/selfdesc-abilities.test.ts, tests/preview/journal.ts, tests/preview/reply-check.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
+Prompt finding: 42faf877ba82 | protocol-literal | Unchanged agent identity in provider and historical capture; only the explicit contextual-claim translation changes — fixture-phrase src/assembly/production-codex-provider.ts <- tests/preview/act-first.test.ts: "you are an instar 2.0 agent,"
+
+Prompt finding: b1bb3946362d | protocol-literal | Unchanged agent identity in provider and historical capture; only the explicit contextual-claim translation changes — fixture-phrase src/assembly/production-provider.ts <- tests/preview/act-first.test.ts: "you are an instar 2.0 agent,"
+
+Subject (15 paths): tests/preview/act-first.test.ts, tests/preview/answer-provenance-live-test.md, tests/preview/answer-provenance.ts, tests/preview/briefing.ts, tests/preview/claim-evidence.test.ts, tests/preview/selfdesc-abilities.test.ts, tests/preview/journal.ts, tests/preview/reply-check.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 
 Decision: claim-evidence-existing-mind | Use shared evidence guidance in existing standing answer instructions (also inherited by revisions) and contextual claim question, preserving semantic judgment and all current fail directions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/claim-evidence-1016-PROGRESS.md
@@ -49,9 +53,9 @@ Decision: claim-evidence-recorded-proof | Replay existing real writer/Jev/review
 
 Validation: Claim-evidence and default-context-floor suites pass (17 tests); the final single-inheritance adjustment passes claim-evidence and reply-check (77 tests); guidance replay suite passes (24 tests, one opt-in capture skipped). Typecheck and architecture pass. Register publication was regenerated in replay mode from 76ab5ad0fda57bd777737620abeb52ce2b7913b2, and register:check passes. Broader direct-importer and final pushed-head gate results are recorded in the builder report.
 
-Decision: claim-evidence-fixture-translation | Extend the existing historical instruction translation for the new shared guidance, retaining captured output bytes and judge digests; historical PASSes do not certify new claim wording. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/claim-evidence-1016-PROGRESS.md
+Decision: claim-evidence-fixture-translation | Extend the existing historical instruction/reviewer translations for the new shared guidance, retaining captured output bytes and judge digests; historical PASSes do not certify new claim wording. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/claim-evidence-1016-PROGRESS.md
 
-Fixture validation: Four selfdesc-abilities comparison failures exposed the new standing instruction; the declared translation fixes them. selfdesc-abilities and claim-evidence pass together (21 tests). No capture or historical judgment was rewritten.
+Fixture validation: act-first also explicitly translates the changed contextual claim question while preserving its captured verdict. Four selfdesc-abilities comparison failures exposed the new standing instruction; the declared translation fixes them. selfdesc-abilities and claim-evidence pass together (21 tests). No capture or historical judgment was rewritten.
 
 Credential validation: Keep packet.capabilities, packet.credentialRegister and packet.declaredObligations explicitly named while shortening the claim question. This repairs the credential-boundary assertion without weakening it. Credential-label-boundary, default-context-floor and claim-evidence pass together (42 tests).
 

@@ -8,7 +8,7 @@ import { CODEX_CONVERSATION_SYSTEM_PROMPT, CODEX_TOOLS_SYSTEM_PROMPT } from '../
 import { ANSWER_INSTRUCTIONS, MEMORY_LOOKUP_INSTRUCTIONS } from './briefing.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { readAnswer } from './answer-reading.js';
-import { parseReplyReviewVerdict, substantiveReply, guidanceReviewRules, replyReviewQuestion, replyReviewContext } from './reply-check.js';
+import { REPLY_RULES, parseReplyReviewVerdict, substantiveReply, guidanceReviewRules, replyReviewQuestion, replyReviewContext } from './reply-check.js';
 // @ts-expect-error Physical tool trace reader stays outside the pure core.
 import { toolTrace } from './tool-admission.mjs';
 
@@ -164,10 +164,11 @@ it('replays the real reviewer on both the unperformed lookup and actual read out
     const selected = guidanceReviewRules(['parks_on_user', 'defers_work', 'unrecorded_blocker'], name !== 'failed-read');
     // Keep the actual captured question and verdict immutable. Translate only the six
     // explanatory clauses shortened by train-11's reviewed floor repair (00641ee8),
-    // plus D4's later capability-description/refusal distinction.
+    // plus D4's capability-description/refusal distinction and claim-evidence guidance.
     // This replays historical outputs; it does not claim a fresh model quality judgment.
     let question = run.question;
     for (const [before, after] of [
+      ["The writer states a fact about its own state, records or abilities (what it saved, scheduled, sent or used, what its limits are, or what it can or cannot do) that this context's own records contradict: the self-state and capability sources, packet.capabilities, packet.credentialRegister, the recorded history, the dated items or packet.declaredObligations. A statement those records support, or one they do not address, is not a breach.", REPLY_RULES.self_state_claim],
     // Admitted reminder evidence; keep historical captures and verdicts unchanged.
     ["The writer defers work to later (saying they will do it, check it, decide it or report back later) and packet.declaredObligations.loops does not record that deferral as an exact quote of this reply.",
       "The writer promises later work without a matching record: packet.declaredObligations.loops quotes this reply exactly, or packet.declaredObligations.dated records that requested action at that time. Neither supports unrelated promises."],
