@@ -5,12 +5,15 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFile
 import { randomUUID } from 'node:crypto';
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertAgentPaths } from './agent-paths.mjs';
 
 export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/homebrew/bin/tmux',
   home, configHome, cwd, lifecycleDirectory }) {
   for (const value of [stateDirectory, tmuxPath, home, configHome, cwd]) {
     if (typeof value !== 'string' || !value.startsWith('/')) throw Error('absolute session IO paths required');
   }
+  assertAgentPaths({ state: stateDirectory, home, configuration: configHome, workspace: cwd,
+    ...(lifecycleDirectory ? { inbox: lifecycleDirectory } : {}) });
   mkdirSync(stateDirectory, { recursive: true, mode: 0o700 });
   if (!lstatSync(stateDirectory).isDirectory()) throw Error('session state directory must be a real directory');
   chmodSync(stateDirectory, 0o700);

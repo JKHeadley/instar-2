@@ -90,7 +90,8 @@ export const CONVERSATION_SESSION_EXIT_TEST =
 /** One reserved allowance for a proof-room conversation. The parent cap still decides
  * whether it fits; a turn never refreshes it. */
 export const CONVERSATION_SESSION_LIMITS = Object.freeze({ ...SESSION_WORK_LIMITS,
-  maxStepsPerLaunch: 64, maxCallsPerStep: 128, deadlineMs: 3_600_000, maxSessions: 2, idleMs: 300_000 });
+  maxStepsPerLaunch: 64, maxCallsPerStep: 128, deadlineMs: 14_400_000, maxSessions: 8, idleMs: 14_400_000,
+  minCpuIdlePercent: 12, minFreeMemoryBytes: 2 * 1024 ** 3, minFreeMemoryFraction: 0.1 });
 export function conversationSessionPolicy(input: Parameters<typeof sessionWorkPolicy>[0]) {
   const base = sessionWorkPolicy(input);
   return Object.freeze({ ...base, admission: Object.freeze({ ...base.admission, allowance: CONVERSATION_SESSION_LIMITS.maxCallsPerStep }), limits: CONVERSATION_SESSION_LIMITS,
@@ -141,7 +142,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     ensure(safeName.test(config.conversation), 'exact conversation identity required');
     ensure(Number.isSafeInteger(config.allowanceDeadline) && config.allowanceDeadline > 0, 'finite parent lifetime required');
     for (const [name, value, minimum, maximum] of [
-      ['deadline', config.deadlineMs, 1, 3_600_000], ['poll', config.pollMs, 25, 5_000],
+      ['deadline', config.deadlineMs, 1, 14_400_000], ['poll', config.pollMs, 25, 5_000],
       ['result bytes', config.maxResultBytes, 1, 1_048_576], ['turns', config.maxSteps, 1, 64],
       ['calls', config.maxCalls, 1, 256],
     ] as const) ensure(Number.isSafeInteger(value) && value >= minimum && value <= maximum, `bounded conversation ${name} required`);
@@ -275,7 +276,13 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       }
       const edge = state.edge!;
       ensure(state.reserved, 'parent liability not confirmed; no worker may launch');
-      lease = await config.resources.admit(); ensure(lease !== null, 'host refused conversation resources'); guard();
+      lease = await config.resources.admit(); guard();
+      if (!lease) {
+        // No process admission or input dispatch occurred. Keep queued custody and
+        // the existing liability; no unlaunched claim needs process reconciliation.
+        persist({ claim: null, incarnation: null, authority: null });
+        return false;
+      }
       // A replacement claim draws on the existing parent liability. Admission receives only
       // the remaining allowance, including calls by every prior process, never a fresh cap.
       const processEdge: SessionWorkEdge = freeze({ ...edge, id: `${claim}:process`, child: claim,
@@ -286,6 +293,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       const worker = await adapter.launch({ operation: claim, claim, artifact: config.artifact, incarnation, workingScope: config.workingScope });
       ensure(worker.claim === claim && worker.incarnation === incarnation && worker.launch, 'launch identity differs from admission');
       persist({ worker }); await lease.attach(worker.launch); guard();
+      return true;
     };
     const work = async (waiting: readonly string[]) => {
       let ids = waiting;
@@ -304,7 +312,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           replaceNeeded = observed.observations.some(event => event.kind === 'exit');
           ensure(!observed.observations.some(event => event.kind === 'paused'), 'paused worker requires reconciliation');
         }
-        if (replaceNeeded) await replace(request);
+        if (replaceNeeded && !await replace(request)) return false;
         guard(); ensure(calls() < config.maxCalls, 'conversation call allowance exhausted');
         const admission = config.io.admissionState(state.claim!);
         ensure(admission !== null && !admission.refused, 'conversation admission unreadable or allowance refused');

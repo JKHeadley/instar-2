@@ -6,6 +6,7 @@ import { closeSync, constants, existsSync, fsyncSync, lstatSync, mkdirSync, open
 import { join, resolve, relative, isAbsolute } from 'node:path';
 import { homedir, userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { assertAgentPaths } from './agent-paths.mjs';
 import { hostResources, limitedFileArgv } from './resource-owner.mjs';
 
 /** Read native nonsecret preferences without following links or replacing malformed state. */
@@ -79,7 +80,9 @@ function transportProcessLimit() {
 
 export const productionStorageIO = Object.freeze({ pid: process.pid,
   probePid: pid => { process.kill(pid, 0); }, join, resolve, closeSync, constants, existsSync,
-  fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmdirSync,
+  fsyncSync, lstatSync, mkdirSync: (path, options) => {
+    assertAgentPaths({ state: path }); return mkdirSync(path, options);
+  }, openSync, readFileSync, realpathSync, renameSync, rmdirSync,
   unlinkSync, writeFileSync });
 
 export const productionProviderIO = Object.freeze({
@@ -309,6 +312,7 @@ export function createSubscriptionProviderIO({ repository, stopped, work = 'answ
   const digest = value => `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`;
   const inspectSubscriptionProfile = profile => {
     if (!['darwin', 'linux'].includes(process.platform)) throw Error('subscription platform unsupported');
+    assertAgentPaths({ home: profile.home, configuration: profile.configDirectory, workspace: profile.workingDirectory });
     const bindings = [];
     for (const path of [profile.home, profile.configDirectory, profile.workingDirectory]) {
       const info = lstatSync(path);

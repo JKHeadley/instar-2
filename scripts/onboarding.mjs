@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { configureTrust, setupTrustPolicy, setupMcp } from '../tests/preview/trust-setup.mjs';
 import { decodeEffectPolicy } from '../tests/preview/effect-doorway.mjs';
+import { assertAgentPaths } from './agent-paths.mjs';
 import { publishSetupRecord, readSetupRecord, syncDirectory } from './onboarding-state.mjs';
 
 export const SETUP_DEFAULTS = Object.freeze({ identity: true, selfKnowledge: true, reflection: true, growth: true });
@@ -53,6 +54,7 @@ function verifyInstalled(root, request) {
 export async function runOnboarding(rootInput, io, custodian) {
   if (!bounded(custodian, 256)) throw Error('the installation owner identity is required');
   const root = resolve(rootInput), state = join(root, '.onboarding');
+  assertAgentPaths({ root, state });
   mkdirSync(root, { recursive: true, mode: 0o700 });
   if (!lstatSync(root).isDirectory()) throw Error('setup root must be a real directory');
   const identityPath = join(state, 'identity.json');

@@ -70,7 +70,7 @@ export const RESOURCE_CEILINGS = Object.freeze({
   launch: Object.freeze({ memoryBytes: 2 * GiB, processCount: 32, handleCount: 1024, cpuMilliseconds: 600_000 }),
   // The aggregate is exactly the launch slots times the per-launch allocation: the Six installation
   // domain's capacity, so every admitted launch has its whole allocation reserved.
-  aggregate: Object.freeze({ memoryBytes: 6 * GiB, processCount: 96, launches: 3 }),
+  aggregate: Object.freeze({ memoryBytes: 18 * GiB, processCount: 288, launches: 9 }),
   reserveLaunches: 1,
   sampleMs: 1000,
   /** Bounded census per tick (every current-user process): more than this is a partial sample. */

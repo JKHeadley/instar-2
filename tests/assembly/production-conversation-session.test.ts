@@ -147,6 +147,20 @@ it('stop prevents launch, and stops an active turn without dispatching queued in
   expect(f.delivered).toHaveLength(1); expect(f.state().inputs[1]!.state).toBe('queued'); await f.port.close();
 });
 
+it('resource refusal retains queued input and liability without a phantom worker or charge', async () => {
+  const f = fixture(); const admit = f.config.resources.admit;
+  Object.assign(f.config.resources, { admit: async () => null });
+  expect(await f.port.run(f.request('one'))).toMatchObject({ state: 'queued' });
+  expect(f.state()).toMatchObject({ worker: null, claim: null, spent: 0, reserved: true });
+  expect(f.state().inputs[0]).toMatchObject({ state: 'queued', delivery: null, attempts: 0 });
+  expect(f.admissions).toHaveLength(0); expect(f.delivered).toHaveLength(0);
+  await f.port.maintain(); expect(f.closed).toHaveLength(0);
+  Object.assign(f.config.resources, { admit }); await f.port.maintain();
+  expect(await f.port.collect('one')).toMatchObject({ outcome: { state: 'complete' } });
+  expect(f.edges.filter(row => row.type === 'SessionWorkEdge' && !row.drawsOn)).toHaveLength(1);
+  expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1); await f.port.close();
+});
+
 it('close waits for admission and releases a late lease without launching', async () => {
   const f = fixture(); let release!: () => void; let entered!: () => void;
   const ready = new Promise<void>(resolve => { entered = resolve; });
@@ -176,7 +190,7 @@ it.each(['stop', 'release'] as const)('reports %s cleanup uncertainty and never 
 it('conflicting identity, escaped paths, invalid bounds and missing durable storage refuse', async () => {
   const f = fixture(); await f.port.run(f.request('one'));
   await expect(f.port.run({ ...f.request('one'), question: 'different' })).rejects.toThrow(/conflicts/);
-  for (const patch of [{ maxCalls: 0 }, { maxCalls: 257 }, { maxSteps: 65 }, { pollMs: 0 }, { deadlineMs: 3600001 },
+  for (const patch of [{ maxCalls: 0 }, { maxCalls: 257 }, { maxSteps: 65 }, { pollMs: 0 }, { deadlineMs: 14400001 },
     { resultDirectory: '/scope/../elsewhere' }, { resultDirectory: '/outside' }, { conversation: '../escape' },
     { store: undefined as never }]) expect(createConversationSessionPort({ ...f.config, ...patch }).kind).toBe('Refused');
   await f.port.close();
@@ -381,7 +395,7 @@ it('an input arriving during idle retirement waits for exact stop before replace
 it('the activation policy names the same topic cap and one shared allowance as the runner', () => {
   const policy = conversationSessionPolicy({ framing: 'fixture', framework: 'claude-code', model: 'fixture', launch: [] });
   expect(policy.limits).toEqual(CONVERSATION_SESSION_LIMITS);
-  expect(policy.limits).toMatchObject({ maxSessions: 2, idleMs: 300000, maxCallsPerStep: 128 });
+  expect(policy.limits).toMatchObject({ maxSessions: 8, idleMs: 14400000, maxCallsPerStep: 128 });
   expect(policy.admission.allowance).toBe(128);
 });
 

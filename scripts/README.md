@@ -19,3 +19,11 @@ an unrelated trial cannot create acceptance. Adding these options takes effect i
 process at its next controlled restart; a standalone status command only proves the configuration.
 No passkey setup, new Telegram user or paid phone number is needed for this existing review route.
 The operator still supplies every real approval; the agent never approves as the operator.
+
+`agent-paths.mjs` implements the operator's Mac placement rule (Rules 4/26/93/103):
+setup, boot, storage/session creation and workspace mounts refuse an agent directory in
+`~/Documents`, `~/Desktop`, `~/Downloads` or `~/Library/Mobile Documents`, including
+symlink targets and missing descendants. Use the agent home (`~/.instar/agents/<agent>/`)
+instead. Checks run on each Mac host, including existing installations at their next
+boot; Linux is unchanged. The check performs no writes and does not migrate existing
+state. The journal runner keeps status and stop accessible for an existing misplaced root.

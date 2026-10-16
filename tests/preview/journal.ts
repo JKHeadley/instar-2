@@ -7960,10 +7960,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       progressInFlight.set(turn, job);
     }));
   };
-  const startAcknowledgement = (turn: Turn) => {
+  const startAcknowledgement = (turn: Turn, knownPending = false) => {
     startProgress(turn);
     if (acknowledgementTimers.has(turn) || !fromOperator(turn) || turn.requestedAction || turn.editOf
-      || ((turn.reserved || turn.answer !== undefined) && turn.modelState !== 'complete')
+      || (!knownPending && (turn.reserved || turn.answer !== undefined) && turn.modelState !== 'complete')
       || turn.intent !== undefined || outsideAllowance(journal.view, turn)) return;
     // A durable complete answer can still await review after restart; only final dispatch ends its acknowledgement window.
     const after = ports.acknowledgementTimer ?? ((ms: number, run: () => void) => {
@@ -8255,7 +8255,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         let collected: Awaited<ReturnType<NonNullable<PreviewPorts['collectModel']>>> = null;
         if (turn.reserved && turn.answer === undefined && turn.modelState === undefined && !turn.noticeClass && ports.collectModel) {
           try { collected = await ports.collectModel(turn.id); }
-          catch { blockedEarlier = true; continue; } // pending or unreadable custody never authorizes replay
+          catch (error) {
+            // Exact host evidence distinguishes queued work from an unknown dispatch.
+            if (error instanceof ModelPending) { startAcknowledgement(turn, true); await acknowledgeReply(turn); }
+            blockedEarlier = true; continue; // Neither pending nor unreadable custody authorizes replay.
+          }
           gate();
           // A later format/lookup reservation has different bytes; an older host result
           // cannot settle it. Keep that reservation UNKNOWN, never replay either one.
@@ -8347,7 +8351,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               gate();
               result = await original.model(input);
             } catch (error) {
-              if (error instanceof ModelPending) blockedEarlier = true;
+              if (error instanceof ModelPending) { blockedEarlier = true; startAcknowledgement(turn, true); await acknowledgeReply(turn); }
               if (error instanceof ModelDisclosureRefused || error instanceof ModelNotStarted)
                 journal.append({ kind: 'hold', id: turn.id,
                   reason: error instanceof ModelDisclosureRefused ? GROUP_DISCLOSURE_HOLD : MODEL_NOT_STARTED_HOLD,
@@ -8402,6 +8406,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   journal.append({ kind: 'hold', id: input.id,
                     reason: error instanceof ModelDisclosureRefused ? GROUP_DISCLOSURE_HOLD : MODEL_NOT_STARTED_HOLD,
                     unusedModel: { corrections: pending.grounding?.corrections ?? [], toolCalls: 0 }, at: ports.now() });
+                }
+              }
+              if (error instanceof ModelPending) {
+                for (const input of waiting) {
+                  const pending = journal.view.turns.get(input.id)!;
+                  startAcknowledgement(pending, true); await acknowledgeReply(pending);
                 }
               }
               blockedEarlier = true; answer = false;
