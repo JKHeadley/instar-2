@@ -71,7 +71,7 @@ import { agreementLine, agreementStatus, runDueAgreements } from './store-agreem
 import { connectConversationAuthority } from './conversation-authority.js';
 import { createLeaseHolder } from './two-machine-serving.js';
 import { adoptReceivedCopy, connectReplicaPeer, createJournalShipper, createReplicatedDispatch, openReplicaStore, serveReplicaStore,
-  sharedHistoryStatus, takeoverEligibility } from './journal-replication.js';
+  backupStatusLine, sharedHistoryStatus, takeoverEligibility } from './journal-replication.js';
 import { createApprovalSurfaceClient } from './approval-surface-client.mjs';
 import { dashboardSnapshot } from './operator-dashboard.js';
 import { parseExplicitYesInstallation } from './explicit-yes-installation.js';
@@ -1643,6 +1643,7 @@ async function main() {
       },
       noteIntake() { if (sharedJournal.view.cursor > dispatch.cursor) settle = { token: shipper.token(), cursor: sharedJournal.view.cursor }; },
       peerCurrent: () => report(),
+      backupLine: () => backupStatusLine(posture, shipper.status(PEER_FRESH_MS)),
       line: () => { const status = shipper.status(PEER_FRESH_MS);
         return `Two machines: this runner holds the conversation (lease epoch ${fence.epoch}); every reply waits until the other machine has acknowledged its record. ${status.current
           ? 'The other machine holds the whole journal.' : `Waiting for it now (${status.reason}).`}`; },
@@ -2040,7 +2041,7 @@ async function main() {
     const ownerLines = () => {
       const refused = refusedLaunches(ownersDirectory(), g.bot, g.chat);
       return [`Serving: this runner on ${ownerMachine} owns this conversation (claimed ${Math.max(0, Math.round((wallNow() - ownerClaim.holder.since) / 60000))} min ago); ${refused} duplicate launch(es) refused on this machine.`,
-        agreementLine(agreementsPath, wallNow()), ...(shared ? [shared.line()] : [])];
+        agreementLine(agreementsPath, wallNow()), ...(shared ? [shared.line(), shared.backupLine()] : [backupStatusLine(posture, null)])];
     };
     // Rule 15, pull surface: whether a message past an ordinary cap would get its limited answer, and what clears it if not.
     const minimalLines = () => {
