@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Composition touches asynchronous progress, durable work recovery and receipt-bound delivery; authority remains in existing admission paths.
-Side effects: Both withdrawn/unknown delivery and recovery-held results remain counted; status retains requested-delivery authority distinctions. Progress reserves an answer slot. Member model guidance and retrospective reconciliation are carried together. The native macOS certificate is byte-bound to an earlier composition and requires a Studio contract run.
+Side effects: The legacy long-gap fixture budget is 9000 instead of 8500 to retain all date/commitment assertions beside current guidance; production guards and runtime bytes are unchanged. Both withdrawn/unknown delivery and recovery-held results remain counted; status retains requested-delivery authority distinctions. Progress reserves an answer slot. Member model guidance and retrospective reconciliation are carried together. The native macOS certificate is byte-bound to an earlier composition and requires a Studio contract run.
 Undo and recovery: Desk selects prior live composition through its release process; stop affected runners before rollback to a reader lacking recoveryHeld. Keep durable journals and uncertain effect evidence; never replay uncertain sends. No live switch performed here.
 Multi-machine posture: Existing journal replication and conversation ownership hold all effects. Physical activity is local evidence only, never peer authority or permission to restart. No new store, lease or transport.
 Layer below: Full constitution, exact member reports and reviews, live base ancestry, journal receipt/intent and obligation projections, session driver and worker-close evidence, desk regeneration chain; combined member tests verify actual consumers.
@@ -29,6 +29,7 @@ Decision: train-50-B | Branch created directly at exact live d8df218642fdbada127
 Decision: train-50-C | No irreconcilable product conflict; no member omitted and no merge aborted. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-50-PROGRESS.md
 Decision: train-50-D | Portable targeted checks on WSL; disclose host-bound failures, reserve native certificate and live acceptance for Studio; no weakened checks. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-50-PROGRESS.md
 Decision: train-50-desk | Keep generated files at the base during merges, then regenerate the seven publications from merged committed source with existing repin/build/rehash/replay tools; no hand-merged generated contents. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-50-PROGRESS.md
+Decision: train-50-gap-fixture | Current delivery guidance outgrew the legacy synthetic 8500-byte long-gap fixture; use 9000 for its three-date grounding scenario, retain every assertion, and verify the unchanged production context floor. No runtime prompt, budget or selection change. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-50-PROGRESS.md
 Deferral: generated/register.json:1 | not-a-deferral=Regenerated replay publication; no deferred implementation.
 
 Deferral: tests/preview/README.md:32 | not-a-deferral=Describes implemented owned deferral execution and receipt-bound result delivery, not postponed builder work.
