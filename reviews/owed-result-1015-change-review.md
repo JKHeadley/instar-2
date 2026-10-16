@@ -23,6 +23,8 @@ Model-facing posture: no prompt, output parser, result acceptance or recovery ad
 
 Policy digests: unchanged for claude-sonnet-5. Tools sha256:5fed4bcfd823d950c1444a008a9c11d40824671dd8e68aa2f5908ed8534a2926; native tools sha256:128115490fd779e5160a273635a7e6f91262cdc902ff2e31ccd6c4cef965f50b; continuing conversation sha256:4aef0f86652e59f6c7f48e42553c16ac249af455caec5c87ee4bd3ff5c654718. Policy functions, prompts, flags and limits are unchanged.
 
+Native certification (Rules 26/49/69/105/115): after the desk rejected the stale certificate, ran the declaration's named native-harness-contract case on the Studio before re-declaring conformance. The real confined capability build/install/probe, owner reservations, lifecycle evidence, stop and failed-call accounting passed with captured provider frames in temporary roots. The runtime is unchanged; conformance now names the tested composition sha256:30f4cfab67ab2975b225b11171f1c89579a25f07e131158ad8b0a99db166f428. All 10 tests in native-harness-contract.test.ts pass after the refresh, including exact certification and confinement deadlines. An injected copy of the old certificate still reports unsupported. This refresh changes no behavior, policy or admission rule. It does not claim live-provider or proof-room acceptance.
+
 Operator questions: none
 Declared tier: integration
 Convergence: author submission; independent desk review pending.
