@@ -3,7 +3,8 @@ import { afterEach, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin } from './installed-harness-logins.mjs';
+import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin, observeInstalledSessionLogin } from './installed-harness-logins.mjs';
+import { readHarnessLogin } from './harness-user.mjs';
 import { createHarnessLoginPool, loadHarnessLogins } from './harness-login-pool.mjs';
 import { successiveWorld, offlineProfile, offlineActivationAuthority, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
 import { authoritySealKey, resolveActivationAuthority, sealAuthorityRecord } from './activation-authority.js';
@@ -270,4 +271,57 @@ it('verifies imported v1 predecessor identity after a secondary profile disappea
   const changed = { ...read(path), logins: [...f.logins].reverse() };
   writeFileSync(path, JSON.stringify(changed));
   expect(() => loadHarnessLogins(selected.options)).toThrow(/predecessor members differ/);
+});
+
+it('correlates a verified running session with missing custody, never identity drift or an unreadable observation', () => {
+  const profile = { reference: 'member-a', activationReference: 'grant-a' };
+  const live = { subject: 'session-claim', at: 100, progress: null, wait: null };
+  const missing = () => { throw Object.assign(Error('synthetic missing custody'), { code: 'ENOENT' }); };
+  expect(observeInstalledSessionLogin(profile, live, missing)).toMatchObject({ state: 'missing', at: 100 });
+  expect(observeInstalledSessionLogin(profile, live, () => 'synthetic-token')).toMatchObject({ state: 'present' });
+  for (const failure of [Error('bound to another account'), Object.assign(Error('denied'), { code: 'EACCES' })])
+    expect(observeInstalledSessionLogin(profile, live, () => { throw failure; }).state).toBe('unknown');
+  expect(observeInstalledSessionLogin(profile, null, missing)).toBeNull();
+});
+
+it('keys missing custody to machine and admitted lifetime, and the launcher uses the verified activity callback', () => {
+  const source = readFileSync('tests/preview/journal-agent.mjs', 'utf8');
+  const start = source.indexOf('          observeActivity: observation => {');
+  const end = source.indexOf('          maxSessions:', start);
+  expect(start).toBeGreaterThan(0); expect(end).toBeGreaterThan(start);
+  const property = source.slice(start, end).trim().replace(/,$/u, '');
+  const profile = { reference: 'member-a', activationReference: 'grant-a' };
+  const activity = { subject: 'live-claim', at: 100, progress: null, wait: null };
+  let missing = true;
+  const login = () => { if (missing) throw Object.assign(Error('private detail'), { code: 'ENOENT' }); return 'synthetic-token-never-in-observation'; };
+  const observations = new Map(), work = new Map();
+  const observer = new Function('workActivity', 'binding', 'observeInstalledSessionLogin', 'sessionLoginObservations', 'ownerMachine',
+    `return ({${property}}).observeActivity`)(work, { entry: () => ({ profile, index: 1 }), harness: () => ({}) },
+      (p, a, _login, machine) => observeInstalledSessionLogin(p, a, login, machine), observations, 'machine-a');
+  observer(activity);
+  expect([...observations.values()]).toMatchObject([{ state: 'missing', slot: 2, at: 100 }]);
+  const first = [...observations.keys()][0];
+  expect(observeInstalledSessionLogin(profile, activity, login, 'machine-a').key).toBe(first);
+  expect(observeInstalledSessionLogin(profile, activity, login, 'machine-b').key).not.toBe(first);
+  expect(observeInstalledSessionLogin({ ...profile, activationReference: 'grant-b' }, activity, login, 'machine-a').key).not.toBe(first);
+  missing = false; observer({ ...activity, at: 200 });
+  expect([...observations.values()]).toMatchObject([{ state: 'present', slot: 2, at: 200 }]);
+  expect(JSON.stringify([...observations.values()])).not.toMatch(/synthetic-token|private detail|member-a/);
+});
+
+it('observes actual isolated custody removal and restoration without confusing a changed identity with absence', () => {
+  const f = fixture(), profile = read(f.logins[0].profile);
+  const custody = join(f.root, 'custody'); mkdirSync(custody, { mode: 0o700 });
+  const path = join(custody, 'login.json');
+  const value = { v: 1, reference: profile.reference, token: 'synthetic-login-expiry-test-token',
+    account: profile.expectedAccount, organization: profile.organization, plan: profile.plan };
+  const activity = { subject: 'verified-live-session', at: 100 };
+  const observe = () => observeInstalledSessionLogin(profile, activity, p => readHarnessLogin(p, path));
+  writeFileSync(path, JSON.stringify(value), { mode: 0o600 });
+  expect(observe().state).toBe('present');
+  rmSync(path); expect(observe().state).toBe('missing');
+  writeFileSync(path, JSON.stringify({ ...value, account: 'different@example.invalid' }), { mode: 0o600 });
+  expect(observe().state).toBe('unknown');
+  writeFileSync(path, JSON.stringify(value)); expect(observe().state).toBe('present');
+  expect(JSON.stringify(observe())).not.toContain(value.token);
 });

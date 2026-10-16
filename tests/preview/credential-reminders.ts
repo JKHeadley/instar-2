@@ -11,6 +11,23 @@ import { doorwayFreshness, type DoorwayMap } from './doorway-map.js';
 import { wholeReplySent, wholeReplySentAt } from './reply-parts.js';
 
 export interface ReplyNotice { readonly key: string; readonly line: string }
+export interface SessionLoginObservation {
+  readonly key: string; readonly slot: number; readonly state: 'present' | 'missing' | 'unknown'; readonly at: number;
+}
+/** A sample is advisory and expires; an old live worker is not proof of a current one. */
+export const SESSION_LOGIN_FRESH_MS = 30_000;
+export function sessionLoginNotices(observations: readonly SessionLoginObservation[], now: number): ReplyNotice[] {
+  return observations.filter(item => item.state === 'missing' && now >= item.at && now - item.at <= SESSION_LOGIN_FRESH_MS)
+    .map(item => ({ key: item.key, line: `Reminder: a running session’s approved model sign-in ${item.slot} is missing from this machine. `
+      + 'Sign the approved model account back in here before that session needs to restart.' }));
+}
+export function sessionLoginStatus(observations: readonly SessionLoginObservation[], now: number): string {
+  const fresh = observations.filter(item => now >= item.at && now - item.at <= SESSION_LOGIN_FRESH_MS);
+  return `Session sign-ins: ${fresh.filter(item => item.state === 'missing').length} missing; `
+    + `${fresh.filter(item => item.state === 'present').length} present at the last live-session check; `
+    + `${observations.length - fresh.filter(item => item.state !== 'unknown').length} unknown or stale.`
+    + (fresh.some(item => item.state === 'missing') ? ` Missing approved login slots: ${fresh.filter(item => item.state === 'missing').map(item => item.slot).join(', ')}.` : '');
+}
 /** The turn fields this module reads; structurally the journal's own Turn. */
 export interface NoticeTurn { readonly id: string; readonly intent?: string; readonly sent?: number; readonly sentAt?: number;
   readonly replyParts?: readonly { sent?: number; sentAt?: number }[]; readonly answerNotices?: readonly ReplyNotice[] }

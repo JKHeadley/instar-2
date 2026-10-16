@@ -3,6 +3,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
+// @ts-expect-error -- host composition module is JavaScript, exercised at runtime.
+import { observeInstalledSessionLogin } from '../preview/installed-harness-logins.mjs';
+import { sessionLoginNotices, type SessionLoginObservation } from '../preview/credential-reminders.js';
 import { CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
 import { SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
 import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
@@ -716,4 +719,27 @@ it.each([3600, 3601])('holds the admission hook boundary at %s seconds', timeout
     toolAdmission: { ...config.toolAdmission!, timeoutSeconds } });
   if (timeoutSeconds === 3600) expect(build).not.toThrow();
   else expect(build).toThrow('bounded admission hook required');
+});
+
+it('joins the recorded live worker captures to missing login custody, with no alarm from a dead or changed process', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/work-silence-terminal-2026-10-14.json', import.meta.url), 'utf8'));
+  const health: SessionLoginObservation[] = [];
+  const f = fixture('claude-code', { requireTurnHook: true, observeActivity: activity => {
+    health.push(observeInstalledSessionLogin({ reference: 'approved-login', activationReference: 'grant' }, activity,
+      () => { throw Object.assign(Error('synthetic removed login accompanying real worker bytes'), { code: 'ENOENT' }); }));
+  } });
+  const identity = f.launch(); value(f.deliver(identity));
+  expect(health).toEqual([]);
+  for (const row of recorded.captures) {
+    f.changePane(row.capture);
+    expect(value(f.driver.observe({ operation: 'work', processIdentity: identity })).phase).toBe('launched');
+    expect(sessionLoginNotices([health.at(-1)!], 1000)).toHaveLength(1);
+  }
+  const samples = health.length;
+  f.changeStamp('999:1001');
+  expect(f.driver.observe({ operation: 'work', processIdentity: identity }).kind).toBe('Refused');
+  expect(health).toHaveLength(samples);
+  f.stop();
+  expect(value(f.driver.observe({ operation: 'work', processIdentity: identity })).phase).toBe('exit-observed');
+  expect(health).toHaveLength(samples);
 });

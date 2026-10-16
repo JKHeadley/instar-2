@@ -4407,3 +4407,20 @@ shows the count and up to three obligation identities; the JSON health view reta
 item and its start/age. Future scheduled steps, accounted waits and finished results are separate
 states. This is a pull-only signal: it never closes work, replays an uncertain effect, or kills a
 worker. A restart reconstructs it from the same journal, with no new store or service.
+### Missing session sign-in reminders
+
+The existing verified-live session activity check also checks that session's admitted
+harness login custody. Only a missing custody object is reported as missing; identity
+drift and unreadable custody remain unknown. The next operator answer can carry one
+plain reminder identifying the approved login slot. The existing journal notice key
+binds machine and admitted profile lifetime: sent and uncertain sends never repeat,
+including after restart. No new watcher, model call, credential copy or send route is
+introduced. Known credential expiry retains its existing escalating reminder schedule.
+
+Chat status and the operator dashboard show missing/present/unknown observations from
+this host. Samples older than 30 seconds become unknown and cannot raise a reminder.
+This is a local custody-availability observation, not a provider authentication probe;
+it does not claim coverage for idle workers that the driver has not recently observed
+or harnesses without this custody adapter. A proof-room check removes only a synthetic
+login after its worker starts, verifies one reminder and status, then tests restored
+custody, identity drift, stale samples and a restart/uncertain-send duplicate neighbor.
