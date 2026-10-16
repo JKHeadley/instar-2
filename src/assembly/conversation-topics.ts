@@ -12,7 +12,7 @@ export interface ConversationTopicsState {
   readonly legacy?: ConversationState; readonly legacyImported?: boolean;
 }
 export interface ConversationTopicsConfig extends Omit<ConversationSessionConfig, 'store' | 'createAdapter'> {
-  readonly topicConfig?: (topic: string) => Pick<ConversationSessionConfig, 'io' | 'resources' | 'authorized' | 'currentAuthority' | 'createAdapter' | 'prepareTurn' | 'grounding'>;
+  readonly topicConfig?: (topic: string) => Pick<ConversationSessionConfig, 'io' | 'resources' | 'authorized' | 'currentAuthority' | 'createAdapter' | 'prepareTurn'>;
   readonly maxSessions: number;
   readonly idleMs: number;
   readonly topicOf: (operation: string) => string;

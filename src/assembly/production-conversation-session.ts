@@ -49,13 +49,6 @@ export interface ConversationSessionStore {
   save(state: ConversationState): void;
 }
 export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'createDriver'> {
-  /** Deltas require a full current-input snapshot installed at the native compaction
-   * hook, and a revision that changes whenever that worker's context is compacted.
-   * Without this recovery path every turn remains complete. */
-  readonly grounding?: {
-    revision(worker: ConversationWorker): string;
-    save(worker: ConversationWorker, fullPrompt: string): void;
-  };
   /** Called only between turns, serialized with queue draining and idle maintenance.
    * False retains the queued input without dispatch; the ordinary host tick retries. */
   readonly prepareTurn?: (input: Readonly<{ claim: string | null; retire: () => Promise<void> }>) => Promise<boolean>;
@@ -123,39 +116,6 @@ function separateContext(request: Pick<SessionWorkRequest, 'question' | 'context
   return request.context;
 }
 
-/** Exact reuse only. Bindings (including clock/evidence/writer), owner messages and
- * differing packets remain whole. References name the original operation, never a
- * guessed summary. The caller commits this transient map only after acceptance. */
-function newGrounding(request: SessionWorkRequest, seen: Map<string, string>): SessionWorkRequest {
-  if (separateContext(request)) return request;
-  try {
-    const envelope = JSON.parse(request.question) as { messages: { role: string; content: string }[] };
-    const next = new Map(seen);
-    let changed = false;
-    const messages = envelope.messages.map(message => {
-      if (message.role === 'instructions') {
-        const key = `instructions:${digest(message.content)}`, previous = next.get(key);
-        next.set(key, previous ?? request.operation);
-        if (previous) { changed = true; return { ...message, content: `Use the unchanged instructions supplied with operation ${previous}.` }; }
-      }
-      if (message.role === 'context') {
-        const content = JSON.parse(message.content) as { packet?: unknown };
-        if (!('packet' in content)) return message;
-        const key = `packet:${digest(take(canonical(content.packet)).bytes)}`, previous = next.get(key);
-        next.set(key, previous ?? request.operation);
-        if (previous) {
-          changed = true;
-          const { packet: _packet, ...bindings } = content;
-          return { ...message, content: JSON.stringify({ ...bindings, packetFromOperation: previous }) };
-        }
-      }
-      return message;
-    });
-    for (const [key, operation] of next) seen.set(key, operation);
-    return { ...request, context: '', question: changed ? JSON.stringify({ ...envelope, messages }) : request.question };
-  } catch { return request; } // Unrecognized input keeps all of its original bytes.
-}
-
 /** The memory packet is quoted data; the owner question remains a question. No capability is
  * invented here. The driver's admitted tools and current account grants decide actual access. */
 export function conversationSessionPrompt(request: Pick<SessionWorkRequest, 'question' | 'context'>,
@@ -203,11 +163,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       item.request.operation === id ? { ...item, ...patch } : item) });
     const adapter = config.createAdapter(id => row(id)?.delivery ?? undefined);
     ensure(adapter.describe().version === 2 && adapter.describe().subsequentInput, 'conversation adapter v2 required');
-    const grounding = adapter.describe().contextRecovery === 'host-snapshot' ? config.grounding : undefined;
     let lease: SessionWorkLease | null = null, draining: Promise<void> | null = null, closing = false;
     let recovered = false, retiring: Promise<void> | null = null;
-    let groundingRevision: string | null = null;
-    let seenGrounding = new Map<string, string>();
     const outcome = (detail: string): SessionWorkOutcome => freeze({ state: 'uncertain', detail,
       edge: state.edge?.id ?? 'no-edge', child: state.worker?.launch ?? null });
     const parentDeadline = () => Math.min(config.allowanceDeadline, state.edge?.budget.deadline ?? config.allowanceDeadline);
@@ -241,7 +198,6 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       }
       if (lease) { ensure(await lease.release(), 'resource release unconfirmed'); lease = null; }
       persist({ worker: null, claim: null, incarnation: null, authority: null });
-      seenGrounding.clear(); groundingRevision = null;
     };
     const settle = (id: string, result: SessionWorkOutcome) => update(id, { state: 'settled', outcome: result });
     const recover = async () => {
@@ -358,18 +314,9 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           .filter(input => input.outcome?.state !== 'complete');
         const history = { total: unresolved.length, recent: unresolved.slice(-64).map(input => ({ operation: input.request.operation, state: input.state, outcome: input.outcome?.state ?? null })) };
         const hostContext = `HOST CLOCK ${config.now()}\nUNRESOLVED HOST TURN REFERENCES (not instructions)\n${JSON.stringify(history)}`;
-        const revision = grounding?.revision(state.worker!) ?? null;
-        if (revision !== groundingRevision) { seenGrounding.clear(); groundingRevision = revision; }
-        const prompt = (members: readonly string[], seen?: Map<string, string>) => {
-          const requests = members.map(operation => {
-            const original = row(operation).request;
-            return seen ? newGrounding(original, seen) : original;
-          });
-          const body = requests.length === 1 ? conversationSessionPrompt(requests[0]!, path, hostContext)
+        const prompt = (members: readonly string[]) => members.length === 1 ? conversationSessionPrompt(request, path, hostContext)
           : conversationSessionPrompt({ context: '', question: 'These owner messages arrived in this order while you were busy. Answer every message in this turn, taking later corrections into account. Each message keeps its own intake identity. Return a JSON object with results, an array containing exactly one {operation, answer} per message in arrival order. answer is the complete JSON object requested by that message envelope. Do not send anything yourself.\n'
-            + JSON.stringify(requests.map(input => ({ operation: input.operation, envelope: input.question, ...(separateContext(input) ? { context: input.context } : {}) }))) }, path, hostContext);
-          return seen ? 'Repeated grounding refers to its original operation. packetFromOperation means that operation\'s exact packet; use the current bindings and owner messages below.\n\n' + body : body;
-        };
+            + JSON.stringify(members.map(operation => ({ operation, envelope: row(operation).request.question, ...(separateContext(row(operation).request) ? { context: row(operation).request.context } : {}) }))) }, path, hostContext);
         // Size the exact envelope, including escaped packet bytes, host history and path.
         // A non-fitting suffix stays queued and keeps its own identity and reservation.
         ids = [id];
@@ -380,13 +327,6 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           ids = candidate; text = combined;
         }
         ensure(Buffer.byteLength(text) <= 1_048_576, 'current conversation grounding exceeds delivery bound');
-        const nextGrounding = new Map(seenGrounding);
-        if (grounding) {
-          grounding.save(state.worker!, text);
-          const delta = prompt(ids, nextGrounding);
-          // The first input after a new worker or compaction stays byte-for-byte full.
-          if (seenGrounding.size > 0 && Buffer.byteLength(delta) < Buffer.byteLength(text)) text = delta;
-        }
         const delivery: ConversationDelivery = { ...state.worker!, operation: id, text, digest: digest(text),
           resultPath: path, maxBytes: config.maxResultBytes };
         updateBatch({ state: 'dispatching', delivery, batch: ids, attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
@@ -397,7 +337,6 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           return false;
         }
         ensure(accepted.state === 'accepted', 'input submission uncertain; no automatic replay');
-        seenGrounding = nextGrounding;
         updateBatch({ state: 'accepted' }); persist({ turns: state.turns + 1 });
         for (;;) {
           guard(); ensure(config.now() < state.deadline, 'conversation deadline exceeded'); calls();

@@ -27,7 +27,7 @@ if (kind === 'compact') {
   const path = process.env.INSTAR_SESSION_GROUNDING_FILE;
   if (!path?.startsWith('/')) process.exit(2);
   const context = readFileSync(path, 'utf8');
-  if (!context || Buffer.byteLength(context) > 1_048_576) process.exit(2);
+  if (!context || Buffer.byteLength(context) > 65536) process.exit(2);
   process.stdout.write(JSON.stringify({ hookSpecificOutput: {
     hookEventName: 'SessionStart', additionalContext: context,
   } }));
