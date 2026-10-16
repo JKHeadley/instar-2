@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: exact native conformance evidence renewal; executable behavior is unchanged.
-Side effects: one certificate and dependent generated register publication change. Existing entries, runtime, supported scope and contract reference remain intact.
+Side effects: one certificate and dependent generated register publication change. Existing entries, runtime, supported scope and contract reference remain intact. The seven generated files replay committed source c68bbed232cdec2175a3f455beb91b1b0ddfa4f1 as generation sha256:6b6aa2779522f679712dbc1462d04bc770553f250ec2dda3935db0ae906c2dba; publication remains shape-only, while native conformance rests on the executed contract.
 Undo and recovery: revert with the matching composition; execute the named contract again before certifying different bytes.
 Multi-machine posture: the certificate binds the Darwin composition and exact Node runtime measured on this Studio; other tuples remain unchanged.
 Layer below: compositionClosure/compositionDigest/currentRuntime, parityMatrix, and the declared native contract. The complete 266-file closure and runtime were captured before execution and verified identical afterward.
@@ -25,5 +25,5 @@ Subject (8 paths): src/assembly/harness.declarations.json, generated/capabilitie
 ## Closing block
 
 simplestRobustRoute: Reuse the existing contract, exact composition measurement and register generator. No new checker, authority, bypass or weakened supported claim. The stale certificate is the observed rejection case; the same native composition must pass both its behavioral contract and matching-certificate assertion after renewal.
-80/20: The exact named contract passed before declaration. Targeted native cases and final lint, register, pinned READY and review checks verify the renewal; the pipeline owns the full suite.
+80/20: The exact named contract passed before declaration, all ten native cases passed after renewal, and lint and register checks passed on the pushed publication. This record now covers the publication commit as well as the declaration. Final pinned READY and review checks verify the complete repair; the pipeline owns the full suite.
 VERDICT: author submission; no independent verdict asserted
