@@ -16,6 +16,8 @@ Multi-machine posture: Custody availability is deliberately machine-local. Notic
 Layer below: Read purpose and rules in full and verified equality to origin/main; read D17 section 3 and carryover row 30. The production driver's activity callback follows loadSession, alive and verifyLive, before advisory activity publication. readHarnessLogin validates custody and binding and preserves native ENOENT for missing objects; other failures remain unknown. openReplyNotices and validAnswerNotices already support credential keys and consume unknown send intents. The current reply-only grant permits next-answer reminders, not an unsolicited new send.
 Bug class: none
 Bug evidence: none
+Register publication: Regenerated the seven derived register/briefing artifacts from source commit dac25d099eb2d8490f2731ce34c2cce012033cc8; only commit/generation pins changed. Both desk repin tools found zero owner or grounding changes. This review covers that derived publication as part of the same change.
+Verification evidence: 256 distinct targeted tests pass across the changed and direct-consumer suites, including the ten shipped-launcher cases; typecheck, build, architecture, lint and register checks pass. The pinned obligations case needs a canonical macOS TMPDIR and passes with that environment. The report records the final pinned run and desk-only live proof requirement.
 Hook bypass: none
 Convergence: none
 Decision: LE-1016-observation | Join the existing verified-live activity callback to the exact admitted login's custody read; only ENOENT is missing, all other failures are unknown. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/login-expiry-1016-PROGRESS.md
