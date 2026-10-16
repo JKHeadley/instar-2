@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Changes which evidence reaches the answer model; recorded-shape regression and direct consumer suites required.
-Side effects: Within the existing optional-evidence tier, semantic/cue-selected evidence now outlasts lexical-only evidence. A weak cue can therefore displace a stronger lexical source. Candidate and byte limits, lookup priority, obligation tiers and final reachability shedding remain intact. No new store, service, dependency or model call.
+Side effects: Within the existing optional-evidence tier, semantic/cue-selected evidence now outlasts lexical-only evidence. A weak cue can therefore displace a stronger lexical source. Candidate and byte limits, lookup priority, obligation tiers and final reachability shedding remain intact. No new store, service, dependency or model call. Regenerated the register against the exact source commit to refresh source pins; no owner manifest, authority or inventory change.
 Undo and recovery: Revert this commit. The added composition field is transient; no durable schema migration or journal rewrite is needed.
 Multi-machine posture: Uses the existing journal projection on each owner; no machine-local durable state added. Replicated original history and cues deterministically produce the same priority. Cross-conversation replay is within one operator journal; no new account or audience join.
 Layer below: src/recall/retrieve.ts composeRecall and tests/preview/journal.ts packet drop ordering; existing lexical-only pressure, lookup, redaction and authority boundaries retained.
@@ -24,7 +24,7 @@ Prompt finding: 4106b49fff07 | protocol-literal | Unchanged pre-existing instruc
 Prompt finding: 849db3a6296a | protocol-literal | Unchanged pre-existing instruction asserted by its existing test, not a new fixture-derived instruction — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
 Prompt finding: e8708c7fea24 | protocol-literal | Unchanged pre-existing instruction asserted by its existing test, not a new fixture-derived instruction — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 
-Subject (5 paths): src/recall/README.md, src/recall/retrieve.ts, tests/preview/journal-recall-keep.test.ts, tests/preview/journal.ts, tests/recall/retrieve.test.ts
+Subject (12 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, src/recall/README.md, src/recall/retrieve.ts, tests/preview/journal-recall-keep.test.ts, tests/preview/journal.ts, tests/recall/retrieve.test.ts
 
 ## Closing block
 
