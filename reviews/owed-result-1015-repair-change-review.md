@@ -21,7 +21,8 @@ Convergence: none
 Decision: owed-request-key | Reuse promise request hashes only for observation keys while retaining original obligation lookup and full durable request, avoiding a new store or reduced intake capacity. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/owed-result-1015-repair-184532-PROGRESS.md
 Prompt review: no model prompt, parser or acceptance changes; added inputs exercise the existing request acceptance path, not a new meaning rule.
 
-Subject: tests/preview/live-sentinels.ts, tests/preview/live-sentinels.test.ts
+Subject: tests/preview/live-sentinels.ts, tests/preview/live-sentinels.test.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
+Register refresh: ran the delegated desk scripts (zero owner or inventory changes), then rebuilt generated register outputs against the committed repair. Generated source pins now bind the repaired sentinel bytes. No hand-edited pins.
 Verification: new boundary cases fail before repair (500-byte request leaves no work row) and pass after repair. All 21 live-sentinels tests pass; journal-due-loop's 6 and dispatch-now's 11 tests pass. Seven unchanged live-sentinels-launch cases refuse before launch on WSL (bot identity refused); Studio gate owns those launcher checks. No independent convergence or live-user acceptance claimed.
 
 ## Closing block
