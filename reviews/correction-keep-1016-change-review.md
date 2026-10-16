@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: significant
 Tier rationale: Repairs delivery of model guidance using the existing memory and advisory review contracts; no schema or permission change.
-Side effects: Consolidated memory wording keeps reply instructions bounded; the summary request gains the shared semantic distinction. Context fitting still measures the whole packet. Model interpretation of durable versus one-off instructions remains contextual judgment; this change does not purport to deterministically classify natural language. Previously misclassified preferences are not silently deleted.
+Side effects: Consolidated memory wording preserves the explicit remember protocol, attribution and dependent-answer uncertainty while keeping reply instructions bounded; the summary request gains the shared semantic distinction. Context fitting still measures the whole packet. Model interpretation of durable versus one-off instructions remains contextual judgment; this change does not purport to deterministically classify natural language. Previously misclassified preferences are not silently deleted.
 Undo and recovery: Revert the guidance and its unconditional delivery together. Existing prefer/correct/forget records remain readable by older code; no data migration or new replay schema is introduced.
 Multi-machine posture: Uses the existing authenticated replicated journal and conversation owner. Restart and takeover reconstruct the same preferences; only the current owner executes the existing answer and send paths. No machine-local product state is added.
 Layer below: Read the purpose and rule book in full, D18 section 16, D15 minimal-plane projections and D16 delivery/custody requirements. Inspected the existing exact-quote memory admission, preference projection, packet fitting, summary writer, retrospective feedback duty and advisory breaks_preference review. The actual gap is that offered memory candidates selected the branch that omitted preferenceDecision entirely.
@@ -28,7 +28,7 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label protocol
 
 Deferral: generated/register.json:1 | not-a-deferral=Existing governed text emitted by register replay, not postponed work.
 
-Verification: The final core run passes 56 tests with one existing live-capture test skipped. The consolidated packet-fit run passes 40 tests. Register replay binds source commit 9e2619c96dcbc2990f50d677024854b64429798c; the desk owner-manifest and inventory tools changed no pins. Seven generated register outputs update only their source/generation references.
+Verification: The final core run passes 56 tests with one existing live-capture test skipped. The consolidated packet-fit run passes 40 tests. Register replay binds the committed product source; the desk owner-manifest and inventory tools changed no pins. Seven generated register outputs update only their source/generation references.
 
 ## Closing block
 
