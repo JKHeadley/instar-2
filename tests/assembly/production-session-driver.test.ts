@@ -160,7 +160,7 @@ it.each(['initial', 'waiting', 'accepted'] as const)('a throttle Stop without a 
   f.time(at); f.hook(at);
   const sends = f.sends;
   expect((await observe()).observations).toEqual(phase === 'accepted'
-    ? [{ kind: 'paused', evidence: worker.launch }] : []);
+    ? [{ kind: 'paused', evidence: worker.launch, reason: 'rate-limited' }] : []);
   expect(value(f.driver.observe({ operation: 'deliver', processIdentity: worker.launch })))
     .toMatchObject(phase === 'accepted' ? { phase: 'pause-observed', detail: 'rate-limited' }
       : { phase: 'launched', detail: 'rate-limit recovery waiting' });
