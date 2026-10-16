@@ -11,6 +11,7 @@ Suggested tier: critical
 Declared tier: critical
 Tier rationale: changes the evidence delivered to the model on every answer path under packet pressure.
 Side effects: sibling evidence can displace optional guidance and history before being omitted itself. Existing floor guidance, history-set-aside disclosure, summary attempt, byte caps and final reachability fallback remain. Continuing sessions retain their separate dispatch refresh. No parser, action authorization, model route or invocation policy changes.
+Register evidence: regenerated the seven existing outputs from source commit 2b5dcabad9aa4fd556ad3070dc1cc0d88e3f111d using the existing shape-only replay workflow; no declaration or conformance claim changed.
 Undo and recovery: revert this packet-variant ordering change; retained journal rows require no migration. A revert restores the demonstrated omission in scoped-tool packets.
 Multi-machine posture: reads the installation's existing owner journal; existing replication and conversation ownership continue. No new cross-machine state or instantaneous disconnected-peer visibility claim.
 Layer below: inspected currentActionFacts/currentSiblingWords, accepted reply receipts, promise records, verified operator audience, packet fitting, prepareJournalEnvelope, scoped-tool model dispatch, conversation-session refresh, and the independently rendered date footer. Replayed original journal prefixes before each failing reserve; no future answer or promise is introduced into either prefix.
