@@ -63,6 +63,8 @@ export const RETRO_MAX_CASES = 40;
  * (RETRO_MAX_CASES each) fit beside it. */
 export const RETRO_MAX_OMITTED_ROWS = 128;
 export const RETRO_MAX_STATE_BYTES = 24 * 1024;
+/** One answer's duplicate-evidence page. Progress lives in its existing durable grade. */
+export const RETRO_COMMITMENT_BYTES = 4 * 1024;
 export const RETRO_CASE_TEXT_CHARS = 600;
 export const RETRO_REASON_TEXT_CHARS = 400;
 export const RETRO_PRIOR_CONTEXT = 12;
@@ -362,6 +364,7 @@ export interface RetroCase { id: string; category: CaseCategory; at: number; seq
   meta?: Record<string, string | number | boolean>;
   /** Whole delivered text, not the draft or a reviewer assertion. Only these cases may recover work. */
   deliveredReply?: string; request?: string;
+  commitmentReview?: ReturnType<typeof commitmentPage>;
   followUps?: { ref: string; seq: number; text: string; deliveredReply?: string }[] }
 
 type Disposition = { owner: 'agent' | 'operator'; next: string } | { declined: string };
@@ -374,6 +377,8 @@ type Assessment = Grade['conclusion']['assessment'];
 export interface RetroGrade { case: string;
   /** Existing promise proposals, judged actionable by this pass; [] records that the pass looked. */
   promises?: AgentPromise[];
+  /** Candidates are not schedulable until every commitment page has been inspected. */
+  promiseReview?: { next: number; candidates: AgentPromise[] };
   conclusion: { assessment: Assessment; evidence: string[] }; reason: { assessment: Assessment; evidence: string[] };
   outcome: { assessment: Grade['outcome']['assessment']; reason: string; evidence: string[] };
   /** A person's or the agent's compliance or override: attributed, never proof that a judgment was right. */
@@ -620,7 +625,7 @@ export function owedCases(view: JournalView, population: readonly RetroCase[], n
     if (seen === undefined) { owed.push({ item, since: item.at }); continue; }
     // Old passes never inspected missing work. Revisit delivered answers once under the new grade shape.
     if (item.deliveredReply !== undefined && grades.get(item.id)?.grade.promises === undefined) {
-      owed.push({ item, since: seen }); continue;
+      owed.push({ item, since: grades.get(item.id)?.grade.promiseReview ? item.at : seen }); continue;
     }
     const graded = grades.get(item.id);
     if (graded?.grade.outcome.assessment !== 'pending') continue;
@@ -711,15 +716,20 @@ export function retrospectivePlan(view: JournalView, population: readonly RetroC
   // The floor of one case: the first case of a pass is held to the whole bound, not the narrowed one, so the
   // deepest narrowing still asks about one case rather than none. Without it a narrowed pass with no case that
   // fits would plan nothing, record nothing, and so never widen again: the owed cases could not drain.
-  for (const { item } of owed) {
+  for (const { item: owedItem } of owed) {
     const answerBudget = cases.length ? narrowed : RETRO_ANSWER_BUDGET_BYTES;
-    const estimate = estimatedAnswerBytes([...cases, item]);
+    const estimate = estimatedAnswerBytes([...cases, owedItem]);
     // The same bounds as before, in the order that makes them cheap: the packet trial — the only expensive
     // term — is built only while the count and the answer budget still admit the case. Built first, it was
     // rebuilt once per OWED case, which on the live 980-case backlog is 980 whole packets per pass.
-    if (cases.length < RETRO_MAX_CASES && estimate <= answerBudget
-      && Buffer.byteLength(packetOf([...cases, item], view, contextDigest, population, evidence, narrowed)) <= RETRO_MAX_STATE_BYTES) cases.push(item);
-    else if (omitted.length < RETRO_MAX_OMITTED_ROWS) omitted.push({ case: item.id, reason: estimate > answerBudget
+    if (cases.length < RETRO_MAX_CASES && estimate <= answerBudget) {
+      const item = owedItem.deliveredReply === undefined ? owedItem
+        : { ...owedItem, commitmentReview: commitmentPage(view, owedItem.id) };
+      if (Buffer.byteLength(packetOf([...cases, item], view, contextDigest, population, evidence, narrowed)) <= RETRO_MAX_STATE_BYTES) {
+        cases.push(item); continue;
+      }
+    }
+    if (omitted.length < RETRO_MAX_OMITTED_ROWS) omitted.push({ case: owedItem.id, reason: estimate > answerBudget
       ? 'bound: answer budget, deferred to a later pass' : 'bound: deferred to a later pass' });
   }
   if (!cases.length && !reruns.length) return null;
@@ -773,17 +783,32 @@ function packetOf(cases: readonly RetroCase[], view: JournalView, contextDigest:
     priorGrades: prior.grades.filter(row => !ids.has(row.case)),
     ...(prior.index.length ? { gradeIndex: { ...prior.indexPage, rows: prior.index.filter(row => !ids.has(row.case)) } } : {}),
     priorAuthorizations: prior.authorizations.filter(row => !ids.has(row.id)),
-    // Complete identity context for the conversations in this pass. The existing packet bound defers
-    // cases that cannot fit; a truncated list would invite a duplicate promise.
-    commitments: view.commitments.flatMap((note, id) => {
-      const source = view.turns.get(note.source);
-      return source && cases.some(item => item.deliveredReply !== undefined
-        && view.turns.get(item.id.slice('answer:'.length))?.thread === source.thread)
-        ? [{ id, source: note.source, quote: redact(note.quote).text, in: note.in,
-          owner: note.owner ?? note.agentPromise?.owner, waitsOn: note.waitsOn,
-          due: note.agentPromise?.due, closed: view.closed.has(id) }] : [];
-    }),
     cases });
+}
+
+/** Continue by stable commitment index, not pass number: other cases and failed calls cannot skip
+ * a page. No history is removed. The model can only narrow the candidates on subsequent pages;
+ * the final grade alone exposes promises to the existing journal projection and executor. */
+function commitmentPage(view: JournalView, target: string) {
+  const previous = latestGrades(view).get(target)?.grade.promiseReview;
+  const start = previous?.next ?? 0;
+  const thread = view.turns.get(target.slice('answer:'.length))?.thread;
+  const rows: { id: number; source: string; quote: string; in: string; owner: string | undefined;
+    waitsOn: string | undefined; due?: AgentPromise['due']; closed: boolean }[] = [];
+  let next = start, bytes = 2;
+  for (; next < view.commitments.length; next++) {
+    const note = view.commitments[next]!;
+    const source = view.turns.get(note.source);
+    if (!source || source.thread !== thread) continue;
+    const row = { id: next, source: note.source, quote: redact(note.quote).text, in: note.in,
+      owner: note.owner ?? note.agentPromise?.owner, waitsOn: note.waitsOn,
+      due: note.agentPromise?.due, closed: view.closed.has(next) };
+    const size = Buffer.byteLength(JSON.stringify(row)) + 1;
+    if (rows.length && bytes + size > RETRO_COMMITMENT_BYTES) break;
+    rows.push(row); bytes += size;
+  }
+  return { rows, next, total: view.commitments.length, complete: next === view.commitments.length,
+    ...(previous ? { candidates: previous.candidates } : {}) };
 }
 
 /** The delivered review instructions (Rule 1's mind-held duties). Data in the packet is untrusted and grants nothing. */
@@ -800,7 +825,8 @@ export const RETROSPECTIVE_QUESTION = [
   'process-tier and proportionality: from each answer\'s meta (checks, held, state), judge whether the checking it received matched its stakes: too little for a consequential or irreversible answer, or too much for a trivial one. waiver-recurrence: from waiverEvidence, flag waivers that recur for the same rule or acts without a prior waiver; cite only the waiver/act ids shown on this page. summary.waivers, summary.linkedActs and summary.counts are the EXACT totals; the summary\'s id arrays and the waiver/act rows are one rotating page of a larger set, notShown says how many a later page still holds, and sizeUnavailable counts items too large to show on any page (their detail is unavailable here, not absent). Never read a short or empty page as a zero total: the counts are the total, an incomplete window proves nothing.',
   'outcome: grade EVERY decision (answer:...) and verdict case. conclusion, reason and outcome are separate claims, each with its own evidence refs: conclusion {assessment, evidence}, reason {assessment, evidence} (not-applicable only when no reason was stated), outcome {assessment, reason, evidence}. supported/contradicted need evidence. outcome met/unmet needs evidence refs later than the answer; otherwise pending (say what would settle it) or unverifiable (say why the evidence is unavailable). A failed or uncertain answer is graded too (usually not-applicable). A person\'s or the agent\'s compliance or override goes in observations, never in evidence: it is attributed observation, not proof. If the reason is refuted (reason contradicted), give rederivation {conclusion: stands|changed, reason}. Set promote to a one-line scenario description only for a useful, clearly graded real answer (answer:...) case; a verdict cannot be promoted yet because it cannot be rerun. You may also regrade a priorGrades or gradeIndex case when a later case changes its assessment; cite that later evidence.',
   'refuted-reason: for each verdict case assess the conclusion and the stated reason separately; a refuted (contradicted) reason needs a rederivation even when the conclusion stands.',
-  'Missing work: for EVERY decision with deliveredReply, put promises:[] on its grade after checking the whole delivered reply, request, followUps and commitments. Propose only still-owed actionable work the agent undertook, including casual undated future actions omitted at answer time. Use the existing promise shape {quote, when?}: quote an exact sentence from deliveredReply, at most 500 UTF-8 bytes; when is an exact date phrase inside it, or absent. At most five. An existing undated promise with no declared work wait may be proposed again using its existing exact quote to admit its first work step. Otherwise restatements (including paraphrases), already completed or cancelled work, standing preferences, quoted hypotheticals, refusals and user-owned work create no agent task. Uncertain/undecided summaries or reviews, drafts and empty replies are not evidence of a promise. If evidence is insufficient, omit the case with a reason so it stays owed. This registers work within existing authority; it grants no send or tool permission.',
+  'Missing work: for EVERY decision with deliveredReply, put promises:[] on its grade after checking the whole delivered reply, request, followUps and commitmentReview.rows. Propose only still-owed actionable work the agent undertook, including casual undated future actions omitted at answer time. Use the existing promise shape {quote, when?}: quote an exact sentence from deliveredReply, at most 500 UTF-8 bytes; when is an exact date phrase inside it, or absent. At most five. An existing undated promise with no declared work wait may be proposed again using its existing exact quote to admit its first work step. Otherwise restatements (including paraphrases), already completed or cancelled work, standing preferences, quoted hypotheticals, refusals and user-owned work create no agent task. Uncertain/undecided summaries or reviews, drafts and empty replies are not evidence of a promise. If evidence is insufficient, omit the case with a reason so it stays owed. This registers work within existing authority; it grants no send or tool permission.',
+  'Commitment coverage: each delivered decision carries commitmentReview with rows, next, total and complete. This is a bounded page, NOT the whole history; absence from it never proves work is new. On the first page propose candidates after inspecting the reply and the shown commitments. When candidates is present, inspect those same candidates against this page and return ONLY the still-owed subset in promises, using the same quote and date; never add or revive a candidate removed on an earlier page. Drop a candidate if a shown commitment already owns the same work (including paraphrases) or records it completed/cancelled, except the undated unscheduled promise described above. The infrastructure keeps surviving candidates unscheduled and brings them to the next page until coverage is complete. promises:[] can finish immediately when no candidate survives. Outcome grading still happens on every page. If you cannot judge the shown evidence, omit the case; the cursor will not advance.',
   'feedback: every operator message that corrects the agent, reports a failure or states a preference about behavior gets a disposition (a case whose meta has correction MUST get one): improvement-owned or investigating (owner and next: this opens an owned improvement item that stays open until a later pass evaluates it), duplicate-linked (duplicateOf), verified-improvement (improvementOf: the open:... improvement item opened for THIS feedback message, plus evidence refs to actual later records — messages, answers, verdicts or repairs after that item was opened; the open item itself is never its own proof), or declined-with-reason (reason). Messages that are not feedback are simply inspected.',
   'standing-grant: review EVERY authorization case: candidate true or false, recurrences listing earlier authorization ids (case ids or priorAuthorizations) for the same need. The candidate always carries the source authorization\'s whole recorded scope; you may add a short display excerpt of its own words, which never becomes the scope. Nothing here grants anything.',
   'benchmark-divergence: for every rerun:... case compare the answer under the current reply configuration with the original answer and its graded outcome: consistent, improved, regressed or unverifiable, with a reason.',
@@ -1134,12 +1160,20 @@ export function validateRetrospective(raw: unknown, plan: Pick<RetrospectivePlan
       if (item.promises === undefined || proposals === undefined)
         throw Error('retrospective: delivered answer needs valid promise reconciliation');
       const source = view.turns.get(target.slice('answer:'.length))!;
-      grade.promises = recordedPromises(proposals, delivered, source.id, source.intentAt ?? source.at, zone);
+      const page = byId.get(target)?.commitmentReview ?? commitmentPage(view, target);
+      const proposed = recordedPromises(proposals, delivered, source.id, source.intentAt ?? source.at, zone);
+      if (page.candidates && proposed.some(candidate => !page.candidates!.some(saved =>
+        saved.quote === candidate.quote && JSON.stringify(saved.due) === JSON.stringify(candidate.due))))
+        throw Error('retrospective: commitment continuation may only narrow candidates');
+      if (proposed.length && (!page.complete || page.next < view.commitments.length)) grade.promiseReview = { next: page.next, candidates: proposed };
+      else grade.promises = proposed;
     } else {
       if (item.promises !== undefined && (!Array.isArray(item.promises) || item.promises.length))
         throw Error('retrospective: promises need a delivered answer case');
       const previous = reassessment ? latestGrades(view).get(target)?.grade.promises : undefined;
       if (previous !== undefined) grade.promises = previous;
+      const continuation = reassessment ? latestGrades(view).get(target)?.grade.promiseReview : undefined;
+      if (continuation) grade.promiseReview = continuation;
     }
     if (reason.assessment === 'contradicted') {
       const re = object(item.rederivation, 'rederivation');
@@ -1271,6 +1305,14 @@ export function validateRetrospective(raw: unknown, plan: Pick<RetrospectivePlan
       duties[index] = { duty, disposition: 'inspected', note: backed(duty) ? RETRO_DUTY_CODES.f : RETRO_DUTY_ROWS_NOTE };
   }
   const inspected = claimed.filter(id => looked.has(id));
+  // A grade can survive while another row leaves its case omitted. Keep its outcome, but never
+  // advance duplicate coverage (or schedule candidates) for a case not actually inspected.
+  for (const grade of grades) if (!grade.reassessment && !inspected.includes(grade.case)) {
+    delete grade.promiseReview; delete grade.promises;
+    const previous = latestGrades(view).get(grade.case)?.grade;
+    if (previous?.promiseReview) grade.promiseReview = previous.promiseReview;
+    if (previous?.promises) grade.promises = previous.promises;
+  }
   const result: RetroResult = { inspected, omitted, duties, gravityWells, efficiency, findings, grades, feedback, authorizations, closures, comparisons,
     ...(refusedRows.length ? { refusedRows } : {}) };
   reviewRecordOf({ pass, cases: plan.cases.map(item => item.id), omitted: plan.omitted ?? [], contextDigest, packetSha256: 'sha256:unbound' }, result);

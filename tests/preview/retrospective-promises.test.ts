@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, dueObligationWork, type JournalRecord } from './journal.js';
@@ -54,9 +54,10 @@ function world() {
     done: () => { journal.close(); rmSync(root, { recursive: true, force: true }); } };
 }
 
-it('replays the actually omitted casual promise 840342898 into one durable task and acts without another prompt', async () => {
+it.each([0, 60])('replays omitted promise 840342898 through the worker and acts without another prompt (%s closed neighbors)', async history => {
   const w = world();
   try {
+    if (history) retainedHistory(w, history);
     expect(w.journal.view.commitments.some(note => note.source === source)).toBe(false);
     const turns = w.journal.view.order.length;
     for (let pass = 0; pass < 20 && !w.journal.view.commitments.some(note => note.source === source); pass++) {
@@ -161,8 +162,8 @@ it('presents existing commitments for semantic deduplication and accepts no-work
     for (const text of neighbors) {
       Object.assign(turn, { answer: text, intent: text });
       const population = retrospectiveCases(w.journal.view);
-      const plan = retrospectivePlan(w.journal.view, population, w.now(), digest)!;
-      expect(JSON.parse(plan.state).commitments).toEqual(expect.arrayContaining([expect.objectContaining({ quote })]));
+      const plan = retrospectivePlan(w.journal.view, population.filter(item => item.id === `answer:${source}`), w.now(), digest)!;
+      expect(JSON.parse(plan.state).cases.find((item: RetroCase) => item.id === `answer:${source}`).commitmentReview.rows).toEqual(expect.arrayContaining([expect.objectContaining({ quote })]));
       const candidate = population.find(item => item.id === `answer:${source}`)!;
       const result = validateRetrospective(review([candidate]), { cases: [candidate] }, w.journal.view, 0);
       expect(result.grades[0]!.promises).toEqual([]);
@@ -183,5 +184,130 @@ it('revisits legacy delivered-answer grades once, then retains the recorded insp
     expect(owedCases(w.journal.view, [candidate], w.now()).map(row => row.item.id)).toEqual([candidate.id]);
     result.grades[0]!.promises = [];
     expect(owedCases(w.journal.view, [candidate], w.now())).toEqual([]);
+  } finally { w.done(); }
+});
+
+/** Synthetic retained history around the captured live answer, through the real durable summary owner. */
+function retainedHistory(w: ReturnType<typeof world>, count = 60, duplicate?: { quote: string; closed: boolean }) {
+  const earlier = w.journal.view.order.find(turn => turn.id !== source && turn.thread === w.journal.view.turns.get(source)?.thread)!.id;
+  expect(earlier).toBeDefined();
+  const notes = Array.from({ length: count }, (_, index) => ({ in: 'reply' as const, source: earlier,
+    quote: `Completed historical task ${index}: ${'The completed garden task included checking the beds and noting the result. '.repeat(6)}`, owner: 'agent' as const, waitsOn: 'nothing' as const }));
+  if (duplicate) notes.push({ in: 'reply', source: earlier, quote: duplicate.quote, owner: 'agent', waitsOn: 'nothing' });
+  const offset = w.journal.view.commitments.length;
+  const through = w.journal.view.turns.get(source)!.update;
+  w.journal.append({ kind: 'summary-reserve', through, at: w.now() });
+  w.journal.append({ kind: 'summary', through, text: 'Synthetic history-size boundary neighbor.', commitments: notes,
+    closed: notes.flatMap((note, index) => index < count || duplicate?.closed
+      ? [{ id: offset + index, source: earlier, quote: note.quote }] : []), at: w.now() });
+}
+function singlePlan(w: ReturnType<typeof world>) {
+  return retrospectivePlan(w.journal.view, retrospectiveCases(w.journal.view).filter(item => item.id === `answer:${source}`), w.now(), digest)!;
+}
+function recordReview(w: ReturnType<typeof world>, plan: NonNullable<ReturnType<typeof retrospectivePlan>>, raw: unknown) {
+  const pass = w.journal.view.retroPasses.length;
+  const result = validateRetrospective(raw, plan, w.journal.view, pass, w.now(), digest);
+  w.journal.append({ kind: 'retro-reserve', pass, turnsSeen: w.journal.view.order.length, cases: plan.cases.map(item => item.id),
+    omitted: plan.omitted, eligible: plan.eligible, packetSha256: plan.packetSha256, contextDigest: digest, at: w.now() });
+  w.journal.append({ kind: 'retro', pass, state: 'complete', result, at: w.now() });
+  w.advance();
+  return result;
+}
+
+it('reviews the captured answer beyond 60 closed commitments and schedules only after durable full coverage', async () => {
+  const w = world();
+  try {
+    retainedHistory(w);
+    const original = JSON.stringify(w.journal.view.commitments);
+    expect(Buffer.byteLength(original)).toBeGreaterThan(24 * 1024);
+    let last = 0, pages = 0;
+    while (pages++ < 30) {
+      const plan = singlePlan(w);
+      expect(plan).not.toBeNull();
+      expect(Buffer.byteLength(plan.state)).toBeLessThanOrEqual(24 * 1024);
+      const page = plan.cases[0]!.commitmentReview!;
+      expect(page.rows.length, JSON.stringify(page)).toBeGreaterThan(0);
+      expect(page.next).toBeGreaterThan(last); last = page.next;
+      const result = recordReview(w, plan, review(plan.cases, { [`answer:${source}`]: [{ quote }] }));
+      expect(result.grades[0]!.outcome.assessment).toBe('unverifiable');
+      if (page.complete) {
+        expect(result.grades[0]!.promises).toHaveLength(1);
+        break;
+      }
+      expect(result.grades[0]!.promises).toBeUndefined();
+      expect(result.grades[0]!.promiseReview?.next).toBe(page.next);
+      expect(JSON.stringify(w.journal.view.commitments)).toBe(original);
+      expect(dueObligationWork(w.journal.view, w.now())).toEqual([]);
+      // Replay the real encrypted journal in a separate fixture root; no in-memory cursor is needed.
+      const copy = join(w.root, `replay-${pages}`);
+      writeFileSync(copy, readFileSync(w.path));
+      const reopened = openPreviewJournal(copy, key);
+      expect(reopened.view.retroPasses.at(-1)?.result?.grades[0]?.promiseReview?.next).toBe(page.next);
+      const resumed = retrospectivePlan(reopened.view, retrospectiveCases(reopened.view).filter(item => item.id === `answer:${source}`), w.now(), digest)!;
+      expect(resumed.cases[0]!.commitmentReview!.rows[0]!.id).toBe(page.next);
+      expect(reopened.view.commitments).toHaveLength(61);
+      reopened.close();
+    }
+    expect(pages).toBeGreaterThan(1); expect(pages).toBeLessThan(30);
+    expect(w.journal.view.commitments).toHaveLength(62);
+    expect(w.journal.view.closed.size).toBe(60);
+    expect(await w.worker.workObligations()).toBe(true);
+    expect(await w.worker.workObligations()).toBe(false);
+    expect(w.calls).toHaveLength(1);
+    expect(singlePlan(w)).toBeNull();
+  } finally { w.done(); }
+});
+
+it.each([false, true])('keeps an existing duplicate on the last page protected (closed=%s)', closed => {
+  const w = world();
+  try {
+    // Explicit test judgment: this paraphrase refers to the same invitation work, not a string matcher in production.
+    const paraphrase = 'I will update the invitation draft with Saturday morning.';
+    retainedHistory(w, 60, { quote: paraphrase, closed });
+    const before = JSON.stringify(w.journal.view.commitments);
+    for (let page = 0; page < 30; page++) {
+      const plan = singlePlan(w);
+      expect(plan).not.toBeNull();
+      const seen = plan.cases[0]!.commitmentReview!.rows.some(note => note.quote === paraphrase);
+      const result = recordReview(w, plan, review(plan.cases, { [`answer:${source}`]: seen ? [] : [{ quote }] }));
+      if (seen) { expect(result.grades[0]!.promises).toEqual([]); break; }
+      expect(result.grades[0]!.promises).toBeUndefined();
+    }
+    expect(singlePlan(w)).toBeNull();
+    expect(JSON.stringify(w.journal.view.commitments)).toBe(before);
+    expect(w.journal.view.closed.has(61)).toBe(closed);
+  } finally { w.done(); }
+});
+
+it('never advances a failed, omitted or widening page, and checks commitments appended during a call', () => {
+  const w = world();
+  try {
+    retainedHistory(w);
+    const first = singlePlan(w);
+    const raw = review(first.cases, { [`answer:${source}`]: [{ quote }] });
+    const omitted = { ...raw, inspected: [], omitted: [{ case: `answer:${source}`, reason: 'Cannot judge this page.' }] };
+    recordReview(w, first, omitted);
+    expect(singlePlan(w).cases[0]!.commitmentReview!.rows[0]!.id).toBe(0);
+    recordReview(w, singlePlan(w), raw);
+    const next = singlePlan(w), cursor = next.cases[0]!.commitmentReview!.rows[0]!.id;
+    const delivered = next.cases[0]!.deliveredReply!;
+    const widening = review(next.cases, { [`answer:${source}`]: [{ quote }, { quote: delivered.slice(0, 20) }] });
+    const refused = recordReview(w, next, widening);
+    expect(refused.omitted[0]?.reason).toContain('only narrow');
+    expect(singlePlan(w).cases[0]!.commitmentReview!.rows[0]!.id).toBe(cursor);
+    // Failed calls produce no complete grade, so they cannot move the cursor either.
+    const pass = w.journal.view.retroPasses.length;
+    w.journal.append({ kind: 'retro-reserve', pass, turnsSeen: w.journal.view.order.length, cases: next.cases.map(item => item.id),
+      omitted: [], eligible: 1, packetSha256: next.packetSha256, contextDigest: digest, at: w.now() });
+    w.journal.append({ kind: 'retro', pass, state: 'unknown', reason: 'model outcome uncertain', at: w.now() }); w.advance();
+    expect(singlePlan(w).cases[0]!.commitmentReview!.rows[0]!.id).toBe(cursor);
+    while (!singlePlan(w).cases[0]!.commitmentReview!.complete) {
+      const plan = singlePlan(w); recordReview(w, plan, review(plan.cases, { [`answer:${source}`]: [{ quote }] }));
+    }
+    const final = singlePlan(w);
+    w.journal.view.commitments.push({ in: 'reply', source, quote, owner: 'agent', waitsOn: 'operator' });
+    const result = recordReview(w, final, review(final.cases, { [`answer:${source}`]: [{ quote }] }));
+    expect(result.grades[0]!.promises).toBeUndefined();
+    expect(singlePlan(w).cases[0]!.commitmentReview!.rows).toEqual([expect.objectContaining({ quote, waitsOn: 'operator' })]);
   } finally { w.done(); }
 });
