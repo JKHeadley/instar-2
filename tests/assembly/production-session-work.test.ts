@@ -122,6 +122,18 @@ it('records the edge before the child exists, delivers the task, and returns the
   for (const row of f.rows) expect(() => validateSessionWorkRow(row)).not.toThrow();
 });
 
+it('passes bounded current result presence to lifecycle observation without accepting Stop as the result', async () => {
+  const f = fixture({ phases: ['launched'] });
+  const observed: boolean[] = [], observe = f.driver.observe;
+  f.driver.observe = input => {
+    observed.push(input.resultAvailable === true);
+    if (observed.length === 1) f.writeNow(recordedWork.workOutput);
+    return observe(input);
+  };
+  expect(await f.port.run(f.request())).toMatchObject({ state: 'complete', text: recordedWork.workOutput });
+  expect(observed).toEqual([false, true]);
+});
+
 it('tells the child the one destination that counts, and nothing about sending to the operator', () => {
   const prompt = sessionWorkPrompt({ question: 'Q', context: 'C' }, '/scope/work-x.json');
   expect(prompt).toContain('/scope/work-x.json');

@@ -32,13 +32,15 @@ export function createSessionConversationAdapter(config: Readonly<{
     observe: async input => {
       ensure(Number.isSafeInteger(input.cursor) && input.cursor >= 0 && input.cursor <= 2 && input.limit >= 1 && input.limit <= 64,
         'bounded observation cursor and batch required');
-      const observed = take(driver.observe({ operation: input.delivery?.operation ?? input.claim, processIdentity: input.launch }));
+      const text = input.delivery ? config.io.readResult(input.delivery.resultPath, input.delivery.maxBytes) : null;
+      ensure(text === null || input.delivery != null && Buffer.byteLength(text) <= input.delivery.maxBytes,
+        'conversation result exceeds byte bound');
+      const observed = take(driver.observe({ operation: input.delivery?.operation ?? input.claim, processIdentity: input.launch,
+        resultAvailable: Boolean(text?.trim()) }));
       let events: ConversationObservation[] = [];
       if (observed.phase === 'exit-observed') events = [{ kind: 'exit', evidence: observed.evidence }];
       else if (observed.phase === 'pause-observed' || observed.phase === 'uncertain') events = [{ kind: 'paused', evidence: observed.evidence, reason: observed.detail }];
       else if (input.delivery && observed.phase === 'output-observed' && observed.evidence.startsWith('turn-closed:')) {
-        const text = config.io.readResult(input.delivery.resultPath, input.delivery.maxBytes);
-        ensure(text === null || Buffer.byteLength(text) <= input.delivery.maxBytes, 'conversation result exceeds byte bound');
         if (text?.trim()) events.push({ kind: 'reply', delivery: input.delivery.operation, text, digest: hash(text) });
         events.push({ kind: 'turn-end', delivery: input.delivery.operation, state: text?.trim() ? 'completed' : 'no-reply' });
       }

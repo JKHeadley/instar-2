@@ -18,7 +18,9 @@ try {
       return event.kind === 'turn-closed' && event.at >= session.turnStartedAt && event.at <= deadline
         && (event.receiptId ? !session.turnReceiptIds?.includes(event.receiptId) : event.at > session.turnStartedAt);
     } catch { return false; } });
-  if (closed) process.exit(0);
+  // A throttled model turn can emit Stop too. During recovery only the owning
+  // driver's durable close settles the turn; a receipt alone cannot disarm its ceiling.
+  if (closed && !session.rateRecovery) process.exit(0);
   const env = { PATH: '/usr/bin:/bin:/opt/homebrew/bin' };
   const current = spawnSync(tmuxPath, ['display-message', '-p', '-t', `=${name}:`, '#{pane_pid}:#{session_created}'],
     { env, encoding: 'utf8', timeout: 3000 });
