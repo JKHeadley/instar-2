@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: renew byte-bound evidence for the supported native harness without changing its contract or authority.
-Side effects: the native conformance declaration and dependent generated register publication change; all other tuple facts remain intact.
+Side effects: the native conformance declaration and dependent generated register publication change; all other tuple facts remain intact. Seven generated files replay committed source ccf4aaf95dbd2350afb5cd1aa0eb0954c882afc7 as generation sha256:e1ba2387067e93449dc5b896139524187248e989ace46eb46659038910992360; publication is shape-only, native certification rests on the executed contract.
 Undo and recovery: revert with the matching composition; execute the named contract before certifying any different composition.
 Multi-machine posture: evidence binds this Darwin runtime and composition. Other platform and doorway tuples remain unchanged; no shared state or peer dependency is introduced.
 Layer below: compositionClosure, compositionDigest, currentRuntime, parityMatrix and the native harness contract. All 266 closure files and the exact runtime were measured before the contract and verified identical afterward.
@@ -25,5 +25,5 @@ Subject: src/assembly/harness.declarations.json and dependent generated register
 ## Closing block
 
 simplestRobustRoute: Execute the existing declared native contract, verify its closure and runtime did not change, renew that certificate and replay the existing register generator. This is the simplest robust route; it adds no mechanism or exception. The original stale certificate supplies the rejection case and the passing contract plus renewed architecture check supply the positive case. Installed observer operation, unattended reconciliation and recovered-result delivery remain desk-owned live acceptance, not claims of this repair.
-80/20: M2 is the only requested repair; candidate-scoped ownership and its accepted scope boundary remain intact. Foreground native contract, typecheck and cheap gate results are recorded in PROGRESS; full suite belongs to the Studio pipeline.
+80/20: M2 is the only requested repair; candidate-scoped ownership and its accepted scope boundary remain intact. The named native case passed before renewal, all ten native contract-file cases passed afterward, and build/typecheck passed. Final cheap gate results are recorded in PROGRESS; full suite belongs to the Studio pipeline.
 VERDICT: author submission; no independent verdict asserted
