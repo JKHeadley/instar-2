@@ -20,22 +20,37 @@ export function reactionAcknowledgement(invoke, chat, message) {
 }
 
 // A typing indicator expires at Telegram after five seconds. Refresh only while this admitted
-// answer is current, for at most two minutes / 30 calls; a failed refresh breaks the loop.
+// answer is current, for at most two minutes / 30 observations; a failed refresh breaks the loop.
 // Timers are machine-local, disposable, and never reconstructed as a message-send obligation.
 export function createReplyTyping({ invoke, allowed, now, after }) {
   const active = new Map();
   const key = (chat, thread) => JSON.stringify([chat, thread ?? null]);
   const stop = (chat, thread) => { const id = key(chat, thread), entry = active.get(id);
     active.delete(id); entry?.cancel?.(); };
-  const start = (chat, thread, current) => {
+  const start = (chat, thread, current, working = () => false) => {
     stop(chat, thread);
     const id = key(chat, thread), entry = { until: now() + 120000, calls: 0, cancel: null };
     active.set(id, entry);
     const tick = async () => {
       const live = () => active.get(id) === entry && current() && now() < entry.until && entry.calls < 30;
       try {
-        if (!live() || !await allowed() || !live()) { if (active.get(id) === entry) stop(chat, thread); return; }
+        if (!live()) { if (active.get(id) === entry) stop(chat, thread); return; }
         entry.calls++;
+        // A receipt or a pending answer is not work evidence. Keep the same bounded
+        // observation window so a queued turn can begin working without a new timer.
+        if (!working()) {
+          if (live()) entry.cancel = after(4000, () => { void tick(); });
+          else if (active.get(id) === entry) stop(chat, thread);
+          return;
+        }
+        if (!await allowed() || active.get(id) !== entry || !current() || now() >= entry.until) {
+          if (active.get(id) === entry) stop(chat, thread); return;
+        }
+        if (!working()) {
+          if (live()) entry.cancel = after(4000, () => { void tick(); });
+          else if (active.get(id) === entry) stop(chat, thread);
+          return;
+        }
         const reply = invoke('sendChatAction', { chat_id: chat, action: 'typing',
           ...(thread === undefined ? {} : { message_thread_id: thread }) }, 1000);
         if (reply?.kind !== 'response' || reply.status !== 200 || JSON.parse(reply.bytes)?.result !== true) {

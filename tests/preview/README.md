@@ -4341,15 +4341,20 @@ remain readable. Existing stop, disclosure, ownership, replication, allowance an
 remain in force. A crash after dispatch never repeats the reaction or sends fallback text.
 
 A definite reaction rejection (including unsupported chats) or transport proof that nothing was
-sent falls back to the existing “Checking that now.” template. The reaction call has a 500 ms
-transport timeout, preserving the deadline reserve for fallback. A lost or malformed response is
+sent falls back to “I got your message.” This acknowledges durable receipt without claiming
+that queued or stalled work has started. Historical “Checking that now.” intents remain readable
+and cannot be resent. The reaction call has a bounded ten-second transport timeout; transport
+latency can exceed the acknowledgement target and is measured separately. A lost or malformed response is
 UNKNOWN and cannot safely trigger fallback: the reaction may already have landed. No new model
 call or semantic judgment is involved. Final dispatch readiness suppresses an unadmitted ack;
 review still pending remains eligible. Final dispatch waits for an already dispatched ack.
 
 After acknowledgement, `telegram-acknowledgement.mjs` refreshes `sendChatAction: typing` every four
-seconds. Each refresh rechecks current work, stop, ownership, expiry and disclosure. The loop
-stops on answer/progress dispatch, a failed refresh, or two minutes / 30 calls, whichever comes
+seconds only with a fresh observation and an unfinished admitted tool for this exact turn.
+Queued input, a completed latest step, an absent observation and a call reservation alone do not
+produce typing. Each refresh rechecks this evidence after disclosure as well as stop, ownership
+and expiry. The loop stops on answer/progress dispatch, a failed refresh, or two minutes / 30
+observations, whichever comes
 first; Telegram expires the last indicator naturally. Timers are local, ephemeral, and never
 replayed as send obligations. The existing slow progress and earlier-message notices remain.
 The completion reaction remains 👀; no separate completion effect or durable state is added.

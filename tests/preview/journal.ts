@@ -397,7 +397,9 @@ export const withDisclosure = (reply: string, disclosure: string) =>
 // admission, timer jitter and transport (ack-timing-1013 measured 2.127s combined).
 export const REPLY_ACKNOWLEDGEMENT_AFTER_MS = 7_000;
 /** Reviewed once: content-free, no result, promise, private fact or claim of completed work. */
-export const REPLY_ACKNOWLEDGEMENT = 'Checking that now.';
+export const REPLY_ACKNOWLEDGEMENT = 'I got your message.';
+// Historical fixed intents remain readable and fenced; new sends acknowledge receipt only.
+const fixedAcknowledgement = (text: string) => text === REPLY_ACKNOWLEDGEMENT || text === 'Checking that now.';
 const LEGACY_REPLY_ACKNOWLEDGEMENT = "I'm working on your reply.";
 export const HELD_NOTICE_AFTER_MS = 600_000;
 /** Rule 95: every live gate of this runner and the way it fails when it cannot decide, chosen by who
@@ -4547,10 +4549,10 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     const acknowledgement = row.acknowledgement === true;
     // The same floor admits new seven-second notices and preserves older eight/ten-second history.
     const acknowledgementAfter = REPLY_ACKNOWLEDGEMENT_AFTER_MS;
-    if (acknowledgement && row.text === REPLY_ACKNOWLEDGEMENT && (row.at < turn.at + acknowledgementAfter || view.replies >= view.limits.maxReplies - 1))
+    if (acknowledgement && fixedAcknowledgement(row.text) && (row.at < turn.at + acknowledgementAfter || view.replies >= view.limits.maxReplies - 1))
       throw Error('preview journal: fixed acknowledgement no longer due');
     if (acknowledgement && (!operatorWriter(view, turn, true) || turn.requestedAction || turn.editOf
-      || !(row.text === REPLY_ACKNOWLEDGEMENT || row.text === LEGACY_REPLY_ACKNOWLEDGEMENT
+      || !(fixedAcknowledgement(row.text) || row.text === LEGACY_REPLY_ACKNOWLEDGEMENT
         && turn.heldNoticeReview?.verdict === 'pass') || row.covers !== undefined))
       throw Error('preview journal: acknowledgement intent refused');
     if (!turn.accepted || !acknowledgement && (!heldNoticeReason(turn.held) || turn.heldSince === undefined
@@ -4569,7 +4571,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       throw Error('preview journal: held notice cover refused');
     for (const item of covered as Turn[]) item.heldNoticeCoveredBy = row.id;
     if (row.acknowledgementMode !== undefined && (row.acknowledgementMode !== 'reaction-or-text'
-      || !acknowledgement || row.text !== REPLY_ACKNOWLEDGEMENT)) throw Error('preview journal: acknowledgement mode refused');
+      || !acknowledgement || !fixedAcknowledgement(row.text))) throw Error('preview journal: acknowledgement mode refused');
     turn.heldNoticeIntent = row.text;
     if (row.acknowledgementMode) turn.acknowledgementMode = row.acknowledgementMode;
     view.replies++; return;
@@ -4578,7 +4580,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (turn.heldNoticeIntent === undefined || turn.heldNoticeSent !== undefined
       || !Number.isSafeInteger(row.message) || row.message <= 0) throw Error('preview journal: held notice receipt order');
     if (row.acknowledgementPath !== undefined && (!['reaction', 'text'].includes(row.acknowledgementPath)
-      || turn.heldNoticeIntent !== REPLY_ACKNOWLEDGEMENT)) throw Error('preview journal: acknowledgement path refused');
+      || !fixedAcknowledgement(turn.heldNoticeIntent))) throw Error('preview journal: acknowledgement path refused');
     turn.heldNoticeSent = row.message; turn.heldNoticeSentAt = row.at;
     if (row.acknowledgementPath !== undefined) turn.acknowledgementPath = row.acknowledgementPath;
     return;
