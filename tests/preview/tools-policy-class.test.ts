@@ -254,11 +254,15 @@ it('replays train-46 and train-47 conversation policies with only worker limits 
   for (const build of capture.builds) expect(resolve(grant, build.policy)).toMatchObject({ kind: 'resolved',
     policyClass: { name: CONVERSATION_LIMITS_CLASS, policyDigest: build.digest } });
   expect(resolve(grant, candidate!.policy, base!.digest).kind).toBe('refused');
-  // The brief names the ordinary conversation grant; it is distinct from the continuing-session policy.
+  // The current ordinary policy remains an exact-digest grant, distinct from continuing sessions.
+  // Its prose can evolve independently of the recorded train-46/train-47 policies above.
   const ordinary = subscriptionConversationPolicy(MODEL);
-  expect(digestOf(ordinary)).toBe('sha256:3598cc7514f4be6ffec52f1d321e1596cd2db420a67fd7958281f3862dd9ce8c');
+  expect(ordinary.framing).toBe('preview-conversation-v1');
   const exact = authority({ invocationPolicyDigest: digestOf(ordinary) });
   expect(resolve(exact, ordinary).kind).toBe('resolved');
+  const changedProse = withArgs(ordinary, setFlag('--system-prompt', 'Changed conversation guidance.'));
+  expect(digestOf(changedProse)).not.toBe(digestOf(ordinary));
+  expect(resolve(exact, changedProse).kind).toBe('refused');
   expect(resolve(exact, candidate!.policy).kind).toBe('refused');
   expect(resolve(grant, ordinary).kind).toBe('refused');
   expect(resolve(grant, subscriptionToolsPolicy(MODEL)).kind).toBe('refused');
