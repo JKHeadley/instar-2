@@ -6337,7 +6337,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     : conversationName(thread, topicNames(journal.view));
   const turnLabel = (turn: Turn) =>
     `conversation:${fromOperator(turn) ? 'operator' : 'other sender'}/${packetConversation(turn.thread)}/${dated(turn)}/#${turn.update}`;
-  // Shared forum facts retain the same source identity used by history and recall. Private bytes stay unchanged.
+  // Shared forum facts retain the same source identity used by history and recall.
   const forumSource = (id: string) => {
     const source = journal.view.genesis.forum ? journal.view.turns.get(id) : undefined;
     return source ? { conversation: packetConversation(source.thread), sourceLabel: turnLabel(source) } : {};
