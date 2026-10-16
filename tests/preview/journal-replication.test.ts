@@ -6,11 +6,12 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realp
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { projectionDigest } from './journal.js';
+import { projectionDigest, type JournalRecord } from './journal.js';
+import { fitStatusLines, statusAnswer } from './status-command.js';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { localAuthorityClient, openConversationAuthority } from './conversation-authority.js';
 import type { AuthorityClient, AuthorityRequest } from './conversation-authority.js';
-import { adoptReceivedCopy, awaitReplicated, connectReplicaPeer, createJournalShipper, createReplicatedDispatch, localReplicaClient, markOf,
+import { adoptReceivedCopy, awaitReplicated, backupStatusLine, connectReplicaPeer, createJournalShipper, createReplicatedDispatch, localReplicaClient, markOf,
   openReplicaStore, readLineage, REPLICATION_UNMET, serveReplicaStore, setAsideJournals, sharedHistoryStatus, takeoverEligibility } from './journal-replication.js';
 import { createLeaseHolder } from './two-machine-serving.js';
 import type { ReplicaClient, ReplicaRequest } from './journal-replication.js';
@@ -528,4 +529,98 @@ it('the dispatch gate: replicated first, then one claim; a claimed, stale or unr
     expect(reopened.handle({ op: 'outcome', fence: { epoch: 1, incarnation: 'studio:1' }, key: 'reply:b', state: 'lost' } as never)).toEqual({ ok: false, reason: 'invalid' });
     reopened.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+
+it('shows the single-machine backup gap while an ordinary local reply still sends exactly once after reopen', async () => {
+  const dir = place(), file = join(dir, 'journal.encrypted');
+  let journal = openPreviewJournal(file, key, genesis()), sends = 0;
+  const worker = () => createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+    statusExtra: () => [backupStatusLine('single-machine', null)],
+    model: async () => 'ordinary answer', send: async () => ++sends, checkOutbound: () => undefined });
+  try {
+    const active = worker();
+    active.intake([update(10)]); await active.drain();
+    expect(journal.view.order[0]?.intent).toBe('ordinary answer');
+    expect(sends).toBe(1);
+    expect(statusAnswer(journal.view, 1000, 'UTC', [backupStatusLine('single-machine', null)]))
+      .toContain('Backup: no failover target (single-machine installation). Local operation remains supported.');
+    active.intake([{ ...update(11), message: { ...update(11).message, text: 'status' } }]); await active.drain();
+    expect(journal.view.order[1]?.intent).toContain('Backup: no failover target');
+    expect(sends).toBe(2);
+    journal.close(); journal = openPreviewJournal(file, key);
+    await worker().drain();
+    expect(sends).toBe(2);
+  } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('reports the backup from verified peer state, expires it, and recovers without changing replication admission', async () => {
+  const dir = place(), owner = machine(join(dir, 'studio')), store = storeAt(join(dir, 'laptop')), wire = link(store);
+  const { shipper, clock } = shipping(owner, wire.client);
+  const line = () => backupStatusLine('multi-machine', shipper.status(1000));
+  try {
+    expect(line()).toContain('no failover target confirmed');
+    await shipper.pump();
+    expect(line()).toContain('another machine recently acknowledged the whole journal');
+    expect(line()).not.toContain('no failover target');
+    clock.now = 1001;
+    expect(line()).toContain('no failover target confirmed');
+    wire.state.up = false;
+    await owner.exchange(1);
+    await shipper.pump();
+    expect(line()).toContain('no failover target confirmed');
+    expect(await awaitReplicated({ token: shipper.token(), shipper, refusal: () => null,
+      sleep: async ms => { clock.now += ms; }, elapsed: () => clock.now, maxWaitMs: 1000 })).toBe(REPLICATION_UNMET);
+    wire.state.up = true; clock.now += 15000; await shipper.pump();
+    expect(line()).toContain('another machine recently acknowledged the whole journal');
+    expect(line()).toContain('Takeover still requires the conversation authority');
+  } finally { owner.journal.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+it.each(['same-machine', 'unauthenticated'] as const)('does not report a %s endpoint as a backup', async kind => {
+  const dir = place(), owner = machine(join(dir, 'studio'));
+  const store = storeAt(join(dir, 'peer'), kind === 'same-machine' ? 'studio' : 'laptop');
+  const { shipper } = shipping(owner, localReplicaClient(store), kind === 'unauthenticated' ? { secret: 'different-test-secret' } : {});
+  try {
+    await shipper.pump();
+    expect(backupStatusLine('multi-machine', shipper.status(1000))).toContain('no failover target confirmed');
+    expect(shipper.status(1000).current).toBe(false);
+    expect(shipper.covers(shipper.token())).toBe(false);
+  } finally { owner.journal.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('keeps missing observations unknown and an online but incomplete copy unconfirmed', async () => {
+  expect(backupStatusLine('multi-machine', null)).toContain('unknown');
+  expect(backupStatusLine('multi-machine', null)).not.toContain('single-machine');
+  const dir = place(), owner = machine(join(dir, 'studio')), store = storeAt(join(dir, 'laptop'));
+  const { shipper } = shipping(owner, localReplicaClient(store));
+  try {
+    await shipper.pump();
+    await owner.exchange(10); // Still online, but the newest durable intake/reply is not copied yet.
+    expect(shipper.status(1000).lastContactMs).toBe(0);
+    expect(shipper.status(1000).current).toBe(false);
+    expect(backupStatusLine('multi-machine', shipper.status(1000))).toContain('no failover target confirmed');
+  } finally { owner.journal.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('adds the backup gap to real recorded journal and long status shapes without losing the line or exceeding the reply budget', () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/proofroom-summary-cascade-stall-2026-09-30.json', import.meta.url), 'utf8')) as {
+    genesis: Omit<ReturnType<typeof genesis>, 'kind' | 'expires' | 'cursor'>; rows: JournalRecord[] };
+  const statuses = JSON.parse(readFileSync(new URL('./fixtures/status-reply-split-live-2026-10-03.json', import.meta.url), 'utf8')) as {
+    statusAnswers: { update: number; answer: string }[] };
+  const dir = place(), journal = openPreviewJournal(join(dir, 'journal.encrypted'), key,
+    { ...recorded.genesis, kind: 'genesis', expires: 9999999999999, cursor: 0 });
+  const line = backupStatusLine('single-machine', null);
+  try {
+    for (const row of recorded.rows) journal.append(row);
+    const before = projectionDigest(journal.view);
+    expect(statusAnswer(journal.view, 1790790000000, 'UTC', [line])).toContain('Backup: no failover target');
+    expect(projectionDigest(journal.view)).toBe(before);
+    expect(statuses.statusAnswers.map(row => row.update)).toEqual([6232038, 6232050, 6232056]);
+    for (const row of statuses.statusAnswers) {
+      const answer = fitStatusLines([...row.answer.split('\n'), line]);
+      expect(answer).toContain('Backup: no failover target');
+      expect(Buffer.byteLength(answer)).toBeLessThanOrEqual(3500);
+    }
+  } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
 });

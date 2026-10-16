@@ -218,6 +218,19 @@ export const localReplicaClient = (store: ReplicaStore): ReplicaClient =>
 /** A point in the journal: the generation it was taken in and the bytes it must cover. */
 export type ReplicationToken = Readonly<{ generation: number; size: number }>;
 export type PeerStatus = Readonly<{ current: boolean; reason: string; acknowledgedBytes: number; journalBytes: number; lastContactMs: number | null }>;
+/** Rules 26/87/113 and the purpose's single-machine rule: a pull-only observation, never
+ * admission or takeover authority. A current authenticated copy is evidence of a backup, not
+ * proof that the one-voter conversation authority will survive this machine's loss. */
+export function backupStatusLine(posture: 'single-machine' | 'multi-machine', peer: PeerStatus | null): string {
+  if (posture === 'single-machine')
+    return 'Backup: no failover target (single-machine installation). Local operation remains supported.';
+  if (peer === null)
+    return 'Backup: unknown; no current peer observation. Replication requirements remain in force.';
+  if (!peer.current)
+    return 'Backup: no failover target confirmed; the peer has no freshly acknowledged complete journal. Replication requirements remain in force.';
+  return 'Backup: another machine recently acknowledged the whole journal. Takeover still requires the conversation authority.';
+}
+
 export interface JournalShipper {
   /** Send what the peer lacks. Never throws; a failure is the status reason. */
   pump(): Promise<void>;
