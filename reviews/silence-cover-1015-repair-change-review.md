@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Durable work recovery controls whether an interrupted effect can be repeated.
-Side effects: The existing host wake time now includes held reconciliation work. Repeated unknown evidence advances the existing revisit cadence and retains execution inhibition without extra providers, watchers or stores. A proved result clears the hold once; proven non-launch permits the next normally scheduled attempt.
+Side effects: The existing host wake time now includes held reconciliation work. Missing evidence also retains an existing hold, including legacy non-session starts. Repeated unknown evidence advances the existing revisit cadence and retains execution inhibition without extra providers, watchers or stores. A proved result clears the hold once; proven non-launch permits the next normally scheduled attempt.
 Undo and recovery: Stop affected runners before rollback because the predecessor permanently holds uncertain results. Retain journals; no new record type or migration is needed. Restart repaired code to reconcile existing recoveryHeld rows through their retained lastSlot.
 Multi-machine posture: Shared journal work retains its exact attempt id; the existing session evidence collector still enforces owner, scope, placement and child closure. No foreign owner gains execution authority.
 Layer below: projectObligationWork ordering, idempotent settleTokens, obligationSchedule execution exclusion, session collector exact closure and no-child evidence, journal checkpoint captured digest, and loopHealth host wake projection.

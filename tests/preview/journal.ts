@@ -11202,7 +11202,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(decided.assessment ? { assessment: { ...decided.assessment, wording: governingConstraints(work?.session === true)[decided.assessment.constraint] } } : {}), at: ports.now() });
           } else if (recovered?.state === 'failed') journal.append({ kind: 'obligation-result', obligation: item.key, slot, outcome: 'failed', at: ports.now() });
           else journal.append({ kind: 'obligation-result', obligation: item.key, slot, outcome: 'uncertain',
-            ...(work?.session || recovered ? { recoveryHeld: true as const } : {}), at: ports.now() });
+            ...(work?.recoveryHeld || work?.session || recovered ? { recoveryHeld: true as const } : {}), at: ports.now() });
         }
       }
       const now = ports.now(), item = dueObligationWork(journal.view, now)[0];

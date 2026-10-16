@@ -763,6 +763,24 @@ it('keeps an uncertain tool-worker outcome halted on a healthy host instead of r
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('keeps an existing hold when a later read has no checkpoint evidence', async () => {
+  const root = origin();
+  let reads = 0;
+  try {
+    const w = world(root, { recoverSessionWork: () => { if (++reads === 1) throw Error('unavailable'); return null; },
+      answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }) });
+    await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+    const slot = dueObligationWork(w.journal.view, w.clock.now)[0]!.slot;
+    w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, at: w.clock.now });
+    for (let tick = 0; tick < 3; tick++) {
+      await w.worker.workObligations(); w.clock.now += LOOP_REVISIT_MS;
+      expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ recoveryHeld: true, attempts: 1, lastSlot: slot });
+    }
+    expect(reads).toBe(3); expect(w.work).toEqual([]);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('reconciles a held step on its original host and permits new work only after proven non-launch', async () => {
   const root = origin();
   let proven = false, reads = 0;
