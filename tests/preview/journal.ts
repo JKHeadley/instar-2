@@ -7730,8 +7730,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const withoutOffer = (value: string) => { const packet = JSON.parse(value) as Record<string, unknown>;
           if (!('memoryFailureDecision' in packet)) return undefined;
           delete packet.memoryFailureDecision; delete packet.searchedTurn; return JSON.stringify(packet); };
-        // Sibling words are optional packet evidence; the dispatch reader refreshes them separately.
-        // Yield them before required guidance or history so a small envelope can still answer.
+        // Sibling words ground every answer route. Only continuing sessions have a separate dispatch
+        // refresh; scoped tool turns and text answers rely on this packet (live updates 715676486/488).
+        // Keep them through the ordinary evidence/guidance ladder. At the final reachability rung,
+        // after history and the review reserve yield, they may yield too so a small envelope can answer.
         const withoutSiblingWords = (value: string) => {
           const packet = JSON.parse(value) as { actionFacts?: { items: unknown[]; siblingWords?: unknown } };
           if (!packet.actionFacts?.siblingWords) return undefined;
@@ -7739,10 +7741,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (!packet.actionFacts.items.length) delete packet.actionFacts;
           return JSON.stringify(packet);
         };
-        const variants = ordinaries.flatMap(ordinary => { const siblingFree = withoutSiblingWords(ordinary);
-          const bare = withoutOffer(siblingFree ?? ordinary), base = bare ?? siblingFree ?? ordinary;
+        const variants = ordinaries.flatMap(ordinary => {
+          const bare = withoutOffer(ordinary), base = bare ?? ordinary;
           const cut = yieldSources(base);
-          return [ordinary, ...(siblingFree ? [siblingFree] : []), ...(bare ? [bare] : []), ...cut, ...floorGuide(cut[0] ?? base)]; });
+          const kept = [ordinary, ...(bare ? [bare] : []), ...cut, ...floorGuide(cut[0] ?? base)];
+          return reviewReserveWaived && step === dropOrder.length
+            ? [...kept, ...kept.flatMap(value => withoutSiblingWords(value) ?? [])] : kept;
+        });
         for (const context of variants.flatMap(searchVariants)) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
