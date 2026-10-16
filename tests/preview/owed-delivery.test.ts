@@ -64,6 +64,53 @@ it('delivers a requested finished result without another message, through one si
   } finally { w.journal.close(); }
 });
 
+const heldReviewCapture = JSON.parse(readFileSync(new URL('./fixtures/credlabel-proofroom-T-2026-10-03.json', import.meta.url), 'utf8')) as {
+  turn: { recordedAnswer: string; review: Awaited<ReturnType<NonNullable<PreviewPorts['replyCheck']>['escalate']>> };
+  neighbour: { credentialFinding: { rule: 'credential'; verdict: 'pass'; reason: string } };
+};
+it.each(['same worker', 'restart', 'unknown holding send', 'passing review'] as const)(
+  'replays recorded review outcomes without stranding owed work: %s', async mode => {
+    let hold = mode !== 'passing review';
+    const w = world({ report: heldReviewCapture.turn.recordedAnswer });
+    try {
+      await w.prepare();
+      const slot = w.journal.view.obligationWork['commitment:0']!.lastSlot;
+      w.ports.replyCheck = { elapsedMs: () => 0,
+        jev: async () => ({ value: { verdict: 'unsure', scores: { credential: 0.58 } }, latencyMs: 0 }),
+        escalate: async () => hold ? { ...heldReviewCapture.turn.review, confidence: null } : { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0,
+          findings: [heldReviewCapture.neighbour.credentialFinding] } };
+      w.reopen();
+      w.state.unknown = mode === 'unknown holding send';
+      await w.worker.sendRequested();
+      if (hold) {
+        expect(w.state.sends[1]?.text).not.toContain(heldReviewCapture.turn.recordedAnswer);
+        expect(w.journal.view.closed.size).toBe(0);
+        if (mode !== 'same worker') w.reopen();
+        await w.worker.sendRequested(); await w.worker.sendRequested();
+        expect(w.state.sends.filter(send => send.text.includes('I need to check that answer'))).toHaveLength(1);
+        expect(w.journal.view.obligationWork['commitment:0']!.withheld).toMatchObject({
+          text: heldReviewCapture.turn.recordedAnswer, objection: heldReviewCapture.turn.review.reason });
+        hold = false; w.state.unknown = false; w.state.now++;
+        const model = w.ports.model;
+        w.ports.model = async input => {
+          if (input.id.startsWith('obligation:')) {
+            expect(JSON.parse(input.context).withheld).toMatchObject({ report: heldReviewCapture.turn.recordedAnswer,
+              objection: heldReviewCapture.turn.review.reason });
+            return JSON.stringify({ outcome: 'report', report: result });
+          }
+          return model(input);
+        };
+        w.reopen(); await w.worker.workObligations();
+        expect(w.journal.view.obligationWork['commitment:0']!.lastSlot).toBeGreaterThan(slot);
+        await w.worker.sendRequested();
+      }
+      expect(w.journal.view.closed.has(0)).toBe(true);
+      const sent = w.state.sends.length;
+      w.reopen(); await w.worker.sendRequested(); expect(w.state.sends).toHaveLength(sent);
+      expect(w.state.sends.filter(send => send.text.includes(mode === 'passing review' ? heldReviewCapture.turn.recordedAnswer : result))).toHaveLength(1);
+    } finally { w.journal.close(); }
+  });
+
 it('resumes after the durable due frame but before intent without another model call', async () => {
   const w = world();
   try {

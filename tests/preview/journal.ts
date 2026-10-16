@@ -2558,15 +2558,26 @@ function applyIntentObligations(view: JournalView, turn: Turn, row: Extract<Jour
     // The durable intent binds each result to this reply so no other reply carries it; only its sent receipt settles it.
     for (const key of row.reports) view.obligationWork[key]!.report!.boundTo = turn.id;
   }
-  if (row.withheldReports !== undefined) {
+  // Rules 8/46: an owed occurrence is consumed by its intent, even when review sends only a holding notice.
+  // Return its omitted results to the existing rework transition, also when replaying older intents which
+  // recorded the review but no withheldReports. A result present in the intent (including UNKNOWN sends)
+  // is never reworked: its existing binding and complete-receipt settlement still own it.
+  const omittedOwed = turn.requestedAction?.owed?.filter(ref => turn.answerReports?.includes(ref.key)
+    && view.obligationWork[ref.key]?.lastSlot === ref.slot && attachableReport(view.obligationWork[ref.key])
+    && !row.reports?.includes(ref.key) && !row.text.includes(view.obligationWork[ref.key]!.report!.text));
+  const withheldReports = row.withheldReports ?? (omittedOwed?.length ? omittedOwed.map(ref => ({ key: ref.key,
+    objection: Buffer.from(redact(row.heldReview?.reason ?? row.release?.reason ?? '').text).subarray(0, 1000)
+      .toString('utf8').replace(/\uFFFD+$/u, '').trim()
+      || 'The requested result was omitted from its delivery intent; correct it before delivery.' })) : undefined);
+  if (withheldReports !== undefined) {
     // Only a commitment's attached result that this reply's text does not carry, never one it also delivers.
-    const keys = row.withheldReports.map(item => item?.key);
-    if (!Array.isArray(row.withheldReports) || !row.withheldReports.length || new Set(keys).size !== keys.length
-      || row.withheldReports.some(item => typeof item?.key !== 'string' || !item.key.startsWith('commitment:')
+    const keys = withheldReports.map(item => item?.key);
+    if (!Array.isArray(withheldReports) || !withheldReports.length || new Set(keys).size !== keys.length
+      || withheldReports.some(item => typeof item?.key !== 'string' || !item.key.startsWith('commitment:')
         || !boundedText(item.objection, 1, 1000) || !turn.answerReports?.includes(item.key) || row.reports?.includes(item.key)
         || !attachableReport(view.obligationWork[item.key]) || row.text.includes(view.obligationWork[item.key]!.report!.text)))
       throw Error('preview journal: invalid withheld report');
-    for (const { key, objection } of row.withheldReports) {
+    for (const { key, objection } of withheldReports) {
       const { report, ...work } = view.obligationWork[key]!;
       view.obligationWork[key] = { ...work, withheld: { text: report!.text, at: row.at, by: turn.id, objection } };
     }
