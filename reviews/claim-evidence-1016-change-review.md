@@ -48,6 +48,8 @@ Decision: claim-evidence-fixture-translation | Extend the existing historical in
 
 Fixture validation: Four selfdesc-abilities comparison failures exposed the new standing instruction; the declared translation fixes them. selfdesc-abilities and claim-evidence pass together (21 tests). No capture or historical judgment was rewritten.
 
+Credential validation: Keep packet.capabilities, packet.credentialRegister and packet.declaredObligations explicitly named while shortening the claim question. This repairs the credential-boundary assertion without weakening it. Credential-label-boundary, default-context-floor and claim-evidence pass together (42 tests).
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: extend the existing answer-provenance holder with shared guidance in standing answer instructions and the existing contextual claim question. No new service, store, watcher, parser, verifier or model call. Start: an answer grounded in recorded packet evidence. End: the answer or its one existing revision is sent through the unchanged journal path. Limits: existing call allowance, shared review deadline, credential wall, stop, intake and send identity. Recorded replays and constructed delivery integration are evidence; no unattended live completion is claimed.
