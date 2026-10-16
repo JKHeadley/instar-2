@@ -19,9 +19,9 @@ Bug evidence: none
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains sample hooks only.
 Convergence: none
 Prompt review: The promotion record appends the owner’s deadline, reason and rollback as status metadata. These strings contain neither a fixture trigger nor an asserted dispatch answer; no model prompt or output interpretation is changed.
-Decision: stepcheck-deadline-extend | step-check graduation not yet proven; deadline extended 72 h so dated gates do not block unrelated builds; graduation work tracked by the desk. Keep dark status and append reason, owner and rollback to the existing promotion record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/register-stepcheck-deadline-1014-PROGRESS.md
+Decision: stepcheck-deadline-extend | step-check graduation not yet proven; deadline extended 72 h so dated gates do not block unrelated builds; graduation work tracked by the desk. Keep dark status and append reason, owner and rollback to the existing promotion record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-47-repair-220320-PROGRESS.md
 
-Decision: owner-repair-import | Import the existing owning repair instead of writing a second fix; bind this review to the receiving branch while preserving the owner decision and its promotion history. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/const-onemind-1015-PROGRESS.md
+Decision: owner-repair-import | Import the existing owning repair instead of writing a second fix; bind this review to the receiving branch while preserving the owner decision and its promotion history. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-47-repair-220320-PROGRESS.md
 
 ## Closing block
 
