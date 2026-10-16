@@ -2,10 +2,33 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync, chmodSync, constants,
   openSync, closeSync, fsyncSync, fstatSync, lstatSync, realpathSync, statSync, unlinkSync, readSync, rmSync, linkSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertAgentPaths } from './agent-paths.mjs';
+
+/** Full current input for the existing native SessionStart(compact) hook. This is
+ * a disposable worker cache; durable requests remain in conversation custody. */
+export function createSessionGrounding(physical, topic) {
+  const name = `grounding-${createHash('sha256').update(topic).digest('hex')}.txt`;
+  const file = () => join(physical().inboxDirectory, name);
+  return { file,
+    revision(worker) {
+      const io = physical(), session = io.load().sessions.find(row => row.identity === worker.launch);
+      if (!session) throw Error('grounding worker missing');
+      return JSON.stringify(io.readInbox(session.name).filter(row => row.kind === 'compact'));
+    },
+    save(_worker, text) {
+      if (!text || Buffer.byteLength(text) > 1_048_576) throw Error('complete grounding outside delivery bound');
+      const path = file(), temporary = `${path}.${randomUUID()}.tmp`;
+      try {
+        writeFileSync(temporary, text, { mode: 0o600, flag: 'wx' });
+        const fd = openSync(temporary, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
+        renameSync(temporary, path);
+      } finally { if (existsSync(temporary)) unlinkSync(temporary); }
+    },
+  };
+}
 
 export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/homebrew/bin/tmux',
   home, configHome, cwd, lifecycleDirectory }) {

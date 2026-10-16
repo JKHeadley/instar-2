@@ -131,7 +131,7 @@ import { createTopicLoginHandoff } from '../../scripts/topic-login-pool.mjs';
 import { createConversationTopicsPort } from '../../src/assembly/conversation-topics.js';
 import { createSessionWorkPort, SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
-import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
+import { createProductionSessionIO, createSessionGrounding } from '../../scripts/production-session-io.mjs';
 import { stepQuestions } from './step-check.js';
 import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, rerunsDue, retroAnswerBudget, standingGrantCandidates } from './retrospective.js';
 
@@ -2492,7 +2492,8 @@ async function main() {
             if (session) sessionAdapter.validateActivation(target, entry.profile, options.model, wallNow(), journal.view.expires);
             else doorway.validateActivation(target, entry.profile, options.model, wallNow(), framing, journal.view.expires);
             requireAuthority(entry.options, target, session ? sessionPath : tools && toolPath ? toolPath : entry.activation,
-              journal.view, wallNow(), tools ? doorway.policyFor(options.model, framing) : undefined);
+              journal.view, wallNow(), session && conversationSession ? sessionAdapter.policy(options.model)
+                : tools ? doorway.policyFor(options.model, framing) : undefined);
             if (!activationMatchesJournal(journal.view, target)) throw Error('preview: pool activation differs from journal');
           };
           const live = tools => { try { check(tools); return true; } catch { return false; } };
@@ -2548,7 +2549,8 @@ async function main() {
       let sessionHarness = harness;
       let sessionBytes = readFileSync(sessionSetup.activation, 'utf8'), sessionActivation = JSON.parse(sessionBytes);
       sessionAdapter.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
-      requireAuthority(options, sessionActivation, sessionSetup.activation, journal.view, wallNow());
+      requireAuthority(options, sessionActivation, sessionSetup.activation, journal.view, wallNow(),
+        conversationSession ? sessionAdapter.policy(options.model) : undefined);
       if (!activationMatchesJournal(journal.view, sessionActivation)) throw Error('preview: session work activation differs from journal');
       const sessionActive = () => { try { return loginPool && !conversationSession ? loginRuntimes.get(selectedSession.index).live('session') : readFileSync(sessionSetup.activation, 'utf8') === sessionBytes; } catch { return false; } };
       // Rule 60: the session's working scope is a persistent fixed-size volume (tool-turn.mjs attachSessionVolume), mounted
@@ -2580,6 +2582,7 @@ async function main() {
       const admissionBase = layout ? layout.admission : join(root, 'session-work-state', 'admission');
       const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
       const configurationFor = (topic, binding, handoff = null) => {
+        const grounding = createSessionGrounding(() => binding.physical(), String(topic ?? 'main'));
         const driverConfiguration = resolveIntake => ({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
             timeoutSeconds: Math.ceil(sessionLimits.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
@@ -2589,6 +2592,7 @@ async function main() {
           maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
           readyTimeoutMs: 30000, protectedSessions: [],
           ...(conversationSession ? { requireTurnHook: true, inboxDirectory: binding.physical().inboxDirectory,
+            compactGroundingFile: grounding.file(),
             hookScript: layout ? lifecycleHookPath(harnessHookPath()) : fileURLToPath(new URL('../../scripts/session-hooks/stop.mjs', import.meta.url)) } : {}),
           ...(conversationSession ? { continuationRequired: () => handoff?.continuing ?? false, continuation: () => {
             const turn = journal.view.order.filter(item => item.accepted && String(item.thread ?? 'main') === topic && item.prompt && item.sent !== undefined && item.intent).at(-1);
@@ -2601,6 +2605,7 @@ async function main() {
         return ({
         ...(conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
           authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
+          grounding,
           ...(handoff ? { prepareTurn: handoff.prepareTurn } : {}) } : {}),
         createDriver: resolveIntake => {
           const create = () => createProductionSessionDriver(driverConfiguration(resolveIntake));
@@ -2720,7 +2725,8 @@ async function main() {
           if (current !== sessionBytes) {
             const record = JSON.parse(current);
             sessionAdapter.validateActivation(record, profile, required(options, 'model'), wallNow(), journal.view.expires);
-            requireAuthority(options, record, sessionSetup.activation, journal.view, wallNow());
+            requireAuthority(options, record, sessionSetup.activation, journal.view, wallNow(),
+              conversationSession ? sessionAdapter.policy(options.model) : undefined);
             if (!activationMatchesJournal(journal.view, record)) throw Error('preview: refreshed session grant differs from journal');
             sessionBytes = current; sessionActivation = record;
           }

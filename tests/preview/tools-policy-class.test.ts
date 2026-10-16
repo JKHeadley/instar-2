@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { authoritySealKey, PREVIEW_DESK, resolveActivationAuthority, sealAuthorityRecord, type ActivationAuthorityRecord,
   type ActivationFacts, type OperatorMessageRecords } from './activation-authority.js';
-import { claudeSettingsCheckpoints, codexDispatchCheckpoint, FULL_TOOLS_CLASS, GUIDANCE_ONLY_TOOLS_CLASS, guidanceOnlyPolicyPins, toolsPolicyClassVerdict } from './tools-policy-class.js';
+import { CONVERSATION_LIMITS_CLASS, conversationLimitsPolicyPins, claudeSettingsCheckpoints, codexDispatchCheckpoint, FULL_TOOLS_CLASS, GUIDANCE_ONLY_TOOLS_CLASS, guidanceOnlyPolicyPins, toolsPolicyClassVerdict } from './tools-policy-class.js';
 import { encoded } from '../../src/assembly/boundary.js';
 import { subscriptionConversationPolicy, subscriptionToolSettings, subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';
 import { codexToolHookArgs, codexToolsPolicy } from '../../src/assembly/production-codex-provider.js';
@@ -239,4 +239,60 @@ it('replays the exact train-42 sealed subject and completion-guidance-1015 polic
   expect(resolve(grant, changed!.policy)).toMatchObject({ kind: 'resolved', policyClass: { policyDigest: changed!.digest } });
   expect(resolve(authority({ invocationPolicyDigest: base!.digest }), base!.policy)).toMatchObject({ kind: 'resolved' });
   expect(resolve(authority({ invocationPolicyDigest: base!.digest }), changed!.policy)).toMatchObject({ kind: 'refused' });
+});
+
+
+it('replays train-46 and train-47 conversation policies with only worker limits excluded from sealed pins', () => {
+  const capture = JSON.parse(readFileSync('tests/preview/fixtures/conversation-limits-2026-10-15.json', 'utf8')) as
+    { builds: { digest: string; policy: Record<string, unknown> }[] };
+  const [base, candidate] = capture.builds;
+  for (const build of capture.builds) expect(digestOf(build.policy)).toBe(build.digest);
+  expect(candidate!.digest).toBe('sha256:3807bd1aa49e2eb285f6ed41097177fd1681280fba221148fd6ffd1ac7b277fa');
+  const pins = conversationLimitsPolicyPins(base!.policy);
+  const grant = authority({ invocationPolicyClass: CONVERSATION_LIMITS_CLASS, invocationPolicyPins: pins });
+  expect(conversationLimitsPolicyPins(candidate!.policy)).toBe(pins);
+  for (const build of capture.builds) expect(resolve(grant, build.policy)).toMatchObject({ kind: 'resolved',
+    policyClass: { name: CONVERSATION_LIMITS_CLASS, policyDigest: build.digest } });
+  expect(resolve(grant, candidate!.policy, base!.digest).kind).toBe('refused');
+  // The brief names the ordinary conversation grant; it is distinct from the continuing-session policy.
+  const ordinary = subscriptionConversationPolicy(MODEL);
+  expect(digestOf(ordinary)).toBe('sha256:3598cc7514f4be6ffec52f1d321e1596cd2db420a67fd7958281f3862dd9ce8c');
+  const exact = authority({ invocationPolicyDigest: digestOf(ordinary) });
+  expect(resolve(exact, ordinary).kind).toBe('resolved');
+  expect(resolve(exact, candidate!.policy).kind).toBe('refused');
+  expect(resolve(grant, ordinary).kind).toBe('refused');
+  expect(resolve(grant, subscriptionToolsPolicy(MODEL)).kind).toBe('refused');
+  const policy = candidate!.policy, limits = policy.limits as Record<string, number>;
+  const changed = (field: string, value: unknown) => ({ ...policy, limits: { ...limits, [field]: value } });
+  for (const [field, value] of [['maxSessions', 4], ['deadlineMs', 7_200_000], ['idleMs', 60_000],
+    ['minCpuIdlePercent', 20], ['minFreeMemoryBytes', 4 * 1024 ** 3], ['minFreeMemoryFraction', 0.2]] as const) {
+    const p = changed(field, value);
+    if (field === 'deadlineMs') (p.limits as Record<string, unknown>).idleMs = value;
+    expect(resolve(grant, p).kind, field).toBe('resolved');
+  }
+  for (const [field, value] of Object.entries(policy)) {
+    if (field === 'limits') continue;
+    expect(resolve(grant, { ...policy, [field]: typeof value === 'string' ? `${value}-changed` : null }).kind, field).toBe('refused');
+    const missing = { ...policy }; delete missing[field]; expect(resolve(grant, missing).kind, field).toBe('refused');
+  }
+  for (const field of ['maxStepsPerLaunch', 'maxCallsPerStep', 'pollMs', 'maxResultBytes'])
+    expect(resolve(grant, changed(field, limits[field]! - 1)).kind, field).toBe('refused');
+  for (const field of ['maxSessions', 'deadlineMs', 'idleMs', 'minCpuIdlePercent', 'minFreeMemoryBytes', 'minFreeMemoryFraction']) {
+    for (const value of [null, 0, -1, '8']) expect(resolve(grant, changed(field, value)).kind, field).toBe('refused');
+    expect(resolve(grant, changed(field, Infinity), candidate!.digest).kind, field).toBe('refused');
+    const missing = { ...policy, limits: { ...limits } }; delete missing.limits[field];
+    expect(resolve(grant, missing).kind, field).toBe('refused');
+  }
+  for (const [field, value] of [['maxSessions', 9], ['maxSessions', 1.5], ['deadlineMs', 14_400_001], ['idleMs', 14_400_001],
+    ['minCpuIdlePercent', 11], ['minCpuIdlePercent', 101], ['minFreeMemoryBytes', 2 * 1024 ** 3 - 1],
+    ['minFreeMemoryFraction', 0.09], ['minFreeMemoryFraction', 1.01]] as const)
+    expect(resolve(grant, changed(field, value)).kind, field).toBe('refused');
+  expect(resolve(grant, { ...policy, unknownField: true }).kind).toBe('refused');
+  expect(resolve(grant, changed('unknownLimit', 1)).kind).toBe('refused');
+  expect(resolve(authority({ invocationPolicyClass: CONVERSATION_LIMITS_CLASS }), policy).kind).toBe('refused');
+  const tampered = structuredClone(grant); tampered.grants[0]!.scope.invocationPolicyPins = digestOf(policy);
+  expect(resolve(tampered, policy).kind).toBe('refused');
+  const revoked = sealAuthorityRecord({ ...grant, revocations: [{ grantId: grant.grants[0]!.id,
+    at: NOW - 10, by: OPERATOR, source: 'withdrawn' }] }, KEY);
+  expect(resolve(revoked, policy).kind).toBe('refused');
 });

@@ -442,6 +442,36 @@ it.each(recordedCapacityShapes.otherShapes)('capacity wait preserves recorded $k
   await f.port.maintain(); expect(f.delivered).toHaveLength(1); await f.port.close();
 });
 
+it.each(recordedCapacityShapes.otherShapes)('capacity recovery preserves topic-local grounding for recorded $kind ($id)', async sample => {
+  const f = fixture(8); let room = false;
+  const snapshots: { topic: string; text: string }[] = [];
+  const topicConfig: NonNullable<ConversationTopicsConfig['topicConfig']> = topic => ({
+    io: f.config.io, resources: f.config.resources, authorized: f.config.authorized,
+    currentAuthority: f.config.currentAuthority,
+    grounding: { revision: () => null, save: (_worker, text) => { snapshots.push({ topic, text }); } },
+    createAdapter: resolve => {
+      const adapter = f.config.createAdapter(topic, resolve);
+      return { ...adapter, describe: () => ({ ...adapter.describe(), contextRecovery: 'host-snapshot' }) };
+    },
+  });
+  Object.assign(f.config, { topicConfig, capacity: async () => ({ admit: room, memoryPressure: false }) });
+  for (const topic of ['7', '8']) {
+    const request = { ...f.request(`${topic}:recorded`), context: JSON.stringify({ topic, recorded: sample.raw }) };
+    expect(await f.port.run(request)).toMatchObject({ state: 'queued' });
+    expect(f.state().topics[topic]!.inputs[0]!.request).toEqual(request);
+  }
+  expect(snapshots).toHaveLength(0); expect(f.delivered).toHaveLength(0);
+  room = true; await f.port.maintain();
+  expect(snapshots).toHaveLength(2);
+  for (const topic of ['7', '8']) {
+    const delivered = f.delivered.find(row => row.topic === topic)!;
+    expect(snapshots.find(row => row.topic === topic)?.text).toBe(delivered.input.text);
+    expect(delivered.input.text).toContain(JSON.stringify({ topic, recorded: sample.raw }));
+    expect(await f.port.collect(`${topic}:recorded`)).toMatchObject({ outcome: { state: 'complete' } });
+  }
+  await f.port.maintain(); expect(f.delivered).toHaveLength(2); await f.port.close();
+});
+
 // The review reproduction also covers the retry after reclaiming an idle topic.
 it.each([false, true])('physical lease wait rechecks headroom (retry=%s)', async retry => {
   const f = fixture(); let room = true, entered = false, calls = 0;

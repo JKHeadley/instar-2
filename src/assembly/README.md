@@ -22,7 +22,7 @@ authority or resource limit; text-only turns retain their no-tools instruction.
 
 ## Continuing conversation session
 
-The conversation prompt keeps each prepared grounding packet once, with host clock and unresolved references separate. Ordinary questions retain their separate context; a batch preserves each complete envelope and arrival order.
+The conversation prompt keeps each prepared grounding packet once, with host clock and unresolved references separate. Ordinary questions retain their separate context. A continuing native worker receives references to exactly repeated packets and instructions, while distinct packets, current bindings and batch result identities remain complete. Its first input and the first after a compaction receipt are full. The host writes the full current input to the existing SessionStart(compact) hook before dispatch, so in-place compaction can restore it immediately. Worker replacement clears the transient cache; an adapter without this recovery contract receives full inputs. No delta changes durable requests or their digests.
 
 `production-conversation-session.ts` composes the existing Eight-owned session
 driver with the session-work admission, resource lease and durable edge interfaces.

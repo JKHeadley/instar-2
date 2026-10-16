@@ -220,9 +220,11 @@ it.each([false, true])('the shipped grant refresh validates changed bytes before
     return { select: () => sessionWork.select(), active: sessionActive, authority: () => sessionWork.authority };
   `);
   const seen: unknown[] = [];
-  const route = build(() => bytes, initial, { validateActivation: (record: { policy: string }) => {
+  const presented: unknown[] = [];
+  const policy = { framing: 'recorded-conversation-policy' };
+  const route = build(() => bytes, initial, { policy: () => policy, validateActivation: (record: { policy: string }) => {
     seen.push(record); if (record.policy === 'invalid') throw Error('invalid grant');
-  } }, () => {}, (text: string) => text, pool) as { select(): void; active(): boolean; authority(): string };
+  } }, (...args: unknown[]) => { presented.push(args[5]); }, (text: string) => text, pool) as { select(): void; active(): boolean; authority(): string };
   expect(route.active()).toBe(true); const before = route.authority();
   bytes = JSON.stringify({ reference: 'same-grant', policy: 'new' });
   expect(route.active()).toBe(false); route.select(); expect(route.active()).toBe(true);
@@ -230,6 +232,7 @@ it.each([false, true])('the shipped grant refresh validates changed bytes before
   bytes = JSON.stringify({ reference: 'same-grant', policy: 'invalid' });
   expect(() => route.select()).toThrow(/invalid grant/); expect(route.active()).toBe(false);
   expect(seen).toHaveLength(2);
+  expect(presented).toEqual([policy]);
 });
 
 const repairRecords = JSON.parse(readFileSync(new URL('./fixtures/repair-identity-copy-walk-2026-10-14.json', import.meta.url), 'utf8')) as {
