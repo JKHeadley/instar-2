@@ -95,7 +95,9 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
   const workInFlight = schedule.filter(item => item.inFlight).length;
   const recoveryUnknown = schedule.filter(item => view.obligationWork[item.key]?.recoveryHeld).length;
   const requestsAt = loops.filter(loop => loop.kind === 'request').map(loop => loop.nextAt!);
-  const wakeAt = [...future.map(item => item.slot), ...requestsAt.filter(at => at > now)];
+  const wakeAt = [...future.map(item => item.slot), ...requestsAt.filter(at => at > now),
+    ...schedule.filter(item => view.obligationWork[item.key]?.recoveryHeld)
+      .map(item => view.obligationWork[item.key]!.last + loopRevisitMs(view))];
   // A started step is unfinished until its result lands: an interrupted one stays visible to health and the exit.
   const waiting = [...turns.map(turn => turn.at), ...due.map(item => item.slot),
     ...schedule.filter(item => item.inFlight).map(item => item.slot)].sort((a, b) => a - b);
@@ -135,8 +137,7 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
     lastProgressAt, progressAgeMs: lastProgressAt === null ? null : Math.max(0, now - lastProgressAt),
     state: recoveryUnknown ? 'stalled' : oldestAt === undefined ? 'idle' : now - oldestAt > PROGRESS_STALL_MS ? 'stalled' : 'progressing',
     inhibition: oldestAt !== undefined || recoveryUnknown || future.length || awaitingDelivery || view.stop
-      ? inhibition ?? (recoveryUnknown && !waiting.length && !future.length && !awaitingDelivery && !requestsAt.length
-        ? 'work outcome unknown; reconciliation required' : null) : null,
+      ? inhibition : null,
     deliveryInhibition: awaitingDelivery ? `no grant for unsolicited sends; ${awaitingDelivery} finished ${awaitingDelivery === 1 ? 'result waits' : 'results wait'} for your next message` : null,
     correctionsWaiting: view.corrections.length };
 }

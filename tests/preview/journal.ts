@@ -2327,7 +2327,7 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
   const outcomes: readonly ObligationOutcome[] = kind === 'blocker' ? ['still-blocked', 'cleared', 'failed', 'uncertain']
     : ['report', 'continue', 'waiting', 'failed', 'uncertain'];
   const reports = row.outcome === 'report' || row.outcome === 'cleared';
-  if (!kind || !work || work.inFlight !== row.slot || !outcomes.includes(row.outcome)
+  if (!kind || !work || (work.inFlight !== row.slot && !(work.recoveryHeld && work.lastSlot === row.slot)) || !outcomes.includes(row.outcome)
     || row.recoveryHeld !== undefined && (row.recoveryHeld !== true || row.outcome !== 'uncertain')
     || row.failureClass !== undefined && (row.failureClass !== 'malformed' || row.outcome !== 'failed')
     || reports !== (row.report !== undefined) || row.report !== undefined && !boundedText(row.report, 1, 1500)
@@ -2340,7 +2340,7 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
   settleTokens(view, tokenKey, row.usage);
   // Each result is the current account: a dependency or note from an earlier result never outlives it. An uncertain
   // result is no account at all, so a waiting dependency (its need and what the operator sent since) is carried over.
-  const { inFlight: _done, waitsOn: _waits, note: _note, withheld, failureClass: _failure, ...rest } = work;
+  const { inFlight: _done, waitsOn: _waits, note: _note, withheld, failureClass: _failure, recoveryHeld: _held, ...rest } = work;
   const carried = row.outcome === 'uncertain' && work.waitsOn !== undefined;
   view.obligationWork[row.obligation] = { ...rest, last: row.at, outcome: row.outcome,
     ...(row.recoveryHeld ? { recoveryHeld: true as const } : {}),
@@ -11185,8 +11185,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     try {
       gate();
       for (const item of obligationSchedule(journal.view)) {
-        const work = journal.view.obligationWork[item.key], slot = work?.inFlight;
-        if (slot !== undefined && !startedHere.has(`${item.key}:${slot}`)) {
+        const work = journal.view.obligationWork[item.key], slot = work?.recoveryHeld ? work.lastSlot : work?.inFlight;
+        // Rules 8/46/68: uncertainty holds execution, never observation. Retain the original
+        // attempt identity and re-read on the existing cadence, including on the starting host.
+        if (slot !== undefined && (work?.recoveryHeld
+          ? ports.now() >= work.last + loopRevisitMs(journal.view)
+          : !startedHere.has(`${item.key}:${slot}`))) {
           let recovered: (SessionWorkOutcome & { usage?: ModelUsage }) | null | undefined;
           try { recovered = ports.recoverSessionWork?.(`obligation:${item.key}:${slot}`)
             ?? (work?.repairSlot === slot ? null : journal.obligationCheckpoint(`obligation:${item.key}:${slot}`)); }
