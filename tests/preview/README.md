@@ -3019,7 +3019,7 @@ marker; earlier steps keep their verdicts.
 The live private-chat procedure is in
 [jev-step-supervisor-live-test.md](jev-step-supervisor-live-test.md). The dark
 observation's first evaluation target, 2026-09-30, passed without a recorded
-trace, so its graduation deadline is now 2026-10-15, recorded with its reason,
+trace, so its graduation deadline is now 2026-10-18, recorded with its reason,
 owner and rollback in the promotion record below. The desk can decide whether
 to keep it on after Justin's script produces a recorded trace. While off, it is
 not a live safety guard.

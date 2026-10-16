@@ -38,7 +38,7 @@ And the purpose of this project specifically:
 **Value — coherency is the root, and the other four follow from it.** This is the operator's
 framing, recorded on 2026-09-05, and it is the reason every rule in this project exists:
 
-- **Coherency** is the ability of an agent to be one continuous thing — across sessions,
+- **Coherency** is the ability of an agent to be one continuous thing — across sessions, including at the same time,
   compactions, machines, and time. Its awareness of the world, of itself, and of its own
   standards are three faces of one property. Every standard in the constitution exists to close
   one leak in it: a context that mattered and quietly aged out, a commitment that died with its
