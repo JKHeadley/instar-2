@@ -20,6 +20,19 @@ Claude, Codex and native tool turns: acquire missing information through existin
 authorized reads, cite it, and report actual failed attempts. It changes no tool
 authority or resource limit; text-only turns retain their no-tools instruction.
 
+## Scheduled work recovery
+
+`production-session-work.ts` binds a successful child close to its result digest. The
+existing obligation tick can collect that checkpoint after host loss without another
+model call. Collection requires the same owner, parent, scope, operation, bounded
+result and one completed close after child cleanup. A proven pre-launch refusal may
+return to the existing bounded schedule. A missing close, changed result or unknown
+session outcome retains the obligation as visibly halted; it never replays an effect.
+Old closes without a digest remain unknown. Results use the existing delivery grant
+and receipt path. Tool-worker checkpoints use the recorded model output, verified
+process-allocation return and settled tool/child trace from that same journal, including
+after compaction. This adds no watcher, store, send authority or cross-machine lease.
+
 ## Continuing conversation session
 
 The conversation prompt keeps each prepared grounding packet once, with host clock and unresolved references separate. Ordinary questions retain their separate context. A continuing native worker receives references to exactly repeated packets and instructions, while distinct packets, current bindings and batch result identities remain complete. Its first input and the first after a compaction receipt are full. The host writes the full current input to the existing SessionStart(compact) hook before dispatch, so in-place compaction can restore it immediately. Worker replacement clears the transient cache; an adapter without this recovery contract receives full inputs. No delta changes durable requests or their digests.

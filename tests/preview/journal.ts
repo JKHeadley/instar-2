@@ -37,7 +37,7 @@ import { unlabeledRecall } from './answer-provenance.js';
 import { interpretStepJev, stepQuestionFor, stepQuestionsFor, type StepCheckResult } from './step-check.js';
 import type { Directive, VerifiedPrincipal } from '../../src/index.js';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
-import type { SessionWorkEdge, SessionWorkEdgeClose, SessionWorkEffect } from '../../src/assembly/production-session-work.js';
+import type { SessionWorkEdge, SessionWorkEdgeClose, SessionWorkEffect, SessionWorkOutcome } from '../../src/assembly/production-session-work.js';
 import type { ExhaustionAvenue } from '../../src/rungraph/index.js';
 import { consumeResult } from '../../src/index.js';
 import type { Json } from '../../src/index.js';
@@ -905,6 +905,8 @@ export const loopRevisitMs = (view: JournalView): number => view.genesis.loopRev
  * that slot is never repeated, and the next cadence slot is a new bounded attempt. */
 export type ObligationOutcome = 'report' | 'continue' | 'waiting' | 'still-blocked' | 'cleared' | 'failed' | 'uncertain';
 export interface ObligationWork { attempts: number; last: number; lastSlot: number; inFlight?: number;
+  /** Worker-backed steps (delegated sessions or tool workers) need exact closure before another attempt. */
+  session?: true; recoveryHeld?: true;
   outcome?: ObligationOutcome; note?: string; waitsOn?: 'operator' | 'external';
   /** Same-slot format repair is reserved once; counts survive journal replay and snapshots. */
   repairSlot?: number; formatFailures?: number; failedAttempts?: number; failureClass?: 'malformed';
@@ -1203,7 +1205,7 @@ export type JournalRecord =
 
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   /** Rules 8, 22, 92, 99, 102: one scheduled piece of work on a due obligation, started at most once per slot. */
-  | { kind: 'obligation-start'; obligation: string; slot: number; repair?: true; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'obligation-start'; obligation: string; slot: number; session?: true; repair?: true; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   /** Rules 60, 114: one delegated-session edge, or that same edge's settled close. The edge is
    * recorded before the child session exists and the close on every path out, so a delegation is
    * never a session nobody owns. Its loss detector is replay: an obligation-result whose step ran
@@ -1212,6 +1214,7 @@ export type JournalRecord =
    * (retained, like a tool turn's); otherwise the obligation's own result carries the state. */
   | { kind: 'session-work'; record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkEffect; at: number }
   | { kind: 'obligation-result'; obligation: string; slot: number; outcome: ObligationOutcome; failureClass?: 'malformed'; report?: string; note?: string;
+    recoveryHeld?: true;
     assessment?: BlockerAssessment;
     waitsOn?: 'operator' | 'external'; recheckAt?: number; usage?: ModelUsage; at: number }
   | { kind: 'intent'; id: string; text: string; correctionDeferred?: true; body?: string; chat: string; thread?: number; update: number; grant: string; mentionedDates?: string[]; promises?: AgentPromise[];
@@ -2275,6 +2278,7 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
   const items: ReturnType<typeof obligationSchedule> = [];
   const revisit = loopRevisitMs(view);
   const next = (key: string, first: number) => { const work = view.obligationWork[key];
+    if (work?.recoveryHeld) return Infinity;
     return Math.max(first, work ? work.last + workRetryDelay(work, revisit) : first); };
   view.commitments.forEach((note, id) => {
     const source = view.turns.get(note.source), key = `commitment:${id}`, work = view.obligationWork[key];
@@ -2305,7 +2309,7 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
       ? Math.max(work.lastSlot + 1, noAccount(work.outcome) ? work.last + workRetryDelay(work, revisit) : work.withheld.at) : undefined;
     // A started step stays scheduled whatever dependency its predecessor left, so interrupted-start recovery owns it.
     if (work?.inFlight === undefined && first === undefined && resume === undefined && rework === undefined && !pendingReport(work)) return;
-    items.push({ key, kind: 'commitment', id, slot: work?.inFlight ?? rework ?? resume ?? next(key, first ?? Infinity), inFlight: work?.inFlight !== undefined,
+    items.push({ key, kind: 'commitment', id, slot: work?.recoveryHeld ? Infinity : work?.inFlight ?? rework ?? resume ?? next(key, first ?? Infinity), inFlight: work?.inFlight !== undefined,
       awaitingDelivery: attachableReport(work), deliveryUnknown: pendingReport(work) && !attachableReport(work) });
   });
   openBlockers(view).forEach(({ id, note }) => {
@@ -2373,17 +2377,20 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
       work.repairSlot = row.slot;
       return;
     }
-    if (!kind || !Number.isSafeInteger(row.slot) || row.slot > row.at || work?.inFlight !== undefined || pendingReport(work)
+    if (!kind || !Number.isSafeInteger(row.slot) || row.slot > row.at || work?.inFlight !== undefined || work?.recoveryHeld || pendingReport(work)
+      || row.session !== undefined && row.session !== true
       || work !== undefined && row.slot <= work.lastSlot) throw Error('preview journal: repeated obligation work');
     reserveTokens(view, tokenKey, 'answer', row.maxInputTokens ?? view.limits.maxBytes, row.maxOutputTokens ?? subscriptionOutputMaximum);
     view.calls++;
-    view.obligationWork[row.obligation] = { ...work, attempts: (work?.attempts ?? 0) + 1, last: row.at, lastSlot: row.slot, inFlight: row.slot };
+    const { session: _previousSession, ...previous } = work ?? {};
+    view.obligationWork[row.obligation] = { ...previous, ...(row.session ? { session: true as const } : {}), attempts: (work?.attempts ?? 0) + 1, last: row.at, lastSlot: row.slot, inFlight: row.slot };
     return;
   }
   const outcomes: readonly ObligationOutcome[] = kind === 'blocker' ? ['still-blocked', 'cleared', 'failed', 'uncertain']
     : ['report', 'continue', 'waiting', 'failed', 'uncertain'];
   const reports = row.outcome === 'report' || row.outcome === 'cleared';
-  if (!kind || !work || work.inFlight !== row.slot || !outcomes.includes(row.outcome)
+  if (!kind || !work || (work.inFlight !== row.slot && !(work.recoveryHeld && work.lastSlot === row.slot)) || !outcomes.includes(row.outcome)
+    || row.recoveryHeld !== undefined && (row.recoveryHeld !== true || row.outcome !== 'uncertain')
     || row.failureClass !== undefined && (row.failureClass !== 'malformed' || row.outcome !== 'failed')
     || reports !== (row.report !== undefined) || row.report !== undefined && !boundedText(row.report, 1, 1500)
     || row.note !== undefined && (!boundedText(row.note, 1, 500) || row.outcome !== 'continue' && row.outcome !== 'waiting')
@@ -2395,9 +2402,10 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
   settleTokens(view, tokenKey, row.usage);
   // Each result is the current account: a dependency or note from an earlier result never outlives it. An uncertain
   // result is no account at all, so a waiting dependency (its need and what the operator sent since) is carried over.
-  const { inFlight: _done, waitsOn: _waits, note: _note, withheld, failureClass: _failure, ...rest } = work;
+  const { inFlight: _done, waitsOn: _waits, note: _note, withheld, failureClass: _failure, recoveryHeld: _held, ...rest } = work;
   const carried = row.outcome === 'uncertain' && work.waitsOn !== undefined;
   view.obligationWork[row.obligation] = { ...rest, last: row.at, outcome: row.outcome,
+    ...(row.recoveryHeld ? { recoveryHeld: true as const } : {}),
     failedAttempts: (work.failedAttempts ?? (work.outcome === 'failed' ? 1 : 0)) + (row.outcome === 'failed' ? 1 : 0),
     formatFailures: (work.formatFailures ?? 0) + (row.failureClass === 'malformed' ? 1 : 0),
     ...(row.failureClass ? { failureClass: row.failureClass } : {}),
@@ -2474,6 +2482,8 @@ export function validateSessionWorkRow(record: SessionWorkEdge | SessionWorkEdge
     || !text(record.id, 1024) || !text(record.edge, 1024) || !text(record.detail, 2048) || !text(record.evidence, 1024)
     || (record.child !== null && !text(record.child, 1024))
     || !['complete', 'uncertain', 'failed'].includes(record.state)
+    || record.resultDigest !== undefined && (record.state !== 'complete' || !/^sha256:[0-9a-f]{64}$/u.test(record.resultDigest))
+    || record.cleanupConfirmed !== undefined && record.cleanupConfirmed !== true
     || (record.resultBytes !== null && (!Number.isSafeInteger(record.resultBytes) || record.resultBytes < 0))
     || (record.calls !== undefined && record.calls !== null && (!Number.isSafeInteger(record.calls) || record.calls < 0))
     || (record.reserved !== undefined && (!Number.isSafeInteger(record.reserved) || record.reserved <= 0))
@@ -5371,9 +5381,9 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
     if (!readOnly && compactable() && size > Math.max(compactBytes, snapshotBase * 2)) compact();
     // Read existing durable edges, including pre-compaction evidence. No gate state or
     // allowance is recreated, and corrupt/unavailable records never mean completion.
-    const sessionWorkRecords = (): readonly (SessionWorkEdge | SessionWorkEdgeClose)[] => {
+    const recoveryRecords = (accept: (row: JournalRecord) => boolean): JournalRecord[] => {
       if (closed) throw Error('preview journal: recovery evidence closed');
-      const rows = [...retained];
+      const rows = retained.filter(accept);
       const bytes = Buffer.alloc(size);
       for (let read = 0; read < size;) {
         const count = readSync(fd, bytes, read, size - read, read);
@@ -5383,12 +5393,41 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       for (let offset = 0; offset < bytes.length;) {
         const decoded = decodeRow(bytes, offset, key);
         if (!decoded) throw Error('preview journal: incomplete recovery evidence');
-        if (decoded.row.kind === 'session-work') rows.push(decoded.row);
+        if (decoded.row.kind !== 'snapshot-start' && decoded.row.kind !== 'snapshot-chunk' && accept(decoded.row)) rows.push(decoded.row);
         offset = decoded.end;
       }
-      return rows.flatMap(row => row.kind === 'session-work' && row.record.type !== 'SessionWorkEffect' ? [row.record] : []);
+      return rows;
     };
-    return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter, sessionWorkRecords,
+    const sessionWorkRecords = (): readonly (SessionWorkEdge | SessionWorkEdgeClose)[] =>
+      recoveryRecords(row => row.kind === 'session-work').flatMap(row => row.kind === 'session-work' && row.record.type !== 'SessionWorkEffect' ? [row.record] : []);
+    // The ordinary tool-backed obligation uses the same durable checkpoint as its normal return:
+    // recorded model output, verified process allocation return, and settled tool/child results.
+    const obligationCheckpoint = (id: string): (SessionWorkOutcome & { usage?: ModelUsage }) | null => {
+      const rows = recoveryRecords(row => 'id' in row && row.id === id
+        && (row.kind === 'model-call' || row.kind === 'call-outcome' || row.kind === 'tool-turn'));
+      if (!rows.length) return null;
+      const unknown = (): SessionWorkOutcome => ({ state: 'uncertain', edge: id, child: null, detail: 'work checkpoint is incomplete; no automatic replay' });
+      const outputs = rows.filter((row): row is ModelCallRecord => row.kind === 'model-call' && row.judgment === 'answer');
+      const returns = rows.filter((row): row is Extract<JournalRecord, { kind: 'call-outcome' }> => row.kind === 'call-outcome' && row.role === 'model');
+      if (outputs.length !== 1 || returns.length !== 1 || outputs[0]!.outcome !== 'complete' || outputs[0]!.output === null) return unknown();
+      if (outputs[0]!.outputTransformations?.includes('truncated')) return unknown();
+      const returned = returns[0]!.outcome, resources = returned.resources;
+      if (returned.exitCode !== 0 || returned.localLimit !== null || returned.isError !== false
+        || resources?.cleanup !== 'verified' || resources.census !== 'complete' || resources.leakedDescendants !== 0
+        || resources.allocation?.state !== 'returned') return unknown();
+      const tools = rows.filter((row): row is Extract<JournalRecord, { kind: 'tool-turn' }> => row.kind === 'tool-turn');
+      for (const reserved of tools) if (reserved.phase === 'reserved') {
+        const traces = tools.filter(row => row.phase === 'trace' && row.attempt === reserved.attempt);
+        if (traces.length !== 1) return unknown();
+        const trace = traces[0]!;
+        if (trace.phase !== 'trace' || !trace.consistent || trace.calls.some(call => call.decision === 'allow' && call.result === null)
+          || trace.edges?.some(edge => edge.state !== 'returned')) return unknown();
+      }
+      return { state: 'complete', text: outputs[0]!.output!, edge: id, child: resources.allocation.set,
+        ...(outputs[0]!.usage ? { usage: outputs[0]!.usage! } : {}),
+        detail: 'collected recorded output after verified worker closure' };
+    };
+    return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter, sessionWorkRecords, obligationCheckpoint,
       close: () => { if (!closed) { closed = true; closeSync(fd); } } };
   } catch (error) { if (!closed) closeSync(fd); throw error; }
 }
@@ -5671,6 +5710,8 @@ export interface PreviewPorts {
    * one-shot result settle the obligation through exactly one reader. Only long and scheduled work
    * is routed here; an operator answer is never delegated to a session. */
   sessionWork?(input: { question: string; context: string; id: string }): ReturnType<PreviewPorts['model']>;
+  /** Collect a completed child checkpoint without a new model call or effect. */
+  recoverSessionWork?(id: string): SessionWorkOutcome | null;
   /** Read an already reserved host result by identity, never invoke a model. Null means no
    * host custody; ModelPending keeps the reservation open. The original packet accompanies
    * the result so recovery uses the same answer consumer and grounding. */
@@ -11392,9 +11433,25 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     try {
       gate();
       for (const item of obligationSchedule(journal.view)) {
-        const slot = journal.view.obligationWork[item.key]?.inFlight;
-        if (slot !== undefined && !startedHere.has(`${item.key}:${slot}`))
-          journal.append({ kind: 'obligation-result', obligation: item.key, slot, outcome: 'uncertain', at: ports.now() });
+        const work = journal.view.obligationWork[item.key], slot = work?.recoveryHeld ? work.lastSlot : work?.inFlight;
+        // Rules 8/46/68: uncertainty holds execution, never observation. Retain the original
+        // attempt identity and re-read on the existing cadence, including on the starting host.
+        if (slot !== undefined && (work?.recoveryHeld
+          ? ports.now() >= work.last + loopRevisitMs(journal.view)
+          : !startedHere.has(`${item.key}:${slot}`))) {
+          let recovered: (SessionWorkOutcome & { usage?: ModelUsage }) | null | undefined;
+          try { recovered = ports.recoverSessionWork?.(`obligation:${item.key}:${slot}`)
+            ?? (work?.repairSlot === slot ? null : journal.obligationCheckpoint(`obligation:${item.key}:${slot}`)); }
+          catch { recovered = { state: 'uncertain', detail: 'child recovery evidence unavailable', edge: 'unknown', child: null }; }
+          if (recovered?.state === 'complete' && recovered.text !== undefined) {
+            const decided = obligationDecision(recovered.text, item.kind, ports.now(), ports.timeZone ?? 'America/Los_Angeles');
+            journal.append({ kind: 'obligation-result', obligation: item.key, slot, ...decided,
+              ...(recovered.usage ? { usage: recovered.usage } : {}),
+              ...(decided.assessment ? { assessment: { ...decided.assessment, wording: governingConstraints(work?.session === true)[decided.assessment.constraint] } } : {}), at: ports.now() });
+          } else if (recovered?.state === 'failed') journal.append({ kind: 'obligation-result', obligation: item.key, slot, outcome: 'failed', at: ports.now() });
+          else journal.append({ kind: 'obligation-result', obligation: item.key, slot, outcome: 'uncertain',
+            ...(work?.recoveryHeld || work?.session || recovered ? { recoveryHeld: true as const } : {}), at: ports.now() });
+        }
       }
       const now = ports.now(), item = dueObligationWork(journal.view, now)[0];
       if (!item || !obligationCapacity(journal.view)) return false;
@@ -11461,10 +11518,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // envelope, so no prepared envelope is built or required for it.
       const prepared = session ? undefined : ports.prepareModel?.({ question, context, id });
       journal.append({ kind: 'obligation-start', obligation: item.key, slot: item.slot,
+        ...(tools ? { session: true as const } : {}),
         maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: now });
       startedHere.add(`${item.key}:${item.slot}`);
       const settle = (result: Omit<Extract<JournalRecord, { kind: 'obligation-result' }>, 'kind' | 'obligation' | 'slot' | 'at'>) =>
-        journal.append({ kind: 'obligation-result', obligation: item.key, slot: item.slot, ...result, at: ports.now() });
+        journal.append({ kind: 'obligation-result', obligation: item.key, slot: item.slot, ...result,
+          ...(tools && result.outcome === 'uncertain' ? { recoveryHeld: true as const } : {}), at: ports.now() });
       let answer: Awaited<ReturnType<PreviewPorts['model']>>;
       try {
         answer = session ? await ports.sessionWork!({ question, context, id })

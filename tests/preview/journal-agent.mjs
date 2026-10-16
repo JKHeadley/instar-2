@@ -2120,6 +2120,7 @@ async function main() {
       ...(sessionWorkOf(options) === null ? {} : {
         sessionRoute: id => !conversationSession && sessionWork !== null && id.startsWith('obligation:') && sessionWork.port.available()
           && journal.view.calls + 1 + SESSION_WORK_LIMITS.maxCallsPerStep <= journal.view.limits.maxCalls,
+        recoverSessionWork: id => conversationSession ? null : sessionWork?.port.collect(id.replaceAll(':', '-')) ?? null,
         sessionWork: async ({ question, context: packet, id }) => {
           await requireGroupDisclosure(journal.view);
           sessionWork.select?.();
@@ -2674,6 +2675,7 @@ async function main() {
             release: async () => (await held.release()).verified };
         } },
         context, now: wallNow, stopped: conversationSession ? hostStopped : binding.stopped,
+        ...(!conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords() } : {}),
         append: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
         parent: `launch:${conversationOf(g)}`, owner: ownerMachine, placement: `machine:${ownerMachine}`,
         transport: sessionAdapter.transport ?? 'tmux session on this machine', workingScope: project, resultDirectory: project,
