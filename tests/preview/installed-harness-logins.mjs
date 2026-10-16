@@ -6,6 +6,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { durablePreviewWrite } from './durable-write.js';
 import { encoded } from './stage2-provider.js';
 import { loadHarnessLogins } from './harness-login-pool.mjs';
+import { readHarnessLogin } from './harness-user.mjs';
 
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const read = path => JSON.parse(readFileSync(path, 'utf8'));
@@ -141,4 +142,16 @@ export function verifyPreparedHarnessLogin(entry) {
   if (entry.unavailable) throw Error('preview: login build preparation unavailable');
   for (const source of entry.sources ?? [])
     if (hash(read(source.path)) !== source.digest) throw Error('preview: installed login source withdrawn; prepare the installation again');
+}
+
+/** Called only from the driver's verified-live activity observation. Custody absence
+ * is exact ENOENT, not an identity mismatch, a stale profile or an unreadable login.
+ * No token, account, path or caught error enters the observation (Rules 26/100).
+ * The key binds the admitted profile lifetime, so a host restart cannot repeat it. */
+export function observeInstalledSessionLogin(profile, activity, login = readHarnessLogin, machine = 'local') {
+  if (!activity || !Number.isSafeInteger(activity.at) || !activity.subject) return null;
+  let state = 'present';
+  try { login(profile); } catch (error) { state = error?.code === 'ENOENT' ? 'missing' : 'unknown'; }
+  return { key: `credential:session-login:${hash([machine, profile.reference, profile.activationReference])}`,
+    state, slot: activity.slot ?? 1, at: activity.at };
 }
