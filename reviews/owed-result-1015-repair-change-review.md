@@ -22,6 +22,7 @@ Decision: owed-request-key | Reuse promise request hashes only for observation k
 Prompt review: no model prompt, parser or acceptance changes; added inputs exercise the existing request acceptance path, not a new meaning rule.
 
 Subject: tests/preview/live-sentinels.ts, tests/preview/live-sentinels.test.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
+Review coverage repair: the original unit record lacked a Subject base and required schema fields. Added its actual base and author-review fields to cover the six unit commits; preserved its existing evidence without claiming new native or live acceptance.
 Register refresh: ran the delegated desk scripts (zero owner or inventory changes), then rebuilt generated register outputs against the committed repair. Generated source pins now bind the repaired sentinel bytes. No hand-edited pins.
 Verification: new boundary cases fail before repair (500-byte request leaves no work row) and pass after repair. All 21 live-sentinels tests pass; journal-due-loop's 6 and dispatch-now's 11 tests pass. Seven unchanged live-sentinels-launch cases refuse before launch on WSL (bot identity refused); Studio gate owns those launcher checks. No independent convergence or live-user acceptance claimed.
 

@@ -1,9 +1,11 @@
 # Change review — registered work silence observations
 
+Subject base: a1b59d03faad205e33fc33dc6915825abfecb635
 Review state: open
+Reviewed content: none
 Outcome: registered obligations and child work remain visible without a current inbound turn. The existing outer runner cycle records observations while its ordinary lane is occupied. The session driver supplies only the owned claim, capture digest, time and existing wait signature. An unchanged, fresh observation for one minute marks that subject stalled; a changed observation resets only that subject. Empty, absent, future or stale observations remain unknown. Registered helper waits do not establish parent failure.
 
-simplestRobustRoute: reuse the presence family's journal records, existing session observation, outer cycle and bounded work path. No second store, watchdog, model call, retry, send or termination authority. A stalled step still returns through the existing result/deadline path. Its deadline yields an uncertain outcome, never a fabricated result. No new autonomous recovery is enabled: missing observations and uncertain effects cannot authorize replay.
+Original design route: reuse the presence family's journal records, existing session observation, outer cycle and bounded work path. No second store, watchdog, model call, retry, send or termination authority. A stalled step still returns through the existing result/deadline path. Its deadline yields an uncertain outcome, never a fabricated result. No new autonomous recovery is enabled: missing observations and uncertain effects cannot authorize replay.
 
 Affected rules: 2/8/9/46/64/68/83/92/114 (durable population and per-subject observations), 26/36/59 (recorded terminal evidence, observation distinct from completion/death), 4/57/63/86/95 (advisory observation, existing authority boundaries), 30/105 (shared observation contract, no new channel effect), 44/45 (older compacted journals rebuild active children from retained work records without charging calls again), 49/74/113/116 (scope, side effects, posture and simplest route), 101 (plain commits).
 
@@ -26,5 +28,17 @@ Policy digests: unchanged for claude-sonnet-5. Tools sha256:5fed4bcfd823d950c144
 Native certification (Rules 26/49/69/105/115): after the desk rejected the stale certificate, ran the declaration's named native-harness-contract case on the Studio before re-declaring conformance. The real confined capability build/install/probe, owner reservations, lifecycle evidence, stop and failed-call accounting passed with captured provider frames in temporary roots. The runtime is unchanged; conformance now names the tested composition sha256:30f4cfab67ab2975b225b11171f1c89579a25f07e131158ad8b0a99db166f428. All 10 tests in native-harness-contract.test.ts pass after the refresh, including exact certification and confinement deadlines. An injected copy of the old certificate still reports unsupported. This refresh changes no behavior, policy or admission rule. It does not claim live-provider or proof-room acceptance.
 
 Operator questions: none
-Declared tier: integration
-Convergence: author submission; independent desk review pending.
+Suggested tier: critical
+Declared tier: significant
+Tier rationale: durable work observation spans driver, runner and journal, with existing authority and effects unchanged.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/live-sentinels.test.ts
+Hook bypass: none
+Prompt review: observation only; no model prompt or output parser changes. Stored terminal fixtures exercise activity and absence, never meaning-based acceptance.
+Convergence: none
+
+## Closing block
+
+simplestRobustRoute: reuse the existing session driver observations, outer runner cycle and journal presence rows to expose work silence. No new store, model call, send, retry or termination authority. The bounded request hash repair preserves accepted intake capacity and full-population observation.
+80/20: original unit evidence remains in this record; the repair addresses the independent review's one accepted-input finding without broadening recovery authority. Independent desk review remains necessary.
+VERDICT: author submission; independent desk review pending
