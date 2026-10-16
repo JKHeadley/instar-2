@@ -15,7 +15,7 @@ Undo and recovery: Revert the comparator and its regression test, then regenerat
 Multi-machine posture: Deterministic packet selection over the same eligible journal sources on each runner; existing ownership, replication and receipt checks remain. No new durable or machine-local state.
 Layer below: Read both constitutional documents, lookupRecall and its lexical/owned recall ordering, candidate eligibility/redaction, packet tier/drop comparator, prepared envelope fitting, lookup journal evidence, second-call cap/stop handling, and the real captured P4 request. Diagnostic lookup order placed source 301 first while the old fitter retained only 121/131. Existing test helper and recorded shape provenance inspected.
 Bug class: integration
-Bug evidence: reproducer=tests/preview/realistic-recall.test.ts; regression=tests/preview/journal-recall-lookup.test.ts; negative=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-53-repair-negative.log
+Bug evidence: reproducer=tests/preview/journal-recall-lookup.test.ts; diary=tests/preview/realistic-recall.test.ts; negative=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-53-repair-negative.log
 Hook bypass: none; core.hooksPath unset and common hooks directory inspected: samples only.
 Convergence: none
 Prompt review: No instruction text or output parser changes. Replay the real P4 lookup Decision for source 6230474/question 6230509. Seven additional captured shapes ride verbatim as historical reply data through both unconstrained and one-quote envelope fitting, proving the changed selection path fires. This is packet-selection evidence, not a new live semantic verdict.
