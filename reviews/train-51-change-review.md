@@ -34,12 +34,6 @@ Decision: train-51-recall-fixture | Size the 90-turn raw-packet recall fixture a
 
 Decision: train-51-latency-fixture | Keep the 32 KiB performance probe and all 20 real journal turns; assert retained sibling provenance and displaced search. Compare the roomy probe after removing its sibling field to both unchanged historical hashes, preserving all unrelated historical bytes. No runtime limit or latency threshold changed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-51-PROGRESS.md
 
-## Closing block
-
-simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges, the existing desk regeneration chain and targeted consumer evidence. No new machinery. Start at the named live base, require membership and committed verified output, retain the named safety floors, and leave deployment and independent acceptance to the desk.
-80/20: Changed tests, direct importing consumers, required journal and pinned checks in bounded foreground batches; no full suite, new watcher or unrelated redesign.
-VERDICT: author submission; the independent desk owns its verdict
-
 Prompt finding: 4b98dc2a1b9f | protocol-literal | carried unchanged from the merged inputs; as dispositioned in reviews/0fdc5630-merge-live-ba91e2bd-change-review.md: carried unchanged from the merged inputs; as dispositioned in reviews/memfact-t9-1011-change-review.md: Existing general identity, authority or memory grounding protocol asserted by regression tests; no fixture phrase classifies user intent — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "tools: full claude code set"
 Prompt finding: 95e349aaf4ac | protocol-literal | carried unchanged from the merged inputs; as dispositioned in reviews/0fdc5630-merge-live-ba91e2bd-change-review.md: carried unchanged from the merged inputs; as dispositioned in reviews/memfact-t9-1011-change-review.md: Existing general identity, authority or memory grounding protocol asserted by regression tests; no fixture phrase classifies user intent — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "via the doorway's four tests; standing grants need no new approval."
 Prompt finding: 849db3a6296a | quoted-evidence | Existing memory-list test quotes the shipped empty-memory disclosure; no fixture phrase is introduced as an intent gate.
@@ -49,3 +43,10 @@ Skip: tests/preview/agent-paths.test.ts:71 | scope=Inherited macOS-only setup pa
 Skip: tests/preview/agent-paths.test.ts:78 | scope=Inherited macOS-only emergency-stop process test; Studio owns execution.
 Skip: tests/preview/agent-paths.test.ts:85 | scope=Inherited macOS-only setup and boot process tests; Studio owns execution.
 Skip: tests/preview/agent-paths.test.ts:104 | scope=Inherited macOS-only physical storage and volume enforcement; Studio owns execution.
+
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges, the existing desk regeneration chain and targeted consumer evidence. No new machinery. Start at the named live base, require membership and committed verified output, retain the named safety floors, and leave deployment and independent acceptance to the desk.
+80/20: Changed tests, direct importing consumers, required journal and pinned checks in bounded foreground batches; no full suite, new watcher or unrelated redesign.
+VERDICT: author submission; the independent desk owns its verdict
