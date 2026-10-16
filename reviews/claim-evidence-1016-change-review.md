@@ -35,12 +35,14 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing protocol and evidence
 Prompt finding: f6d7f3274c85 | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "restating a recorded, still-open limit needs no duplicate record. a capability n"
 Prompt finding: feadb66b8ad1 | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "any live authentication secret reaching anyone but the verified operator who sup"
 
-Subject (6 paths): tests/preview/answer-provenance-live-test.md, tests/preview/answer-provenance.ts, tests/preview/briefing.ts, tests/preview/claim-evidence.test.ts, tests/preview/journal.ts, tests/preview/reply-check.ts
+Subject (13 paths): tests/preview/answer-provenance-live-test.md, tests/preview/answer-provenance.ts, tests/preview/briefing.ts, tests/preview/claim-evidence.test.ts, tests/preview/journal.ts, tests/preview/reply-check.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 
 Decision: claim-evidence-existing-mind | Use shared evidence guidance in existing answer and contextual claim/revision instructions, preserving semantic judgment and all current fail directions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/claim-evidence-1016-PROGRESS.md
 Decision: claim-evidence-budget | Reallocate 500 bytes between fixed answer and review-only allowances, keeping their sum and the default history headroom unchanged; measure both sides. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/claim-evidence-1016-PROGRESS.md
 Decision: claim-evidence-recorded-proof | Replay existing real writer/Jev/reviewer/delivery shapes and clearly separate constructed revisions from captured outputs; request fresh-model proof on the desk after provider refusal. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/claim-evidence-1016-PROGRESS.md
+
+Validation: Claim-evidence and default-context-floor suites pass (17 tests); guidance replay suite passes (24 tests, one opt-in capture skipped). Typecheck and architecture pass. Register publication was regenerated in replay mode from e83bdde92ffdc0795382ee5bf9f703b572238b62, and register:check passes. Broader direct-importer and final pushed-head gate results are recorded in the builder report.
 
 ## Closing block
 
