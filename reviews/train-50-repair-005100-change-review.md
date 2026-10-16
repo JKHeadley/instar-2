@@ -33,6 +33,10 @@ Skip: tests/preview/agent-paths.test.ts:104 | scope=Imported Darwin-only sandbox
 
 Subject (27 paths): scripts/README.md, scripts/agent-paths.mjs, scripts/conversation-host-store.declarations.json, scripts/onboarding.mjs, scripts/production-boot-io.mjs, scripts/production-boot.mjs, scripts/production-session-io.mjs, scripts/resource-owner.mjs, scripts/topic-worker-capacity.mjs, src/assembly/README.md, src/assembly/conversation-topics.ts, src/assembly/production-conversation-session.ts, src/assembly/production-session-driver.ts, tests/assembly/conversation-topics.test.ts, tests/assembly/production-conversation-session.test.ts, tests/assembly/production-provider-subscription.test.ts, tests/integration/resource-owner.test.ts, tests/platform/macos-only.txt, tests/preview/agent-paths.test.ts, tests/preview/agent.mjs, tests/preview/conversation-authority-server.mjs, tests/preview/journal-agent.mjs, tests/preview/journal-topic-sessions.test.ts, tests/preview/journal.ts, tests/preview/tool-turn.mjs, tests/preview/topic-worker-capacity.test.ts, tests/preview/trust-setup.mjs
 
+Publication: Existing desk owner rehash and inventory repin tools found zero stale pins. Register replay at 854ef5972d1eb3670e12c175d22416599af5a21b produced generation 71129e6ccb88312041417a695e11e2177ca57cda7fc15fb0a431fdec03f5b917, 293 entries and 117 rules. No native conformance declaration was re-attested.
+
+Verification: Typecheck and build passed; nine targeted files passed with 239 tests passing and seven Darwin-only cases skipped. Recorded shapes were replayed by working-progress and revision-promises tests; no live delivery claim.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary additive merge, retain both independent imports and combine the acknowledgement parameter with the existing progress lifecycle. Existing desk generators refresh publication; no new mechanism or capability restriction. Exact merge parents guard entry; positive and refusal targeted checks guard completion; existing resource bounds, stop and send uniqueness guard execution. No unattended live acceptance is claimed.
