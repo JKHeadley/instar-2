@@ -13,7 +13,7 @@ import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
 
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
-function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | 'maxSteps' | 'maxResultBytes'>> = {}, incremental = false) {
+function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | 'maxSteps' | 'maxResultBytes' | 'currentActionFacts'>> = {}, incremental = false) {
   const f = assemblyRuntimeFixture();
   let clock = 1000, stopped = false, authorized = true, authority = 'existing-role', used: number | null = 0, dead = false, paused = false, finish = true;
   let state: ConversationState | null = null, answer = '{"answer":"hello"}', active: ConversationDelivery | null = null;
@@ -726,4 +726,30 @@ it('retains changed instructions and all unrecognized input instead of guessing 
     expect(f.delivered.at(-1)!.text).toContain(f.request('unused').context);
   }
   await f.port.close();
+});
+
+it('refreshes action facts on every actual delivery, with one running worker and unchanged prepared input', async () => {
+  let facts = '{"state":"awaiting approval","topic":"7"}';
+  const f = fixture({ currentActionFacts: async () => facts });
+  await f.port.run(f.request('first'));
+  expect(f.delivered[0]!.text).toContain(facts);
+  const next = f.request('second');
+  facts = '{"state":"tool returned, success not established","topic":"7"}';
+  await f.port.run(next);
+  expect(f.launches).toHaveLength(1);
+  expect(f.delivered[1]!.text).toContain(facts);
+  expect(f.delivered[1]!.text).not.toContain('awaiting approval');
+  expect(f.state().inputs[1]!.request).toEqual(next);
+  await f.port.close();
+});
+
+it('keeps intake when fresh action grounding exceeds its bound or its reader fails', async () => {
+  for (const currentActionFacts of [async () => 'x'.repeat(32769), async (): Promise<string> => { throw Error('unreadable'); }]) {
+    const f = fixture({ currentActionFacts });
+    const result = await f.port.run(f.request('first'));
+    expect(result.state).not.toBe('complete');
+    expect(f.delivered).toHaveLength(0);
+    expect(f.state().inputs[0]!.request.operation).toBe('first');
+    await f.port.close();
+  }
 });

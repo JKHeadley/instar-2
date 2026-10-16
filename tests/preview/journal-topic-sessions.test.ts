@@ -1,3 +1,8 @@
+import { currentActionFacts, approvalBase, validateSessionWorkRow } from './journal.js';
+import { proposeOperatorRequest, operatorRequestText } from './operator-yes.js';
+// @ts-expect-error the shipped admission checkpoint is JavaScript
+import { createToolEffectOwner } from './admission-gate.mjs';
+import type { SessionWorkEdge, SessionWorkEffect } from '../../src/assembly/production-session-work.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { afterEach, expect, it } from 'vitest';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
@@ -21,6 +26,7 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 const tick = () => new Promise<void>(resolve => setTimeout(resolve, 1));
 async function until(test: () => boolean) { for (let i = 0; i < 1000 && !test(); i++) await tick(); expect(test()).toBe(true); }
 const source = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
+const actionFactsBody = source.split('currentActionFacts: async () => ')[1]!.split(',\n          ...(handoff')[0]!;
 const signature = 'async ({ id, prepared, question, context: packet }) => {';
 const body = source.split(`      model: ${signature}`)[1]!.split('\n      summaryCheck:')[0]!.trimEnd().replace(/,$/u, '');
 const topicOfBody = source.split('topicOf: operation => {')[1]!.split('\n          },')[0]!;
@@ -35,10 +41,13 @@ function fixture(forum = false, prepared = false) {
     maxTurns: 30, maxBytes: 262144, cursor: 0 });
   const topicOf = Function('journal', `return operation => {${topicOfBody}}`)(journal) as (operation: string) => string;
   let evidence: unknown = null, replyOverride: string | undefined, batchFailure: Error | undefined;
+  let beforeFacts: (() => void) | undefined, verifiedAudience = true;
   let now = 1000, state: ConversationTopicsState | null = null, live = 0;
   const held = new Set<string>(), deliveries: { topic: string; input: HarnessInputDelivery }[] = [];
   const launches: string[] = [], sent: { text: string; thread: number | undefined; update: number }[] = [];
   const queuedAtDelivery: string[][] = [];
+  const readFacts = Function('currentActionFacts', 'journal', 'wallNow', 'verifiedActionAudience',
+    `return async () => ${actionFactsBody}`)(currentActionFacts, journal, () => now, async () => verifiedAudience) as () => Promise<string>;
   const port = value(createConversationTopicsPort({
     context: assemblyRuntimeFixture().c, conversation: 'operator', topicOf,
     allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => 'grant',
@@ -48,6 +57,7 @@ function fixture(forum = false, prepared = false) {
     store: { load: () => state, save: next => { state = structuredClone(next); } },
     append: record => journal.append({ kind: 'session-work', record, at: now }),
     recoveryEdges: () => journal.sessionWorkRecords(),
+    currentActionFacts: async () => { beforeFacts?.(); beforeFacts = undefined; return readFacts(); },
     resources: { admit: async () => { live++; return { attach: async () => {}, release: async () => { live--; return true; } }; } },
     io: { modelCalls: () => 0, wait: tick, readResult: () => null, clearResult: () => {},
       prepareAdmission: () => {}, closeAdmission: () => {}, admissionState: () => ({ refused: false, openDelegations: [] }) },
@@ -88,7 +98,7 @@ function fixture(forum = false, prepared = false) {
     return saved && { context: saved.request.context, prepared: saved.request.question,
       answer: conversationSessionAnswer(saved.outcome, id, () => {}) };
   };
-  const worker = createJournalWorker(journal, { topicConcurrency: 2, groupDisclosure: async () => true, now: () => now, stopped: () => false, model, modelBatch: async inputs => { if (batchFailure) throw batchFailure; return modelBatch(inputs); }, collectModel,
+  const worker = createJournalWorker(journal, { topicConcurrency: 2, groupDisclosure: async () => verifiedAudience, now: () => now, stopped: () => false, model, modelBatch: async inputs => { if (batchFailure) throw batchFailure; return modelBatch(inputs); }, collectModel,
     sources: () => evidence ? [evidence] : [],
     prepareModel: input => prepared ? prepareJournalEnvelope(input, 'offline-model', 'grant:offline', now, 262144) : JSON.stringify(input), checkOutbound: () => {},
     send: async input => {
@@ -100,6 +110,8 @@ function fixture(forum = false, prepared = false) {
       } }) }, input);
     } });
   return { root, journal, worker, held, deliveries, launches, sent, port, queuedAtDelivery, live: () => live, state: () => state!,
+    audience: (verified: boolean) => { verifiedAudience = verified; },
+    beforeFacts: (run: () => void) => { beforeFacts = run; },
     failBatch: (error: Error | undefined) => { batchFailure = error; },
     evidence: (value: unknown) => { evidence = value; }, reply: (value: string) => { replyOverride = value; },
     advance: (ms: number) => { now += ms; }, close: async () => { await port.close(); journal.close(); } };
@@ -178,10 +190,14 @@ it.each(recordedBatchShapes.otherShapes)('batch path preserves recorded $kind fr
   const f = fixture(false, true);
   try {
     f.evidence({ recordedShape: sample });
+    f.beforeFacts(() => effectFor(f).observe());
     if (sample.kind === 'delivered-reply' || sample.kind === 'empty-reply-in-recorded-context') f.reply(sample.raw);
     f.worker.intake([update(1, 'Continue this conversation.', 7), update(2, 'And this next message.', 7)]);
     await f.worker.drain();
     expect(f.deliveries[0]!.input.text).toContain('exactly one {operation, answer}');
+    expect(f.deliveries[0]!.input.text).toContain('CURRENT ACTION FACTS');
+    expect(f.deliveries[0]!.input.text).toContain('mcp:mail:send');
+    expect(f.deliveries[0]!.input.text).not.toContain('PRIVATE BODY');
     const text = f.deliveries[0]!.input.text;
     const members = JSON.parse(text.split('OWNER MESSAGE\n')[1]!.split('\n')[1]!) as { envelope: string; context?: string }[];
     expect(members).toHaveLength(2);
@@ -288,4 +304,120 @@ it('a long answer finishes with batched follow-ups waiting: all canonical parts 
     expect(f.sent.map(row => row.update)).toEqual([...f.sent.map(row => row.update)].sort((a, b) => a - b));
     const count = f.sent.length; await f.worker.drain(); expect(f.sent).toHaveLength(count);
   } finally { f.held.clear(); await f.close(); }
+});
+
+function effectFor(f: ReturnType<typeof fixture>, index = 0) {
+  const owner = createToolEffectOwner({ decide: () => ({ admitted: true, consequential: true, reason: 'granted' }),
+    append: (record: SessionWorkEffect) => f.journal.append({ kind: 'session-work', record, at: 1000 }),
+    prepared: (id: string) => f.journal.view.toolEffects?.includes(id), stopped: () => false, now: () => 1000 });
+  const parent = { id: 'topic-seven-edge', child: 'topic-seven-worker', topic: '7' } as SessionWorkEdge;
+  const result = owner.admit({ parent, tool: 'mcp__mail__send', input: { to: 'private@example.test', body: `PRIVATE BODY ${index}` }, call: `call${index}` });
+  expect(result.admitted).toBe(true);
+  return { observe: () => owner.observed({ parent, ...result, resultBytes: 27 }) };
+}
+
+it('projects an existing outbound approval request from topic A into topic B before advising', async () => {
+  const f = fixture();
+  try {
+    const id = 'telegram:12345678:update:1';
+    f.worker.intake([update(1, 'PRIVATE request context', 7)]);
+    f.journal.append({ kind: 'reserve', id, at: 1000 });
+    f.journal.append({ kind: 'answer', id, text: 'I can ask.', operatorAction: { action: 'raise-caps' }, at: 1000 });
+    const { maxCalls, maxReplies, maxTurns } = f.journal.view.limits;
+    const current = { limits: { maxCalls, maxReplies, maxTurns }, expires: f.journal.view.expires };
+    const proposed = proposeOperatorRequest({ ...current, used: { maxCalls: 1, maxReplies: 0, maxTurns: 1 },
+      step: current.limits, governedExpiry: current.expires, unknownCalls: 0, stopped: false,
+      grant: 'grant:preview', renewalActivation: null, base: approvalBase(f.journal.view) }, { action: 'raise-caps' }, id, 1000);
+    expect(proposed.kind).toBe('request'); if (proposed.kind !== 'request') throw Error('proposal refused');
+    f.journal.append({ kind: 'intent', id, text: operatorRequestText(proposed.request, current, null),
+      chat: '7654321', thread: 7, update: 1, grant: 'grant:preview', operatorRequest: proposed.request, at: 1000 });
+    f.journal.append({ kind: 'sent', id, message: 1, at: 1000 });
+    f.worker.intake([update(2, 'What work is pending?', 8)]); await f.worker.drain();
+    const facts = currentActionFacts(f.journal.view, 1000, true);
+    expect(facts.items).toContainEqual(expect.objectContaining({ kind: 'operator-request', operation: 'raise-caps', topic: '7', state: 'awaiting approval' }));
+    expect(f.journal.view.turns.get('telegram:12345678:update:2')!.prompt).toContain('awaiting approval');
+    expect(f.deliveries.at(-1)!.input.text).toContain('awaiting approval');
+    expect(JSON.stringify(facts)).not.toContain('PRIVATE');
+    const state = f.journal.view.operatorRequests[0]!;
+    const show = (patch: Partial<typeof state>, now = 1000) => currentActionFacts({ ...f.journal.view,
+      operatorRequests: [{ ...state, ...patch }] }, now, true).items;
+    const unsent = { ...state }; delete unsent.message;
+    expect(currentActionFacts({ ...f.journal.view, operatorRequests: [unsent] }, 1000, true).items[0]!.state)
+      .toBe('prepared, not delivered');
+    expect(show({}, state.request.expiresAt)[0]!.state).toBe('awaiting approval');
+    expect(show({}, state.request.expiresAt + 1)[0]!.state).toBe('expired');
+    expect(show({ refusals: [{ turn: 'refusal', detail: 'PRIVATE reason' }] })[0]!.state).toBe('refused');
+    const approved = { turn: 'yes', reference: 'ref', hash: 'hash', at: 1001 };
+    expect(show({ approved })[0]!.state).toBe('approved, not applied');
+    expect(show({ approved, applied: true })[0]!.state).toBe('applied');
+    expect(show({ superseded: true })).toEqual([]);
+  } finally { await f.close(); }
+});
+
+it('refreshes a running sibling with an effect appended after its packet was prepared', async () => {
+  const f = fixture();
+  try {
+    f.worker.intake([update(1, 'First turn', 8)]); await f.worker.drain();
+    let observed = false;
+    f.beforeFacts(() => { effectFor(f).observe(); observed = true; });
+    f.worker.intake([update(2, 'Next turn', 8)]); await f.worker.drain();
+    expect(observed).toBe(true); expect(f.launches).toEqual(['8']);
+    expect(f.journal.view.turns.get('telegram:12345678:update:2')!.prompt).not.toContain('mcp:mail:send');
+    expect(f.deliveries.at(-1)!.input.text).toContain('mcp:mail:send');
+    expect(f.deliveries.at(-1)!.input.text).toContain('tool returned, success not established');
+    expect(f.deliveries.at(-1)!.input.text).not.toContain('PRIVATE BODY');
+    expect(f.deliveries.at(-1)!.input.text).not.toContain('private@example.test');
+  } finally { await f.close(); }
+});
+
+it('bounds the projection, retains journal evidence on reopen, and withholds unverified audiences', async () => {
+  const f = fixture();
+  try {
+    for (let i = 0; i < 80; i++) effectFor(f, i).observe();
+    const facts = currentActionFacts(f.journal.view, 1000, true);
+    expect(facts.items).toHaveLength(32);
+    expect(f.journal.view.actionEffects).toHaveLength(64);
+    expect(Buffer.byteLength(JSON.stringify(facts))).toBeLessThan(32768);
+    expect(currentActionFacts(f.journal.view, 1000, false)).toEqual({ items: [], withheld: true });
+    const reread = openPreviewJournal(join(f.root, 'journal.encrypted'), new Uint8Array(32).fill(61));
+    try { expect(currentActionFacts(reread.view, 1000, true)).toEqual(facts); expect(reread.view.toolEffects).toHaveLength(80); }
+    finally { reread.close(); }
+  } finally { await f.close(); }
+});
+
+it('refreshes action facts with recorded canary 969390374 reply and reviewer evidence in the prepared envelope', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/canary9-review-2026-10-11.json', import.meta.url), 'utf8'));
+  const f = fixture(false, true);
+  try {
+    f.evidence({ recorded }); f.reply(recorded.answer);
+    f.beforeFacts(() => effectFor(f).observe());
+    f.worker.intake([update(1, recorded.text, 8)]); await f.worker.drain();
+    const delivered = f.deliveries[0]!.input.text;
+    expect(delivered).toContain('CURRENT ACTION FACTS'); expect(delivered).toContain('mcp:mail:send');
+    expect(f.state().topics['8']!.inputs[0]!.request.context).toContain(JSON.stringify(recorded.answer));
+    expect(f.journal.view.order[0]!.sent).toBeDefined();
+  } finally { await f.close(); }
+});
+
+it('the wired dispatch reader withholds cross-topic action facts for an unverified forum audience', async () => {
+  const f = fixture(true);
+  try {
+    effectFor(f).observe(); f.audience(false);
+    const incoming = { update_id: 1, message: { message_id: 1, message_thread_id: 8,
+      chat: { id: -7654321, type: 'supergroup', is_forum: true }, from: { id: 7654321 }, text: 'Hello' } };
+    f.worker.intake([incoming]); await f.worker.drain();
+    expect(f.deliveries).toHaveLength(1);
+    expect(f.deliveries[0]!.input.text).not.toContain('mcp:mail:send');
+    expect(f.deliveries[0]!.input.text).toContain('withheld');
+  } finally { await f.close(); }
+});
+
+it('validates optional effect provenance without inventing it for legacy records', () => {
+  const record: SessionWorkEffect = { type: 'SessionWorkEffect', schemaVersion: 1, id: `sha256:${'a'.repeat(64)}`,
+    edge: 'edge', operation: 'mcp:mail:send', digest: 'digest', detail: 'admitted', state: 'prepared', at: 1000 };
+  expect(() => validateSessionWorkRow(record)).not.toThrow();
+  const metadata = { topic: '7', source: `sha256:${'b'.repeat(64)}`, subject: `sha256:${'c'.repeat(64)}` };
+  expect(() => validateSessionWorkRow({ ...record, ...metadata })).not.toThrow();
+  for (const patch of [{ topic: 'private topic name' }, { topic: 7 }, { source: 'private source' }, { subject: 'PRIVATE body' }])
+    expect(() => validateSessionWorkRow({ ...record, ...metadata, ...patch } as SessionWorkEffect)).toThrow('effect incomplete');
 });

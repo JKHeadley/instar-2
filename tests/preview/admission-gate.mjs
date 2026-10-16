@@ -72,13 +72,15 @@ export function createToolEffectOwner({ decide, append, prepared, stopped, now }
       const identity = digest(`${parent.child}\n${operation}\n${payload}${verdict.consequential ? '' : `\n${String(call)}`}`);
       if (prepared(identity)) return { admitted: false, reason: `effect owner: ${operation} with this exact input was already prepared (${identity}); never sent twice`, doorway };
       try { append(sessionWorkEffect({ id: identity, edge: parent.id, operation, digest: payload, state: 'prepared', detail: 'admitted for dispatch', at: now(),
+        ...(parent.topic === undefined ? {} : { topic: parent.topic, source: digest(parent.child), subject: payload }),
         ...(verdict.localCause === undefined ? {} : { cause: verdict.localCause }) })); }
       catch { return { admitted: false, reason: 'effect owner: the request could not be recorded before dispatch', doorway }; }
       return { admitted: true, reason: `${verdict.reason}; effect owner: ${operation} prepared as ${identity}`, identity, operation, digest: payload, doorway };
     },
     observed({ parent, identity, operation, digest: payload, resultBytes }) {
       append(sessionWorkEffect({ id: identity, edge: parent.id, operation, digest: payload, state: 'observed',
-        detail: `the tool returned ${resultBytes} bytes`, at: now() }));
+        detail: `the tool returned ${resultBytes} bytes`, at: now(),
+        ...(parent.topic === undefined ? {} : { topic: parent.topic, source: digest(parent.child), subject: payload }) }));
     },
   });
 }
