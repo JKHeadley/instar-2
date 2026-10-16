@@ -17,11 +17,17 @@ it('delivers correction guidance with existing candidates, durably restates the 
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'correction-keep-')));
   const path = join(root, 'journal.encrypted');
   let journal = openPreviewJournal(path, key, genesis);
-  const packets: Record<string, any>[] = [];
+  interface Packet { memoryCandidates: unknown[]; memoryDecision: string; preferenceSource: string;
+    preferences?: { text: string; source: string }[] }
+  const packets: Packet[] = [];
+  const summaryQuestions: string[] = [];
   const ports = { now: () => 1790000000000, stopped: () => false,
     model: async (input: { id: string; context: string; question: string }) => {
       const packet = JSON.parse(input.context);
-      if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'Arithmetic and reply style.', people: [], memory: [] });
+      if (input.id.startsWith('summary:')) {
+        summaryQuestions.push(input.question);
+        return JSON.stringify({ summary: 'Arithmetic and reply style.', people: [], memory: [] });
+      }
       packets.push(packet);
       // Constructed answer port: semantic judgments are explicit; the recorded correction/reply bytes are unchanged.
       if (input.question === correction) return JSON.stringify({ reply: 'Understood.',
@@ -50,5 +56,7 @@ it('delivers correction guidance with existing candidates, durably restates the 
     await ask(4, 'No, it\'s 41.');
     await ask(5, 'Quick check from the desk: are you there? One short line is enough.');
     expect(journal.view.memory.filter(item => item.mode === 'prefer')).toHaveLength(1);
+    await ask(6, 'Shorter please.');
+    expect(summaryQuestions.some(question => question.includes('one-off instructions') && question.includes('never override'))).toBe(true);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
