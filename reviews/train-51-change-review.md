@@ -30,6 +30,8 @@ Decision: train-51-C | No genuine product conflict remains and no requested head
 Decision: train-51-D | Run portable targeted direct consumers on WSL and record host-bound omissions without weakening tests; desk owns macOS certificate renewal and live acceptance. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-51-PROGRESS.md
 Decision: train-51-desk | Use downloaded repin/build/rehash/replay tools; Linux sed syntax only. Repin the combined inventory digest, with zero changed support-source or owner pins; regenerate output from committed source. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-51-PROGRESS.md
 
+Decision: train-51-recall-fixture | Size the 90-turn raw-packet recall fixture at 12 KiB so reviewed sibling evidence and recalled facts coexist, keeping the original 200-call cap, recall/restart/capture and growth assertions. The 8 KiB diagnosis reached call cap; raising calls alone still omitted recall. Production limits and the fixed guard are unchanged, and the recorded sibling replay retains its final-omission neighbor. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-51-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges, the existing desk regeneration chain and targeted consumer evidence. No new machinery. Start at the named live base, require membership and committed verified output, retain the named safety floors, and leave deployment and independent acceptance to the desk.
