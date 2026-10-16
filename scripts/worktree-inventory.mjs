@@ -16,7 +16,7 @@ export function parseWorktreeList(text) {
 
 export function createWorktreeInventory(ports) {
   return Object.freeze({ async census(repository) {
-    const base = { machine: ports.machine, freshForMs: ports.freshForMs };
+    const base = { machine: ports.machine, freshForMs: ports.freshForMs, sourceTime: ports.now() };
     const failed = () => ({ ...base, sourceTime: ports.now(), status: 'failed', worktrees: [] });
     try {
       const text = await ports.query('git', ['--no-optional-locks', '-C', repository, 'worktree', 'list', '--porcelain', '-z']);
@@ -34,7 +34,7 @@ export function createWorktreeInventory(ports) {
       // Re-enumeration refuses a path/head change during the per-checkout reads.
       const after = await ports.query('git', ['--no-optional-locks', '-C', repository, 'worktree', 'list', '--porcelain', '-z']);
       if (after !== text) complete = false;
-      return { ...base, sourceTime: ports.now(), status: complete ? 'complete' : 'partial', worktrees };
+      return { ...base, status: complete ? 'complete' : 'partial', worktrees };
     } catch { return failed(); }
   } });
 }
