@@ -448,7 +448,7 @@ it.each(recordedCapacityShapes.otherShapes)('capacity recovery preserves topic-l
   const topicConfig: NonNullable<ConversationTopicsConfig['topicConfig']> = topic => ({
     io: f.config.io, resources: f.config.resources, authorized: f.config.authorized,
     currentAuthority: f.config.currentAuthority,
-    grounding: { revision: () => null, save: (_worker, text) => { snapshots.push({ topic, text }); } },
+    grounding: { revision: () => 'initial', save: (_worker, text) => { snapshots.push({ topic, text }); } },
     createAdapter: resolve => {
       const adapter = f.config.createAdapter(topic, resolve);
       return { ...adapter, describe: () => ({ ...adapter.describe(), contextRecovery: 'host-snapshot' }) };
