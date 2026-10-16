@@ -31,6 +31,8 @@ Skip: tests/preview/agent-paths.test.ts:104 | scope=Inherited macOS-only physica
 
 Publication: Regenerated generated/ using scripts/build-register.mjs --replay --commit 245bfc52abca4808d2ac776d0a138b42801481ac. Delegated owner rehash and inventory repin both reported zero updates.
 
+Review repair: Append inherited prompt-protocol dispositions and platform-skip scopes to the two existing records whose merged subject requires them; keep their existing prose and decisions intact. No prompt or runtime behavior changes.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge, retain the complete review history, use existing pin and register generation, and exercise the merged consumer. No new mechanism. Start from the recorded candidate and live heads; end with a pushed commit and exact portable results for Studio gating. Existing safety, authority, durability and resource guards remain. No unattended live-completion claim.
