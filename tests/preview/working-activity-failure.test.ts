@@ -40,12 +40,12 @@ it('registers failure completion on the actual session launch, retaining the exi
 
 it('replays message 744 exact raw prefix/hash, then clears the ended step through the executable failure hook', () => {
   expect(createHash('sha256').update(prefix).digest('hex')).toBe('259e71a4c73df06aa0dcce2c9678417ec31b92b30ecf1e5e93a23ce7bbcb5fd9');
-  expect(admissionActivity(prefix, 0, claim)).toEqual({ text: 'Status: List workspace contents',
+  expect(admissionActivity(prefix, 0, claim)).toEqual({ text: 'Status: List workspace contents', running: true,
     step: 'bd1def8ea6ccdde4bbb04fbe6186621d5252625deb70b687025681528f9ff934' });
   const { result, bytes } = runFailure();
   expect(result.status).toBe(0);
   expect(JSON.parse(bytes)).toMatchObject({ phase: 'post-failure', id: captured.failures[0]!.use.id });
-  expect(admissionActivity(prefix + bytes, 0, claim)?.text).toBe('Status: latest main-session tool call ended');
+  expect(admissionActivity(prefix + bytes, 0, claim)).toMatchObject({ text: 'Status: latest main-session tool call ended', running: false });
 });
 
 it.each([0, 1, 2])('recorded failure %i stays failed; matched activity closes and final answer removes the observation', index => {
