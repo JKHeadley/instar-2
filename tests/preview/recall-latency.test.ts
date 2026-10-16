@@ -163,6 +163,22 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     expect(constraints['reply-only-grant']).toBe(capabilities.sends);
     capabilities.sends = 'bot: replies and requested reminders or summaries';
     constraints['reply-only-grant'] = capabilities.sends;
+    // sibling-words: only cross-topic operator questions are omitted from reply
+    // candidates. Assert both audiences, then restore just those fixture fields
+    // in this comparison copy; both original hashes below must still match.
+    const candidates = historical.memoryCandidates as { id: string; message: string }[];
+    const siblingCandidates = candidates.filter(item => view.turns.get(item.id)?.thread === 7);
+    expect(siblingCandidates.map(item => item.id)).toEqual([
+      'telegram:12345678:update:9', 'telegram:12345678:update:6',
+    ]);
+    for (const item of candidates) {
+      const source = view.turns.get(item.id);
+      if (!source) continue; // Imported channel candidates keep their own provenance.
+      if (source.thread === 7) {
+        expect(item.message).toBe('[operator message in another topic omitted]');
+        item.message = source.text;
+      } else expect(item.message).toBe(source.text);
+    }
     const historicalText = JSON.stringify(historical);
     const withoutLookup = JSON.parse(historicalText) as Record<string, unknown>;
     expect(withoutLookup.memoryLookup).toBe('offered');

@@ -13,6 +13,8 @@ import type { Result } from '../index.js';
 export interface SessionWorkEdge {
   readonly type: 'SessionWorkEdge'; readonly schemaVersion: 1;
   readonly id: string; readonly parent: string; readonly child: string;
+  /** Journal topic inherited by nested work; absent on legacy or non-topic work. */
+  readonly topic?: string;
   readonly scope: string; readonly owner: string; readonly authority: string;
   /** `calls` is this step's model-call liability, reserved against the call cap when the edge is
    * recorded and enforced on the child's own transcript; `tokens` stays absent (no token meter). */
@@ -34,6 +36,8 @@ export interface SessionWorkEffect {
   readonly state: 'prepared' | 'observed'; readonly detail: string; readonly at: number;
   /** Complete local cause for a connected-account action; never credential values. */
   readonly cause?: string;
+  /** Opaque input/source references only; never raw input, result or private text. */
+  readonly topic?: string; readonly source?: string; readonly subject?: string;
 }
 /** The same edge's settled disposition. Every path through the run writes exactly one, after the
  * child session has been stopped, so `complete` is never written over a child still running. */
@@ -61,7 +65,7 @@ export const NESTED_EXIT_TEST = 'the delegated agent returned its result to its 
 export function nestedSessionWorkEdge(parent: SessionWorkEdge, call: Readonly<{ id: string; tool: string }>, openedAt: number): SessionWorkEdge {
   ensure(/^[A-Za-z0-9._:-]{1,200}$/u.test(call.id) && call.tool.length > 0 && call.tool.length <= 200, 'exact delegation identity required');
   return freeze({ type: 'SessionWorkEdge' as const, schemaVersion: 1 as const, id: `${parent.id}:delegated:${call.id}`,
-    parent: parent.id, child: `delegated:${call.id}`, scope: parent.scope, owner: parent.owner,
+    parent: parent.id, child: `delegated:${call.id}`, ...(parent.topic === undefined ? {} : { topic: parent.topic }), scope: parent.scope, owner: parent.owner,
     authority: `delegated by ${parent.child} through ${call.tool}, under the parent's admission, scope, call allowance and stop`,
     budget: { ...parent.budget }, drawsOn: parent.id, exitTest: NESTED_EXIT_TEST, placement: parent.placement,
     transport: `${call.tool} inside ${parent.child}`, resultDestination: `tool result ${call.id} of ${parent.child}`, openedAt });

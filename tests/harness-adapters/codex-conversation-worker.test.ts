@@ -164,7 +164,7 @@ describe('registered continuing protocol worker', () => {
     const adapter = createProductionConversationAdapter({ configuration: () => ({ ...f.config, framework: 'claude-code' }),
       transport: () => { throw Error('default route touched protocol'); }, createDriver: () => { created++; return {} as never; },
       io: f.io as never, resolveDelivery: () => undefined });
-    expect(adapter.describe()).toEqual({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false, contextRecovery: 'host-snapshot' });
+    expect(adapter.describe()).toEqual({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false });
     expect(created).toBe(1);
   });
 });
