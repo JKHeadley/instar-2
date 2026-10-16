@@ -3149,7 +3149,7 @@ export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' |
   if (row.kind === 'operator-result-intent') return { target: `operator-result:${row.request}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'limited-intent') return { target: `limited:${row.id}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'intent') return { target: `reply:${row.id}`, chat: row.chat, ...thread, body: row.body ?? row.text };
-  if (row.kind === 'held-notice-intent') return { target: `${row.workingProgress ? `working-progress:${row.workingProgress.ordinal}` : row.waitingProgress ? 'waiting-progress' : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.text };
+  if (row.kind === 'held-notice-intent') return { target: `${row.workingProgress ? `working-progress:${row.workingProgress.ordinal}` : row.waitingProgress ? 'waiting-progress' : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.workingProgress ? encodeReply(row.text) : row.text };
   return { target: `requested-reminder:${String(row.batch)}`, chat: row.chat, ...thread, body: row.body };
 }
 /** Verifies a recorded system writer's owner signature over its exact occurrence. */
@@ -7915,13 +7915,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const text = activity.text, ordinal = turn.workingProgress?.length ?? 0;
         ports.checkOutbound(text);
         const chat = journal.view.genesis.chat, thread = turn.thread === undefined ? {} : { thread: turn.thread };
-        const target = `working-progress:${ordinal}:${turn.id}`;
-        const provenance = journal.signOutbound('agent', { target, chat, ...thread, body: text });
+        const target = `working-progress:${ordinal}:${turn.id}`, body = encodeReply(text);
+        ports.checkOutbound(body);
+        const provenance = journal.signOutbound('agent', { target, chat, ...thread, body });
         let admitted = false;
         const current = () => (admitted ? !workingEnded.has(turn) && !halted() && !turn.intent : workingCurrent(turn)) && currentWorkingActivity(ports.workingActivity!(turn.id), ports.now())
           && ports.workingActivity!(turn.id)?.step === activity.step && ports.workingActivity!(turn.id)?.text === text
           && (admitted || now >= workingAt(turn));
-        const outcome = await push('reply', target, provenance, { text, expectedText: text, chat, ...thread,
+        const outcome = await push('reply', target, provenance, { text: body, expectedText: text, chat, ...thread,
           update: turn.update, current }, () => {
           const at = ports.now();
           journal.append({ kind: 'held-notice-intent', id: turn.id, text, chat, ...thread, update: turn.update,

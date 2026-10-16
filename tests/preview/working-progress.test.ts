@@ -10,7 +10,7 @@ import { currentWorkingActivity, workingProgressDue, type WorkingActivity } from
 const roots: string[] = [];
 afterEach(() => { vi.useRealTimers(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const update = { update_id: 1, message: { message_id: 1, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'Check the build and tests.' } };
-function fixture(options: { receipt?: number | null; cap?: number; recorded?: { kind: string; id: string; raw: string; source: unknown }; realActivity?: { step: string; text: string } } = {}) {
+function fixture(options: { receipt?: number | null; cap?: number; batch?: boolean; recorded?: { kind: string; id: string; raw: string; source: unknown }; realActivity?: { step: string; text: string } } = {}) {
   vi.useFakeTimers(); vi.setSystemTime(1000);
   const root = mkdtempSync(join(tmpdir(), 'working-progress-')); roots.push(root);
   const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(71);
@@ -20,15 +20,15 @@ function fixture(options: { receipt?: number | null; cap?: number; recorded?: { 
   const enteredPromise = new Promise<void>(done => { entered = done; });
   const busy = new Promise<string | { state: 'uncertain' }>(done => { release = done; });
   let activity: WorkingActivity | null = { step: 'build', text: 'Status: running the build', observedAt: Date.now() };
-  const sent: { text: string; at: number; target: string | undefined }[] = [];
+  const sent: { text: string; body: string; at: number; target: string | undefined }[] = [];
   let sendHold: Promise<void> | null = null, sendEntered = false;
   let context = '';
-  const ports: PreviewPorts = { ...(options.recorded ? { sources: [{ recordedShape: options.recorded }] } : {}), now: () => Date.now(), stopped: () => false,
+  const ports: PreviewPorts = { ...(options.batch ? { topicConcurrency: 1, modelBatch: async (inputs: readonly { id: string }[]) => { entered(); const answer = await busy; return inputs.map(() => answer); } } : {}), ...(options.recorded ? { sources: [{ recordedShape: options.recorded }] } : {}), now: () => Date.now(), stopped: () => false,
     model: async input => { context = input.context; entered(); return busy; }, workingActivity: () => activity && ({ ...activity, ...options.realActivity, observedAt: Date.now() }),
-    checkOutbound: () => {}, send: async input => { if (input.target?.startsWith('working-progress:')) { sendEntered = true; await sendHold; } sent.push({ text: input.expectedText, at: Date.now(), target: input.target });
+    checkOutbound: () => {}, send: async input => { if (input.target?.startsWith('working-progress:')) { sendEntered = true; await sendHold; } expect(journal.verifyOutbound(input.provenance, { target: input.target!, chat: input.chat, body: input.text })).toBe(true); sent.push({ text: input.expectedText, body: input.text, at: Date.now(), target: input.target });
       return input.target?.startsWith('working-progress:') ? options.receipt === undefined ? sent.length : options.receipt : sent.length; } };
   const worker = createJournalWorker(journal, ports);
-  worker.intake([update]); const drain = worker.drain();
+  worker.intake(options.batch ? [update, { ...update, update_id: 2, message: { ...update.message, message_id: 2 } }] : [update]); const drain = worker.drain();
   const progress = () => sent.filter(row => row.target?.startsWith('working-progress:'));
   return { journal, worker, ports, path, key, sent, progress, release, drain, enteredPromise, context: () => context, sendEntered: () => sendEntered,
     holdProgress: () => { let done!: () => void; sendHold = new Promise<void>(resolve => { done = resolve; }); return done; },
@@ -140,4 +140,24 @@ it('final answer waits for an already dispatched progress line, so transport del
     expect(f.sent.slice(-2).map(row => row.text)).toEqual(['Status: running the build', 'Done.']);
     await vi.advanceTimersByTimeAsync(1200000); expect(f.progress()).toHaveLength(1);
   } finally { finishSend(); f.release('Done.'); await f.drain; f.journal.close(); }
+});
+
+
+it('signs and sends the normal HTML-encoded body while retaining the exact plain status', async () => {
+  const f = fixture();
+  try { await f.enteredPromise; f.activity('checking <files> & results'); await vi.advanceTimersByTimeAsync(120000);
+    expect(f.progress()[0]).toMatchObject({ text: 'Status: checking <files> & results', body: 'Status: checking &lt;files&gt; &amp; results' });
+    f.release('Done.'); await f.drain;
+    f.journal.compact(); f.journal.close(); const reopened = openPreviewJournal(f.path, f.key); reopened.close();
+  } finally { f.release('Done.'); await f.drain; f.journal.close(); }
+});
+
+
+it('batched messages sharing one working session announce each step only once in the topic', async () => {
+  const f = fixture({ batch: true });
+  try { await f.enteredPromise; await vi.advanceTimersByTimeAsync(120000);
+    expect(f.progress()).toHaveLength(1);
+    f.release('Done.'); await f.drain; await vi.advanceTimersByTimeAsync(600000);
+    expect(f.progress()).toHaveLength(1); expect(f.journal.view.order.every(turn => turn.sent !== undefined)).toBe(true);
+  } finally { f.release('Done.'); await f.drain; f.journal.close(); }
 });
