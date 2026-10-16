@@ -42,7 +42,7 @@ Decision: claim-evidence-existing-mind | Use shared evidence guidance in existin
 Decision: claim-evidence-budget | Reallocate 500 bytes between fixed answer and review-only allowances, keeping their sum and the default history headroom unchanged; measure both sides. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/claim-evidence-1016-PROGRESS.md
 Decision: claim-evidence-recorded-proof | Replay existing real writer/Jev/reviewer/delivery shapes and clearly separate constructed revisions from captured outputs; request fresh-model proof on the desk after provider refusal. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/claim-evidence-1016-PROGRESS.md
 
-Validation: Claim-evidence and default-context-floor suites pass (17 tests); guidance replay suite passes (24 tests, one opt-in capture skipped). Typecheck and architecture pass. Register publication was regenerated in replay mode from e83bdde92ffdc0795382ee5bf9f703b572238b62, and register:check passes. Broader direct-importer and final pushed-head gate results are recorded in the builder report.
+Validation: Claim-evidence and default-context-floor suites pass (17 tests); the final single-inheritance adjustment passes claim-evidence and reply-check (77 tests); guidance replay suite passes (24 tests, one opt-in capture skipped). Typecheck and architecture pass. Register publication was regenerated in replay mode from b4141c4a, and register:check passes. Broader direct-importer and final pushed-head gate results are recorded in the builder report.
 
 ## Closing block
 
