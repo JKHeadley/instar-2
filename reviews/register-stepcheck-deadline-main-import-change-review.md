@@ -24,12 +24,12 @@ Decision: stepcheck-deadline-extend | step-check graduation not yet proven; dead
 
 Decision: owner-repair-import | Import the existing owning repair instead of writing a second fix; bind this review to the receiving branch while preserving the owner decision and its promotion history. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-47-repair-220320-PROGRESS.md
 
+Prompt finding: 4b98dc2a1b9f | quoted-evidence | Existing capability description is checked by its fixture, not used as an intent trigger.
+Prompt finding: 95e349aaf4ac | quoted-evidence | Existing authorization wording is descriptive, not a keyword gate or supplied verdict.
+Deferral: generated/conversion.json:1 | not-a-deferral=Generated conversion includes existing governed text, not a newly deferred commitment.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: change the source deadline and append its owned decision using existing mechanisms, update consuming assertions and documentation, then regenerate dependent pins and publication with the project tools. No new machinery. The existing stage-evidence requirement guards graduation; the existing strict deadline check guards the new end date. No autonomous completion or live protection is claimed.
 80/20: Verify the linked step-check tests, promotion and inventory consumers, register/rulegraph tests, typecheck, architecture, lint, register replay and the desk's pinned ready tests; leave the actual graduation procedure with its recorded desk owner.
 VERDICT: author submission; no independent convergence claim — the review desk records its judgment
-
-Prompt finding: 4b98dc2a1b9f | quoted-evidence | Existing capability description is checked by its fixture, not used as an intent trigger.
-Prompt finding: 95e349aaf4ac | quoted-evidence | Existing authorization wording is descriptive, not a keyword gate or supplied verdict.
-Deferral: generated/conversion.json:1 | not-a-deferral=Generated conversion includes existing governed text, not a newly deferred commitment.
