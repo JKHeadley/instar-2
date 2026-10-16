@@ -14,6 +14,7 @@ Side effects: Source packets now include simultaneous-session coherency; their b
 Undo and recovery: Revert this merge with its regenerated publication on the candidate branch; preserve both parent histories. Any subsequent constitutional correction needs its own approved history entry.
 Multi-machine posture: Rule 117 covers concurrent sessions on one or multiple machines; shared repository wording and publication reach every installation using this revision. No new state or synchronization mechanism.
 Briefing repair: Main includes the Value introduction in its excerpt; the live line deliberately starts at the first bullet. Compute the pin over those retained live boundaries and the approved merged wording. Recorded reviewer and summary replay assertions require the concurrent clause at the model call.
+Publication source: 4e9be0dbfd13375b9a9af410e52ca7131f7a0112; replay produces 293 entries and 117 rules, with Rule 117 partial in its check text and no invented holder.
 Publication repair: The automatically merged anchor retains the live bootstrap shape and incoming Rule 117; recomputed approvedConversion through canonical() to bind that combined anchor after the initial replay correctly refused either parent pin.
 Layer below: Checked briefing sourcePacket and verifyMindRules, journal-agent briefingDigest and policyFor, production-provider policy constructors, tools-policy-class admission, register-source parsing and approved conversion anchor, and Darwin composition certificate enforcement.
 Bug class: none
