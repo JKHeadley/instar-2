@@ -25,5 +25,5 @@ Prompt review: No prompt, parser or model decision changes. The provider's physi
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: run the existing contract against the changed composition, verify its complete closure and runtime remain unchanged, and renew the existing declaration. The start guard is the exact declared macOS runtime and complete closure; the end guard is the passing named contract with identical before/after digest; all existing safety floors remain. No new checker, exception or weakened assertion.
-80/20: The named native contract passed before renewal on the 267-file closure and declared Node 24.14.1 runtime. Architecture passes after renewal. Full native-contract and final pushed-head READY checks are retained in the unit PROGRESS report. Full host-suite acceptance remains with the pipeline.
+80/20: The named native contract passed before renewal on the 267-file closure and declared Node 24.14.1 runtime. All 10 native-contract tests and architecture pass after renewal. Register outputs bind source 2c193de86c0f2aa1b450d3cf51636d0132c012f3. Final pushed-head READY checks are retained in the unit PROGRESS report. Full host-suite acceptance remains with the pipeline.
 VERDICT: author submission; independent review pending
