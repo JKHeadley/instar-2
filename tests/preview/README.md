@@ -3792,6 +3792,18 @@ The supervised procedure on two real machines is [two-machine-live-test.md](two-
 
 ### Tool turns (journal runner)
 
+A separate sealed `conversation-capacity-limits-v1` disposition pins the complete Claude
+continuing-session policy except six named worker limits: `maxSessions`, `deadlineMs`, `idleMs`,
+`minCpuIdlePercent`, `minFreeMemoryBytes`, and `minFreeMemoryFraction`. Capacity admission retains
+an integer ceiling of at most eight workers, at most four hours of worker/idle lifetime (idle
+cannot exceed lifetime), and headroom of at least 12% CPU idle, 2 GiB free memory and 10% free
+memory. The legacy shape without headroom fields remains bounded to two workers, one hour and
+five minutes idle. Every other field, including prompt, launch flags, model, call allowance,
+other caps and unknown fields, is an exact sealed pin. Initial session admission, pool checks
+and activation refresh present the adapter's own policy to the same authority resolver.
+This class does not reinterpret the ordinary conversation policy's sealed digest: ordinary
+conversation and continuing sessions have separate policies. Full digests remain evidence.
+
 A separate sealed `tools-guidance-only-v1` class uses `scope.invocationPolicyPins`, computed by
 `guidanceOnlyPolicyPins` from the approved policy. It pins every policy field and the generated
 checkpoint settings, except the system prompt and each existing subagent's prompt and description.

@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { encoded } from '../../src/assembly/boundary.js';
-import { subscriptionSessionPolicy } from '../../src/assembly/production-provider.js';
+import { subscriptionConversationSessionPolicy, subscriptionSessionPolicy } from '../../src/assembly/production-provider.js';
 import { SESSION_WORK_RESIDUAL } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error the cutover harness stays plain JavaScript, run by the launcher without a loader
 import { cutoverHarness } from './journal-cutover-harness.mjs';
@@ -16,6 +16,7 @@ import { OFFLINE_STORAGE_KEY } from './successive-fixture.js';
 import { openPreviewJournal } from './journal.js';
 import { appendGroupCarry } from './group-carry.js';
 import { authoritySealKey, sealAuthorityRecord } from './activation-authority.js';
+import { CONVERSATION_LIMITS_CLASS, conversationLimitsPolicyPins } from './tools-policy-class.js';
 import { resolveGroupDisclosure } from './group-disclosure.js';
 import { pathToFileURL } from 'node:url';
 import { createJournalWorker, MINIMAL_WORKER_WAIT_MS, REPLY_ACKNOWLEDGEMENT, REPLY_ACKNOWLEDGEMENT_AFTER_MS } from './journal-test-worker.js';
@@ -192,3 +193,28 @@ it('the minimal poll sends one acknowledgement at eight seconds in the topic, no
   expect(sends).toHaveLength(2); expect(sends[1]).toMatchObject({ thread: 3 });
   journal.close();
 });
+
+
+it('the shipped launcher resolves a sealed conversation limits class and refuses changed pins', async () => {
+  const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile);
+  harness.setUpdates([]);
+  const answer = world.activation(), policy = subscriptionConversationSessionPolicy(world.model);
+  const activation = { ...answer, invocationPolicyDigest: encoded(policy).hash,
+    acceptedResiduals: [...answer.acceptedResiduals, SESSION_WORK_RESIDUAL] };
+  const path = grantAt(join(world.directory, 'conversation-class'), activation);
+  const authorityPath = join(world.directory, 'conversation-class', 'activation-authority.json');
+  const original = JSON.parse(readFileSync(authorityPath, 'utf8'));
+  const record = (pins: string) => sealAuthorityRecord({ ...original, grants: original.grants.map((grant: {
+    scope: { invocationPolicyDigest?: string } }) => {
+    const { invocationPolicyDigest: _digest, ...scope } = grant.scope;
+    return { ...grant, scope: { ...scope, invocationPolicyClass: CONVERSATION_LIMITS_CLASS, invocationPolicyPins: pins } };
+  }) }, authoritySealKey(OFFLINE_STORAGE_KEY));
+  writeFileSync(authorityPath, JSON.stringify(record('sha256:wrong')));
+  const extra = ['--conversation-session', 'on', '--session-work-activation', path];
+  const refused = await harness.runLive(1, extra);
+  expect(refused.status).not.toBe(0);
+  expect(String(lastRun(harness.liveRoot).refused)).toMatch(/outside the granted class conversation-capacity-limits-v1/u);
+  writeFileSync(authorityPath, JSON.stringify(record(conversationLimitsPolicyPins(policy))));
+  const admitted = await harness.runLive(1, extra);
+  expect(admitted.status, `${admitted.stderr}\n${JSON.stringify(lastRun(harness.liveRoot))}`).toBe(0);
+}, 120_000);
