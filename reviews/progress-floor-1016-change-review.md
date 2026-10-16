@@ -25,6 +25,5 @@ Prompt review: no model prompt, parsing, routing or accept/escalate/refuse decis
 Register regeneration: desk-provided rehash updated only the obligations test artifact pin; the inventory chain needed no changes. Generated outputs are regenerated in shape-only replay mode from source commit 9b407dbad62577c178b0f8b003a6208fb75ce9ba; no declaration or live certificate is changed.
 
 simplestRobustRoute: this is the simplest route: extend the existing pure journal health projection and its status line. The durable start already exists; no schema, timer, observer, store, worker or model call is needed. Start guard is a scheduled open obligation with inFlight; end-state is its recorded result or existing closure; limits and stop remain in their current owners. The desk must run the bounded slow-step proof-room status check before calling this live; no unattended shipped-path completion is claimed.
-
 80/20: close the demonstrated false-negative and false-positive age errors, keep the result/wait/restart neighbors, and submit targeted evidence to the desk's existing independent review and live gate.
 VERDICT: author submission; no independent convergence claimed
