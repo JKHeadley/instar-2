@@ -18,6 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/proactive-compaction.test.ts
 Evidence details: Before repair the busy-turn test dispatched summary:4 during the answer; cooldown test dispatched four calls instead of two. After repair both pass. Recorded proof-room updates 715672479–715672500 replay through the unforced path: writer uncertainty, Jev 0.38 undecided and stronger review pass preserve marker probe-5f1ba73c and the tomato commitment. The next answer packet consumes that advanced frontier and still carries both the marker and tomato task; its reply is sent by the existing worker. No live deployment claim.
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains only sample hooks.
+Follow-up evidence: Forced recovery bypasses evaluation of the proactive predicate entirely, preserving its former packet-sizing path; the 32 focused tests and typecheck pass after that boundary correction. This remains Decision precompact-existing-path.
 Convergence: none
 Prompt review: No model prompt or output parser changed. Recorded bytes feed the existing interpreters; summary acceptance and continuity checks remain unchanged. The holder decides exact idle, pressure and elapsed-cooldown facts only.
 Decision: precompact-existing-path | Extend the existing holder and journal summary path rather than add a service, store or model call; retain its pressure threshold and forced recovery. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/precompact-1016-PROGRESS.md
