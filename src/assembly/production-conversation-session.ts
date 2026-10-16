@@ -210,7 +210,20 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       if (state.spent >= config.maxCalls) halt('calls', config.maxCalls);
       persist({ spent: state.spent + 1, claimCalls: ordinal });
     };
+    const harvestHalt = async () => {
+      // Harvest the exact physical cause before any lifecycle path can discard identity.
+      if (!state.halt && state.worker) {
+        let deadline: number | undefined;
+        try {
+          const observed = await adapter.observe({ ...state.worker, delivery: null, cursor: 0, limit: 2 });
+          if (observed.complete) for (const event of observed.observations)
+            if (event.kind === 'exit' && event.safetyDeadline !== undefined) deadline = event.safetyDeadline;
+        } catch { /* Observation failure stays unknown; ordinary uncertain retirement still applies. */ }
+        if (deadline !== undefined) recordHalt('deadline', deadline);
+      }
+    };
     const retire = async () => {
+      await harvestHalt();
       if (state.claim) config.io.closeAdmission(state.claim);
       if (state.claim) {
         ensure(state.incarnation, 'recorded incarnation missing');
@@ -224,17 +237,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     const settle = (id: string, result: SessionWorkOutcome) => update(id, { state: 'settled', outcome: result });
     const recover = async () => {
       if (recovered) return;
-      // The independent watchdog may have acted while this host was absent. Read its
-      // durable lifecycle cause before retiring the worker or recovering any result.
-      if (!state.halt && state.worker) {
-        let deadline: number | undefined;
-        try {
-          const observed = await adapter.observe({ ...state.worker, delivery: null, cursor: 0, limit: 2 });
-          if (observed.complete) for (const event of observed.observations)
-            if (event.kind === 'exit' && event.safetyDeadline !== undefined) deadline = event.safetyDeadline;
-        } catch { /* Observation failure stays unknown; ordinary uncertain retirement still applies. */ }
-        if (deadline !== undefined) recordHalt('deadline', deadline);
-      }
+      await harvestHalt();
       if (state.halt) {
         await retire();
         for (const input of state.inputs) if (input.state !== 'settled')
@@ -340,6 +343,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       try {
         ensure(!closing && !config.stopped() && config.authorized(), 'conversation stopped or grant unavailable');
         if (config.prepareTurn && !await config.prepareTurn({ claim: state.claim, retire })) return false;
+        ensure(!state.halt, 'conversation safety halt retained');
         const request = { ...row(id).request, authority: config.currentAuthority() };
         let replaceNeeded = !state.worker || state.turns >= config.maxSteps || config.now() >= state.deadline || state.authority !== request.authority;
         if (state.worker && !replaceNeeded) {
@@ -353,7 +357,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         if (replaceNeeded && !await replace(request)) return false;
         guard(); if (calls() >= config.maxCalls) halt('calls', config.maxCalls);
         const admission = config.io.admissionState(state.claim!);
-        if (admission?.refused) halt('calls', config.maxCalls);
+        if (admission?.refusalReason === 'calls') halt('calls', config.maxCalls);
+        ensure(!admission?.refused, 'model call reservation unavailable; no ceiling established');
         ensure(admission !== null, 'conversation admission unreadable or allowance refused');
         const path = `${config.resultDirectory}/conversation-${slug(id)}.json`;
         // The journal packet owns bounded history and rolling summaries. Only unresolved
@@ -395,7 +400,8 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         for (;;) {
           guard(); if (config.now() >= state.deadline) halt('deadline', state.deadline); calls();
           const admission = config.io.admissionState(state.claim!);
-          if (admission?.refused) halt('calls', config.maxCalls);
+          if (admission?.refusalReason === 'calls') halt('calls', config.maxCalls);
+          ensure(!admission?.refused, 'model call reservation unavailable; no ceiling established');
           ensure(admission !== null, 'conversation allowance refused or unreadable');
           const batch = await adapter.observe({ ...state.worker!, delivery, cursor: row(id).cursor, limit: 16 });
           ensure(batch.complete && batch.cursor >= row(id).cursor, 'observation gap requires reconciliation');
@@ -486,8 +492,9 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       if (!state.edge) return null;
       if (state.close) return state.close;
       const processEdge = state.claim ? `${state.claim}:process` : state.edge.id;
-      const problems: string[] = state.halt ? [`infrastructure safety ceiling: ${state.halt.reason}; unfinished work retained`] : [];
+      const problems: string[] = [];
       try { await retire(); } catch (error) { problems.push(error instanceof Error ? error.message : 'cleanup uncertain'); }
+      if (state.halt) problems.push(`infrastructure safety ceiling: ${state.halt.reason}; unfinished work retained`);
       let used: number | null = null;
       try { used = calls(); } catch { problems.push('final call accounting unknown or outside reservation'); }
       if (state.inputs.some(input => input.state !== 'settled' || input.outcome?.state !== 'complete')) problems.push('pending or uncertain inputs retained');
