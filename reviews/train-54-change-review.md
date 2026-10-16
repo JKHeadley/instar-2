@@ -30,6 +30,8 @@ Decision: train-54-C | No genuine product conflict and no omitted member. All fi
 Decision: train-54-D | Run targeted tests on the Laptop; name host-dependent failures separately without weakening checks. The desk owns live proof and any native certificate renewal. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-54-PROGRESS.md
 Decision: train-54-desk | Run downloaded repin/build/rehash/replay chain on the composed commit; zero support-source and owner-manifest pins changed. Preserve prompt guard constant and use existing publication machinery. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-54-PROGRESS.md
 
+Decision: train-54-review-order | Move the existing progress-floor register-publication note before its closing block; preserve every word and reviewed implementation. The combined audit found the Rule 116 required closing-field order was broken in the exact reviewed member head. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-54-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merges of exact reviewed heads, existing desk regeneration and targeted consumer checks. No new machinery. Start at the exact live base, retain named safety floors, require committed membership and evidence, and leave deployment and independent acceptance to the desk.
