@@ -22,41 +22,52 @@ const scores = (uncertain: boolean) => ({ model: 'jev-1.13.0', answers: Object.f
   Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: uncertain && id === 'parks_on_user' ? 0.55 : 0.01 }])) });
 
 for (const fixture of captured.held) {
-  // These live turns were held by a reviewer outage (the observed cause); under Rules 77/95 the
-  // truthful notice now reaches the operator once, with the one paid review never repeated.
-  it(`replays held live update ${fixture.update}: one paid review, then its notice is sent once, never held`, async () => {
+  const unknownAnswer = fixture.workerShape.startsWith('ended uncertain');
+  const expectedReviews = unknownAnswer ? 0 : 1;
+  // Preserve the captured outage as history. The exact durable UNKNOWN notice now takes
+  // the holding pass; a rejected answer still takes one paid review (Rules 42/77/95).
+  it(`replays held live update ${fixture.update}: ${expectedReviews} paid reviews, one delivery, never held`, async () => {
     const dir = root(), path = join(dir, 'journal.encrypted');
     try {
       const journal = openPreviewJournal(path, key, genesis());
-      let models = 0, answerCalls = 0, reviews = 0, sends = 0;
+      let models = 0, answerCalls = 0, reviews = 0, sends = 0, jevCalls = 0;
+      const sent: string[] = [];
       const worker = createJournalWorker(journal, { now: () => 1_790_510_000_000, stopped: () => false,
         prepareModel: input => prepareJournalEnvelope(input, 'offline-model', 'grant:offline', 1_790_510_000_000,
           captured.limits.maxBytes),
         model: async input => { models++; if (!input.id.startsWith('summary:')) answerCalls++;
-          return fixture.workerShape.startsWith('ended uncertain')
+          return unknownAnswer
           ? { state: 'uncertain' as const }
           : { state: 'rejected' as const, failureClass: 'rejected' as const }; },
-        replyCheck: { elapsedMs: () => 100, jev: async () => ({ value: scores(true), latencyMs: 15 }),
+        replyCheck: { elapsedMs: () => 100, jev: async () => { jevCalls++; return { value: scores(true), latencyMs: 15 }; },
           escalate: async (_candidate, _id, prompt) => { reviews++;
             expect(prompt).toContain(fixture.text);
             throw Error(fixture.reviewOutcome ? 'review output-cap' : 'review result unknown'); } },
-        checkOutbound: () => {}, send: async () => { sends++; return 1; } });
+        checkOutbound: () => {}, send: async input => { sent.push(input.expectedText); sends++; return 1; } });
       worker.intake([update(fixture.update, fixture.text)]);
       await worker.drain();
       const turn = journal.view.order[0]!;
       expect(turn.raw).toContain(fixture.text);
       expect(fixture.cause).toBe('reply check unavailable');
       expect(turn.held).toBeUndefined();
-      expect(turn.release).toMatchObject({ review: 'unavailable' });
-      expect(turn.answer).toBe(fixture.workerShape.startsWith('ended uncertain') ? undefined : MODEL_FAILURE_REPLY);
-      expect(turn.noticeClass).toBe(fixture.workerShape.startsWith('ended uncertain') ? 'unknown-answer' : undefined);
-      expect(turn.replyChecks?.at(-1)).toMatchObject({ verdict: 'unavailable', path: 'subscription' });
+      if (unknownAnswer) {
+        expect(turn.release).toBeUndefined();
+        expect(turn.replyChecks).toEqual([expect.objectContaining({ verdict: 'pass', path: 'holding' })]);
+      } else {
+        expect(turn.release).toMatchObject({ review: 'unavailable' });
+        expect(turn.replyChecks?.at(-1)).toMatchObject({ verdict: 'unavailable', path: 'subscription' });
+      }
+      expect(turn.modelState).toBe(unknownAnswer ? 'uncertain' : 'rejected');
+      expect(turn.answer).toBe(unknownAnswer ? undefined : MODEL_FAILURE_REPLY);
+      expect(turn.noticeClass).toBe(unknownAnswer ? 'unknown-answer' : undefined);
+      expect(sent).toEqual([unknownAnswer ? UNKNOWN_ANSWER_NOTICE : MODEL_FAILURE_REPLY]);
+      expect(jevCalls).toBe(expectedReviews);
       if (fixture.reviewOutcome) {
         expect(fixture.reviewOutcome).toMatchObject({ role: 'reply-review', localLimit: 'output-cap',
           exitCode: 0, outputTokens: 3617, promptBytes: 79561 });
       }
       expect({ answerCalls, reviews, sends, replies: journal.view.replies })
-        .toEqual({ answerCalls: 1, reviews: 1, sends: 1, replies: 1 });
+        .toEqual({ answerCalls: 1, reviews: expectedReviews, sends: 1, replies: 1 });
       const callsBeforeReplay = journal.view.calls, modelsBeforeReplay = models;
       journal.close();
       const reopened = openPreviewJournal(path, key);
@@ -67,7 +78,7 @@ for (const fixture of captured.held) {
         checkOutbound: () => {}, send: async () => { sends++; return 2; } });
       await resumed.drain();
       expect({ held: reopened.view.order[0]?.held, models, reviews, sends, calls: reopened.view.calls })
-        .toEqual({ held: undefined, models: modelsBeforeReplay, reviews: 1, sends: 1,
+        .toEqual({ held: undefined, models: modelsBeforeReplay, reviews: expectedReviews, sends: 1,
           calls: callsBeforeReplay });
       reopened.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -81,23 +92,25 @@ it('keeps the saved four-hold and three-unknown-review denominator explicit', ()
   expect(captured.held.filter(turn => turn.reviewOutcome?.localLimit === 'output-cap')).toHaveLength(1);
 });
 
-it('releases a loss notice after completed full-context PASS and keeps the answer UNKNOWN', async () => {
+it('sends the exact loss notice without calling an available full-context reviewer and keeps the answer UNKNOWN', async () => {
   const dir = root();
   try {
     const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis());
-    let sent = '';
+    let sent = '', reviews = 0;
     const worker = createJournalWorker(journal, { now: () => 1_790_510_000_000, stopped: () => false,
       prepareModel: input => prepareJournalEnvelope(input, 'offline-model', 'grant:offline', 1_790_510_000_000,
         captured.limits.maxBytes),
       model: async () => ({ state: 'uncertain' as const }),
       replyCheck: { elapsedMs: () => 100, jev: async () => ({ value: scores(true), latencyMs: 15 }),
-        escalate: async () => ({ verdict: 'pass' as const, ruleIds: [], confidence: null, latencyMs: 20 }) },
+        escalate: async () => { reviews++; return { verdict: 'pass' as const, ruleIds: [], confidence: null, latencyMs: 20 }; } },
       checkOutbound: () => {}, send: async input => { sent = input.expectedText; return 7; } });
     worker.intake([update(969389576, captured.held[0]!.text)]);
     await worker.drain();
     expect(journal.view.order[0]).toMatchObject({ modelState: 'uncertain', sent: 7 });
     expect(journal.view.order[0]?.held).toBeUndefined();
-    expect(sent).toBe(`${UNKNOWN_ANSWER_NOTICE}`);
+    expect(sent).toBe(UNKNOWN_ANSWER_NOTICE);
+    expect(reviews).toBe(0);
+    expect(journal.view.order[0]?.replyChecks).toEqual([expect.objectContaining({ verdict: 'pass', path: 'holding' })]);
     journal.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
