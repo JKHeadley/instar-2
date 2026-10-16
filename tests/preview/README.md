@@ -1595,6 +1595,20 @@ promise. Meaning remains the model's decision. The encrypted send intent records
 admitted promises and fulfillment ids. A promise closes only after the complete reply is
 API-accepted; an unknown or refused send leaves it open. Replay preserves that outcome.
 
+The existing retrospective pass also reconciles missing work while grading delivered replies.
+It sees the whole final reply, its request, later messages and the conversation's existing
+commitments. Its `promises` grade field uses the same proposal shape, including undated
+future work; an empty list records inspection. Missing or malformed reconciliation leaves
+the case owed. Older grades receive this inspection on the existing review cadence.
+The durable grade admits supported work into the same commitment population with an agent
+owner and a declared wait. An existing unscheduled undated promise receives its first work
+cadence without a second task; closed, dated and already scheduled work keep their state.
+Quotes, hypotheticals, refusals, user-owned work and restatements require no new agent task.
+The model decides those meanings; code checks delivery, exact quotes and identity. Neither
+summary/review uncertainty nor an empty or partial delivery supplies promise evidence.
+Reconciliation adds no model call or send authority. Existing stop, spend and work admission
+hold, and finished results retain the existing delivery rules.
+
 A readable answer with an invalid promise, fulfillment, or dated-item declaration uses the
 same single format re-ask as an unreadable answer. The runner supplies the exact validation
 defect in the packet and keeps the operator message unchanged. It never repairs a citation
