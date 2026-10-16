@@ -384,7 +384,8 @@ it('the review reads the register as recorded facts, named by three rules; Jev k
   expect(REPLY_RULES.parks_on_user).toMatch(/A credential or renewal step that no entry records has no such record\./u);
   expect(REPLY_RULES.self_state_claim).toMatch(/packet\.capabilities, packet\.credentialRegister, the recorded history/u);
   for (const rule of ['credential', 'parks_on_user'] as const) expect(jevQuestions[rule]?.instructions).not.toContain('credentialRegister');
-  expect(jevQuestions.parks_on_user?.instructions).toBe('The writer hands back to the reader a task the writer could have completed themselves.');
+  expect(jevQuestions.parks_on_user?.instructions).toContain('The writer transfers doable work to the reader');
+  expect(jevQuestions.parks_on_user?.instructions).not.toContain('packet.credentialRegister');
   // The neighbouring turn's verdict on the same line: the reviewer itself judged it public once already.
   expect(recorded.neighbour.credentialFinding.verdict).toBe('pass');
 });

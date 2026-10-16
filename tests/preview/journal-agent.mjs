@@ -2265,7 +2265,8 @@ async function main() {
         // The mind's one response to the objections on its draft: same envelope and grounding packet as review,
         // one disposition per objection, inside the loop's shared deadline.
         revise: async ({ text, id, originalPrompt, ruleIds, reason, objections = ruleIds, findings, deadlineAt }) => {
-          const context = replyReviewContext(originalPrompt, text, ruleIds, undefined, credentialRegister());
+          // Revision needs the same admitted evidence as review: preserve a real limit and use prior tool results.
+          const context = replyReviewContext(originalPrompt, text, ruleIds, declaredObligations(journal.view, id, wallNow()), credentialRegister());
           // Rule 29: the revision input (the objected draft in its review context) is written by the runner.
           const writer = envelopeWriter(journal.systemWriter('reply-review', `${id}:reply-revision\n${context}`, wallNow()));
           const prepared = modelEnvelope({ question: replyRevisionQuestion(objections, reason, findings), context, id: `${id}:reply-revision`,
