@@ -20,6 +20,8 @@ Hook bypass: none; core.hooksPath unset, inspected common hooks directory contai
 Convergence: none
 Decision: crashloop-native-renewal | Run the declared native contract on Darwin, renew only for its unchanged measured composition after behavioral success, and regenerate the existing publication. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/crashloop-pause-1016-repair-PROGRESS.md
 
+Register publication: mechanically replayed from committed native declaration 09ba3a225bd68a6d1e42cded06b44f55f29ad47e. Desk rehash and grounding-chain helpers each refreshed zero pins.
+
 simplestRobustRoute: this is the simplest robust route: existing native contract, existing closure/digest functions, exact evidence renewal and register replay. Complete closure and exact runtime guard entry; successful behavioral assertions before renewal and all ten assertions afterward guard the end state. Existing stop, caps, confinement and admission checkpoints retain their floors. No new mechanism or live-provider claim.
 80/20: before renewal, 9/10 native cases passed with only the stale certificate assertion failing; after renewal, 10/10 passed. Typecheck, build and architecture passed. The full suite remains with the pipeline; final lint, register and change-review checks validate publication.
 VERDICT: author submission; no independent convergence or live acceptance asserted
