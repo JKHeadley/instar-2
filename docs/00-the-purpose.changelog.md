@@ -4,6 +4,10 @@ _Generated from `00-the-purpose.changelog.json` by `scripts/render-changelog.mjs
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 15 · 2026-10-15 · draft — Justin, topic 102965, 2026-10-15 16:59 PDT: "Yes!", answering the observer’s 16:58 proposal; origin: Justin 16:20 on concurrent sessions contradicting each other on 2026-10-14. Final-head GitHub code-owner approval and merge pending.
+
+- **Make the Coherency pillar explicitly include sessions running at the same time.** — Across sessions can be read as sequential continuity; the approved amendment includes concurrent awareness. _(Justin, topic 102965, 2026-10-15 16:59 PDT: "Yes!", answering the observer’s 16:58 proposal; origin: Justin 16:20 on concurrent sessions contradicting each other on 2026-10-14. Final-head GitHub code-owner approval and merge pending.)_
+
 ## Revision 14 · 2026-10-13 · draft — Justin, 2026-10-13 20:00 PDT, owner ruling in amend-single-machine-1013-brief.txt: a single-machine agent is fully functional; replication requirements begin with a second enrolled machine. Exact-head owner Approve on the pull request remains pending.
 
 - **Replace the closed provider/reply set with local-durable execution for every operation the granted role calls for; retain the complete cause before the effect, one-time accepted loss model, safety floors, effect uniqueness and no automatic fallback after peer loss.** — The closed set contradicts full single-machine functionality and excludes role-covered reminders, account actions and irreversible file writes. The general principle preserves the safeguards without a deployment-specific enumeration. _(Justin, 2026-10-13 20:00 PDT, owner ruling in amend-single-machine-1013-brief.txt: a single-machine agent is fully functional; replication requirements begin with a second enrolled machine. Exact-head owner Approve on the pull request remains pending.)_

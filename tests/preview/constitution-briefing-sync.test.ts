@@ -31,6 +31,12 @@ describe('the briefed constitution matches the repository', () => {
     const missing = (path: string) => read(path).split('\n').filter(line => !line.startsWith('| 87 |')).join('\n');
     expect(() => sourcePacket(missing, SOURCE_PINS, limits)).toThrow('source excerpt rules:87 absent');
   });
+  it('delivers concurrent coherency and refuses the prior sequential-only wording', () => {
+    const source = sourcePacket(read, SOURCE_PINS, limits).sources.find(source => source.id === 'purpose:coherency');
+    expect(source?.text).toContain('across sessions, including at the same time,');
+    const stale = (path: string) => read(path).replace('across sessions, including at the same time,', 'across sessions,');
+    expect(() => sourcePacket(stale, SOURCE_PINS, limits)).toThrow('source excerpt purpose:coherency changed');
+  });
   it('every quoted constitutional excerpt matches its pinned digest', () => {
     expect(() => sourcePacket(read, SOURCE_PINS, { providerAttempts: 1, expiresAt: Date.now() + 60_000 })).not.toThrow();
   });
