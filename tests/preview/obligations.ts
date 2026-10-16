@@ -62,6 +62,8 @@ export interface LoopHealth { open: number; byKind: Record<LoopKind, number>; re
   workInFlight: number; awaitingDelivery: number; scheduledWork: number; nextWorkAt: number | null;
   /** Results bound to a reply whose send has no receipt: UNKNOWN, visible, never resent or counted as delivered. */
   deliveryUnknown: number;
+  /** Active steps past the no-result bound; start evidence survives replay. A signal, never closure or permission to retry. */
+  stalledWork: { key: string; since: number; ageMs: number }[];
   /** Completed results whose obligation was withdrawn/closed without delivery; retained, never sent. */
   withdrawnResults: number;
   /** A lost session may already have acted. It remains owned, visibly halted, never replayed. */
@@ -94,7 +96,11 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
   const awaitingDelivery = schedule.filter(item => item.awaitingDelivery).length;
   const waitingWork = idle.flatMap(item => { const work = view.obligationWork[item.key];
     return work?.waitsOn !== undefined && item.slot > now ? [{ key: item.key, waitsOn: work.waitsOn, need: work.note ?? '' }] : []; });
-  const workInFlight = schedule.filter(item => item.inFlight).length;
+  const active = schedule.filter(item => item.inFlight).map(item => ({ key: item.key,
+    since: view.obligationWork[item.key]!.last }));
+  const workInFlight = active.length;
+  const stalledWork = active.map(item => ({ ...item, ageMs: Math.max(0, now - item.since) }))
+    .filter(item => item.ageMs > PROGRESS_STALL_MS);
   const recoveryUnknown = schedule.filter(item => view.obligationWork[item.key]?.recoveryHeld).length;
   const requestsAt = loops.filter(loop => loop.kind === 'request').map(loop => loop.nextAt!);
   const wakeAt = [...future.map(item => item.slot), ...requestsAt.filter(at => at > now),
@@ -102,7 +108,7 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
       .map(item => view.obligationWork[item.key]!.last + loopRevisitMs(view))];
   // A started step is unfinished until its result lands: an interrupted one stays visible to health and the exit.
   const waiting = [...turns.map(turn => turn.at), ...due.map(item => item.slot),
-    ...schedule.filter(item => item.inFlight).map(item => item.slot)].sort((a, b) => a - b);
+    ...active.map(item => item.since)].sort((a, b) => a - b);
   const oldestAt = waiting[0];
   const worked = Object.values(view.obligationWork).filter(work => work.inFlight === undefined && work.outcome !== undefined
     && work.outcome !== 'uncertain' && work.outcome !== 'failed').map(work => work.last);
@@ -129,7 +135,7 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
     overdueRequests: loops.filter(loop => loop.defect === 'overdue-request').length,
     undeclared: loops.filter(loop => loop.defect === 'undeclared-dependency').length, refusedCommitments: view.commitmentRefusals,
     unfinished: waiting.length, unansweredTurns: turns.length, dueWork: due.length,
-    workInFlight, awaitingDelivery, scheduledWork: future.length,
+    workInFlight, stalledWork, awaitingDelivery, scheduledWork: future.length,
     withdrawnResults: Object.entries(view.obligationWork).filter(([key, work]) => work.report && !work.report.delivered
       && key.startsWith('commitment:') && !commitmentOpen(view, Number(key.slice(11)))).length,
     deliveryUnknown: schedule.filter(item => item.deliveryUnknown).length, recoveryUnknown, waitingWork,
@@ -168,7 +174,10 @@ export function loopStatusLines(view: JournalView, now: number): string[] {
       : `Backlog: none${health.inhibition ? `; ${health.inhibition}` : ''}.`,
     `Progress: ${health.state}; last ${health.progressAgeMs === null ? 'none yet' : `${age(health.progressAgeMs)} ago`}.`,
     ...(health.lastAttemptAt === null ? [] : [`Last work attempt: ${age(Math.max(0, now - health.lastAttemptAt))} ago; ${health.lastAttemptOutcome}; ${health.failedAttempts} failed attempts.`]),
-    `Scheduled work: ${health.scheduledWork} waiting for their time${health.workInFlight ? `, ${health.workInFlight} in progress` : ''}${health.deliveryInhibition ? `; ${health.deliveryInhibition}` : ''}.`,
+    `Scheduled work: ${health.scheduledWork} waiting for their time${health.deliveryInhibition ? `; ${health.deliveryInhibition}` : ''}.`,
+    ...(health.workInFlight ? [`Active work: ${health.workInFlight}; ${health.stalledWork.length
+      ? `${health.stalledWork.length} stalled without a recorded result for over ${age(PROGRESS_STALL_MS)} (${health.stalledWork.slice(0, 3).map(item => item.key).join(', ')}${health.stalledWork.length > 3 ? ', …' : ''})`
+      : `all within the ${age(PROGRESS_STALL_MS)} no-result bound`}.`] : []),
     ...health.waitingWork.slice(0, 3).map(item => `Waiting on ${item.waitsOn === 'operator' ? 'you' : 'an outside party'}: ${item.need}`),
     ...(health.withdrawnResults ? [`Withdrawn results: ${health.withdrawnResults} retained without delivery; not sent or counted as delivered.`] : []),
     ...(health.deliveryUnknown ? [`Delivery unknown: ${health.deliveryUnknown} finished ${health.deliveryUnknown === 1 ? 'result was' : 'results were'} sent without a confirmed receipt; not resent and not counted as delivered.`] : []),

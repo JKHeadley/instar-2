@@ -4385,3 +4385,14 @@ pinned profile, including the executable artifact. Changed profiles/artifacts re
 checks are discarded. The observation is process-local and disappears on restart. It does not
 cache authorization or authentication: every invocation still checks the current artifact,
 authority, stop, login identity and `auth status --json` before dispatching its model command.
+
+
+### Active obligation progress on the status surface
+
+The existing journal-derived status marks an active obligation step stalled after more than
+30 minutes without a recorded result. It ages both commitment steps and blocker rechecks from
+the durable start, not a scheduling slot or another conversation reply. The bounded status line
+shows the count and up to three obligation identities; the JSON health view retains every stalled
+item and its start/age. Future scheduled steps, accounted waits and finished results are separate
+states. This is a pull-only signal: it never closes work, replays an uncertain effect, or kills a
+worker. A restart reconstructs it from the same journal, with no new store or service.
