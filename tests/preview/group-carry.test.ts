@@ -172,7 +172,13 @@ it('replays the real proof-room journal including uncertain summaries and reply 
   const selected = JSON.parse(packet.context).predecessorMemory;
   expect(selected.entries.length + selected.omitted).toBe(memory.entries.length);
   expect(selected.entries.length).toBeGreaterThan(0);
-  for (const entry of selected.entries) expect(memory.entries).toContainEqual(entry);
+  for (const entry of selected.entries) {
+    const { at: rendered, ...unchanged } = entry;
+    expect(memory.entries).toContainEqual({ ...unchanged, at: expect.any(Number) });
+    expect(rendered).toMatch(/^2026-09-\d{2} \d{2}:\d{2} PDT$/u);
+  }
+  expect(selected.entries).toContainEqual(expect.objectContaining({ kind: 'reminder',
+    source: 'telegram:8994258214:update:715672494', at: '2026-09-29 14:40 PDT' }));
   expect(destination.view.calls).toBe(0); expect(destination.view.replies).toBe(0);
   expect(destination.view.summaryReservations.size).toBe(0);
   expect(readFileSync(path)).toEqual(sourceBytes);

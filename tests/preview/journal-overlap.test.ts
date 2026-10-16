@@ -36,14 +36,14 @@ it('a second running owner of the same conversation appears with its identity an
     launch('other-bot', { process: 'present', conversation: 'telegram/bot-1/chat-2' }),
   ]);
   expect(value.rows[0]).toEqual({ owner: 'runner-live', you: true, state: 'running', conversation: CONVERSATION,
-    since: '2026-09-28T11:59Z' });
+    since: '2026-09-28 04:59 PDT' });
   // The awareness view's overlap: the shared, high-specificity conversation tag.
   expect(rowOf(value, 'runner-second')).toEqual({ owner: 'runner-second', state: 'running', conversation: CONVERSATION,
-    launched: '2026-09-28T11:00Z', sharesWithYou: [CONVERSATION] });
+    launched: '2026-09-28 04:00 PDT', sharesWithYou: [CONVERSATION] });
   expect(rowOf(value, 'other-bot')).toMatchObject({ state: 'running' });
   expect(rowOf(value, 'other-bot').sharesWithYou).toBeUndefined();
   // An exit row is stopped with its recorded reason; no exit and a gone process is stale; unchecked is unknown.
-  expect(rowOf(value, 'canary-stopped')).toMatchObject({ state: 'stopped', ended: '2026-09-28T11:30Z', endReason: 'paused by signal SIGTERM' });
+  expect(rowOf(value, 'canary-stopped')).toMatchObject({ state: 'stopped', ended: '2026-09-28 04:30 PDT', endReason: 'paused by signal SIGTERM' });
   expect(rowOf(value, 'canary-crashed')).toMatchObject({ state: 'stale' });
   expect(rowOf(value, 'canary-crashed').ended).toBeUndefined();
   expect(rowOf(value, 'canary-unchecked')).toMatchObject({ state: 'unknown' });
@@ -152,7 +152,7 @@ it('replays the recorded P114b packet: a runner relaunched after a process snaps
   const justin = latestOwnedLaunch('justin-20261003-1046', log);
   expect(justin).toEqual({ owner: 'justin-20261003-1046', launch: at.launch, pid: 73747, conversation: 'telegram/bot-8820318295/chat-7812716706' });
   // At the send its pid was that root's runner: running, as the recorded packet showed.
-  expect(rowOf(view(log, 'present'), 'justin-20261003-1046')).toMatchObject({ state: 'running', launched: '2026-10-04T11:26Z' });
+  expect(rowOf(view(log, 'present'), 'justin-20261003-1046')).toMatchObject({ state: 'running', launched: '2026-10-04 04:26 PDT' });
   // Had it been killed without an exit row, the same log reads stale; it is never running without its process.
   expect(rowOf(view(log, 'absent'), 'justin-20261003-1046').state).toBe('stale');
   expect(rowOf(view(log, 'unknown'), 'justin-20261003-1046').state).toBe('unknown');

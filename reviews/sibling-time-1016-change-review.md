@@ -20,15 +20,19 @@ Hook bypass: none
 Convergence: none
 Decision: sibling-time-render | render only model context dates using the existing configured zone; preserve raw journal and date-resolution protocol instants | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sibling-time-1016-PROGRESS.md
 Decision: sibling-time-audit | accept exact old UTC and new local audit shapes while rejecting mislabeled UTC clocks; update affected packet pins without rewriting captures | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sibling-time-1016-PROGRESS.md
+Decision: sibling-time-fixture-budget | increase the raw recall fixture by 512 bytes so its prior-turn exposure neighbor remains present with zoned labels, retaining all assertions and production limits | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sibling-time-1016-PROGRESS.md
 Prompt review: real recorded summary, uncertain summary, Jev undecided/unsure, reply-review, delivered and empty reply shapes are replayed by journal-topic-sessions with local times asserted in delivered input. twosession-1015.json.gz updates 715676486 and 715676488 replay actual packet construction, output parsing and review with Pacific sibling times asserted. No new live-provider success or live Telegram proof claimed.
 Prompt finding: 849db3a6296a | protocol-literal | existing saved-memory response in journal.ts, unchanged.
 Prompt finding: e8708c7fea24 | protocol-literal | existing memory source-label guidance in journal.ts, unchanged.
 
 Prompt finding: 4106b49fff07 | protocol-literal | unchanged historical grounding instruction restored by the pre-existing topic-awareness packet-pin test, not a new model trigger.
 
+Validation: targeted packet/dispatch tests and repaired date expectations pass; typecheck, build, architecture, lint and register checks passed. Broader consumer evidence and host-specific limitations are recorded in the report.
+
+Prompt finding: 450c79237a95 | protocol-literal | existing disambiguation instruction in the person-history test; only timestamp expectations changed.
+
 ## Closing block
 
 simplestRobustRoute: this is the simplest robust route: render existing timestamps with Intl in the already-configured operator zone at the context boundary. No new config, clock, journal field, watcher or model call. It prevents the observed UTC-as-Pacific error without asking the model to do timezone conversion. Start guards remain audience and receipt verification; the end state is local zoned text in the actual dispatch; limits remain existing measured packet budgets. No autonomous shipped-path completion claim.
 80/20: prove PDT, PST and UTC neighbors, actual dispatch wiring and recorded model shapes; run targeted consumers and required machine checks before desk gate. No independent convergence claimed.
-Validation: targeted packet/dispatch tests and repaired date expectations pass; typecheck, build, architecture, lint and register checks passed. Broader consumer evidence and host-specific limitations are recorded in the report.
 VERDICT: author submission; independent desk review pending

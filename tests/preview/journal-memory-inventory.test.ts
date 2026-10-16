@@ -57,12 +57,12 @@ it('replays a source-dated inventory of people, correction, forgotten marker, co
     expect(new Set(items.map(item => item.kind))).toEqual(new Set(['person', 'forgotten', 'correction', 'commitment', 'channel', 'dated']));
     expect(items.every(item => item.source && item.date)).toBe(true);
     expect(items.find(item => item.kind === 'person')).toMatchObject({ source: 'telegram update 1',
-      date: '2026-09-21T14:14Z', text: 'Sam is my colleague.' });
+      date: '2026-09-21 07:14 PDT', text: 'Sam is my colleague.' });
     expect(items.find(item => item.kind === 'forgotten')).toMatchObject({ source: 'telegram update 4',
       status: 'withheld at verified operator request' });
     expect(items.find(item => item.kind === 'correction')).toMatchObject({ source: 'telegram update 7',
       text: 'Sam works in design.' });
-    expect(items.find(item => item.kind === 'channel')).toMatchObject({ from: 'sam@example.test', date: '2026-09-21T14:15Z' });
+    expect(items.find(item => item.kind === 'channel')).toMatchObject({ from: 'sam@example.test', date: '2026-09-21 07:15 PDT' });
     expect(packet.inventory.truncated).toBe(false);
     expect(withoutCorrectedHistory(JSON.stringify(packet))).not.toContain('3310');
     expect(withoutCorrectedHistory(JSON.stringify(packet))).not.toContain('Sam works in sales.');

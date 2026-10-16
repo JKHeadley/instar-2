@@ -176,7 +176,7 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     constraints['reply-only-grant'] = capabilities.sends;
     // sibling-words: only cross-topic operator questions are omitted from reply
     // candidates. Assert both audiences, then restore just those fixture fields
-    // in this comparison copy; both original hashes below must still match.
+    // in this comparison copy; the reviewed local-timestamp hashes below must still match.
     const candidates = historical.memoryCandidates as { id: string; message: string }[];
     const siblingCandidates = candidates.filter(item => view.turns.get(item.id)?.thread === 7);
     expect(siblingCandidates.map(item => item.id)).toEqual([
@@ -190,13 +190,14 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
         item.message = source.text;
       } else expect(item.message).toBe(source.text);
     }
+    // sibling-time: re-pin only after inspecting the local timestamp rendering; archived input bytes stay intact.
     const historicalText = JSON.stringify(historical);
     const withoutLookup = JSON.parse(historicalText) as Record<string, unknown>;
     expect(withoutLookup.memoryLookup).toBe('offered');
     delete withoutLookup.memoryLookup;
     expect(createHash('sha256').update(JSON.stringify(withoutLookup)).digest('hex'))
-      .toBe('8a05c5653e21121e105e86196e583d0dd8302a69a4f0ca98d00178fe0b5e365f');
-    expect(createHash('sha256').update(historicalText).digest('hex')).toBe('c4e38b84aac2b45e1459951080dc3ed26998db51113f68505c91d9aa9f024c5a');
+      .toBe('45dc0fc9df68ed6b8b4cd84eadab97ca4ce70ba410620caa81e1c94a716183a2');
+    expect(createHash('sha256').update(historicalText).digest('hex')).toBe('be8bfe3e3202091493c89638a244f846703a4131d1ddc31a1baf133ff193b5c9');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];
