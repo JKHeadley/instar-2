@@ -51,6 +51,19 @@ Its tests include the real production session driver over simulated physical I/O
 not a live harness or Telegram proof. The journal launcher wiring below is step 1;
 foundation intake/effect/judgment integration remains in the later plan steps.
 
+An admitted session at an idle quota wall retains its accepted input and original
+turn deadline while the driver waits 30 seconds, then submits at most one neutral
+continuation of the same turn. The existing journal records intent before terminal
+input; an uncertain submission is never retried, including after host restart.
+The original admission, call allowance and effect identities remain in force.
+Compaction-owned sessions and uncertain intake are excluded. An open recovery keeps
+the turn open for idle cleanup; emergency stop and the independent deadline still
+win. A repeated throttle after a five-second observation window returns the existing
+typed pause, so the login pool can select capacity for subsequent work. Completion
+still requires the driver's existing evidence, never transcript growth or elapsed
+backoff. Unconfined sessions retain observation only because they lack the admitted
+effect and model-call floors required for autonomous continuation (Rules 1, 55, 60).
+
 The host must call `close()` at shutdown, expiry or idle stop. Closing waits for
 pending admission to return before releasing its lease, preventing a late resource
 allocation from escaping cleanup. A failed turn closes admission, stops the exact

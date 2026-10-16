@@ -18,6 +18,9 @@ export interface SessionRecord {
   readonly closedAt: number | null; readonly turnBaseline?: string; readonly turnReceiptIds?: readonly string[];
   readonly continuation?: SessionContinuation;
   readonly turnCloseEvidence?: string | null;
+  /** One neutral continuation per admitted turn; intent survives host loss before input.
+   * The original deadline remains the brake and open-turn/reaper exclusion. */
+  readonly rateRecovery?: Readonly<{ dueAt: number; state: 'waiting' | 'sending' | 'accepted'; submittedAt?: number }> | null;
 }
 export interface SessionContinuation {
   readonly text: string; readonly source: string; readonly state: 'prepared' | 'sending' | 'accepted' | 'completed';
@@ -287,6 +290,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const started = config.now();
     const deadline = started + config.turnDeadlineMs;
     const armed = { ...session, recovery, turnStartedAt: started, turnDeadline: deadline, closedAt: null, turnCloseEvidence: null,
+      rateRecovery: null,
       turnBaseline: digestOf(capture(session.name)),
       turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
         .flatMap(row => row.receiptId ? [row.receiptId] : []) };
@@ -510,6 +514,50 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           config.observeActivity?.({ subject: session.claim, at: config.now(), progress: pane.trim() ? digestOf(pane) : null,
             wait: classifyStuckSignature(pane) });
         } catch { /* An advisory observer cannot fail the worker; its last sample becomes stale/unknown. */ }
+        // Keep the same admitted turn, claim, effect identities and deadline. A throttle
+        // Stop receipt is not completion. Never replay the original input or a lost nudge.
+        const rate = session.rateRecovery;
+        const throttled = classifyStuckSignature(pane) === 'rate-limited';
+        if (session.turnDeadline !== null && config.now() < session.turnDeadline
+          && admitted && session.recovery === 0 && (!session.continuation || session.continuation.state === 'completed')
+          && (rate || throttled && classifyPaneIdle(pane, config.framework)
+            && digestOf(pane) !== session.turnBaseline
+            && config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1)?.state === 'accepted')) {
+          if (!rate && config.now() + 30_000 < session.turnDeadline) {
+            config.io.save(replaceSession(config.io.load(), { ...session,
+              rateRecovery: { dueAt: config.now() + 30_000, state: 'waiting' },
+              turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
+                .flatMap(row => row.receiptId ? [row.receiptId] : []), turnStartedAt: config.now() }));
+            return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit recovery waiting' };
+          }
+          if (rate?.state === 'sending')
+            return { phase: 'uncertain' as const, evidence: session.identity, detail: 'rate-limit continuation delivery uncertain; no resend' };
+          if (rate?.state === 'waiting' && classifyStuckSignature(pane) !== null) {
+            if (config.now() < rate.dueAt || !classifyPaneIdle(pane, config.framework)
+              || classifyStuckSignature(pane) !== 'rate-limited')
+              return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit recovery waiting' };
+            // Durable before touching the terminal. Capture old Stop receipts so none can
+            // close the continued turn; the driver still requires its normal completion evidence.
+            const sending = { ...session, rateRecovery: { ...rate, state: 'sending' as const, submittedAt: config.now() },
+              turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
+                .flatMap(row => row.receiptId ? [row.receiptId] : []), turnStartedAt: config.now(),
+              turnBaseline: digestOf(pane) };
+            config.io.save(replaceSession(config.io.load(), sending));
+            sendText(sending, 'Continue the same interrupted turn from its recorded state. Do not repeat completed actions or sends; leave uncertain actions unresolved.');
+            config.io.save(replaceSession(config.io.load(), { ...sending,
+              rateRecovery: { ...sending.rateRecovery, state: 'accepted' } }));
+            return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit continuation submitted' };
+          }
+          if (rate?.state === 'accepted' && throttled) {
+            if (config.now() < rate.submittedAt! + 5_000)
+              return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit continuation pending' };
+            return { phase: 'pause-observed' as const, evidence: session.identity, detail: 'rate-limited' };
+          }
+        }
+        if (rate && session.turnDeadline !== null && config.now() >= session.turnDeadline) {
+          run(['kill-session', '-t', literalTarget(session.name)]);
+          return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'per-turn deadline exceeded' };
+        }
         if (config.requireTurnHook && session.turnCloseEvidence)
           return { phase: 'output-observed' as const, evidence: session.turnCloseEvidence, detail: 'recorded Stop hook closed turn' };
         const hook = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'

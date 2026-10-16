@@ -15,7 +15,8 @@ import type { ProductionSessionConfig, SessionIO, SessionJournal } from '../../s
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const fixtureRoots: string[] = [];
 afterEach(() => { for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: Readonly<{ launchVia?: readonly string[]; requireTurnHook?: boolean; observeActivity?: NonNullable<ProductionSessionConfig['observeActivity']> }> = {}) {
+function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: Partial<Pick<ProductionSessionConfig,
+  'confinement' | 'toolAdmission' | 'modelGate' | 'turnDeadlineMs' | 'launchVia' | 'requireTurnHook' | 'observeActivity'>> = {}) {
   const f = assemblyRuntimeFixture(); let now = 1000, stopped = false, pane = '❯ ', sends = 0;
   const root = mkdtempSync(join(tmpdir(), 'instar-session-test-')); fixtureRoots.push(root);
   const homes = { a: join(root, 'login-a'), b: join(root, 'login-b') };
@@ -84,6 +85,142 @@ function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: 
     markPrepared: () => { journal = { ...journal, deliveries: journal.deliveries.map(row => ({ ...row, state: 'prepared' })) }; },
     stop: () => { stopped = true; }, time: (value: number) => { now = value; }, config };
 }
+
+const rateConfig = { turnDeadlineMs: 120_000, requireTurnHook: true,
+  confinement: 'admitted' as const, toolAdmission: { command: () => '/hook', timeoutSeconds: 10 },
+  modelGate: () => 'http://127.0.0.1:1234/' + 'a'.repeat(32) + '/claim' };
+const recordedLimit = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8')).result as string;
+it('continues a throttled turn once after backoff, preserving its intake and original deadline across driver restart', () => {
+  const f = fixture('claude-code', rateConfig);
+  const id = f.launch(); value(f.deliver(id));
+  const limited = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8'));
+  f.changePane(`${limited.result}\n❯ `);
+  const observe = (driver = f.driver) => value(driver.observe({ operation: 'deliver', processIdentity: id }));
+  expect(observe()).toMatchObject({ phase: 'launched', detail: 'rate-limit recovery waiting' });
+  const deadline = f.journal.sessions[0]?.turnDeadline;
+  const before = f.sends;
+  f.time(30_999); expect(observe().phase).toBe('launched'); expect(f.sends).toBe(before);
+  f.time(31_000);
+  const restarted = createProductionSessionDriver(f.config);
+  expect(observe(restarted)).toMatchObject({ phase: 'launched', detail: 'rate-limit continuation submitted' });
+  expect(f.journal.sessions[0]?.turnDeadline).toBe(deadline);
+  expect(f.journal.deliveries).toHaveLength(1);
+  expect(f.calls.filter(call => call[0] === 'send-keys' && call.includes('hello'))).toHaveLength(1);
+  const after = f.sends;
+  expect(observe(restarted).phase).toBe('launched'); expect(f.sends).toBe(after);
+  f.changePane('answer\n❯ '); f.hook(31_001); f.time(31_001);
+  expect(observe(restarted).phase).toBe('output-observed');
+});
+
+it('does not count a throttle Stop as completion and exposes a repeated throttle without a second nudge', () => {
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  f.changePane(`${recordedLimit}\n❯ `); f.hook(1000);
+  const observe = () => value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  expect(observe().phase).toBe('launched');
+  refused(f.driver.recoverContext(id), 'idle prompt');
+  f.time(31_000); expect(observe().phase).toBe('launched');
+  const sends = f.sends;
+  f.hook(31_001); f.time(36_000);
+  expect(observe()).toMatchObject({ phase: 'pause-observed', detail: 'rate-limited' });
+  expect(observe().phase).toBe('pause-observed'); expect(f.sends).toBe(sends);
+  expect(f.journal.sessions[0]?.turnDeadline).toBe(121_000);
+});
+
+it('never retries a neutral continuation whose terminal delivery is uncertain after restart', () => {
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  f.changePane(`${recordedLimit}\n❯ `);
+  value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  f.time(31_000); f.failNextSend();
+  refused(f.driver.observe({ operation: 'deliver', processIdentity: id }), 'simulated process death');
+  expect(f.journal.sessions[0]?.rateRecovery?.state).toBe('sending');
+  const sends = f.sends, restarted = createProductionSessionDriver(f.config);
+  expect(value(restarted.observe({ operation: 'deliver', processIdentity: id })).phase).toBe('uncertain');
+  expect(f.sends).toBe(sends);
+});
+
+it('accepts genuine completion during the wait without injecting a continuation', () => {
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  f.changePane(`${recordedLimit}\n❯ `); f.hook(1000);
+  value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  const sends = f.sends;
+  f.time(2000); f.changePane('completed answer\n❯ '); f.hook(2000);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).phase).toBe('output-observed');
+  expect(f.sends).toBe(sends);
+});
+
+it('the conversation adapter returns one answer for the original input after bounded throttle recovery', async () => {
+  const f = fixture('claude-code', rateConfig); let result: string | null = null;
+  const adapter = createSessionConversationAdapter({ createDriver: () => f.driver,
+    resolveDelivery: () => undefined, io: {
+      clearResult: () => { result = null; }, readResult: () => result, modelCalls: () => 2,
+      prepareAdmission: () => undefined, admissionState: () => ({ refused: false, openDelegations: [] }),
+      closeAdmission: () => undefined, wait: async () => undefined,
+    } });
+  const worker = await adapter.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test',
+    incarnation: 'inc', workingScope: '/work' });
+  const delivery = { ...worker, operation: 'deliver', text: 'hello', digest: hash('hello'),
+    resultPath: '/work/result', maxBytes: 1000 };
+  expect((await adapter.deliver(delivery)).state).toBe('accepted');
+  f.changePane(`${recordedLimit}\n❯ `); f.hook(1000);
+  const observe = (cursor = 0) => adapter.observe({ ...worker, delivery, cursor, limit: 2 });
+  expect((await observe()).observations).toEqual([]);
+  f.time(31_000); expect((await observe()).observations).toEqual([]);
+  result = 'The requested result'; f.changePane('answer\n❯ '); f.time(31_001); f.hook(31_001);
+  const answered = await observe();
+  expect(answered.observations).toEqual([
+    { kind: 'reply', delivery: 'deliver', text: result, digest: hash(result) },
+    { kind: 'turn-end', delivery: 'deliver', state: 'completed' },
+  ]);
+  expect((await observe(answered.cursor)).observations).toEqual([]);
+  expect(f.journal.deliveries).toHaveLength(1);
+});
+
+it('replays recorded summary, Jev, review, delivered and empty shapes without treating them as throttles', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8'));
+  const shapes = recorded.otherShapes as { kind: string; id: string; raw: string }[];
+  expect(shapes.map(row => row.kind)).toEqual(['summary-writer', 'summary-uncertain', 'jev-undecided',
+    'jev-unsure', 'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
+  expect(shapes.map(row => row.id)).toEqual(['summary:715672480', '715672483', '715672482', '969389570',
+    '969389923', 'telegram:8994258214:update:715672479', 'telegram:8994258214:update:715672550']);
+  for (const row of shapes) {
+    const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+    f.changePane(row.raw); const sends = f.sends;
+    value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+    expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
+    expect(f.sends).toBe(sends);
+  }
+});
+
+it.each(['stop', 'deadline', 'identity'] as const)('a waiting recovery cannot bypass %s', reason => {
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  f.changePane(`${recordedLimit}\n❯ `);
+  value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  const sends = f.sends;
+  f.time(31_000);
+  if (reason === 'stop') f.stop();
+  if (reason === 'deadline') { f.time(121_000); f.hook(1001); }
+  if (reason === 'identity') f.changeStamp('999:1000');
+  const result = f.driver.observe({ operation: 'deliver', processIdentity: id });
+  if (reason === 'identity') refused(result, 'identity changed');
+  else expect(value(result).phase).toBe('exit-observed');
+  expect(f.sends).toBe(sends);
+});
+
+it.each(['compaction', 'uncertain-input', 'busy', 'unconfined', 'short-deadline'] as const)(
+  'does not start throttle continuation for %s', reason => {
+    const f = fixture('claude-code', reason === 'unconfined' ? { turnDeadlineMs: 120_000 }
+      : { ...rateConfig, ...(reason === 'short-deadline' ? { turnDeadlineMs: 20_000 } : {}) });
+    const id = f.launch(); value(f.deliver(id));
+    if (reason === 'compaction') f.config.io.save({ ...f.journal,
+      sessions: f.journal.sessions.map(row => ({ ...row, recovery: 1 })) });
+    if (reason === 'uncertain-input') f.config.io.save({ ...f.journal,
+      deliveries: f.journal.deliveries.map(row => ({ ...row, state: 'uncertain' })) });
+    f.changePane(`${recordedLimit}\n${reason === 'busy' ? 'Working… (esc to interrupt)' : '❯ '}`);
+    const sends = f.sends;
+    value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+    expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
+    expect(f.sends).toBe(sends);
+  });
 
 it('ports byte bounded tmux chunks, menu precedence, and tail gated stuck signatures', () => {
   expect(chunkLiteralForTmux('🙂'.repeat(3000)).every(part => Buffer.byteLength(part) <= 8000)).toBe(true);
