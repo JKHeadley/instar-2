@@ -6,7 +6,7 @@ import type { ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error Physical launchd watcher is JavaScript.
-import { JOURNAL_INCIDENT_LIMITS, NOTICE_LEDGER_FILE, superviseJournal } from '../../scripts/host-watch.mjs';
+import { JOURNAL_INCIDENT_LIMITS, NOTICE_LEDGER_FILE, resumeJournal, superviseJournal } from '../../scripts/host-watch.mjs';
 
 // Rules 15/53/88 and P-14: an independent supervisor heals the journal runner first, including a runner that
 // is alive but no longer progressing. When self-heal is exhausted it records ONE evidenced incident on the
@@ -187,3 +187,105 @@ it('refuses an alerts destination that is the conversation itself: nothing is se
   expect(episode(root)).toMatchObject({ phase: 'notice-refused', noticeDetail: 'the alerts destination is the conversation route' });
   expect(requests()).toHaveLength(0);
 }, 60000);
+
+
+it('pauses across supervisor relaunches and mixed crash sources until an exact manual resume', async () => {
+  const { root, config } = fixture({ grant: 'deployment:alerts-dm' });
+  Object.assign(config, { maxRestarts: 3, crashWindowMs: 1000 });
+  let at = 100, launches = 0;
+  const io = { now: () => at++, wait: async () => {}, spawnRunner: async () => {
+    launches++;
+    if (launches === 2) throw Error('supervisor killed');
+    return fail;
+  } };
+  await expect(superviseJournal(config, io)).rejects.toThrow('supervisor killed');
+  await superviseJournal(config, { ...io, spawnRunner: script(root, [
+    { code: null, signal: 'launch-error' }, { code: null, signal: 'SIGKILL', hung: true } as Outcome,
+  ], 'crash') });
+  const saved = episode(root);
+  expect(saved.crashLoop).toMatchObject({ pausedAt: expect.any(Number), failures: expect.any(Array) });
+  expect(saved.crashLoop.failures).toHaveLength(3);
+  const bytes = readFileSync(join(root, 'host-watch.json'), 'utf8');
+  at += 10000;
+  await superviseJournal(config, { ...io, spawnRunner: () => { throw Error('paused runner must not launch'); } });
+  expect(readFileSync(join(root, 'host-watch.json'), 'utf8')).toBe(bytes);
+  expect(resumeJournal(config, 'wrong-episode', at)).toBe(false);
+  expect(resumeJournal(config, saved.id, at)).toBe(true);
+  expect(resumeJournal(config, saved.id, at)).toBe(false);
+  expect(episode(root).crashLoop.pausedAt).toBeNull();
+  expect(episode(root).resumed).toMatchObject({ episode: saved.id, at });
+  await superviseJournal(config, { ...io, spawnRunner: script(root, [ok]) });
+});
+
+it('replays recorded runner exits without interpreting worker text as a crash', async () => {
+  const capture = JSON.parse(readFileSync(new URL('../preview/fixtures/installation-relaunch-live-2026-10-07.json', import.meta.url), 'utf8'));
+  const { root, config } = fixture();
+  Object.assign(config, { maxRestarts: 2 });
+  const refusal = capture.runLog.find((row: { reason?: string }) => row.reason === 'refused before launch');
+  expect(refusal).toBeTruthy();
+  const rows = capture.runLog.filter((row: { launch: number }) => row.launch === refusal.launch);
+  writeFileSync(join(root, 'runs.jsonl'), rows.map((row: unknown) => JSON.stringify(row)).join('\n') + '\n');
+  let at = refusal.exit;
+  await superviseJournal(config, { now: () => at++, wait: async () => {}, spawnRunner: script(root, [fail, fail], 'crash') });
+  expect(episode(root).crashLoop.pausedAt).not.toBeNull();
+  expect(episode(root).failures[0].runReason).toBe('refused before launch');
+});
+
+
+it('keeps the stop latch authoritative over manual resume and exposes the paused episode through the real CLI', async () => {
+  const { root, config } = fixture();
+  Object.assign(config, { maxRestarts: 1 });
+  await superviseJournal(config, { now: () => 100, wait: async () => {}, spawnRunner: script(root, [fail], 'crash') });
+  const saved = episode(root);
+  const file = join(root, 'config.json'); writeFileSync(file, JSON.stringify(config));
+  const status = spawnSync(process.execPath, ['scripts/host-watch.mjs', file, 'status'], { encoding: 'utf8' });
+  expect(status.status).toBe(0);
+  expect(JSON.parse(status.stdout)).toMatchObject({ paused: true, episode: saved.id, resume: `resume ${saved.id}` });
+  writeFileSync(join(root, 'preview-stop.json'), JSON.stringify({ reason: 'operator' }));
+  expect(resumeJournal(config, saved.id, 101)).toBe(false);
+  expect(episode(root).crashLoop.pausedAt).toBe(100);
+  expect(spawnSync(process.execPath, ['scripts/host-watch.mjs', file, 'resume', saved.id]).status).toBe(1);
+});
+
+it('carries pre-update failure evidence into the window before granting another launch', async () => {
+  const { root, config } = fixture();
+  Object.assign(config, { maxRestarts: 2 });
+  writeFileSync(join(root, 'host-watch.json'), JSON.stringify({ version: 1, mode: 'journal', open: true,
+    id: 'legacy-episode', phase: 'notice-uncertain', failedAttempts: 2,
+    failures: [{ at: 1, code: 1, signal: null }, { at: 2, code: null, signal: 'launch-error' }] }));
+  await superviseJournal(config, { now: () => 3, spawnRunner: () => { throw Error('must stay paused'); } });
+  expect(episode(root)).toMatchObject({ id: 'legacy-episode', phase: 'notice-uncertain', crashLoop: { pausedAt: 2 } });
+});
+
+it('keeps healthy recorded work completion outside the host crash population', async () => {
+  const capture = JSON.parse(readFileSync(new URL('../preview/fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  const completed = capture.workerRecords.find((row: { record: { type: string } }) => row.record.type === 'SessionWorkEdgeClose');
+  expect(completed.record.state).toBe('complete');
+  const { root, config } = fixture();
+  Object.assign(config, { maxRestarts: 1 });
+  let at = completed.record.closedAt;
+  await superviseJournal(config, { now: () => at++, wait: async () => {}, spawnRunner: async () => {
+    // Recorded worker result and durable work result are not failed host-launch evidence.
+    appendFileSync(join(root, 'runs.jsonl'), JSON.stringify({ v: 1, launch: at, exit: at + 1, revival: 'none',
+      work: [capture.workResult, completed] }) + '\n');
+    return ok;
+  } });
+  expect(existsSync(join(root, 'host-watch.json'))).toBe(false);
+});
+
+it('does not revive expired pre-update failure pressure and retains restart backoff before launching', async () => {
+  const { root, config } = fixture();
+  Object.assign(config, { maxRestarts: 2, crashWindowMs: 100 });
+  writeFileSync(join(root, 'host-watch.json'), JSON.stringify({ version: 1, mode: 'journal', open: true,
+    id: 'legacy-old', phase: 'unbound', failedAttempts: 2,
+    failures: [{ at: 1, code: 1, signal: null }, { at: 2, code: 1, signal: null }] }));
+  let at = 200;
+  await expect(superviseJournal(config, { now: () => at, wait: async () => {},
+    spawnRunner: script(root, [fail], 'crash') })).rejects.toThrow('supervisor killed');
+  expect(episode(root).crashLoop.failures).toHaveLength(1);
+  const due = episode(root).nextLaunchAt;
+  let waited = 0;
+  await superviseJournal(config, { now: () => at, wait: async (_root: string, ms: number) => { waited += ms; at += ms; },
+    spawnRunner: script(root, [], 'stop') });
+  expect(waited).toBe(due - 200);
+});

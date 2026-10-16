@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { recordScheduledCrash } from '../src/scheduled/shedding.ts';
 
 const previewAgent = fileURLToPath(new URL('../tests/preview/agent.mjs', import.meta.url));
 const journalAgent = fileURLToPath(new URL('../tests/preview/journal-agent.mjs', import.meta.url));
@@ -176,7 +177,10 @@ async function waitUnlessStopped(root, milliseconds) {
 /** Journal-runner mode (Rules 15, 53, 55, 68, 88, 89; P-14). This separate process is the consumer of the journal
  * runner's `revival: queued` disposition and restarts it after a failed exit:
  * - a clean exit that leaves queued work is relaunched at once; a crash, refusal or unrecorded end is
- *   relaunched with capped exponential backoff and at most `maxRestarts` consecutive times (Rule 55);
+ *   relaunched with capped exponential backoff. The shared crash population pauses durably at `maxRestarts`
+ *   failures within `crashWindowMs` (10 failures / 10 minutes by default), including hangs, launch refusals
+ *   and rapid queued exits. Supervisor restarts and intervening successes cannot reset the window.
+ *   Only explicit episode-bound resume clears a pause; stop and budget admission remain authoritative;
  * - a runner that is alive but has stopped making progress (no new `runner-beat.json` sequence from its own pid
  *   for `hangAfterMs`, e.g. SIGSTOP or a wedged loop) is killed and counts as a failed launch (Rule 15 gap (a));
  * - `inhibited` (stop, expiry, allowance, signal pause) and `none` end supervision, and the stop latch is
@@ -285,6 +289,8 @@ export async function superviseJournal(config, io = {}) {
     throw Error('host watch: invalid journal configuration');
   const maxRestarts = config.maxRestarts ?? 10, base = config.backoffMs ?? 1000, maximum = config.maxBackoffMs ?? 300000;
   const hangAfterMs = config.hangAfterMs ?? JOURNAL_HANG_LIMITS.hangAfterMs;
+  const crashPolicy = { threshold: maxRestarts, windowMs: config.crashWindowMs ?? 600000 };
+  recordScheduledCrash(null, { at: 0, kind: 'no-work' }, crashPolicy);
   if (![maxRestarts, base, maximum, hangAfterMs].every(Number.isSafeInteger) || maxRestarts < 1 || maxRestarts > 100 || base < 1 || maximum < base
     || hangAfterMs < 50 || hangAfterMs > 3600000)
     throw Error('host watch: invalid journal restart bounds');
@@ -294,21 +300,56 @@ export async function superviseJournal(config, io = {}) {
   const limits = { ...JOURNAL_INCIDENT_LIMITS, ...(config.limits ?? {}) };
   const path = join(config.root, 'host-watch.json');
   const read = () => existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : { version: 1, mode: 'journal', open: false };
-  let failures = 0;
+  let failures = 0, firstLaunch = true;
   while (!journalStopped(config.root)) {
-    const started = now(), outcome = await launch(config);
+    let previous = read();
+    if (previous.version !== 1 || previous.mode !== 'journal') throw Error('host watch: corrupt journal episode');
+    if (previous.crashLoop?.pausedAt !== null && previous.crashLoop?.pausedAt !== undefined) return 0;
+    if (firstLaunch && Number.isSafeInteger(previous.nextLaunchAt) && previous.nextLaunchAt > now()) {
+      await wait(config.root, previous.nextLaunchAt - now());
+      if (journalStopped(config.root)) return 0;
+    }
+    firstLaunch = false;
+    const started = now();
+    // Older installations already retain recent failed-attempt evidence in this same holder.
+    // Carry it forward on first use rather than granting a fresh failure window at update.
+    if (!previous.crashLoop && previous.open && Array.isArray(previous.failures)) {
+      let migrated = null;
+      for (const failure of previous.failures) {
+        if (!Number.isSafeInteger(failure.at) || failure.at < 0 || failure.at > started) throw Error('host watch: invalid failure time');
+        if (started - failure.at > crashPolicy.windowMs) continue;
+        migrated = recordScheduledCrash(migrated, { at: failure.at,
+          kind: failure.hung === true ? 'hung' : failure.signal === 'launch-error' ? 'spawn-refused' : 'failure' }, crashPolicy);
+      }
+      if (migrated) {
+        previous = { ...previous, crashLoop: recordScheduledCrash(migrated, { at: started, kind: 'no-work' }, crashPolicy) };
+        writeDurable(path, previous);
+        if (previous.crashLoop.pausedAt !== null) return 0;
+      }
+    }
+    if (previous.crashLoop) recordScheduledCrash(previous.crashLoop, { at: started, kind: 'no-work' }, crashPolicy);
+    const outcome = await launch(config);
     const at = now(), episode = read();
     if (episode.version !== 1 || episode.mode !== 'journal') throw Error('host watch: corrupt journal episode');
     const clean = outcome.code === 0 && outcome.signal === null && outcome.hung !== true;
-    if (journalStopped(config.root) || clean) { if (episode.open) writeDurable(path, { ...episode, open: false, closedAt: at }); }
+    const last = lastJournalRun(config.root);
+    const stopped = journalStopped(config.root);
+    const kind = stopped ? 'cancelled' : !clean ? (outcome.hung === true ? 'hung'
+      : outcome.signal === 'launch-error' ? 'spawn-refused' : 'failure')
+      : last?.revival === 'queued' && at - started < 60000 ? 'rapid-exit' : 'success';
+    const crashLoop = recordScheduledCrash(episode.crashLoop ?? null, { at, kind }, crashPolicy);
+    if (stopped || (clean && kind !== 'rapid-exit')) {
+      if (episode.open || episode.crashLoop) writeDurable(path, { ...episode, crashLoop, open: false, closedAt: at });
+    }
     else {
       const failedAttempts = (episode.open ? episode.failedAttempts : 0) + 1;
-      let next = { ...episode, open: true, id: episode.open ? episode.id : randomUUID(), openedAt: episode.open ? episode.openedAt : at,
+      let next = { ...episode, crashLoop,
+        nextLaunchAt: at + Math.min(maximum, base * 2 ** Math.min(crashLoop.failures.length - 1, 16)), open: true, id: episode.open ? episode.id : randomUUID(), openedAt: episode.open ? episode.openedAt : at,
         phase: episode.open ? episode.phase : 'recovering', failedAttempts,
         failures: [...(episode.open ? episode.failures : []), { at, code: outcome.code, signal: outcome.signal,
           runReason: outcome.hung === true ? `no progress beat for ${Math.round(hangAfterMs / 1000)}s` : lastRun(config.root)?.reason ?? null,
           ...(outcome.hung === true ? { hung: true } : {}) }].slice(-10) };
-      if (next.phase === 'recovering' && failedAttempts >= limits.incidentAfter) {
+      if (next.phase === 'recovering' && (failedAttempts >= limits.incidentAfter || crashLoop.pausedAt !== null)) {
         const alerts = config.alerts;
         next = !alerts ? { ...next, phase: 'unbound', incidentAt: at }
           : !alerts.chat ? { ...next, phase: 'inhibited', incidentAt: at, alertsGrant: alerts.grant, inhibitedBy: ['alerts destination not configured'] }
@@ -326,15 +367,32 @@ export async function superviseJournal(config, io = {}) {
       }
     }
     if (journalStopped(config.root)) return 0;
-    const last = lastJournalRun(config.root);
+    if (crashLoop.pausedAt !== null) return 0;
     if (last?.revival === 'inhibited' || last?.revival === 'none') return 0;
     // A clean exit that ran a while and left queued work is healthy; anything else counts toward the cap.
     const healthy = last?.revival === 'queued' && clean && at - started >= 60000;
     failures = healthy ? 0 : failures + 1;
     if (failures > maxRestarts) return 0;
-    await wait(config.root, healthy ? base : Math.min(maximum, base * 2 ** Math.min(failures - 1, 16)));
+    await wait(config.root, healthy ? base : Math.min(maximum, base * 2 ** Math.min(Math.max(failures, crashLoop.failures.length) - 1, 16)));
   }
   return 0;
+}
+
+/** Explicit local operator control, bound to the observed episode. It grants no work/effect authority.
+ * The supervisor must have returned on its durable pause before this command is used. */
+export function resumeJournal(config, episodeId, at = Date.now()) {
+  if (typeof config?.root !== 'string' || !isAbsolute(config.root) || resolve(config.root) !== config.root
+    || typeof episodeId !== 'string' || !episodeId || !Number.isSafeInteger(at)) return false;
+  const path = join(config.root, 'host-watch.json');
+  if (!existsSync(path) || journalStopped(config.root)) return false;
+  const episode = JSON.parse(readFileSync(path, 'utf8'));
+  if (episode.mode !== 'journal' || episode.id !== episodeId || episode.crashLoop?.pausedAt == null
+    || at < episode.crashLoop.lastAt) return false;
+  writeDurable(path, { ...episode, open: false, closedAt: at, nextLaunchAt: null,
+    resumed: { episode: episodeId, at, crashLoop: episode.crashLoop },
+    crashLoop: recordScheduledCrash(null, { at, kind: 'no-work' },
+      { threshold: config.maxRestarts ?? 10, windowMs: config.crashWindowMs ?? 600000 }) });
+  return true;
 }
 
 /** The runner's progress beat for this child only: its sequence, or null when absent, torn or another pid's. */
@@ -371,6 +429,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const configPath = process.argv[2];
     if (!configPath || !isAbsolute(configPath)) throw Error('host watch: configuration path required');
     const config = JSON.parse(readFileSync(configPath, 'utf8'));
-    process.exitCode = config?.journal === true || config?.mode === 'journal' ? await superviseJournal(config) : await supervise(config);
-  } catch { process.stderr.write('host watch stopped; details suppressed\n'); process.exitCode = 0; }
+    if (process.argv[3] === 'status') {
+      const state = JSON.parse(readFileSync(join(config.root, 'host-watch.json'), 'utf8'));
+      process.stdout.write(JSON.stringify({ episode: state.id, phase: state.phase,
+        paused: state.crashLoop?.pausedAt != null, pausedAt: state.crashLoop?.pausedAt ?? null,
+        failuresInWindow: state.crashLoop?.failures.length ?? null,
+        resume: state.crashLoop?.pausedAt != null ? `resume ${state.id}` : null }) + '\n');
+    } else if (process.argv[3] === 'resume') {
+      if (!resumeJournal(config, process.argv[4])) throw Error('host watch: resume refused');
+      process.stdout.write('Crash-loop pause resumed; normal stop and budget checks still apply.\n');
+    } else process.exitCode = config?.journal === true || config?.mode === 'journal' ? await superviseJournal(config) : await supervise(config);
+  } catch { process.stderr.write('host watch stopped; details suppressed\n'); process.exitCode = process.argv[3] ? 1 : 0; }
 }
