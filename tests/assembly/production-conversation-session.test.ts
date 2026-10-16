@@ -670,3 +670,24 @@ it('keeps intake when fresh action grounding exceeds its bound or its reader fai
     await f.port.close();
   }
 });
+
+it('host restart during native connection backoff keeps spent attempts and never replays uncertain work', async () => {
+  const f = fixture({ maxCalls: 12 }); f.finish(false);
+  let interrupted: ConversationState | null = null;
+  f.config.io.wait = async () => {
+    f.port.reserveCall(f.state().claim!, 1);
+    f.port.reserveCall(f.state().claim!, 2);
+    f.port.reserveCall(f.state().claim!, 3);
+    interrupted = f.state();
+    throw Error('host cut during native backoff');
+  };
+  expect((await f.port.run(f.request('socket-turn'))).state).toBe('uncertain');
+  expect(interrupted).not.toBeNull();
+  f.restore(interrupted!); f.calls(0);
+  const next = f.restart();
+  expect((await next.collect('socket-turn'))!.outcome).toMatchObject({ state: 'uncertain', detail: expect.stringContaining('no automatic replay') });
+  expect(f.state().spent).toBe(interrupted!.spent);
+  expect(f.delivered).toHaveLength(1);
+  expect(f.state().inputs[0]!.request).toEqual(f.request('socket-turn'));
+  await next.close();
+});

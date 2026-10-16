@@ -18,6 +18,8 @@ export interface SessionRecord {
   readonly closedAt: number | null; readonly turnBaseline?: string; readonly turnReceiptIds?: readonly string[];
   readonly continuation?: SessionContinuation;
   readonly turnCloseEvidence?: string | null;
+  /** Observed native retry pressure, tied to this turn; call liability stays with the owner. */
+  readonly connectionRetry?: Readonly<{ turnStartedAt: number; attempt: number }> | null;
 }
 export interface SessionContinuation {
   readonly text: string; readonly source: string; readonly state: 'prepared' | 'sending' | 'accepted' | 'completed';
@@ -187,6 +189,20 @@ export function classifyStuckSignature(capture: string): 'policy-wedge' | 'conte
     && !/conversation compacted|paused for context compaction|compaction[^.\n]{0,20}resumed/i.test(live)) return 'context-too-long';
   return null;
 }
+/** Native retries own backoff and never receive a second prompt. The captured 2.1.280
+ * exhausted 529 has no Stop receipt: recognize only its final error at a quiet prompt,
+ * not countdowns, echoed/quoted errors, or an older error followed by more output. */
+export function classifyConnectionExhausted(capture: string): boolean {
+  const lines = capture.split('\n').map(line => line.trimEnd()).filter(line => line.trim());
+  const prompt = lines.lastIndexOf('❯');
+  if (prompt < 0 || !lines.slice(prompt + 1).every(line => /^─+$/.test(line)
+    || /^  ⏵⏵ bypass permissions on \(shift\+tab to cycle\)(?: · ← for agents)?(?: +● high · \/effort)?$/.test(line))) return false;
+  const output = lines.slice(0, prompt).filter(line => !/^─+$/.test(line));
+  if (/^[✻✽✳✢·] .+ · done \d{1,2}:\d{2} [AP]M$/.test(output.at(-1) ?? '')) output.pop();
+  const error = output.map(line => line.startsWith('⏺ ')).lastIndexOf(true);
+  return error >= 0 && /^⏺ API Error: 529 Overloaded\./.test(output[error]!)
+    && output.slice(error + 1).every(line => /^  \S/.test(line));
+}
 export function chunkLiteralForTmux(value: string, maximum = 8000): string[] {
   ensure(maximum >= 4, 'tmux chunk bound too small');
   const result: string[] = []; let chunk = '', bytes = 0;
@@ -287,6 +303,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const started = config.now();
     const deadline = started + config.turnDeadlineMs;
     const armed = { ...session, recovery, turnStartedAt: started, turnDeadline: deadline, closedAt: null, turnCloseEvidence: null,
+      connectionRetry: null,
       turnBaseline: digestOf(capture(session.name)),
       turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
         .flatMap(row => row.receiptId ? [row.receiptId] : []) };
@@ -530,6 +547,21 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'per-turn deadline exceeded' };
         }
         const baseline = session.turnBaseline ?? config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1)?.baseline;
+        // Record native retry progress, not a second retry engine. The current-turn record
+        // prevents quoted error output without a real countdown from retiring the worker.
+        const retry = config.framework === 'claude-code' && /\besc to interrupt\b/.test(tail(pane, 4))
+          ? /^✻ 529 Overloaded · Retrying in \d+s · attempt ([1-9]|10)\/10$/m.exec(pane) : null;
+        if (retry && session.turnStartedAt !== null && session.turnDeadline !== null && baseline && digestOf(pane) !== baseline) {
+          const previous = session.connectionRetry?.turnStartedAt === session.turnStartedAt ? session.connectionRetry.attempt : 0;
+          if (Number(retry[1]) > previous) config.io.save(replaceSession(config.io.load(), { ...session,
+            connectionRetry: { turnStartedAt: session.turnStartedAt, attempt: Number(retry[1]) } }));
+        }
+        // Keep the original deadline and delivery. This is an uncertain terminal failure,
+        // never a successful close or permission to replay a tool, send or owner input.
+        if (config.framework === 'claude-code' && session.turnDeadline !== null
+          && session.connectionRetry?.turnStartedAt === session.turnStartedAt
+          && baseline && digestOf(pane) !== baseline && classifyConnectionExhausted(pane))
+          return { phase: 'pause-observed' as const, evidence: session.identity, detail: 'connection-exhausted' };
         const idle = classifyPaneIdle(pane, config.framework) && (!baseline || digestOf(pane) !== baseline);
         const stuck = classifyStuckSignature(pane);
         if (stuck && idle && session.turnDeadline !== null) {
