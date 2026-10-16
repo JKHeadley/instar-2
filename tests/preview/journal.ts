@@ -4514,13 +4514,14 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       || view.stop !== null || row.at >= view.expires || view.replies >= view.limits.maxReplies - 1
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
       || row.grant !== view.genesis.grant || row.waitingProgress || row.deliveryUnknown || row.acknowledgement || row.covers
-      || row.provenance?.speaker !== 'agent' || !currentWorkingActivity(progress, row.at)
+      || !row.provenance || admission === 'new' && row.provenance.speaker !== 'infrastructure'
+      || !currentWorkingActivity(progress, row.at)
       || progress.ordinal !== prior.length || progress.at !== row.at || progress.sent !== undefined
       || view.order.some(item => item.thread === turn.thread && item.workingProgress?.some(saved => saved.step === progress.step)) || row.text !== progress.text
       || admission === 'new' && row.text !== WORKING_LIVENESS
       || row.at < workingProgressAt(view, turn, admission === 'new'))
       throw Error('preview journal: working progress refused');
-    turn.workingProgress = [...prior, { ...progress }]; view.replies++; return;
+    turn.workingProgress = [...prior, { ...progress, speaker: row.provenance.speaker }]; view.replies++; return;
   }
   if (row.kind === 'held-notice-sent' && row.workingProgress !== undefined) {
     const progress = turn.workingProgress?.[row.workingProgress];
@@ -8222,7 +8223,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const chat = journal.view.genesis.chat, thread = turn.thread === undefined ? {} : { thread: turn.thread };
         const target = `working-progress:${ordinal}:${turn.id}`, body = encodeReply(text);
         ports.checkOutbound(body);
-        const provenance = journal.signOutbound('agent', { target, chat, ...thread, body });
+        const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body });
         let admitted = false;
         const current = () => (admitted ? !workingEnded.has(turn) && !halted() && !turn.intent : workingCurrent(turn)) && currentWorkingActivity(ports.workingActivity!(turn.id), ports.now())
           && ports.workingActivity!(turn.id)?.step === activity.step && ports.workingActivity!(turn.id)?.text === activity.text

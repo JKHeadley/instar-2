@@ -30,7 +30,7 @@ function fixture(options: { activityPort?: () => WorkingActivity | null; receipt
     for (const input of inputs) collected.set(input.id, { context: input.context, prepared: input.prepared!, answer });
     return inputs.map(() => answer); } } : {}), ...(options.recorded ? { sources: [{ recordedShape: options.recorded }] } : {}), now: () => Date.now(), stopped: () => false,
     model: async input => { context = input.context; entered(); return busy; }, workingActivity: options.activityPort ?? (() => activity && ({ ...activity, ...options.realActivity, observedAt: Date.now() })),
-    checkOutbound: () => {}, send: async input => { if (input.target?.startsWith('working-progress:')) { sendEntered = true; await sendHold; } expect(journal.verifyOutbound(input.provenance, { target: input.target!, chat: input.chat, body: input.text })).toBe(true); sent.push({ text: input.expectedText, body: input.text, at: Date.now(), target: input.target });
+    checkOutbound: () => {}, send: async input => { if (input.target?.startsWith('working-progress:')) { expect(input.provenance?.speaker).toBe('infrastructure'); sendEntered = true; await sendHold; } expect(journal.verifyOutbound(input.provenance, { target: input.target!, chat: input.chat, body: input.text })).toBe(true); sent.push({ text: input.expectedText, body: input.text, at: Date.now(), target: input.target });
       return input.target?.startsWith('working-progress:') ? options.receipt === undefined ? sent.length : options.receipt : sent.length; } };
   const worker = createJournalWorker(journal, ports);
   worker.intake(options.batch ? [update, { ...update, update_id: 2, message: { ...update.message, message_id: 2 } }] : [update]); const drain = worker.drain();
@@ -58,7 +58,9 @@ it.each([1, 2, 3, 4, 5])('1.x inconsistent-firing regression: repeated run %i al
     f.activity('checking integration results'); await vi.advanceTimersByTimeAsync(300000);
     f.activity('reviewing final diff'); await vi.advanceTimersByTimeAsync(600000);
     expect(f.progress().map(row => row.at)).toEqual([128000, 308000, 608000, 1208000]);
-    expect(f.journal.view.speakers.agent).toBe(4);
+    expect(f.journal.view.speakers.agent).toBe(0);
+    expect(f.journal.view.speakers.infrastructure).toBe(5);
+    expect(retrospectiveCases(f.journal.view).filter(row => row.id.startsWith('working-progress:')).every(row => row.meta?.speaker === 'infrastructure')).toBe(true);
     expect(retrospectiveCases(f.journal.view).filter(row => row.id.startsWith('working-progress:'))).toHaveLength(4);
     f.release('Build and tests passed.'); await f.drain; await vi.advanceTimersByTimeAsync(1200000);
     expect(f.progress()).toHaveLength(4); expect(f.sent.at(-1)?.text).toBe('Build and tests passed.');
@@ -206,9 +208,9 @@ it.each(['sibling', 'later intake'])('a real batch shares the slow cadence acros
           provenance: reopened.signOutbound('agent', { target: `reply:${turn.id}`, chat: reopened.view.genesis.chat, body: 'Done.' }), at: 608002 });
         turn = next;
       }
-      const append = (at: number, step: string) => {
+      const append = (at: number, step: string, speaker: 'agent' | 'infrastructure' = 'infrastructure') => {
         const text = WORKING_LIVENESS, ordinal = turn.workingProgress?.length ?? 0;
-        const provenance = reopened.signOutbound('agent', {
+        const provenance = reopened.signOutbound(speaker, {
           target: `working-progress:${ordinal}:${turn.id}`, chat: reopened.view.genesis.chat, body: text });
         reopened.append({ kind: 'held-notice-intent', id: turn.id, text, chat: reopened.view.genesis.chat,
           update: turn.update, grant: reopened.view.genesis.grant, provenance,
@@ -217,6 +219,7 @@ it.each(['sibling', 'later intake'])('a real batch shares the slow cadence acros
       expect(() => append(608003, 'too soon after replay')).toThrow('working progress refused');
       expect(() => append(1207999, 'before shared deadline')).toThrow('working progress refused');
       expect(() => append(1208000, 'third admitted tool')).toThrow('working progress refused');
+      expect(() => append(1208000, 'wrong speaker', 'agent')).toThrow('working progress refused');
       expect(() => append(1208000, 'eligible after replay')).not.toThrow();
       expect(turn.workingProgress?.at(-1)?.at).toBe(1208000);
     } finally { reopened.close(); }

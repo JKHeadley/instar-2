@@ -94,7 +94,7 @@ survival of physical power loss.
 
 The existing journal worker may send a short liveness-only line while answering an admitted
 operator message. It never quotes tool commands or describes activity as accomplished progress.
-A fresh worker observation and newly advancing admitted tool evidence are both required;
+The fixed line carries infrastructure provenance. A fresh worker observation and newly advancing admitted tool evidence are both required;
 repeated polls of an unchanged tool do not renew that evidence. The existing answer cadence
 backs off from two to five to ten minutes, with at most four lines per overlapping answer
 episode. Every outbound intent or receipt in that conversation resets the two-minute silence

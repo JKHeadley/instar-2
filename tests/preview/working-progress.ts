@@ -11,7 +11,7 @@ export interface WorkingActivity {
   text: string;
   observedAt: number;
 }
-export interface WorkingProgress extends WorkingActivity { ordinal: number; at: number; sent?: number }
+export interface WorkingProgress extends WorkingActivity { ordinal: number; at: number; sent?: number; speaker?: 'agent' | 'infrastructure' }
 export function currentWorkingActivity(activity: WorkingActivity | null | undefined, now: number): activity is WorkingActivity {
   return !!activity && typeof activity.step === 'string' && activity.step.length > 0 && activity.step.length <= 256
     && typeof activity.text === 'string' && activity.text.trim().length > 0 && activity.text.length <= 280

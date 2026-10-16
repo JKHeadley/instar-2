@@ -11,7 +11,7 @@ Suggested tier: critical
 Declared tier: critical
 Tier rationale: changes the journal worker's outward speech and durable cadence projection, within existing send authority.
 Side effects: fewer status lines and no tool narration; four per overlapping answer episode, even when receipts are uncertain. A tool with no new admission evidence stays silent rather than being called productive. The fresh evidence window is ten seconds and may miss isolated activity between timer checks; missing a liveness line never blocks the answer. Snapshot clocks are additive and old progress records retain legacy replay validation.
-Undo and recovery: revert this commit to restore tool-status output and old cadence. Existing intent/receipt records remain readable, with no new frame kind or resend instruction. Optional lastOutboundAt projection travels in snapshots; older readers can ignore it. No live roots changed.
+Undo and recovery: rollback emission/cadence while retaining the new reader acceptance and speaker projection for already-written infrastructure progress. An unpatched older reader rejects those records; do not downgrade its reader after emission. Current code reads legacy agent status records and adds no resend instruction. Optional lastOutboundAt travels in snapshots. No live roots changed.
 Multi-machine posture: timers and fresh local worker observations are disposable and operation-scoped; consumed progress and per-conversation silence clocks travel in the existing owner journal and snapshots. The existing owner/send admission remains sole authority; no second sender or machine-local durable store.
 Layer below: examined signed intent projection, dispatch revalidation and unknown settlement, admission record reader, overlapping batch cadence, snapshot/replay, stop and reply reserve. The same push doorway and retained intent identities remain authoritative.
 Bug class: unit
@@ -27,6 +27,8 @@ Prompt finding: 849db3a6296a | protocol-literal | existing saved-memory response
 Prompt finding: e8708c7fea24 | protocol-literal | existing source-label uncertainty guidance, unchanged by this unit.
 
 Register regeneration: replayed generated artifacts from product commit f7476086f1579d369fc9d1dae7896b5d63c20a51 with scripts/build-register.mjs; no declaration or certificate was changed.
+
+Decision: honest-progress-provenance | fixed host-generated liveness uses infrastructure signatures and retrospective labels; historical agent status records retain their original speaker on replay | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/honest-progress-1016-PROGRESS.md
 
 ## Closing block
 
