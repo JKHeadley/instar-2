@@ -8744,8 +8744,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               return 'fulfilled must name an offered agent promise and quote an exact excerpt of this new reply, not the old promise; omit it if no promise was carried out';
             if (!turn.requestedAction && fromOperator(turn) && Array.isArray(value.dated)) {
               const admitted = datedFrom(value.dated, turn);
-              if (admitted?.some((item, index) => item.ambiguity === 'date expression unresolved'
-                && value.dated instanceof Array && value.dated[index]?.resolution === undefined))
+              // S update 715676632 copied packet.now instead of datedClock.at. A supplied but
+              // unbound resolution needs the same single re-ask as an absent one, never a host guess.
+              if (admitted?.some((item, index) => item.ambiguity === 'date resolution needs the original clock, zone and a valid UTC instant'
+                || item.ambiguity === 'date expression unresolved'
+                  && value.dated instanceof Array && value.dated[index]?.resolution === undefined))
                 return `dated needs a model resolution for this time phrase: keep quote and when verbatim; add resolution:{instant:UTC ISO timestamp with milliseconds,at:${sentAt(turn) ?? turn.at},zone:${JSON.stringify(ports.timeZone ?? 'America/Los_Angeles')}} using that original clock. If ambiguous, use resolution:{ambiguity:plain clarification question}. Never guess an ambiguous or invalid time`;
             }
             // Runner-authored due turns discard operator date declarations below; repairing one would
