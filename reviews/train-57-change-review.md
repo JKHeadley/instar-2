@@ -30,6 +30,13 @@ Decision: train-57-C | No irreconcilable product conflict and no member omitted;
 Decision: train-57-D | WSL targeted checks only; classify host-dependent results separately. Native certificate renewal and full/live gate remain desk-owned. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-57-PROGRESS.md
 Decision: train-57-desk | Run downloaded repin/build/rehash/replay chain; preserve the unchanged default-context guard and existing native conformance declaration where it conflicts. No manual generated merge. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-57-PROGRESS.md
 
+Publication: Generated replay 6c5126289691 binds composed source 6ec9625069e857817ad449d09a1c3c11e8d2eb28; generation sha256:d2930a19fe267447146d4a54dc692f7d6adc7678c14c5b378813d782ad17e577. All seven generated files come from the replay tool.
+Certificate disposition: Retain the certificate already inherited from the first reviewed member (run-complete, sha256:91edbaa93d31bd7fcef351cf1913fcd1cc019a81e079df212b26013d966110b4) at the reaper conflict. Neither member certificate covers the composed bytes sha256:90c6d3af60840dc3f91b4a494320a53e9b0072c1825738e5483882d201e4540b; the native Studio contract must renew it. No new conformance claim is authored here.
+Deferral: src/awareness/README.md:28 | not-a-deferral=Describes the implemented idle boundary and durable cooldown, not postponed development.
+Deferral: tests/preview/journal.ts:11288 | not-a-deferral=Implemented runtime outcome when an ordinary turn owns the boundary; originals and bounded retry remain retained.
+Deferral: tests/preview/proactive-compaction.test.ts:105 | not-a-deferral=Asserts the implemented runtime outcome before the successful idle retry.
+Deferral: tests/preview/run-completion-consumer.test.ts:50 | not-a-deferral=Closure is asserted before the observer runs; this comment does not postpone work.
+
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges, existing desk regeneration and targeted consumers. No new machinery. Start at the named live base, preserve the five floors, require committed membership and measured checks, and submit live acceptance to the desk.
 80/20: Changed tests, direct importers, journal and pinned checks in bounded foreground batches; no full suite or unrelated repair.
 VERDICT: author submission; independent desk acceptance pending
