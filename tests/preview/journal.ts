@@ -2583,7 +2583,7 @@ export const OBLIGATION_MEMORY_FACTS = 20, OBLIGATION_MEMORY_FACT_CHARS = 500;
 /** The runner's bounds on a work step's report and note (obligationDecision); the question states them. */
 export const OBLIGATION_REPORT_CHARS = 1500, OBLIGATION_NOTE_CHARS = 500;
 export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. packet.memory holds what the operator told you (the newest summary, packet.memory.facts, which are the exact clauses that summary keeps by source instead of repeating them in its prose, and their messages after it): work about what they told you is done from it. Do it now with what you know; you have no external tools. When packet.obligation.deliveryRequest is present, the operator requested delivery when finished: report the complete result now for the existing reply path to deliver. Otherwise the report waits for their next message; do not infer permission to send from a promise alone. Choose exactly one of these objects. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator, at most ' + String(OBLIGATION_REPORT_CHARS) + ' characters>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. When packet.withheld is present, your earlier report was not delivered because a review objected to it (packet.withheld.objection): answer that objection with a corrected report it no longer applies to; a report that still cannot do the work says so plainly and names the packet.governingConstraints key behind it. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key. '
-  + 'Include completion:[{id,work,state:"open"|"complete",evidence?}] for the requested job and any specs, scripts or tasks you created to finish it. Keep each id and work description stable; use packet.completion as the existing checklist. Complete entries cite what actually demonstrates their result. An omitted entry stays recorded. Report only when the whole job, including created work, is complete. A safety halt or resource ceiling leaves unfinished work open; it is not success or operator cancellation. This checklist grants no additional authority. '
+  + 'Include completion:[{id,work,state:"open"|"complete",evidence?}] for the requested job and any specs, scripts or tasks you created to finish it. Keep each id and work description stable; use packet.completion as the actionable part of the existing checklist. packet.completionOmitted counts retained entries left out of this bounded view; omitted open work still prevents final completion. Send updates for the displayed work and continue until all retained work is complete. Complete entries cite what actually demonstrates their result. An omitted entry stays recorded. Report only when the whole job, including created work, is complete. A safety halt or resource ceiling leaves unfinished work open; it is not success or operator cancellation. This checklist grants no additional authority. '
   + taskFields('the one object you chose');
 /** The same work step on the scoped-tool route: it can use the listed tools, and only their recorded calls ran. */
 export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLIGATION_WORK_QUESTION,
@@ -11646,8 +11646,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         operatorMessages: journal.view.order.filter(turn => verifiedOperatorTurn(journal.view, turn) && !probeTurn(journal.view, turn)
           && turn.update > (latest?.through ?? -1)).slice(-OBLIGATION_MEMORY_MESSAGES)
           .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), OBLIGATION_MEMORY_MESSAGE_CHARS) })) });
+      // Rules 8/68/97: completed evidence stays in the journal, not every worker packet.
+      // Keep whole open entries (stable ids/descriptions); page overflow by completing the
+      // displayed work. Reconciliation and final closure always consume the FULL retained list.
+      const unfinished = work?.completion?.filter(item => item.state === 'open') ?? [];
+      const completion: RunCompletionItem[] = [];
       const packetWith = (withMemory: 'facts-and-messages' | 'messages-only' | 'none') => JSON.stringify({ now: isoMinute(now), zone, today: localStamp(now, zone).slice(0, 10), obligation,
-        ...(work?.completion ? { completion: work.completion } : {}),
+        ...(work?.completion ? { completion, completionOmitted: {
+          open: unfinished.length - completion.length, complete: work.completion.length - unfinished.length } } : {}),
         ...(withMemory === 'none' ? {} : { memory: memory(withMemory === 'facts-and-messages') }),
         ...(work?.note && work.waitsOn === undefined ? { lastProgress: clean(redact(work.note).text, true) } : {}),
         ...(work?.withheld ? { withheld: { report: clean(redact(work.withheld.text).text, true),
@@ -11660,6 +11666,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         directives: openDirectives(journal.view).map(({ id, note }) => ({ id, quote: clean(redact(note.quote).text, true, note.source) })),
         governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools),
         ...(tools ? { sources: [toolNote()] } : {}) });
+      for (const entry of unfinished) {
+        completion.push({ id: entry.id, work: entry.work, state: entry.state });
+        // Measure the actual JSON UTF-8 bytes, including escaping and omission counts.
+        if (Buffer.byteLength(packetWith('none')) > journal.view.limits.maxBytes) completion.pop();
+      }
+      // If the mandatory packet plus any whole entry cannot fit, retain the existing capacity refusal;
+      // never issue a misleading empty checklist while unfinished work exists.
+      if (unfinished.length && !completion.length) return false;
       let context: string | undefined;
       for (const level of ['facts-and-messages', 'messages-only', 'none'] as const) {
         const candidate = packetWith(level);
