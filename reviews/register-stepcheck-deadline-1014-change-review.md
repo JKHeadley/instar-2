@@ -3,7 +3,7 @@
 Subject base: d3fa88c4771b0934672c3fec1c39ae680c0336a4
 Review state: open
 Reviewed content: none
-Outcome: Import the owning repair 6b2e645230a839b8b141dcfdab87c615f2cd6d89 unchanged in its product files, authorized by the desk on 2026-10-15 at 17:20 for PR #166. Restore register replay after the step-check deadline expired by extending the declared target exactly 72 hours to 2026-10-18T00:00:00Z, retaining dark status and the outstanding graduation obligation.
+Outcome: Import the owning repair 6b2e645230a839b8b141dcfdab87c615f2cd6d89 with an identical product patch on this branch’s baseline, authorized by the desk on 2026-10-15 at 17:20 for PR #166. Restore register replay after the step-check deadline expired by extending the declared target exactly 72 hours to 2026-10-18T00:00:00Z, retaining dark status and the outstanding graduation obligation.
 Affected rules: Rules 8, 26, 39, 49, 72, 73, 74, 90, 101, 102, 111, 113 and 116.
 Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake are unchanged; this change adds no runtime authority, model calls or enabled features.
 Operator questions: none

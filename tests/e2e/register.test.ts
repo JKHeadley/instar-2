@@ -440,7 +440,7 @@ describe('compiled register build adapter lifecycle', () => {
         expect(result.status, result.stderr).toBe(0); return result.stdout;
       };
       const first = JSON.parse(await run()) as { rules: number; entries: number; generation: string; authority: string };
-      expect(first.rules).toBe(116); expect(first.entries).toBeGreaterThan(116); expect(first.authority).toBe('shape-only');
+      expect(first.rules).toBe(117); expect(first.entries).toBeGreaterThan(117); expect(first.authority).toBe('shape-only');
       const before = readFileSync(join(root, 'register.json'), 'utf8'); await run('--check'); await run();
       expect(readFileSync(join(root, 'register.json'), 'utf8')).toBe(before);
       expect(readFileSync(join(root, 'capabilities.md'), 'utf8')).toContain('register-tooling');

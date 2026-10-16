@@ -23,7 +23,9 @@ Prompt review: The only changed model-facing content is the approved coherency c
 
 Publication source: fc71abbcc8a92f44c5a6c5038cd9d3c8d8bac396, regenerated with the real clock through scripts/build-register.mjs --replay. Outputs contain 117 rules; Rule 117 remains a coverage gap rather than a fabricated live holder.
 
-Authorized repair scope: The desk’s 2026-10-15 17:20 decision includes the existing deadline repair 6b2e645230a839b8b141dcfdab87c615f2cd6d89 and the missing historical merge reviews for PRs #161, #163 and #164. Product files of the imported deadline repair are unchanged from its owner commit. reviews/register-stepcheck-deadline-1014-change-review.md and reviews/const-onemind-merge-{161,163,164}-change-review.md record those repairs separately. No new runtime judgment path, approval or graduation evidence is asserted.
+Authorized repair scope: The desk’s 2026-10-15 17:20 decision includes the existing deadline repair 6b2e645230a839b8b141dcfdab87c615f2cd6d89 and the missing historical merge reviews for PRs #161, #163 and #164. The imported deadline repair’s product patch is identical to its owner commit; whole files retain the receiving branch’s baseline. reviews/register-stepcheck-deadline-1014-change-review.md and reviews/const-onemind-merge-{161,163,164}-change-review.md record those repairs separately. No new runtime judgment path, approval or graduation evidence is asserted.
+
+Count consumer repair: The pinned end-to-end gate on e0a25867 reached the new register and failed its old 116-rule assertion (67 passed, one failed). Update both that expected count and the non-rule-entry lower bound to 117 in tests/e2e/register.test.ts. Repository search found no other stale rule-total assertion; the remaining 116 references identify Occam’s rule or unrelated case ids. Preserve the same test’s edited-output refusal and deterministic replay checks. The final pinned gate must pass before readiness.
 
 ## Closing block
 
