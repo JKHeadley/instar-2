@@ -129,7 +129,7 @@ import { createTopicLoginHandoff } from '../../scripts/topic-login-pool.mjs';
 import { createConversationTopicsPort } from '../../src/assembly/conversation-topics.js';
 import { createSessionWorkPort, SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
-import { createProductionSessionIO, createSessionGrounding } from '../../scripts/production-session-io.mjs';
+import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 import { stepQuestions } from './step-check.js';
 import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, rerunsDue, retroAnswerBudget, standingGrantCandidates } from './retrospective.js';
 
@@ -2575,7 +2575,6 @@ async function main() {
       const admissionBase = layout ? layout.admission : join(root, 'session-work-state', 'admission');
       const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
       const configurationFor = (topic, binding, handoff = null) => {
-        const grounding = createSessionGrounding(() => binding.physical(), String(topic ?? 'main'));
         const driverConfiguration = resolveIntake => ({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
             timeoutSeconds: Math.ceil(sessionLimits.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
@@ -2585,7 +2584,6 @@ async function main() {
           maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
           readyTimeoutMs: 30000, protectedSessions: [],
           ...(conversationSession ? { requireTurnHook: true, inboxDirectory: binding.physical().inboxDirectory,
-            compactGroundingFile: grounding.file(),
             hookScript: layout ? lifecycleHookPath(harnessHookPath()) : fileURLToPath(new URL('../../scripts/session-hooks/stop.mjs', import.meta.url)) } : {}),
           ...(conversationSession ? { continuationRequired: () => handoff?.continuing ?? false, continuation: () => {
             const turn = journal.view.order.filter(item => item.accepted && String(item.thread ?? 'main') === topic && item.prompt && item.sent !== undefined && item.intent).at(-1);
@@ -2598,7 +2596,6 @@ async function main() {
         return ({
         ...(conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
           authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
-          grounding,
           currentActionFacts: async operation => JSON.stringify(currentActionFacts(journal.view, wallNow(),
             journal.view.genesis.forum !== true || await verifiedActionAudience(),
             String(journal.view.turns.get(operation)?.thread ?? 'main'))),
