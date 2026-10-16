@@ -108,19 +108,36 @@ it('continues a throttled turn once after backoff, preserving its intake and ori
   expect(f.calls.filter(call => call[0] === 'send-keys' && call.includes('hello'))).toHaveLength(1);
   const after = f.sends;
   expect(observe(restarted).phase).toBe('launched'); expect(f.sends).toBe(after);
-  f.changePane('answer\n❯ '); f.hook(31_001); f.time(31_001);
+  f.changePane(`${limited.result}\nanswer\n❯ `); f.hook(31_001); f.time(31_001);
   expect(observe(restarted).phase).toBe('output-observed');
 });
 
-it('does not count a throttle Stop as completion and exposes a repeated throttle without a second nudge', () => {
+it('a fresh completed-turn receipt wins over quota text still visible in scrollback', () => {
   const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
-  f.changePane(`${recordedLimit}\n❯ `); f.hook(1000);
+  f.changePane(`${recordedLimit}\nanswer explaining the prior throttle\n❯ `); f.hook(1000);
+  const sends = f.sends;
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).phase).toBe('output-observed');
+  expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
+  expect(f.sends).toBe(sends);
+});
+
+it('a past compaction does not exclude a newly admitted input from throttle recovery', () => {
+  const f = fixture('claude-code', rateConfig), id = f.launch();
+  f.config.io.save({ ...f.journal, sessions: f.journal.sessions.map(row => ({ ...row, recovery: 1 })) });
+  value(f.deliver(id)); f.changePane(`${recordedLimit}\n❯ `);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })))
+    .toMatchObject({ phase: 'launched', detail: 'rate-limit recovery waiting' });
+});
+
+it('exposes an uncompleted repeated throttle without a second nudge', () => {
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  f.changePane(`${recordedLimit}\n❯ `);
   const observe = () => value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
   expect(observe().phase).toBe('launched');
   refused(f.driver.recoverContext(id), 'idle prompt');
   f.time(31_000); expect(observe().phase).toBe('launched');
   const sends = f.sends;
-  f.hook(31_001); f.time(36_000);
+  f.time(36_000);
   expect(observe()).toMatchObject({ phase: 'pause-observed', detail: 'rate-limited' });
   expect(observe().phase).toBe('pause-observed'); expect(f.sends).toBe(sends);
   expect(f.journal.sessions[0]?.turnDeadline).toBe(121_000);
@@ -140,7 +157,7 @@ it('never retries a neutral continuation whose terminal delivery is uncertain af
 
 it('accepts genuine completion during the wait without injecting a continuation', () => {
   const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
-  f.changePane(`${recordedLimit}\n❯ `); f.hook(1000);
+  f.changePane(`${recordedLimit}\n❯ `);
   value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
   const sends = f.sends;
   f.time(2000); f.changePane('completed answer\n❯ '); f.hook(2000);
@@ -161,11 +178,11 @@ it('the conversation adapter returns one answer for the original input after bou
   const delivery = { ...worker, operation: 'deliver', text: 'hello', digest: hash('hello'),
     resultPath: '/work/result', maxBytes: 1000 };
   expect((await adapter.deliver(delivery)).state).toBe('accepted');
-  f.changePane(`${recordedLimit}\n❯ `); f.hook(1000);
+  f.changePane(`${recordedLimit}\n❯ `);
   const observe = (cursor = 0) => adapter.observe({ ...worker, delivery, cursor, limit: 2 });
   expect((await observe()).observations).toEqual([]);
   f.time(31_000); expect((await observe()).observations).toEqual([]);
-  result = 'The requested result'; f.changePane('answer\n❯ '); f.time(31_001); f.hook(31_001);
+  result = 'The requested result'; f.changePane(`${recordedLimit}\nanswer\n❯ `); f.time(31_001); f.hook(31_001);
   const answered = await observe();
   expect(answered.observations).toEqual([
     { kind: 'reply', delivery: 'deliver', text: result, digest: hash(result) },

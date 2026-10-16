@@ -494,7 +494,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         let delivery: DeliveryRecord = { ...input, identity: input.processIdentity, text,
           state: 'prepared', baseline, redeliveries: 0, evidence: '' };
         config.io.save(replaceDelivery(config.io.load(), delivery));
-        armTurn(session);
+        armTurn(session, 0);
         delivery = { ...delivery, state: 'sending' };
         config.io.save(replaceDelivery(config.io.load(), delivery));
         sendText(session, text);
@@ -514,9 +514,30 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           config.observeActivity?.({ subject: session.claim, at: config.now(), progress: pane.trim() ? digestOf(pane) : null,
             wait: classifyStuckSignature(pane) });
         } catch { /* An advisory observer cannot fail the worker; its last sample becomes stale/unknown. */ }
-        // Keep the same admitted turn, claim, effect identities and deadline. A throttle
-        // Stop receipt is not completion. Never replay the original input or a lost nudge.
         const rate = session.rateRecovery;
+        if (rate && session.turnDeadline !== null && config.now() >= session.turnDeadline) {
+          run(['kill-session', '-t', literalTarget(session.name)]);
+          return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'per-turn deadline exceeded' };
+        }
+        if (rate?.state === 'sending')
+          return { phase: 'uncertain' as const, evidence: session.identity, detail: 'rate-limit continuation delivery uncertain; no resend' };
+        if (config.requireTurnHook && session.turnCloseEvidence)
+          return { phase: 'output-observed' as const, evidence: session.turnCloseEvidence, detail: 'recorded Stop hook closed turn' };
+        const hook = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
+          && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
+        if (hook && session.turnStartedAt !== null && hook.at >= session.turnStartedAt
+          && session.turnDeadline !== null && hook.at <= config.now()) {
+          config.io.save(replaceSession(config.io.load(), { ...closeTurn(session, hook.at),
+            turnCloseEvidence: `turn-closed:${session.name}:${hook.at}` }));
+          if (uuid.test(hook.sessionId)) {
+            const journal = config.io.load();
+            config.io.save({ ...journal, resumes: { ...journal.resumes, [session.claim]: hook.sessionId } });
+          }
+          return { phase: 'output-observed' as const, evidence: `turn-closed:${session.name}:${hook.at}`,
+            detail: 'Stop hook closed turn' };
+        }
+        // Fresh lifecycle evidence wins over an old error still visible in scrollback.
+        // Keep the same admitted turn, claim, effect identities and original deadline.
         const throttled = classifyStuckSignature(pane) === 'rate-limited';
         if (session.turnDeadline !== null && config.now() < session.turnDeadline
           && admitted && session.recovery === 0 && (!session.continuation || session.continuation.state === 'completed')
@@ -530,8 +551,6 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
                 .flatMap(row => row.receiptId ? [row.receiptId] : []), turnStartedAt: config.now() }));
             return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit recovery waiting' };
           }
-          if (rate?.state === 'sending')
-            return { phase: 'uncertain' as const, evidence: session.identity, detail: 'rate-limit continuation delivery uncertain; no resend' };
           if (rate?.state === 'waiting' && classifyStuckSignature(pane) !== null) {
             if (config.now() < rate.dueAt || !classifyPaneIdle(pane, config.framework)
               || classifyStuckSignature(pane) !== 'rate-limited')
@@ -553,25 +572,6 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
               return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit continuation pending' };
             return { phase: 'pause-observed' as const, evidence: session.identity, detail: 'rate-limited' };
           }
-        }
-        if (rate && session.turnDeadline !== null && config.now() >= session.turnDeadline) {
-          run(['kill-session', '-t', literalTarget(session.name)]);
-          return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'per-turn deadline exceeded' };
-        }
-        if (config.requireTurnHook && session.turnCloseEvidence)
-          return { phase: 'output-observed' as const, evidence: session.turnCloseEvidence, detail: 'recorded Stop hook closed turn' };
-        const hook = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
-          && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
-        if (hook && session.turnStartedAt !== null && hook.at >= session.turnStartedAt
-          && session.turnDeadline !== null && hook.at <= config.now()) {
-          config.io.save(replaceSession(config.io.load(), { ...closeTurn(session, hook.at),
-            turnCloseEvidence: `turn-closed:${session.name}:${hook.at}` }));
-          if (uuid.test(hook.sessionId)) {
-            const journal = config.io.load();
-            config.io.save({ ...journal, resumes: { ...journal.resumes, [session.claim]: hook.sessionId } });
-          }
-          return { phase: 'output-observed' as const, evidence: `turn-closed:${session.name}:${hook.at}`,
-            detail: 'Stop hook closed turn' };
         }
         if (session.turnDeadline !== null && config.now() >= session.turnDeadline) {
           run(['kill-session', '-t', literalTarget(session.name)]);
@@ -607,7 +607,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
             config.io.save(replaceDelivery(config.io.load(), { ...row, state: 'uncertain' }));
             outcomes.push(`${row.operation}:uncertain`); continue;
           }
-          try { armTurn(session); } catch {
+          try { armTurn(session, 0); } catch {
             outcomes.push(`${row.operation}:deadline-unavailable`); continue;
           }
           const sending: DeliveryRecord = { ...row, state: 'sending', redeliveries: 1 };

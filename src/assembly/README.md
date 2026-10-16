@@ -51,7 +51,7 @@ Its tests include the real production session driver over simulated physical I/O
 not a live harness or Telegram proof. The journal launcher wiring below is step 1;
 foundation intake/effect/judgment integration remains in the later plan steps.
 
-An admitted session at an idle quota wall retains its accepted input and original
+An admitted session at an unclosed idle quota wall retains its accepted input and original
 turn deadline while the driver waits 30 seconds, then submits at most one neutral
 continuation of the same turn. The existing journal records intent before terminal
 input; an uncertain submission is never retried, including after host restart.
@@ -63,6 +63,10 @@ typed pause, so the login pool can select capacity for subsequent work. Completi
 still requires the driver's existing evidence, never transcript growth or elapsed
 backoff. Unconfined sessions retain observation only because they lack the admitted
 effect and model-call floors required for autonomous continuation (Rules 1, 55, 60).
+Fresh lifecycle receipts retain their precedence over stale quota text in scrollback;
+the conversation adapter still requires a reply artifact to return an answer. A new
+accepted input starts its own compaction episode, so a past completed compaction does
+not exclude later turns from throttle recovery.
 
 The host must call `close()` at shutdown, expiry or idle stop. Closing waits for
 pending admission to return before releasing its lease, preventing a late resource
