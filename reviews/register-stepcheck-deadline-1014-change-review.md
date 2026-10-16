@@ -27,6 +27,8 @@ Publication: Regenerated the seven changed generated register/capability/source 
 > Incoming branch review: Prompt review: The promotion record appends the owner’s deadline, reason and rollback as status metadata. These strings contain neither a fixture trigger nor an asserted dispatch answer; no model prompt or output interpretation is changed.
 Decision: owner-repair-import | Import the existing owning repair instead of writing a second fix; bind this review to the receiving branch while preserving the owner decision and its promotion history. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/const-onemind-1015-PROGRESS.md
 
+Deferral: tests/assembly/production-conversation-session.test.ts:482 | not-a-deferral=Inherited test title describes the ordering of follow-up requests in an exercised batch; it does not postpone implementation or create a commitment.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: change the source deadline and append its owned decision using existing mechanisms, update consuming assertions and documentation, then regenerate dependent pins and publication with the project tools. No new machinery. The existing stage-evidence requirement guards graduation; the existing strict deadline check guards the new end date. No autonomous completion or live protection is claimed.
