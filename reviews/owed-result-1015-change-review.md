@@ -37,6 +37,9 @@ Hook bypass: none
 Prompt review: observation only; no model prompt or output parser changes. Stored terminal fixtures exercise activity and absence, never meaning-based acceptance.
 Convergence: none
 
+Prompt finding: 849db3a6296a | protocol-literal | Existing fixed empty-memory inventory reply and its classification, unchanged by the unit or repair; the test checks the response, not an intent trigger.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing general source-label provenance guidance, unchanged by the unit or repair; it applies to recall broadly and is not a fixture-specific meaning rule.
+
 ## Closing block
 
 simplestRobustRoute: reuse the existing session driver observations, outer runner cycle and journal presence rows to expose work silence. No new store, model call, send, retry or termination authority. The bounded request hash repair preserves accepted intake capacity and full-population observation.
