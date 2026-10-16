@@ -25,9 +25,6 @@ Subject (15 paths): generated/capabilities.json, generated/capabilities.md, gene
 
 ## Closing block
 
-simplestRobustRoute: an ordinary merge, conflicts limited to generated output, unioned changelog histories, unchanged or identical live docs bodies and derived pins, then the existing desk chain and register replay re-derive everything the merged bytes determine; real content conflicts go to a builder; tool failures stay desk-owned.
-80/20: mechanical only; cheap checks (lint, register:check, change-review check) run here; the pipeline's full gate runs the test suite and post-test checkers on the merged head.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Prompt finding: 034c5250da92 | protocol-literal | Standing-trust protocol is quoted by self-description replay normalization; it describes the governing grant, not an expected answer.
 Prompt finding: 45e37ea2e9e9 | protocol-literal | The replay preserves historical workspace/public-read policy wording while checking actual self-description behavior; no new model answer is supplied.
@@ -45,3 +42,7 @@ Deferral: tests/preview/owed-delivery.test.ts:181 | not-a-deferral=Regression ex
 Prompt finding: 4106b49fff07 | protocol-literal | The unchanged obligation protocol prohibits claiming unattempted actions; the test asserts the protocol rather than supplying an answer.
 Prompt finding: 849db3a6296a | protocol-literal | The unchanged memory-list empty-state contract is asserted by a consumer test; no scenario answer is inserted into new prompt text.
 Prompt finding: e8708c7fea24 | protocol-literal | The existing recall provenance requirement is tested as protocol wording, not a fixture-specific remembered fact.
+
+simplestRobustRoute: an ordinary merge, conflicts limited to generated output, unioned changelog histories, unchanged or identical live docs bodies and derived pins, then the existing desk chain and register replay re-derive everything the merged bytes determine; real content conflicts go to a builder; tool failures stay desk-owned.
+80/20: mechanical only; cheap checks (lint, register:check, change-review check) run here; the pipeline's full gate runs the test suite and post-test checkers on the merged head.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
