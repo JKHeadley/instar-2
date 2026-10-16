@@ -1,0 +1,76 @@
+{
+  "source": "/Users/Shared/instar-harness/profile/preview-harness-profile-sagemind-justin-v1/config/projects/-private-tmp-its-59bd0c806c90/d06e238f-443e-43d1-88bd-b2937455d165.jsonl",
+  "sourceSha256": "2128ce39e7d3edbe2515d13bea5b6b6f43961adcad8113c1c61d791904a56e19",
+  "update": 715676627,
+  "failures": [
+    {
+      "use": {
+        "at": "2026-10-16T19:29:38.585Z",
+        "type": "tool_use",
+        "name": "Bash",
+        "id": "toolu_018oAjpPwLzeyjagQMXKia2v",
+        "input": {
+          "command": "ls -la",
+          "description": "List workspace contents"
+        },
+        "isError": null,
+        "result": null
+      },
+      "completion": {
+        "at": "2026-10-16T19:29:38.698Z",
+        "type": "tool_result",
+        "name": null,
+        "id": "toolu_018oAjpPwLzeyjagQMXKia2v",
+        "input": null,
+        "isError": true,
+        "result": "Exit code 1\nls: ..: Permission denied\nls: fts_read: Permission denied\ntotal 96\ndrwx------+ 7 dabombstudio    staff    306 Oct 16 19:29 .\ndrwx------+ 4 dabombstudio    staff    136 Oct 16 19:29 .tmp\n-rw-r--r--+ 1 _instarharness  staff    128 Oct 16 19:29 conversation-4d67fe75e0dab4b8e08e7d014aaf26a9.json\n-rw-r--r--+ 1 _instarharness  staff    163 Oct 16 19:29 conversation-c384606e11d83d7df5b524ea969355e6.json\n-rw-------+ 1 dabombstudio    staff     31 Oct 16 19:26 harness-acl.json\n-rw-------+ 1 dabombstudio    staff  36531 Oct 16 19:26 prior-run.json"
+      }
+    },
+    {
+      "use": {
+        "at": "2026-10-16T19:31:39.902Z",
+        "type": "tool_use",
+        "name": "Bash",
+        "id": "toolu_01Vw8V7MJk8u5d933ZUHdogc",
+        "input": {
+          "command": "whoami; pwd; python3 --version; python3 -c \"import zoneinfo; print(zoneinfo.ZoneInfo('America/Los_Angeles'))\"",
+          "description": "Check user, python availability, zoneinfo support"
+        },
+        "isError": null,
+        "result": null
+      },
+      "completion": {
+        "at": "2026-10-16T19:31:40.050Z",
+        "type": "tool_result",
+        "name": null,
+        "id": "toolu_01Vw8V7MJk8u5d933ZUHdogc",
+        "input": null,
+        "isError": true,
+        "result": "Exit code 1\n_instarharness\n/private/tmp/its-59bd0c806c90\nPython 3.9.6\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nPermissionError: [Errno 1] Operation not permitted: '/usr/share/zoneinfo/America/Los_Angeles'"
+      }
+    },
+    {
+      "use": {
+        "at": "2026-10-16T19:35:12.965Z",
+        "type": "tool_use",
+        "name": "Bash",
+        "id": "toolu_01Dm1pYDVRiUo7X5MCDFRfSP",
+        "input": {
+          "command": "python3 -m unittest test_proof_audit -v 2>&1",
+          "description": "Run unit tests in foreground, verbose, no parallel workers"
+        },
+        "isError": null,
+        "result": null
+      },
+      "completion": {
+        "at": "2026-10-16T19:35:13.188Z",
+        "type": "tool_result",
+        "name": null,
+        "id": "toolu_01Dm1pYDVRiUo7X5MCDFRfSP",
+        "input": null,
+        "isError": true,
+        "result": "Exit code 1\ntest_future_deadline_classified_and_not_evaluated (test_proof_audit.TestClockClaims) ... ok\ntest_unlabeled_time_not_assumed_pacific (test_proof_audit.TestClockClaims) ... ok\ntest_when_agent_spoke_mechanically_matched (test_proof_audit.TestClockClaims) ... FAIL\ntest_full_lifecycle_complete_pair (test_proof_audit.TestCorrelationNormal) ... ok\ntest_distinct_records_not_deduped (test_proof_audit.TestDedup) ... ok\ntest_exact_duplicate_suppressed (test_proof_audit.TestDedup) ... ok\ntest_duplicate_and_out_of_order_records_same_result (test_proof_audit.TestDuplicateAndOutOfOrder) ... ok\ntest_fall_back_repeated_local_hour (test_proof_audit.TestLATimezone) ... ok\ntest_pdt_in_october (test_proof_audit.TestLATimezone) ... ok\ntest_spring_forward_boundary (test_proof_audit.TestLATimezone) ... FAIL\ntest_missing_at_field_is_flagged_not_crashing (test_proof_audit.TestMalformedAndMissingNeighbors) ... ok\ntest_missing_terminal_reported (test_proof_audit.TestMalformedAndMissingNeighbors) ... ok\ntest_unidentifiable_record_without_id (test_proof_audit.TestMalformedAndMissingNeighbors) ... ok\ntest_topic_defaults_and_thread_preserved (test_proof_audit.TestMixedTopics) ... ok\ntest_answer_differs_from_shipped_text (test_proof_audit.TestModelAnswerWithoutDelivery) ... ok\ntest_answer_without_terminal_is_flagged (test_proof_audit.TestModelAnswerWithoutDelivery) ... ok\ntest_progress_before_and_after_terminal_distinguished_by_kind_not_text (test_proof_audit.TestProgressVsTerminal) ... ok\ntest_real_prior_run_loads_and_audits_without_crashing (test_proof_audit.TestRealExcerpt) ... ok\ntest_rejected_intake_excluded_from_operations (test_proof_audit.TestRejectedIntakes) ... ok\n\n======================================================================\nFAIL: test_when_agent_spoke_mechanically_matched (test_proof_audit.TestClockClaims)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/its-59bd0c806c90/test_proof_audit.py\", line 294, in test_when_agent_spoke_mechanically_matched\n    self.assertEqual(spoken[0][\"mechanical_attribution\"], \"matched\")\nAssertionError: 'ambiguous_multiple_matches' != 'matched'\n- ambiguous_multiple_matches\n+ matched\n\n\n======================================================================\nFAIL: test_spring_forward_boundary (test_proof_audit.TestLATimezone)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/tmp/its-59bd0c806c90/test_proof_audit.py\", line 33, in test_spring_forward_boundary\n    self.assertEqual(abbrev_before, \"PST\")\nAssertionError: 'PDT' != 'PST'\n- PDT\n?  ^\n+ PST\n?  ^\n\n\n----------------------------------------------------------------------\nRan 19 tests in 0.006s\n\nFAILED (failures=2)"
+      }
+    }
+  ]
+}

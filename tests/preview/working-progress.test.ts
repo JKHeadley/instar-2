@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type PreviewPorts } from './journal-test-worker.js';
@@ -104,6 +105,29 @@ it('UNKNOWN progress is never retried and still consumes its step', async () => 
 
 const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')).otherShapes as { kind: string; id: string; raw: string; source: unknown }[];
 const recordedTool = JSON.parse(readFileSync(new URL('./fixtures/native-loop/live-2026-10-03/task.json', import.meta.url), 'utf8')).admission.split('\n')[0] + '\n';
+it('recorded 715676627 failed completion reaches the progress send, with no progress after the final answer', async () => {
+  const source = new URL('./fixtures/progress-stale-2026-10-16/', import.meta.url);
+  const prefix = readFileSync(new URL('first-progress-admission-prefix.jsonl', source), 'utf8');
+  const { use, completion } = JSON.parse(readFileSync(new URL('failed-completions.json', source), 'utf8')).failures[0];
+  const state = mkdtempSync(join(tmpdir(), 'progress-completion-')); roots.push(state);
+  writeFileSync(join(state, 'config.json'), '{}');
+  const result = spawnSync(process.execPath, [join(__dirname, 'tool-admission-hook.mjs'), 'post', state], {
+    input: JSON.stringify({ hook_event_name: 'PostToolUseFailure', tool_use_id: use.id,
+      tool_name: use.name, tool_input: use.input, error: completion.result }), encoding: 'utf8', timeout: 3000,
+  });
+  expect(result.status).toBe(0);
+  const activity = admissionActivity(prefix + readFileSync(join(state, 'admission.jsonl'), 'utf8'), 0, 'recorded-715676627');
+  expect(activity?.text).toBe('Status: latest main-session tool call ended');
+  const f = fixture({ realActivity: activity });
+  try {
+    await f.enteredPromise; await vi.advanceTimersByTimeAsync(120000);
+    expect(f.progress().map(row => row.text)).toEqual(['Status: latest main-session tool call ended']);
+    f.release(shapes.find(shape => shape.kind === 'delivered-reply')!.raw); await f.drain;
+    await vi.advanceTimersByTimeAsync(1200000); expect(f.progress()).toHaveLength(1);
+    expect(f.sent.at(-1)?.target?.startsWith('working-progress:')).toBe(false);
+  } finally { f.release('Done.'); await f.drain; f.journal.close(); }
+});
+
 it.each(shapes)('recorded $kind ($id): real activity fires through the new path, then stops with its answer outcome', async shape => {
   const f = fixture({ recorded: shape, realActivity: admissionActivity(recordedTool, 0, 'recorded-native-task') });
   try {
