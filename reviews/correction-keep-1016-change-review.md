@@ -28,7 +28,7 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label protocol
 
 Deferral: generated/register.json:1 | not-a-deferral=Existing governed text emitted by register replay, not postponed work.
 
-Verification: The final core run passes 56 tests with one existing live-capture test skipped. The consolidated packet-fit run passes 40 tests. Register replay binds the committed product source; the desk owner-manifest and inventory tools changed no pins. Seven generated register outputs update only their source/generation references.
+Verification: The core replay run passes 56 tests with one existing live-capture test skipped; the final memory, obligation and topic protocol run passes 68 tests. The consolidated packet-fit run passes 40 tests. Register replay binds the committed product source; the desk owner-manifest and inventory tools changed no pins. Seven generated register outputs update only their source/generation references.
 
 ## Closing block
 
