@@ -25,6 +25,8 @@ Prompt review: model-facing. Replay blocker-refusal-recorded-46039927.json throu
 
 Additional negative neighbor: an injected answer judgment sees the missing-credential inventory and asks for secure intake once; the next real journal packet retains that exact prior ask, and the next delivered answer reports it pending without repeating it. This is context/delivery evidence, not independent semantic model acceptance.
 
+Register regeneration: replayed from pushed source commit db0ac0d4a68d03b92251c5e73a47f106d3640ca3; generated source, register, capabilities, coverage, glossary and rule outputs refreshed without changing declarations.
+
 simplestRobustRoute: current access metadata plus scoped-tool instructions on the existing self-state/guidance path is the simplest route. This implementation takes it. It adds no watcher, model call, store or gate. Bounded inventory reads prevent forgotten held access; exact existing effect admission still holds scope, stop, spend and delivery. A live unattended success is not claimed by this offline submission.
 80/20: verify the packet, custody/refusal boundaries and recorded shapes; leave live semantic acceptance and host-specific checks to the assigned desk gate.
 VERDICT: author submission; independent review belongs to the desk
