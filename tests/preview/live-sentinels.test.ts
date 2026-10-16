@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, limitedAnswerText, openPreviewJournal, openRequests } from './journal-test-worker.js';
 import { statusReply } from './status-command.js';
-import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, sentinelStatusLines, WORK_SILENCE_MS, type LiveSentinelPorts } from './live-sentinels.js';
+import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, sentinelStatusLines, workSilenceObservations, WORK_SILENCE_MS, type LiveSentinelPorts } from './live-sentinels.js';
 import { SENTINEL_FAMILIES, type SentinelFamily } from './sentinel-record.js';
 import { defaultSentinelConfig } from '../../src/awareness/sentinel.js';
 import { defaultPresenceConfig } from '../../src/sentinels/presence.js';
@@ -493,5 +493,23 @@ it('rebuilds active children from an older compacted work history without reserv
     expect(w.journal.view.calls).toBe(calls);
     w.sentinels.observeWork();
     expect(w.journal.view.sentinels?.work?.['open-edge']?.state).toBe('unknown');
+  } finally { w.close(); }
+});
+
+it('reports an unresolved obligation truthfully and clears that signal while its admitted next step is running', () => {
+  const w = harness();
+  try {
+    w.worker.intake([update(1, 'Finish the requested check.')]);
+    const source = w.journal.view.order[0]!;
+    w.journal.view.commitments.push({ source: source.id, in: 'message', quote: source.text, owner: 'agent', waitsOn: 'nothing' });
+    const work = { attempts: 1, last: START, lastSlot: START, outcome: 'uncertain' as const };
+    w.journal.view.obligationWork['commitment:0'] = work;
+    expect(workSilenceObservations(w.journal.view, START)['commitment:0']?.state).toBe('action-needed');
+    w.journal.view.obligationWork['commitment:0'] = { ...work, inFlight: START + 1 };
+    expect(workSilenceObservations(w.journal.view, START + 1)['commitment:0']).toMatchObject({ state: 'waiting',
+      detail: 'A bounded work step is in flight; inspect its registered child.' });
+    w.journal.view.obligationWork['commitment:0'] = { ...work, outcome: 'waiting', waitsOn: 'operator' };
+    expect(workSilenceObservations(w.journal.view, START + WORK_SILENCE_MS)['commitment:0']).toMatchObject({ state: 'waiting',
+      detail: 'Waiting on operator.' });
   } finally { w.close(); }
 });

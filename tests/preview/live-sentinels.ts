@@ -139,7 +139,7 @@ export function workSilenceObservations(view: JournalView, now: number,
   for (const loop of openLoops(view, now)) {
     if (loop.owner !== 'agent') continue;
     const work = view.obligationWork[loop.id];
-    const uncertain = work?.outcome === 'uncertain' || work?.outcome === 'failed';
+    const uncertain = work?.inFlight === undefined && (work?.outcome === 'uncertain' || work?.outcome === 'failed');
     const wait = work?.inFlight !== undefined ? 'A bounded work step is in flight; inspect its registered child.'
       : work?.report ? 'A finished result is retained for its admitted delivery.'
         : work?.waitsOn ? `Waiting on ${work.waitsOn}.`
