@@ -3,7 +3,7 @@
  * rebuilds it exactly, and every item stays open until a recorded cause closes it. */
 import { dueState } from './dated-memory.js';
 import { commitmentOpen, commitmentWaitsOn, loopRevisitMs, loopRevisits, obligationCapacity, obligationSchedule, openBlockers,
-  openDirectives, openQuestionCandidates, openRequests, probeTurn, wallEpoch, type JournalView, type Turn, type ObligationOutcome } from './journal.js';
+  openDirectives, openQuestionCandidates, openRequests, owedResultAuthority, probeTurn, wallEpoch, type JournalView, type Turn, type ObligationOutcome } from './journal.js';
 
 /** Measured engineering defaults (Rule 46/64): accepted work older than this, or no forward
  * progress for this long while work waits, is reported as overdue on the pull surface. */
@@ -62,6 +62,8 @@ export interface LoopHealth { open: number; byKind: Record<LoopKind, number>; re
   workInFlight: number; awaitingDelivery: number; scheduledWork: number; nextWorkAt: number | null;
   /** Results bound to a reply whose send has no receipt: UNKNOWN, visible, never resent or counted as delivered. */
   deliveryUnknown: number;
+  /** Completed results whose obligation was withdrawn/closed without delivery; retained, never sent. */
+  withdrawnResults: number;
   /** Work steps whose latest result waits on the operator or an outside party, with what each needs. */
   waitingWork: { key: string; waitsOn: string; need: string }[];
   /** Everything the runner still owns and can act on: unfinished, scheduled, in-flight, undelivered and waiting work.
@@ -109,6 +111,12 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
       : turns.length && view.replies >= view.limits.maxReplies ? 'reply allowance used'
         : oldestTurn?.held !== undefined ? `held: ${oldestTurn.held}`
           : due.length && !obligationCapacity(view) ? 'model-call capacity reserved for replies' : null);
+  const deliverable = schedule.filter(item => item.awaitingDelivery && owedResultAuthority(view,
+    { key: item.key, slot: view.obligationWork[item.key]!.lastSlot })).length;
+  const deliveryHold = view.stop ?? (now >= view.expires ? 'trial expired'
+    : view.replies >= view.limits.maxReplies ? 'reply allowance used'
+      : view.calls >= view.limits.maxCalls ? 'model-call allowance used'
+        : view.order.find(turn => turn.requestedAction?.owed && turn.intent === undefined && turn.held)?.held ?? null);
   return { open: loops.length, byKind, revisitDue: loops.filter(loop => loop.revisitDue && loop.kind === 'commitment').length,
     revisitMinutes: Math.round(loopRevisitMs(view) / 60_000),
     overdueCheckIns: loops.filter(loop => loop.defect === 'overdue-check-in').length,
@@ -117,9 +125,11 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
     undeclared: loops.filter(loop => loop.defect === 'undeclared-dependency').length, refusedCommitments: view.commitmentRefusals,
     unfinished: waiting.length, unansweredTurns: turns.length, dueWork: due.length,
     workInFlight, awaitingDelivery, scheduledWork: future.length,
+    withdrawnResults: Object.entries(view.obligationWork).filter(([key, work]) => work.report && !work.report.delivered
+      && key.startsWith('commitment:') && !commitmentOpen(view, Number(key.slice(11)))).length,
     deliveryUnknown: schedule.filter(item => item.deliveryUnknown).length, waitingWork,
     // An open requested action is owned work until its answer is dispatched: its due time wakes the runner (Rule 68).
-    ownedWork: waiting.length + future.length + awaitingDelivery + requestsAt.length
+    ownedWork: waiting.length + future.length + awaitingDelivery + requestsAt.length + schedule.filter(item => item.deliveryUnknown).length
       + waitingWork.filter(item => !Number.isFinite(schedule.find(entry => entry.key === item.key)!.slot)).length,
     nextWorkAt: wakeAt.length ? Math.min(...wakeAt) : null, rejectedDeclarations: view.rejectedObligations,
     oldestUnfinishedAt: oldestAt ?? null, oldestUnfinishedAgeMs: oldestAt === undefined ? null : Math.max(0, now - oldestAt),
@@ -130,7 +140,10 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
     lastProgressAt, progressAgeMs: lastProgressAt === null ? null : Math.max(0, now - lastProgressAt),
     state: oldestAt === undefined ? 'idle' : now - oldestAt > PROGRESS_STALL_MS ? 'stalled' : 'progressing',
     inhibition: oldestAt !== undefined || view.stop ? inhibition : null,
-    deliveryInhibition: awaitingDelivery ? `no grant for unsolicited sends; ${awaitingDelivery} finished ${awaitingDelivery === 1 ? 'result waits' : 'results wait'} for your next message` : null,
+    deliveryInhibition: awaitingDelivery ? [
+      ...(deliverable ? [`${deliverable} requested result${deliverable === 1 ? '' : 's'} awaiting delivery${deliveryHold ? `; ${deliveryHold}` : '; waiting for the next successful intake poll'}`] : []),
+      ...(awaitingDelivery > deliverable ? [`no grant for unsolicited sends; ${awaitingDelivery - deliverable} finished ${awaitingDelivery - deliverable === 1 ? 'result waits' : 'results wait'} for your next message`] : []),
+    ].join('; ') : null,
     correctionsWaiting: view.corrections.length };
 }
 
@@ -149,6 +162,7 @@ export function loopStatusLines(view: JournalView, now: number): string[] {
     ...(health.lastAttemptAt === null ? [] : [`Last work attempt: ${age(Math.max(0, now - health.lastAttemptAt))} ago; ${health.lastAttemptOutcome}; ${health.failedAttempts} failed attempts.`]),
     `Scheduled work: ${health.scheduledWork} waiting for their time${health.workInFlight ? `, ${health.workInFlight} in progress` : ''}${health.deliveryInhibition ? `; ${health.deliveryInhibition}` : ''}.`,
     ...health.waitingWork.slice(0, 3).map(item => `Waiting on ${item.waitsOn === 'operator' ? 'you' : 'an outside party'}: ${item.need}`),
+    ...(health.withdrawnResults ? [`Withdrawn results: ${health.withdrawnResults} retained without delivery; not sent or counted as delivered.`] : []),
     ...(health.deliveryUnknown ? [`Delivery unknown: ${health.deliveryUnknown} finished ${health.deliveryUnknown === 1 ? 'result was' : 'results were'} sent without a confirmed receipt; not resent and not counted as delivered.`] : []),
     `Overdue: ${health.overdueCheckIns} check-ins, ${health.overdueRechecks} blocker rechecks, ${health.overdueRequests} requested actions; corrections awaiting your next message: ${health.correctionsWaiting}.`,
     ...(health.undeclared || health.refusedCommitments
