@@ -23,7 +23,9 @@ Decision: repair-native-conformance | Refresh the supported native declaration o
 Decision: repair-publication | Use the delegated desk repin tools and replay register generation to publish this source. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ratelimit-recover-1016-repair-PROGRESS.md
 Prompt review: No model prompt or semantic parser changes. Real recorded summary/uncertain, Jev undecided/unsure, reply-review, delivered and empty shapes exercise the changed result boundary; lifecycle evidence is not a model verdict.
 
-Subject (8 paths): src/assembly/README.md, src/assembly/conversation-harness-adapter.ts, src/assembly/harness.declarations.json, src/assembly/harness.ts, src/assembly/production-session-driver.ts, src/assembly/production-session-work.ts, tests/assembly/production-session-driver.test.ts, tests/assembly/production-session-work.test.ts
+Subject (10 paths): src/assembly/README.md, src/assembly/conversation-harness-adapter.ts, src/assembly/harness.declarations.json, src/assembly/harness.ts, src/assembly/production-session-driver.ts, src/assembly/production-session-work.ts, tests/assembly/production-session-driver.test.ts, tests/assembly/production-session-work.test.ts, tests/assembly/production-grounding-inventory.json, scripts/check-assembly-contracts.mjs
+
+Publication: The delegated desk tool refreshed the reviewed harness.ts support-source digest in production-grounding-inventory.json and its enclosing digest in check-assembly-contracts.mjs after the source commit. Owner-reference manifests needed no changes.
 
 ## Closing block
 
