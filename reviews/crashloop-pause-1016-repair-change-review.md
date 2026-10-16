@@ -22,4 +22,6 @@ Decision: crashloop-repair | use only current-launch records to exclude failures
 
 simplestRobustRoute: this is the simplest robust route: extend the existing failure classification and share existing notice settlement between ordinary failure handling and the paused return. No new watcher, store, classifier or messaging path. Current launch evidence prevents renewed retry budgets; pre-dispatch ledger inspection prevents duplicate sends. Stop, admission, authority and effect checkpoints remain. Tests demonstrate unattended confined-child recovery against fake Telegram, not live acceptance; the desk owns the native certificate renewal and live proof.
 80/20: 31 targeted supervisor tests pass, including 8 regressions that failed before repair, recorded launch and work fixture replays, physical hang recovery and real confined notice dispatch. Typecheck and build pass. Full suites are reserved for the Studio pipeline. Architecture reports only the standing charter clause 7 native certificate exception; no declaration is changed to conceal it.
+Register publication: owner-manifest rehash and grounding-chain helper each refreshed zero pins. Generated outputs replay committed repair source c241eb21ecbc71b1c59ac7c9d6e934fc5c24d238 with shape-only authority.
+
 VERDICT: author submission; no independent convergence or live acceptance claim
