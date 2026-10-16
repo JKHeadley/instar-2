@@ -20,11 +20,14 @@ Hook bypass: none; core.hooksPath unset and common hooks directory inspected, sa
 Convergence: none
 Prompt review: The neutral continuation asks to continue the same interrupted turn from recorded state, without replaying completed actions or uncertain effects. It does not repeat the user request, fabricate context, resolve semantic uncertainty or use the compaction-restoration payload. Existing admission enforces the floors; wording does not replace enforcement.
 
-Subject (5 paths): scripts/session-deadline-watchdog.mjs, src/assembly/README.md, src/assembly/production-session-driver.ts, tests/assembly/production-session-driver.test.ts, tests/assembly/session-deadline-recovery.test.ts
+Subject (12 paths): scripts/session-deadline-watchdog.mjs, src/assembly/README.md, src/assembly/production-session-driver.ts, tests/assembly/production-session-driver.test.ts, tests/assembly/session-deadline-recovery.test.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 Decision: ratelimit-one-turn | Extend the existing driver journal with one 30-second delayed continuation per admitted turn; retain its deadline and stop/call/effect admission instead of adding a sentinel service. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ratelimit-recover-1016-PROGRESS.md
 Decision: ratelimit-uncertain | Record sending before terminal input and never retry an uncertain nudge; a repeated throttle returns the existing typed pause for next-call account selection. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ratelimit-recover-1016-PROGRESS.md
 Decision: ratelimit-deadline | During recovery, only the driver's durable close cancels the independent deadline; a bare throttle Stop receipt cannot defeat the safety ceiling after host loss. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ratelimit-recover-1016-PROGRESS.md
+Decision: ratelimit-publication | Regenerate the existing offline register publication from the pushed source commit so source pins describe this implementation; leave the desk-owned native macOS certificate unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/ratelimit-recover-1016-PROGRESS.md
+
+Publication: Seven generated artifacts refreshed in replay mode from f6cabc7a16776b78552486d034a2a8f6c74cb521. This is a shape-only publication, not runtime authority or native macOS conformance certification. Revert and regenerate together on rollback.
 
 Evidence: The positive same-turn regression failed before implementation (immediate pause), then passed. The independent watchdog regression failed for all three recovery states before its repair, then passed. Existing captured Claude limit output from 2026-09-24 drives the recovery with a simulated idle prompt; this is recorded provider text, not a claim of a captured full terminal frame. Recorded summary/uncertain/Jev/review/delivered/empty shapes from retrospective-duty-followup-train-1-2026-10-08.json remain non-throttle evidence. No new live model or Telegram result is claimed.
 
