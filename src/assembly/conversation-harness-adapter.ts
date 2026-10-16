@@ -20,7 +20,7 @@ export function createSessionConversationAdapter(config: Readonly<{
     return input.text;
   });
   return {
-    describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false }),
+    describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false, contextRecovery: 'host-snapshot' }),
     launch: async input => ({ launch: take(driver.launch({ ...input, handles: [] })), incarnation: input.incarnation, claim: input.claim }),
     deliver: async input => {
       config.io.clearResult(input.resultPath);

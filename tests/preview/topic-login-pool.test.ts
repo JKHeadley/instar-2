@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { createHarnessLoginPool } from './harness-login-pool.mjs';
 import { createTopicLoginHandoff } from '../../scripts/topic-login-pool.mjs';
-import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
+import { createProductionSessionIO, createSessionGrounding } from '../../scripts/production-session-io.mjs';
 import { createConversationHostStore } from '../../scripts/conversation-host-store.mjs';
 import { createConversationTopicsPort } from '../../src/assembly/conversation-topics.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
@@ -224,7 +224,7 @@ it('the shipped configuration captures each topic account for launch, observatio
   const drivers = [], observed = [], admitted = [], stopped = [], bound = [];
   const recovery = [{ kind: 'dispatch-intent', claim: 'prior-claim' }];
   const journal = { view: { expires: 100000, order: [] }, sessionWorkRecords: () => recovery };
-  const env = { conversationSession: true, sessionAdapter: {}, sha256: () => 'a'.repeat(64), conversationOf: () => 'operator', g: {}, journal,
+  const env = { createSessionGrounding, conversationSession: true, sessionAdapter: {}, sha256: () => 'a'.repeat(64), conversationOf: () => 'operator', g: {}, journal,
     sessionWork: { authority: 'grant' }, createProductionSessionDriver: config => {
       drivers.push(config); return { owner: 'part-eight', launch: () => ({ kind: 'Success', value: 'worker' }),
         deliver: () => ({}), observe: () => ({}), stop: target => { stopped.push(target); return {}; } };
@@ -256,6 +256,8 @@ it('the shipped configuration captures each topic account for launch, observatio
   selected = 1;
   db.launch({ claim: 'claim-8' }); da.launch({ claim: 'claim-7' });
   expect(drivers.slice(-2).map(config => config.configHome)).toEqual(['/config-1', '/config-0']);
+  expect(drivers.slice(-2).map(config => config.compactGroundingFile)).toEqual([b.grounding.file(), a.grounding.file()]);
+  expect(a.grounding.file()).not.toBe(b.grounding.file());
   expect(drivers.at(-2).continuationRequired()).toBe(true); expect(drivers.at(-2).io.transcriptExists()).toBe(false);
   expect(bound).toEqual(['claim-8']); expect(resumed).toBe(true);
   db.observe({}); da.observe({}); expect(observed).toEqual([1, 0]);

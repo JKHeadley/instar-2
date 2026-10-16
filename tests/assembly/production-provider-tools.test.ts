@@ -96,11 +96,17 @@ it('tells the model it has the whole tool set and how each call is bounded, and 
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('which tool call, by name and order, produced it');
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('You have no tools and cannot act beyond this answer; never claim otherwise.');
   // Plan #510: the tool route runs without --safe-mode, so Claude Code injects its own account email; the prompt says that
-  // login is never the operator (+187, live cint-L50 "Luna"). The bound stays: the tool sentence is still one paragraph.
-  // Shared completion guidance adds no tool-only growth; the inherited 508-character
-  // verification clause stays tool-only, with the same 33-character headroom.
+  // login is never the operator. Completion guidance adds the inherited 508-character
+  // tool-only clause; delta delivery changes neither prompt nor activation policy.
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('is the subscription login running you, never the operator');
-  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(2800 + 508);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBe(2767 + 508);
+  const captures = JSON.parse(readFileSync(new URL('../preview/fixtures/tools-guidance-only-2026-10-15.json', import.meta.url), 'utf8'));
+  const [previous, completion] = captures.builds;
+  expect(previous.digest).toBe('sha256:5fed4bcfd823d950c1444a008a9c11d40824671dd8e68aa2f5908ed8534a2926');
+  expect(hash(previous.policy)).toBe(previous.digest);
+  expect(subscriptionToolsPolicy('claude-sonnet-5')).toEqual(completion.policy);
+  expect(hash(subscriptionToolsPolicy('claude-sonnet-5'))).toBe(completion.digest);
+  expect(completion.digest).not.toBe(previous.digest);
 });
 
 it('writes settings that refuse every read from the root down except the scratch volume and the runtime, writes outside the volume, network and unix sockets, with the mandatory hook on both events', () => {
