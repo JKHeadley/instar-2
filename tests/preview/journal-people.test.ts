@@ -95,10 +95,10 @@ it('recalls every note about a named person after compaction, keeps the operator
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user.includes('Sam'))).toBe(false);
     expect(packet.people).toMatchObject([
-      { source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z',
+      { source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21 07:14 PDT',
         message: 'My cofounder Sam thinks the launch should slip to November.',
         mentions: [{ person: 'Sam', quote: 'My cofounder Sam thinks the launch should slip to November.' }] },
-      { source: 'telegram:12345678:update:2', from: 'the operator (verified sender)', date: '2026-09-21T14:15Z',
+      { source: 'telegram:12345678:update:2', from: 'the operator (verified sender)', date: '2026-09-21 07:15 PDT',
         message: 'Priya said she disagrees with Sam about the launch date.',
         mentions: [{ person: 'Sam', quote: 'Priya said she disagrees with Sam about the launch date.' }] }]);
     expect(auditPacket(w.journal.view, w.journal.view.order.find(turn => turn.text === question)!, packet).findings).toEqual([]);
@@ -130,8 +130,8 @@ it('says who really spoke: a person\'s own authenticated message is theirs, a re
       ['the operator (verified sender)', 'Sam thinks the budget is fine.'],
       ['Telegram user 555 (authenticated sender, not the operator)', 'Sam here: the budget is too small.']]);
     expect(people.map((note: { sourceLabel: string }) => note.sourceLabel)).toEqual([
-      'conversation:operator/main chat/2026-09-21T14:14Z/#1',
-      'conversation:other sender/main chat/2026-09-21T14:15Z/#2']);
+      'conversation:operator/main chat/2026-09-21 07:14 PDT/#1',
+      'conversation:other sender/main chat/2026-09-21 07:15 PDT/#2']);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -510,7 +510,7 @@ it('renders the whole source message, so an excerpt can never drop the context t
     const packet = JSON.parse(w.asked.get('Which month does Sam support?')!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user === message)).toBe(false);
-    expect(packet.people).toMatchObject([{ source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message,
+    expect(packet.people).toMatchObject([{ source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21 07:14 PDT', message,
       mentions: [{ person: 'Sam', quote: 'Sam supports November' }] }]);
     expect(packet.capability).toContain('Read a mention only within its whole message');
     w.journal.close();
@@ -538,7 +538,7 @@ it('carries a dated, sourced timeline from imported messages and caps it per per
     expect(packet.people.map((entry: { date: string }) => entry.date)).toEqual(
       [...packet.people.map((entry: { date: string }) => entry.date)].sort());
     expect(packet.people[0].sourceId).toMatch(/^channel-ref:[a-f0-9]{64}$/u);
-    expect(packet.people[0].date).toBe('2026-09-21T14:16Z');
+    expect(packet.people[0].date).toBe('2026-09-21 07:16 PDT');
     expect(packet.people.at(-1)).toMatchObject({ source: 'conversation',
       from: 'justin@example.test (export sender metadata, unverified)',
       message: 'Maya Chen denied ordering shipment 12.',

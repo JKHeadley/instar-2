@@ -34,6 +34,18 @@ export function localParts(at: number, zone: string) {
   return { year: part('year'), month: part('month'), day: part('day'), hour: part('hour'), minute: part('minute') };
 }
 
+// Retain only the last zone formatter: packet selection renders the same dates many times.
+let minuteFormatter: { zone: string; format: Intl.DateTimeFormat } | undefined;
+/** Model-facing time in the operator zone, including the zone at this instant (DST aware). */
+export function localMinute(at: number, zone: string): string {
+  if (minuteFormatter?.zone !== zone) minuteFormatter = { zone, format: new Intl.DateTimeFormat('en-US', {
+    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    hourCycle: 'h23', timeZoneName: 'short' }) };
+  const fields = minuteFormatter.format.formatToParts(at);
+  const part = (type: string) => fields.find(field => field.type === type)!.value;
+  return `${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')} ${part('timeZoneName')}`;
+}
+
 /** Date phrases parseDatedItem reads. */
 const DATE_PHRASE = /\b(?:today|tomorrow|(?:(?:this|next|every)\s+)?(?:Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)|(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?|\d{4}-\d{1,2}-\d{1,2})(?:\s+at\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?)?\b/giu;
 /** A model may restate the operator's date phrase as an absolute date ("2026-09-29 09:03

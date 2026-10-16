@@ -58,7 +58,7 @@ it('gives the activation question labelled self-state while keeping recorded his
       ({ id: item.id, user: item.user, answer: item.answer }))).toEqual(history.map(({ id, user, answer }) => ({ id, user, answer })));
     expect(JSON.stringify(packet.history)).toContain(activation.name);
     expect(JSON.stringify(packet.memoryCandidates)).toContain(activation.identity);
-    expect(packet.operatorRequest).toMatchObject({ id: '87432af9acef18cc', action: 'renew-expiry', trialEnd: '2026-11-12T21:40Z' });
+    expect(packet.operatorRequest).toMatchObject({ id: '87432af9acef18cc', action: 'renew-expiry', trialEnd: '2026-11-12 13:40 PST' });
     expect(packet.operatorRequest.state).toContain('approved by the operator and applied');
     expect(packet.operatorRequest.state).toContain('I can also use that account');
     expect(JSON.stringify(journal.view.operatorRequests)).toBe(approval);

@@ -157,7 +157,7 @@ it('uses the normal journal, Jev and send path, with dated bounded evidence afte
       history: { date: string; user: string }[] };
     expect(packet.saidRange).toEqual({ from: '2026-09-22', to: '2026-09-22', matched: 1 });
     expect(packet.recalled).toHaveLength(1);
-    expect(packet.recalled[0]).toMatchObject({ date: '2026-09-22T07:00Z', user: 'The orchard gate is blue.' });
+    expect(packet.recalled[0]).toMatchObject({ date: '2026-09-22 00:00 PDT', user: 'The orchard gate is blue.' });
     expect(JSON.stringify(packet)).not.toContain('silver fox');
     expect(packet.history.some(item => item.user === 'Wednesday was quiet.' && !!item.date)).toBe(true);
     expect(journal.view.lastReplyCheck?.path).toBe('jev');
