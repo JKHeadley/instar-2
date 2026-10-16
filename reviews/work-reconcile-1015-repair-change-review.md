@@ -1,15 +1,15 @@
 # Change review — bounded commitment-history reconciliation
 
-Subject base: 76f817b8708b89828a303e1890f7ca7a10aeb083
+Subject base: a1b59d03faad205e33fc33dc6915825abfecb635
 Review state: open
 Reviewed content: none
-Outcome: retained commitment history no longer prevents delivered-answer outcome review; actionable candidates traverse bounded duplicate-evidence pages before becoming schedulable.
+Outcome: recover omitted and undated delivered promises through the existing retrospective/journal executor; retained commitment history no longer prevents delivered-answer outcome review; actionable candidates traverse bounded duplicate-evidence pages before becoming schedulable.
 Affected rules: 4, 8, 9, 10, 12, 36, 44, 46, 49, 57, 58, 60, 68, 70, 74, 83, 101, 102, 111, 113, 116
 Affected floors: secrets — existing redaction and quote validation retained; spend cap — existing retrospective reservation, cadence and reply reserve unchanged; stop — existing worker admission unchanged; no duplicate sends — candidates remain unscheduled until complete duplicate coverage and use the existing executor/send doorway; durable intake — existing journal intake unchanged and page progress rides durable review grades.
 Operator questions: none
-Suggested tier: significant
-Declared tier: significant
-Tier rationale: repair to existing model-facing reconciliation and its durable grade; no new effect, authority, worker or store.
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: covers the original unit's journal projection and model-facing promise admission plus the history-size repair; no new effect authority, worker or store.
 Side effects: a large conversation requires several already-budgeted review passes before candidate work is admitted. Outcome grades remain available on each pass. The packet explicitly discloses incomplete coverage; subsequent pages may only narrow candidates. An omitted or failed case never advances coverage. New commitments arriving during a call require another page.
 Undo and recovery: revert the repair to restore prior planning; retained commitments and completed work remain intact. Older readers ignore optional promiseReview and revisit grades lacking promises, so unfinished reconciliation is not marked complete, though the old history-size defect returns. Failed calls retain the last durable cursor. No live root is changed.
 Multi-machine posture: existing conversation-owned journal, replay and snapshot posture; progress follows its grades across restart or transport. No machine-local side store, new sender or ownership bypass.
@@ -23,6 +23,11 @@ Decision: reconcile-history-snapshot | bind validation to the page actually plan
 Prompt review: model-facing. Replay summary-ack-walk-2026-10-15.json through delivered update 840342898 and neighboring 840342917; promise-fulfilment-a5b-2026-10-03.json for the existing undated promise; retrospective-duty-followup-train-1-2026-10-08.json for recorded uncertain summary, Jev uncertain/undecided, reply-review and empty-bubble shapes. Additional explicit test judgments cover 60 closed commitments, last-page semantic duplicates, restart and failed or widening pages. These are offline captured-input replays, not live-model acceptance; the combined desk retains its assigned live check.
 
 Register regeneration: generated output is replayed from product commit d229d5276a50cf44a753df195dced1647504296b; the delegated owner-manifest and inventory repin scripts reported zero changed pins.
+
+Review coverage repair: the checker found original unit commits 3ff57abfa6e3b098dfcfc600fc20b95c4e0c0f6d and 76f817b8708b89828a303e1890f7ca7a10aeb083 had no in-tree review record. This record covers them as well as the repair. The original journal projection admits only delivered, inspected, quote-validated promises, using the same commitment identity and work executor. Existing closed, dated and declared-wait tasks retain their state. Original README and empty-promise test updates match that behavior; this repair changes only the history context and continuation.
+Decision: reconcile-review-coverage | extend this unit's record to its original product base so the two inherited unit commits are covered, without editing unrelated review history | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/work-reconcile-1015-repair-183343-PROGRESS.md
+Prompt finding: 849db3a6296a | protocol-literal | existing saved-memory response contract in journal.ts, unchanged by this unit.
+Prompt finding: e8708c7fea24 | protocol-literal | existing source-label and uncertainty guidance in journal.ts, unchanged by this unit.
 
 ## Closing block
 
