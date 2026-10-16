@@ -1,3 +1,4 @@
+import { CLAIM_EVIDENCE_GUIDANCE } from './answer-provenance.js';
 import { createHash } from 'node:crypto';
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
 // @ts-expect-error The effect doorway runs as plain JavaScript in the harness.
@@ -238,6 +239,7 @@ export const LITERAL_COPY_INSTRUCTIONS = 'When quoting or copying literal text, 
   + 'Compare every character with the source before answering; do not repeatedly retype the text in reasoning.';
 export const ANSWER_PROTOCOL = [
   LITERAL_COPY_INSTRUCTIONS,
+  CLAIM_EVIDENCE_GUIDANCE,
   'For a later-action promise return JSON reply and promises:[{quote:exact reply sentence,when?:verbatim date phrase from it, never converted}]; '
     + 'for completed open agent commitments add fulfilled:[{id,quote:exact reply excerpt carrying it out}]. Conditional or quoted examples are not promises.',
   'With packet.continuity, context was compacted through continuity.through; only the summary covers it. continuity.lastInbound names the previous message. '

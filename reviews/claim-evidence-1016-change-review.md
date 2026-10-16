@@ -1,0 +1,49 @@
+# Change review — Qualify unsupported and uncertain reply claims
+
+Subject base: a82cdeac28e30f18a6f3dfee9335ae71ca31b890
+Review state: open
+Reviewed content: none
+Outcome: Replies distinguish supported claims, unsupported claims and uncertain records through the existing answer and contextual review instructions.
+Affected rules: 4, 10, 12, 26, 34, 36, 42, 47, 49, 55, 60, 70, 74, 75, 77, 84, 86, 95, 101, 102, 111, 113, 116
+Affected floors: secrets — existing credential wall; spend cap — unchanged call/token limits; stop — unchanged; no duplicate sends — existing durable send identity; durable intake — unchanged journal
+Operator questions: none
+Suggested tier: critical
+Declared tier: significant
+Tier rationale: Model-facing wording on the existing answer/review path; no new authority, external effects, gate or runtime state.
+Side effects: Additional answer guidance consumes prompt bytes. Move 500 bytes from unused review-only allowance to fixed answer allowance, and shorten the contextual rule; measure both envelopes. The combined minimum and default operator/history headroom are unchanged. Unsupported assertions are qualified by the model; ordinary conversation must not acquire blanket caveats.
+Undo and recovery: Revert the instruction, review wording and paired allowance changes together. No schema migration or stored-output rewrite. Recorded drafts, revisions, outcomes and receipts remain intact.
+Multi-machine posture: Stateless per-call instructions consume the existing persisted conversation evidence on every machine. Ownership, replication, send identity and authority are unchanged; no new machine-local runtime state.
+Layer below: Standing ANSWER_PROTOCOL in briefing and the journal envelope; existing source/self-state evidence and declared obligations; contextual review selection and bounded revision; durable answer/send records; measured prompt-size floor.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/claim-evidence.test.ts
+Hook bypass: none; core.hooksPath unset; common hooks directory inspected and contains samples only
+Convergence: none
+<!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
+Prompt review: The mind judges claim support from the same evidence packet; code adds no semantic matching. Supported outcomes remain plain, missing evidence receives one short qualification, uncertain evidence remains uncertain. Questions, hypotheticals and ordinary conversation are excluded. Existing summary/review tasks keep their protocol; no new model call. Fresh-model proof remains a desk proof-room check after the local no-tool capture returned a provider refusal.
+Prompt finding: 0abb3dc96311 | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "an unresolved date or unrecorded scheduling claim is no admitted reminder."
+Prompt finding: 4106b49fff07 | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/journal.ts <- tests/preview/topic-awareness.test.ts: "you attempted nothing outside this reply, so never call an avenue tried; a missi"
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "tools: full claude code set"
+Prompt finding: 5b486d8bd247 | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "prioritize verdicts; do not repeat rules or context."
+Prompt finding: 5fa1a20c4031 | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "an illustrative or quoted literal the verified operator explicitly requested or "
+Prompt finding: 7c45ffbe90ad | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "loops the deferrals, judgments and promises it will track, dated this turn's adm"
+Prompt finding: 849db3a6296a | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
+Prompt finding: 95e349aaf4ac | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "via the doorway's four tests; standing grants need no new approval."
+Prompt finding: aef7d91bef51 | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "give each listed rule, and no others, one verdict"
+Prompt finding: b288d6ef1604 | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "keep reasoning under 400 characters and all json under 4000 so every verdict fit"
+Prompt finding: e769ca9dd959 | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "pass means no breach; violation means a breach, named in its reason."
+Prompt finding: e8708c7fea24 | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
+Prompt finding: f6d7f3274c85 | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "restating a recorded, still-open limit needs no duplicate record. a capability n"
+Prompt finding: feadb66b8ad1 | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "any live authentication secret reaching anyone but the verified operator who sup"
+
+Subject (6 paths): tests/preview/answer-provenance-live-test.md, tests/preview/answer-provenance.ts, tests/preview/briefing.ts, tests/preview/claim-evidence.test.ts, tests/preview/journal.ts, tests/preview/reply-check.ts
+
+
+Decision: claim-evidence-existing-mind | Use shared evidence guidance in existing answer and contextual claim/revision instructions, preserving semantic judgment and all current fail directions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/claim-evidence-1016-PROGRESS.md
+Decision: claim-evidence-budget | Reallocate 500 bytes between fixed answer and review-only allowances, keeping their sum and the default history headroom unchanged; measure both sides. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/claim-evidence-1016-PROGRESS.md
+Decision: claim-evidence-recorded-proof | Replay existing real writer/Jev/reviewer/delivery shapes and clearly separate constructed revisions from captured outputs; request fresh-model proof on the desk after provider refusal. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/claim-evidence-1016-PROGRESS.md
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: extend the existing answer-provenance holder with shared guidance in standing answer instructions and the existing contextual claim/revision question. No new service, store, watcher, parser, verifier or model call. Start: an answer grounded in recorded packet evidence. End: the answer or its one existing revision is sent through the unchanged journal path. Limits: existing call allowance, shared review deadline, credential wall, stop, intake and send identity. Recorded replays and constructed delivery integration are evidence; no unattended live completion is claimed.
+80/20: Run changed tests and direct importers in one-worker foreground runs, typecheck, architecture/lint/register and change-review checks. The desk owns full-suite and fresh-model/live proof.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
