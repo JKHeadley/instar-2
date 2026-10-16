@@ -1,5 +1,21 @@
 [
   {
+    "revision": 16,
+    "date": "2026-10-15",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, topic 102965, 2026-10-15 16:59 PDT: \"Yes!\", answering the observer’s 16:58 proposal; origin: Justin 16:20 on concurrent sessions contradicting each other on 2026-10-14. Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Add Rule 117, One Agent, Many Sessions, in Needs building with the section g two-session checks and partial-until-live status; update the group and total counts.",
+        "why": "Rule 31 covers machines only; concurrent sessions must share awareness of words, promises and actions and disclose lag instead of contradicting each other.",
+        "ref": "Justin, topic 102965, 2026-10-15 16:59 PDT: \"Yes!\", answering the observer’s 16:58 proposal; origin: Justin 16:20 on concurrent sessions contradicting each other on 2026-10-14. Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 15,
     "date": "2026-10-11",
     "status": "draft",
