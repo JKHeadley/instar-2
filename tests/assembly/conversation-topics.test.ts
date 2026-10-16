@@ -31,7 +31,8 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16, lifetime = 200
     recoveryEdges: () => { if (evidenceUnreadable) throw Error('unreadable journal'); return edges; },
     resources: { admit: async () => { if (live >= resourceCap) return null; live++; peak = Math.max(peak, live); return { attach: async () => {}, release: async () => { live--; return true; } }; } },
     io: { modelCalls: () => { throw Error('must not count another topic transcript'); }, wait: tick,
-      readResult: () => null, clearResult: () => {}, prepareAdmission: () => {}, closeAdmission: () => {},
+      readResult: () => null, clearResult: () => {}, prepareAdmission: (_claim, edge) => { expect(edge.topic).toMatch(/^(?:main|[1-9][0-9]*)$/u);
+        expect(nestedSessionWorkEdge(edge, { id: 'nested-check', tool: 'Task' }, now).topic).toBe(edge.topic); }, closeAdmission: () => {},
       admissionState: () => ({ refused: false, openDelegations: [] }) },
     createAdapter: topic => ({
       describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false }),
@@ -448,10 +449,11 @@ it.each(recordedCapacityShapes.otherShapes)('capacity recovery preserves topic-l
   const topicConfig: NonNullable<ConversationTopicsConfig['topicConfig']> = topic => ({
     io: f.config.io, resources: f.config.resources, authorized: f.config.authorized,
     currentAuthority: f.config.currentAuthority,
-    grounding: { revision: () => 'initial', save: (_worker, text) => { snapshots.push({ topic, text }); } },
     createAdapter: resolve => {
       const adapter = f.config.createAdapter(topic, resolve);
-      return { ...adapter, describe: () => ({ ...adapter.describe(), contextRecovery: 'host-snapshot' }) };
+      return { ...adapter, deliver: async input => {
+        snapshots.push({ topic, text: input.text }); return adapter.deliver(input);
+      } };
     },
   });
   Object.assign(f.config, { topicConfig, capacity: async () => ({ admit: room, memoryPressure: false }) });

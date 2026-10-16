@@ -12,7 +12,7 @@ export interface ConversationTopicsState {
   readonly legacy?: ConversationState; readonly legacyImported?: boolean;
 }
 export interface ConversationTopicsConfig extends Omit<ConversationSessionConfig, 'store' | 'createAdapter'> {
-  readonly topicConfig?: (topic: string) => Pick<ConversationSessionConfig, 'io' | 'resources' | 'authorized' | 'currentAuthority' | 'createAdapter' | 'prepareTurn' | 'grounding'>;
+  readonly topicConfig?: (topic: string) => Pick<ConversationSessionConfig, 'io' | 'resources' | 'authorized' | 'currentAuthority' | 'createAdapter' | 'prepareTurn'>;
   /** Host measurements, injected: no ambient host I/O in the coordinator. */
   readonly capacity?: () => Promise<Readonly<{ admit: boolean; memoryPressure: boolean }>>;
   readonly maxSessions: number;
@@ -90,7 +90,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
           modelCalls: () => state.topics[topic]?.spent ?? 0,
           prepareAdmission: (claim, edge) => {
             const remaining = config.maxCalls - spent(); ensure(remaining > 0, 'installation call allowance exhausted');
-            return io.prepareAdmission(claim, { ...edge, budget: { ...edge.budget, calls: Math.min(edge.budget.calls, remaining) } });
+            return io.prepareAdmission(claim, { ...edge, topic, budget: { ...edge.budget, calls: Math.min(edge.budget.calls, remaining) } });
           } },
         resources: { admit: async () => {
           const acquire = async () => {

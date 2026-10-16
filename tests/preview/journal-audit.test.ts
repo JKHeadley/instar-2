@@ -91,6 +91,13 @@ it.each([false, true])('checks every ordinary accepted turn with and without a l
     const packetOf = (view: typeof journal.view) => JSON.parse(JSON.parse(view.lastPrompt!.prompt!).messages
       .find((message: { role: string }) => message.role === 'context').content).packet;
     expect(packetOf(journal.view).history).toHaveLength(forum ? 0 : 1);
+    const candidate = structuredClone(packetOf(journal.view));
+    candidate.memoryCandidates[0].message = '[operator message in another topic omitted]';
+    expect(auditPacket(journal.view, journal.view.order[1]!, candidate).findings.some(item => item.code === 'candidate-text-source'))
+      .toBe(!forum);
+    candidate.memoryCandidates[0].message = 'Invented private message';
+    expect(auditPacket(journal.view, journal.view.order[1]!, candidate).findings.map(item => item.code))
+      .toContain('candidate-text-source');
     if (forum) {
       const leaked = structuredClone(packetOf(journal.view));
       leaked.history = [{ id: journal.view.order[0]!.id, user: journal.view.order[0]!.text, answer: 'Noted.' }];
@@ -318,6 +325,19 @@ it('attributes merged reply commitments to each recorded reply', async () => {
     expect(journal.view.commitments).toHaveLength(1);
     expect(journal.view.commitments[0]!.sources).toHaveLength(1);
     expect(auditJournal(journal.view).findings).toEqual([]);
+    // A historical packet may carry the full question; newer sibling packets omit it.
+    // Exercise the audit's exact field rule independently of relevance selection.
+    const source = journal.view.order[0]!, current = journal.view.order[1]!;
+    const packet = { commitments: [{ source: source.id, from: 'you, in your own earlier reply',
+      reply: source.intent!.replace(/^PREVIEW — /u, ''), answering: source.text, items: [] }] };
+    const replyFault = (thread?: number) => auditPacket(journal.view,
+      thread === undefined ? current : { ...current, thread }, packet).findings.some(item => item.code === 'commitment-reply-source');
+    expect(replyFault()).toBe(false);
+    Reflect.deleteProperty(packet.commitments[0]!, 'answering');
+    expect(replyFault()).toBe(true);
+    expect(replyFault(4)).toBe(false);
+    packet.commitments[0]!.answering = 'Invented question';
+    expect(replyFault(4)).toBe(true);
     const forged = structuredClone(journal.view);
     forged.commitments[0]!.sources![0]!.quote = forged.order[1]!.text;
     expect(auditJournal(forged).findings.map((item: { code: string }) => item.code))
