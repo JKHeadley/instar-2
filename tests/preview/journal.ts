@@ -10779,7 +10779,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const startBytes = previous < 0 && historyBytes < PREVIEW_FULL_HISTORY_BYTES
         ? Math.floor(journal.view.limits.maxBytes * .45)
         : Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_START_BYTES);
-      const proactive = decideProactiveCompaction({ now: ports.now(), stopped: ports.stopped() || journal.view.stop !== null,
+      const proactive = force ? 'compact' : decideProactiveCompaction({ now: ports.now(), stopped: ports.stopped() || journal.view.stop !== null,
         idle: !working, pressure: unreviewedQuestions(last.update).length > 0 || smallest(full) >= startBytes,
         lastAttemptAt: Number.isFinite(priorSummaryAt) ? priorSummaryAt : null });
       if (!force && proactive !== 'compact' && proactive !== 'below-threshold') return;
