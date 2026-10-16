@@ -25,6 +25,6 @@ Subject (7 paths): reviews/undated-promise-1015-change-review.md, scripts/worktr
 
 ## Closing block
 
-simplestRobustRoute: Extend the existing process observation with a bounded read-only git census and pure evidence check, leaving durable reconciliation to the existing work owner. No new store, watcher, model call or git mutation. Enumeration is checked again to detect a checkout/head change during collection. Start guards require complete fresh evidence and quiet activity coverage; there is no autonomous completion claim.
+simplestRobustRoute: Extend the existing process observation with a bounded read-only git census and pure evidence check, leaving durable reconciliation to the existing work owner. No new store, watcher, model call or git mutation. Enumeration is checked again to detect a checkout/head change during collection. Freshness starts before the first read, so a slow census cannot make old evidence appear new. Start guards require complete fresh evidence and quiet activity coverage; there is no autonomous completion claim.
 80/20: targeted positive and negative observation tests pass; reconciliation consumer and unattended recovery acceptance remain unfinished and are not represented as passing.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
