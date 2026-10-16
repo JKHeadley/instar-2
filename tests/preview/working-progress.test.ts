@@ -117,11 +117,11 @@ it('recorded 715676627 failed completion reaches the progress send, with no prog
   });
   expect(result.status).toBe(0);
   const activity = admissionActivity(prefix + readFileSync(join(state, 'admission.jsonl'), 'utf8'), 0, 'recorded-715676627');
-  expect(activity?.text).toBe('Status: no tool step running');
+  expect(activity?.text).toBe('Status: latest main-session tool call ended');
   const f = fixture({ realActivity: activity });
   try {
     await f.enteredPromise; await vi.advanceTimersByTimeAsync(120000);
-    expect(f.progress().map(row => row.text)).toEqual(['Status: no tool step running']);
+    expect(f.progress().map(row => row.text)).toEqual(['Status: latest main-session tool call ended']);
     f.release(shapes.find(shape => shape.kind === 'delivered-reply')!.raw); await f.drain;
     await vi.advanceTimersByTimeAsync(1200000); expect(f.progress()).toHaveLength(1);
     expect(f.sent.at(-1)?.target?.startsWith('working-progress:')).toBe(false);

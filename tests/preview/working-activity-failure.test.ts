@@ -45,7 +45,7 @@ it('replays message 744 exact raw prefix/hash, then clears the ended step throug
   const { result, bytes } = runFailure();
   expect(result.status).toBe(0);
   expect(JSON.parse(bytes)).toMatchObject({ phase: 'post-failure', id: captured.failures[0]!.use.id });
-  expect(admissionActivity(prefix + bytes, 0, claim)?.text).toBe('Status: no tool step running');
+  expect(admissionActivity(prefix + bytes, 0, claim)?.text).toBe('Status: latest main-session tool call ended');
 });
 
 it.each([0, 1, 2])('recorded failure %i stays failed; matched activity closes and final answer removes the observation', index => {
@@ -56,12 +56,12 @@ it.each([0, 1, 2])('recorded failure %i stays failed; matched activity closes an
   reader.observe('turn', claim, 'start');
   bytes = JSON.stringify({ phase: 'pre', id: use.id, tool: use.name, input: JSON.stringify(use.input), decision: 'allow' }) + '\n';
   reader.observe('turn', claim, 'working');
-  expect(reader.current('turn')?.text).not.toBe('Status: no tool step running');
+  expect(reader.current('turn')?.text).not.toBe('Status: latest main-session tool call ended');
   const failed = runFailure({}, index); expect(failed.result.status).toBe(0);
   const row = JSON.parse(failed.bytes);
   expect(row.phase).toBe('post-failure'); expect(row.result).toBe(JSON.stringify(completion.result));
   bytes += failed.bytes;
-  expect(reader.current('turn')?.text).toBe('Status: no tool step running');
+  expect(reader.current('turn')?.text).toBe('Status: latest main-session tool call ended');
   now += 10001; expect(reader.current('turn')).toBeNull();
   reader.observe('turn', claim, 'working'); expect(reader.current('turn')).not.toBeNull();
   reader.observe('turn', claim, 'end'); expect(reader.current('turn')).toBeNull();
@@ -90,7 +90,7 @@ it('closes only the completed occurrence, preserves concurrent work, and ignores
     input: JSON.stringify({ description: 'Inspect the failed test', command: 'cat report.txt' }), decision: 'allow' }) + '\n';
   expect(admissionActivity(prefix + concurrent + bytes + bytes, 0, claim)?.text).toBe('Status: Inspect the failed test');
   expect(admissionActivity(prefix + concurrent + bytes + JSON.stringify({ phase: 'post', id: 'still-running', tool: 'Bash' }) + '\n', 0, claim)?.text)
-    .toBe('Status: no tool step running');
+    .toBe('Status: latest main-session tool call ended');
   // A partial failure row is not completion evidence. A corrupt complete record is unknown.
   expect(admissionActivity(prefix + bytes.trimEnd(), 0, claim)?.text).toBe('Status: List workspace contents');
   expect(admissionActivity(prefix + '{broken}\n', 0, claim)).toBeNull();

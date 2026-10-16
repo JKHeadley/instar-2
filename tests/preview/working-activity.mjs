@@ -33,8 +33,8 @@ export function admissionActivity(bytes, offset, claim) {
   if (!row || typeof row.tool !== 'string') return null;
   const step = createHash('sha256').update(`${claim}:${row.id}:${row.input}`).digest('hex');
   // All admitted root occurrences have completion evidence. Do not describe an ended
-  // command as current work, or infer what the model is doing between tool calls.
-  if (!running) return { step, text: 'Status: no tool step running' };
+  // command as current work, or infer what the model or background children are doing.
+  if (!running) return { step, text: 'Status: latest main-session tool call ended' };
   let input; try { input = JSON.parse(row.input); } catch { return null; }
   if (!input || typeof input !== 'object') return null;
   const own = typeof input.description === 'string' ? input.description.trim() : '';
