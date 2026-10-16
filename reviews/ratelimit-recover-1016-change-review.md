@@ -35,7 +35,7 @@ Busy evidence: Red-before-green replay combines recorded quota output with the r
 
 Refinement evidence: Three additional red-before-green cases retain quota text in successful reply scrollback, preserve a fresh completed-turn receipt before recovery starts, and admit recovery on a new input after a past compaction. Recovery follows the driver's existing lifecycle interpretation instead of changing it. Missing reply artifacts remain no-reply at the conversation adapter; terminal text cannot invent an answer. The compaction counter resets only with a newly admitted input, never with a duplicate delivery or a neutral continuation.
 
-Publication: Seven generated artifacts refreshed in replay mode from 1b314f0cc0ca81d85dabc83f9a541777d082d12c. This is a shape-only publication, not runtime authority or native macOS conformance certification. Revert and regenerate together on rollback.
+Publication: Seven generated artifacts refreshed in replay mode from a74420ea119c175cacc6188c5683c613af32d671. This is a shape-only publication, not runtime authority or native macOS conformance certification. Revert and regenerate together on rollback.
 
 Evidence: The positive same-turn regression failed before implementation (immediate pause), then passed. The independent watchdog regression failed for all three recovery states before its repair, then passed. Existing captured Claude limit output from 2026-09-24 drives the recovery with a simulated idle prompt; this is recorded provider text, not a claim of a captured full terminal frame. Recorded summary/uncertain/Jev/review/delivered/empty shapes from retrospective-duty-followup-train-1-2026-10-08.json remain non-throttle evidence. No new live model or Telegram result is claimed.
 
