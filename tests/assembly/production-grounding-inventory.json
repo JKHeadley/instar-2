@@ -5251,7 +5251,7 @@
     "src/assembly/boundary.ts": "7099f18997436dcafde86104eabc59d121c0a42d9bd5f5ec11ac2b7b28e14075",
     "src/assembly/conditional-append.ts": "e4958af715c76a4f5adbe5e0265ee0ba5a9c7c92cd998058ee994bd064239ca2",
     "src/assembly/context-delivery.ts": "013381b02b92ebdb8002432b1249ec86135b8b1850e0a933b6f3dde0bf12711a",
-    "src/assembly/contracts.ts": "21059f0cb2eb9860b80b560443608f62bdf791f76cebbc726168a45a41fee9b9",
+    "src/assembly/contracts.ts": "916a3e62815fe5740ef60c492b1cf8ea4971dfefc45e36e5c532656e5fd7c3f6",
     "src/assembly/custody.ts": "f9933ae70d2738b84c39ffcf339395c2f6f7689be5337564dd98fb0f5250c77f",
     "src/assembly/grounding-capability.ts": "1d26b5d45c8ecdeced295109f5373ec63fa6c60621ba7994e6e6aaba3b12db18",
     "src/assembly/growth.ts": "44dfad8e203734992a185b013ec8811362a6ff75438b70ee4fc312992cf77838",
