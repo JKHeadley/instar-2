@@ -42,9 +42,10 @@ it('replays raw 404 with intake duration arithmetic, admitted review evidence, d
     const review = JSON.parse(replyReviewContext(frame(400).prompt, sent[0]!, ['defers_work'], declared));
     expect(review.declaredObligations.dated[0].quote).toBe(original.dated[0].quote);
     journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
-    now = Date.parse('2026-10-13T16:11:59Z'); await worker.sendRequested();
+    const dueAt = Date.parse(journal.view.dated[0]!.resolution!.instant);
+    now = dueAt - 1; await worker.sendRequested();
     expect(sent).toHaveLength(1);
-    now += 1000; await worker.sendRequested();
+    now = dueAt; await worker.sendRequested();
     expect(sent).toHaveLength(2);
     expect(sent[1]).toContain('bread');
     journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);

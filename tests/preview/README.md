@@ -1988,6 +1988,12 @@ record: who asked (the verified operator), when (the message time), what (the ex
 when due (day, time and zone), and where (this private chat or topic). The immediate reply states the
 due time, or why nothing was scheduled (unsettled day or AM/PM, already past, or after the preview ends).
 
+One-shot requests with a persisted `resolution.instant` wait for that exact UTC instant, including
+seconds and milliseconds, after restart as well as before it. Local day/time text is for display;
+it does not round an exact deadline down to the start of its minute. Calendar-only older records
+retain their local-minute due time, and recurring requests retain their local occurrence schedule.
+The existing due-turn and send identities suppress repeat dispatch, including when delivery is UNKNOWN.
+
 **The due turn.** `sendRequested()` is the one due point; the launcher calls it only after a
 successful poll returned nothing new, so a cancellation already waiting in Telegram is read and
 settled first. At that point every due request in one conversation becomes ONE fsynced `action-due`

@@ -181,3 +181,41 @@ it.each(['unresolved', 'late'])('retains the host renewal refusal beside a %s re
     expect(h.state.sent[0]).not.toContain("I'll renew it");
   } finally { h.close(); }
 });
+
+it.each([false, true])('waits for the persisted instant across restart, then dispatches once (UNKNOWN=%s)', async unknown => {
+  const record = records.find(row => row.update === 840342823)!, h = make(record, undefined, unknown);
+  try {
+    h.intake(); await h.worker.drain();
+    const instant = record.intakeAt + 60_000;
+    expect(h.journal.view.dated[0]!.resolution!.instant).toBe(new Date(instant).toISOString());
+    h.reopen();
+    h.state.now = instant - 1;
+    await h.worker.sendRequested();
+    expect(h.state.dueCalls).toBe(0);
+    expect(h.journal.view.order.filter(turn => turn.requestedAction)).toHaveLength(0);
+    h.state.now = instant;
+    await h.worker.sendRequested();
+    expect(h.state.dueCalls).toBe(1);
+    expect(h.state.sent.filter(text => text.includes('Put the library book by the door now.'))).toHaveLength(1);
+    h.reopen(); h.state.now += 86_400_000;
+    await h.worker.sendRequested();
+    expect(h.state.dueCalls).toBe(1);
+    expect(h.journal.view.order.filter(turn => turn.requestedAction)).toHaveLength(1);
+  } finally { h.close(); }
+});
+
+it.each(['I already put the book by the door.', 'Cancel that reminder.'])('keeps a settled request closed across restart: %s', async disposition => {
+  const record = records.find(row => row.update === 840342823)!, h = make(record);
+  try {
+    h.intake(); await h.worker.drain();
+    const item = openRequests(h.journal.view)[0]!;
+    // Meaning remains the model's decision; both completion and withdrawal use its existing cancellation contract.
+    h.state.output = JSON.stringify({ reply: 'That reminder is closed.', memory: [], dated: [],
+      cancelReminders: [{ id: reminderId(item), quote: disposition }] });
+    h.intake(record.update + 1, disposition); await h.worker.drain();
+    h.reopen(); h.state.now = record.intakeAt + 60_000;
+    await h.worker.sendRequested();
+    expect(openRequests(h.journal.view)).toEqual([]);
+    expect(h.state.dueCalls).toBe(0);
+  } finally { h.close(); }
+});

@@ -3,8 +3,20 @@ export interface DatedItem { source: string; quote: string; when: string; zone: 
   day?: string; time?: string; ambiguity?: string; repeat?: 'weekly'; recurrence?: 'daily' | 'weekdays';
   /** The verified operator explicitly asked to be reminded: the scoped grant for one occurrence or the declared recurring series. */
   remind?: true;
-  /** Model resolution provenance; scheduling still uses the existing local-minute path. */
+  /** Persisted absolute due instant and its original clock; recurring series use local occurrences. */
   resolution?: { at: number; instant: string } }
+
+/** Compare one-shot requests against their persisted instant without rounding away seconds.
+ * Calendar-only/legacy records and recurring occurrences retain their local-minute schedule.
+ * This is timing only: the journal owns request authority, withdrawal and dispatch uniqueness. */
+export function requestedTimeReached(item: DatedItem, now: number): boolean {
+  if (!item.day || item.ambiguity !== undefined || !Number.isFinite(now)) return false;
+  if (item.resolution && !item.recurrence && !item.repeat)
+    return now >= Date.parse(item.resolution.instant);
+  const local = localParts(now, item.zone);
+  const clock = `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`;
+  return `${item.day} ${item.time ?? '09:00'}` <= `${dayKey(local.year, local.month, local.day)} ${clock}`;
+}
 
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',

@@ -23,7 +23,7 @@ import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
 import { boundedCorrection, checkReply, reviewReply, replyReviewContext, repeatsOperatorOnly, HOLDING_REPLY, REVIEW_INTERRUPTED_REASON, GROUP_REVIEW_FINAL_NOTICE, isGroupReviewFinalNotice, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, jevConfidentPass, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, confidentReplyNeedsReview, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
-import { latestRecurringDay, nextRecurringDay, parseDatedItem, relativeDelay, resolvedDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
+import { latestRecurringDay, nextRecurringDay, parseDatedItem, relativeDelay, resolvedDatedItem, requestedTimeReached, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, reconcilePromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
 import { messageTime, zoneFormatter } from './self-state.js';
@@ -8087,7 +8087,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     const now = ports.now(), groups = new Map<string, DatedItem[]>();
     for (const item of pendingRequests(journal.view, now)) {
-      if (clean(item.quote) !== item.quote || reminderDue(item) > localStamp(now, item.zone) || reminderUnsettled(item)) continue;
+      if (clean(item.quote) !== item.quote || !requestedTimeReached(item, now) || reminderUnsettled(item)) continue;
       const key = JSON.stringify(requestSource(journal.view, item)!.thread ?? null);
       groups.set(key, [...groups.get(key) ?? [], item]);
     }
