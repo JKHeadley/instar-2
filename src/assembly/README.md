@@ -251,3 +251,11 @@ progress intents bound it to one per message and one per topic per 45 seconds, i
 across restart. The ordinary send doorway still enforces audience, secrets, stop and reply
 allowance. Uncertain sends are not repeated. These additive custody fields retain existing
 records; rollback requires a reader that understands them, never deleting the journal.
+
+The read-only worktree census in `scripts/worktree-inventory.mjs` complements the
+process inventory. `src/assembly/worktree-inventory.ts` classifies dirty checkouts
+only with complete, fresh, same-machine process and worktree observations, resolved
+ownership, and full quiet-window activity coverage. Missing activity is unknown,
+never inferred from an old timestamp. The adapter re-enumerates paths and heads
+before returning; a changed enumeration stays partial. Findings carry the exact
+path, head, machine and process sample, and grant no mutation or launch authority.
