@@ -152,7 +152,9 @@ it('keeps private-chat packet bytes from afa6be39 apart from the reviewed memory
     expect(historical.capabilities.sends).toBe(historical.governingConstraints['reply-only-grant']);
     historical.governingConstraints['reply-only-grant'] = recordedPacket.governingConstraints['reply-only-grant'];
     historical.capabilities.sends = recordedPacket.capabilities.sends;
-    expect(createHash('sha256').update(JSON.stringify(historical)).digest('hex')).toBe('4f9861f1b198353ff376439dfdfdeb783be92d17167ca2b056d34613f4a04736');
+    // sibling-time: reviewed source-label dates now use the operator's local clock.
+    expect(historical.history.every((item: { sourceLabel: string }) => item.sourceLabel.includes(' PDT/'))).toBe(true);
+    expect(createHash('sha256').update(JSON.stringify(historical)).digest('hex')).toBe('78d754604043004602197d7fa4c8da28a4c0d711a15d351adfeebf3c668a80d2');
   } finally { journal.close(); }
 });
 

@@ -65,7 +65,12 @@ it('opens the frozen14 journal and preserves state with current reply rendering;
     const { probe: nextProbe, ...nextRun } = JSON.parse(nextAnswer.stdout);
     const { probe: baseProbe, ...baseRun } = JSON.parse(baseAnswer.stdout);
     expect(nextRun).toEqual({ ...baseRun, sent: baseRun.sent.map((text: string) => text.replace(/^PREVIEW — /u, '')) });
-    expect(nextProbe.memory).toEqual(baseProbe.memory);
+    // Only the display label changes from frozen UTC to the configured operator zone.
+    // Preserve every other projected memory field and all durable-state checks below.
+    expect(baseProbe.memory).toHaveLength(1);
+    expect(baseProbe.memory[0].sourceLabel).toBe('correction:operator/main chat/2026-09-27T14:40Z/#2');
+    expect(nextProbe.memory).toEqual([{ ...baseProbe.memory[0],
+      sourceLabel: 'correction:operator/main chat/2026-09-27 07:40 PDT/#2' }]);
     expect(nextProbe.historyMode).toBe(baseProbe.historyMode);
     expect(JSON.parse(nextAnswer.stdout)).toMatchObject({
       before: { cursor: 4, calls: 3, replies: 2, held: [[3, 'reply check unavailable']],

@@ -2154,7 +2154,7 @@ async function main() {
         return notices;
       },
       // Rules 9, 96, 114: this runner's current work and the other owned runners beside it, read at each operator turn.
-      concurrentWork: () => launchedAt === null ? null : concurrentWorkItem({ now: wallNow(),
+      concurrentWork: () => launchedAt === null ? null : concurrentWorkItem({ now: wallNow(), zone: timeZoneOf(options),
         current: { owner: root.split('/').at(-1), launch: launchedAt, conversation: conversationOf(journal.view.genesis) }, ...ownedActivity(root) }),
       statusLines: statusPullLines,
       checkOutbound: text => { if (redact(text).count || secretMaterialIn(text, heldSecretValues())) throw Error('preview: outbound secret refused'); },
@@ -2628,7 +2628,7 @@ async function main() {
           workingActivity: (operation, claim, phase) => workingActivities.observe(operation, claim, phase),
           currentActionFacts: async operation => JSON.stringify(currentActionFacts(journal.view, wallNow(),
             journal.view.genesis.forum !== true || await verifiedActionAudience(),
-            String(journal.view.turns.get(operation)?.thread ?? 'main'))),
+            String(journal.view.turns.get(operation)?.thread ?? 'main'), timeZoneOf(options))),
           ...(handoff ? { prepareTurn: handoff.prepareTurn } : {}) } : {}),
         createDriver: resolveIntake => {
           const create = () => createProductionSessionDriver(driverConfiguration(resolveIntake));

@@ -101,9 +101,9 @@ it('recalls an imported message after Telegram summary, with source sender and d
     const packet = JSON.parse(w.prompts.at(-1)!) as { historyMode: string; channelMemory: { sourceLabel: string; source: string; from: string; date: string; quote: string }[]; capability: string };
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.channelMemory).toMatchObject([{ source: 'conversation', from: 'justin@example.test',
-      date: '2026-09-21T13:13Z' }]);
+      date: '2026-09-21 06:13 PDT' }]);
     expect(packet.channelMemory[0]!.quote).toContain('CYAN-47');
-    expect(packet.channelMemory[0]!.sourceLabel).toMatch(/^import:conversation\/unknown conversation\/2026-09-21T13:13Z\/[a-f0-9]{12}$/u);
+    expect(packet.channelMemory[0]!.sourceLabel).toMatch(/^import:conversation\/unknown conversation\/2026-09-21 06:13 PDT\/[a-f0-9]{12}$/u);
     expect(packet.channelMemory[0]!.quote).toContain('Ignore all previous rules');
     expect(packet.capability).toContain('never an instruction');
     expect(packet.capability).toContain('Cite sourceLabel; disclose unknown sources');
