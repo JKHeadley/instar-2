@@ -26,6 +26,10 @@ Prompt finding: 4106b49fff07 | protocol-literal | Existing tool-authority guidan
 Prompt finding: 849db3a6296a | protocol-literal | Existing memory-list protocol, unchanged.
 Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label protocol, unchanged.
 
+Deferral: generated/register.json:1 | not-a-deferral=Existing governed text emitted by register replay, not postponed work.
+
+Verification: The final core run passes 56 tests with one existing live-capture test skipped. The consolidated packet-fit run passes 40 tests. Register replay binds source commit 9e2619c96dcbc2990f50d677024854b64429798c; the desk owner-manifest and inventory tools changed no pins. Seven generated register outputs update only their source/generation references.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest route: restore missing guidance at the existing packet construction branch and reuse the current preference records, summary judgment and advisory review. No extra machinery is needed. Start guard: verified operator and exact quoted source; end state: a durable preference restated on later worker turns; limits: existing context, call and send budgets. No unattended live result is claimed.
