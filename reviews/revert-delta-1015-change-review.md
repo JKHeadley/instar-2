@@ -22,6 +22,8 @@ Prompt review: Replay existing captured walk requests through single and batched
 Decision: revert-delta-scope | Reverse b4ba0fdf product and delta-only test hunks, preserving later policy-pin repairs, historical review records and desk-owned certificate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/revert-delta-1015-PROGRESS.md
 Decision: revert-delta-replay | Use the brief's allowed existing recorded fixtures; compare delivery digests with the byte-identical train-46 builder and replay the seven captured model-output shapes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/revert-delta-1015-PROGRESS.md
 
+Decision: revert-delta-publication | Regenerate the existing shape-only register from committed source f0c6fdc314aae51d3d54ff9ea32fff2916d7c6f8 to remove stale wiring pins; leave the native macOS certificate for the desk. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/revert-delta-1015-PROGRESS.md
+
 simplestRobustRoute: Restore the existing complete-input turn builder rather than refine an optimization with no measured speed gain. Remove its cache, snapshots and recovery capability marker together. Existing start/admission, durable dispatch, stop, result mapping, byte bound and allowance guards remain. This is offline revert verification; no autonomous shipped-path completion or live deployment is claimed.
 80/20: Targeted changed/direct-consumer tests and pinned READY tests, typecheck, architecture, lint, register and change-review checks; no full suite or proof rooms.
 VERDICT: author submission; no independent convergence or live acceptance claim
