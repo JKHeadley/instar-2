@@ -63,8 +63,10 @@ typed pause, so the login pool can select capacity for subsequent work. Completi
 still requires the driver's existing evidence, never transcript growth or elapsed
 backoff. Unconfined sessions retain observation only because they lack the admitted
 effect and model-call floors required for autonomous continuation (Rules 1, 55, 60).
-Fresh lifecycle receipts retain their precedence over stale quota text in scrollback;
-the conversation adapter still requires a reply artifact to return an answer. A new
+A fresh Stop plus a bounded nonempty result takes precedence over stale quota text
+in scrollback. A throttle Stop without that result retains recovery and its original
+deadline, or exposes the existing pause after the single attempt. Both result-consuming
+callers pass their current result presence to the driver; pane text cannot invent an answer. A new
 accepted input starts its own compaction episode, so a past completed compaction does
 not exclude later turns from throttle recovery. Busy resumed work remains active under
 the original deadline even when old quota text remains visible.

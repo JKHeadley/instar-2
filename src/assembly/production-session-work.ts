@@ -367,7 +367,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
                 return settledAs('failed', `the turn closed with no result at the destination (${turnClosed})`, child);
               seen = present;
               if (turnClosed === null) {
-                const observation = take(driver.observe({ operation: request.operation, processIdentity: child }));
+                const observation = take(driver.observe({ operation: request.operation, processIdentity: child, resultAvailable: present !== null }));
                 if (observation.phase === 'output-observed') turnClosed = observation.detail;
                 else if (observation.phase === 'exit-observed')
                   return settledAs('uncertain', `the child ended before a result (${observation.detail})`, observation.evidence);

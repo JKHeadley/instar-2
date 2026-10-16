@@ -503,7 +503,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         return delivery.evidence;
       });
     },
-    observe(input: { operation: string; processIdentity: string }): Result<Readonly<{ phase: HarnessObservation['phase']; evidence: string; detail: string }>> {
+    observe(input: { operation: string; processIdentity: string; resultAvailable?: boolean }): Result<Readonly<{ phase: HarnessObservation['phase']; evidence: string; detail: string }>> {
       return lockedBoundary('ProductionSessionObserve', input, () => {
         const session = loadSession(input.processIdentity);
         if (config.stopped()) { stop(); return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'stop authority active' }; }
@@ -523,9 +523,13 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           return { phase: 'uncertain' as const, evidence: session.identity, detail: 'rate-limit continuation delivery uncertain; no resend' };
         if (config.requireTurnHook && session.turnCloseEvidence)
           return { phase: 'output-observed' as const, evidence: session.turnCloseEvidence, detail: 'recorded Stop hook closed turn' };
+        const throttled = classifyStuckSignature(pane) === 'rate-limited';
         const hook = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
           && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
-        if (hook && session.turnStartedAt !== null && hook.at >= session.turnStartedAt
+        // A throttle can emit Stop without completing work. A bounded result plus Stop
+        // still wins over stale quota scrollback; the marker alone must retain recovery.
+        if (hook && (!throttled || input.resultAvailable === true)
+          && session.turnStartedAt !== null && hook.at >= session.turnStartedAt
           && session.turnDeadline !== null && hook.at <= config.now()) {
           config.io.save(replaceSession(config.io.load(), { ...closeTurn(session, hook.at),
             turnCloseEvidence: `turn-closed:${session.name}:${hook.at}` }));
@@ -536,9 +540,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           return { phase: 'output-observed' as const, evidence: `turn-closed:${session.name}:${hook.at}`,
             detail: 'Stop hook closed turn' };
         }
-        // Fresh lifecycle evidence wins over an old error still visible in scrollback.
         // Keep the same admitted turn, claim, effect identities and original deadline.
-        const throttled = classifyStuckSignature(pane) === 'rate-limited';
         if (session.turnDeadline !== null && config.now() < session.turnDeadline
           && admitted && session.recovery === 0 && (!session.continuation || session.continuation.state === 'completed')
           && (rate || throttled && classifyPaneIdle(pane, config.framework)

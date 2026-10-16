@@ -109,7 +109,7 @@ it('continues a throttled turn once after backoff, preserving its intake and ori
   const after = f.sends;
   expect(observe(restarted).phase).toBe('launched'); expect(f.sends).toBe(after);
   f.changePane(`${limited.result}\nanswer\n❯ `); f.hook(31_001); f.time(31_001);
-  expect(observe(restarted).phase).toBe('output-observed');
+  expect(value(restarted.observe({ operation: 'deliver', processIdentity: id, resultAvailable: true })).phase).toBe('output-observed');
 });
 
 it('keeps a resumed worker busy under its original deadline despite old quota scrollback', () => {
@@ -124,16 +124,48 @@ it('keeps a resumed worker busy under its original deadline despite old quota sc
     expect(f.journal.sessions[0]?.turnDeadline).toBe(121_000);
   }
   f.time(100_000); f.changePane(`${recordedLimit}\nanswer\n❯ `); f.hook(100_000);
-  expect(observe().phase).toBe('output-observed'); expect(f.sends).toBe(sends);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id, resultAvailable: true })).phase).toBe('output-observed');
+  expect(f.sends).toBe(sends);
 });
 
 it('a fresh completed-turn receipt wins over quota text still visible in scrollback', () => {
   const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
   f.changePane(`${recordedLimit}\nanswer explaining the prior throttle\n❯ `); f.hook(1000);
   const sends = f.sends;
-  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).phase).toBe('output-observed');
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id, resultAvailable: true })).phase).toBe('output-observed');
   expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
   expect(f.sends).toBe(sends);
+});
+
+it.each(['initial', 'waiting', 'accepted'] as const)('a throttle Stop without a result preserves recovery at %s', async phase => {
+  const f = fixture('claude-code', rateConfig);
+  const adapter = createSessionConversationAdapter({ createDriver: () => f.driver,
+    resolveDelivery: () => undefined, io: {
+      clearResult: () => undefined, readResult: () => null, modelCalls: () => 2,
+      prepareAdmission: () => undefined, admissionState: () => ({ refused: false, openDelegations: [] }),
+      closeAdmission: () => undefined, wait: async () => undefined,
+    } });
+  const worker = await adapter.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test',
+    incarnation: 'inc', workingScope: '/work' });
+  const delivery = { ...worker, operation: 'deliver', text: 'hello', digest: hash('hello'),
+    resultPath: '/work/result', maxBytes: 1000 };
+  await adapter.deliver(delivery);
+  f.changePane(`${recordedLimit}\n❯ `);
+  const observe = () => adapter.observe({ ...worker, delivery, cursor: 0, limit: 2 });
+  if (phase !== 'initial') expect((await observe()).observations).toEqual([]);
+  if (phase === 'accepted') { f.time(31_000); expect((await observe()).observations).toEqual([]); }
+  const at = phase === 'initial' ? 1001 : phase === 'waiting' ? 2000 : 36_000;
+  f.time(at); f.hook(at);
+  const sends = f.sends;
+  expect((await observe()).observations).toEqual(phase === 'accepted'
+    ? [{ kind: 'paused', evidence: worker.launch }] : []);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: worker.launch })))
+    .toMatchObject(phase === 'accepted' ? { phase: 'pause-observed', detail: 'rate-limited' }
+      : { phase: 'launched', detail: 'rate-limit recovery waiting' });
+  expect(f.journal.sessions[0]).toMatchObject({ turnDeadline: 121_000, closedAt: null,
+    turnCloseEvidence: null, rateRecovery: { state: phase === 'accepted' ? 'accepted' : 'waiting' } });
+  expect(f.sends).toBe(sends);
+  expect(f.journal.deliveries).toHaveLength(1);
 });
 
 it('a past compaction does not exclude a newly admitted input from throttle recovery', () => {
@@ -209,7 +241,7 @@ it('the conversation adapter returns one answer for the original input after bou
   expect(f.journal.deliveries).toHaveLength(1);
 });
 
-it('replays recorded summary, Jev, review, delivered and empty shapes without treating them as throttles', () => {
+it('replays recorded summary, Jev, review, delivered and empty shapes across the Stop/result boundary', async () => {
   const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8'));
   const shapes = recorded.otherShapes as { kind: string; id: string; raw: string }[];
   expect(shapes.map(row => row.kind)).toEqual(['summary-writer', 'summary-uncertain', 'jev-undecided',
@@ -221,6 +253,22 @@ it('replays recorded summary, Jev, review, delivered and empty shapes without tr
     f.changePane(row.raw); const sends = f.sends;
     value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
     expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
+    expect(f.sends).toBe(sends);
+    const adapter = createSessionConversationAdapter({ createDriver: () => f.driver,
+      resolveDelivery: () => undefined, io: {
+        clearResult: () => undefined, readResult: () => row.raw, modelCalls: () => 2,
+        prepareAdmission: () => undefined, admissionState: () => ({ refused: false, openDelegations: [] }),
+        closeAdmission: () => undefined, wait: async () => undefined,
+      } });
+    f.changePane(`${recordedLimit}\n❯ `); f.hook(1000);
+    const worker = { launch: id, incarnation: 'inc', claim: 'topic' };
+    const delivery = { ...worker, operation: 'deliver', text: 'hello', digest: hash('hello'),
+      resultPath: '/work/result', maxBytes: 100_000 };
+    const actual = await adapter.observe({ ...worker, delivery, cursor: 0, limit: 2 });
+    expect(actual.observations).toEqual(row.raw.trim()
+      ? [{ kind: 'reply', delivery: 'deliver', text: row.raw, digest: hash(row.raw) },
+        { kind: 'turn-end', delivery: 'deliver', state: 'completed' }] : []);
+    expect(f.journal.sessions[0]?.turnDeadline).toBe(row.raw.trim() ? null : 121_000);
     expect(f.sends).toBe(sends);
   }
 });
