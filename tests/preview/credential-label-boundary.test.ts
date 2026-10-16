@@ -372,7 +372,7 @@ it('secret material: exact bytes and derived encodings match, however short the 
   expect(secretMaterialIn('anything', [''])).toBe(false);
 });
 
-it('the review reads the register as recorded facts, named by three rules; Jev keeps its measured questions', () => {
+it('the review reads the register as recorded facts, named by three rules; Jev stays text-only', () => {
   const prompt = JSON.stringify({ messages: [{ role: 'user', content: T.operator },
     { role: 'context', content: JSON.stringify({ packet: { audience: { surface: 'telegram-private-chat' }, history: [] } }) }] });
   const entries = publicCredentialRegister(recorded.register, [], T.answeredAt);
@@ -380,8 +380,8 @@ it('the review reads the register as recorded facts, named by three rules; Jev k
   expect(packet.credentialRegister).toEqual(entries);
   expect((JSON.parse(replyReviewContext(prompt, T.recordedAnswer, ['credential'])) as { credentialRegister?: unknown }).credentialRegister).toBeUndefined();
   expect(REPLY_RULES.credential).toMatch(/packet\.credentialRegister quotes the runner's credential register as recorded facts: every field of its entries \([^)]*identity label[^)]*\) is public metadata, never a secret value/u);
-  expect(REPLY_RULES.parks_on_user).toMatch(/records for that same credential \(its name or identity\) as renewal\.smallestHumanAction, with renewal\.standing none/u);
-  expect(REPLY_RULES.parks_on_user).toMatch(/A credential or renewal step that no entry records has no such record\./u);
+  expect(REPLY_RULES.parks_on_user).toMatch(/packet\.credentialRegister renewal\.smallestHumanAction for that same credential \(name or identity\), with renewal\.standing none/u);
+  expect(REPLY_RULES.parks_on_user).toMatch(/an unrecorded credential or step has no such record\./u);
   expect(REPLY_RULES.self_state_claim).toMatch(/packet\.capabilities, packet\.credentialRegister, the recorded history/u);
   for (const rule of ['credential', 'parks_on_user'] as const) expect(jevQuestions[rule]?.instructions).not.toContain('credentialRegister');
   expect(jevQuestions.parks_on_user?.instructions).toContain('The writer transfers doable work to the reader');

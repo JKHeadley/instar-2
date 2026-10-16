@@ -8,7 +8,7 @@ import { CODEX_CONVERSATION_SYSTEM_PROMPT, CODEX_TOOLS_SYSTEM_PROMPT } from '../
 import { ANSWER_INSTRUCTIONS, MEMORY_LOOKUP_INSTRUCTIONS } from './briefing.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { readAnswer } from './answer-reading.js';
-import { parseReplyReviewVerdict, substantiveReply, guidanceReviewRules, replyReviewQuestion, replyReviewContext } from './reply-check.js';
+import { parseReplyReviewVerdict, REPLY_RULES, substantiveReply, guidanceReviewRules, replyReviewQuestion, replyReviewContext } from './reply-check.js';
 // @ts-expect-error Physical tool trace reader stays outside the pure core.
 import { toolTrace } from './tool-admission.mjs';
 
@@ -194,8 +194,8 @@ it('replays the real reviewer on both the unperformed lookup and actual read out
       question = question.replace(before, after);
     }
     // no-handback: preserve the historical question and verdict; compare the updated semantic guidance separately.
-    question = question.replace('The writer hands back work they could do. Offering needed research',
-      'The writer hands back work they could do, including making the reader remember the next step, choose an ordinary execution detail, or decode unexplained technical language to get the requested answer. Technical detail the operator requested, a decision reserved to the operator, and an evidenced limit are not handbacks. Offering needed research');
+    question = question.replace(/"parks_on_user":"(?:\\.|[^"\\])*"/u,
+      `"parks_on_user":${JSON.stringify(REPLY_RULES.parks_on_user)}`);
     expect(question).toBe(replyReviewQuestion(selected));
     expect(parseReplyReviewVerdict(decode(run), selected).findings?.find(row => row.rule === 'parks_on_user')?.verdict)
       .toBe(name === 'original' ? 'violation' : 'pass');
