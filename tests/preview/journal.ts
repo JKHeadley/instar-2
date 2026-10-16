@@ -2605,10 +2605,12 @@ export function obligationDecision(output: string, kind: 'commitment' | 'blocker
   const report = text(value?.report, OBLIGATION_REPORT_CHARS), note = text(value?.note, OBLIGATION_NOTE_CHARS);
   if (kind === 'commitment') {
     // Scrub before durable accounting; omission cannot clear previously admitted work.
-    const parsedCompletion = reconcileRunCompletion(previous, value?.completion);
-    if (parsedCompletion === null) return { outcome: 'failed' };
-    const completion = parsedCompletion.map(item => ({ ...item, work: redact(item.work).text,
-      ...(item.evidence === undefined ? {} : { evidence: redact(item.evidence).text }) }));
+    const updates = Array.isArray(value?.completion) ? value.completion.map(item =>
+      item && typeof item === 'object' && !Array.isArray(item)
+        ? Object.fromEntries(Object.entries(item).map(([key, field]) => [key, typeof field === 'string' ? redact(field).text : field])) : item)
+      : value?.completion;
+    const completion = reconcileRunCompletion(previous, updates);
+    if (completion === null) return { outcome: 'failed' };
     const accounted = value?.completion === undefined && !previous.length ? {} : { completion };
     if (value?.outcome === 'report' && report) return completion.some(item => item.state === 'open')
       ? { outcome: 'continue', note: 'Finish the open items in the retained completion checklist before reporting the whole job complete.', ...accounted }

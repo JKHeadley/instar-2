@@ -53,3 +53,17 @@ it.each([false, true])('a delivered reply only fulfills a promise once created w
     expect(answerCheck.request).toBe('What did you finish?');
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+it('scrubs every checklist string before durable accounting and keeps redacted identities stable', () => {
+  const secret = 'password=syntheticCompletionSecret123';
+  const first = obligationDecision(JSON.stringify({ outcome: 'continue', note: 'Validation is pending.',
+    completion: [{ id: secret, work: `Validate ${secret}`, state: 'open' }] }), 'commitment', at, 'UTC');
+  expect(first.completion).toHaveLength(1);
+  expect(JSON.stringify(first)).not.toContain('syntheticCompletionSecret123');
+  const next = obligationDecision(JSON.stringify({ outcome: 'report', report: reply,
+    completion: [{ id: secret, work: `Validate ${secret}`, state: 'complete', evidence: `Validated ${secret}` }] }),
+    'commitment', at, 'UTC', first.completion);
+  expect(next.outcome).toBe('report');
+  expect(next.completion?.[0]?.id).toBe(first.completion?.[0]?.id);
+  expect(JSON.stringify(next)).not.toContain('syntheticCompletionSecret123');
+});
