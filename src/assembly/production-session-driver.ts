@@ -220,7 +220,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     && config.toolAdmission.timeoutSeconds <= 3600, 'bounded admission hook required');
   ensure(Number.isSafeInteger(config.maxSessions) && config.maxSessions > 0 && config.maxSessions <= 16,
     'fixed concurrent session cap required');
-  ensure(Number.isSafeInteger(config.turnDeadlineMs) && config.turnDeadlineMs > 0 && config.turnDeadlineMs <= 3_600_000,
+  ensure(Number.isSafeInteger(config.turnDeadlineMs) && config.turnDeadlineMs > 0 && config.turnDeadlineMs <= 14_400_000,
     'bounded per-turn deadline required');
   ensure(config.framework === 'claude-code' || config.framework === 'codex-cli', 'supported session framework required');
   ensure(config.model === undefined || modelPattern.test(config.model), 'exact session model required');

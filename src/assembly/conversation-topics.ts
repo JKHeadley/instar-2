@@ -13,6 +13,8 @@ export interface ConversationTopicsState {
 }
 export interface ConversationTopicsConfig extends Omit<ConversationSessionConfig, 'store' | 'createAdapter'> {
   readonly topicConfig?: (topic: string) => Pick<ConversationSessionConfig, 'io' | 'resources' | 'authorized' | 'currentAuthority' | 'createAdapter' | 'prepareTurn'>;
+  /** Host measurements, injected: no ambient host I/O in the coordinator. */
+  readonly capacity?: () => Promise<Readonly<{ admit: boolean; memoryPressure: boolean }>>;
   readonly maxSessions: number;
   readonly idleMs: number;
   readonly topicOf: (operation: string) => string;
@@ -50,6 +52,12 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     const touched = new Map<string, number>();
     let stopped = false, recovered = false;
     let admission = Promise.resolve();
+    const oldestIdle = () => [...active].filter(key => !busy.get(key))
+      .sort((a, b) => (touched.get(a) ?? 0) - (touched.get(b) ?? 0))[0];
+    const reclaim = async () => {
+      const idle = oldestIdle();
+      return idle !== undefined && await hosts.get(idle)!.retireIdle();
+    };
     let wake: (() => void) | null = null;
     const notify = () => { const resolve = wake; wake = null; resolve?.(); };
     const hostFor = (topic: string): ConversationSessionPort => {
@@ -60,6 +68,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       const io = local?.io ?? config.io, resources = local?.resources ?? config.resources;
       const result = createConversationSessionPort({ ...config, ...local, batchWaiting: true, conversation: `${config.conversation}:${topic}`, allowanceDeadline: parentDeadline(),
         stopped: () => stopped || config.stopped(),
+        prepareTurn: async input => (local?.prepareTurn ?? config.prepareTurn)?.(input) ?? true,
         store: { load: () => state.topics[topic] ?? null, save: next => {
           ensure(spent() - (state.topics[topic]?.spent ?? 0) + next.spent <= config.maxCalls, 'installation call allowance exhausted');
           persist({ topics: { ...state.topics, [topic]: next } });
@@ -86,7 +95,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
         resources: { admit: async () => {
           const acquire = async () => {
             while (active.size >= config.maxSessions && !stopped && !config.stopped()) {
-              const idle = [...active].filter(key => !busy.get(key)).sort((a, b) => (touched.get(a) ?? 0) - (touched.get(b) ?? 0))[0];
+              const idle = oldestIdle();
               if (idle !== undefined) { ensure(await hosts.get(idle)!.retireIdle(), 'idle worker retirement raced'); continue; }
               await Promise.race([new Promise<void>(resolve => { wake = resolve; }), config.io.wait(config.pollMs)]);
               ensure(config.now() < parentDeadline(), 'parent lifetime exhausted');
@@ -96,10 +105,23 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
             if (!lease) {
               // The installation resource owner may have a tighter ceiling (or
               // another work family using it). Reclaim one idle topic and retry once.
-              const idle = [...active].find(key => !busy.get(key));
+              const idle = oldestIdle();
               if (idle !== undefined && await hosts.get(idle)!.retireIdle()) lease = await resources.admit();
             }
             if (!lease) return null;
+            // Physical admission can wait too. Measure after its final retry,
+            // before this lease becomes a worker. Resident turns keep their context.
+            if (config.capacity) {
+              let admitted = false;
+              try {
+                let room = await config.capacity();
+                if (room.memoryPressure && await reclaim()) room = await config.capacity();
+                admitted = room.admit;
+              } finally {
+                if (!admitted) ensure(await lease.release(), 'unlaunched resource release unconfirmed');
+              }
+              if (!admitted) return null;
+            }
             const held = lease;
             active.add(topic);
             return { attach: held.attach, release: async () => {
@@ -156,6 +178,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     const maintain = async () => {
       await recover();
       if (config.stopped() || config.now() >= parentDeadline()) { await close(); return; }
+      if (config.capacity && (await config.capacity()).memoryPressure) await reclaim();
       for (const [topic, host] of hosts) if (!busy.get(topic)) {
         if (active.has(topic) && config.now() - (touched.get(topic) ?? 0) >= config.idleMs)
           await host.retireIdle();

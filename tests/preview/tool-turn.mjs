@@ -6,6 +6,7 @@ import { clearTurnMedia } from './media-understanding.mjs';
 // runner's working state; the journal row is the durable record, and nothing here is shared or resumed on another machine.
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { assertAgentPaths } from '../../scripts/agent-paths.mjs';
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -59,6 +60,7 @@ export function scratchMounted(turn) {
  * session finds the same working directory every turn); a volume a crash left mounted is unmounted first. Returns the
  * mount point's real path. */
 export function attachScratch(dir, name = `itt-${randomBytes(6).toString('hex')}`, bytes = TOOL_SCRATCH_BYTES, mounts = TOOL_SCRATCH_MOUNTS) {
+  assertAgentPaths({ state: dir, workspace: mounts });
   if (!/^it[tw]-[0-9a-f]{12}$/u.test(name)) throw Error('preview: tool scratch mount name');
   if (!unmountScratch(dir)) throw Error('preview: a tool scratch volume left mounted will not unmount');
   const image = join(dir, SCRATCH_IMAGE), mount = join(realpathSync(mounts), name);
@@ -84,6 +86,7 @@ export const SESSION_VOLUME_BYTES = 2 * 1024 * 1024 * 1024;
  * kept, so the workspace persists across steps and restarts) and returns its real path. Already mounted, it is reused.
  * `bytes` exists so a test can prove the bound with a small volume. */
 export function attachSessionVolume(root, { bytes = SESSION_VOLUME_BYTES, name = 'session-work', at = null } = {}) {
+  assertAgentPaths({ root, workspace: at ?? join(root, name) });
   // `at`: a mount point outside the root (a session run as the harness user, harness-user.mjs harnessSessionLayout); the
   // image stays beside the root's own mount point, so the workspace is the same one.
   const real = realpathSync(root), mount = at ?? join(real, name), image = join(real, `${name}.sparseimage`);

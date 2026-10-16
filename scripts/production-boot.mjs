@@ -1,6 +1,7 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { bootProductionApplication } from '../dist/assembly/production-application.js';
+import { AgentPathRefused, assertAgentPaths } from './agent-paths.mjs';
 import { consumeResult } from '../dist/index.js';
 
 /** The installation module supplies confined OS ports and registered policy;
@@ -14,6 +15,17 @@ export async function runProductionCommand(args, output = process.stderr) {
   let record, host;
   try {
     record = JSON.parse(readFileSync(realpathSync(args[0]), 'utf8'));
+  } catch {
+    output.write('production boot refused: installation record or confined host unavailable\n');
+    return 1;
+  }
+  try {
+    if (typeof record?.storageRoot === 'string') assertAgentPaths({ root: record.storageRoot });
+  } catch (error) {
+    output.write(`production boot refused: ${error instanceof AgentPathRefused ? error.message : 'agent directory could not be resolved'}\n`);
+    return 1;
+  }
+  try {
     const module = await import(pathToFileURL(realpathSync(args[1])).href);
     if (typeof module.createProductionHost !== 'function') throw Error('host unavailable');
     host = await module.createProductionHost();
