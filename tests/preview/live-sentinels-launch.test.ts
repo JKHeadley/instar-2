@@ -56,6 +56,7 @@ async function launch(sentinels?: string, promise = false, pollDown = false, epi
     await asker.drain();
     requestId = journal.view.order.at(-1).id;
   }
+  const beforeSentinels = structuredClone(journal.view.sentinels);
   journal.close();
   if (episode.carried > 0) writeFileSync(join(root, 'runs.jsonl'), [JSON.stringify({ v: 1, launch: now - 1000, pid: 1 }),
     ...Array.from({ length: episode.carried }, (_, i) => JSON.stringify({ v: 1, launch: now - 1000, poll: 'failed', at: now - 1000 + i }))]
@@ -116,7 +117,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(status.status, status.stderr).toBe(0);
     journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY);
     const view = journal.view; journal.close();
-    return { status: JSON.parse(status.stdout), view, heldId, requestId, sends: readFileSync(log, 'utf8').split('sendMessage').length - 1,
+    return { status: JSON.parse(status.stdout), view, heldId, requestId, beforeSentinels, sends: readFileSync(log, 'utf8').split('sendMessage').length - 1,
       sentTexts: readFileSync(log, 'utf8'), runLog };
   } finally { endpoint.kill('SIGTERM'); }
 }
@@ -153,9 +154,9 @@ it('the real runner records each sentinel trigger and its effect, and status rea
 
 it('the off-switch keeps every sentinel out of the live loop', async () => {
   const out = await launch('none');
-  expect(out.status.liveSentinels).toMatchObject({ enabled: [], recordedTicks: { context: 0, presence: 1, promise: 0 } });
+  expect(out.status.liveSentinels).toMatchObject({ enabled: [], recordedTicks: out.beforeSentinels.counts });
   // Only the earlier launch's record exists; no note became due and none was sent for the held turn.
-  expect(out.view.sentinels.counts).toEqual({ context: 0, presence: 1, promise: 0 });
+  expect(out.view.sentinels).toEqual(out.beforeSentinels);
   expect(out.view.turns.get(out.heldId).limited).toBeUndefined();
 }, 60000);
 

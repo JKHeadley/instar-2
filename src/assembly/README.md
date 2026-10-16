@@ -251,3 +251,10 @@ progress intents bound it to one per message and one per topic per 45 seconds, i
 across restart. The ordinary send doorway still enforces audience, secrets, stop and reply
 allowance. Uncertain sends are not repeated. These additive custody fields retain existing
 records; rollback requires a reader that understands them, never deleting the journal.
+
+The session driver's optional activity observation carries only the owned claim, capture digest,
+observation time and existing typed wait signature. Empty captures are unknown. The preview's
+existing presence cycle records each registered work subject even while its ordinary lane is busy;
+unchanged observed activity becomes an advisory stall after one minute. Registered helper waits,
+unavailable observations and advancing work never authorize a restart or termination. The existing
+step deadline, result receipt, stop, resource owner and effect identities remain authoritative.

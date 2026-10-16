@@ -1,14 +1,17 @@
+import { createCipheriv, createHash, randomBytes } from 'node:crypto';
+import { durableProjection } from './journal.js';
 import { afterEach, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, limitedAnswerText, openPreviewJournal, openRequests } from './journal-test-worker.js';
 import { statusReply } from './status-command.js';
-import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, sentinelStatusLines, type LiveSentinelPorts } from './live-sentinels.js';
+import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, sentinelStatusLines, WORK_SILENCE_MS, type LiveSentinelPorts } from './live-sentinels.js';
 import { SENTINEL_FAMILIES, type SentinelFamily } from './sentinel-record.js';
 import { defaultSentinelConfig } from '../../src/awareness/sentinel.js';
 import { defaultPresenceConfig } from '../../src/sentinels/presence.js';
 import { defaultPromiseConfig } from '../../src/sentinels/promise.js';
+import type { SessionWorkEdge } from '../../src/assembly/production-session-work.js';
 import { createJournalShipper, localReplicaClient, openReplicaStore } from './journal-replication.js';
 
 // Recorded live shapes (Rule 106 / observer #106): the four held turns of 2026-09-27, update ids and texts verbatim.
@@ -25,7 +28,7 @@ const update = (id: number, text: string) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, date: Math.floor(START / 1000) + id, text } });
 const summaryAnswer = JSON.stringify({ summary: 'The operator asked a few ordinary questions.', people: [], memory: [], commitments: [], questions: [] });
 
-function harness(options: { families?: SentinelFamily[]; model?: (input: { id: string; question: string }) => unknown } = {}) {
+function harness(options: { families?: SentinelFamily[]; workActivity?: LiveSentinelPorts['workActivity']; model?: (input: { id: string; question: string }) => unknown } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-sentinels-'))); roots.push(root);
   const path = join(root, 'journal.encrypted');
   const clock = { now: START, stopped: false };
@@ -37,7 +40,7 @@ function harness(options: { families?: SentinelFamily[]; model?: (input: { id: s
     send: async (input: { text: string }) => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} };
   let worker = createJournalWorker(journal, workerPorts as never);
   const sentinelPorts = (): LiveSentinelPorts => ({ now: () => clock.now, stopped: () => clock.stopped, startedAt: START,
-    families: new Set(options.families ?? SENTINEL_FAMILIES),
+    families: new Set(options.families ?? SENTINEL_FAMILIES), ...(options.workActivity ? { workActivity: options.workActivity } : {}),
     reground: operation => effects.push(`reground ${operation}`), recoverContext: operation => effects.push(`recover ${operation}`),
     selfHeal: turn => effects.push(`self-heal ${turn}`), actOnPromise: id => effects.push(`promise ${id}`) });
   let sentinels = createLiveSentinels(journal, sentinelPorts());
@@ -397,4 +400,98 @@ it('the journal refuses a holding-note mark with no recorded self-heal before it
       .toThrow('sentinel record refused');
     expect(world.journal.view.sentinels).toBeUndefined();
   } finally { world.close(); }
+});
+
+it('observes every registered child without inbound turns; advancing work, waits, helpers and unknown observations are not stalled', () => {
+  let activity: ReturnType<NonNullable<LiveSentinelPorts['workActivity']>> = [];
+  const w = harness({ families: ['presence'], workActivity: () => activity });
+  const edge = (id: string, parent = 'launch'): SessionWorkEdge => ({ type: 'SessionWorkEdge', schemaVersion: 1,
+    id, parent, child: id, scope: '/work', owner: 'machine-a', authority: 'grant:existing',
+    budget: { steps: 1, calls: 1, tokens: null, maxResultBytes: 1024, deadline: START + 600_000 },
+    exitTest: 'one result', placement: 'machine-a', transport: 'existing session', resultDestination: '/work/result', openedAt: START,
+    ...(parent === 'launch' ? {} : { drawsOn: parent }) });
+  try {
+    for (const id of ['frozen', 'slow', 'wait', 'unknown', 'parent'])
+      w.journal.append({ kind: 'session-work', record: edge(id), at: START });
+    w.journal.append({ kind: 'session-work', record: edge('helper', 'parent'), at: START });
+    const updateActivity = (slow: string) => { activity = ['frozen', 'slow', 'wait', 'parent', 'helper'].map(subject => ({
+      subject, at: w.clock.now, progress: subject === 'slow' ? slow : subject, wait: subject === 'wait' ? 'rate-limited' : null })); };
+    updateActivity('a'); w.sentinels.observeWork();
+    w.clock.now += WORK_SILENCE_MS / 2; updateActivity('b'); w.sentinels.observeWork();
+    w.clock.now += WORK_SILENCE_MS / 2; updateActivity('c'); w.sentinels.observeWork();
+    expect(w.journal.view.order).toHaveLength(0);
+    expect(w.journal.view.sentinels?.work).toMatchObject({ frozen: { state: 'stalled' }, slow: { state: 'observing' },
+      wait: { state: 'waiting' }, unknown: { state: 'unknown' }, parent: { state: 'waiting' } });
+    // An unchanged helper can itself be reported stalled; that grants no right to kill it or its parent.
+    expect(w.effects).toEqual([]);
+    expect(sentinelStatusLines(w.journal.view).join(' ')).toContain('Work frozen: stalled');
+    const before = structuredClone(w.journal.view.sentinels?.work);
+    const charged = w.journal.view.calls;
+    w.journal.compact();
+    w.reopen();
+    expect(w.journal.view.calls).toBe(charged);
+    expect(w.journal.view.sentinels?.work).toEqual(before);
+    expect(Object.keys(w.journal.view.activeSessionWork ?? {})).toHaveLength(6);
+    // A stale observation is unknown, and the next observation starts a fresh silence window.
+    w.clock.now += 6000; w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work?.frozen?.state).toBe('unknown');
+    updateActivity('c'); w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work?.frozen?.state).toBe('observing');
+    // A blank capture, future timestamp, and absent capture are all unavailable evidence.
+    activity = [{ subject: 'frozen', at: w.clock.now, progress: null, wait: null },
+      { subject: 'slow', at: w.clock.now + 1, progress: 'future', wait: null }];
+    w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work?.frozen?.state).toBe('unknown');
+    expect(w.journal.view.sentinels?.work?.slow?.state).toBe('unknown');
+    const saved = JSON.stringify(w.journal.view.sentinels);
+    w.clock.stopped = true; w.clock.now += WORK_SILENCE_MS; w.sentinels.observeWork();
+    expect(JSON.stringify(w.journal.view.sentinels)).toBe(saved);
+  } finally { w.close(); }
+});
+
+it('work observations remain advisory when recording fails and the off-switch records nothing', () => {
+  const w = harness({ families: [] });
+  try {
+    w.sentinels.observeWork(); expect(w.journal.view.sentinels).toBeUndefined();
+    const view = w.journal.view;
+    view.activeSessionWork = { e: { id: 'e', child: 'child', openedAt: START } as SessionWorkEdge };
+    let effects = 0;
+    const sentinel = createLiveSentinels({ view, append: () => { throw Error('disk unavailable'); } }, {
+      now: () => START, startedAt: START, stopped: () => false, families: new Set(['presence']),
+      reground: () => effects++, recoverContext: () => effects++, selfHeal: () => effects++, actOnPromise: () => effects++ });
+    sentinel.observeWork();
+    expect(sentinel.failures().presence).toBe(1); expect(effects).toBe(0);
+    expect(view.sentinels).toBeUndefined();
+  } finally { w.close(); }
+});
+
+it('rebuilds active children from an older compacted work history without reserving calls again', () => {
+  const w = harness();
+  const edge: SessionWorkEdge = { type: 'SessionWorkEdge', schemaVersion: 1, id: 'open-edge', parent: 'launch', child: 'child',
+    scope: '/work', owner: 'machine-a', authority: 'grant:existing', budget: { steps: 1, calls: 2, tokens: null,
+      maxResultBytes: 1024, deadline: START + 600_000 }, exitTest: 'one result', placement: 'machine-a', transport: 'session',
+    resultDestination: '/work/result', openedAt: START };
+  try {
+    const rows = [{ kind: 'session-work' as const, record: edge, at: START }];
+    w.journal.append(rows[0]!);
+    const projection = durableProjection(w.journal.view), calls = projection.calls;
+    delete projection.activeSessionWork;
+    const data = Buffer.from(JSON.stringify({ view: projection, retained: rows }));
+    w.close();
+    let offset = 0;
+    const packets = [projection.genesis, { kind: 'snapshot-start', version: 1, chunks: 1, bytes: data.length,
+      digest: createHash('sha256').update(data).digest('hex') }, { kind: 'snapshot-chunk', data: data.toString('base64') }].map(row => {
+      const nonce = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, nonce);
+      cipher.setAAD(Buffer.from(`preview-journal:${offset}`));
+      const body = Buffer.concat([cipher.update(JSON.stringify(row)), cipher.final()]);
+      const bytes = Buffer.concat([nonce, cipher.getAuthTag(), body]), prefix = Buffer.alloc(4);
+      prefix.writeUInt32BE(bytes.length); offset += 4 + bytes.length;
+      return Buffer.concat([prefix, bytes]);
+    });
+    writeFileSync(w.path, Buffer.concat(packets)); w.reopen();
+    expect(w.journal.view.activeSessionWork).toEqual({ 'open-edge': edge });
+    expect(w.journal.view.calls).toBe(calls);
+    w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work?.['open-edge']?.state).toBe('unknown');
+  } finally { w.close(); }
 });
