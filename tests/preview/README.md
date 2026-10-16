@@ -19,7 +19,7 @@ The journal runner's capability briefing is generated from these lines and the f
 
 - `fetch-inbound-media`: saves inbound Telegram files with bounded effect admission; refused downloads retain the original message.
 - `preview-conversation`: answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.
-  Details: only the verified operator is admitted; a forum journal serves all topics of one configured group, including General, with topic-specific recent history and harness sessions. Forum packets identify the current topic (General, its recorded name, or topic number); shared facts carry their source topic so the agent can attribute them across topics. Private-chat packets retain their existing format. Unknown send outcomes are never resent.
+  Details: only the verified operator is admitted; a forum journal serves all topics of one configured group, including General, with topic-specific recent history and harness sessions. Forum packets identify the current topic (General, its recorded name, or topic number); shared facts carry their source topic so the agent can attribute them across topics. Private-chat packets retain their existing format. Unknown send outcomes are never resent. Failed answers remain in the journal. After bounded proven-not-sent recovery is exhausted, a definite refusal gets one content-free delivery notice; uncertain sends keep uncertainty wording. Outstanding failures in one conversation coalesce, and a failed notice never generates another notice. Stops, expiry, reply caps and audience checks still apply.
 - `preview-durable-memory`: an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.
   Details: keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory.
 - `preview-status-command`: "status" and "how are you doing" are answered from the journal without a model call.
@@ -1987,6 +1987,12 @@ lose it; replay refuses a `remind` mark on any other turn. The grant's fields ar
 record: who asked (the verified operator), when (the message time), what (the exact quoted clause),
 when due (day, time and zone), and where (this private chat or topic). The immediate reply states the
 due time, or why nothing was scheduled (unsettled day or AM/PM, already past, or after the preview ends).
+
+One-shot requests with a persisted `resolution.instant` wait for that exact UTC instant, including
+seconds and milliseconds, after restart as well as before it. Local day/time text is for display;
+it does not round an exact deadline down to the start of its minute. Calendar-only older records
+retain their local-minute due time, and recurring requests retain their local occurrence schedule.
+The existing due-turn and send identities suppress repeat dispatch, including when delivery is UNKNOWN.
 
 **The due turn.** `sendRequested()` is the one due point; the launcher calls it only after a
 successful poll returned nothing new, so a cancellation already waiting in Telegram is read and
@@ -4341,15 +4347,20 @@ remain readable. Existing stop, disclosure, ownership, replication, allowance an
 remain in force. A crash after dispatch never repeats the reaction or sends fallback text.
 
 A definite reaction rejection (including unsupported chats) or transport proof that nothing was
-sent falls back to the existing “Checking that now.” template. The reaction call has a 500 ms
-transport timeout, preserving the deadline reserve for fallback. A lost or malformed response is
+sent falls back to “I got your message.” This acknowledges durable receipt without claiming
+that queued or stalled work has started. Historical “Checking that now.” intents remain readable
+and cannot be resent. The reaction call has a bounded ten-second transport timeout; transport
+latency can exceed the acknowledgement target and is measured separately. A lost or malformed response is
 UNKNOWN and cannot safely trigger fallback: the reaction may already have landed. No new model
 call or semantic judgment is involved. Final dispatch readiness suppresses an unadmitted ack;
 review still pending remains eligible. Final dispatch waits for an already dispatched ack.
 
 After acknowledgement, `telegram-acknowledgement.mjs` refreshes `sendChatAction: typing` every four
-seconds. Each refresh rechecks current work, stop, ownership, expiry and disclosure. The loop
-stops on answer/progress dispatch, a failed refresh, or two minutes / 30 calls, whichever comes
+seconds only with a fresh observation and an unfinished admitted tool for this exact turn.
+Queued input, a completed latest step, an absent observation and a call reservation alone do not
+produce typing. Each refresh rechecks this evidence after disclosure as well as stop, ownership
+and expiry. The loop stops on answer/progress dispatch, a failed refresh, or two minutes / 30
+observations, whichever comes
 first; Telegram expires the last indicator naturally. Timers are local, ephemeral, and never
 replayed as send obligations. The existing slow progress and earlier-message notices remain.
 The completion reaction remains 👀; no separate completion effect or durable state is added.
@@ -4385,3 +4396,14 @@ pinned profile, including the executable artifact. Changed profiles/artifacts re
 checks are discarded. The observation is process-local and disappears on restart. It does not
 cache authorization or authentication: every invocation still checks the current artifact,
 authority, stop, login identity and `auth status --json` before dispatching its model command.
+
+
+### Active obligation progress on the status surface
+
+The existing journal-derived status marks an active obligation step stalled after more than
+30 minutes without a recorded result. It ages both commitment steps and blocker rechecks from
+the durable start, not a scheduling slot or another conversation reply. The bounded status line
+shows the count and up to three obligation identities; the JSON health view retains every stalled
+item and its start/age. Future scheduled steps, accounted waits and finished results are separate
+states. This is a pull-only signal: it never closes work, replays an uncertain effect, or kills a
+worker. A restart reconstructs it from the same journal, with no new store or service.

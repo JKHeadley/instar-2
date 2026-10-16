@@ -16,7 +16,7 @@ import { runToolTurn, toolPacketFits, toolTurnFits } from './tool-turn.mjs';
 import { SUBSCRIPTION_TOOL_LIMITS } from '../../src/assembly/production-provider.js';
 // @ts-expect-error Plain JavaScript.
 import { toolTrace } from './tool-admission.mjs';
-import { loopHealth, loopStatusLines, BACKLOG_AGE_LIMIT_MS } from './obligations.js';
+import { loopHealth, loopStatusLines, BACKLOG_AGE_LIMIT_MS, PROGRESS_STALL_MS } from './obligations.js';
 import { SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
 import type { SessionWorkOutcome } from '../../src/assembly/production-session-work.js';
 import { statusReply } from './status-command.js';
@@ -1840,6 +1840,75 @@ it('names the operator in the packet by their own Telegram first name, and names
     await w.worker.drain();
     await w.say('One more question?');
     expect((JSON.parse(w.contexts.get('One more question?')!) as { audience: Record<string, unknown> }).audience.operatorName).toBe('Justin');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+it('ages active blocker rechecks from their durable start, not the future retry slot, and exposes the stalled item', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { answer: () => ({ reply: CLAIM, blocker: blocker() }) });
+    await w.say('Can you book the dentist appointment online?');
+    const item = obligationSchedule(w.journal.view).find(item => item.key === 'blocker:0')!;
+    expect(item).toBeDefined();
+    w.clock.now = item.slot;
+    w.journal.append({ kind: 'obligation-start', obligation: item.key, slot: item.slot, at: w.clock.now });
+    const at = w.clock.now + PROGRESS_STALL_MS + 1;
+    // A future retry timestamp is not evidence that a currently running step is making progress.
+    expect(obligationSchedule(w.journal.view)[0]!.slot).toBeGreaterThan(at);
+    expect(loopHealth(w.journal.view, at)).toMatchObject({ state: 'stalled', workInFlight: 1,
+      stalledWork: [{ key: item.key, since: w.clock.now, ageMs: PROGRESS_STALL_MS + 1 }] });
+    expect(statusReply(w.journal.view, at, 'UTC')).toContain('Active work: 1; 1 stalled without a recorded result for over 30 min (blocker:0).');
+    expect(loopHealth(w.journal.view, w.clock.now + PROGRESS_STALL_MS)).toMatchObject({ state: 'progressing', stalledWork: [] });
+    w.journal.compact(); w.journal.close();
+    const reopened = openPreviewJournal(w.path, key);
+    expect(loopHealth(reopened.view, at)).toMatchObject({ state: 'stalled', stalledWork: [{ key: item.key }] });
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('replays the recorded c1 start/result: a delayed start is fresh, unrelated replies cannot refresh it, and a result clears the signal', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  const root = origin();
+  try {
+    const w = world(root, { answer: question => question === INVOICE
+      ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Noted.' });
+    await w.say(INVOICE);
+    // Preserve the recorded slot and start shape; inject a slow dispatch so due age and active age differ.
+    const start = { ...recorded.workStart, at: recorded.workStart.at + 2 * HOUR };
+    w.journal.append(start); w.clock.now = start.at;
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ state: 'progressing', stalledWork: [] });
+    w.clock.now += PROGRESS_STALL_MS + 1;
+    await w.say('Unrelated weather question.');
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ state: 'stalled', progressAgeMs: 0,
+      stalledWork: [{ key: 'commitment:0', since: start.at }] });
+    // Captured worker/model records alone are not an obligation result; no pane or model-output inference.
+    for (const captured of recorded.checkpointRows) if (captured.kind !== 'phase-timing') w.journal.append(captured);
+    expect(loopHealth(w.journal.view, w.clock.now).state).toBe('stalled');
+    w.journal.append({ ...recorded.workResult, at: w.clock.now });
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ state: 'idle', stalledWork: [], awaitingDelivery: 1 });
+    expect(statusReply(w.journal.view, w.clock.now, 'UTC')).not.toContain('stalled without a recorded result');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+it.each(['continue', 'waiting', 'report'] as const)('does not call an accounted %s result an active stalled worker', async outcome => {
+  const root = origin();
+  try {
+    const w = world(root, { answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }),
+      work: () => outcome === 'report' ? { outcome, report: 'The requested check is complete.' }
+        : outcome === 'waiting' ? { outcome, waitsOn: 'operator', note: 'The operator must supply the invoice.' }
+          : { outcome, note: 'The first checkpoint is complete.' } });
+    await w.say(INVOICE);
+    // Future work is not an active stalled worker, even when the last ordinary reply is old.
+    w.clock.now += LOOP_REVISIT_MS - 1;
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ state: 'idle', stalledWork: [], workInFlight: 0 });
+    w.clock.now += 1;
+    await w.worker.workObligations();
+    expect(loopHealth(w.journal.view, w.clock.now + PROGRESS_STALL_MS + 1)).toMatchObject({
+      state: 'idle', stalledWork: [], workInFlight: 0 });
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

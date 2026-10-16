@@ -48,8 +48,8 @@ const ask = (...calls: Array<[string, Record<string, unknown>]>): Step =>
 const admission = (stateDirectory: string) => readFileSync(join(stateDirectory, 'admission.jsonl'), 'utf8').trim().split('\n')
   .map(line => JSON.parse(line));
 
-// This fixture measures the launch tree, not the shared user ID. A six-process RLIMIT_NPROC
-// allowance can be spent by unrelated parallel workers between census and fork, refusing even
+// This fixture measures the launch tree, not the shared user ID. A small RLIMIT_NPROC
+// allowance (six or eight processes here) can be spent by unrelated workers between census and fork, refusing even
 // `echo ordinary`. Inject only an unavailable UID count; retain the real tree census, identity,
 // sandbox joins, sampling and cleanup. The kernel UID limit has its own resource-owner tests.
 const treeLimitQuery = (query: (file: string, args: string[]) => Promise<string | null>) =>
@@ -63,6 +63,7 @@ it('the tree-limit fixture isolates the UID allowance while retaining census, id
   expect(await query('/bin/ps', ['-U', String(process.getuid?.()), '-o', 'pid='])).toBeNull();
   expect(calls).toEqual([]);
   const observations: Array<[string, string[]]> = [
+    ['/bin/ps', ['-U', String((process.getuid?.() ?? 0) + 1), '-o', 'pid=']],
     ['/bin/ps', ['-U', String(process.getuid?.()), '-ww', '-o', 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=']],
     ['/bin/ps', ['-o', 'lstart=', '-p', '123']],
     ['/usr/bin/python3', ['-c', 'sandbox-reader', '1', '/scratch', '123']],
@@ -560,7 +561,9 @@ child.unref(); process.stdout.write(String(child.pid));`;
   it.each([['inside the scratch volume', 'process.env.TMPDIR'], ['at the root directory, outside the volume', "'/'"]])('accounts for a detached child %s and ends it over the memory ceiling while its launcher runs', { timeout: 30000 }, async (_where, cwd) => {
     const small = createResourceOwner({ ...RESOURCE_CEILINGS,
       launch: { ...RESOURCE_CEILINGS.launch, memoryBytes: 96 * 1024 * 1024, processCount: 8 } }) as Owner;
-    await small.attach({});
+    // As in the tree-ceiling test, unrelated UID growth must not prevent the launcher from
+    // forking before the detached child's memory can be sampled. Keep all tree/identity joins real.
+    await small.attach({ query: treeLimitQuery(hostQuery) });
     let node = '', workspace = '', daemon = 0;
     try {
       // Write the big-child launcher, then run it (printing the child's pid to a workspace file) and stay alive in the

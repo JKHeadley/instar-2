@@ -22,7 +22,7 @@ import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
 import { boundedCorrection, checkReply, reviewReply, replyReviewContext, repeatsOperatorOnly, HOLDING_REPLY, REVIEW_INTERRUPTED_REASON, GROUP_REVIEW_FINAL_NOTICE, isGroupReviewFinalNotice, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, jevConfidentPass, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, confidentReplyNeedsReview, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
-import { latestRecurringDay, nextRecurringDay, parseDatedItem, relativeDelay, resolvedDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, localMinute, type DatedItem } from './dated-memory.js';
+import { latestRecurringDay, nextRecurringDay, parseDatedItem, relativeDelay, resolvedDatedItem, requestedTimeReached, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, localMinute, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, reconcilePromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
 import { messageTime, zoneFormatter } from './self-state.js';
@@ -301,6 +301,7 @@ export const CARRIED_MEMORY_ITEM_SOURCE = 'A source may also be a source from pr
 export const MEMORY_UNDECIDED_REPLY = 'Your message is retained, but I could not validate and save the requested memory change.';
 export const WAITING_PROGRESS_AFTER_MS = 45_000;
 export const WAITING_PROGRESS = "Still on your earlier message; I'll get to this one next.";
+export const REFUSED_SEND_NOTICE = 'I could not send my complete answer. Your request and the answer remain in the conversation record. You can ask me for the answer again.';
 export const UNKNOWN_SEND_NOTICE = 'My answer may not have arrived. Your request and the answer remain in the conversation record. You can ask me for the answer again.';
 export const UNKNOWN_ANSWER_NOTICE = 'The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.';
 export const TOO_LONG_INPUT_NOTICE = 'Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
@@ -396,7 +397,9 @@ export const withDisclosure = (reply: string, disclosure: string) =>
 // admission, timer jitter and transport (ack-timing-1013 measured 2.127s combined).
 export const REPLY_ACKNOWLEDGEMENT_AFTER_MS = 7_000;
 /** Reviewed once: content-free, no result, promise, private fact or claim of completed work. */
-export const REPLY_ACKNOWLEDGEMENT = 'Checking that now.';
+export const REPLY_ACKNOWLEDGEMENT = 'I got your message.';
+// Historical fixed intents remain readable and fenced; new sends acknowledge receipt only.
+const fixedAcknowledgement = (text: string) => text === REPLY_ACKNOWLEDGEMENT || text === 'Checking that now.';
 const LEGACY_REPLY_ACKNOWLEDGEMENT = "I'm working on your reply.";
 export const HELD_NOTICE_AFTER_MS = 600_000;
 /** Rule 95: every live gate of this runner and the way it fails when it cannot decide, chosen by who
@@ -3203,11 +3206,11 @@ export function sendOutcomeOf(view: JournalView, target: string, sent: number | 
   const recorded = view.sendOutcomes.find(item => item.target === target);
   return recorded?.outcome === 'refused' ? { kind: 'refused', reason: recorded.reason } : { kind: 'unknown', reason: recorded?.reason ?? null };
 }
-/** An unknown answer keeps its original intent fenced. Its separate content-free notice may start once. */
+/** A failed or unknown answer keeps its original intent fenced. Its separate content-free notice may start once. */
 function needsDeliveryNotice(view: JournalView, turn: Turn): boolean {
   if (!turn.accepted || turn.editOf || turn.groupedInto || turn.intent === undefined || turn.answer === undefined || turn.deliveryNotice) return false;
   const whole = replyOutcomeOf(view, turn);
-  return whole.started && whole.outcome.kind === 'unknown';
+  return whole.started && whole.outcome.kind !== 'accepted';
 }
 /** The reply target a turn's intent was dispatched under (a grouped turn shares its leader's send). */
 export const replyTarget = (turn: Turn) => `reply:${turn.groupedInto ?? turn.id}`;
@@ -4550,7 +4553,11 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
   }
   if (row.kind === 'held-notice-intent' && row.deliveryUnknown) {
     const covered = [turn, ...(row.covers ?? []).map(id => view.turns.get(id))];
-    if (row.deliveryUnknown !== true || row.acknowledgement !== undefined || row.text !== UNKNOWN_SEND_NOTICE
+    // deliveryUnknown is the historical discriminator for the durable delivery-notice slot.
+    // Keep it readable; the exact retained outcomes determine the wording, never the marker.
+    const text = covered.every(item => item && replyOutcomeOf(view, item).outcome.kind === 'refused')
+      ? REFUSED_SEND_NOTICE : UNKNOWN_SEND_NOTICE;
+    if (row.deliveryUnknown !== true || row.acknowledgement !== undefined || row.text !== text
       || view.stop !== null || view.replies >= view.limits.maxReplies || row.at >= view.expires
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
       || row.grant !== view.genesis.grant || new Set(covered).size !== covered.length
@@ -4573,10 +4580,10 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     const acknowledgement = row.acknowledgement === true;
     // The same floor admits new seven-second notices and preserves older eight/ten-second history.
     const acknowledgementAfter = REPLY_ACKNOWLEDGEMENT_AFTER_MS;
-    if (acknowledgement && row.text === REPLY_ACKNOWLEDGEMENT && (row.at < turn.at + acknowledgementAfter || view.replies >= view.limits.maxReplies - 1))
+    if (acknowledgement && fixedAcknowledgement(row.text) && (row.at < turn.at + acknowledgementAfter || view.replies >= view.limits.maxReplies - 1))
       throw Error('preview journal: fixed acknowledgement no longer due');
     if (acknowledgement && (!operatorWriter(view, turn, true) || turn.requestedAction || turn.editOf
-      || !(row.text === REPLY_ACKNOWLEDGEMENT || row.text === LEGACY_REPLY_ACKNOWLEDGEMENT
+      || !(fixedAcknowledgement(row.text) || row.text === LEGACY_REPLY_ACKNOWLEDGEMENT
         && turn.heldNoticeReview?.verdict === 'pass') || row.covers !== undefined))
       throw Error('preview journal: acknowledgement intent refused');
     if (!turn.accepted || !acknowledgement && (!heldNoticeReason(turn.held) || turn.heldSince === undefined
@@ -4595,7 +4602,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       throw Error('preview journal: held notice cover refused');
     for (const item of covered as Turn[]) item.heldNoticeCoveredBy = row.id;
     if (row.acknowledgementMode !== undefined && (row.acknowledgementMode !== 'reaction-or-text'
-      || !acknowledgement || row.text !== REPLY_ACKNOWLEDGEMENT)) throw Error('preview journal: acknowledgement mode refused');
+      || !acknowledgement || !fixedAcknowledgement(row.text))) throw Error('preview journal: acknowledgement mode refused');
     turn.heldNoticeIntent = row.text;
     if (row.acknowledgementMode) turn.acknowledgementMode = row.acknowledgementMode;
     view.replies++; return;
@@ -4604,7 +4611,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (turn.heldNoticeIntent === undefined || turn.heldNoticeSent !== undefined
       || !Number.isSafeInteger(row.message) || row.message <= 0) throw Error('preview journal: held notice receipt order');
     if (row.acknowledgementPath !== undefined && (!['reaction', 'text'].includes(row.acknowledgementPath)
-      || turn.heldNoticeIntent !== REPLY_ACKNOWLEDGEMENT)) throw Error('preview journal: acknowledgement path refused');
+      || !fixedAcknowledgement(turn.heldNoticeIntent))) throw Error('preview journal: acknowledgement path refused');
     turn.heldNoticeSent = row.message; turn.heldNoticeSentAt = row.at;
     if (row.acknowledgementPath !== undefined) turn.acknowledgementPath = row.acknowledgementPath;
     return;
@@ -8117,7 +8124,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     const now = ports.now(), groups = new Map<string, DatedItem[]>();
     for (const item of pendingRequests(journal.view, now)) {
-      if (clean(item.quote) !== item.quote || reminderDue(item) > localStamp(now, item.zone) || reminderUnsettled(item)) continue;
+      if (clean(item.quote) !== item.quote || !requestedTimeReached(item, now) || reminderUnsettled(item)) continue;
       const key = JSON.stringify(requestSource(journal.view, item)!.thread ?? null);
       groups.set(key, [...groups.get(key) ?? [], item]);
     }
@@ -8295,13 +8302,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   // Reuse the durable notice doorway, with a separate slot because the acknowledgement may
   // already have used heldNoticeIntent. A notice's own UNKNOWN never creates another notice.
-  const noticeUnknownReplies = async () => {
+  const noticeFailedReplies = async () => {
     for (const turn of journal.view.order) {
       if (halted() || journal.view.replies >= journal.view.limits.maxReplies) return;
       if (!needsDeliveryNotice(journal.view, turn) || !await disclosure()) continue;
       const covers = journal.view.order.filter(item => item !== turn && item.thread === turn.thread
         && needsDeliveryNotice(journal.view, item)).map(item => item.id);
-      const text = UNKNOWN_SEND_NOTICE, chat = journal.view.genesis.chat, target = `delivery-notice:${turn.id}`;
+      const text = [turn, ...covers.map(id => journal.view.turns.get(id)!)].every(item =>
+        replyOutcomeOf(journal.view, item).outcome.kind === 'refused') ? REFUSED_SEND_NOTICE : UNKNOWN_SEND_NOTICE;
+      const chat = journal.view.genesis.chat, target = `delivery-notice:${turn.id}`;
       const thread = turn.thread === undefined ? {} : { thread: turn.thread };
       ports.checkOutbound(text);
       const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
@@ -9877,7 +9886,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         };
         wakeTopicDrain = pump; pump();
       });
-      await noticeUnknownReplies();
+      await noticeFailedReplies();
       if (!audienceHolds) await noticeDisclosureHolds();
       // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
       // held-notice rows still replay; no other held notice is ever pushed.

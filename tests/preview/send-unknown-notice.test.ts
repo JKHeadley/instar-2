@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, replyOutcomeOf, REPLY_ACKNOWLEDGEMENT } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, replyOutcomeOf, REPLY_ACKNOWLEDGEMENT, REFUSED_SEND_NOTICE } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(7);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
@@ -33,13 +33,13 @@ it.each(['accepted', 'unknown', 'refused'] as const)('final UNKNOWN sends one lo
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
-it.each(['accepted', 'refused'] as const)('does not emit a delivery-unknown notice for a %s answer', async kind => {
+it.each(['accepted'] as const)('does not emit a delivery-unknown notice for a %s answer', async kind => {
   const root = mkdtempSync(join(tmpdir(), 'send-known-'));
   const journal = openPreviewJournal(join(root, 'journal'), key, genesis), sent: string[] = [];
   try {
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, checkOutbound: () => {},
       model: async () => 'finished answer', send: async input => { sent.push(input.expectedText);
-        return kind === 'accepted' ? 1 : { kind, reason: 'definite refusal' }; } });
+        return 1; } });
     worker.intake([update]); await worker.drain(); expect(sent).toEqual(['finished answer']);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
@@ -110,7 +110,8 @@ it('replays the captured D1c answer after an acknowledgement, then emits the los
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
-it('rechecks audience standing before disclosing even the delivery notice', async () => {
+it.each(['unknown', 'refused'] as const)('rechecks audience standing before disclosing the %s delivery notice', async kind => {
+  const lossNotice = kind === 'refused' ? REFUSED_SEND_NOTICE : notice;
   const { appendGroupCarry } = await import('./group-carry.js');
   const { resolveGroupDisclosure } = await import('./group-disclosure.js');
   const f = await import('./group-carry-fixture.js');
@@ -129,9 +130,9 @@ it('rechecks audience standing before disclosing even the delivery notice', asyn
     appendGroupCarry(destination, source, f.scope, resolveGroupDisclosure(f.scope, f.authority(), f.now, f.records, f.sealKey), true, f.now, () => false);
     const worker = createJournalWorker(destination, { now: () => f.now, stopped: () => false,
       groupDisclosure: async () => allowed, checkOutbound: () => {}, model: async () => 'finished answer',
-      send: async input => { sent.push(input.expectedText); allowed = false; return { kind: 'unknown', reason: 'lost receipt' }; } });
+      send: async input => { sent.push(input.expectedText); allowed = false; return { kind, reason: 'lost receipt' }; } });
     worker.intake([makeUpdate(true)]); await worker.drain(); expect(sent).toEqual(['finished answer']);
-    allowed = true; await worker.drain(); expect(sent).toEqual(['finished answer', notice]);
+    allowed = true; await worker.drain(); expect(sent).toEqual(['finished answer', lossNotice]);
     allowed = true; await worker.drain(); expect(sent).toHaveLength(2);
   } finally { source.close(); destination.close(); rmSync(root, { recursive: true, force: true }); }
 });

@@ -26,8 +26,8 @@ it.each([false, true])('real bridge delivers acknowledgement with fallback=%s an
       return JSON.parse(child.stdout) as unknown;
     };
     let result = reactionAcknowledgement(invoke, '-42', 91);
-    if (result === null) result = classifyTelegramSend(invoke('sendMessage', { chat_id: '-42', text: 'Checking that now.',
-      message_thread_id: 7, reply_parameters: { message_id: 91 } }, 1000), { chat: '-42', expectedText: 'Checking that now.', thread: 7 });
+    if (result === null) result = classifyTelegramSend(invoke('sendMessage', { chat_id: '-42', text: 'I got your message.',
+      message_thread_id: 7, reply_parameters: { message_id: 91 } }, 1000), { chat: '-42', expectedText: 'I got your message.', thread: 7 });
     expect(result).toMatchObject({ kind: 'accepted' });
     if (!fallback) expect(result).toMatchObject({ message: 91, acknowledgementPath: 'reaction' });
     const typing = invoke('sendChatAction', { chat_id: '-42', message_thread_id: 7, action: 'typing' }, 1000) as { bytes: string };

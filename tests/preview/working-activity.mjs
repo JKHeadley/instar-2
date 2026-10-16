@@ -45,7 +45,7 @@ export function admissionActivity(bytes, offset, claim) {
   const text = `Status: ${running ? '' : 'latest step — '}${detail.replace(/\s+/gu, ' ')}`;
   // Do not cut a credential before the existing exact outbound wall can inspect it.
   if (text.length > 280) return null;
-  return { step: createHash('sha256').update(`${claim}:${row.id}:${row.input}`).digest('hex'), text };
+  return { step: createHash('sha256').update(`${claim}:${row.id}:${row.input}`).digest('hex'), text, running: running !== undefined };
 }
 
 export function createWorkingActivities({ read, now }) {
@@ -71,10 +71,12 @@ export function createWorkingActivities({ read, now }) {
     },
     current(operation) {
       const state = active.get(operation);
-      if (!state || state.observedAt === null || now() - state.observedAt > 10_000) return null;
-      // Polling a live worker is not advancing work. Only a changed admitted step renews evidence.
-      return state.activity && state.advancedAt !== null && now() - state.advancedAt <= 10_000
-        ? { ...state.activity, observedAt: state.advancedAt } : null;
+      const time = now();
+      if (!state || state.observedAt === null || state.observedAt > time || time - state.observedAt > 10_000) return null;
+      // Polling cannot renew unchanged evidence; reread only to reflect completion.
+      if (state.advancedAt === null || state.advancedAt > time || time - state.advancedAt > 10_000 || state.offset === null) return null;
+      const activity = admissionActivity(read(state.claim), state.offset, state.claim);
+      return activity && activity.step === state.lastStep ? { ...activity, observedAt: state.advancedAt } : null;
     },
   };
 }

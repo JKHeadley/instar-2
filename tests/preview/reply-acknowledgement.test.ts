@@ -300,3 +300,40 @@ for (const age of [6999, 7000, 7999, 8000, 9300, 9999, 10000]) it(`new acknowled
     }
   } finally { f.close(); }
 });
+
+it('acknowledges durable queued intake without claiming work has started', async () => {
+  const f = fixture();
+  try {
+    f.worker.intake([update()]);
+    expect(f.journal.view.order[0]?.reserved).toBe(false);
+    f.advance(7000); await f.worker.minimal();
+    await new Promise<void>(done => setImmediate(done));
+    expect(f.sent.map(row => row.expectedText)).toEqual(['I got your message.']);
+    expect(f.journal.view.order[0]?.reserved).toBe(false);
+    await f.worker.minimal(); expect(f.sent).toHaveLength(1);
+    f.answer.resolve('Done.'); await f.worker.drain();
+    expect(f.sent.map(row => row.expectedText)).toEqual(['I got your message.', 'Done.']);
+  } finally { f.close(); }
+});
+
+for (const received of [false, true]) it(`retains historical fixed acknowledgement and never replays it (receipt=${received})`, async () => {
+  const f = fixture();
+  try {
+    f.worker.intake([update()]); const turn = f.journal.view.order[0]!;
+    const text = 'Checking that now.', target = `held-notice:${turn.id}`;
+    f.journal.append({ kind: 'held-notice-intent', id: turn.id, text, chat: genesis.chat, update: turn.update,
+      grant: genesis.grant, acknowledgement: true, acknowledgementMode: 'reaction-or-text',
+      provenance: f.journal.signOutbound('infrastructure', { target, chat: genesis.chat, body: text }), at: 8000 });
+    if (received) f.journal.append({ kind: 'held-notice-sent', id: turn.id, message: 101, acknowledgementPath: 'reaction', at: 8001 });
+    f.journal.compact(); f.journal.close();
+    const reopened = openPreviewJournal(f.path, key);
+    try {
+      expect(reopened.view.order[0]?.heldNoticeIntent).toBe(text);
+      expect(reopened.view.order[0]?.acknowledgementPath).toBe(received ? 'reaction' : undefined);
+      f.advance(10000);
+      const worker = createJournalWorker(reopened, { ...f.ports, model: async () => 'Done.' });
+      await worker.minimal(); await worker.drain();
+      expect(f.sent.map(row => row.expectedText)).toEqual(['Done.']);
+    } finally { reopened.close(); }
+  } finally { f.close(); }
+});

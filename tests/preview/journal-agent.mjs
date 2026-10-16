@@ -2372,7 +2372,8 @@ async function main() {
             if (reactionOutcome !== null) {
               outcome = reactionOutcome;
               observeSendPhase?.('transportReturnedAt');
-              if (outcome.kind === 'accepted') typing.start(chat, thread, current ?? (() => false));
+              if (outcome.kind === 'accepted') typing.start(chat, thread, current ?? (() => false),
+                () => workingActivities.current(noticeTurn.id)?.running === true);
               return outcome;
             }
             // Only a proved rejection reaches text fallback; recheck stop/ownership after the call.
@@ -2391,7 +2392,8 @@ async function main() {
           outcome = classifyTelegramSend(reply, { chat, expectedText, forum: g.forum === true, ...(thread === undefined ? {} : { thread }) });
           if (reaction && outcome.kind === 'accepted') {
             outcome = { ...outcome, acknowledgementPath: 'text' };
-            typing.start(chat, thread, current ?? (() => false));
+            typing.start(chat, thread, current ?? (() => false),
+                () => workingActivities.current(noticeTurn.id)?.running === true);
           }
           return outcome;
         } finally { if (shared) await shared.outcome(target, outcome.kind); }
