@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:878a1cc784b2bbba764140588d4eab3337c2a4f683d78af8ded0cc3769c68a10",
-  "commit": "e9dd13caed9131219623ee1316b65a4f94a517a4",
+  "generation": "sha256:c49ecf5307ba090ccfd61d37cc9db5da8b7a8717ad9a31f1f8db363d4277bf5e",
+  "commit": "907d19e4d978bcdfbce5737bcfcc5677ff3ce985",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -49,7 +49,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
         "id": "preview-requested-actions",
@@ -187,7 +187,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
         "id": "preview-requested-actions",
@@ -325,7 +325,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
         "id": "preview-requested-actions",
@@ -463,7 +463,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
         "id": "preview-requested-actions",
@@ -601,7 +601,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
         "id": "preview-requested-actions",
