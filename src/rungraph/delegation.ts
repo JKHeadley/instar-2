@@ -298,6 +298,8 @@ export function createDelegationLedger(store: DelegationStorePort, context: Boun
       for (const [value, name] of [[request.budget, 'budget'], [request.sequence, 'sequence'], [request.at, 'clock'],
         [request.collectionCadence, 'collection cadence'], [request.childLimit.maxChildren, 'child limit'], [request.childLimit.maxDepth, 'depth limit']] as const)
         count(value, name);
+      need(request.resultDestination.run === p.run && request.resultDestination.edge === p.edge,
+        'result destination must name the accountable parent run and edge');
       need(request.at < p.expiresAt, 'parent authority expired');
       need(request.placement.agent === request.recipient, 'placement agent differs from recipient');
       need(subset(request.placement.required, request.placement.advertised), 'placement lacks a required capability');
@@ -342,6 +344,8 @@ export function createDelegationLedger(store: DelegationStorePort, context: Boun
       const { digest, ...body } = contract;
       need(encoded(body).hash === digest, 'contract digest does not match its fields');
       need(contract.id.startsWith('delegation:') && contract.childRun === `child:${encoded({ edge: contract.id }).hash}`, 'child identity not reserved by this edge');
+      need(contract.resultDestination.run === contract.parentRun && contract.resultDestination.edge === contract.parentEdge,
+        'result destination must name the accountable parent run and edge');
       need(at < contract.expiresAt, 'delegation expired before receipt');
       const existing = view().get(contract.id);
       if (existing) {

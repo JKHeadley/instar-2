@@ -267,8 +267,10 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
     const collect = (operation: string): SessionWorkOutcome | null => {
       ensure(safeName.test(operation), 'exact session work identity required');
       const records = config.recoveryEdges?.() ?? [];
+      // Nested edges share the attempt's id prefix but are not competing attempts.
+      const prefix = `session-work-edge:${operation}:`;
       const edges = records.filter((record): record is SessionWorkEdge => record.type === 'SessionWorkEdge'
-        && record.id.startsWith(`session-work-edge:${operation}:`));
+        && record.drawsOn === undefined && record.id.startsWith(prefix) && /^[1-9][0-9]*$/u.test(record.id.slice(prefix.length)));
       if (edges.length === 0) return null;
       const edge = edges[0]!;
       const uncertain = (detail: string): SessionWorkOutcome => freeze({ state: 'uncertain', detail, edge: edge.id, child: null });
@@ -279,10 +281,16 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
       const closes = records.filter((record): record is SessionWorkEdgeClose => record.type === 'SessionWorkEdgeClose' && record.edge === edge.id);
       if (closes.length !== 1) return uncertain('child closure is not established; no automatic replay');
       const close = closes[0]!;
+      if (close.closedAt < edge.openedAt || close.reserved !== edge.budget.calls)
+        return uncertain('child closure does not match the delegated time or call reservation');
       if (close.cleanupConfirmed && close.state === 'failed' && close.child === null && close.calls === 0 && close.evidence === 'no-child')
-        return freeze({ state: 'failed', detail: 'child never launched; the next bounded work step may run', edge: edge.id, child: null });
-      if (close.state !== 'complete' || !close.cleanupConfirmed || !close.resultDigest || close.calls === null || close.calls === undefined
-        || close.child === null || close.closedAt < edge.openedAt || close.reserved !== edge.budget.calls
+        return freeze({ state: 'failed', detail: `${close.detail}; child never launched; the next bounded work step may run`, edge: edge.id, child: null });
+      // A failed or stalled launched helper may already have acted. Return its exact diagnosis
+      // to the parent without granting replay (only the no-child proof above permits that).
+      if (close.state !== 'complete')
+        return freeze({ state: 'uncertain', detail: `${close.detail}; no automatic replay`, edge: edge.id, child: close.child });
+      if (!close.cleanupConfirmed || !close.resultDigest || close.calls === null || close.calls === undefined
+        || close.child === null
         || close.calls > edge.budget.calls || edge.budget.maxResultBytes > config.maxResultBytes
         || close.resultBytes === null || close.resultBytes > edge.budget.maxResultBytes)
         return uncertain('work outcome is not a recoverable completed result; no automatic replay');
