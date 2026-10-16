@@ -486,7 +486,12 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       if (!state.worker || !state.claim || closing || config.stopped() || !config.authorized()
         || config.now() >= Math.min(parentDeadline(), state.deadline)
         || state.authority !== config.currentAuthority() || state.close || state.idleCleanup?.inhibited
-        || !state.inputs.length || state.inputs.some(input => input.state !== 'settled' || input.outcome?.state !== 'complete')) return null;
+        || state.inputs.some(input => input.state !== 'settled')) return null;
+      // Retained history belongs to the conversation; only this admission's
+      // deliveries establish whether the current worker finished its work.
+      const current = state.inputs.filter(input => input.delivery?.claim === state.claim
+        && input.delivery.incarnation === state.incarnation);
+      if (!current.length || current.some(input => input.outcome?.state !== 'complete')) return null;
       const admission = config.io.admissionState(state.claim);
       if (!admission || admission.refused || admission.openDelegations.length) return null;
       return digest(JSON.stringify([state.worker, state.inputs, calls(), state.claimCalls]));

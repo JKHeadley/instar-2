@@ -203,9 +203,17 @@ export function buildLiteralSendArgs(name: string, chunk: string): readonly stri
   return ['send-keys', '-t', literalTarget(name), '-l', '--', chunk];
 }
 
-export function createProductionSessionDriver(config: ProductionSessionConfig): NativeHarnessDriverPort & Readonly<{
+export type SessionStopTarget = Readonly<{ claim: string; incarnation: string; processIdentity?: string; idleEvidence?: string }>;
+/** Only a known refusal before actuation may clear the holder's cleanup inhibition. */
+export type SessionStopRefusal = Readonly<{ state: 'refused'; evidence: string }>;
+export interface SessionStopPort {
+  stop(input?: SessionStopTarget & { idleEvidence?: undefined }): Result<readonly string[]>;
+  stop(input: SessionStopTarget): Result<readonly string[] | SessionStopRefusal>;
+}
+
+export function createProductionSessionDriver(config: ProductionSessionConfig): NativeHarnessDriverPort & SessionStopPort & Readonly<{
   observeIdle(identity: string): Result<string | null>;
-  bootSweep(): Result<readonly string[]>; stop(input?: Readonly<{ claim: string; incarnation: string; processIdentity?: string; idleEvidence?: string }>): Result<readonly string[]>;
+  bootSweep(): Result<readonly string[]>;
   recoverDelivery(input: Readonly<{ operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }>): Result<string>;
   saveResume(identity: string, sessionId: string): Result<string>;
   recoverContext(identity: string): Result<string>;
@@ -426,20 +434,29 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     if (!classifyPaneIdle(pane, config.framework) || classifyStuckSignature(pane)) return null;
     return digestOf(JSON.stringify([identity, session.turnCloseEvidence, pane]));
   };
-  const stop = (target?: Readonly<{ claim: string; incarnation: string; processIdentity?: string; idleEvidence?: string }>) => lockedBoundary('ProductionSessionStop', target ?? null, () => {
-    reconcileReservations();
-    const killed: string[] = [];
-    for (const session of config.io.load().sessions) {
-      if (target && (session.claim !== target.claim || session.incarnation !== target.incarnation
-        || target.processIdentity !== undefined && session.identity !== target.processIdentity)) continue;
-      if (config.protectedSessions.includes(session.name)) continue;
-      if (target?.idleEvidence !== undefined) ensure(target.processIdentity === session.identity
-        && idleFingerprint(session.identity) === target.idleEvidence, 'idle evidence changed; worker kept');
-      if (alive(session.name)) { verifyLive(session); run(['kill-session', '-t', literalTarget(session.name)]);
-        ensure(!alive(session.name), 'session stop unconfirmed'); killed.push(session.name); }
-    }
-    return killed;
-  });
+  function stop(target?: SessionStopTarget & { idleEvidence?: undefined }): Result<readonly string[]>;
+  function stop(target: SessionStopTarget): Result<readonly string[] | SessionStopRefusal>;
+  function stop(target?: SessionStopTarget): Result<readonly string[] | SessionStopRefusal> {
+    return lockedBoundary<readonly string[] | SessionStopRefusal>('ProductionSessionStop', target ?? null, () => {
+      reconcileReservations();
+      if (target?.idleEvidence !== undefined) {
+        const session = config.io.load().sessions.find(row => row.identity === target.processIdentity
+          && row.claim === target.claim && row.incarnation === target.incarnation);
+        if (!session || config.protectedSessions.includes(session.name)
+          || idleFingerprint(session.identity) !== target.idleEvidence)
+          return { state: 'refused', evidence: 'idle evidence changed; worker kept' };
+      }
+      const killed: string[] = [];
+      for (const session of config.io.load().sessions) {
+        if (target && (session.claim !== target.claim || session.incarnation !== target.incarnation
+          || target.processIdentity !== undefined && session.identity !== target.processIdentity)) continue;
+        if (config.protectedSessions.includes(session.name)) continue;
+        if (alive(session.name)) { verifyLive(session); run(['kill-session', '-t', literalTarget(session.name)]);
+          ensure(!alive(session.name), 'session stop unconfirmed'); killed.push(session.name); }
+      }
+      return killed;
+    });
+  }
   const api = {
     owner: 'part-eight' as const,
     observeIdle: (identity: string) => lockedBoundary('ProductionSessionIdle', identity, () => idleFingerprint(identity)),

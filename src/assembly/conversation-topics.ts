@@ -187,7 +187,11 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       if (config.stopped() || config.now() >= parentDeadline()) { await close(); return; }
       const pressured = config.capacity && (await config.capacity()).memoryPressure;
       if (pressured) await reclaim();
-      for (const [topic, host] of hosts) if (!pressured && !busy.get(topic)) {
+      // A queued worker needs a slot or resource lease. Its admission below owns
+      // pressure assessment; ordinary expiry must not reset that confirmation.
+      const waitingForWorker = Object.entries(state.topics).some(([topic, row]) =>
+        !active.has(topic) && row.inputs.some(input => input.state === 'queued'));
+      for (const [topic, host] of hosts) if (!pressured && !waitingForWorker && !busy.get(topic)) {
         if (!cleanupInhibited() && active.has(topic) && config.now() - (touched.get(topic) ?? 0) >= config.idleMs)
           await host.retireIdle('idle');
       }

@@ -53,8 +53,9 @@ export function createSessionConversationAdapter(config: Readonly<{
       if (input.idleEvidence !== undefined && (!driver.observeIdle
         || take(driver.observeIdle(input.launch)) !== input.idleEvidence))
         return { state: 'refused', evidence: 'idle evidence changed; worker kept' };
-      take(driver.stop({ ...(input.idleEvidence !== undefined ? { idleEvidence: input.idleEvidence } : {}), claim: input.claim, incarnation: input.incarnation,
+      const stopped = take(driver.stop({ ...(input.idleEvidence !== undefined ? { idleEvidence: input.idleEvidence } : {}), claim: input.claim, incarnation: input.incarnation,
         ...(input.launch ? { processIdentity: input.launch } : {}) }));
+      if ('state' in stopped) return stopped;
       return { state: 'closed', evidence: input.reason };
     },
   };

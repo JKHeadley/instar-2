@@ -570,3 +570,16 @@ it.each(['refused', 'failed'] as const)('pool cleanup handles %s closure without
   }
   await f.port.close();
 });
+
+it.each([[1, 16], [2, 1]])('expiry preserves slot/resource pressure confirmation (slots=%s, resources=%s)', async (slots, resources) => {
+  const f = fixture(slots, 6, resources, 600000);
+  Object.assign(f.config, { idleMs: 500 });
+  await f.port.run(f.request('7:a'));
+  expect(await f.port.run(f.request('8:b'))).toMatchObject({ state: 'queued' });
+  f.advance(30000); await f.port.maintain();
+  expect(f.closed).toHaveLength(0); // Confirmed, but separate grace still holds.
+  expect((await f.port.collect('8:b'))?.outcome).toMatchObject({ state: 'queued' });
+  f.advance(30000); await f.port.maintain();
+  expect((await f.port.collect('8:b'))?.outcome).toMatchObject({ state: 'complete' });
+  await f.port.close();
+});

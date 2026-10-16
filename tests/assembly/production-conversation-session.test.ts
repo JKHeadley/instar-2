@@ -758,3 +758,25 @@ it('recorded worker edges remain protected while their work is open', async () =
   f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
   expect(f.counts().stops).toBe(0); await f.port.close();
 });
+
+it('a failed current delivery vetoes cleanup but its history does not pin a replacement', async () => {
+  const f = fixture(); Object.assign(f.config, { deadlineMs: 200000, allowanceDeadline: 600000 });
+  const deliver = f.adapter.deliver;
+  f.adapter.deliver = async () => ({ state: 'refused-not-dispatched', evidence: 'no dispatch' });
+  await f.port.run(f.request('one'));
+  f.advance(200); await f.port.maintain();
+  f.advance(400); await f.port.maintain();
+  expect(f.state().inputs[0]?.outcome?.state).toBe('failed');
+  const failed = f.state().inputs[0];
+  Object.assign(f.adapter, { observeIdle: async () => 'fresh-idle' });
+  await f.port.retireIdle('pressure'); f.advance(30000); await f.port.retireIdle('pressure');
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
+  expect(f.counts().stops).toBe(0);
+  await f.port.retireIdle();
+  f.adapter.deliver = deliver;
+  expect(await f.port.run(f.request('two'))).toMatchObject({ state: 'complete' });
+  await f.port.retireIdle('pressure'); f.advance(30000); await f.port.retireIdle('pressure');
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(true);
+  expect(f.state().inputs[0]).toEqual(failed);
+  await f.port.close();
+});
