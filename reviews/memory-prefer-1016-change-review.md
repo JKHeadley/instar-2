@@ -1,6 +1,6 @@
 # A saved preference keeps its answer
 
-Subject base: a82cdeac
+Subject base: a82cdeac28e30f18a6f3dfee9335ae71ca31b890
 Review state: open
 Reviewed content: none
 Outcome: A valid preference admitted by the answer clears the earlier pending-save flag, so the operator receives the model's plain acknowledgment and the preference persists.
@@ -24,6 +24,15 @@ Evidence: Real update 1016801 from liveproof-r08-10-1016/control supplies the in
 
 Recorded-shape coverage: Existing retrospective-duty-followup-train-1-2026-10-08 fixture supplies summary:715672480, uncertain summary 715672483, Jev undecided 715672482, Jev unsure 969389570, reply review 969389923, delivered reply 715672479 and empty reply 715672550. Those outputs exercise the same answer path; transplanting them tests shape handling, not their semantic suitability to the tea question. The plain tea reply takes the existing exact operator-echo shortcut, so Jev cases use the recorded longer reply to prove the reviewer and escalation actually run.
 Prompt review: No prompt, parser, model routing or model-call budget changes. Existing exact validators still decide admission. Required effect-refusal text remains present alongside the successful preference answer.
+
+
+Prompt finding: 4106b49fff07 | protocol-literal | Existing no-tools provenance instruction is asserted at its consumer; this change leaves that instruction and model authority unchanged.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label and unknown-source instruction is asserted at its consumer; this projection fix does not alter recall prompting.
+Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory status wording is a fixed rendering contract tested at its consumer; no status wording changes here.
+
+Publication: Regenerated seven existing shape-only register outputs from source commit b4dad6a043e586601bf31893cdfb5528abedfc75, generation sha256:fadfacbd11299e2ebf0a80cad48d593d4c808daccfa3d66a672f2e8c381aabeb. No policy, declaration or runtime authority change.
+
+Validation: Focused run: 10 files, 108 passing tests. Remaining direct journal consumers: 269 passed files, 9 opt-in skipped files; 2896 passing tests and 49 existing skips. Typecheck and architecture pass. No production test failures or changes to existing tests.
 
 simplestRobustRoute: This is the simplest robust route: use the answer's existing durable admitted memory array to clear its obsolete pending-save flag. The named failure is update 1016801 saving a preference and then reporting that it could not save it. Start guard: nonempty admitted memory and no pending flag on the answer row. End guard: saved preference plus plain reply, also after restart. Existing safety and resource guards hold. No new service, store, watcher, model call or semantic heuristic. Recorded shipped-path replay completes unattended through isolated model/send ports; fresh live-provider acceptance belongs to the desk proof room.
 80/20: Recorded positive and negative tests, affected journal consumers, architecture, typecheck and required publication checks. Independent desk review owns convergence and live acceptance.
