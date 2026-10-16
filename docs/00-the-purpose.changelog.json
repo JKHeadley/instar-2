@@ -1,5 +1,21 @@
 [
   {
+    "revision": 15,
+    "date": "2026-10-15",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, topic 102965, 2026-10-15 16:59 PDT: \"Yes!\", answering the observer’s 16:58 proposal; origin: Justin 16:20 on concurrent sessions contradicting each other on 2026-10-14. Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Make the Coherency pillar explicitly include sessions running at the same time.",
+        "why": "Across sessions can be read as sequential continuity; the approved amendment includes concurrent awareness.",
+        "ref": "Justin, topic 102965, 2026-10-15 16:59 PDT: \"Yes!\", answering the observer’s 16:58 proposal; origin: Justin 16:20 on concurrent sessions contradicting each other on 2026-10-14. Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 14,
     "date": "2026-10-13",
     "status": "draft",
