@@ -57,7 +57,7 @@ export interface ProductionSessionConfig {
   readonly observeActivity?: (observation: Readonly<{ subject: string; at: number; progress: string | null; wait: string | null }>) => void;
   /** Conversation replies require the authenticated lifecycle receipt, never pane heuristics. */
   readonly requireTurnHook?: boolean;
-  /** Required exactly in `admitted` mode: the PreToolUse/PostToolUse command for a session's claim (its own
+  /** Required exactly in `admitted` mode: the admission/completion command for a session's claim (its own
    * admission state), and the hook timeout. The harness runs it before every tool call, its subagents' too. */
   readonly toolAdmission?: Readonly<{ command: (claim: string, phase: 'pre' | 'post') => string; timeoutSeconds: number }>;
   /** The host's model-dispatch checkpoint for a claim: the base URL every model call of that claim's session is sent
@@ -114,8 +114,9 @@ export function admissionArgs(framework: SessionFramework, admission: NonNullabl
   ensure([pre, post].every(command => hookCommandPattern.test(command)), 'admission hook command must be plain');
   if (framework === 'claude-code') {
     const hook = (command: string) => [{ matcher: '*', hooks: [{ type: 'command', command, timeout: admission.timeoutSeconds }] }];
+    // Failed calls have a separate completion event; the post command records that outcome distinctly.
     return ['--settings', JSON.stringify({ disableAllHooks: false,
-      hooks: { ...extraClaudeHooks, PreToolUse: hook(pre), PostToolUse: hook(post) } })];
+      hooks: { ...extraClaudeHooks, PreToolUse: hook(pre), PostToolUse: hook(post), PostToolUseFailure: hook(post) } })];
   }
   const hook = (command: string) => `[{matcher='*',hooks=[{type='command',command='${command}',timeout=${admission.timeoutSeconds}}]}]`;
   return ['-c', `hooks.PreToolUse=${hook(pre)}`, '-c', `hooks.PostToolUse=${hook(post)}`];

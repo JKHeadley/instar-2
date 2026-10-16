@@ -556,6 +556,7 @@ it.each(['claude-code', 'codex-cli'] as const)('an admitted %s session launches 
     const settings = JSON.parse(spawned[spawned.indexOf('--settings') + 1]!);
     expect(settings.hooks.PreToolUse).toEqual([{ matcher: '*', hooks: [{ type: 'command', command: '/node /repo/hook.mjs pre /state/topic', timeout: 600 }] }]);
     expect(settings.hooks.PostToolUse[0].hooks[0].command).toBe('/node /repo/hook.mjs post /state/topic');
+    expect(settings.hooks.PostToolUseFailure).toEqual(settings.hooks.PostToolUse);
     // No background model traffic, and every model call the session makes goes to this claim's checkpoint.
     expect(spawned).toContain('DISABLE_NON_ESSENTIAL_MODEL_CALLS=1');
     expect(spawned).toContain(`ANTHROPIC_BASE_URL=${modelGate('topic')}`);
