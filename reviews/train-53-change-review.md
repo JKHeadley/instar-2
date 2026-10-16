@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Compose the reviewed operator-local timestamp rendering onto the exact train-52 live base.
 Affected rules: 1, 26, 34, 36, 37, 45, 49, 69, 74, 90, 96, 101, 102, 111, 112, 113, 116, 117
-Affected floors: Existing secrets redaction and audience checks, spend ceilings, stop and ownership fencing, durable intake and unique sends remain unchanged. No new model call or effect.
+Affected floors: Existing secrets redaction and audience checks, spend ceilings, stop and ownership fencing, durable intake and no duplicate sends remain unchanged. No new model call or effect.
 Operator questions: none
 Suggested tier: significant
 Declared tier: significant
