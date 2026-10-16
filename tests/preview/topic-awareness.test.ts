@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { createJournalWorker, MEMORY_ITEM_SHAPE, openPreviewJournal, type JournalRecord } from './journal-test-worker.js';
+import { createJournalWorker, MEMORY_ITEM_SHAPE, OBLIGATION_DECISION, openPreviewJournal, type JournalRecord } from './journal-test-worker.js';
 
 const capture = JSON.parse(readFileSync(new URL('./fixtures/topic-awareness-live-2026-10-10.json', import.meta.url), 'utf8')) as {
   genesis: Extract<JournalRecord, { kind: 'genesis' }>; rows: JournalRecord[];
@@ -141,6 +141,17 @@ it('keeps private-chat packet bytes from afa6be39 apart from the reviewed memory
       .find((message: { role: string }) => message.role === 'context').content).packet;
     historical.datedDecision = recordedPacket.datedDecision;
     delete historical.datedClock;
+    // Owed-result delivery adds an exact request and withdrawal declaration; restore only
+    // those reviewed fields for the historical digest, keeping unrelated packet bytes pinned.
+    expect(historical.obligationDecision).toBe(OBLIGATION_DECISION);
+    expect(historical.obligationDecision).toContain('deliveryRequest?:exact operator request');
+    historical.obligationDecision = recordedPacket.obligationDecision.replace(
+      'Only your recorded tool calls ran; never call an avenue tried.',
+      'You attempted nothing outside this reply, so never call an avenue tried; a missing tool is no-tools.');
+    expect(historical.governingConstraints['reply-only-grant']).toBe('bot: replies and explicitly requested follow-ups');
+    expect(historical.capabilities.sends).toBe(historical.governingConstraints['reply-only-grant']);
+    historical.governingConstraints['reply-only-grant'] = recordedPacket.governingConstraints['reply-only-grant'];
+    historical.capabilities.sends = recordedPacket.capabilities.sends;
     expect(createHash('sha256').update(JSON.stringify(historical)).digest('hex')).toBe('4f9861f1b198353ff376439dfdfdeb783be92d17167ca2b056d34613f4a04736');
   } finally { journal.close(); }
 });
