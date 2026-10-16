@@ -9293,6 +9293,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Live 46039931: replacing that answer also erased the loop quoted only in it.
         const memoryReplyFailed = turn.memoryPending && !turn.memoryUnresolved && !requestDecided;
         let reply = turn.noticeClass === 'too-long-input' ? TOO_LONG_INPUT_NOTICE
+          : turn.noticeClass === 'unknown-answer' ? UNKNOWN_ANSWER_NOTICE
           : memoryReplyFailed && turn.memoryUndecided ? MEMORY_UNDECIDED_REPLY
           : memoryAcknowledgement(turn) ?? (memoryReplyFailed ? 'I reviewed your memory request.'
             : `${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? UNKNOWN_ANSWER_NOTICE}`);
@@ -9359,7 +9360,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const retrospective = ports.replyReviewTiming === 'after-send' && turn.answer !== undefined && !turn.requestedAction;
         if (ports.replyCheck && !retrospective) {
           const reviewed = turn.replyChecks?.at(-1);
-          if (turn.reviewReserved && reviewed?.path === 'subscription' && (reviewed.verdict === 'pass' || reviewed.verdict === 'violation')
+          if (turn.noticeClass !== 'unknown-answer' && turn.reviewReserved && reviewed?.path === 'subscription' && (reviewed.verdict === 'pass' || reviewed.verdict === 'violation')
             && turn.reviewCandidate !== undefined && turn.reviewMentionedDates !== undefined
             && reviewed.candidateDigest === createHash('sha256').update(turn.reviewCandidate).digest('hex')) {
             reply = turn.reviewCandidate; mentionedKeys = turn.reviewMentionedDates;
@@ -9392,11 +9393,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'violation',
               ruleIds: ['credential'], confidence: 1, path: 'holding', latencyMs: 0, candidateDigest }, at: ports.now() });
             decision = 'violation';
-          } else if (memoryReplyFailed && turn.memoryUndecided
-            && fromOperator(turn) && reply === MEMORY_UNDECIDED_REPLY
+          } else if (fromOperator(turn) && (memoryReplyFailed && turn.memoryUndecided && reply === MEMORY_UNDECIDED_REPLY
+            || turn.noticeClass === 'unknown-answer' && turn.modelState === 'uncertain' && reply === UNKNOWN_ANSWER_NOTICE)
             && (!previous || previous.path === 'holding' && previous.verdict === 'pass')) {
             // Exact, content-free report of the durable validation outcome (Rules 4/42/95).
-            // A model review cannot repair memory or turn this recorded refusal into a save.
+            // A model review cannot repair memory or turn an unknown outcome into an answer.
             // Added dates, continuity text and all model prose still take the normal review.
             if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'pass',
               ruleIds: [], confidence: null, path: 'holding', latencyMs: 0, candidateDigest }, at: ports.now() });
@@ -9530,7 +9531,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               .map(reportLine).filter(line => reply.includes(line));
             // Rule 89: the status command's report is the runner's own fixed account, signed as infrastructure, so
             // no model rewrites it; an objection to it stays a signal recorded with the send (Rule 86).
-            const revisable = !(isStatusCommand(turn.text) && !turn.reserved);
+            const revisable = turn.noticeClass !== 'unknown-answer' && !(isStatusCommand(turn.text) && !turn.reserved);
             if (decision === 'violation' && revisable && ports.replyCheck.revise && originalPrompt !== undefined) {
               if (!turn.revisionReserved && journal.view.calls < journal.view.limits.maxCalls && inTime()) {
                 gate();

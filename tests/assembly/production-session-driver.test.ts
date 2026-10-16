@@ -1081,3 +1081,78 @@ it('a correlated completed turn takes precedence over context-wall words left in
   expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('output-observed');
   expect(f.calls.some(call => call.includes('/compact'))).toBe(false);
 });
+
+const socketCapture = JSON.parse(readFileSync(new URL('../preview/fixtures/socket-drop-worker-1016101-2026-10-16.json', import.meta.url), 'utf8'));
+const socketRun = socketCapture.runs.find((run: { name: string }) => run.name === 'persistent');
+const socketExhausted: string = socketRun.panes.at(-1).stdout;
+
+it('replays the real exhausted native retry without another input or a false completion', () => {
+  const f = fixture('claude-code', { requireTurnHook: true }), id = f.launch(); value(f.deliver(id));
+  const sends = f.sends, deadline = f.journal.sessions[0]!.turnDeadline;
+  for (const frame of socketRun.panes.filter((frame: { stdout: string }) => frame.stdout.includes('Retrying in'))) {
+    f.changePane(frame.stdout);
+    expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).phase).toBe('launched');
+    expect(f.journal.sessions[0]!.turnDeadline).toBe(deadline);
+  }
+  f.changePane(socketExhausted);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })))
+    .toMatchObject({ phase: 'pause-observed', detail: 'connection-exhausted' });
+  expect(f.sends).toBe(sends);
+  expect(f.journal.deliveries[0]!.state).toBe('accepted');
+  expect(f.journal.sessions[0]!.turnCloseEvidence).toBeNull();
+  expect(f.journal.sessions[0]!.turnDeadline).toBe(deadline);
+});
+
+const socketRetry: string = socketRun.panes.find((frame: { stdout: string }) => frame.stdout.includes('attempt 10/10')).stdout;
+function retryingSocket() {
+  const f = fixture('claude-code', { requireTurnHook: true }), id = f.launch(); value(f.deliver(id));
+  f.changePane(socketRetry); value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  return { f, id };
+}
+
+it.each(['quoted', 'stale', 'working', 'menu', 'unknown-footer'] as const)('does not retire the %s socket-error neighbour', mode => {
+  const { f, id } = retryingSocket();
+  const pane = mode === 'quoted' ? socketExhausted.split('\n').map(line => `  ${line}`).join('\n')
+    : mode === 'stale' ? `${socketExhausted}\n⏺ Later ordinary answer\n❯ `
+      : mode === 'working' ? socketRetry
+        : mode === 'menu' ? `${socketExhausted}\n❯ 1. Continue\n  2. Cancel`
+          : `${socketExhausted}\nunknown state`;
+  f.changePane(pane);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).phase).toBe('launched');
+  expect(f.journal.sessions[0]!.turnDeadline).toBe(2000);
+});
+
+it('requires a native retry in this exact turn, and a changed pane, before exhausted-error retirement', () => {
+  const f = fixture('claude-code', { requireTurnHook: true }), id = f.launch(); value(f.deliver(id));
+  f.changePane(socketExhausted);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).phase).toBe('launched');
+  const { f: g, id: other } = retryingSocket();
+  g.hook(1100); g.time(1100); value(g.driver.observe({ operation: 'deliver', processIdentity: other }));
+  g.changePane(socketExhausted);
+  value(g.driver.deliver({ operation: 'second', processIdentity: other, intake: 'second', digest: hash('hello'), incarnation: 'inc' }));
+  expect(g.journal.sessions[0]!.connectionRetry).toBeNull();
+  expect(value(g.driver.observe({ operation: 'second', processIdentity: other })).phase).toBe('launched');
+});
+
+it('persists native retry pressure across driver restart without resetting the deadline or sending again', () => {
+  const { f, id } = retryingSocket(), sends = f.sends;
+  expect(f.journal.sessions[0]!.connectionRetry).toEqual({ turnStartedAt: 1000, attempt: 10 });
+  const restarted = createProductionSessionDriver(f.config);
+  f.changePane(socketExhausted);
+  expect(value(restarted.observe({ operation: 'deliver', processIdentity: id })).detail).toBe('connection-exhausted');
+  expect(f.sends).toBe(sends); expect(f.journal.sessions[0]!.turnDeadline).toBe(2000);
+});
+
+it.each(['stop', 'identity', 'deadline', 'receipt', 'context'] as const)('preserves %s precedence over socket recovery', mode => {
+  const { f, id } = retryingSocket(); f.changePane(socketExhausted);
+  if (mode === 'identity') {
+    f.changeStamp('999:1001'); refused(f.driver.observe({ operation: 'deliver', processIdentity: id }), 'identity changed'); return;
+  }
+  if (mode === 'stop') f.stop();
+  if (mode === 'deadline') f.time(2000);
+  if (mode === 'receipt') { f.time(1100); f.hook(1100); }
+  if (mode === 'context') f.changePane('conversation is too long\n❯ ');
+  const observation = value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  expect(observation.phase).toBe(mode === 'receipt' ? 'output-observed' : mode === 'context' ? 'pause-observed' : 'exit-observed');
+  expect(observation.detail).not.toBe('connection-exhausted');
+});

@@ -363,3 +363,29 @@ existing presence cycle records each registered work subject even while its ordi
 unchanged observed activity becomes an advisory stall after one minute. Registered helper waits,
 unavailable observations and advancing work never authorize a restart or termination. The existing
 step deadline, result receipt, stop, resource owner and effect identities remain authoritative.
+
+## Native connection retry exhaustion
+
+The terminal session driver leaves Claude Code's bounded same-turn 529 retry and
+backoff in charge. Every native attempt passes the existing model admission gate;
+the conversation owner's durable call reservation is charged before dispatch and
+survives restart. Observed native retry pressure is kept with its exact turn in the
+existing session journal. A fresh, quiet final 529 error after that retry is reported
+to the existing owner as a pause, because the captured client emits no Stop receipt
+on exhaustion. The owner retains the request and uncertain outcome, closes admission
+and retires its worker. A real correlated Stop takes precedence. No recovery input,
+tool, send or original request is replayed, and no deadline or allowance is renewed.
+Unknown terminal shapes keep the original deadline. Driver reconstruction retains
+retry evidence; host restart retains spent calls and unresolved input without replay.
+
+The recorded fixture `socket-drop-worker-1016101-2026-10-16.json` contains isolated
+loopback update identities, native countdown/error bytes, call timing and owner
+state. Driver and owner replay tests cover both recovery and exhaustion. This
+behavior remains local to the admitted conversation owner; it grants no other
+machine permission to act.
+
+The preview journal's typed unknown-answer notice takes precedence over a memory
+acknowledgement. Its exact fixed wording passes the existing secret check and uses
+the existing content-free notice path. Review may record signals about decorated
+notices, but cannot rewrite an unknown outcome into an answer. An existing send
+intent still owns delivery; an uncertain send is never repeated.
