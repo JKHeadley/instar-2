@@ -9,7 +9,7 @@ Affected floors: secrets — unchanged redaction and outbound checking; spend ca
 Operator questions: none
 Suggested tier: ordinary
 Declared tier: ordinary
-Tier rationale: One validation branch joins the existing bounded declaration repair. No new service, parser grammar, authority, clock source, or durable state.
+Tier rationale: One validation branch joins the existing bounded declaration repair. No new service, parser grammar, authority, clock source, or durable state. Generated register artifacts repin the committed source in the existing shape-only replay mode; they grant no runtime authority.
 Side effects: Invalid resolution bindings can spend one additional model call within the existing allowance. A second invalid response stays unresolved. Correct bindings and explicit model ambiguity spend no repair call. No date is admitted by overwriting model evidence; the corrected response must pass the unchanged date validator. The existing timeout, worker ceiling, context-wall, rate-limit and socket paths are untouched.
 Undo and recovery: Revert this commit. Existing journal formats and resolution records are unchanged; no state migration or cleanup is needed.
 Multi-machine posture: The original Telegram message clock and configured operator zone remain the source on every host. Existing journal sharing and conversation ownership are unchanged. Replay tests use isolated machine-local temporary journals deliberately.
