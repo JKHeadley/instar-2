@@ -25,6 +25,13 @@ Subject (10 paths): scripts/production-session-io.mjs, scripts/session-deadline-
 
 Verification: 133/133 targeted tests in four changed files passed; tsc --noEmit passed. Native renewal ran the existing 10-case contract on this Darwin host with the declared Node runtime: before 9/10 (only stale certificate), after 10/10. Evidence: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/runaway-stop-1016-repair-native/after.json. Architecture now passes. Full combined suite and live deployment remain the desk gate.
 
+Publication: The delegated rehash/repin tools found no owner-reference or grounding-inventory changes. Regenerated generated/ by build-register.mjs --replay --commit cf4578fe3eda00446787f47fd0b6b66f66e10581.
+
+Decision: repair-lock-fallback | Use the existing exact-worker admission plus a separately fsynced halt when the journal lock or save is unavailable; this prevents bookkeeping stalls from canceling emergency enforcement. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/runaway-stop-1016-repair-PROGRESS.md
+Decision: repair-exact-reservation | Carry calls versus reservation-unavailable at the existing checkpoint; only exact exhaustion halts the allowance. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/runaway-stop-1016-repair-PROGRESS.md
+Decision: repair-retirement-cause | Harvest physical safety causes inside shared retirement so replacement, preparation and idle maintenance cannot discard them. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/runaway-stop-1016-repair-PROGRESS.md
+Decision: repair-native-renewal | Use the established Darwin contract renewal with before/after evidence; no stale-certificate exception or blind repin is needed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/runaway-stop-1016-repair-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route through existing session IO, admission and retirement owners. The only added physical record retains an exact-worker halt without the stalled shared journal lock; merely extending its timeout cannot enforce a runaway ceiling. Existing durable turn admission authorizes emergency closure even if new writes fail. Fresh identity/deadline/receipt checks guard entry, uncertain retained intake and exact resource closure guard exit, existing call and time bounds remain limits. No new service, model gate, timer or reduced capability. Targeted physical/captured-shape evidence establishes the repair, not full live deployment or autonomous completion.
