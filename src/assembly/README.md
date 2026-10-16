@@ -326,3 +326,22 @@ existing presence cycle records each registered work subject even while its ordi
 unchanged observed activity becomes an advisory stall after one minute. Registered helper waits,
 unavailable observations and advancing work never authorize a restart or termination. The existing
 step deadline, result receipt, stop, resource owner and effect identities remain authoritative.
+
+### Safety-ceiling halts
+
+The continuing conversation owner records a `halt` with its exact deadline or call
+allowance before resource closure. It fences new calls and inputs under that
+allowance, retains unfinished inputs and uncertain effects, and preserves the halt
+across host restart. The existing admission close, adapter close and resource lease
+release own cleanup; an unconfirmed close retains the exact worker for reconciliation.
+A completed last allowed call is still accepted; unknown accounting or an ordinary
+worker exit is not relabelled as a measured limit.
+
+The independent session deadline watchdog uses the driver's journal lock and writes
+`deadlineHalt` before closing the verified session identity. The driver carries that
+cause through its lifecycle observation even after the process has disappeared.
+The journal runner consumes the typed safety cause through its normal uncertain-result
+path and sends one signed infrastructure notice under the original reply identity,
+with the existing stop, cap, ownership, audience and unknown-send protections. No
+operator stop is fabricated, no run is declared complete, and no uncertain action is
+retried. The minimal operator responder retains its independent admission.

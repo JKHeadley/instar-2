@@ -42,7 +42,7 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
   const f = assemblyRuntimeFixture();
   let now = 1000, launches = 0, calls = 0, fallback = 0, stopped = false, edges = 0;
   let destination = '', answer = JSON.stringify({ reply: 'A useful answer.', memory: [] });
-  const files = new Map<string, string>(), delivered: string[] = [], sent: string[] = [];
+  const files = new Map<string, string>(), delivered: string[] = [], sent: string[] = [], speakers: string[] = [];
   let state: ConversationTopicsState | null = null, busy = false;
   let sources: readonly unknown[] = [];
   let turnBoundary: NonNullable<import('../../src/assembly/production-conversation-session.js').ConversationSessionConfig['prepareTurn']> = async () => true;
@@ -83,10 +83,10 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
   let prepare: ((input: unknown) => string) | undefined;
   const openWorker = () => createJournalWorker(journal, { now: () => now, stopped: () => stopped,
     sources: () => sources, prepareModel: input => prepare ? prepare(input) : JSON.stringify({ ...input, responseContract: "decision-envelope-marker" }), model, collectModel,
-    send: async input => { sent.push(input.expectedText); return sent.length; },
+    send: async input => { sent.push(input.expectedText); speakers.push(input.provenance?.speaker ?? 'unsigned'); return sent.length; },
     checkOutbound: text => { if (text.includes('SECRET')) throw Error('credential'); }, ...extra });
   let worker = openWorker();
-  return { root, get journal() { return journal; }, get worker() { return worker; }, get model() { return model; }, get port() { return port; }, sent, delivered, edges: () => edges, counts: () => ({ launches, calls, fallback }),
+  return { root, get journal() { return journal; }, get worker() { return worker; }, get model() { return model; }, get port() { return port; }, sent, speakers, delivered, edges: () => edges, counts: () => ({ launches, calls, fallback }),
     boundary: (next: typeof turnBoundary) => { turnBoundary = next; },
     evidence: (value: unknown) => { sources = [value]; },
     busy: (value: boolean) => { busy = value; }, advance: (ms: number) => { now += ms; },
@@ -100,7 +100,7 @@ function fixture(enabled = true, checkIntake = true, maxCalls = 200, authorityOr
       try {
         const next = createJournalWorker(reopened, { now: () => now, stopped: () => stopped,
           model: async () => { throw Error('settled reply must not invoke a model'); },
-          send: async input => { sent.push(input.expectedText); return sent.length; }, checkOutbound: () => {} });
+          send: async input => { sent.push(input.expectedText); speakers.push(input.provenance?.speaker ?? 'unsigned'); return sent.length; }, checkOutbound: () => {} });
         await next.drain();
         return reopened.view.order[0]!.sent;
       } finally { reopened.close(); }
@@ -803,4 +803,21 @@ it('the journal sends each answer once across a real pool boundary and host/jour
     expect(f.sent).toHaveLength(2); expect(f.delivered).toHaveLength(2);
     expect(pool.state.handoffs).toHaveLength(1); expect(await f.replay()).toBe(1); expect(f.sent).toHaveLength(2);
   } finally { await f.close(); }
+});
+
+it.each(['deadline', 'calls'] as const)('delivers one infrastructure safety-limit result for %s and retains it after restart', async safetyCeiling => {
+  const f = fixture();
+  const record = JSON.parse(readFileSync(new URL('./fixtures/conversation-session-userwalk-2026-10-13.json', import.meta.url), 'utf8')).records[0];
+  f.answer(record.output);
+  f.intercept(async request => ({ ...await f.port.run(request), state: 'uncertain', safetyCeiling }));
+  f.worker.intake([update(6233124, 'Please finish the requested work.')]);
+  await f.worker.drain();
+  expect(f.sent).toHaveLength(1);
+  expect(f.sent[0]).toContain('Instar halted this work because its safety limit was reached');
+  expect(f.sent[0]).toContain('not an operator stop');
+  expect(f.speakers).toEqual(['infrastructure']);
+  const turn = f.journal.view.order[0]!;
+  expect(turn.modelState).toBe('uncertain'); expect(turn.safetyCeiling).toBe(safetyCeiling);
+  expect(turn.answer).toBeUndefined();
+  await f.replay(); expect(f.sent).toHaveLength(1);
 });

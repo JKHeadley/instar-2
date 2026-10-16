@@ -34,7 +34,8 @@ export function createSessionConversationAdapter(config: Readonly<{
         'bounded observation cursor and batch required');
       const observed = take(driver.observe({ operation: input.delivery?.operation ?? input.claim, processIdentity: input.launch }));
       let events: ConversationObservation[] = [];
-      if (observed.phase === 'exit-observed') events = [{ kind: 'exit', evidence: observed.evidence }];
+      if (observed.phase === 'exit-observed') events = [{ kind: 'exit', evidence: observed.evidence,
+        ...(observed.safetyDeadline === undefined ? {} : { safetyDeadline: observed.safetyDeadline }) }];
       else if (observed.phase === 'pause-observed' || observed.phase === 'uncertain') events = [{ kind: 'paused', evidence: observed.evidence }];
       else if (input.delivery && observed.phase === 'output-observed' && observed.evidence.startsWith('turn-closed:')) {
         const text = config.io.readResult(input.delivery.resultPath, input.delivery.maxBytes);

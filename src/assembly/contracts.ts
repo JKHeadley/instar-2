@@ -253,7 +253,7 @@ export interface HarnessInputDelivery extends HarnessWorkerHandle {
 export type HarnessNormalizedObservation =
   | Readonly<{ kind: 'reply'; delivery: string; text: string; digest: string }>
   | Readonly<{ kind: 'turn-end'; delivery: string; state: 'completed' | 'no-reply' | 'uncertain' }>
-  | Readonly<{ kind: 'exit' | 'paused'; evidence: string }>;
+  | Readonly<{ kind: 'exit' | 'paused'; evidence: string; safetyDeadline?: number }>;
 interface ContinuingHarnessAdapterPort {
   describe(): Readonly<{ version: 2; subsequentInput: true; output: 'reply-and-turn-end'; resume: boolean }>;
   launch(input: Readonly<{ operation: string; claim: string; artifact: string; incarnation: string; workingScope: string }>): Promise<HarnessWorkerHandle>;

@@ -718,3 +718,10 @@ it.each([3600, 3601])('holds the admission hook boundary at %s seconds', timeout
   if (timeoutSeconds === 3600) expect(build).not.toThrow();
   else expect(build).toThrow('bounded admission hook required');
 });
+
+it('retains the infrastructure deadline cause after the exact process has gone', () => {
+  const f = fixture(), id = f.launch(); value(f.deliver(id)); f.changePane('working'); f.time(2001);
+  const first = value(f.driver.observe({ operation: 'observe', processIdentity: id }));
+  expect(first.evidence).toBe(`safety-ceiling:deadline:${id}`);
+  expect(value(f.driver.observe({ operation: 'again', processIdentity: id })).evidence).toBe(first.evidence);
+});
