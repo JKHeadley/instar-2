@@ -21,6 +21,8 @@ Convergence: none
 Decision: s-hook-invocation-bound | cap the existing hook timeout at 3600 seconds while retaining shorter session limits and the four-hour conversation lifetime; no new configuration or widened driver guard | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/s-hook-1016-PROGRESS.md
 Prompt review: no model-facing change. No prompt, parsed model output or judgment acceptance criterion changes; this corrects a deterministic invalid constructor argument. The regression executes the shipped journal configuration closure with the real driver and eager adapter.
 
+Register regeneration: generated outputs replay the committed correction at 1392065ebbbaa1382e86c28b92c57a2b6f5b4b51 using scripts/build-register.mjs --replay; no pin is hand-edited.
+
 ## Closing block
 
 simplestRobustRoute: cap the existing invocation timeout at the driver's existing one-hour ceiling. This is the simplest robust route: no additional state, retry, configurable knob or guard relaxation. The real constructor and boundary tests hold the start and limit guards; session lifetime, stop, durable intake and effect uniqueness remain unchanged. No live unattended completion is claimed by these offline tests.
