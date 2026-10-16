@@ -2934,7 +2934,7 @@ async function main() {
     // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
     // The sentinels tick only when that job is admitted, and their requested steps run inside it after the drain.
     // Plan #548: it is offered once per cycle AND throughout every poll backoff (pollFailure), so it never waits on
-    // the Telegram connection or on an inbound message; only delivery of its result does.
+    // the Telegram connection or on an inbound message. Requested result delivery uses the post-poll pass below.
     const workCycle = (requested = false, wake = false) => {
       if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
       sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: async () => {
@@ -2944,6 +2944,7 @@ async function main() {
           await sessionWork?.port.maintain();
         }
         await worker.drain();
+        // Finished, explicitly requested results share this withdrawal-aware due point with dated requests.
         if (requested) await worker.sendRequested();
       },
         after: async () => {
