@@ -3,6 +3,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
+import { CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
+import { SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
+import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
 import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value, refused } from '../facts/fixtures.js';
 import { buildLiteralSendArgs, chunkLiteralForTmux, classifyPaneIdle, classifyPaneReadiness, classifyStuckSignature,
@@ -675,4 +678,42 @@ it('an unavailable advisory activity sink cannot interrupt the observed worker',
   const identity = f.launch(); value(f.deliver(identity));
   expect(value(f.driver.observe({ operation: 'work', processIdentity: identity })).phase).toBe('launched');
   expect(f.calls.filter(call => call[0] === 'kill-session')).toHaveLength(0);
+});
+
+// Run the shipped journal configuration closure, not a copy of its timeout arithmetic.
+function journalDriverConfiguration(conversationSession: boolean, base: ReturnType<typeof fixture>['config']) {
+  const host = readFileSync(new URL('../preview/journal-agent.mjs', import.meta.url), 'utf8');
+  const body = host.split('const driverConfiguration = resolveIntake => (')[1]!.split('\n        return ({')[0]!;
+  const scope = {
+    conversationSession, sessionLimits: conversationSession ? CONVERSATION_SESSION_LIMITS : SESSION_WORK_LIMITS,
+    sessionAdmissionCommand: () => () => '/fixture/admission', admissionBase: '/fixture/admission', layout: null,
+    gate: { base: () => ({}) }, framework: base.framework, project: base.cwd,
+    binding: { entry: () => ({ profile: { executable: base.executable, home: base.home, configDirectory: base.configHome } }),
+      physical: () => ({ ...base.io, inboxDirectory: '/fixture/inbox' }), stopped: base.stopped },
+    required: () => 'fixture-model', options: {}, context: base.context, wallNow: base.now, handoff: null,
+    workActivity: new Map(), fileURLToPath: () => '/fixture/stop.mjs', URL,
+  };
+  // import.meta.url is only used to resolve the lifecycle hook's physical script path.
+  const source = body.replaceAll('import.meta.url', JSON.stringify(import.meta.url));
+  return Function(...Object.keys(scope), `return resolveIntake => (${source}`)(...Object.values(scope))(() => 'hello') as ProductionSessionConfig;
+}
+
+it.each([false, true])('constructs the real journal session driver and eager conversation adapter (conversation=%s)', conversation => {
+  const f = fixture();
+  const config = journalDriverConfiguration(conversation, f.config);
+  expect(config.turnDeadlineMs).toBe(conversation ? 14_400_000 : 600_000);
+  expect(() => createSessionConversationAdapter({
+    createDriver: () => createProductionSessionDriver(config), resolveDelivery: () => undefined,
+    io: { clearResult: () => {}, readResult: () => null, wait: async () => {}, modelCalls: () => 0,
+      prepareAdmission: () => {}, closeAdmission: () => {}, admissionState: () => ({ refused: false, openDelegations: [] }) },
+  })).not.toThrow();
+  expect(config.toolAdmission?.timeoutSeconds).toBe(conversation ? 3600 : 600);
+});
+
+it.each([3600, 3601])('holds the admission hook boundary at %s seconds', timeoutSeconds => {
+  const config = journalDriverConfiguration(true, fixture().config);
+  const build = () => createProductionSessionDriver({ ...config,
+    toolAdmission: { ...config.toolAdmission!, timeoutSeconds } });
+  if (timeoutSeconds === 3600) expect(build).not.toThrow();
+  else expect(build).toThrow('bounded admission hook required');
 });

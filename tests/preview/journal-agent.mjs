@@ -2592,7 +2592,8 @@ async function main() {
       const configurationFor = (topic, binding, handoff = null) => {
         const driverConfiguration = resolveIntake => ({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
-            timeoutSeconds: Math.ceil(sessionLimits.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
+            // A hook invocation is bounded independently of the four-hour conversation lifetime.
+            timeoutSeconds: Math.min(3600, Math.ceil(sessionLimits.deadlineMs / 1000)) }, modelGate: claim => gate.base(claim),
           ...(conversationSession ? { connectors: claim => sessionConnectors.get(claim)?.launch() } : {}),
           framework, executable: binding.entry().profile.executable, cwd: project, home: binding.entry().profile.home, configHome: binding.entry().profile.configDirectory,
           model: required(options, 'model'), context, io: { ...binding.physical(), transcriptExists: (...args) => (!handoff || handoff.resumeAllowed) && binding.physical().transcriptExists(...args) }, now: wallNow, stopped: binding.stopped, resolveIntake,
