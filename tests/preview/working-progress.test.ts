@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type PreviewPorts } from './journal-test-worker.js';
@@ -23,14 +23,19 @@ function fixture(options: { receipt?: number | null; cap?: number; batch?: boole
   const sent: { text: string; body: string; at: number; target: string | undefined }[] = [];
   let sendHold: Promise<void> | null = null, sendEntered = false;
   let context = '';
-  const ports: PreviewPorts = { ...(options.batch ? { topicConcurrency: 1, modelBatch: async (inputs: readonly { id: string }[]) => { entered(); const answer = await busy; return inputs.map(() => answer); } } : {}), ...(options.recorded ? { sources: [{ recordedShape: options.recorded }] } : {}), now: () => Date.now(), stopped: () => false,
+  const batches: (readonly { id: string }[])[] = [];
+  const collected = new Map<string, NonNullable<Awaited<ReturnType<NonNullable<PreviewPorts['collectModel']>>>>>();
+  const ports: PreviewPorts = { ...(options.batch ? { prepareModel: input => JSON.stringify(input), topicConcurrency: 1, collectModel: async id => collected.get(id) ?? null, modelBatch: async inputs => {
+    batches.push(inputs); entered(); const answer = await busy;
+    for (const input of inputs) collected.set(input.id, { context: input.context, prepared: input.prepared!, answer });
+    return inputs.map(() => answer); } } : {}), ...(options.recorded ? { sources: [{ recordedShape: options.recorded }] } : {}), now: () => Date.now(), stopped: () => false,
     model: async input => { context = input.context; entered(); return busy; }, workingActivity: () => activity && ({ ...activity, ...options.realActivity, observedAt: Date.now() }),
     checkOutbound: () => {}, send: async input => { if (input.target?.startsWith('working-progress:')) { sendEntered = true; await sendHold; } expect(journal.verifyOutbound(input.provenance, { target: input.target!, chat: input.chat, body: input.text })).toBe(true); sent.push({ text: input.expectedText, body: input.text, at: Date.now(), target: input.target });
       return input.target?.startsWith('working-progress:') ? options.receipt === undefined ? sent.length : options.receipt : sent.length; } };
   const worker = createJournalWorker(journal, ports);
   worker.intake(options.batch ? [update, { ...update, update_id: 2, message: { ...update.message, message_id: 2 } }] : [update]); const drain = worker.drain();
   const progress = () => sent.filter(row => row.target?.startsWith('working-progress:'));
-  return { journal, worker, ports, path, key, sent, progress, release, drain, enteredPromise, context: () => context, sendEntered: () => sendEntered,
+  return { journal, worker, ports, path, key, sent, progress, batches, release, drain, enteredPromise, context: () => context, sendEntered: () => sendEntered,
     holdProgress: () => { let done!: () => void; sendHold = new Promise<void>(resolve => { done = resolve; }); return done; },
     activity: (step: string | null) => { activity = step === null ? null : { step, text: `Status: ${step}`, observedAt: Date.now() }; } };
 }
@@ -155,9 +160,86 @@ it('signs and sends the normal HTML-encoded body while retaining the exact plain
 
 it('batched messages sharing one working session announce each step only once in the topic', async () => {
   const f = fixture({ batch: true });
-  try { await f.enteredPromise; await vi.advanceTimersByTimeAsync(120000);
+  try { await f.enteredPromise; expect(f.batches.map(inputs => inputs.length)).toEqual([2]);
+    await vi.advanceTimersByTimeAsync(120000);
     expect(f.progress()).toHaveLength(1);
     f.release('Done.'); await f.drain; await vi.advanceTimersByTimeAsync(600000);
     expect(f.progress()).toHaveLength(1); expect(f.journal.view.order.every(turn => turn.sent !== undefined)).toBe(true);
   } finally { f.release('Done.'); await f.drain; f.journal.close(); }
+});
+
+
+it.each(['sibling', 'later intake'])('a real batch shares the slow cadence across changed steps and preserves it through replay: %s', async target => {
+  const f = fixture({ batch: true });
+  try {
+    await f.enteredPromise; expect(f.batches.map(inputs => inputs.length)).toEqual([2]);
+    await vi.advanceTimersByTimeAsync(120000);
+    expect(f.progress().map(row => row.at)).toEqual([121000]);
+    f.activity('next admitted tool'); await vi.advanceTimersByTimeAsync(1000);
+    expect(f.progress()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(178999); expect(f.progress()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1); expect(f.progress().map(row => row.at)).toEqual([121000, 301000]);
+    f.activity('third admitted tool'); await vi.advanceTimersByTimeAsync(299999); expect(f.progress()).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1); expect(f.progress().map(row => row.at)).toEqual([121000, 301000, 601000]);
+
+    // Replay the pending batch, including its progress intents, without granting a new allowance.
+    f.journal.compact();
+    const replayPath = `${f.path}.replay`;
+    copyFileSync(f.path, replayPath);
+    const reopened = openPreviewJournal(replayPath, f.key);
+    try {
+      let turn = reopened.view.order[1]!;
+      const sibling = reopened.view.order[0]!;
+      // Completing the sibling after this intake must not free a fresh progress slot.
+      reopened.append({ kind: 'answer', id: sibling.id, text: 'Done.', at: 601000 });
+      reopened.append({ kind: 'intent', id: sibling.id, text: 'Done.', chat: reopened.view.genesis.chat,
+        update: sibling.update, grant: reopened.view.genesis.grant,
+        provenance: reopened.signOutbound('agent', { target: `reply:${sibling.id}`, chat: reopened.view.genesis.chat, body: 'Done.' }), at: 601000 });
+      if (target === 'later intake') {
+        createJournalWorker(reopened, { ...f.ports, now: () => 601001 }).intake([
+          { ...update, update_id: 3, message: { ...update.message, message_id: 3 } }]);
+        const next = reopened.view.order[2]!;
+        reopened.append({ kind: 'reserve', id: next.id, at: 601001 });
+        reopened.append({ kind: 'answer', id: turn.id, text: 'Done.', at: 601002 });
+        reopened.append({ kind: 'intent', id: turn.id, text: 'Done.', chat: reopened.view.genesis.chat,
+          update: turn.update, grant: reopened.view.genesis.grant,
+          provenance: reopened.signOutbound('agent', { target: `reply:${turn.id}`, chat: reopened.view.genesis.chat, body: 'Done.' }), at: 601002 });
+        turn = next;
+      }
+      const append = (at: number, step: string) => {
+        const text = `Status: ${step}`, ordinal = turn.workingProgress?.length ?? 0;
+        const provenance = reopened.signOutbound('agent', {
+          target: `working-progress:${ordinal}:${turn.id}`, chat: reopened.view.genesis.chat, body: text });
+        reopened.append({ kind: 'held-notice-intent', id: turn.id, text, chat: reopened.view.genesis.chat,
+          update: turn.update, grant: reopened.view.genesis.grant, provenance,
+          workingProgress: { ordinal, step, text, observedAt: at, at }, at });
+      };
+      expect(() => append(601003, 'too soon after replay')).toThrow('working progress refused');
+      expect(() => append(1200999, 'before shared deadline')).toThrow('working progress refused');
+      expect(() => append(1201000, 'third admitted tool')).toThrow('working progress refused');
+      expect(() => append(1201000, 'eligible after replay')).not.toThrow();
+      expect(turn.workingProgress?.at(-1)?.at).toBe(1201000);
+    } finally { reopened.close(); }
+  } finally { f.release('Done.'); await f.drain; f.journal.close(); }
+});
+
+
+it('a new answer after the previous answer completed starts its own two-minute cadence', async () => {
+  const f = fixture();
+  let release!: (answer: string) => void;
+  let drain: Promise<void> | undefined;
+  try {
+    await f.enteredPromise; await vi.advanceTimersByTimeAsync(120000);
+    f.release('Done.'); await f.drain;
+    await vi.advanceTimersByTimeAsync(1); f.activity('new answer step');
+    const busy = new Promise<string>(done => { release = done; });
+    let entered!: () => void;
+    const ready = new Promise<void>(done => { entered = done; });
+    const worker = createJournalWorker(f.journal, { ...f.ports, model: async () => { entered(); return busy; } });
+    worker.intake([{ ...update, update_id: 3, message: { ...update.message, message_id: 3 } }]);
+    drain = worker.drain(); await ready;
+    await vi.advanceTimersByTimeAsync(119999); expect(f.progress()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1); expect(f.progress().map(row => row.at)).toEqual([121000, 241001]);
+    release('Done again.'); await drain;
+  } finally { release?.('Done.'); await drain; f.release('Done.'); await f.drain; f.journal.close(); }
 });

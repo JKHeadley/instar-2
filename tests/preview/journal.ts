@@ -1364,6 +1364,22 @@ export interface PacketDrop { kind: string; source: string; reason: string }
 export type IntakeCustody = { state: 'stored'; arrival: string; capture: string; secrets: string[] } | { state: 'failed' };
 /** One later message of a reply split across several: its plain text, its Telegram body, and its own signed provenance. */
 export interface ReplyPart { text: string; body: string; provenance: OutboundProvenance }
+/** Rules 52/87: overlapping answers share one topic cadence, including UNKNOWN intents.
+ * A sibling completing after this intake remains in the window, so completion/replay cannot
+ * reset its spacing. Answers already complete before intake start a separate window. */
+function workingProgressAt(view: JournalView, turn: Turn): number {
+  const topic = view.order.filter(item => item.thread === turn.thread && item.reserved).sort((a, b) => b.at - a.at);
+  let startedAt = turn.at;
+  // Follow overlapping intake-to-answer intervals back to the start of this continuous work.
+  // A later intake must not reset the bound when an earlier batch member has already answered.
+  for (const item of topic) if (item.intentAt === undefined || item.intentAt >= startedAt)
+    startedAt = Math.min(startedAt, item.at);
+  const prior = topic.filter(item => item.intentAt === undefined || item.intentAt >= startedAt)
+    .flatMap(item => item.workingProgress ?? []).sort((a, b) => a.at - b.at);
+  const ordinal = prior.length;
+  return Math.max(workingProgressDue(startedAt, ordinal), (prior.at(-1)?.at ?? 0)
+    + (ordinal === 0 ? 0 : ordinal === 1 ? 180_000 : ordinal === 2 ? 300_000 : 600_000));
+}
 export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: { at: number; sent?: number }; id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
   media?: MediaCustodyResult;
   /** Expected causal prefix, retained before the first media request. */
@@ -4295,8 +4311,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       || row.provenance?.speaker !== 'agent' || !currentWorkingActivity(progress, row.at)
       || progress.ordinal !== prior.length || progress.at !== row.at || progress.sent !== undefined
       || view.order.some(item => item.thread === turn.thread && item.workingProgress?.some(saved => saved.step === progress.step)) || row.text !== progress.text
-      || row.at < workingProgressDue(turn.at, progress.ordinal)
-      || prior.length > 0 && row.at < prior.at(-1)!.at + (progress.ordinal === 1 ? 180_000 : progress.ordinal === 2 ? 300_000 : 600_000))
+      || row.at < workingProgressAt(view, turn))
       throw Error('preview journal: working progress refused');
     turn.workingProgress = [...prior, { ...progress }]; view.replies++; return;
   }
@@ -7894,11 +7909,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     && turn.reserved && !turn.intent && turn.held === undefined && turn.limited === undefined
     && !turn.editOf && !turn.requestedAction && !outsideAllowance(journal.view, turn)
     && journal.view.replies < journal.view.limits.maxReplies - 1;
-  const workingAt = (turn: Turn) => {
-    const prior = turn.workingProgress ?? [], ordinal = prior.length;
-    return Math.max(workingProgressDue(turn.at, ordinal), (prior.at(-1)?.at ?? 0)
-      + (ordinal === 0 ? 0 : ordinal === 1 ? 180_000 : ordinal === 2 ? 300_000 : 600_000));
-  };
+  const workingAt = (turn: Turn) => workingProgressAt(journal.view, turn);
   const startWorkingProgress = (turn: Turn) => {
     if (!ports.workingActivity || workingEnded.has(turn) || workingTimers.has(turn) || turn.intent
       || !fromOperator(turn) || turn.editOf || turn.requestedAction || outsideAllowance(journal.view, turn)) return;
@@ -7921,7 +7932,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         let admitted = false;
         const current = () => (admitted ? !workingEnded.has(turn) && !halted() && !turn.intent : workingCurrent(turn)) && currentWorkingActivity(ports.workingActivity!(turn.id), ports.now())
           && ports.workingActivity!(turn.id)?.step === activity.step && ports.workingActivity!(turn.id)?.text === text
-          && (admitted || now >= workingAt(turn));
+          && (admitted || ports.now() >= workingAt(turn));
         const outcome = await push('reply', target, provenance, { text: body, expectedText: text, chat, ...thread,
           update: turn.update, current }, () => {
           const at = ports.now();
