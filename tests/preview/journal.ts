@@ -25,7 +25,7 @@ import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERE
 import { boundedCorrection, checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, REVIEW_INTERRUPTED_REASON, GROUP_REVIEW_FINAL_NOTICE, isGroupReviewFinalNotice, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, jevConfidentPass, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, confidentReplyNeedsReview, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { latestRecurringDay, nextRecurringDay, parseDatedItem, relativeDelay, resolvedDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
-import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
+import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, reconcilePromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
 import { messageTime, zoneFormatter } from './self-state.js';
 import { TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
 import { renderCapabilityReply, renderCapabilityRevision } from './capability-render.js';
@@ -4169,7 +4169,20 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     // and the next ask has to be sized from this number hours later. An unrecorded count stays unrecorded: a pass
     // with no measurement falls back to the halving rather than being budgeted from a number nobody observed.
     if (typeof row.usage?.outputTokens === 'number') pass.outputTokens = row.usage.outputTokens;
-    if (row.result) pass.result = row.result;
+    if (row.result) {
+      pass.result = row.result;
+      // The grade is durable before work becomes schedulable. Replay makes the same admission, so a
+      // crash after this row cannot lose the promise or create a second task. Old grades stay readable.
+      for (const grade of row.result.grades) if (grade.promises?.length) {
+        const source = grade.case.startsWith('answer:') ? view.turns.get(grade.case.slice('answer:'.length)) : undefined;
+        if (!source || !pass.cases.includes(grade.case) || !row.result.inspected.includes(grade.case)
+          || !operatorTurn(view, source) || probeTurn(view, source) || !wholeReplySent(source)
+          || source.modelState !== 'complete' || !source.intent?.trim() || source.noticeClass !== undefined) continue;
+        const proposals = promiseProposals(grade.promises, redact(source.intent).text);
+        if (proposals) reconcilePromises(view.commitments, view.closed, grade.promises, source.intent, source.id,
+          id => view.turns.get(id)?.thread === source.thread);
+      }
+    }
     if (row.reason !== undefined) pass.reason = row.reason;
     return;
   }
@@ -11149,7 +11162,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }
       if (!('value' in answer)) { journal.append({ kind: 'retro', pass, state: 'failed', reason: `model ${answer.failureClass ?? answer.state}`, ...usage, at: ports.now() }); return; }
       let result;
-      try { result = validateRetrospective(JSON.parse(answer.value.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')), plan, journal.view, pass, ports.now(), contextDigest); }
+      try { result = validateRetrospective(JSON.parse(answer.value.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')), plan, journal.view, pass, ports.now(), contextDigest, ports.timeZone); }
       catch (error) {
         const reason = error instanceof SyntaxError ? 'answer was not JSON' : error instanceof Error ? error.message : 'answer refused';
         journal.append({ kind: 'retro', pass, state: 'failed', reason, ...usage, at: ports.now() }); return;
