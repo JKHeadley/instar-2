@@ -29,6 +29,8 @@ Skip: tests/preview/agent-paths.test.ts:78 | scope=Inherited macOS-only emergenc
 Skip: tests/preview/agent-paths.test.ts:85 | scope=Inherited macOS-only setup and boot process tests; Studio owns execution.
 Skip: tests/preview/agent-paths.test.ts:104 | scope=Inherited macOS-only physical storage and volume enforcement; Studio owns execution.
 
+Publication: Regenerated generated/ using scripts/build-register.mjs --replay --commit 245bfc52abca4808d2ac776d0a138b42801481ac. Delegated owner rehash and inventory repin both reported zero updates.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge, retain the complete review history, use existing pin and register generation, and exercise the merged consumer. No new mechanism. Start from the recorded candidate and live heads; end with a pushed commit and exact portable results for Studio gating. Existing safety, authority, durability and resource guards remain. No unattended live-completion claim.
