@@ -152,6 +152,22 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     historical.capability = (historical.capability as string).replace(
       /Summary covers earlier turns;.*?Cite sourceLabel; disclose unknown sources\./u,
       "Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say \"I don't know from this journal\", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown.");
+    // sibling-words: only cross-topic operator questions are omitted from reply
+    // candidates. Assert both audiences, then restore just those fixture fields
+    // in this comparison copy; both original hashes below must still match.
+    const candidates = historical.memoryCandidates as { id: string; message: string }[];
+    const siblingCandidates = candidates.filter(item => view.turns.get(item.id)?.thread === 7);
+    expect(siblingCandidates.map(item => item.id)).toEqual([
+      'telegram:12345678:update:9', 'telegram:12345678:update:6',
+    ]);
+    for (const item of candidates) {
+      const source = view.turns.get(item.id);
+      if (!source) continue; // Imported channel candidates keep their own provenance.
+      if (source.thread === 7) {
+        expect(item.message).toBe('[operator message in another topic omitted]');
+        item.message = source.text;
+      } else expect(item.message).toBe(source.text);
+    }
     const historicalText = JSON.stringify(historical);
     const withoutLookup = JSON.parse(historicalText) as Record<string, unknown>;
     expect(withoutLookup.memoryLookup).toBe('offered');
