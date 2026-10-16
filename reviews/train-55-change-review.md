@@ -31,6 +31,8 @@ Decision: train-55-C | No irreconcilable product conflict and no member left out
 Decision: train-55-D | Run targeted WSL checks and disclose unchanged host-dependent failures; Studio-only native composition renewal and live acceptance remain desk-owned. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-55-PROGRESS.md
 Decision: train-55-desk | Refresh grounding inventory and checker hash with downloaded desk chain, build, rehash owner manifests, commit sources and regenerate register in replay mode. Retain first member native certificate unchanged; report combined-tree R105 mismatch instead of declaring a certificate without Studio evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-55-PROGRESS.md
 
+Decision: train-55-review-footer | Move the socket-drop record closing block after its appended evidence, preserving every word; fixes the Rule 116 parser finding without changing reviewed behavior. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-55-PROGRESS.md
+
 simplestRobustRoute: This is the simplest robust route: five ordinary exact-head merges plus existing desk regeneration and targeted checks. No new service or mechanism. Exact reviewed ancestry guards entry; current owner, original deadlines, durable uncertain intents and reservation caps bound operation. Exit is a pushed composition with classified evidence for the desk gate, not live deployment or independent convergence.
 80/20: Verify changed tests, direct importers, required journal cases and pinned checks; full suite and host-only acceptance remain with the desk.
 VERDICT: author submission; independent release gate and live acceptance remain desk-owned
