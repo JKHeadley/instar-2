@@ -23,7 +23,10 @@ it('grounds each answer in evidence, including after compaction, without changin
 
 it('uses the existing contextual claim question and revision, without a new review question', () => {
   expect(REPLY_RULES.self_state_claim).toContain('unsupported');
-  expect(replyRevisionQuestion(['self_state_claim'])).toContain('not verified');
+  const revision = prepareJournalEnvelope({ id: 'turn:8:reply-revision',
+    question: replyRevisionQuestion(['self_state_claim']), context: '{}' }, 'sonnet', 'offline', 1000);
+  expect(revision).toContain('not verified');
+  expect(revision.match(/Ground completion and factual claims/gu)).toHaveLength(1);
 });
 
 it('does not add answer instructions to summary or review tasks', () => {
@@ -60,7 +63,6 @@ async function deliver(draft: string, revision?: string, review?: ReturnType<typ
             : { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0 };
         },
         ...(revision === undefined ? {} : { revise: async () => {
-          expect(replyRevisionQuestion(['self_state_claim'])).toContain('not verified');
           return { state: 'complete' as const, text: revision,
             dispositions: [{ objection: 'self_state_claim', decision: 'accept' as const }] };
         } }) },
