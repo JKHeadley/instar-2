@@ -82,3 +82,14 @@ it('completion is reflected without renewing evidence and rollback polls cannot 
   bytes += post('a'); expect(reader.current('one')).toMatchObject({ running: false, observedAt: 10 });
   now = 10011; reader.observe('one', 'claim', 'working'); expect(reader.current('one')).toBeNull();
 });
+
+it('an unobserved new step cannot borrow the previous step timestamp', () => {
+  let bytes = '', now = 1;
+  const reader = createWorkingActivities({ read: () => bytes, now: () => now });
+  reader.observe('one', 'claim', 'start');
+  bytes = pre('a'); reader.observe('one', 'claim', 'working');
+  now = 2; bytes += post('a') + pre('b');
+  expect(reader.current('one')).toBeNull();
+  reader.observe('one', 'claim', 'working');
+  expect(reader.current('one')).toMatchObject({ running: true, observedAt: 2 });
+});
