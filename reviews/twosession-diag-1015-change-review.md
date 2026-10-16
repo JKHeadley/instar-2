@@ -21,6 +21,8 @@ Hook bypass: none; core.hooksPath is unset and the actual shared hooks directory
 Convergence: none
 Decision: sibling-packet-priority | retain existing bounded sibling evidence through guidance reduction and history fitting; omit it only after history and reply-review reserve yield at the last reachability rung | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/twosession-diag-1015-PROGRESS.md
 Prompt review: real failing updates 715676486 and 715676488 reproduce missing siblingWords before repair and carry Topic A request/promise at model dispatch after repair; original answer and reply-review outputs traverse the unchanged readers. Existing journal-topic-sessions replay covers recorded uncertain summaries, Jev undecided/unsure, reply-review, delivered and empty reply shapes. No new live-model semantic or Telegram delivery claim; the brief forbids proof-room and Telegram use.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label guidance in journal.ts, unchanged by this packet-ordering repair; names a protocol field, not a test-specific semantic answer.
+Prompt finding: 849db3a6296a | protocol-literal | Existing empty saved-memory response in journal.ts, unchanged by this repair; reports an exact empty inventory rather than judging question meaning.
 
 ## Closing block
 
