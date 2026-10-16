@@ -1238,12 +1238,12 @@ it('revives a queued runner, stops on inhibited or none, and bounds relaunches a
     expect(await supervise()).toBe(0);
     expect(launch).toBe(3);
     expect(lastJournalRun(root)).toEqual({ launch: 30, revival: 'inhibited' });
-    // Crashes (no exit record) are relaunched with backoff, at most maxRestarts times in a row.
+    // The two rapid queued exits already consumed the shared window. The next crash pauses durably.
     launch = 0; script.length = 0; waits.length = 0;
     for (let i = 0; i < 10; i++) script.push(run(undefined, 1));
     expect(await supervise()).toBe(0);
-    expect(launch).toBe(4);
-    expect(waits).toEqual([1, 2, 4]);
+    expect(launch).toBe(1);
+    expect(waits).toEqual([]);
     await expect(() => superviseJournal({ ...config, agent: [process.execPath, agent, 'run', '--root', '/elsewhere'] })).rejects.toThrow('invalid journal launch configuration');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
