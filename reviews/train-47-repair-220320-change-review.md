@@ -28,6 +28,8 @@ Decision: train47-derive-merged-pins | Compute the exact compact constitutional 
 
 Publication: Replayed the register at d026b0c470d507afb050ebb80a00483af26d0a39 with the merged anchor. The delegated owner and inventory rehash scripts found no stale pins. The exact excerpt digest was computed from its selected document bytes.
 
+Review scope: The separate imported main review retains its original base as provenance and binds this copy to the pre-merge candidate, so it reviews this integration rather than re-reviewing the whole train.
+
 ## Closing block
 
 simplestRobustRoute: Resolve only the overlapping merge inputs, retain both histories and regenerate derived bytes using the existing desk tools and register generator; no added machinery is needed. Existing admission and safety floors are unchanged, and no autonomous-completion claim is made.

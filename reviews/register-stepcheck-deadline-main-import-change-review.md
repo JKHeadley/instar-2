@@ -1,9 +1,10 @@
 # Change review — extend the dark step-check graduation deadline
 
-Subject base: d3fa88c4771b0934672c3fec1c39ae680c0336a4
+Subject base: 0f7aaad0239e6b2b634b6c86287b23dfa5ce093f
 Review state: open
 Reviewed content: none
-Outcome: Import the owning repair 6b2e645230a839b8b141dcfdab87c615f2cd6d89 with an identical product patch on this branch’s baseline, authorized by the desk on 2026-10-15 at 17:20 for PR #166. Restore register replay after the step-check deadline expired by extending the declared target exactly 72 hours to 2026-10-18T00:00:00Z, retaining dark status and the outstanding graduation obligation.
+Original main review base: d3fa88c4771b0934672c3fec1c39ae680c0336a4; preserved in main commit d0944dba. This integration copy is scoped to the merge repair, not to the whole train.
+Outcome: Preserve main’s review of importing the owning repair 6b2e645230a839b8b141dcfdab87c615f2cd6d89 with an identical product patch on this branch’s baseline, authorized by the desk on 2026-10-15 at 17:20 for PR #166. Restore register replay after the step-check deadline expired by extending the declared target exactly 72 hours to 2026-10-18T00:00:00Z, retaining dark status and the outstanding graduation obligation.
 Affected rules: Rules 8, 26, 39, 49, 72, 73, 74, 90, 101, 102, 111, 113 and 116.
 Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake are unchanged; this change adds no runtime authority, model calls or enabled features.
 Operator questions: none
@@ -28,3 +29,7 @@ Decision: owner-repair-import | Import the existing owning repair instead of wri
 simplestRobustRoute: This is the simplest robust route: change the source deadline and append its owned decision using existing mechanisms, update consuming assertions and documentation, then regenerate dependent pins and publication with the project tools. No new machinery. The existing stage-evidence requirement guards graduation; the existing strict deadline check guards the new end date. No autonomous completion or live protection is claimed.
 80/20: Verify the linked step-check tests, promotion and inventory consumers, register/rulegraph tests, typecheck, architecture, lint, register replay and the desk's pinned ready tests; leave the actual graduation procedure with its recorded desk owner.
 VERDICT: author submission; no independent convergence claim — the review desk records its judgment
+
+Prompt finding: 4b98dc2a1b9f | quoted-evidence | Existing capability description is checked by its fixture, not used as an intent trigger.
+Prompt finding: 95e349aaf4ac | quoted-evidence | Existing authorization wording is descriptive, not a keyword gate or supplied verdict.
+Deferral: generated/conversion.json:1 | not-a-deferral=Generated conversion includes existing governed text, not a newly deferred commitment.
