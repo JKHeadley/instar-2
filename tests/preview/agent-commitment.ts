@@ -2,6 +2,7 @@
  * later reply carries a promise out, is the answering model's reading (Rule 10);
  * code only checks exact values: the quoted sentence is in the reply actually
  * sent, the date phrase is inside that quote, and the counts and sizes are bounded. */
+import type { CommitmentNote } from './journal.js';
 import { parseDatedItem, type DatedItem } from './dated-memory.js';
 
 /** `promised` marks a model-proposed promise; the other actions are legacy journal rows. */
@@ -76,6 +77,26 @@ export function recordedPromises(proposals: readonly PromiseProposal[], reply: s
     const due = item.when ? parseDatedItem(source, item.quote, item.when, at, zone) : undefined;
     return { quote: item.quote, action: 'promised' as const, owner: 'agent' as const, waitsOn: 'next-relevant-reply' as const, ...(due ? { due } : {}) };
   });
+}
+
+/** Admit a retrospective's actionable promises into the SAME commitment population. Meaning (including
+ * paraphrased restatements and ownership) belongs to the review; these are exact identity/evidence checks.
+ * Existing dated/scheduled/closed work is never reopened or rescheduled by a restatement. */
+export function reconcilePromises(commitments: CommitmentNote[], closed: ReadonlyMap<number, unknown>,
+  promises: readonly AgentPromise[], reply: string, source: string, sameConversation: (source: string) => boolean): void {
+  for (const promise of promises.filter(item => reply.includes(item.quote))) {
+    const id = commitments.findIndex((note, index) => note.in === 'reply' && sameConversation(note.source)
+      && (note.source === source ? note.quote.includes(promise.quote) || promise.quote.includes(note.quote)
+        : !closed.has(index) && note.quote === promise.quote));
+    if (id >= 0) {
+      const note = commitments[id]!;
+      if (note.source === source && note.agentPromise && !closed.has(id) && note.waitsOn === undefined
+        && !note.agentPromise.due) Object.assign(note, { owner: 'agent', waitsOn: 'nothing' });
+      continue;
+    }
+    commitments.push({ in: 'reply', source, quote: promise.quote, owner: 'agent',
+      waitsOn: promise.due ? 'date' : 'nothing', agentPromise: promise });
+  }
 }
 
 /** Legacy replay only: journal intents recorded before model-proposed fulfillment

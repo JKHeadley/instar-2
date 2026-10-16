@@ -9,9 +9,15 @@ import type { PromiseState } from '../../src/sentinels/promise.js';
 export type SentinelFamily = 'context' | 'presence' | 'promise';
 export const SENTINEL_FAMILIES: readonly SentinelFamily[] = Object.freeze(['context', 'presence', 'promise']);
 export interface SentinelEventRow { event: string; subject: string; detail: string; operation?: string }
+export interface WorkSilenceState {
+  progress: string | null; lastProgressAt: number; observedAt: number;
+  state: 'observing' | 'stalled' | 'waiting' | 'unknown' | 'action-needed'; detail: string;
+}
+export type WorkSilenceView = Record<string, WorkSilenceState>;
 export type SentinelRecord = { kind: 'sentinel'; family: SentinelFamily; events: SentinelEventRow[];
-  context?: SentinelState; presence?: PresenceState; promise?: PromiseState; at: number };
+  context?: SentinelState; presence?: PresenceState; promise?: PromiseState; work?: WorkSilenceView; at: number };
 export interface SentinelView {
+  work?: WorkSilenceView;
   context: SentinelState | null; presence: PresenceState; promise: PromiseState;
   /** The most recent events across the three families, oldest first (bounded). */
   events: (SentinelEventRow & { family: SentinelFamily; at: number })[];
@@ -36,6 +42,14 @@ export function checkSentinelRecord(row: SentinelRecord, turnExists: (id: string
     if (!event || !short(event.event) || !short(event.subject) || !short(event.detail) || !short(event.operation, true)) bad();
   const own = { context: row.context, presence: row.presence, promise: row.promise };
   for (const family of SENTINEL_FAMILIES) if ((own[family] !== undefined) !== (family === row.family)) bad();
+  if (row.work !== undefined) {
+    if (row.family !== 'presence' || !record(row.work)) bad();
+    for (const [id, entry] of Object.entries(row.work!))
+      if (!short(id) || !(entry.progress === null || short(entry.progress)) || !short(entry.detail)
+        || ![entry.lastProgressAt, entry.observedAt].every(value => value !== null && time(value))
+        || entry.lastProgressAt > entry.observedAt || entry.observedAt > row.at
+        || !['observing', 'stalled', 'waiting', 'unknown', 'action-needed'].includes(entry.state)) bad();
+  }
   if (row.family === 'context') {
     const state = row.context as { sessions?: unknown } | undefined;
     if (!state || !Array.isArray(state.sessions) || state.sessions.length > 64) bad();
@@ -59,6 +73,7 @@ export function checkSentinelRecord(row: SentinelRecord, turnExists: (id: string
 export function applySentinelRecord(current: SentinelView | undefined, row: SentinelRecord): SentinelView {
   const view: SentinelView = current ?? { context: null, presence: {}, promise: {}, events: [],
     counts: { context: 0, presence: 0, promise: 0 }, last: {} };
+  if (row.work) view.work = row.work;
   if (row.context) view.context = row.context;
   if (row.presence) view.presence = row.presence;
   if (row.promise) view.promise = row.promise;

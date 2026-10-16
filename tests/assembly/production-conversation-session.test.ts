@@ -13,7 +13,7 @@ import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
 
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
-function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | 'maxSteps' | 'maxResultBytes' | 'currentActionFacts'>> = {}) {
+function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | 'maxSteps' | 'maxResultBytes' | 'workingActivity' | 'currentActionFacts'>> = {}) {
   const f = assemblyRuntimeFixture();
   let clock = 1000, stopped = false, authorized = true, authority = 'existing-role', used: number | null = 0, dead = false, paused = false, finish = true;
   let state: ConversationState | null = null, answer = '{"answer":"hello"}', active: ConversationDelivery | null = null;
@@ -627,6 +627,24 @@ it.each(capturedShapes.otherShapes)('keeps recorded $kind ($id) whole on every c
   await f.port.close();
 });
 
+
+it.each(['complete', 'dead', 'paused'] as const)('working activity is coupled to live adapter observations and cleared on %s', async ending => {
+  const events: { operation: string; claim: string | null; phase: string }[] = [];
+  const f = fixture({ workingActivity: (operation, claim, phase) => { events.push({ operation, claim, phase }); } });
+  f.finish(false);
+  let polls = 0;
+  f.config.io.wait = async () => {
+    polls++;
+    if (polls === 2) { if (ending === 'complete') f.finish(true); else if (ending === 'dead') f.exit(); else f.pause(); }
+  };
+  const result = await f.port.run(f.request('working'));
+  expect(result.state).toBe(ending === 'complete' ? 'complete' : 'uncertain');
+  expect(events.map(event => event.phase)).toEqual(['start', 'working', 'working', 'end']);
+  expect(events.every(event => event.operation === 'working')).toBe(true);
+  expect(events.slice(0, -1).every(event => event.claim === f.launches[0]!.claim)).toBe(true);
+  expect(events.at(-1)?.claim).toBeNull();
+  await f.port.close();
+});
 it('refreshes action facts on every actual delivery, with one running worker and unchanged prepared input', async () => {
   let facts = '{"state":"awaiting approval","topic":"7"}';
   const f = fixture({ currentActionFacts: async () => facts });

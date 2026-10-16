@@ -56,6 +56,9 @@ export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'crea
   /** Host journal projection, refreshed after worker admission immediately before delivery. */
   readonly currentActionFacts?: (operation: string) => Promise<string>;
   readonly batchWaiting?: boolean;
+  /** Host observation only: after a live adapter observation, or null when this input ends.
+   * No extra model call and no authority is conferred by a status sample. */
+  readonly workingActivity?: (operation: string, claim: string | null, phase: 'start' | 'working' | 'end') => void;
   /** Durable host journal evidence; never reopens the former process's admission. */
   readonly recoveryEdges?: () => readonly (SessionWorkEdge | SessionWorkEdgeClose)[];
   /** The already-admitted parent lifetime; replacing a process cannot extend it. */
@@ -344,6 +347,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         const delivery: ConversationDelivery = { ...state.worker!, operation: id, text, digest: digest(text),
           resultPath: path, maxBytes: config.maxResultBytes };
         updateBatch({ state: 'dispatching', delivery, batch: ids, attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
+        for (const operation of ids) config.workingActivity?.(operation, state.claim, 'start');
         const accepted = await adapter.deliver(delivery);
         if (accepted.state === 'busy-not-dispatched' || accepted.state === 'refused-not-dispatched') {
           if (row(id).attempts >= 3) settleBatch({ ...outcome('non-dispatch retry ceiling reached; input retained'), state: 'failed' });
@@ -380,12 +384,15 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
               return index < 0 ? input : { ...input, reply, cursor: batch.cursor, state: 'settled', outcome: results[index]! };
             }) }); return true;
           }
+          for (const operation of ids) config.workingActivity?.(operation, state.claim, 'working');
           updateBatch({ reply, cursor: batch.cursor });
           await config.io.wait(config.pollMs);
         }
       } catch (error) {
         settleBatch(outcome(error instanceof Error ? error.message : 'conversation failed'));
         try { await retire(); } catch { /* retained worker and claim require reconciliation */ } return false;
+      } finally {
+        for (const operation of ids) config.workingActivity?.(operation, null, 'end');
       }
     };
     const drain = (): Promise<void> => {

@@ -163,6 +163,17 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     historical.capability = (historical.capability as string).replace(
       /Summary covers earlier turns;.*?Cite sourceLabel; disclose unknown sources\./u,
       "Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say \"I don't know from this journal\", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown.");
+    // train-50: restore exactly the declared requested-delivery guidance to the live base.
+    // Keep both historical hashes and every unrelated packet byte pinned.
+    expect(historical.obligationDecision).toContain('cancelDeliveries:');
+    expect(historical.obligationDecision).toContain('deliveryRequest?:exact operator request');
+    historical.obligationDecision = 'When one applies, return: directives:[{quote:exact clause of this message setting a standing instruction beyond this reply,supersedes?:directive id}] (reply style stays memory prefer); closeDirectives:[{id,kind:"completed"|"superseded"}]; openLoops:[{kind:"deferral"|"judgment"|"promise",quote:a sentence of your reply copied word for word,waitsOn:"nothing"|"operator"|"external"|"date"}] for work your reply leaves open (prefer deciding now); for a cannot-do or needs-a-person claim surviving every lawful avenue, blocker:{kind:"cannot-do"|"needs-human",claim:a sentence of your reply copied word for word,avenues:[{avenue,disposition:"outside-standing"|"inapplicable",evidence:one packet.capabilities key such as "externalTools"}],constraint:governingConstraints key,outsideAction:smallest step a person must take,recheck:"YYYY-MM-DD" within 90 days}. You attempted nothing outside this reply, so never call an avenue tried; a missing tool is no-tools. Refuse only behind a governingConstraints key an avenue\'s capabilities evidence supports; propose any other boundary.';
+    const capabilities = historical.capabilities as { sends: string };
+    const constraints = historical.governingConstraints as Record<string, string>;
+    expect(capabilities.sends).toBe('bot: replies and explicitly requested follow-ups');
+    expect(constraints['reply-only-grant']).toBe(capabilities.sends);
+    capabilities.sends = 'bot: replies and requested reminders or summaries';
+    constraints['reply-only-grant'] = capabilities.sends;
     // sibling-words: only cross-topic operator questions are omitted from reply
     // candidates. Assert both audiences, then restore just those fixture fields
     // in this comparison copy; both original hashes below must still match.

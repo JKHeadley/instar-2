@@ -52,6 +52,9 @@ export interface ProductionSessionConfig {
   readonly stopped: () => boolean; readonly resolveIntake: (id: string, digest: string) => string;
   readonly maxSessions: number; readonly turnDeadlineMs: number; readonly readyTimeoutMs: number;
   readonly protectedSessions: readonly string[]; readonly hookScript?: string;
+  /** Advisory activity for registered work; a changed pane is activity, never proof of completion.
+   * The owner records it in its existing work observation cycle. No terminal bytes leave this port. */
+  readonly observeActivity?: (observation: Readonly<{ subject: string; at: number; progress: string | null; wait: string | null }>) => void;
   /** Conversation replies require the authenticated lifecycle receipt, never pane heuristics. */
   readonly requireTurnHook?: boolean;
   /** Required exactly in `admitted` mode: the PreToolUse/PostToolUse command for a session's claim (its own
@@ -503,6 +506,10 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         if (!alive(session.name)) return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'tmux session exited' };
         verifyLive(session);
         const pane = capture(session.name);
+        try {
+          config.observeActivity?.({ subject: session.claim, at: config.now(), progress: pane.trim() ? digestOf(pane) : null,
+            wait: classifyStuckSignature(pane) });
+        } catch { /* An advisory observer cannot fail the worker; its last sample becomes stale/unknown. */ }
         if (config.requireTurnHook && session.turnCloseEvidence)
           return { phase: 'output-observed' as const, evidence: session.turnCloseEvidence, detail: 'recorded Stop hook closed turn' };
         const hook = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'

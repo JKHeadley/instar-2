@@ -30,7 +30,7 @@ function body(cases: Case[], extra: Record<string, unknown> = {}) {
     wells: GRAVITY_WELLS.map(() => 0),
     eff: 'No wasted attempts found in this window.',
     findings: [], feedback: [], closures: [],
-    grades: cases.filter(item => item.category === 'decision' || item.category === 'verdict').map(item => ({ case: item.id,
+    grades: cases.filter(item => item.category === 'decision' || item.category === 'verdict').map(item => ({ case: item.id, promises: [],
       conclusion: { assessment: 'unverifiable', evidence: [] }, reason: { assessment: item.reason ? 'unverifiable' : 'not-applicable', evidence: [] },
       outcome: { assessment: 'pending', reason: 'no later message settles it yet', evidence: [] }, observations: [] })),
     authorizations: cases.filter(item => item.category === 'authorization').map(item => ({ case: item.id, candidate: false, recurrences: [] })),
@@ -195,7 +195,7 @@ describe('MUST-FIX 1: actual inspected/omitted accounting', () => {
     const ok = world();
     try {
       await ok.converse(words.slice(0, 10));
-      ok.answerWith(state => answerFor(state, { grades: casesOf(state).filter(item => item.category === 'decision').map(item => ({ case: item.id,
+      ok.answerWith(state => answerFor(state, { grades: casesOf(state).filter(item => item.category === 'decision').map(item => ({ case: item.id, promises: [],
         conclusion: { assessment: 'not-applicable', evidence: [] }, reason: { assessment: 'not-applicable', evidence: [] },
         outcome: { assessment: 'not-applicable', reason: 'an acknowledgement', evidence: [] }, observations: [] })) }));
       await ok.drain();
@@ -272,7 +272,7 @@ describe('MUST-FIX 2: owed work makes progress without new conversation', () => 
       expect(owedIds(w.journal.view, w.at() + RETRO_PENDING_RECHECK_MS)).toContain(answer);
       // An explicit evidence-unavailable disposition closes it.
       w.advance(RETRO_PENDING_RECHECK_MS);
-      w.answerWith(state => answerFor(state, { grades: casesOf(state).filter(item => item.category === 'decision').map(item => ({ case: item.id,
+      w.answerWith(state => answerFor(state, { grades: casesOf(state).filter(item => item.category === 'decision').map(item => ({ case: item.id, promises: [],
         conclusion: { assessment: 'unverifiable', evidence: [] }, reason: { assessment: 'not-applicable', evidence: [] },
         outcome: { assessment: 'unverifiable', reason: 'no outcome was ever reported', evidence: [] }, observations: [] })) }));
       await w.retrospect();
@@ -440,14 +440,14 @@ describe('MUST-FIX 4: complete, separately supported grades', () => {
     try {
       await w.converse(['Which bus should I take?', ...words.slice(1, 10)]);
       const answer = `answer:${turnId(1)}`;
-      w.answerWith(state => answerFor(state, { grades: casesOf(state).filter(item => item.category === 'decision').map(item => ({ case: item.id,
+      w.answerWith(state => answerFor(state, { grades: casesOf(state).filter(item => item.category === 'decision').map(item => ({ case: item.id, promises: [],
         conclusion: { assessment: 'unverifiable', evidence: [] }, reason: { assessment: 'not-applicable', evidence: [] },
         outcome: { assessment: 'unverifiable', reason: 'no report expected', evidence: [] }, observations: [] })) }));
       await w.retrospect();
       await w.converse(['By the way, the bus you suggested never came.']);
       w.advance(RETRO_STALE_CASE_MS);
       let packet: { priorGrades: { case: string }[] } | undefined;
-      w.answerWith(state => { packet = JSON.parse(state); return answerFor(state, { grades: [...body(casesOf(state)).grades, { case: answer,
+      w.answerWith(state => { packet = JSON.parse(state); return answerFor(state, { grades: [...body(casesOf(state)).grades, { case: answer, promises: [],
         conclusion: { assessment: 'contradicted', evidence: [`turn:${turnId(11)}`] }, reason: { assessment: 'not-applicable', evidence: [] },
         outcome: { assessment: 'unmet', reason: 'bus never came', evidence: [`turn:${turnId(11)}`] }, observations: [] }] }); });
       await w.retrospect();
@@ -684,7 +684,9 @@ describe('Repair round 2 R1: an improvement item is never its own proof', () => 
   it('refuses a closure or verification citing the open item itself, and accepts a later message', async () => {
     const w = world();
     try {
-      await w.converse(words.slice(0, 10));
+      // Keep this evidence test within one review packet, including delivered-reply reconciliation.
+      await w.converse(words.slice(0, 2));
+      w.advance(RETRO_STALE_CASE_MS);
       w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)), feedback: [{ case: `turn:${turnId(1)}`,
         classification: 'style', disposition: 'improvement-owned', owner: 'agent', next: 'Use two sentences.' }] }));
       await w.retrospect();
@@ -701,14 +703,14 @@ describe('Repair round 2 R1: an improvement item is never its own proof', () => 
       expect(openFindings(w.journal.view)).toHaveLength(1);
       expect(feedbackDispositions(w.journal.view)[0]).toMatchObject({ disposition: 'improvement-owned' });
       // Positive neighbor: an actual later message is proof.
-      await w.converse(['Much better now.']);
+      w.worker.intake([update(3, 'Much better now.', w.at())]);
       w.advance(RETRO_STALE_CASE_MS);
       w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)),
-        closures: [{ finding: 'retro:0:feedback:0', outcome: 'improved', evidence: [`turn:${turnId(11)}`] }] }));
+        closures: [{ finding: 'retro:0:feedback:0', outcome: 'improved', evidence: [`turn:${turnId(3)}`] }] }));
       await w.retrospect();
       expect(w.journal.view.retroPasses[3]?.state).toBe('complete');
       expect(openFindings(w.journal.view)).toEqual([]);
-      expect(feedbackDispositions(w.journal.view)[0]).toMatchObject({ disposition: 'verified-improvement', evidence: [`turn:${turnId(11)}`] });
+      expect(feedbackDispositions(w.journal.view)[0]).toMatchObject({ disposition: 'verified-improvement', evidence: [`turn:${turnId(3)}`] });
     } finally { w.done(); }
   });
   it('binds a verified improvement to the item opened for that same feedback message', async () => {

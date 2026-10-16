@@ -194,7 +194,7 @@ function compactAnswer(state: string, extra: Record<string, unknown> = {}) {
   const graded = cases.filter(item => item.category === 'decision' || item.category === 'verdict');
   return JSON.stringify({ ...FIXTURE.answers.compactFixed,
     inspected: cases.map(item => item.id), omitted: [], findings: [], feedback: [], closures: [],
-    grades: graded.map(item => ({ case: item.id, conclusion: { assessment: 'unverifiable', evidence: [] },
+    grades: graded.map(item => ({ case: item.id, promises: [], conclusion: { assessment: 'unverifiable', evidence: [] },
       reason: { assessment: item.reason === undefined ? 'not-applicable' : 'unverifiable', evidence: [] },
       outcome: { assessment: 'pending', reason: 'no later message settles it yet', evidence: [] }, observations: [] })),
     authorizations: cases.filter(item => item.category === 'authorization').map(item => ({ case: item.id, candidate: false, recurrences: [] })),
@@ -428,7 +428,7 @@ it('clips an over-long prose field at the length the question states rather than
   const long = 'reason '.repeat(RETRO_OUTCOME_REASON_CHARS).slice(0, RETRO_OUTCOME_REASON_CHARS * 5);
   const longReasons = await onePass(state => { const cases = casesOf(state);
     const graded = cases.filter(item => item.category === 'decision' || item.category === 'verdict');
-    return complete(compactAnswer(state, { grades: graded.map(item => ({ case: item.id,
+    return complete(compactAnswer(state, { grades: graded.map(item => ({ case: item.id, promises: [],
       conclusion: { assessment: 'unverifiable', evidence: [] },
       reason: { assessment: item.reason === undefined ? 'not-applicable' : 'unverifiable', evidence: [] },
       outcome: { assessment: 'pending', reason: long, evidence: [] }, observations: [] })) })); });

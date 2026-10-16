@@ -56,7 +56,7 @@ function answerAtAskedLengths(state: string, findings = 1) {
     findings: Array.from({ length: findings }, () => ({ duty: 'waste', refs: [cases[0]!.id],
       summary: pad(RETRO_OUTCOME_REASON_CHARS), disposition: { owner: 'agent', next: pad(RETRO_OUTCOME_REASON_CHARS) } })),
     feedback: [], closures: [], authorizations: [], comparisons: [],
-    grades: graded.map(item => ({ case: item.id, conclusion: { assessment: 'unverifiable', evidence: [] },
+    grades: graded.map(item => ({ case: item.id, promises: [], conclusion: { assessment: 'unverifiable', evidence: [] },
       reason: { assessment: item.reason === undefined ? 'not-applicable' : 'unverifiable', evidence: [] },
       outcome: { assessment: 'pending', reason: pad(RETRO_OUTCOME_REASON_CHARS), evidence: [] }, observations: [] })) });
 }
@@ -155,7 +155,8 @@ it('settles a pass whose own outcome row proves an over-cap answer as failed wit
     expect(second.pass).toBe(1);
     expect(second.state).toBe('complete');
     expect(second.cases.length).toBeGreaterThan(0);
-    expect(second.cases.length).toBeLessThan(pass.cases.length);
+    // A smaller budget may fit more cheap message cases than expensive delivered answers.
+    expect(second.estimatedAnswerBytes!).toBeLessThan(pass.estimatedAnswerBytes!);
     expect(Buffer.byteLength(asked)).toBeLessThan(Buffer.byteLength(answerAtAskedLengths(w.states[0]!)));
     // The debt drains: what the smaller pass inspected is no longer owed, and what it deferred still is.
     const after = owed(w.journal.view, w.at());

@@ -20,6 +20,19 @@ Claude, Codex and native tool turns: acquire missing information through existin
 authorized reads, cite it, and report actual failed attempts. It changes no tool
 authority or resource limit; text-only turns retain their no-tools instruction.
 
+## Scheduled work recovery
+
+`production-session-work.ts` binds a successful child close to its result digest. The
+existing obligation tick can collect that checkpoint after host loss without another
+model call. Collection requires the same owner, parent, scope, operation, bounded
+result and one completed close after child cleanup. A proven pre-launch refusal may
+return to the existing bounded schedule. A missing close, changed result or unknown
+session outcome retains the obligation as visibly halted; it never replays an effect.
+Old closes without a digest remain unknown. Results use the existing delivery grant
+and receipt path. Tool-worker checkpoints use the recorded model output, verified
+process-allocation return and settled tool/child trace from that same journal, including
+after compaction. This adds no watcher, store, send authority or cross-machine lease.
+
 ## Continuing conversation session
 
 The conversation prompt keeps each prepared grounding packet once, with host clock and unresolved references separate. Ordinary questions retain their separate context; a batch preserves each complete envelope and arrival order.
@@ -294,3 +307,22 @@ result delivery. No new store, watcher, model call, commit, cleanup or send
 path is introduced. The automated test uses real temporary git state and
 recorded journal shapes; live deployment and user delivery are proved by the
 desk's proof-room run, not asserted by the library test.
+
+While a continuing conversation is answering an admitted operator message, its live adapter
+observations feed the host's current tool-admission projection. The journal may send one short
+`Status:` line per real tool step at about 2, 5 and 10 minutes from intake, then every 10
+minutes. The tool's own description is preferred; otherwise the line names its tool and target.
+Between tools, a self-written description may be quoted as the latest step, never as a still-running tool.
+There is no extra model call. Missing activity, a stale observation, a paused or dead worker,
+stop or expiry produces no progress line. The existing failure path handles failed workers.
+Final dispatch cancels pending progress and waits for an in-flight status send before sending
+the answer. Progress uses signed agent provenance, the ordinary reply cap (leaving one answer
+slot), durable unique intents and the existing retrospective review population. UNKNOWN sends
+are not retried. The journal and its replicated ownership path own the durable cadence; the
+activity projection is deliberately ephemeral and must be freshly observed after a restart.
+The session driver's optional activity observation carries only the owned claim, capture digest,
+observation time and existing typed wait signature. Empty captures are unknown. The preview's
+existing presence cycle records each registered work subject even while its ordinary lane is busy;
+unchanged observed activity becomes an advisory stall after one minute. Registered helper waits,
+unavailable observations and advancing work never authorize a restart or termination. The existing
+step deadline, result receipt, stop, resource owner and effect identities remain authoritative.

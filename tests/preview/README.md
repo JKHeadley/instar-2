@@ -28,8 +28,8 @@ The journal runner's capability briefing is generated from these lines and the f
   Details: when a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; the mention is remembered across restarts.
 - `preview-requested-actions`: an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.
   Details: when the operator explicitly asks for something at a settled later day and time (a reminder is one case), the runner brings that request back as an ordinary turn at the time asked, with no new operator message, and the answer is sent then through the same checks, first quoting the request and when it was made; requests due together in a conversation share one message, inside the reply limit. Daily or weekday requests at a local time repeat until cancelled; missed occurrences combine into one on recovery. Each occurrence uses the existing spend, stop and delivery limits. A later request for the same time adds a request; only the operator withdrawing one cancels it.
-- `preview-owned-obligations`: keeps standing instructions and works the promises its replies leave open, holding results for the next message.
-  Details: keeps the operator's standing instructions until superseded or done, and works the deferrals and promises its replies leave open, holding each result for the operator's next message.
+- `preview-owned-obligations`: keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.
+  Details: keeps the operator's standing instructions until superseded or done, and works the deferrals and promises its replies leave open. An exact operator request to deliver the finished result authorizes a follow-up in its original chat and topic through the existing requested-action reply path. A promise or remembered date alone authorizes no initiated send. Completed reports retain their obligation and work-slot identity, bind once to a durable reply intent, and close only after every transport part has a receipt. Stops, caps, withdrawn requests and unadmitted audiences retain the result; unknown sends are never repeated. Cancellation uses the existing source-backed commitment closure. No new outbox or sender is introduced.
 - `preview.rolling-summary`: keeps a faithfulness-checked rolling summary of earlier turns.
 - `preview.coherence-check`: checks each reply against remembered earlier turns without a model call.
   Details: checks each reply against remembered earlier turns, without a model call, and records the findings.
@@ -1594,6 +1594,20 @@ a fulfillment must name an offered agent promise and quote the new answer, not t
 promise. Meaning remains the model's decision. The encrypted send intent records the
 admitted promises and fulfillment ids. A promise closes only after the complete reply is
 API-accepted; an unknown or refused send leaves it open. Replay preserves that outcome.
+
+The existing retrospective pass also reconciles missing work while grading delivered replies.
+It sees the whole final reply, its request, later messages and the conversation's existing
+commitments. Its `promises` grade field uses the same proposal shape, including undated
+future work; an empty list records inspection. Missing or malformed reconciliation leaves
+the case owed. Older grades receive this inspection on the existing review cadence.
+The durable grade admits supported work into the same commitment population with an agent
+owner and a declared wait. An existing unscheduled undated promise receives its first work
+cadence without a second task; closed, dated and already scheduled work keep their state.
+Quotes, hypotheticals, refusals, user-owned work and restatements require no new agent task.
+The model decides those meanings; code checks delivery, exact quotes and identity. Neither
+summary/review uncertainty nor an empty or partial delivery supplies promise evidence.
+Reconciliation adds no model call or send authority. Existing stop, spend and work admission
+hold, and finished results retain the existing delivery rules.
 
 A readable answer with an invalid promise, fulfillment, or dated-item declaration uses the
 same single format re-ask as an unreadable answer. The runner supplies the exact validation

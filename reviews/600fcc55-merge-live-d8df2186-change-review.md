@@ -18,12 +18,30 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none
 Convergence: none
-Prompt review: no prompt text is authored by this merge; every prompt source in the subject comes from the merged inputs by ordinary git merge, reviewed in their own records.
+Prompt review: no prompt text is authored by this merge; every prompt source in the subject comes from the merged inputs by ordinary git merge, reviewed in their own records. The train-50 repair adds protocol-literal and recorded-text dispositions below; the expanded record range retains the original merge account above and covers the later reviewed composition through its member records.
 Deferral: generated/register.json:1 | not-a-deferral=generated register output replayed by the desk, not prose authored by this merge
 
 Subject (15 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, register-source/owner-references/preview.json, tests/preview/README.md, tests/preview/fixtures/conversation-limits-2026-10-15.json, tests/preview/journal-agent.mjs, tests/preview/journal-conversation-session.test.ts, tests/preview/journal-session-work-launch.test.ts, tests/preview/tools-policy-class.test.ts, tests/preview/tools-policy-class.ts
 
 ## Closing block
+
+
+Prompt finding: 034c5250da92 | protocol-literal | Standing-trust protocol is quoted by self-description replay normalization; it describes the governing grant, not an expected answer.
+Prompt finding: 45e37ea2e9e9 | protocol-literal | The replay preserves historical workspace/public-read policy wording while checking actual self-description behavior; no new model answer is supplied.
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Tool-label protocol is asserted in briefing tests and normalized for historical replay; it is a capability name, not a scenario answer.
+Prompt finding: 6af48f94b789 | protocol-literal | Existing one-machine outward-send policy is compared in captured prompt replay, not introduced as a test answer.
+Prompt finding: 95e349aaf4ac | protocol-literal | Effect doorway and standing-grant protocol is asserted by its briefing consumer, not copied from a scenario answer.
+Prompt finding: b00ed403060a | protocol-literal | Existing workspace/public-read grant wording appears in both the protocol and historical replay normalization; no model-specific expected reply is injected.
+Prompt finding: 450c79237a95 | protocol-literal | The unchanged journal-people assertion quotes the production memory-ambiguity instruction to verify the actual provider policy contains it. It supplies no fixture answer to the model. Both ambiguous homonyms and identified-person neighbors remain exercised; only synthetic packet room changed.
+Deferral: tests/preview/README.md:32 | not-a-deferral=Describes implemented owned deferral execution and receipt-bound result delivery, not postponed builder work.
+Deferral: tests/preview/fixtures/work-recovery-2026-10-15.json:5 | not-a-deferral=Recorded capture provenance and extraction notes; not a development commitment.
+Deferral: tests/preview/fixtures/work-recovery-2026-10-15.json:231 | not-a-deferral=Exact recorded worker output about deferred operator work; retained for replay evidence.
+Deferral: tests/preview/fixtures/work-recovery-2026-10-15.json:275 | not-a-deferral=Exact recorded report output, not a builder deferral.
+Deferral: tests/preview/journal.ts:2577 | not-a-deferral=Existing work prompt requires completing the deferred answer through the current obligation path.
+Deferral: tests/preview/owed-delivery.test.ts:181 | not-a-deferral=Regression exercises explicit requested follow-up delivery and its authority neighbor.
+Prompt finding: 4106b49fff07 | protocol-literal | The unchanged obligation protocol prohibits claiming unattempted actions; the test asserts the protocol rather than supplying an answer.
+Prompt finding: 849db3a6296a | protocol-literal | The unchanged memory-list empty-state contract is asserted by a consumer test; no scenario answer is inserted into new prompt text.
+Prompt finding: e8708c7fea24 | protocol-literal | The existing recall provenance requirement is tested as protocol wording, not a fixture-specific remembered fact.
 
 simplestRobustRoute: an ordinary merge, conflicts limited to generated output, unioned changelog histories, unchanged or identical live docs bodies and derived pins, then the existing desk chain and register replay re-derive everything the merged bytes determine; real content conflicts go to a builder; tool failures stay desk-owned.
 80/20: mechanical only; cheap checks (lint, register:check, change-review check) run here; the pipeline's full gate runs the test suite and post-test checkers on the merged head.

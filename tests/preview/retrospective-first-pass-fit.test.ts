@@ -69,7 +69,7 @@ function requiredAnswer(state: string, over: Record<string, unknown> = {}): stri
       disposition: 'improvement-owned', owner: pad(RETRO_FEEDBACK_OWNER_CHARS), next: pad(RETRO_OUTCOME_REASON_CHARS) })),
     closures: [], authorizations: [], comparisons: [],
     grades: graded.map(item => { const settles = item.category === 'verdict' ? item : later(item);
-      return { case: item.id, conclusion: { assessment: 'supported', evidence: [item.id] },
+      return { case: item.id, promises: [], conclusion: { assessment: 'supported', evidence: [item.id] },
         reason: { assessment: 'supported', evidence: [item.id] },
         outcome: settles === undefined ? { assessment: 'pending', reason: pad(RETRO_OUTCOME_REASON_CHARS), evidence: [] }
           : { assessment: 'met', reason: pad(RETRO_OUTCOME_REASON_CHARS), evidence: [settles.id] }, observations: [] }; }),

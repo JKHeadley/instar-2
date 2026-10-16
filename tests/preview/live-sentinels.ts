@@ -21,8 +21,9 @@ import { decidePresence, type PresenceCause, type PresenceConfig, type PresenceT
 import { decidePromises, type PromiseConfig, type PromiseObservation } from '../../src/sentinels/promise.js';
 import { commitmentOpen, commitmentWaitsOn, liveSummaries, openRequests, PRESENCE_NOTE_HOLDS, probeTurn, verifiedOperatorTurn,
   wallEpoch, type JournalRecord, type JournalView, type Turn } from './journal.js';
+import { openLoops } from './obligations.js';
 import { isStopCommand } from './status-command.js';
-import { SENTINEL_FAMILIES, type SentinelEventRow, type SentinelFamily, type SentinelView } from './sentinel-record.js';
+import { SENTINEL_FAMILIES, type SentinelEventRow, type SentinelFamily, type SentinelView, type WorkSilenceView } from './sentinel-record.js';
 
 export const CONTEXT_SESSION = 'journal-context';
 export interface LiveSentinelPorts {
@@ -41,6 +42,8 @@ export interface LiveSentinelPorts {
   selfHeal(turn: string): void;
   /** Promise follow-through: run the owner's bounded step for this promise. */
   actOnPromise(id: string): void;
+  /** Fresh local observations of registered children; absence means unknown, never dead. */
+  workActivity?(): readonly { subject: string; at: number; progress: string | null; wait: string | null }[];
   config?: { context?: Partial<SentinelConfig>; presence?: Partial<PresenceConfig>; promise?: Partial<PromiseConfig> };
 }
 export interface LiveSentinelReport {
@@ -107,12 +110,75 @@ export function promiseObservations(view: JournalView): PromiseObservation[] {
   return found;
 }
 
+/** Advisory silence threshold, below the existing ten-minute step deadline. No new kill/retry authority. */
+export const WORK_SILENCE_MS = 60_000;
+export const WORK_OBSERVATION_FRESH_MS = 5_000;
+
+/** All registered work, independent of inbound turns. Unknown or known waits cannot establish a stall.
+ * Per-subject activity resets only that subject's clock; a pane change is not a delivered result. */
+export function workSilenceObservations(view: JournalView, now: number,
+  activity: ReturnType<NonNullable<LiveSentinelPorts['workActivity']>> = []): WorkSilenceView {
+  const previous = view.sentinels?.work ?? {}, next: WorkSilenceView = {};
+  const observe = (id: string, openedAt: number, progress: string | null, wait: string | null,
+    unknown: boolean, actionNeeded = false) => {
+    const prior = previous[id];
+    // Unknown time is never accumulated as proof of silence on the next successful observation.
+    const lastProgressAt = Math.min(now, !prior || prior.state === 'unknown' || prior.state === 'waiting'
+      || progress !== prior.progress ? now : prior.lastProgressAt);
+    const state = actionNeeded ? 'action-needed' : unknown ? 'unknown' : wait !== null ? 'waiting'
+      : now - lastProgressAt >= WORK_SILENCE_MS ? 'stalled' : 'observing';
+    const detail = actionNeeded ? 'The last attempt has no confirmed result; existing bounded work must reconcile it.'
+      : unknown ? 'Current worker activity is unavailable; no death or recovery inferred.'
+        : wait ?? (state === 'stalled' ? 'No observed progress; existing admitted work limits still apply.'
+          : 'Observing registered work; activity is not completion.');
+    // Record transitions/activity immediately and a proof of looking once per minute, not every poll.
+    next[id] = prior && prior.state === state && prior.progress === progress && prior.detail === detail
+      && now - prior.observedAt < WORK_SILENCE_MS ? prior
+      : { progress, lastProgressAt: Math.max(Math.min(openedAt, now), lastProgressAt), observedAt: now, state, detail: clip(detail) };
+  };
+  // Keep the full request in the journal; share the promise observer's bounded, stable identity.
+  const requestIds = new Map(openRequests(view).map(item => [`request:${item.source}:${item.quote}`, requestId(item)]));
+  for (const loop of openLoops(view, now)) {
+    if (loop.owner !== 'agent') continue;
+    const work = view.obligationWork[loop.id];
+    const uncertain = work?.inFlight === undefined && (work?.outcome === 'uncertain' || work?.outcome === 'failed');
+    const wait = work?.inFlight !== undefined ? 'A bounded work step is in flight; inspect its registered child.'
+      : work?.report ? 'A finished result is retained for its admitted delivery.'
+        : work?.waitsOn ? `Waiting on ${work.waitsOn}.`
+          : loop.nextAt !== null && loop.nextAt > now ? 'Waiting for its recorded work time.'
+            : ['operator', 'external'].includes(loop.waitsOn) ? `Waiting on ${loop.waitsOn}.` : null;
+    observe(requestIds.get(loop.id) ?? loop.id, loop.openedAt, work ? `${work.last}:${work.outcome ?? 'in-flight'}` : 'registered', wait, false, uncertain);
+  }
+  const edges = Object.values(view.activeSessionWork ?? {});
+  for (const edge of edges) {
+    const seen = activity.find(row => row.subject === edge.child);
+    const fresh = seen !== undefined && seen.progress !== null && seen.at <= now && now - seen.at <= WORK_OBSERVATION_FRESH_MS;
+    const helpers = edges.some(child => child.parent === edge.id);
+    observe(edge.id, edge.openedAt, fresh ? seen.progress : null,
+      helpers ? 'Waiting on a registered helper; parent silence does not establish failure.' : fresh ? seen.wait : null,
+      !fresh);
+  }
+  return next;
+}
+
 const clip = (text: string) => Buffer.byteLength(text) <= 480 ? text : `${Buffer.from(text).subarray(0, 477).toString('utf8').replace(/�+$/u, '')}…`;
 
 export function createLiveSentinels(journal: { readonly view: JournalView; append(row: JournalRecord): void }, ports: LiveSentinelPorts) {
   const failures = { context: 0, presence: 0, promise: 0 } as Record<SentinelFamily, number>;
   const stopped = () => ports.stopped() || journal.view.stop !== null || ports.now() >= journal.view.expires;
+  /** Runs on the same outer cycle even while the ordinary lane is occupied. Observation only:
+   * it cannot enqueue effects or consume recovery attempts ahead of ordinary admission. */
+  const observeWork = (): void => {
+    if (stopped() || !ports.families.has('presence')) return;
+    try {
+      const now = ports.now(), prior = journal.view.sentinels;
+      const work = workSilenceObservations(journal.view, now, ports.workActivity?.());
+      if (JSON.stringify(prior?.work ?? {}) === JSON.stringify(work)) return;
+      journal.append({ kind: 'sentinel', family: 'presence', presence: prior?.presence ?? {}, work, events: [], at: now });
+    } catch { failures.presence++; }
+  };
   const tick = (): LiveSentinelReport => {
+    observeWork();
     const report: LiveSentinelReport = { recorded: [], effects: [], failures: [] };
     const now = ports.now(), halted = stopped();
     for (const family of SENTINEL_FAMILIES) {
@@ -185,7 +251,7 @@ export function createLiveSentinels(journal: { readonly view: JournalView; appen
     }
     return report;
   };
-  return { tick, failures: () => ({ ...failures }) };
+  return { tick, observeWork, failures: () => ({ ...failures }) };
 }
 
 /** The sentinels' pull-surface report, read from the journal (status command, the runner's status). */
@@ -195,6 +261,7 @@ export function sentinelReport(view: JournalView, families: ReadonlySet<Sentinel
   const presence = Object.entries(sentinels?.presence ?? {}), promise = Object.entries(sentinels?.promise ?? {});
   return {
     ...(families ? { enabled: SENTINEL_FAMILIES.filter(family => families.has(family)) } : {}),
+    work: sentinels?.work ?? {},
     recordedTicks: sentinels?.counts ?? { context: 0, presence: 0, promise: 0 },
     lastRecorded: sentinels?.last ?? {},
     context: session ? { episode: session.episode ? { kind: session.episode.kind, status: session.episode.status,
@@ -216,6 +283,8 @@ export function sentinelStatusLines(view: JournalView): string[] {
   if (!view.sentinels) return [];
   const report = sentinelReport(view), episode = report.context?.episode;
   return [
+    ...Object.entries(report.work).filter(([, row]) => ['stalled', 'action-needed', 'unknown', 'waiting'].includes(row.state))
+      .slice(0, 5).map(([id, row]) => `Work ${id}: ${row.state}. ${row.detail}`),
     `Sentinels: context ${episode ? `${episode.kind} episode ${episode.status}` : 'no episode'}; presence watching ${report.presence.watching} unanswered (${report.presence.holdingNoteDue.length} holding note${report.presence.holdingNoteDue.length === 1 ? '' : 's'} due); promises ${report.promise.overdueReported.length} overdue reported, ${report.promise.waiting.length} waiting on someone else, ${report.promise.workRequested} with work requested.`,
   ];
 }

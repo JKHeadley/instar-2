@@ -1,5 +1,21 @@
 [
   {
+    "revision": 10,
+    "date": "2026-10-15",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Operator progress-1015 brief, observer #402; Rule 87 bounded progress clause takes precedence."
+    },
+    "changes": [
+      {
+        "what": "Sections 6 (does not speak from a timer alone) and 14 (routine push rejected) predate Rule 87's explicit allowance for slow bounded progress while answering the operator. Where they disagree, Rule 87 governs. The continuing conversation path now derives short progress lines from current admitted tool activity backed by live adapter observations.",
+        "why": "Waiting for a long answer should not require the operator to poll. No activity means no invented status; final reply, stop, ownership and expiry end progress, and signed journal intents retain the no-duplicate and reply-cap floors.",
+        "ref": "reviews/progress-1015-change-review.md"
+      }
+    ]
+  },
+  {
     "revision": 9,
     "date": "2026-10-13",
     "status": "draft",

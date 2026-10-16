@@ -43,7 +43,7 @@ function answerFor(state: string, over: Record<string, unknown> = {}): string {
     eff: pad(RETRO_EFFICIENCY_CHARS),
     findings: [{ duty: 'waste', refs: [cases[0]!.id], summary: pad(80), disposition: { owner: 'agent', next: pad(80) } }],
     feedback: [], closures: [], authorizations: [], comparisons: [],
-    grades: cases.filter(item => item.category === 'decision' || item.category === 'verdict').map(item => ({ case: item.id,
+    grades: cases.filter(item => item.category === 'decision' || item.category === 'verdict').map(item => ({ case: item.id, promises: [],
       conclusion: { assessment: 'supported', evidence: [item.id] }, reason: { assessment: 'supported', evidence: [item.id] },
       outcome: { assessment: 'pending', reason: pad(60), evidence: [] }, observations: [] })),
     ...over });

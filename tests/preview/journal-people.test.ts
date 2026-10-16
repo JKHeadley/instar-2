@@ -420,7 +420,8 @@ it.each(['Can you remember that?', 'Please remember that.'])
   ('keeps a distinct homonym ambiguous with ending: %s', async ending => {
   const root = origin();
   try {
-    const w = world(root, { maxBytes: 6000, summarize: sourceSummarizer, answer: mergeAnswer });
+    // Match the positive merge neighbor: ambiguity must refuse with all person evidence present, not because it was trimmed.
+    const w = world(root, { maxBytes: 7180 + OBLIGATION_FLOOR_PACKET_BYTES, summarize: sourceSummarizer, answer: mergeAnswer });
     await w.say(1, 'My cofounder Sam prefers October.');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     await w.say(3, `My neighbour Sam lent me a ladder. ${ending}`);

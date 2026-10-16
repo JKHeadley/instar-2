@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createWorkingActivities, readWorkingAdmission } from './working-activity.mjs';
 import { AgentPathRefused, assertAgentPaths } from '../../scripts/agent-paths.mjs';
 import { prepareSessionConnectors, conversationAccountActions, admitSessionConnector } from './session-connectors.mjs';
 import { recordPhaseTiming } from './phase-timing.js';
@@ -1496,6 +1497,7 @@ async function main() {
   let failedPolls = 0, conflictedPolls = 0;
   let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsResolution = null, toolsOff = null,
     sessionWork = null, gate = null;
+  const workActivity = new Map();
   const conversationSession = conversationSessionOf(options);
   const accountActions = conversationAccountActions(options);
   const sessionLimits = conversationSession ? { ...CONVERSATION_SESSION_LIMITS,
@@ -2106,7 +2108,9 @@ async function main() {
         try { await requireGroupDisclosure(journal.view); } catch { return false; }
         return noticeAllowed();
       }, after: (ms, run) => { const timer = setTimeout(run, ms); timer.unref(); return () => clearTimeout(timer); } });
-    worker = createJournalWorker(journal, { ...(conversationSession ? { topicConcurrency: sessionLimits.maxSessions } : {}), ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
+    const workingActivities = createWorkingActivities({ now: wallNow, read: claim => readWorkingAdmission(
+      harness ? harnessSessionLayout(root).admission : join(root, 'session-work-state', 'admission'), claim) });
+    worker = createJournalWorker(journal, { ...(conversationSession ? { topicConcurrency: sessionLimits.maxSessions } : {}), ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, ...(conversationSession ? { workingActivity: id => workingActivities.current(id) } : {}), elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       groupDisclosure: verifiedActionAudience,
       presenceNotes: sentinelFamilies.has('presence'),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
@@ -2123,6 +2127,7 @@ async function main() {
       ...(sessionWorkOf(options) === null ? {} : {
         sessionRoute: id => !conversationSession && sessionWork !== null && id.startsWith('obligation:') && sessionWork.port.available()
           && journal.view.calls + 1 + SESSION_WORK_LIMITS.maxCallsPerStep <= journal.view.limits.maxCalls,
+        recoverSessionWork: id => conversationSession ? null : sessionWork?.port.collect(id.replaceAll(':', '-')) ?? null,
         sessionWork: async ({ question, context: packet, id }) => {
           await requireGroupDisclosure(journal.view);
           sessionWork.select?.();
@@ -2591,6 +2596,7 @@ async function main() {
           ...(conversationSession ? { connectors: claim => sessionConnectors.get(claim)?.launch() } : {}),
           framework, executable: binding.entry().profile.executable, cwd: project, home: binding.entry().profile.home, configHome: binding.entry().profile.configDirectory,
           model: required(options, 'model'), context, io: { ...binding.physical(), transcriptExists: (...args) => (!handoff || handoff.resumeAllowed) && binding.physical().transcriptExists(...args) }, now: wallNow, stopped: binding.stopped, resolveIntake,
+          observeActivity: observation => workActivity.set(observation.subject, observation),
           maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
           readyTimeoutMs: 30000, protectedSessions: [],
           ...(conversationSession ? { requireTurnHook: true, inboxDirectory: binding.physical().inboxDirectory,
@@ -2606,6 +2612,7 @@ async function main() {
         return ({
         ...(conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
           authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
+          workingActivity: (operation, claim, phase) => workingActivities.observe(operation, claim, phase),
           currentActionFacts: async operation => JSON.stringify(currentActionFacts(journal.view, wallNow(),
             journal.view.genesis.forum !== true || await verifiedActionAudience(),
             String(journal.view.turns.get(operation)?.thread ?? 'main'))),
@@ -2678,6 +2685,7 @@ async function main() {
             release: async () => (await held.release()).verified };
         } },
         context, now: wallNow, stopped: conversationSession ? hostStopped : binding.stopped,
+        ...(!conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords() } : {}),
         append: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
         parent: `launch:${conversationOf(g)}`, owner: ownerMachine, placement: `machine:${ownerMachine}`,
         transport: sessionAdapter.transport ?? 'tmux session on this machine', workingScope: project, resultDirectory: project,
@@ -2936,6 +2944,11 @@ async function main() {
     const sentinelSteps = [];
     const sentinels = createLiveSentinels(journal, { now: wallNow, startedAt: launchedAt, families: sentinelFamilies,
       stopped: () => signalled || workerStop.value || existsSync(stopPath) || !ownerHeld(),
+      workActivity: () => {
+        const active = new Set(Object.values(journal.view.activeSessionWork ?? {}).map(edge => edge.child));
+        for (const subject of workActivity.keys()) if (!active.has(subject)) workActivity.delete(subject);
+        return [...workActivity.values()];
+      },
       reground: () => sentinelSteps.push(() => worker.drain()),
       recoverContext: () => sentinelSteps.push(() => worker.summarizeIfNeeded(true)),
       selfHeal: () => sentinelSteps.push(() => worker.drain()),
@@ -2947,9 +2960,11 @@ async function main() {
     // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
     // The sentinels tick only when that job is admitted, and their requested steps run inside it after the drain.
     // Plan #548: it is offered once per cycle AND throughout every poll backoff (pollFailure), so it never waits on
-    // the Telegram connection or on an inbound message; only delivery of its result does.
+    // the Telegram connection or on an inbound message. Requested result delivery uses the post-poll pass below.
     const workCycle = (requested = false, wake = false) => {
       if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
+      // Work observation shares this cycle but must run while the ordinary work lane is busy.
+      if (!journal.readOnly) sentinels.observeWork();
       sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: async () => {
         if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
         if (conversationSession) {
@@ -2957,6 +2972,7 @@ async function main() {
           await sessionWork?.port.maintain();
         }
         await worker.drain();
+        // Finished, explicitly requested results share this withdrawal-aware due point with dated requests.
         if (requested) await worker.sendRequested();
       },
         after: async () => {
