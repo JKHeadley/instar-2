@@ -7,8 +7,8 @@ Outcome: construct the continuing-conversation driver from the shipped journal w
 Affected rules: 1, 13, 34, 49, 60, 70, 74, 101, 102, 111, 113, 116
 Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake retain their existing admission, effect, journal and driver owners. No guard is raised or bypassed.
 Operator questions: none
-Suggested tier: standard
-Declared tier: standard
+Suggested tier: significant
+Declared tier: significant
 Tier rationale: one bounded configuration correction with real driver construction and exact boundary neighbors; no prompt, parser, authority or storage change.
 Side effects: a conversation hook invocation is capped at one hour rather than requesting an invalid four-hour hook. Ordinary session-work hooks retain their ten-minute ceiling. The four-hour conversation and driver turn deadlines remain unchanged.
 Undo and recovery: revert the timeout expression and its regression tests; this restores the demonstrated startup failure but does not alter durable records. No live root or Studio file is changed.
