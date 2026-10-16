@@ -7798,7 +7798,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           || b.turn!.update - a.turn!.update).slice(0, PREVIEW_COMMITMENT_LIMIT)
         .sort((a, b) => a.turn!.update - b.turn!.update || a.id - b.id);
       type Optional = { kind: 'commitment' | 'dated' | 'correction' | 'person' | 'attribute' | 'recent' | 'candidate' | 'fact';
-        key: string; signal: string; rank: number; match: number; recent: number; index: number };
+        key: string; signal: string; rank: number; lookupPriority?: number; match: number; recent: number; index: number };
       const optional: Optional[] = [];
       const askedTerms = new Set(terms(turn.text));
       const matches = (value: string) => terms(value).filter(term => askedTerms.has(term)).length;
@@ -7827,6 +7827,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       recalled.forEach((item, index) => {
         const due = dueSoon(clean(item.text, true));
         optional.push({ kind: due ? 'dated' : 'recent', key: item.id, signal: item.id, rank: due || lookedUp.has(item.id) || pinnedFacts.has(item.id) ? 1 : 4,
+          ...(lookedUp.has(item.id) ? { lookupPriority: lookup!.found.length - index } : {}),
           match: matches(item.text), recent: sentAt(item) ?? 0, index });
       });
       channels.forEach((item, index) => {
@@ -7840,10 +7841,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         match: 0, recent: item.at, index: candidates.length + index }));
       facts.forEach((item, index) => optional.push({ kind: 'fact', key: item.source, signal: item.source, rank: 4,
         match: matches(item.quote), recent: journal.view.turns.get(item.source)?.update ?? 0, index }));
-      // Within a tier, current-question matches lead; earlier exposure only breaks ties.
+      // Within a tier, preserve the lookup owner's order before matching the original question:
+      // a paraphrase lookup exists precisely because that question may share no words with the fact.
+      // Without a lookup, current-question matches lead; earlier exposure only breaks ties.
       // Otherwise unrelated sources keep reinforcing themselves and evict a newly asked-for fact.
       const value = (item: Optional) => Number(questionTies.has(item.signal)) * 2 + Number(referenced.has(item.signal));
-      const dropOrder = optional.sort((a, b) => b.rank - a.rank || a.match - b.match || value(a) - value(b)
+      const dropOrder = optional.sort((a, b) => b.rank - a.rank || (a.lookupPriority ?? 0) - (b.lookupPriority ?? 0)
+        || a.match - b.match || value(a) - value(b)
         || a.recent - b.recent || a.key.localeCompare(b.key));
       // Rule 2 / Rule 9: the floor leaves a proof artifact on the reply itself. `reserve` keeps `packetDropped`
       // durably, so "how did this answer come to be prepared without those turns" is answerable after a restart.

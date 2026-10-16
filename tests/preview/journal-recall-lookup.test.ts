@@ -10,7 +10,7 @@
  * this room's own prepared envelopes, stored in fixtures/proofroom2-recallrank-2026-10-02.json (lookupSamples),
  * and are decoded here the way the runner decodes them. The bounds and floors use a stub. Telegram is a stub. */
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ANSWER_FORMAT_REMINDER, LOOKUP_DONE_GUIDANCE, LOOKUP_NOT_FOUND_REPLY, LOOKUP_OFFERED, LOOKUP_UNAVAILABLE_REPLY,
@@ -40,16 +40,17 @@ type Scripted = string | { state: 'uncertain' } | { state: 'complete'; failureCl
 
 /** One question through the real answer path of the recorded room, with a scripted model. */
 async function turn(options: { label?: string; text?: string; answers: Scripted[]; factReply?: string; room?: number;
-  stopAfterModel?: number; ports?: Partial<PreviewPorts>; refusePrepare?: (packet: Packet) => boolean }) {
+  stopAfterModel?: number; ports?: Partial<PreviewPorts>; extra?: Parameters<typeof room>[2];
+  refusePrepare?: (packet: Packet) => boolean }) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'preview-recall-lookup-')));
   const path = join(dir, 'journal.encrypted');
   const inputs: { question: string; packet: Packet; sentBefore: number }[] = [], sent: string[] = [];
   let stopped = false;
   // The seeded room spends calls of its own; `room` is how many calls this root may still make.
-  const seeded = (() => { const probe = room(join(dir, 'seed.encrypted'), options.label ?? 'B', [], options.factReply ?? neutral);
+  const seeded = (() => { const probe = room(join(dir, 'seed.encrypted'), options.label ?? 'B', options.extra ?? [], options.factReply ?? neutral);
     const calls = { all: probe.journal.view.calls, answers: probe.journal.view.tokenTotals.answer.calls };
     probe.journal.close(); return calls; })();
-  const opened = room(path, options.label ?? 'B', [], options.factReply ?? neutral, {
+  const opened = room(path, options.label ?? 'B', options.extra ?? [], options.factReply ?? neutral, {
     stopped: () => stopped,
     send: async input => { sent.push(input.text); return input.update; },
     ...(options.refusePrepare ? { prepareModel: input => {
@@ -163,6 +164,31 @@ describe('Rule 11: the recorded paraphrase, answered through one lookup (recorde
     } finally { r.close(); }
   });
 });
+
+// These captured outputs ride as quoted historical reply data, not as new summary/reviewer verdicts.
+// The changed boundary selects original turns; it must keep the lookup owner's ranking regardless
+// of the stored reply shape. The existing prepare refusal injects a one-quote envelope ceiling.
+const pressureShapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json',
+  import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] };
+it.each(pressureShapes.otherShapes)('preserves lookup relevance under pressure with recorded $kind ($id)', async sample => {
+  const distractor = { turn: 6230460, text: 'The pharmacy refill number is RX-4821.', terms: ['pharmacy', 'refill', 'number'] };
+  for (const pressured of [false, true]) {
+    const r = await turn({ answers: [decoded(recorded('P4').calls[0]!.raw), decoded(recorded('P1').calls[1]!.raw)],
+      extra: [distractor], factReply: sample.raw,
+      ...(pressured ? { refusePrepare: (packet: Packet) => typeof packet.memoryLookup === 'object'
+        && (packet.recalled?.length ?? 0) > 1 } : {}) });
+    try {
+      expect(r.drainError).toBeUndefined();
+      expect(r.inputs).toHaveLength(2);
+      expect(r.asked.lookup!.found).toContain(factId);
+      const ids = r.inputs[1]!.packet.recalled!.map(item => item.id);
+      if (pressured) expect(ids).toEqual([factId]);
+      else expect(ids).toContain(sourceId(distractor.turn));
+      expect(r.sent).toEqual([expect.stringContaining('2958')]);
+      expect(r.spent()).toBe(2);
+    } finally { r.close(); }
+  }
+}, 120_000);
 
 describe('Rule 11: the trimmed wording, replayed with real answers recorded on the cint-L27 tree', () => {
   // cint-L27 removed the protocol's "say your search is incomplete" sentence and this sentence's "asked once more"
