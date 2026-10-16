@@ -21,6 +21,8 @@ Hook bypass: none; core.hooksPath is unset and the common hooks directory contai
 Convergence: none
 Decision: delivery-fail-existing-slot | Extend the existing delivery notice slot to terminal refusals instead of adding a retry service, store or watcher; keep the historical discriminator for replay compatibility. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/delivery-fail-1016-PROGRESS.md
 Decision: delivery-fail-evidence-wording | Derive notice wording from retained whole-answer outcomes; all-refused batches state failure, mixed batches retain uncertainty, and original outcome records stay unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/delivery-fail-1016-PROGRESS.md
+Decision: delivery-fail-source-publication | Regenerate the existing shape-only register from the pushed product commit so source pins and capability briefing match; no policy or native certificate declaration changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/delivery-fail-1016-PROGRESS.md
+Publication: Generated register outputs bind dd01dfd0ff09e27d80bcfc307660b5ebd3a66f4e through the existing replay generator; no native self-host certificate is changed.
 Prompt review: Only fixed infrastructure notice wording and its eligibility change. Model instructions and semantic gates remain unchanged. Existing model-visible history already includes delivery notices and exact send outcomes. No fixture phrase drives a semantic decision.
 Prompt finding: 4106b49fff07 | quoted-evidence | Unchanged instruction tested by the existing topic-awareness negative control; no new phrase matching.
 Prompt finding: 849db3a6296a | protocol-literal | Unchanged empty-memory response asserted by the existing memory-list test.
