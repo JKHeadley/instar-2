@@ -24,6 +24,8 @@ Prompt finding: 4106b49fff07 | quoted-evidence | existing historical packet norm
 Prompt finding: 849db3a6296a | protocol-literal | existing saved-memory response in journal.ts, unchanged here.
 Prompt finding: e8708c7fea24 | protocol-literal | existing source-label guidance in journal.ts, unchanged here.
 
+Register publication: regenerated the seven generated/ artifacts from a3272dcfe9a8fd7ea09082b3aff81e86b9fb6fa4 with the repository replay builder. Desk repin scripts reported no owner-manifest or grounding-inventory changes.
+
 ## Closing block
 
 simplestRobustRoute: this is the simplest robust route: reuse the journal's withheld/rework transition at the consumed intent, with exact slot and absent-text checks. It prevents the reproduced duplicate-ID failure on same-worker polling and replay without a queue, service, classifier, new review round or weaker credential checkpoint. Existing owner/source, stop and cap checks guard entry; complete transport receipts alone close work. Live unattended acceptance is reserved for the desk.
