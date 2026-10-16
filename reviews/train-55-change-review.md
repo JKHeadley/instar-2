@@ -33,6 +33,8 @@ Decision: train-55-desk | Refresh grounding inventory and checker hash with down
 
 Decision: train-55-review-footer | Move the socket-drop record closing block after its appended evidence, preserving every word; fixes the Rule 116 parser finding without changing reviewed behavior. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-55-PROGRESS.md
 
+Decision: train-55-notice-order-test | Update the direct-consumer ordering test to verify one loss notice per uncertain input, no send for the held earlier input, and durable unresolved correction state. The reviewed socket-drop notice precedence must not be weakened to satisfy the former memory-acknowledgement expectation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-55-PROGRESS.md
+
 simplestRobustRoute: This is the simplest robust route: five ordinary exact-head merges plus existing desk regeneration and targeted checks. No new service or mechanism. Exact reviewed ancestry guards entry; current owner, original deadlines, durable uncertain intents and reservation caps bound operation. Exit is a pushed composition with classified evidence for the desk gate, not live deployment or independent convergence.
 80/20: Verify changed tests, direct importers, required journal cases and pinned checks; full suite and host-only acceptance remain with the desk.
 VERDICT: author submission; independent release gate and live acceptance remain desk-owned
