@@ -161,7 +161,11 @@ const age = (ms: number) => ms < 3_600_000 ? `${Math.floor(ms / 60_000)} min` : 
 export function loopStatusLines(view: JournalView, now: number): string[] {
   const health = loopHealth(view, now), kinds = Object.entries(health.byKind).filter(([, count]) => count > 0)
     .map(([kind, count]) => `${count} ${kind}${count === 1 ? '' : 's'}`);
+  const remaining = Object.entries(view.obligationWork).flatMap(([key, work]) =>
+    (work.completion ?? []).filter(item => item.state === 'open').map(item => ({ key, ...item })));
   return [
+    ...(remaining.length ? [`Completion checklist: ${remaining.length} unfinished item(s) retained${view.stop ? '; execution halted' : ''}.`,
+      ...remaining.slice(0, 3).map(item => `Unfinished: ${item.work}`)] : []),
     `Open loops: ${health.open}${kinds.length ? ` (${kinds.join(', ')})` : ''}; ${health.revisitDue} due to resurface with your next message.`,
     health.unfinished
       ? `Backlog: ${health.unfinished} unfinished (${health.unansweredTurns} message${health.unansweredTurns === 1 ? '' : 's'}, ${health.dueWork} due work step${health.dueWork === 1 ? '' : 's'}); oldest ${age(health.oldestUnfinishedAgeMs!)}${health.backlogOverdue ? `, over the ${age(BACKLOG_AGE_LIMIT_MS)} limit` : ''}${health.inhibition ? `; waiting on ${health.inhibition}` : ''}.`

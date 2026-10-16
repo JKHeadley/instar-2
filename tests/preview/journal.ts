@@ -1,3 +1,4 @@
+import { reconcileRunCompletion, type RunCompletionItem } from '../../src/rungraph/index.js';
 import { currentWorkingActivity, workingProgressDue, type WorkingActivity, type WorkingProgress } from './working-progress.js';
 import { admitJev, JEV_ADMISSION_MS } from './reply-check.js';
 import { checkPhaseTiming, recordPhaseTiming, type PhaseTiming } from './phase-timing.js';
@@ -907,7 +908,7 @@ export type ObligationOutcome = 'report' | 'continue' | 'waiting' | 'still-block
 export interface ObligationWork { attempts: number; last: number; lastSlot: number; inFlight?: number;
   /** Worker-backed steps (delegated sessions or tool workers) need exact closure before another attempt. */
   session?: true; recoveryHeld?: true;
-  outcome?: ObligationOutcome; note?: string; waitsOn?: 'operator' | 'external';
+  outcome?: ObligationOutcome; completion?: readonly RunCompletionItem[]; note?: string; waitsOn?: 'operator' | 'external';
   /** Same-slot format repair is reserved once; counts survive journal replay and snapshots. */
   repairSlot?: number; formatFailures?: number; failedAttempts?: number; failureClass?: 'malformed';
   /** How many journal turns existed when the latest result was recorded: later turns are what arrived since. */
@@ -1214,7 +1215,7 @@ export type JournalRecord =
    * in the journal. The edge reserves the step's whole model-call liability against the call cap
    * (retained, like a tool turn's); otherwise the obligation's own result carries the state. */
   | { kind: 'session-work'; record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkEffect; at: number }
-  | { kind: 'obligation-result'; obligation: string; slot: number; outcome: ObligationOutcome; failureClass?: 'malformed'; report?: string; note?: string;
+  | { kind: 'obligation-result'; obligation: string; slot: number; outcome: ObligationOutcome; completion?: readonly RunCompletionItem[]; failureClass?: 'malformed'; report?: string; note?: string;
     recoveryHeld?: true;
     assessment?: BlockerAssessment;
     waitsOn?: 'operator' | 'external'; recheckAt?: number; usage?: ModelUsage; at: number }
@@ -2262,6 +2263,8 @@ export const commitmentWaitsOn = (view: JournalView, id: number): string | undef
   return view.obligationWork[`commitment:${id}`]?.waitsOn ?? note.waitsOn
     ?? (note.agentPromise ? note.agentPromise.due ? 'date' : note.agentPromise.waitsOn : undefined);
 };
+const completionPending = (view: JournalView, id: number) =>
+  view.obligationWork[`commitment:${id}`]?.completion?.some(item => item.state === 'open') === true;
 const pendingReport = (work: ObligationWork | undefined) => work?.report !== undefined && work.report.delivered === undefined;
 /** A finished result no reply has carried yet: the next operator answer may attach it. */
 const attachableReport = (work: ObligationWork | undefined) => pendingReport(work) && work!.report!.boundTo === undefined;
@@ -2402,12 +2405,16 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
     || (row.outcome === 'still-blocked') !== (row.assessment !== undefined)
     || row.assessment !== undefined && !validBlockerAssessment(row.assessment)
     || row.recheckAt !== undefined && !recheckInRange(row.recheckAt, row.at)) throw Error('preview journal: obligation result order');
+  const completion = reconcileRunCompletion(work.completion ?? [], row.completion);
+  if (completion === null || reports && completion.some(item => item.state === 'open'))
+    throw Error('preview journal: unfinished completion work');
   settleTokens(view, tokenKey, row.usage);
   // Each result is the current account: a dependency or note from an earlier result never outlives it. An uncertain
   // result is no account at all, so a waiting dependency (its need and what the operator sent since) is carried over.
   const { inFlight: _done, waitsOn: _waits, note: _note, withheld, failureClass: _failure, recoveryHeld: _held, ...rest } = work;
   const carried = row.outcome === 'uncertain' && work.waitsOn !== undefined;
   view.obligationWork[row.obligation] = { ...rest, last: row.at, outcome: row.outcome,
+    ...(row.completion === undefined ? {} : { completion: completion! }),
     ...(row.recoveryHeld ? { recoveryHeld: true as const } : {}),
     failedAttempts: (work.failedAttempts ?? (work.outcome === 'failed' ? 1 : 0)) + (row.outcome === 'failed' ? 1 : 0),
     formatFailures: (work.formatFailures ?? 0) + (row.failureClass === 'malformed' ? 1 : 0),
@@ -2576,6 +2583,7 @@ export const OBLIGATION_MEMORY_FACTS = 20, OBLIGATION_MEMORY_FACT_CHARS = 500;
 /** The runner's bounds on a work step's report and note (obligationDecision); the question states them. */
 export const OBLIGATION_REPORT_CHARS = 1500, OBLIGATION_NOTE_CHARS = 500;
 export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. packet.memory holds what the operator told you (the newest summary, packet.memory.facts, which are the exact clauses that summary keeps by source instead of repeating them in its prose, and their messages after it): work about what they told you is done from it. Do it now with what you know; you have no external tools. When packet.obligation.deliveryRequest is present, the operator requested delivery when finished: report the complete result now for the existing reply path to deliver. Otherwise the report waits for their next message; do not infer permission to send from a promise alone. Choose exactly one of these objects. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator, at most ' + String(OBLIGATION_REPORT_CHARS) + ' characters>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. When packet.withheld is present, your earlier report was not delivered because a review objected to it (packet.withheld.objection): answer that objection with a corrected report it no longer applies to; a report that still cannot do the work says so plainly and names the packet.governingConstraints key behind it. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key. '
+  + 'Include completion:[{id,work,state:"open"|"complete",evidence?}] for the requested job and any specs, scripts or tasks you created to finish it. Keep each id and work description stable; use packet.completion as the existing checklist. Complete entries cite what actually demonstrates their result. An omitted entry stays recorded. Report only when the whole job, including created work, is complete. A safety halt or resource ceiling leaves unfinished work open; it is not success or operator cancellation. This checklist grants no additional authority. '
   + taskFields('the one object you chose');
 /** The same work step on the scoped-tool route: it can use the listed tools, and only their recorded calls ran. */
 export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLIGATION_WORK_QUESTION,
@@ -2587,19 +2595,27 @@ export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLI
  * reply's size bound, so a result past that bound waits for a later message. */
 export const READY_RESULT = 'finished, result awaiting delivery: follows your answer when this reply has room, otherwise a later message; the work is done, not still to do';
 /** Reads one work step's decision; anything malformed is a recorded failed attempt, never a guessed outcome. */
-export function obligationDecision(output: string, kind: 'commitment' | 'blocker', at: number, zone: string):
-  Pick<Extract<JournalRecord, { kind: 'obligation-result' }>, 'outcome' | 'report' | 'note' | 'waitsOn' | 'recheckAt' | 'assessment'> {
+export function obligationDecision(output: string, kind: 'commitment' | 'blocker', at: number, zone: string, previous: readonly RunCompletionItem[] = []):
+  Pick<Extract<JournalRecord, { kind: 'obligation-result' }>, 'outcome' | 'report' | 'note' | 'waitsOn' | 'recheckAt' | 'assessment' | 'completion'> {
   let value: { outcome?: unknown; report?: unknown; note?: unknown; waitsOn?: unknown; recheck?: unknown; avenues?: unknown;
-    constraint?: unknown; reason?: unknown };
+    constraint?: unknown; reason?: unknown; completion?: unknown };
   try { value = JSON.parse(output) as typeof value; } catch { return { outcome: 'failed' }; }
   const text = (field: unknown, max: number) => typeof field === 'string' && field.trim() && Buffer.byteLength(field.trim()) <= max
     ? redact(field.trim()).text : undefined;
   const report = text(value?.report, OBLIGATION_REPORT_CHARS), note = text(value?.note, OBLIGATION_NOTE_CHARS);
   if (kind === 'commitment') {
-    if (value?.outcome === 'report' && report) return { outcome: 'report', report };
-    if (value?.outcome === 'continue' && note) return { outcome: 'continue', note };
+    // Scrub before durable accounting; omission cannot clear previously admitted work.
+    const parsedCompletion = reconcileRunCompletion(previous, value?.completion);
+    if (parsedCompletion === null) return { outcome: 'failed' };
+    const completion = parsedCompletion.map(item => ({ ...item, work: redact(item.work).text,
+      ...(item.evidence === undefined ? {} : { evidence: redact(item.evidence).text }) }));
+    const accounted = value?.completion === undefined && !previous.length ? {} : { completion };
+    if (value?.outcome === 'report' && report) return completion.some(item => item.state === 'open')
+      ? { outcome: 'continue', note: 'Finish the open items in the retained completion checklist before reporting the whole job complete.', ...accounted }
+      : { outcome: 'report', report, ...accounted };
+    if (value?.outcome === 'continue' && note) return { outcome: 'continue', note, ...accounted };
     if (value?.outcome === 'waiting' && note && (value.waitsOn === 'operator' || value.waitsOn === 'external'))
-      return { outcome: 'waiting', note, waitsOn: value.waitsOn };
+      return { outcome: 'waiting', note, waitsOn: value.waitsOn, ...accounted };
     return { outcome: 'failed' };
   }
   if (value?.outcome === 'cleared' && report) return { outcome: 'cleared', report };
@@ -3422,13 +3438,13 @@ function settleDeliveredReply(view: JournalView, turn: Turn, message: number, at
   for (const [key, work] of Object.entries(view.obligationWork)) if (work.report?.boundTo === turn.id && work.report.delivered === undefined) {
     work.report.delivered = turn.id;
     const id = Number(key.slice(11));
-    if (key.startsWith('commitment:') && !view.closed.has(id)) view.closed.set(id, { id, source: turn.id, quote: work.report.text });
+    if (key.startsWith('commitment:') && !view.closed.has(id) && !completionPending(view, id)) view.closed.set(id, { id, source: turn.id, quote: work.report.text });
   }
   // An API-accepted reply closes the promises the model said it carries out; a legacy
   // intent (no fulfills field) keeps the closure rule it was recorded under.
   if (turn.intentFulfills !== undefined) {
-    for (const id of turn.intentFulfills) if (!view.closed.has(id)) view.closed.set(id, { id, source: turn.id, quote: turn.intent! });
-  } else for (const [id, note] of view.commitments.entries()) if (note.agentPromise && !view.closed.has(id)
+    for (const id of turn.intentFulfills) if (!view.closed.has(id) && !completionPending(view, id)) view.closed.set(id, { id, source: turn.id, quote: turn.intent! });
+  } else for (const [id, note] of view.commitments.entries()) if (note.agentPromise && !view.closed.has(id) && !completionPending(view, id)
     && note.source !== turn.id && view.turns.get(note.source)!.update < turn.update
     && (!note.agentPromise.due || dueState(note.agentPromise.due, at) === 'due'
       || dueState(note.agentPromise.due, at) === 'overdue')
@@ -9783,7 +9799,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // A desk probe's reply stays auditable, but its promises never become operator commitments.
           promises: probeTurn(journal.view, turn) ? [] : recordedPromises((revisionDeclarationsSelected ? turn.revision?.promises : undefined) ?? turn.proposedPromises ?? [], reply, turn.id, intentAt, ports.timeZone ?? 'America/Los_Angeles'),
           fulfills: probeTurn(journal.view, turn) ? [] : ((revisionDeclarationsSelected ? turn.revision?.fulfills : undefined) ?? turn.proposedFulfills ?? []).filter(item => reply.includes(item.quote)
-            && fulfillableCommitment(journal.view.commitments, item.id) && !journal.view.closed.has(item.id)
+            && fulfillableCommitment(journal.view.commitments, item.id) && !journal.view.closed.has(item.id) && !completionPending(journal.view, item.id)
             && journal.view.commitments[item.id]!.source !== turn.id).map(item => item.id),
           ...(heldBack || reply === HOLDING_REPLY ? {} : sentObligations(turn, reply, intentAt)),
           ...(heldBack || reply === HOLDING_REPLY ? {} : withheldReports(turn, reply, objection)),
@@ -10409,12 +10425,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** The latest scheduled work result on commitment `id`, for the answer packet (Rules 8, 64). */
   const workState = (id: number) => {
     const work = journal.view.obligationWork[`commitment:${id}`];
-    if (!work || work.inFlight !== undefined) return {};
+    if (!work) return {};
+    const checklist = work.completion?.some(item => item.state === 'open') ? { completion: work.completion } : {};
+    if (work.inFlight !== undefined) return checklist;
     // A finished result waiting for this reply is appended after the answer (live cint-L49: the model, not told, wrote
     // "still queued" beside the result it was carrying).
     if (attachableReport(work)) return { result: READY_RESULT };
-    return work.waitsOn !== undefined ? { waitsOn: work.waitsOn!, need: clean(redact(work.note!).text, true) }
-      : work.outcome === 'continue' ? { progress: clean(redact(work.note!).text, true) } : {};
+    return work.waitsOn !== undefined ? { ...checklist, waitsOn: work.waitsOn!, need: clean(redact(work.note!).text, true) }
+      : work.outcome === 'continue' ? { ...checklist, progress: clean(redact(work.note!).text, true) } : checklist;
   };
   /** Keeps only proposed commitments whose quote occurs exactly in the named side (the message, or
    * the agent's own answer) of one accepted turn the summary packet showed; anything else is dropped. */
@@ -11331,7 +11349,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     if (stepId.startsWith('answer:')) {
       const turn = journal.view.turns.get(stepId.slice('answer:'.length))!;
-      return { step: stepId, modelOutput: turn.answer, journal: { answerRecorded: true,
+      return { step: stepId, request: clean(redact(turn.text).text, true, turn.id), modelOutput: turn.answer, journal: { answerRecorded: true,
+        completion: journal.view.commitments.flatMap((item, id) => item.source === turn.id || turn.requestedAction?.owed?.some(ref => ref.key === `commitment:${id}`)
+          ? [{ obligation: `commitment:${id}`, work: journal.view.obligationWork[`commitment:${id}`] ?? null, open: commitmentOpen(journal.view, id) }] : []),
+        halt: journal.view.stop ?? (ports.now() >= journal.view.expires ? 'trial expired'
+          : journal.view.calls >= journal.view.limits.maxCalls ? 'model-call allowance used' : null),
         memoryChanges: journal.view.memory.filter(change => change.trigger === turn.id),
         memoryPending: turn.memoryPending === true, memoryUndecided: turn.memoryUndecided === true,
         replyIntent: turn.intent ?? null, delivery: turn.intent === undefined ? 'no send intent' : deliveryEvidence(turn) } };
@@ -11571,7 +11593,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             ?? (work?.repairSlot === slot ? null : journal.obligationCheckpoint(`obligation:${item.key}:${slot}`)); }
           catch { recovered = { state: 'uncertain', detail: 'child recovery evidence unavailable', edge: 'unknown', child: null }; }
           if (recovered?.state === 'complete' && recovered.text !== undefined) {
-            const decided = obligationDecision(recovered.text, item.kind, ports.now(), ports.timeZone ?? 'America/Los_Angeles');
+            const decided = obligationDecision(recovered.text, item.kind, ports.now(), ports.timeZone ?? 'America/Los_Angeles', work?.completion);
             journal.append({ kind: 'obligation-result', obligation: item.key, slot, ...decided,
               ...(recovered.usage ? { usage: recovered.usage } : {}),
               ...(decided.assessment ? { assessment: { ...decided.assessment, wording: governingConstraints(work?.session === true)[decided.assessment.constraint] } } : {}), at: ports.now() });
@@ -11622,6 +11644,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           && turn.update > (latest?.through ?? -1)).slice(-OBLIGATION_MEMORY_MESSAGES)
           .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), OBLIGATION_MEMORY_MESSAGE_CHARS) })) });
       const packetWith = (withMemory: 'facts-and-messages' | 'messages-only' | 'none') => JSON.stringify({ now: isoMinute(now), zone, today: localStamp(now, zone).slice(0, 10), obligation,
+        ...(work?.completion ? { completion: work.completion } : {}),
         ...(withMemory === 'none' ? {} : { memory: memory(withMemory === 'facts-and-messages') }),
         ...(work?.note && work.waitsOn === undefined ? { lastProgress: clean(redact(work.note).text, true) } : {}),
         ...(work?.withheld ? { withheld: { report: clean(redact(work.withheld.text).text, true),
@@ -11662,7 +11685,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const malformed = (value: typeof answer) => typeof value !== 'string' && 'failureClass' in value
         ? value.state === 'complete' && value.failureClass === 'malformed'
         : typeof value === 'string' || 'text' in value
-          ? obligationDecision(textOf(value)!, item.kind, ports.now(), zone).outcome === 'failed' : false;
+          ? obligationDecision(textOf(value)!, item.kind, ports.now(), zone, work?.completion).outcome === 'failed' : false;
       if (malformed(answer) && textOf(answer) !== undefined && !halted() && obligationCapacity(journal.view)) {
         // One formatting-only call: a distinct id excludes both scoped tools and delegated sessions. No effect is repeated.
         const repairId = `work-repair:${item.key}:${item.slot}`;
@@ -11689,7 +11712,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         settle({ outcome: 'failed', ...(malformed(answer) ? { failureClass: 'malformed' as const } : {}), ...usage }); return true;
       }
       // The same field checks apply to the original and repaired object. Meaning remains the model's decision.
-      const decided = obligationDecision(textOf(answer)!, item.kind, ports.now(), zone);
+      const decided = obligationDecision(textOf(answer)!, item.kind, ports.now(), zone, work?.completion);
       // A renewal records the constraint wording this step was shown, so the wall is current evidence while it holds.
       settle({ ...decided, ...(decided.outcome === 'failed' ? { failureClass: 'malformed' as const } : {}), ...(decided.assessment ? { assessment: { ...decided.assessment,
         wording: governingConstraints(tools)[decided.assessment.constraint] } } : {}), ...usage });
