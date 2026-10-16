@@ -17,7 +17,7 @@ export interface WorktreeInventory {
   readonly worktrees: readonly WorktreeObservation[];
 }
 export type WorktreeFinding = Readonly<{ machine: string; path: string; head: string;
-  observedAt: number; processSample: string }>;
+  lastActivity: number; observedAt: number; processSample: string }>;
 const instant = (n: number) => Number.isSafeInteger(n) && n >= 0;
 const fresh = (at: number, life: number, now: number) => instant(at) && instant(life)
   && life > 0 && at <= now && now - at <= life;
@@ -51,6 +51,6 @@ export function abandonedWorktrees(input: Readonly<{ now: number; quietMs: numbe
       || activity.coveredThrough > now || activity.lastActivity > worktrees.sourceTime - quietMs
       || live.some(row => row.cwd.state === 'observed' && inside(row.cwd.path, checkout.path))) return [];
     return [{ machine: worktrees.machine, path: checkout.path, head: checkout.head,
-      observedAt: worktrees.sourceTime, processSample: processes.id }];
+      lastActivity: activity.lastActivity, observedAt: worktrees.sourceTime, processSample: processes.id }];
   });
 }

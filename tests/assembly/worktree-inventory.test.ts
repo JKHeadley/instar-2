@@ -21,7 +21,7 @@ const input = () => ({ now: 10000, quietMs: 5000, worktrees: worktrees(), proces
 describe('dirty orphan worktree observation', () => {
   it('finds only a dirty, quiet checkout after complete fresh exclusion of live ownership', () => {
     expect(abandonedWorktrees(input())).toEqual([{ machine: 'm', path: '/work/abandoned', head: 'abc',
-      observedAt: 10000, processSample: 'inventory:1' }]);
+      lastActivity: 1000, observedAt: 10000, processSample: 'inventory:1' }]);
   });
   it.each(['live', 'unknown'] as const)('keeps a %s owner', owner => {
     const x = input(); x.worktrees = { ...x.worktrees, worktrees: [{ ...x.worktrees.worktrees[0]!, owner }] };
