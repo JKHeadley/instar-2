@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:0acf43a04c17e8a9737af2927df7a0e9972b7e82c12054fd68d3e8c9cb5ea07c
-Source commit: f2803b840c953842f277cf330559f3d3bcfdf06d
+Register generation: sha256:a676edaddfeaea9f88f65b170d7f0495e769469d697ba5ed138ce0aecff62252
+Source commit: d026b0c470d507afb050ebb80a00483af26d0a39
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -144,6 +144,13 @@ Choose the simplest route that delivers the required behavior and preserves name
 
 Check: Every design and landing review states the simplest robust route and why the proposal is not it, or explicitly states that it is. The existing independent reviewer refuses machinery with no named failure it prevents, or no adequate reason the simpler route fails. Record this in the required simplestRobustRoute field of the existing review record. Applicable start, end-state and limit guards and unattended shipped-path evidence remain part of the existing review. No separate simplicity checker or gate.
 Terms: term:done
+
+## 117. One Agent, Many Sessions
+
+Sessions running at the same time are one agent. Each knows what the others have said, promised and done, as close to real time as the system allows, and an agent never gives its operator contradictory answers from two places. Where awareness lags, the session says so instead of guessing.
+
+Check: Two-session tests run in desk proof rooms on every build: one session acts or speaks, another is asked about it, and it must answer correctly (LIVE-PATH-PLAN.md section g, rows a to d). Status: partial until (a) and (b) pass live.
+Terms: term:done, term:operator
 
 ## 12. Intelligent Prompts
 

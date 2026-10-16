@@ -26,6 +26,8 @@ Deferral: generated/conversion.json:1 | not-a-deferral=Generated conversion meta
 
 Decision: train47-derive-merged-pins | Compute the exact compact constitutional excerpt digest and canonical merged-anchor digest from their bytes; main uses a longer excerpt and older schema, so its pins cannot identify the combined inputs. Regenerate publication through the existing replay builder. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-47-repair-220320-PROGRESS.md
 
+Publication: Replayed the register at d026b0c470d507afb050ebb80a00483af26d0a39 with the merged anchor. The delegated owner and inventory rehash scripts found no stale pins. The exact excerpt digest was computed from its selected document bytes.
+
 ## Closing block
 
 simplestRobustRoute: Resolve only the overlapping merge inputs, retain both histories and regenerate derived bytes using the existing desk tools and register generator; no added machinery is needed. Existing admission and safety floors are unchanged, and no autonomous-completion claim is made.
