@@ -33,7 +33,7 @@ const topicOfBody = source.split('topicOf: operation => {')[1]!.split('\n       
 const update = (id: number, text: string, thread?: number) => ({ update_id: id,
   message: { message_id: id, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
     ...(thread === undefined ? {} : { message_thread_id: thread, is_topic_message: true }) } });
-function fixture(forum = false, prepared = false, maxSessions = 2) {
+function fixture(forum = false, prepared = false, maxSessions = 2, timeZone = 'America/Los_Angeles') {
   const root = mkdtempSync(join(tmpdir(), 'topic-session-journal-')); roots.push(root);
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
     kind: 'genesis', bot: '12345678', chat: forum ? '-7654321' : '7654321', operator: '7654321', ...(forum ? { forum: true } : {}), grant: 'grant:preview',
@@ -47,8 +47,8 @@ function fixture(forum = false, prepared = false, maxSessions = 2) {
   const held = new Set<string>(), deliveries: { topic: string; input: HarnessInputDelivery }[] = [];
   const launches: string[] = [], sent: { text: string; thread: number | undefined; update: number }[] = [];
   const queuedAtDelivery: string[][] = [];
-  const readFacts = Function('currentActionFacts', 'journal', 'wallNow', 'verifiedActionAudience',
-    `return async operation => ${actionFactsBody}`)(currentActionFacts, journal, () => now, async () => verifiedAudience) as (operation: string) => Promise<string>;
+  const readFacts = Function('currentActionFacts', 'journal', 'wallNow', 'verifiedActionAudience', 'timeZoneOf', 'options',
+    `return async operation => ${actionFactsBody}`)(currentActionFacts, journal, () => now, async () => verifiedAudience, () => timeZone, {}) as (operation: string) => Promise<string>;
   const port = value(createConversationTopicsPort({
     context: assemblyRuntimeFixture().c, conversation: 'operator', topicOf,
     allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => 'grant',
@@ -100,7 +100,7 @@ function fixture(forum = false, prepared = false, maxSessions = 2) {
     return saved && { context: saved.request.context, prepared: saved.request.question,
       answer: conversationSessionAnswer(saved.outcome, id, () => {}) };
   };
-  const worker = createJournalWorker(journal, { topicConcurrency: maxSessions, groupDisclosure: async () => verifiedAudience, now: () => now, stopped: () => false, model, modelBatch: async inputs => { if (batchFailure) throw batchFailure; return modelBatch(inputs); }, collectModel,
+  const worker = createJournalWorker(journal, { timeZone, topicConcurrency: maxSessions, groupDisclosure: async () => verifiedAudience, now: () => now, stopped: () => false, model, modelBatch: async inputs => { if (batchFailure) throw batchFailure; return modelBatch(inputs); }, collectModel,
     sources: () => evidence ? [evidence] : [],
     prepareModel: input => prepared ? prepareJournalEnvelope(input, 'offline-model', 'grant:offline', now, 262144) : JSON.stringify(input), checkOutbound: () => {},
     send: async input => {
@@ -455,7 +455,7 @@ it('refreshes sibling words at dispatch, excludes operator text and the current 
     expect(delivered).not.toContain('PRIVATE operator words');
     expect(f.journal.view.turns.get('telegram:12345678:update:2')!.prompt).not.toContain('I will hold the restart');
     const words = currentActionFacts(f.journal.view, 2000, true, '8').siblingWords!;
-    expect(words.items).toContainEqual(expect.objectContaining({ kind: 'promise', topic: '7', at: 1003, state: 'open' }));
+    expect(words.items).toContainEqual(expect.objectContaining({ kind: 'promise', topic: '7', at: '1969-12-31 16:00 PST', state: 'open' }));
     expect(words.items.every(item => item.topic !== '8')).toBe(true);
     expect(currentActionFacts(f.journal.view, 2000, false, '8')).toEqual({ items: [], withheld: true });
     const reread = openPreviewJournal(join(f.root, 'journal.encrypted'), new Uint8Array(32).fill(61));
@@ -467,6 +467,16 @@ it('refreshes sibling words at dispatch, excludes operator text and the current 
       .toContainEqual(expect.objectContaining({ kind: 'promise', state: 'closed' }));
   } finally { await f.close(); }
 });
+
+it.each([['America/Los_Angeles', '1969-12-31 16:00 PST'], ['UTC', '1970-01-01 00:00 UTC']])(
+  'the shipped dispatch reader uses configured zone %s', async (zone, expected) => {
+    const f = fixture(true, true, 2, zone);
+    try {
+      siblingReply(f, 1, 'The restart is on hold.', 7);
+      f.worker.intake([siblingUpdate(f, 2, 'What about the restart?', 8)]); await f.worker.drain();
+      expect(f.deliveries.at(-1)!.input.text).toContain(expected);
+    } finally { await f.close(); }
+  });
 
 it('bounds sibling excerpts, keeps newest first, scrubs secrets and forgetting, and excludes unknown receipts', async () => {
   const f = fixture();
@@ -504,6 +514,7 @@ it.each(recordedBatchShapes.otherShapes)('refreshes sibling words with recorded 
     const delivery = f.deliveries.at(-1)!.input.text;
     expect(delivery).toContain('I will hold the restart until 5 pm.');
     expect(delivery).toContain('siblingWords');
+    expect(delivery).toContain('1969-12-31 16:00 PST');
     expect(delivery).not.toContain('PRIVATE operator words');
     expect(f.state().topics['8']!.inputs[0]!.request.context).toContain(JSON.stringify(sample.raw));
     expect(f.journal.view.order.at(-1)!.sent).toBeDefined();

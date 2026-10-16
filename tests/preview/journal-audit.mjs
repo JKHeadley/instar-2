@@ -1,5 +1,6 @@
 import { redact } from '../../src/recall/redact.js';
 import { createHash } from 'node:crypto';
+import { localMinute } from './dated-memory.js';
 import { isoMinute } from '../../src/recall/ground.js';
 import { statedFacts } from './memory-sentinel.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
@@ -85,12 +86,18 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     return String(sender) === view.genesis.operator ? 'the operator (verified sender)'
       : `Telegram user ${String(sender)} (authenticated sender, not the operator)`;
   };
-  const dated = found => {
+  // Archived packets retain UTC labels; current packets use the configured operator clock.
+  const timeMatches = (shown, at) => {
+    if (shown === isoMinute(at)) return true;
+    try { return shown === localMinute(at, packet?.clock?.zone ?? 'America/Los_Angeles'); }
+    catch { return false; }
+  };
+  const dated = (shown, found) => {
     let sent;
     try { sent = JSON.parse(found.raw)?.message?.date; } catch { /* journal retains raw */ }
     const at = typeof sent === 'number' && Number.isSafeInteger(sent) && sent > 0 ? sent * 1000
       : found.at > 0 ? found.at : null;
-    return at === null ? 'date unknown' : isoMinute(at);
+    return at === null ? shown === 'date unknown' : timeMatches(shown, at);
   };
   const body = value => JSON.stringify(value ?? {});
   const channelRef = id => `sha256:${createHash('sha256').update(id).digest('hex')}`;
@@ -163,7 +170,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     if (found) {
       if (item.user !== clean(found.text, found.id)) fault('history-text-source', at);
       checkReply(item, found, at);
-      if (item.date !== undefined && item.date !== dated(found)) fault('history-date-source', at);
+      if (item.date !== undefined && !dated(item.date, found)) fault('history-date-source', at);
       if (item.from !== undefined && item.from !== speaker(found)
         || item.from === undefined && speaker(found) !== 'the operator (verified sender)') fault('history-attribution', at);
       add('history-turn', at, [{ kind: 'source-turn', id: found.id, update: found.update }]);
@@ -174,7 +181,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     if (found) {
       if (item.user !== clean(found.text, found.id)) fault('recalled-text-source', at);
       checkReply(item, found, at);
-      if (item.date !== dated(found)) fault('recalled-date-source', at);
+      if (!dated(item.date, found)) fault('recalled-date-source', at);
       add('recalled-turn', at, [{ kind: 'source-turn', id: found.id, update: found.update },
         ...(summary ? [{ kind: 'selected-beside-summary', through: summary.through }] : [])]);
     }
@@ -186,7 +193,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
         const id = `channel:${JSON.stringify([candidate.source, candidate.account, candidate.id])}`;
         return `channel-ref:${createHash('sha256').update(id).digest('hex')}` === item.sourceId;
       });
-      if (!imported || item.source !== imported.source || item.date !== isoMinute(imported.at)
+      if (!imported || item.source !== imported.source || !timeMatches(item.date, imported.at)
         || item.from !== `${metadata(imported.from, imported)} (export sender metadata, unverified)`
         || item.message !== clean(imported.text).trim()) fault('people-import-source', at);
       for (const [m, mention] of list(item?.mentions, `${at}.mentions`).entries()) {
@@ -200,7 +207,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     const found = source(item?.source, at);
     if (found && item.from !== speaker(found)) fault('people-attribution', at);
     if (found && item.message !== clean(found.text, found.id)) fault('people-message-source', at);
-    if (found && item.date !== dated(found)) fault('people-date-source', at);
+    if (found && !dated(item.date, found)) fault('people-date-source', at);
     const mentions = list(item?.mentions, `${at}.mentions`);
     if (!mentions.length) fault('people-note-absent', at);
     for (const [m, mention] of mentions.entries()) {
@@ -215,7 +222,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     const at = `commitments[${n}]`, found = source(item?.source, at);
     if (found && item.from !== (item.reply === undefined ? speaker(found) : 'you, in your own earlier reply'))
       fault('commitment-attribution', at);
-    if (found && item.date !== dated(found)) fault('commitment-date-source', at);
+    if (found && !dated(item.date, found)) fault('commitment-date-source', at);
     if (found && item.message !== undefined && item.message !== clean(found.text, found.id)) fault('commitment-message-source', at);
     if (found && item.reply !== undefined && (item.reply !== replyFor(found) || item.answering !== clean(found.text, found.id)
       && !(found.thread !== turn.thread && item.answering === undefined)))
@@ -240,7 +247,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       if (metadata(found.account, found) !== item.account || metadata(found.id, found) !== item.sourceId
         || metadata(found.from, found) !== item.from || found.at === undefined) fault('channel-attribution', at);
       if (item.quote !== clean(found.text)) fault('channel-text-source', at);
-      if (item.date !== isoMinute(found.at)
+      if (!timeMatches(item.date, found.at)
         || item.subject !== undefined
         || item.conversation !== (found.conversation === undefined ? undefined : metadata(found.conversation, found)))
         fault('channel-metadata-source', at);
