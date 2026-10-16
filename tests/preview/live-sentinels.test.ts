@@ -449,6 +449,42 @@ it('observes every registered child without inbound turns; advancing work, waits
   } finally { w.close(); }
 });
 
+it.each([100, 500])('accepted %i-byte reminders retain observation of the request and an unrelated frozen child', async bytes => {
+  const quote = 'remind me today at 11 am to '.padEnd(bytes, 'x');
+  let observedAt = START;
+  const w = harness({ families: ['presence'], model: requestModel,
+    workActivity: () => [{ subject: 'frozen', at: observedAt, progress: 'unchanged', wait: null }] });
+  try {
+    w.worker.intake([update(1, quote)]); await w.worker.drain();
+    const requests = openRequests(w.journal.view);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.quote).toBe(quote);
+    const request = requests[0]!;
+    const id = `request:${createHash('sha256').update(JSON.stringify([request.source, request.quote, request.when])).digest('hex').slice(0, 16)}`;
+    w.journal.append({ kind: 'session-work', at: START, record: {
+      type: 'SessionWorkEdge', schemaVersion: 1, id: 'frozen', parent: 'launch', child: 'frozen',
+      scope: '/work', owner: 'machine-a', authority: 'grant:existing',
+      budget: { steps: 1, calls: 1, tokens: null, maxResultBytes: 1024, deadline: START + 600_000 },
+      exitTest: 'one result', placement: 'machine-a', transport: 'existing session',
+      resultDestination: '/work/result', openedAt: START,
+    } });
+    w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work).toMatchObject({ [id]: { state: 'waiting' }, frozen: { state: 'observing' } });
+    w.clock.now += WORK_SILENCE_MS; observedAt = w.clock.now;
+    w.sentinels.observeWork();
+    expect(w.sentinels.failures().presence).toBe(0);
+    expect(w.journal.view.sentinels?.work).toMatchObject({ [id]: { state: 'waiting' }, frozen: { state: 'stalled' } });
+    expect(Object.keys(w.journal.view.sentinels!.work!)).toHaveLength(2);
+    expect(w.effects).toEqual([]);
+    const recorded = structuredClone(w.journal.view.sentinels?.work);
+    w.reopen();
+    expect(w.journal.view.sentinels?.work).toEqual(recorded);
+    expect(openRequests(w.journal.view)).toEqual(requests);
+    w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work).toEqual(recorded);
+  } finally { w.close(); }
+});
+
 it('work observations remain advisory when recording fails and the off-switch records nothing', () => {
   const w = harness({ families: [] });
   try {

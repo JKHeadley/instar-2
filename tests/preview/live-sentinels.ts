@@ -136,6 +136,8 @@ export function workSilenceObservations(view: JournalView, now: number,
       && now - prior.observedAt < WORK_SILENCE_MS ? prior
       : { progress, lastProgressAt: Math.max(Math.min(openedAt, now), lastProgressAt), observedAt: now, state, detail: clip(detail) };
   };
+  // Keep the full request in the journal; share the promise observer's bounded, stable identity.
+  const requestIds = new Map(openRequests(view).map(item => [`request:${item.source}:${item.quote}`, requestId(item)]));
   for (const loop of openLoops(view, now)) {
     if (loop.owner !== 'agent') continue;
     const work = view.obligationWork[loop.id];
@@ -145,7 +147,7 @@ export function workSilenceObservations(view: JournalView, now: number,
         : work?.waitsOn ? `Waiting on ${work.waitsOn}.`
           : loop.nextAt !== null && loop.nextAt > now ? 'Waiting for its recorded work time.'
             : ['operator', 'external'].includes(loop.waitsOn) ? `Waiting on ${loop.waitsOn}.` : null;
-    observe(loop.id, loop.openedAt, work ? `${work.last}:${work.outcome ?? 'in-flight'}` : 'registered', wait, false, uncertain);
+    observe(requestIds.get(loop.id) ?? loop.id, loop.openedAt, work ? `${work.last}:${work.outcome ?? 'in-flight'}` : 'registered', wait, false, uncertain);
   }
   const edges = Object.values(view.activeSessionWork ?? {});
   for (const edge of edges) {
