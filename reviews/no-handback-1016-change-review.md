@@ -38,3 +38,6 @@ Prompt finding: e769ca9dd959 | protocol-literal | Test quotes the current instru
 Prompt finding: f6d7f3274c85 | protocol-literal | Test quotes the current instruction contract or normalizes historical prompt prose; no scenario answer or expected verdict is inserted as a trigger.
 Prompt finding: f871ac3c5651 | protocol-literal | Test quotes the current instruction contract or normalizes historical prompt prose; no scenario answer or expected verdict is inserted as a trigger.
 Prompt finding: feadb66b8ad1 | protocol-literal | Test quotes the current instruction contract or normalizes historical prompt prose; no scenario answer or expected verdict is inserted as a trigger.
+
+Publication: Regenerated the seven existing generated publication files from source commit b5a46be0e27d53e2f9d858f4ac7fe1d50eca7e8f using the existing replay generator with an exact --commit; no declaration, approval or conformance certificate changed.
+Deferral: generated/register.json:1 | not-a-deferral=Existing declarations are mechanically replayed; publication adds no deferred work.
