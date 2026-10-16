@@ -24,6 +24,9 @@ Prompt finding: 849db3a6296a | protocol-literal | Unchanged empty-memory literal
 Prompt finding: e8708c7fea24 | protocol-literal | Unchanged source-label instruction provides provenance guidance, not a desired completion verdict.
 Decision: completion-projection | Keep whole unfinished entries within the actual serialized UTF-8 packet budget and count omissions; retain every item for closure in the existing holder. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/run-complete-1016-repair-PROGRESS.md
 
+Validation: Completion consumers and recorded-shape replay passed 15/15; TypeScript passed. Native contract passed 9/10 before renewal (only the stale certificate assertion failed), then 10/10 after computed renewal of composition sha256:91edbaa93d31bd7fcef351cf1913fcd1cc019a81e079df212b26013d966110b4. Before/after JSON evidence is retained under the absolute lanes path in run-complete-1016-native-before.json and run-complete-1016-native-after.json.
+Publication: Delegated owner rehash and grounding repin found no changed pins; register replay binds source commit 8d78d859fa0498fdc2732ba467b6fb1ed9bb0bd4.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest route: bound only the existing worker projection and keep full journal accounting. Named failure is admitted checklist evidence growing beyond the packet cap and stranding runnable work. Existing admission, stop, resource, no-duplicate and full-checklist closure guards remain; the native claim uses its existing contract and computed composition. Unattended live created-work completion and delivery remain desk proof-room acceptance; no shipped-path autonomy claim is made here.
