@@ -85,15 +85,15 @@ it('keeps two months of job, city, partner and pet changes dated across summarie
     expect(attribute('city').map(item => [item.value, item.status])).toEqual([['Boston', 'historical'], ['Seattle', 'current']]);
     expect(attribute('partner').map(item => [item.value, item.status])).toEqual([['Maya', 'historical'], ['Maya', 'ended']]);
     expect(attribute('pet').map(item => [item.value, item.status])).toEqual([['Luna', 'historical'], ['Luna', 'ended']]);
-    expect(attribute('job')[1]).toMatchObject({ date: new Date((start + 38 * day) * 1000).toISOString().slice(0, 16) + 'Z',
+    expect(attribute('job')[1]).toMatchObject({ date: '2026-10-08 17:00 PDT',
       source: 'telegram:12345678:update:38' });
     expect(packet.capability).toContain('historical and ended values must never be stated as current');
     expect(packet.personAttributes.filter(item => item.status === 'current').map(item => item.value)).toEqual(['Seattle', 'Beta']);
     const question = "What is Sam Rivera's current job and city, and what is their history?";
     await w.say(66, question);
     const reply = w.journal.view.order.find(turn => turn.update === 66)?.intent;
-    expect(reply).toContain('Current: Beta (2026-10-09T00:00Z), Seattle (2026-09-21T00:00Z).');
-    expect(reply).toContain('Earlier: Acme (2026-09-02T00:00Z)');
+    expect(reply).toContain('Current: Beta (2026-10-08 17:00 PDT), Seattle (2026-09-20 17:00 PDT).');
+    expect(reply).toContain('Earlier: Acme (2026-09-01 17:00 PDT)');
     expect(reply).not.toContain('Current: Acme');
     await w.say(67, 'Sam Rivera now works at Gamma.');
     const fresh = w.worker.probe('What is Sam Rivera\'s current job?');

@@ -27,7 +27,7 @@ Prompt finding: e8708c7fea24 | protocol-literal | existing memory source-label g
 
 Prompt finding: 4106b49fff07 | protocol-literal | unchanged historical grounding instruction restored by the pre-existing topic-awareness packet-pin test, not a new model trigger.
 
-Validation: targeted packet/dispatch tests and repaired date expectations pass; typecheck, build, architecture, lint and register checks passed. Broader consumer evidence and host-specific limitations are recorded in the report.
+Validation: targeted packet/dispatch tests and repaired date expectations (including person-attribute history and trial-end context) pass; typecheck, build, architecture, lint and register checks passed. Broader consumer evidence and host-specific limitations are recorded in the report.
 
 Prompt finding: 450c79237a95 | protocol-literal | existing disambiguation instruction in the person-history test; only timestamp expectations changed.
 
