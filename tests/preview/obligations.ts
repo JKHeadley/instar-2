@@ -134,7 +134,9 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
     failedAttempts: attempts.reduce((sum, work) => sum + (work.failedAttempts ?? (work.outcome === 'failed' ? 1 : 0)), 0),
     lastProgressAt, progressAgeMs: lastProgressAt === null ? null : Math.max(0, now - lastProgressAt),
     state: recoveryUnknown ? 'stalled' : oldestAt === undefined ? 'idle' : now - oldestAt > PROGRESS_STALL_MS ? 'stalled' : 'progressing',
-    inhibition: oldestAt !== undefined || recoveryUnknown || future.length || awaitingDelivery || view.stop ? inhibition : null,
+    inhibition: oldestAt !== undefined || recoveryUnknown || future.length || awaitingDelivery || view.stop
+      ? inhibition ?? (recoveryUnknown && !waiting.length && !future.length && !awaitingDelivery && !requestsAt.length
+        ? 'work outcome unknown; reconciliation required' : null) : null,
     deliveryInhibition: awaitingDelivery ? `no grant for unsolicited sends; ${awaitingDelivery} finished ${awaitingDelivery === 1 ? 'result waits' : 'results wait'} for your next message` : null,
     correctionsWaiting: view.corrections.length };
 }

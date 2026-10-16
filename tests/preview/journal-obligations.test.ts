@@ -768,7 +768,7 @@ it('holds a live or unknown child without duplicate work, retains the halt acros
       stopped = false; await w.worker.workObligations();
       w.clock.now += 3 * LOOP_REVISIT_MS; await w.worker.workObligations();
       expect(w.work).toEqual([]);
-      expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ ownedWork: 1, recoveryUnknown: 1, state: 'stalled' });
+      expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ ownedWork: 1, recoveryUnknown: 1, state: 'stalled', inhibition: 'work outcome unknown; reconciliation required' });
       expect(loopStatusLines(w.journal.view, w.clock.now).join(' ')).toContain('automatic replay halted');
       w.journal.close();
       const again = world(root); again.clock.now = w.clock.now;
