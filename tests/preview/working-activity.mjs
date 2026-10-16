@@ -45,7 +45,7 @@ export function admissionActivity(bytes, offset, claim) {
   const text = `Status: ${running ? '' : 'latest step — '}${detail.replace(/\s+/gu, ' ')}`;
   // Do not cut a credential before the existing exact outbound wall can inspect it.
   if (text.length > 280) return null;
-  return { step: createHash('sha256').update(`${claim}:${row.id}:${row.input}`).digest('hex'), text };
+  return { step: createHash('sha256').update(`${claim}:${row.id}:${row.input}`).digest('hex'), text, running: running !== undefined };
 }
 
 export function createWorkingActivities({ read, now }) {
@@ -63,7 +63,7 @@ export function createWorkingActivities({ read, now }) {
     },
     current(operation) {
       const state = active.get(operation);
-      if (!state || state.observedAt === null || now() - state.observedAt > 10_000) return null;
+      if (!state || state.observedAt === null || state.observedAt > now() || now() - state.observedAt > 10_000) return null;
       const activity = admissionActivity(read(state.claim), state.offset, state.claim);
       return activity ? { ...activity, observedAt: state.observedAt } : null;
     },

@@ -119,10 +119,12 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     expect(sent).toContain('Noted.');
     expect(sent).not.toContain(TOKEN);
     const sends = readFileSync(`${log}.sends`, 'utf8').trim().split('\n').map(line => JSON.parse(line));
-    expect(sends.filter(row => row.text === 'Checking that now.')).toHaveLength(acknowledgementDue && fallback ? 2 : 0);
+    expect(sends.filter(row => row.text === 'I got your message.')).toHaveLength(acknowledgementDue && fallback ? 2 : 0);
     // Both messages arrived together; the second also waited through the slow first turn.
-    expect(new Set(sends.filter(row => row.text === 'Checking that now.').map(row => row.reply_parameters.message_id)).size).toBe(acknowledgementDue && fallback ? 2 : 0);
+    expect(new Set(sends.filter(row => row.text === 'I got your message.').map(row => row.reply_parameters.message_id)).size).toBe(acknowledgementDue && fallback ? 2 : 0);
     const actions = existsSync(`${log}.actions`) ? readFileSync(`${log}.actions`, 'utf8').trim().split('\n').map(line => JSON.parse(line)) : [];
+    // This ordinary call fixture supplies no admitted live tool evidence, even while it is slow.
+    expect(actions.filter(row => row.method === 'sendChatAction')).toHaveLength(0);
     const reactions = actions.filter(row => row.method === 'setMessageReaction');
     expect(reactions).toHaveLength(acknowledgementDue ? 2 : 0);
     expect(new Set(reactions.map(row => row.message_id)).size).toBe(acknowledgementDue ? 2 : 0);
@@ -146,7 +148,7 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
       inherited: { state: 'observed', effectivePerLaunch: { handleCount: expect.any(Number) } },
       counters: { admitted: seen.trim().split('\n').length * 2, refusedCapacity: 0 } }); // each actual call launches its model command and no-prompt check; shutdown can retain an unlaunched reservation
     expect(status.calls).toBeGreaterThanOrEqual(seen.trim().split('\n').length);
-    expect(seen).not.toContain('Checking that now.'); // fixed template never reaches a model review
+    expect(seen).not.toContain('I got your message.'); // fixed template never reaches a model review
     expect(status.resources.counters.admitted).toBeGreaterThanOrEqual(2);
     // Each launch's bounds are declared by what the host holds, and its facts are durable in the journal.
     expect(status.resources.enforcement).toEqual({ cpuPerProcess: 'hard', handlesPerProcess: 'hard', memory: 'sampled', treeCpu: 'sampled',
