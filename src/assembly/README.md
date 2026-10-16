@@ -217,6 +217,18 @@ hook; its inbox is shared only with the worker identity. A hook is worker lifecy
 not proof of tool completion, reply delivery, or independent authenticity against a malicious
 worker. The existing tool and outward effect owners still decide those facts.
 
+A context-limit pause on an accepted single input carries its exact reason to the owner.
+Once per input, with known send outcomes, no tool effect since dispatch, no open child work
+and remaining call allowance, it tries idle compaction for at most 30 seconds. The compact
+hook restores the full permitted pending envelope and its last inbound identity. A verified
+compact receipt continues that answer in the same worker. A recorded compaction failure
+retires the exact old worker and verifies resource cleanup before admitting a fresh worker
+with the same input, original deadline and remaining cumulative allowance. Both paths retain
+durable continuation intent before submission and add a transition disclosure only to a
+nonempty decoded answer. Missing history, uncertain submission, unknown/busy terminal state,
+policy refusal, active stop and repeated context triggers retain uncertainty without replay.
+This recovery uses the current conversation owner on its owning machine; it creates no service.
+
 At a process ceiling, exit or changed verified grant, the host retires the old process and
 admits a replacement, delivering the current journal-prepared history/clock/work packet.
 Vendor transcript resume is not required. Signed activation changes are revalidated at

@@ -18,7 +18,7 @@ const RECORDED = JSON.parse(readFileSync(join(__dirname, 'fixtures/model-gate-re
 const closers: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of closers.splice(0)) await close(); });
 
-async function world(options: { stopped?: () => boolean } = {}) {
+async function world(options: { stopped?: () => boolean; held?: () => string } = {}) {
   // The stand-in provider: records what it received and answers with a small streamed body.
   const received: [string, string, string][] = [];
   const upstream: Server = createServer((req: IncomingMessage, res) => {
@@ -32,6 +32,7 @@ async function world(options: { stopped?: () => boolean } = {}) {
   const rows: unknown[] = [];
   const stopped = options.stopped ?? (() => false);
   const gate = await createAdmissionGate({ append: (row: unknown) => rows.push(row), stopped, now: () => 5,
+    ...(options.held ? { held: options.held } : {}),
     effects: createToolEffectOwner({ decide: (tool: string, input: unknown) => admitToolCallEffect(tool, input, { operations: [] }, Date.now()),
       append: (row: unknown) => rows.push(row), stopped, now: () => 5, prepared: () => false }),
     upstreams: { 'claude-code': { host: '127.0.0.1', port, secure: false }, 'codex-cli': { host: '127.0.0.1', port, secure: false } } });
@@ -108,6 +109,21 @@ it('names a consequential tool by its exact operation and renders its input cano
   expect(toolOperation('mcp__threadline__threadline_send')).toBe('mcp:threadline:threadline_send');
   expect(toolOperation('Bash')).toBe('tool:Bash');
   expect(canonical({ b: 1, a: [{ d: 2, c: 3 }] })).toBe(canonical({ a: [{ c: 3, d: 2 }], b: 1 }));
+});
+
+it('exposes unfinished effects and retains the prepared count after completion for context recovery', async () => {
+  const w = await world({ held: () => 'clear' });
+  w.gate.open('claim-effects', { framework: 'claude-code', allowance: 3, edge: w.edge });
+  const url = `${w.gate.base('claim-effects')}/admit`;
+  const call = { kind: 'effect', phase: 'pre', tool_name: 'webrun', tool_use_id: 'read-1', tool_input: { open: [{ ref_id: 'https://8.8.8.8/' }] } };
+  expect(w.gate.state('claim-effects')).toMatchObject({ uncertainEffects: 0, effectsPrepared: 0 });
+  const admitted = JSON.parse((await w.send(url, 'POST', JSON.stringify(call))).body);
+  expect(admitted, admitted.reason).toMatchObject({ decision: 'allow' });
+  expect(w.gate.state('claim-effects')).toMatchObject({ uncertainEffects: 1, effectsPrepared: 1 });
+  expect(JSON.parse((await w.send(url, 'POST', JSON.stringify(call))).body).decision).toBe('deny');
+  expect(w.gate.state('claim-effects')).toMatchObject({ uncertainEffects: 1, effectsPrepared: 1 });
+  expect(JSON.parse((await w.send(url, 'POST', JSON.stringify({ ...call, phase: 'post', result_bytes: 5 }))).body).decision).toBe('allow');
+  expect(w.gate.state('claim-effects')).toMatchObject({ uncertainEffects: 0, effectsPrepared: 1 });
 });
 
 it('persists conversation charges before forwarding and refuses a failed durable reservation', async () => {

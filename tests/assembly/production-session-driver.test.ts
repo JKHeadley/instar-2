@@ -81,6 +81,8 @@ function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: 
     onPrepared: (callback: () => void) => { onPrepared = callback; },
     hook: (at: number) => { hooks = [...hooks, { kind: 'turn-closed', sessionId: '12345678-1234-1234-1234-123456789abc',
       at, receiptId: `receipt-${hooks.length + 1}` }]; },
+    compactHook: (at: number) => { hooks = [...hooks, { kind: 'compact', sessionId: '12345678-1234-1234-1234-123456789abc',
+      at, receiptId: `compact-${hooks.length + 1}` }]; },
     markPrepared: () => { journal = { ...journal, deliveries: journal.deliveries.map(row => ({ ...row, state: 'prepared' })) }; },
     stop: () => { stopped = true; }, time: (value: number) => { now = value; }, config };
 }
@@ -516,7 +518,7 @@ it('recovers a delivered no-hook context failure, then respawns after failed com
   expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('pause-observed');
   expect(f.journal.sessions[0]?.turnDeadline).toBeNull();
   expect(value(f.driver.recoverContext(id))).toBe('compact-requested');
-  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('pause-observed');
+  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('launched');
   expect(f.journal.sessions[0]?.turnDeadline).not.toBeNull();
   refused(f.driver.recoverContext(id), 'idle prompt');
   f.changePane('error during compaction: too long\n› ');
@@ -528,7 +530,8 @@ it('recovers a delivered no-hook context failure, then respawns after failed com
 it('refuses context recovery while the failed turn is still busy', () => {
   const f = fixture(), id = f.launch(); value(f.deliver(id));
   f.changePane('conversation is too long\n❯ hello\n✻ Working… (esc to interrupt)');
-  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('pause-observed');
+  // A context signal during work cannot begin idle compaction.
+  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('launched');
   refused(f.driver.recoverContext(id), 'idle prompt');
   expect(f.journal.sessions[0]?.turnDeadline).not.toBeNull();
 });
@@ -691,7 +694,7 @@ function journalDriverConfiguration(conversationSession: boolean, base: ReturnTy
     binding: { entry: () => ({ profile: { executable: base.executable, home: base.home, configDirectory: base.configHome } }),
       physical: () => ({ ...base.io, inboxDirectory: '/fixture/inbox' }), stopped: base.stopped },
     required: () => 'fixture-model', options: {}, context: base.context, wallNow: base.now, handoff: null,
-    workActivity: new Map(), fileURLToPath: () => '/fixture/stop.mjs', URL,
+    contextGrounding: () => '/fixture/grounding.txt', workActivity: new Map(), fileURLToPath: () => '/fixture/stop.mjs', URL,
   };
   // import.meta.url is only used to resolve the lifecycle hook's physical script path.
   const source = body.replaceAll('import.meta.url', JSON.stringify(import.meta.url));
@@ -716,4 +719,113 @@ it.each([3600, 3601])('holds the admission hook boundary at %s seconds', timeout
     toolAdmission: { ...config.toolAdmission!, timeoutSeconds } });
   if (timeoutSeconds === 3600) expect(build).not.toThrow();
   else expect(build).toThrow('bounded admission hook required');
+});
+
+it('recognizes the captured context wall and quiet prompt from proof update 1016001', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/context-wall-worker-1016001-2026-10-16.json', import.meta.url), 'utf8'));
+  expect(recorded.source.updateIds).toEqual([1016001, 1016002]);
+  expect(recorded.deliveredAnswer).toBeNull();
+  expect(classifyStuckSignature(recorded.wall.stdout)).toBe('context-too-long');
+  expect(classifyPaneIdle(recorded.wall.stdout, 'claude-code')).toBe(true);
+  expect(classifyPaneIdle(recorded.transientWall.stdout, 'claude-code')).toBe(false);
+  expect(classifyPaneIdle(recorded.compactFailure.stdout, 'claude-code')).toBe(true);
+  expect(classifyPaneIdle(`${recorded.wall.stdout}\nesc to interrupt`, 'claude-code')).toBe(false);
+});
+
+it('replays the captured wall through adapter compact control before requesting owner retirement', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/context-wall-worker-1016001-2026-10-16.json', import.meta.url), 'utf8'));
+  const f = fixture('claude-code', { requireTurnHook: true });
+  let delivery: import('../../src/assembly/contracts.js').HarnessInputDelivery | undefined;
+  const adapter = createSessionConversationAdapter({
+    createDriver: resolveIntake => createProductionSessionDriver({ ...f.config, resolveIntake,
+      continuation: ({ operation, pendingDigest }) => ({ text: resolveIntake(operation, pendingDigest!), source: 'journal:1016001' }) }),
+    resolveDelivery: () => delivery,
+    io: { clearResult: () => {}, readResult: () => null, modelCalls: () => 1,
+      wait: async ms => f.time(f.config.now() + ms), prepareAdmission: () => {}, closeAdmission: () => {},
+      admissionState: () => ({ refused: false, uncertainEffects: 0, openDelegations: [] }) },
+  });
+  const worker = await adapter.launch({ operation: 'claim', claim: 'topic', artifact: 'sha256:test', incarnation: 'inc', workingScope: '/work' });
+  delivery = { ...worker, operation: 'telegram:12345678:update:1016001', text: 'copper finch', digest: hash('copper finch'), resultPath: '/work/answer', maxBytes: 4096 };
+  await adapter.deliver(delivery);
+  f.changePane(recorded.wall.stdout);
+  expect((await adapter.observe({ ...worker, delivery, cursor: 0, limit: 16 })).observations)
+    .toEqual([{ kind: 'paused', evidence: worker.launch, reason: 'context-too-long' }]);
+  f.onEnter(() => f.changePane(recorded.compactFailure.stdout));
+  const result = await adapter.control({ ...worker, action: 'compact', authority: 'role', reason: 'context-too-long', delivery, deadline: 1900 });
+  expect(result.state).toBe('replace-required');
+  expect(f.calls.filter(call => call.includes('/compact'))).toHaveLength(1);
+  expect(f.calls.filter(call => call[0] === 'kill-session')).toHaveLength(0);
+  expect(f.journal.deliveries).toHaveLength(1);
+  expect(f.journal.sessions[0]?.continuation).toMatchObject({ state: 'prepared', pending: { operation: delivery.operation, deadline: 1900 } });
+});
+
+it.each(['busy', 'unknown', 'menu', 'policy', 'rate', 'stop', 'history', 'uncertain', 'deadline'] as const)(
+  'never compacts or replaces an unsafe context recovery neighbor: %s', mode => {
+    const f = fixture(), identity = f.launch(); value(f.deliver(identity));
+    f.changePane('conversation is too long\n❯ ');
+    value(f.driver.observe({ operation: 'deliver', processIdentity: identity }));
+    if (mode === 'busy') f.changePane('conversation is too long\nesc to interrupt\n❯ ');
+    if (mode === 'unknown') f.changePane('unknown terminal frame');
+    if (mode === 'menu') f.changePane('❯ 1. Yes\n2. No');
+    if (mode === 'policy') f.changePane('appears to violate our Usage Policy\nappears to violate our Usage Policy\n❯ ');
+    if (mode === 'rate') f.changePane("You've hit your limit\n❯ ");
+    if (mode === 'stop') f.stop();
+    if (mode === 'uncertain') f.markPrepared();
+    const driver = mode === 'history' ? createProductionSessionDriver({ ...f.config, continuation: undefined }) : f.driver;
+    expect(driver.recoverContext(identity, { operation: 'deliver', digest: hash('hello'), deadline: mode === 'deadline' ? 999 : 1900 }).kind).toBe('Refused');
+    expect(f.calls.some(call => call.includes('/compact'))).toBe(false);
+    expect(f.calls.filter(call => call[0] === 'new-session')).toHaveLength(1);
+    expect(f.calls.filter(call => call[0] === 'kill-session')).toHaveLength(mode === 'stop' ? 1 : 0);
+  });
+
+it('restores only after exact retirement, submits once without blocking the checkpoint, and retains the deadline', () => {
+  const f = fixture('claude-code', { requireTurnHook: true }), old = f.launch(); value(f.deliver(old));
+  const pending = { operation: 'deliver', digest: hash('hello'), deadline: 1900 };
+  f.changePane('conversation is too long\n❯ ');
+  value(f.driver.observe({ operation: 'deliver', processIdentity: old }));
+  expect(value(f.driver.recoverContext(old, pending))).toBe('compact-requested');
+  f.changePane('❯ /compact\nNot enough messages to compact.\n❯ ');
+  expect(value(f.driver.recoverContext(old, pending))).toBe('replace-required');
+  const next = { operation: 'next', claim: 'topic-next', artifact: 'sha256:test', incarnation: 'next', workingScope: '/work', handles: [], restore: pending };
+  refused(f.driver.launch(next), 'retired original worker');
+  value(f.driver.stop({ claim: 'topic', incarnation: 'inc', processIdentity: old })); f.changePane('❯ ');
+  const identity = value(f.driver.launch(next));
+  expect(identity).not.toBe(old);
+  expect(f.journal.sessions.at(-1)).toMatchObject({ turnDeadline: 1900, continuation: { state: 'accepted', pending } });
+  const submits = f.calls.filter(call => call.some(word => word.includes('Context recovery for last inbound deliver')));
+  expect(submits).toHaveLength(1);
+  expect(value(f.driver.launch(next))).toBe(identity);
+  refused(f.driver.launch({ ...next, operation: 'third', claim: 'topic-third', incarnation: 'third' }), 'already submitted');
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('launched');
+  f.time(1001); f.hook(1001);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('output-observed');
+  expect(f.journal.sessions.at(-1)?.continuation?.state).toBe('completed');
+});
+
+it('resumes the same worker only with a fresh compact receipt and a quiet prompt', () => {
+  const f = fixture('claude-code', { requireTurnHook: true }), identity = f.launch(); value(f.deliver(identity));
+  const pending = { operation: 'deliver', digest: hash('hello'), deadline: 1900 };
+  f.compactHook(999);
+  f.changePane('Prompt is too long\n❯ ');
+  value(f.driver.observe({ operation: 'deliver', processIdentity: identity }));
+  expect(value(f.driver.recoverContext(identity, pending))).toBe('compact-requested');
+  f.changePane('Conversation compacted\n❯ ');
+  expect(value(f.driver.recoverContext(identity, pending))).toBe('compacting');
+  f.time(1001); f.compactHook(1001); f.changePane('Working…\nesc to interrupt\n❯ ');
+  expect(value(f.driver.recoverContext(identity, pending))).toBe('compacting');
+  f.changePane('Conversation compacted\n❯ ');
+  expect(value(f.driver.recoverContext(identity, pending))).toBe(identity);
+  expect(f.journal.sessions[0]).toMatchObject({ turnDeadline: 1900, continuation: { state: 'accepted', pending } });
+  expect(f.calls.filter(call => call[0] === 'new-session')).toHaveLength(1);
+  refused(f.driver.recoverContext(identity, pending), 'already submitted');
+  expect(f.journal.deliveries).toHaveLength(1);
+});
+
+it('a correlated completed turn takes precedence over context-wall words left in the pane', () => {
+  const f = fixture('claude-code', { requireTurnHook: true }), identity = f.launch(); value(f.deliver(identity));
+  f.changePane('The previous error was: Prompt is too long\n❯ ');
+  f.time(1001); f.hook(1001);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('output-observed');
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('output-observed');
+  expect(f.calls.some(call => call.includes('/compact'))).toBe(false);
 });

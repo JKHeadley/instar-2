@@ -165,6 +165,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       const verdict = effects.admit({ parent: state.edge, tool, input: call.tool_input ?? null, call: id });
       const record = verdict.doorway ? { doorway: verdict.doorway } : {};
       if (!verdict.admitted) return { decision: 'deny', reason: verdict.reason, ...record };
+      state.effectsPrepared++;
       state.effects.set(id, { identity: verdict.identity, operation: verdict.operation, digest: verdict.digest });
       return { decision: 'allow', reason: verdict.reason, ...record };
     }
@@ -229,7 +230,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     open(claim, { framework, allowance, edge, reserveCall }) {
       if (!claimPattern.test(claim) || !upstreams[framework] || !Number.isSafeInteger(allowance) || allowance < 1 || !edge?.id)
         throw Error('admission gate: claim, framework, allowance and edge required');
-      claims.set(claim, { framework, allowance, edge, reserveCall, calls: 0, refused: false, closed: false, delegations: new Map(), effects: new Map() });
+      claims.set(claim, { framework, allowance, edge, reserveCall, calls: 0, refused: false, closed: false, delegations: new Map(), effects: new Map(), effectsPrepared: 0 });
     },
     /** Closes a claim: no further call or admission passes. Returns its final state. */
     close(claim) { const state = claims.get(claim); if (state) state.closed = true; return this.state(claim); },
@@ -237,6 +238,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     state(claim) {
       const state = claims.get(claim);
       return state ? { calls: state.calls, refused: state.refused, closed: state.closed,
+        uncertainEffects: state.effects.size, effectsPrepared: state.effectsPrepared,
         openDelegations: [...state.delegations.values()].filter(row => row.open).map(row => row.edge) } : null;
     },
     /** Marks a still-open child edge settled by its parent (the parent closes it, never this server). */

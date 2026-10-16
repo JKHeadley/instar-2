@@ -35,7 +35,7 @@ export function createSessionConversationAdapter(config: Readonly<{
       const observed = take(driver.observe({ operation: input.delivery?.operation ?? input.claim, processIdentity: input.launch }));
       let events: ConversationObservation[] = [];
       if (observed.phase === 'exit-observed') events = [{ kind: 'exit', evidence: observed.evidence }];
-      else if (observed.phase === 'pause-observed' || observed.phase === 'uncertain') events = [{ kind: 'paused', evidence: observed.evidence }];
+      else if (observed.phase === 'pause-observed' || observed.phase === 'uncertain') events = [{ kind: 'paused', evidence: observed.evidence, reason: observed.detail }];
       else if (input.delivery && observed.phase === 'output-observed' && observed.evidence.startsWith('turn-closed:')) {
         const text = config.io.readResult(input.delivery.resultPath, input.delivery.maxBytes);
         ensure(text === null || Buffer.byteLength(text) <= input.delivery.maxBytes, 'conversation result exceeds byte bound');
@@ -48,7 +48,20 @@ export function createSessionConversationAdapter(config: Readonly<{
       return { observations: batch, cursor: input.cursor + batch.length, complete: true };
     },
     control: async input => {
-      if (input.action === 'compact') return { state: 'refused', evidence: 'use grounded replacement; in-place compaction unsupported' };
+      if (input.action === 'compact') {
+        if (!driver.recoverContext || !input.delivery || input.deadline === undefined)
+          return { state: 'refused', evidence: 'context recovery requires the exact accepted delivery and deadline' };
+        const pending = { operation: input.delivery.operation, digest: input.delivery.digest, deadline: input.deadline };
+        // Await through the host IO: the model checkpoint must keep serving during compaction.
+        for (let attempt = 0; attempt < 300; attempt++) {
+          const next = take(driver.recoverContext(input.launch, pending));
+          if (next === 'replace-required') return { state: 'replace-required', evidence: 'idle compaction failed' };
+          if (next === input.launch) return { state: 'resumed', evidence: 'compaction receipt and pending continuation submitted' };
+          ensure(next === 'compact-requested' || next === 'compacting', 'unexpected context recovery state');
+          await config.io.wait(100);
+        }
+        return { state: 'refused', evidence: 'bounded compaction produced no verified idle result' };
+      }
       take(driver.stop({ claim: input.claim, incarnation: input.incarnation,
         ...(input.launch ? { processIdentity: input.launch } : {}) }));
       return { state: 'closed', evidence: input.reason };

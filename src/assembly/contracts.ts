@@ -253,15 +253,15 @@ export interface HarnessInputDelivery extends HarnessWorkerHandle {
 export type HarnessNormalizedObservation =
   | Readonly<{ kind: 'reply'; delivery: string; text: string; digest: string }>
   | Readonly<{ kind: 'turn-end'; delivery: string; state: 'completed' | 'no-reply' | 'uncertain' }>
-  | Readonly<{ kind: 'exit' | 'paused'; evidence: string }>;
+  | Readonly<{ kind: 'exit' | 'paused'; evidence: string; reason?: string }>;
 interface ContinuingHarnessAdapterPort {
   describe(): Readonly<{ version: 2; subsequentInput: true; output: 'reply-and-turn-end'; resume: boolean }>;
-  launch(input: Readonly<{ operation: string; claim: string; artifact: string; incarnation: string; workingScope: string }>): Promise<HarnessWorkerHandle>;
+  launch(input: Readonly<{ operation: string; claim: string; artifact: string; incarnation: string; workingScope: string; restore?: { operation: string; digest: string; deadline: number } }>): Promise<HarnessWorkerHandle>;
   deliver(input: HarnessInputDelivery): Promise<Readonly<{ state: 'accepted' | 'busy-not-dispatched' | 'refused-not-dispatched' | 'uncertain'; evidence: string }>>;
   observe(input: HarnessWorkerHandle & Readonly<{ delivery: HarnessInputDelivery | null; cursor: number; limit: number }>): Promise<Readonly<{
     observations: readonly HarnessNormalizedObservation[]; cursor: number; complete: boolean }>>;
-  control(input: HarnessWorkerHandle & Readonly<{ action: 'interrupt' | 'close' | 'compact'; authority: string; reason: string }>): Promise<Readonly<{
-    state: 'closed' | 'refused' | 'uncertain'; evidence: string }>>;
+  control(input: HarnessWorkerHandle & Readonly<{ action: 'interrupt' | 'close' | 'compact'; authority: string; reason: string; delivery?: HarnessInputDelivery; deadline?: number }>): Promise<Readonly<{
+    state: 'closed' | 'refused' | 'uncertain' | 'resumed' | 'replace-required'; evidence: string }>>;
 }
 
 export interface PersistenceReceipt { readonly owner: 'part-ten'; readonly store: string; readonly position: string; readonly bytesDigest: Hash; readonly physicalHead: Hash; readonly durability: 'local-durable' }

@@ -8,7 +8,7 @@ import type { AssemblyDecodeContext, ContextDeliverySpecification, HarnessAdapte
 
 export interface NativeHarnessDriverPort {
   readonly owner: 'part-eight';
-  launch(input: Readonly<{ operation: string; claim: string; artifact: string; incarnation: string; workingScope: string; handles: readonly string[] }>): import('../index.js').Result<string>;
+  launch(input: Readonly<{ operation: string; claim: string; artifact: string; incarnation: string; workingScope: string; handles: readonly string[]; restore?: { operation: string; digest: string; deadline: number } }>): import('../index.js').Result<string>;
   deliver(input: Readonly<{ operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }>): import('../index.js').Result<string>;
   observe(input: Readonly<{ operation: string; processIdentity: string }>): import('../index.js').Result<Readonly<{ phase: HarnessObservation['phase']; evidence: string; detail: string }>>;
   /** Optional durable-intake recovery. Only a driver that can prove non-arrival may resend. */

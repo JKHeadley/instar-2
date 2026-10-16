@@ -84,7 +84,7 @@ export function sessionWorkEffect(input: Omit<SessionWorkEffect, 'type' | 'schem
  * is `failed`, and an interrupted or unobservable one is `uncertain` — never a guessed answer. */
 export interface SessionWorkOutcome {
   readonly state: 'complete' | 'uncertain' | 'failed';
-  readonly text?: string; readonly detail: string;
+  readonly text?: string; readonly detail: string; readonly contextRecovery?: string;
   readonly edge: string; readonly child: string | null;
 }
 /** The physical boundary this port needs; the core reaches no disk, clock or timer itself. */
@@ -106,7 +106,7 @@ export interface SessionWorkIO {
   prepareAdmission(claim: string, edge: SessionWorkEdge): void | Promise<void>;
   /** The checkpoint's view of the claim: whether a call past the allowance was refused, and the child edges still
    * open. Null when unread. */
-  admissionState(claim: string): Readonly<{ refused: boolean; openDelegations: readonly SessionWorkEdge[] }> | null;
+  admissionState(claim: string): Readonly<{ refused: boolean; uncertainEffects?: number; effectsPrepared?: number; openDelegations: readonly SessionWorkEdge[] }> | null;
   /** Closes the claim at the checkpoint: no further model call or admission of the child passes. */
   closeAdmission(claim: string): void;
   /** Resolves after at least `ms`, without blocking the host's timers. */
@@ -122,7 +122,7 @@ export interface SessionWorkLease {
 export interface SessionWorkConfig {
   /** The session driver this port delegates through, built with `resolveIntake` below. */
   readonly createDriver: (resolveIntake: (intake: string, digest: string) => string) => NativeHarnessDriverPort
-    & Readonly<{ stop(input?: Readonly<{ claim: string; incarnation: string; processIdentity?: string }>): Result<readonly string[]> }>;
+    & Readonly<{ recoverContext?(identity: string, pending?: { operation: string; digest: string; deadline: number }): Result<string>; stop(input?: Readonly<{ claim: string; incarnation: string; processIdentity?: string }>): Result<readonly string[]> }>;
   readonly io: SessionWorkIO;
   /** The host's one resource owner. `null` from `admit` is a capacity refusal. */
   readonly resources: Readonly<{ admit(): Promise<SessionWorkLease | null> }>;

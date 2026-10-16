@@ -452,6 +452,15 @@ it.each(recorded.records)('collects recorded frame $frame into the same consumer
 
 const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
   otherShapes: { kind: string; id: string; raw: string }[] };
+it.each(shapes.otherShapes.filter(row => row.kind === 'delivered-reply' || row.kind === 'empty-reply-in-recorded-context'))(
+  'discloses context recovery for recorded $kind ($id) only after a nonempty decoded answer', row => {
+    const outcome = { state: 'complete' as const, text: JSON.stringify({ reply: row.raw, memory: [] }), detail: 'correlated reply',
+      edge: 'edge', child: 'worker', contextRecovery: row.id };
+    const answer = conversationSessionAnswer(outcome, row.id, () => { throw Error('unexpected malformed answer'); });
+    expect(answer).toMatchObject({ state: 'complete', text: JSON.stringify({ reply: row.kind === 'empty-reply-in-recorded-context'
+      ? row.raw : `I restored this conversation after a context limit and continued your last message.\n\n${row.raw}`, memory: [] }) });
+    expect(conversationSessionAnswer({ ...outcome, state: 'uncertain' }, row.id, () => {})).toEqual({ state: 'uncertain' });
+  });
 it.each(shapes.otherShapes)('keeps recorded $kind ($id) in the original packet across deferred collection', async row => {
   const f = fixture();
   try {
