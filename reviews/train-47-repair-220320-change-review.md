@@ -18,11 +18,13 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains sample files only.
 Convergence: none
-Decision: train47-preserve-main-and-candidate | Preserve both promotion histories and the candidate's compact briefing structure while importing main's approved constitutional excerpt and conversion pin; preserve main's distinct deadline-import review in a separate file. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-47-repair-220320-PROGRESS.md
+Decision: train47-preserve-main-and-candidate | Preserve both promotion histories and the candidate's compact briefing structure while importing main's approved constitutional excerpt and a computed conversion pin for the combined anchor; preserve main's distinct deadline-import review in a separate file. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-47-repair-220320-PROGRESS.md
 Prompt review: No new prompt policy, parser or model judgment branch is authored. Import the already-approved constitutional coherency excerpt and its pin without changing candidate briefing assembly. Real live journals are unavailable from this host; this integration makes no new claim about model behavior.
 Prompt finding: 4b98dc2a1b9f | quoted-evidence | Existing capability text describes the actual tool set; the fixture asserts that description and introduces no intent trigger.
 Prompt finding: 95e349aaf4ac | quoted-evidence | Existing capability description quotes the authorization boundary; this merge adds no keyword decision or expected dispatch verdict.
 Deferral: generated/conversion.json:1 | not-a-deferral=Generated conversion metadata carries existing governed text, not a new deferred commitment.
+
+Decision: train47-derive-merged-pins | Compute the exact compact constitutional excerpt digest and canonical merged-anchor digest from their bytes; main uses a longer excerpt and older schema, so its pins cannot identify the combined inputs. Regenerate publication through the existing replay builder. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-47-repair-220320-PROGRESS.md
 
 ## Closing block
 
