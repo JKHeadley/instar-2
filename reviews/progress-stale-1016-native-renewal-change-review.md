@@ -14,8 +14,8 @@ Side effects: One conformance declaration changes from the old composition diges
 Undo and recovery: Revert the declaration and generated refresh together with the corresponding source repair, or run the named contract on another intended composition before renewing its declaration. A digest is never updated merely to silence lint.
 Multi-machine posture: This certificate is explicitly for the existing darwin tuple and resolved Node runtime. Other platforms and doorway declarations remain unchanged; no new store or replication behavior.
 Layer below: Existing compositionClosure/compositionDigest/currentRuntime implementation; all 267 resolved composition files and their before/after digest; native full-port contract through the actual owners, confined launches and installed capability; architecture's R105 recomputation; register replay generator.
-Bug class: integration
-Bug evidence: reproducer=tests/preview/native-harness-contract.test.ts
+Bug class: none
+Bug evidence: none
 Hook bypass: none
 Convergence: none
 Decision: progress-stale-native-renewal | The desk's explicit READY-gate repair request assigns this formerly desk-owned renewal here. Run the named contract first and verify unchanged composition/runtime before changing the certificate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/progress-stale-1016-PROGRESS.md
