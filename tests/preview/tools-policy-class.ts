@@ -14,7 +14,7 @@
 // and needs a new verified approval. Tool names are not part of the class: offering more or fewer tools behind the same
 // hook changes ability, not a checkpoint. The stop is the runner's, outside every policy, and no policy can remove it.
 import { encoded } from '../../src/assembly/boundary.js';
-import { SUBSCRIPTION_DOORWAYS, subscriptionToolSettings, SUBSCRIPTION_TOOLS_FRAMING } from '../../src/assembly/production-provider.js';
+import { SUBSCRIPTION_DOORWAYS, subscriptionToolSettings, SUBSCRIPTION_SESSION_FRAMING, SUBSCRIPTION_TOOLS_FRAMING } from '../../src/assembly/production-provider.js';
 import { CODEX_TOOLS_FRAMING, codexToolHookArgs } from '../../src/assembly/production-codex-provider.js';
 
 /** The one class a standing full-tools grant may name. A changed meaning is a new class id, never an edit of this one. */
@@ -184,9 +184,44 @@ export function guidanceOnlyPolicyPins(policy: unknown): string {
     JSON.parse(subscriptionToolSettings({ ...PROBE, ...(egress ? { egress } : {}) }, PROBE_HOME))) }) as { hash: string }).hash;
 }
 
-/** Whether `policy` (the build's own tools policy, whose canonical digest must be `digest`) lies in `policyClass`. */
+/** Observer #392: a new disposition permits only capacity admission and warm-worker retention.
+ * Every other field, including unknown additions, stays in the sealed projection. Existing
+ * digest grants and tools classes retain their meaning (Rules 18/60/90/104). */
+export const CONVERSATION_LIMITS_CLASS = 'conversation-capacity-limits-v1';
+const CONVERSATION_VARIABLE_LIMITS = ['maxSessions', 'deadlineMs', 'idleMs',
+  'minCpuIdlePercent', 'minFreeMemoryBytes', 'minFreeMemoryFraction'] as const;
+export function conversationLimitsPolicyPins(policy: unknown): string {
+  const p = record(policy);
+  if (p.framing !== SUBSCRIPTION_SESSION_FRAMING
+    || !p.limits || typeof p.limits !== 'object' || Array.isArray(p.limits)
+    || !Object.hasOwn(p.limits, 'maxSessions') || !Object.hasOwn(p.limits, 'idleMs'))
+    throw Error('not a Claude conversation-session policy');
+  const limits = { ...record(p.limits) };
+  for (const field of CONVERSATION_VARIABLE_LIMITS) delete limits[field];
+  return (encoded({ ...p, limits }) as { hash: string }).hash;
+}
+
+/** Whether the build's own policy, whose full canonical digest must be `digest`, lies in the sealed class. */
 export function toolsPolicyClassVerdict(policyClass: unknown, policy: unknown, digest: string, pins?: unknown): ToolsClassVerdict {
   const outside = (reason: string): ToolsClassVerdict => ({ kind: 'outside', reason });
+  if (policyClass === CONVERSATION_LIMITS_CLASS) {
+    try {
+      if ((encoded(policy) as { hash: string }).hash !== digest) return outside('the presented policy is not the one the activation names');
+      if (typeof pins !== 'string' || conversationLimitsPolicyPins(policy) !== pins)
+        return outside('the conversation policy differs from the sealed limits-only pins');
+      const limits = record(record(policy).limits);
+      const legacy = CONVERSATION_VARIABLE_LIMITS.slice(3).every(name => !Object.hasOwn(limits, name));
+      // The reviewed capacity envelope: finite worker/lifetime ceilings and measured headroom.
+      for (const [name, ceiling] of [['maxSessions', legacy ? 2 : 8], ['deadlineMs', legacy ? 3_600_000 : 14_400_000],
+        ['idleMs', legacy ? 300_000 : 14_400_000]] as const)
+        if (!Number.isSafeInteger(limits[name]) || !capped(limits[name], ceiling)) return outside(`invalid conversation ${name} ceiling`);
+      if ((limits.idleMs as number) > (limits.deadlineMs as number)) return outside('idle retention exceeds the worker lifetime');
+      for (const [name, minimum, ceiling] of (legacy ? [] : [['minCpuIdlePercent', 12, 100], ['minFreeMemoryBytes', 2 * 1024 ** 3, Number.MAX_SAFE_INTEGER],
+        ['minFreeMemoryFraction', 0.1, 1]] as const))
+        if (!capped(limits[name], ceiling) || (limits[name] as number) < minimum) return outside(`invalid conversation ${name} headroom`);
+    } catch { return outside('the conversation limits policy is malformed'); }
+    return { kind: 'covered', policyClass, framing: SUBSCRIPTION_SESSION_FRAMING, digest };
+  }
   if (policyClass === GUIDANCE_ONLY_TOOLS_CLASS) {
     const checkpoints = toolsPolicyClassVerdict(FULL_TOOLS_CLASS, policy, digest);
     if (checkpoints.kind !== 'covered') return checkpoints;
