@@ -1,5 +1,5 @@
-import { createWorkingActivities, readWorkingAdmission } from './working-activity.mjs';
 #!/usr/bin/env node
+import { createWorkingActivities, readWorkingAdmission } from './working-activity.mjs';
 import { prepareSessionConnectors, conversationAccountActions, admitSessionConnector } from './session-connectors.mjs';
 import { recordPhaseTiming } from './phase-timing.js';
 import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice } from './reply-check.js';

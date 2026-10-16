@@ -1,6 +1,6 @@
 # Change review — activity-backed progress during an operator answer
 
-Subject base: a1b59d03
+Subject base: a1b59d03faad205e33fc33dc6915825abfecb635
 Review state: open
 Reviewed content: none
 Outcome: Send bounded truthful progress from a live continuing conversation's current admitted tool at about 2, 5 and 10 minutes after durable intake, then every 10 minutes; stop before final reply dispatch. Reuse the journal send path, agent provenance and retrospective review.
@@ -26,5 +26,5 @@ Decision: progress-cadence | Anchor 2/5/10-minute deadlines to intake, then ten-
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: observe the existing session lifecycle and tool-admission record, then reuse the journal's send and retrospective review paths. A cadence timer is necessary to speak during a slow in-flight tool; its activity predicate prevents timer-only invented status. Distinct durable ordinal slots prevent duplicate progress after restart; cancellation and awaiting admitted sends prevent a status arriving after the answer. No new model, sentinel daemon, authority or store is introduced. Start guards are admitted operator intake plus an actually live working session and current tool; end guards are answer dispatch, session completion/failure, stop, expiry and ownership loss; limits are one line per tool, bounded spacing, 280 characters and existing reply allowance. No unattended live proof is claimed: the desk owns proof-room validation.
-80/20: targeted positive/negative tests and captured-byte replay; final gate outputs are recorded in the builder report. Independent landing review pending.
+80/20: 245 targeted tests passed with one host-dependent skip, including recorded-byte replay. The final launcher gate exposed an import above the shebang; the import now follows it and node --check passes; final gate outputs are recorded in the builder report. Independent landing review pending.
 VERDICT: author submission; independent review pending
