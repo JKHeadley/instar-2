@@ -8,7 +8,7 @@ Affected rules: 26, 49, 69, 74, 90, 101, 105, 111, 113, 116
 Affected floors: secrets — no runtime change; spend cap — unchanged; stop — unchanged; no duplicate sends — unchanged; durable intake — unchanged.
 Operator questions: none
 Suggested tier: critical
-Declared tier: routine
+Declared tier: ordinary
 Tier rationale: Existing deterministic replay generator outputs only; no new capability, authority or behavior.
 Side effects: Seven generated register outputs now bind c24f552c6b641976ab7dccb4b37dc1dd9f895f63 and its current source graph. Replay is shape-only evidence; native conformance comes from the separately executed contract recorded in the preceding repair.
 Undo and recovery: Regenerate from the desired committed source; never hand-edit pins. Keep source and generated artifacts together.
