@@ -10,8 +10,8 @@ Operator questions: none
 Suggested tier: significant
 Declared tier: significant
 Tier rationale: small user-facing observation on the existing status path; no new authority, store, service or watcher
-Side effects: one additional status line enters the existing reply budget and dashboard snapshot. The line can shorten with other long lines but its leading backup conclusion remains visible in real recorded long-status tests. Peer freshness uses the shipper's existing 20-second window; an acknowledgement is not a service or quorum guarantee.
-Undo and recovery: revert the three runtime/documentation edits and their tests; no new persistent data or migration is introduced
+Side effects: generated register artifacts are refreshed to source commit 2f972fbac658f8b798c449dea905074269a8ad35, retaining shape-only authority and unchanged declarations. One additional status line enters the existing reply budget and dashboard snapshot. The line can shorten with other long lines but its leading backup conclusion remains visible in real recorded long-status tests. Peer freshness uses the shipper's existing 20-second window; an acknowledgement is not a service or quorum guarantee.
+Undo and recovery: revert the runtime/documentation edits and their tests, then regenerate register pins from the reverted source; no new persistent data or migration is introduced
 Multi-machine posture: derived per serving conversation from the existing shipper's authenticated distinct-machine acknowledgement and freshness. A stale, incomplete, same-machine or unauthenticated peer does not confirm a target. The single-machine observation never lowers an enrolled installation's replication demand. The one-voter authority remains a takeover dependency.
 Layer below: journal-replication authenticates nonces and peer identity, rejects this same machine, tracks the complete durable copy and contact freshness; awaitReplicated never selects local durability on peer loss. Existing ownerLines reaches both the worker's statusExtra and the operator dashboard's statusAnswer. The status line has no effect or admission consumer.
 Bug class: none
@@ -21,7 +21,7 @@ Convergence: none
 Prompt review: No model instruction, output parser or accept/escalate/refuse decision changes. Fixed pull text reports transport facts, never infers intent. Recorded summary-cascade journal rows (updates 715672479–715672500) and recorded status replies 6232038, 6232050, 6232056 exercise projection and reply sizing. Tests do not claim new live model or proof-room evidence.
 Decision: backup-gap-1016-pull | Reuse the existing authenticated peer status and owner pull lines; report a recent complete copy as backup evidence with its authority dependency, never as a guarantee or permission. No new sentinel, network probe, persisted state or admission gate | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/backup-gap-1016-PROGRESS.md
 
-Subject (4 paths): tests/preview/README.md, tests/preview/journal-agent.mjs, tests/preview/journal-replication.ts, tests/preview/journal-replication.test.ts
+Subject (11 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/README.md, tests/preview/journal-agent.mjs, tests/preview/journal-replication.ts, tests/preview/journal-replication.test.ts
 
 ## Closing block
 
