@@ -28,3 +28,10 @@ Subject (15 paths): generated/capabilities.json, generated/capabilities.md, gene
 simplestRobustRoute: an ordinary merge, conflicts limited to generated output, unioned changelog histories, unchanged or identical live docs bodies and derived pins, then the existing desk chain and register replay re-derive everything the merged bytes determine; real content conflicts go to a builder; tool failures stay desk-owned.
 80/20: mechanical only; cheap checks (lint, register:check, change-review check) run here; the pipeline's full gate runs the test suite and post-test checkers on the merged head.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
+
+Prompt finding: 034c5250da92 | protocol-literal | Standing-trust protocol is quoted by self-description replay normalization; it describes the governing grant, not an expected answer.
+Prompt finding: 45e37ea2e9e9 | protocol-literal | The replay preserves historical workspace/public-read policy wording while checking actual self-description behavior; no new model answer is supplied.
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Tool-label protocol is asserted in briefing tests and normalized for historical replay; it is a capability name, not a scenario answer.
+Prompt finding: 6af48f94b789 | protocol-literal | Existing one-machine outward-send policy is compared in captured prompt replay, not introduced as a test answer.
+Prompt finding: 95e349aaf4ac | protocol-literal | Effect doorway and standing-grant protocol is asserted by its briefing consumer, not copied from a scenario answer.
+Prompt finding: b00ed403060a | protocol-literal | Existing workspace/public-read grant wording appears in both the protocol and historical replay normalization; no model-specific expected reply is injected.

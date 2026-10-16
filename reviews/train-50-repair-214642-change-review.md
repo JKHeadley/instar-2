@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Merge live 90c18fac into train-50, retaining complete turn grounding, sibling action facts, working progress and both historical recall hashes.
 Affected rules: 1, 26, 34, 36, 37, 49, 74, 84, 90, 101, 102, 105, 111, 112, 113, 116
-Affected floors: Secrets and audience checks remain at existing doors; spend ceilings, stop and ownership admission, unique signed sends and durable intake remain unchanged. Action facts are evidence, never authorization.
+Affected floors: Secrets and audience checks remain at existing doors; spend ceilings, stop and ownership admission, no duplicate sends through unique signed intents and durable intake remain unchanged. Action facts are evidence, never authorization.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
