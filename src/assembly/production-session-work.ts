@@ -43,6 +43,10 @@ export interface SessionWorkEdgeClose {
   readonly state: 'complete' | 'uncertain' | 'failed';
   readonly detail: string; readonly evidence: string;
   readonly resultBytes: number | null; readonly closedAt: number;
+  /** Binds a completed result to its durable close for collection after host loss. */
+  readonly resultDigest?: string;
+  /** Whether both exact child stop and resource release succeeded. Absence is unknown. */
+  readonly cleanupConfirmed?: true;
   /** The child's model calls as its own transcript counted them at the close; null when unread. Above the
    * edge's reserved `calls`, the journal charges the excess, so the remaining allowance stays true. */
   readonly calls?: number | null;
@@ -124,6 +128,7 @@ export interface SessionWorkConfig {
    * before the launch and at every poll; when it holds, the child is stopped. */
   readonly stopped: () => boolean;
   readonly append: (record: SessionWorkEdge | SessionWorkEdgeClose) => void;
+  readonly recoveryEdges?: () => readonly (SessionWorkEdge | SessionWorkEdgeClose)[];
   /** The delegating run: this launch's own identity, recorded as the edge's parent. */
   readonly parent: string;
   readonly owner: string; readonly placement: string; readonly transport: string;
@@ -151,6 +156,8 @@ export interface SessionWorkPort {
   /** Whether another step may run at all: not stopped, nothing in flight, steps left. */
   available(): boolean;
   run(request: SessionWorkRequest): Promise<SessionWorkOutcome>;
+  /** Collect only an exactly closed result. Never launches, sends, or clears a result file. */
+  collect(operation: string): SessionWorkOutcome | null;
   /** Closes every child this port launched. The driver's own stop authority, surfaced. */
   stop(): Result<readonly string[]>;
   readonly stepsUsed: () => number;
@@ -253,6 +260,33 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
     let steps = 0, inFlight = false;
     const available = () => !config.stopped() && !inFlight && steps < config.maxSteps;
     const resultPathOf = (operation: string) => `${config.resultDirectory}/work-${slug(operation)}.json`;
+    const collect = (operation: string): SessionWorkOutcome | null => {
+      ensure(safeName.test(operation), 'exact session work identity required');
+      const records = config.recoveryEdges?.() ?? [];
+      const edges = records.filter((record): record is SessionWorkEdge => record.type === 'SessionWorkEdge'
+        && record.id.startsWith(`session-work-edge:${operation}:`));
+      if (edges.length === 0) return null;
+      const edge = edges[0]!;
+      const uncertain = (detail: string): SessionWorkOutcome => freeze({ state: 'uncertain', detail, edge: edge.id, child: null });
+      if (inFlight || edges.length !== 1 || edge.parent !== config.parent || edge.owner !== config.owner
+        || edge.placement !== config.placement || edge.scope !== config.workingScope
+        || edge.resultDestination !== resultPathOf(operation) || edge.child !== `session-work-${slug(operation)}`)
+        return uncertain('work ownership or exact child closure requires reconciliation');
+      const closes = records.filter((record): record is SessionWorkEdgeClose => record.type === 'SessionWorkEdgeClose' && record.edge === edge.id);
+      if (closes.length !== 1) return uncertain('child closure is not established; no automatic replay');
+      const close = closes[0]!;
+      if (close.cleanupConfirmed && close.state === 'failed' && close.child === null && close.calls === 0 && close.evidence === 'no-child')
+        return freeze({ state: 'failed', detail: 'child never launched; the next bounded work step may run', edge: edge.id, child: null });
+      if (close.state !== 'complete' || !close.cleanupConfirmed || !close.resultDigest || close.calls === null || close.calls === undefined
+        || close.child === null || close.closedAt < edge.openedAt || close.reserved !== edge.budget.calls
+        || close.calls > edge.budget.calls || edge.budget.maxResultBytes > config.maxResultBytes
+        || close.resultBytes === null || close.resultBytes > edge.budget.maxResultBytes)
+        return uncertain('work outcome is not a recoverable completed result; no automatic replay');
+      const text = config.io.readResult(edge.resultDestination, edge.budget.maxResultBytes);
+      if (text === null || Buffer.byteLength(text) !== close.resultBytes || digestOf(text) !== close.resultDigest)
+        return uncertain('completed work result is missing or changed; no automatic replay');
+      return freeze({ state: 'complete', text, detail: 'collected the durably closed child result', edge: edge.id, child: close.child });
+    };
     type Settled = Readonly<{ state: SessionWorkEdgeClose['state']; detail: string; evidence: string;
       resultBytes: number | null; text?: string }>;
     const settledAs = (state: Settled['state'], detail: string, evidence: string, resultBytes: number | null = null,
@@ -381,12 +415,14 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
         config.append(freeze({ type: 'SessionWorkEdgeClose' as const, schemaVersion: 1 as const,
           id: `${edgeId}:close`, edge: edgeId, child, state: final.state, detail: final.detail,
           evidence: final.evidence, resultBytes: final.resultBytes, closedAt: config.now(),
+          ...(final.state === 'complete' && final.text !== undefined ? { resultDigest: digestOf(final.text) } : {}),
+          ...(unconfirmed.length === 0 ? { cleanupConfirmed: true as const } : {}),
           calls: launched ? observedCalls : 0, reserved: config.maxCalls }));
         return freeze({ state: final.state, ...(final.text === undefined ? {} : { text: final.text }),
           detail: final.detail, edge: edgeId, child });
       } finally { inFlight = false; intakes.delete(request.operation); }
     };
-    return Object.freeze({ owner: 'part-eight' as const, available, run, stop: () => driver.stop(),
+    return Object.freeze({ owner: 'part-eight' as const, available, run, collect, stop: () => driver.stop(),
       stepsUsed: () => steps });
   });
 }

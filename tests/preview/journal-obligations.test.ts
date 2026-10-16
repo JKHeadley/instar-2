@@ -18,6 +18,7 @@ import { SUBSCRIPTION_TOOL_LIMITS } from '../../src/assembly/production-provider
 import { toolTrace } from './tool-admission.mjs';
 import { loopHealth, loopStatusLines, BACKLOG_AGE_LIMIT_MS } from './obligations.js';
 import { SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
+import type { SessionWorkOutcome } from '../../src/assembly/production-session-work.js';
 import { statusReply } from './status-command.js';
 import { DECLARED_OBLIGATIONS_GUIDE, HOLDING_REPLY, REPLY_RULES, replySegments, replyReviewContext, replyReviewQuestion, type ObjectionDisposition, type ReplyRule } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -44,7 +45,8 @@ type Review = { jev?: (text: string) => Partial<Record<ReplyRule, number>>;
     dispositions?: ObjectionDisposition[]; blocker?: unknown }> };
 function world(root: string, options: { maxBytes?: number; maxCalls?: number; answer?: (question: string, context: string) => Answer;
   waitsOn?: boolean; work?: (context: Record<string, unknown>) => Answer | Promise<Answer>; review?: Review; stopped?: () => boolean;
-  receipt?: (text: string) => boolean; nextUpdate?: number; toolRoute?: (id: string) => boolean; sources?: readonly unknown[] } = {}) {
+  receipt?: (text: string) => boolean; nextUpdate?: number; toolRoute?: (id: string) => boolean; sources?: readonly unknown[];
+  recoverSessionWork?: (id: string) => SessionWorkOutcome | null } = {}) {
   const path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, key, genesis(options.maxBytes, options.maxCalls));
   const clock = { now: T0 };
@@ -58,6 +60,7 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
     replyNotices: (turn) => refusedEffectNotices(journal.view.effectDoorway?.recent ?? [], turn),
     ...(options.toolRoute ? { toolRoute: options.toolRoute } : {}),
     ...(options.sources ? { sources: options.sources } : {}),
+    ...(options.recoverSessionWork ? { recoverSessionWork: options.recoverSessionWork } : {}),
     ...(review ? { replyCheck: { elapsedMs: () => 0,
       jev: async (text: string, questions?: Record<string, unknown>) => ({ latencyMs: 0, value: { model: 'jev-1.13.0',
         answers: Object.fromEntries(Object.keys(questions ?? REPLY_RULES).map(rule => [rule,
@@ -625,6 +628,155 @@ it('starts scheduled work only inside the stop, allowance and capacity fences, a
     expect(loopHealth(again.journal.view, again.clock.now)).toMatchObject({ dueWork: 1, inhibition: 'model-call capacity reserved for replies' });
     again.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('reconciles a closed child checkpoint on the existing tick once, with no new operator input or model call', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  const root = origin();
+  try {
+    const w = world(root, { answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }) });
+    await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+    const slot = dueObligationWork(w.journal.view, w.clock.now)[0]!.slot;
+    w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, session: true, at: w.clock.now });
+    const calls = w.journal.view.calls; w.journal.close();
+    const collected: string[] = [];
+    const again = world(root, { recoverSessionWork: id => {
+      collected.push(id); return { state: 'complete', text: recorded.workOutput,
+        edge: 'checkpoint', child: 'closed-child', detail: 'closed and digest checked by session work port' };
+    } });
+    again.clock.now = w.clock.now;
+    await again.worker.workObligations(); await again.worker.workObligations();
+    expect(collected).toEqual([`obligation:commitment:0:${slot}`]);
+    expect(again.journal.view.obligationWork['commitment:0']).toMatchObject({ attempts: 1, outcome: 'report',
+      report: { text: recorded.workResult.report } });
+    expect(again.work).toEqual([]); expect(again.sent).toEqual([]);
+    expect(again.journal.view.calls).toBe(calls);
+    expect(loopHealth(again.journal.view, again.clock.now)).toMatchObject({ awaitingDelivery: 1, recoveryUnknown: 0 });
+    // Delivery remains the existing owner path: recovery creates no unsolicited-send authority.
+    again.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('replays the real c1 tool-worker checkpoint through startup/tick recovery, including closure and unknown neighbors', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  for (const variant of ['complete', 'worker-live', 'model-unknown', 'trace-missing', 'budget-exhausted'] as const) {
+    const root = origin();
+    try {
+      const w = world(root, { answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }) });
+      await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+      const slot = dueObligationWork(w.journal.view, w.clock.now)[0]!.slot, id = `obligation:commitment:0:${slot}`;
+      w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, at: w.clock.now });
+      for (const captured of recorded.checkpointRows) {
+        const row = structuredClone(captured); row.id = id;
+        if (row.kind === 'phase-timing') continue;
+        if (variant === 'worker-live' && row.kind === 'call-outcome') row.outcome.resources.allocation.state = 'reserved';
+        if (variant === 'model-unknown' && row.kind === 'model-call') row.outcome = 'uncertain';
+        if (variant === 'trace-missing' && row.kind === 'tool-turn' && row.phase === 'trace') continue;
+        w.journal.append(row);
+      }
+      w.journal.compact(); w.journal.close();
+      const again = world(root); again.clock.now = w.clock.now;
+      if (variant === 'budget-exhausted') again.journal.view.calls = again.journal.view.limits.maxCalls;
+      const calls = again.journal.view.calls;
+      if (variant === 'budget-exhausted') {
+        expect(await again.worker.workObligations()).toBe(false);
+        expect(loopHealth(again.journal.view, again.clock.now)).toMatchObject({ awaitingDelivery: 1, inhibition: 'model-call allowance used' });
+      } else {
+        await again.worker.workObligations(); again.clock.now += 2 * LOOP_REVISIT_MS;
+        await again.worker.workObligations();
+        expect(again.journal.view.obligationWork['commitment:0']).toMatchObject(variant === 'complete'
+          ? { outcome: 'report', attempts: 1, report: { text: recorded.workResult.report } }
+          : { outcome: 'uncertain', recoveryHeld: true, attempts: 1 });
+      }
+      expect(again.work).toEqual([]); expect(again.sent).toEqual([]); expect(again.journal.view.calls).toBe(calls);
+      again.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('resumes the same obligation after a closed progress checkpoint and produces one result without new intake', async () => {
+  const root = origin();
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  try {
+    const w = world(root, { answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }),
+      work: () => recorded.workOutput,
+      // Injected progress checkpoint; the result of the resumed step is the recorded c1 output.
+      recoverSessionWork: () => ({ state: 'complete', text: '{"outcome":"continue","note":"The checkpoint is saved; finish the remaining step."}',
+        edge: 'exact-closed-child', child: 'retired-child', detail: 'verified closed checkpoint' }) });
+    await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+    const slot = dueObligationWork(w.journal.view, w.clock.now)[0]!.slot;
+    w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, session: true, at: w.clock.now });
+    await w.worker.workObligations(); expect(w.work).toEqual([]);
+    w.clock.now += LOOP_REVISIT_MS + 1;
+    await w.worker.workObligations(); await w.worker.workObligations();
+    expect(w.work).toHaveLength(1); expect(w.work[0]).not.toBe(`obligation:commitment:0:${slot}`);
+    expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ attempts: 2, outcome: 'report', report: { text: recorded.workResult.report } });
+    expect(w.journal.view.order).toHaveLength(1);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps an uncertain tool-worker outcome halted on a healthy host instead of replaying it on the next cadence', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { toolRoute: id => id.startsWith('obligation:'), work: () => { throw Error('worker lost'); },
+      answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }) });
+    await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+    await w.worker.workObligations(); w.clock.now += 2 * LOOP_REVISIT_MS;
+    await w.worker.workObligations();
+    expect(w.work).toHaveLength(1);
+    expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ recoveryHeld: true, outcome: 'uncertain' });
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('does not accept recorded summary, uncertain review, Jev undecided or empty reply shapes as a work result', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  for (const sample of recorded.negativeOutputs) {
+    const root = origin();
+    try {
+      const w = world(root, { answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }),
+        recoverSessionWork: () => sample.output === null
+          ? { state: 'uncertain', edge: sample.id, child: null, detail: sample.shape }
+          : { state: 'complete', text: sample.output, edge: sample.id, child: 'closed', detail: sample.shape } });
+      await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+      const slot = dueObligationWork(w.journal.view, w.clock.now)[0]!.slot;
+      w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, session: true, at: w.clock.now });
+      await w.worker.workObligations();
+      expect(w.journal.view.obligationWork['commitment:0']?.report, sample.shape).toBeUndefined();
+      expect(w.work, sample.shape).toEqual([]);
+      expect(loopHealth(w.journal.view, w.clock.now).ownedWork, sample.shape).toBeGreaterThan(0);
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('holds a live or unknown child without duplicate work, retains the halt across restart, and obeys stop', async () => {
+  for (const state of ['uncertain', 'missing'] as const) {
+    const root = origin();
+    try {
+      let stopped = false;
+      const w = world(root, { stopped: () => stopped,
+        recoverSessionWork: () => state === 'missing' ? null : { state: 'uncertain', edge: 'open-child', child: 'still-live', detail: 'no exact close' },
+        answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }) });
+      await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+      const slot = dueObligationWork(w.journal.view, w.clock.now)[0]!.slot;
+      w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, session: true, at: w.clock.now });
+      stopped = true;
+      await expect(w.worker.workObligations()).rejects.toThrow('preview stopped');
+      expect(w.journal.view.obligationWork['commitment:0']!.inFlight).toBe(slot);
+      stopped = false; await w.worker.workObligations();
+      w.clock.now += 3 * LOOP_REVISIT_MS; await w.worker.workObligations();
+      expect(w.work).toEqual([]);
+      expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ ownedWork: 1, recoveryUnknown: 1, state: 'stalled' });
+      expect(loopStatusLines(w.journal.view, w.clock.now).join(' ')).toContain('automatic replay halted');
+      w.journal.close();
+      const again = world(root); again.clock.now = w.clock.now;
+      await again.worker.workObligations(); expect(again.work).toEqual([]);
+      expect(again.journal.view.obligationWork['commitment:0']).toMatchObject({ recoveryHeld: true, outcome: 'uncertain' });
+      again.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
 });
 
 const REASSESSMENT = { avenues: [{ avenue: 'booking tool', disposition: 'outside-standing', evidence: 'externalTools' },
