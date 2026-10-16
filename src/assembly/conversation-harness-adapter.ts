@@ -47,10 +47,15 @@ export function createSessionConversationAdapter(config: Readonly<{
       const batch = events.slice(input.cursor, input.cursor + input.limit);
       return { observations: batch, cursor: input.cursor + batch.length, complete: true };
     },
+    observeIdle: async input => driver.observeIdle ? take(driver.observeIdle(input.launch)) : null,
     control: async input => {
       if (input.action === 'compact') return { state: 'refused', evidence: 'use grounded replacement; in-place compaction unsupported' };
-      take(driver.stop({ claim: input.claim, incarnation: input.incarnation,
+      if (input.idleEvidence !== undefined && (!driver.observeIdle
+        || take(driver.observeIdle(input.launch)) !== input.idleEvidence))
+        return { state: 'refused', evidence: 'idle evidence changed; worker kept' };
+      const stopped = take(driver.stop({ ...(input.idleEvidence !== undefined ? { idleEvidence: input.idleEvidence } : {}), claim: input.claim, incarnation: input.incarnation,
         ...(input.launch ? { processIdentity: input.launch } : {}) }));
+      if ('state' in stopped) return stopped;
       return { state: 'closed', evidence: input.reason };
     },
   };

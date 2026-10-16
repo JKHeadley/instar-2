@@ -27,7 +27,7 @@ terminal evidence. Failed, interrupted and empty turns produce no reply. Changed
 bytes, another incarnation, another turn, uncertain submission and transport loss never
 authorize a retry or a successful answer.
 
-The host closes admission before control. Control interrupts the exact active turn and
+For explicit lifecycle closure the host closes admission before control. Control interrupts the exact active turn and
 closes the exact physical process. A host stop or finite lifetime also closes the pipe
 process. The model checkpoint, not cumulative protocol token usage, holds spend limits.
 
@@ -44,3 +44,13 @@ Tests use captured Codex 0.156.1 lifecycle notifications and a local replay proc
 They do not certify tool-hook execution, subscription access, account custody on the
 identity bridge, or a live user walk. Those require the desk's specified proof-room run.
 The existing unproven parity declaration is unchanged.
+
+Automatic idle cleanup uses the same control port with an idle fingerprint. The
+protocol adapter requires a completed correlated turn and a live exact connection;
+subsequent captured frames invalidate its quiet state until another known turn.
+It rechecks the fingerprint immediately before closing. The terminal adapter
+requires a closed-turn receipt plus the current affirmative ready frame and no
+active or recovery marker, then revalidates inside the driver's exclusive boundary.
+An absent or unknown observer retains the worker. Cleanup never interrupts an open
+turn. Its confirmed close is followed by admission and lease release; a refusal
+leaves admission open. The common host owns confirmation, grace and failure handling.

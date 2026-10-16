@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import type { AssemblyDecodeContext } from './contracts.js';
 import type { NativeHarnessDriverPort } from './harness.js';
+import type { SessionStopPort } from './production-session-driver.js';
 import type { Result } from '../index.js';
 
 /**
@@ -122,7 +123,7 @@ export interface SessionWorkLease {
 export interface SessionWorkConfig {
   /** The session driver this port delegates through, built with `resolveIntake` below. */
   readonly createDriver: (resolveIntake: (intake: string, digest: string) => string) => NativeHarnessDriverPort
-    & Readonly<{ stop(input?: Readonly<{ claim: string; incarnation: string; processIdentity?: string }>): Result<readonly string[]> }>;
+    & SessionStopPort & Readonly<{ observeIdle?(identity: string): Result<string | null> }>;
   readonly io: SessionWorkIO;
   /** The host's one resource owner. `null` from `admit` is a capacity refusal. */
   readonly resources: Readonly<{ admit(): Promise<SessionWorkLease | null> }>;

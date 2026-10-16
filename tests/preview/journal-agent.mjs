@@ -2059,6 +2059,7 @@ async function main() {
       ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : []),
       ...(loginPool ? [loginPool.status()] : []),
       ...(sessionLoginObservations.size ? [sessionLoginStatus([...sessionLoginObservations.values()], wallNow())] : []),
+      ...(sessionWork?.port.idleCleanupStatus?.() ?? []),
       ...(harness ? [harnessStatusLine(harness.state)] : identityRefusal !== null ? [harnessStatusLine({ ready: false, reason: identityRefusal })] : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
     const approvalSurface = approvalSurfaceOf(options), readOnly = readOnlyDashboardOf(options);

@@ -743,3 +743,52 @@ it('joins the recorded live worker captures to missing login custody, with no al
   expect(value(f.driver.observe({ operation: 'work', processIdentity: identity })).phase).toBe('exit-observed');
   expect(health).toHaveLength(samples);
 });
+
+it('idle reaping uses recorded ready bytes plus a closed turn and revalidates the frame at close', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../fixtures/claude-idle-2.1.280.json', import.meta.url), 'utf8'));
+  const f = fixture('claude-code', { requireTurnHook: true }); const identity = f.launch();
+  expect(value(f.driver.observeIdle(identity))).toBeNull();
+  value(f.deliver(identity)); f.time(1100); f.hook(1100); f.changePane(recorded.pane.capture);
+  value(f.driver.observe({ operation: 'deliver', processIdentity: identity }));
+  const evidence = value(f.driver.observeIdle(identity)); expect(evidence).toMatch(/^sha256:/);
+  f.changePane(recorded.pane.capture + '\nWorking… esc to interrupt');
+  expect(value(f.driver.observeIdle(identity))).toBeNull();
+  expect(value(f.driver.stop({ claim: 'topic', incarnation: 'inc', processIdentity: identity, idleEvidence: evidence! })))
+    .toEqual({ state: 'refused', evidence: 'idle evidence changed; worker kept' });
+  expect(f.calls.some(row => row[0] === 'kill-session')).toBe(false);
+  f.changePane(recorded.pane.capture);
+  expect(value(f.driver.stop({ claim: 'topic', incarnation: 'inc', processIdentity: identity, idleEvidence: evidence! }))).toHaveLength(1);
+});
+
+it.each(['unchanged', 'changed', 'unreadable', 'after-kill'] as const)(
+  'adapter preserves action-time refusal, but not unknown or post-actuation failure (%s)', async mode => {
+    const recorded = JSON.parse(readFileSync(new URL('../fixtures/claude-idle-2.1.280.json', import.meta.url), 'utf8'));
+    const f = fixture('claude-code', { requireTurnHook: true }); const identity = f.launch();
+    value(f.deliver(identity)); f.time(1100); f.hook(1100); f.changePane(recorded.pane.capture);
+    value(f.driver.observe({ operation: 'deliver', processIdentity: identity }));
+    const evidence = value(f.driver.observeIdle(identity))!;
+    const adapter = createSessionConversationAdapter({
+      createDriver: () => ({ ...f.driver, observeIdle: (id: string) => {
+        const result = f.driver.observeIdle(id);
+        if (mode === 'changed') f.changePane(recorded.pane.capture + '\nWorking… esc to interrupt');
+        if (mode === 'unreadable') {
+          const tmux = f.config.io.tmux;
+          f.config.io.tmux = args => {
+            if (args[0] === 'capture-pane') throw Error('idle evidence changed; worker kept');
+            return tmux(args);
+          };
+        }
+        if (mode === 'after-kill') f.onKill(() => { throw Error('idle evidence changed; worker kept'); });
+        return result;
+      } }),
+      io: { clearResult: () => {}, readResult: () => null, modelCalls: () => 0, wait: async () => {},
+        prepareAdmission: () => {}, closeAdmission: () => {}, admissionState: () => ({ refused: false, openDelegations: [] }) },
+      resolveDelivery: () => undefined,
+    });
+    const control = adapter.control({ launch: identity, claim: 'topic', incarnation: 'inc',
+      action: 'close', authority: 'grant', reason: 'idle', idleEvidence: evidence });
+    if (mode === 'changed') await expect(control).resolves.toMatchObject({ state: 'refused' });
+    else if (mode === 'unchanged') await expect(control).resolves.toMatchObject({ state: 'closed' });
+    else await expect(control).rejects.toThrow('idle evidence changed; worker kept');
+    expect(f.calls.some(row => row[0] === 'kill-session')).toBe(mode === 'after-kill' || mode === 'unchanged');
+  });

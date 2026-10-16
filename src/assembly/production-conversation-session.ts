@@ -20,8 +20,10 @@ export interface ConversationSessionPort {
   maintain(): Promise<void>;
   /** Called by the existing model checkpoint before forwarding, never by the worker. */
   reserveCall(claim: string, ordinal: number): void;
-  /** Retire only an idle worker, retaining queue, cursor and liability. */
-  retireIdle(): Promise<boolean>;
+  /** Pull-only availability consequences; never a claim that durable work ended. */
+  idleCleanupStatus?(): readonly string[];
+  /** Automatic reasons require confirmation and grace; omitted means explicit host lifecycle retirement. */
+  retireIdle(reason?: 'pressure' | 'idle'): Promise<boolean>;
 }
 export type ConversationSessionOutcome = SessionWorkOutcome | Readonly<{
   state: 'queued'; detail: string; edge: string; child: string | null;
@@ -34,12 +36,19 @@ export interface ConversationInput {
   readonly attempts: number; readonly retryAt: number;
   readonly batch?: readonly string[];
 }
+export interface IdleCleanupState {
+  readonly candidate: Readonly<{ fingerprint: string; firstAt: number; lastAt: number;
+    pendingAt: number | null; reason: 'pressure' | 'idle' }> | null;
+  readonly inhibited?: boolean;
+  readonly lastClosure?: Readonly<{ at: number; claim: string; detail: string }>;
+}
 export interface ConversationState {
   readonly version: 1; readonly conversation: string; readonly epoch: number;
   readonly edge: SessionWorkEdge | null; readonly worker: ConversationWorker | null;
   readonly claim: string | null; readonly incarnation: string | null; readonly authority: string | null;
   readonly deadline: number; readonly turns: number; readonly inputs: readonly ConversationInput[];
   readonly close: SessionWorkEdgeClose | null; readonly reserved: boolean;
+  readonly idleCleanup?: IdleCleanupState;
   readonly spent: number; readonly claimCalls: number;
 }
 export interface ConversationSessionStore {
@@ -296,6 +305,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       const worker = await adapter.launch({ operation: claim, claim, artifact: config.artifact, incarnation, workingScope: config.workingScope });
       ensure(worker.claim === claim && worker.incarnation === incarnation && worker.launch, 'launch identity differs from admission');
       persist({ worker }); await lease.attach(worker.launch); guard();
+      persist({ idleCleanup: { candidate: null, ...(state.idleCleanup?.inhibited ? { inhibited: true } : {}) } });
       return true;
     };
     const work = async (waiting: readonly string[]) => {
@@ -422,6 +432,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       return freeze({ request: row(operation).request, outcome: currentOutcome(operation) });
     };
     const enqueue = (request: SessionWorkRequest) => {
+      if (state.idleCleanup?.candidate) persist({ idleCleanup: { ...state.idleCleanup, candidate: null } });
       ensure(safeName.test(request.operation) && request.question.trim() && request.authority.trim(), 'conversation input identity required');
       const inputDigest = digest(JSON.stringify(request));
       const existing = row(request.operation);
@@ -466,11 +477,88 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       await drain();
       if (!draining && state.worker && (config.now() >= state.deadline || state.turns >= config.maxSteps)) await retire();
     };
-    const retireIdle = async () => {
-      if (draining || closing) return false;
-      retiring ??= (async () => { await recover(); await retire(); })().finally(() => { retiring = null; });
+    // The existing owner tick drives this state; no separate timer, store or reaper.
+    // An unknown observation resets confirmation instead of turning elapsed silence into permission.
+    const clearCandidate = () => {
+      if (state.idleCleanup?.candidate) persist({ idleCleanup: { ...state.idleCleanup, candidate: null } });
+    };
+    const idleStamp = (): string | null => {
+      if (!state.worker || !state.claim || closing || config.stopped() || !config.authorized()
+        || config.now() >= Math.min(parentDeadline(), state.deadline)
+        || state.authority !== config.currentAuthority() || state.close || state.idleCleanup?.inhibited
+        || state.inputs.some(input => input.state !== 'settled')) return null;
+      // Retained history belongs to the conversation; only this admission's
+      // deliveries establish whether the current worker finished its work.
+      const current = state.inputs.filter(input => input.delivery?.claim === state.claim
+        && input.delivery.incarnation === state.incarnation);
+      if (!current.length || current.some(input => input.outcome?.state !== 'complete')) return null;
+      const admission = config.io.admissionState(state.claim);
+      if (!admission || admission.refused || admission.openDelegations.length) return null;
+      return digest(JSON.stringify([state.worker, state.inputs, calls(), state.claimCalls]));
+    };
+    const assessIdle = async (reason: 'pressure' | 'idle'): Promise<boolean> => {
+      let stamp: string | null, frame: string | null;
+      try {
+        stamp = idleStamp();
+        frame = stamp && adapter.observeIdle ? await adapter.observeIdle(state.worker!) : null;
+        if (!stamp || !frame || idleStamp() !== stamp) { clearCandidate(); return false; }
+      } catch { clearCandidate(); return false; }
+      const now = config.now(), fingerprint = digest(JSON.stringify([stamp, frame]));
+      const prior = state.idleCleanup?.candidate;
+      // Pressure shortens confirmation only, never grace or the eligibility floor.
+      const confirmation = reason === 'pressure' ? 30_000 : 120_000;
+      if (!prior || prior.fingerprint !== fingerprint || prior.reason !== reason
+        || now < prior.lastAt || now - prior.lastAt > 180_000) {
+        persist({ idleCleanup: { ...state.idleCleanup, candidate: { fingerprint, firstAt: now, lastAt: now, pendingAt: null, reason } } });
+        return false;
+      }
+      if (now <= prior.lastAt) return false;
+      const pendingAt = prior.pendingAt ?? (now - prior.firstAt >= confirmation ? now : null);
+      persist({ idleCleanup: { ...state.idleCleanup, candidate: { ...prior, lastAt: now, pendingAt } } });
+      if (pendingAt === null || now - pendingAt < 30_000) return false;
+      // Re-observe at grace expiry, then the adapter rechecks this same fingerprint at actuation.
+      try {
+        if (await adapter.observeIdle!(state.worker!) !== frame || idleStamp() !== stamp) { clearCandidate(); return false; }
+      } catch { clearCandidate(); return false; }
+      const worker = state.worker!, claim = state.claim!;
+      // Persist the uncertain effect boundary before actuation; a host crash cannot retry it.
+      persist({ idleCleanup: { ...state.idleCleanup, candidate: null, inhibited: true } });
+      try {
+        const result = await adapter.control({ ...worker, action: 'close', authority: state.authority!,
+          reason: 'confirmed idle cleanup', idleEvidence: frame });
+        if (result.state === 'refused' && result.evidence.trim()) {
+          persist({ idleCleanup: { ...state.idleCleanup, candidate: null, inhibited: false } }); return false;
+        }
+        ensure(result.state === 'closed', 'idle cleanup closure unconfirmed');
+        config.io.closeAdmission(claim);
+        if (lease) { ensure(await lease.release(), 'idle cleanup resource release unconfirmed'); lease = null; }
+        const detail = 'The idle worker was closed to free capacity. Its warm session is no longer available; '
+          + 'the next message needs a worker start. Conversation history and accepted messages are retained.';
+        config.append({ type: 'SessionWorkEdgeClose', schemaVersion: 1, id: `${claim}:idle-close`, edge: `${claim}:process`,
+          child: worker.launch, state: 'complete', detail, evidence: frame, resultBytes: null,
+          closedAt: now, calls: state.claimCalls, reserved: config.maxCalls });
+        persist({ worker: null, claim: null, incarnation: null, authority: null,
+          idleCleanup: { candidate: null, lastClosure: { at: now, claim, detail } } });
+        return true;
+      } catch {
+        persist({ idleCleanup: { ...state.idleCleanup, candidate: null, inhibited: true } });
+        return false;
+      }
+    };
+    const retireIdle = async (reason?: 'pressure' | 'idle') => {
+      if (draining || closing || retiring) { clearCandidate(); return false; }
+      if (reason) {
+        if (!recovered) { clearCandidate(); return false; }
+        let retired = false;
+        retiring = (async () => { retired = await assessIdle(reason); })().finally(() => { retiring = null; });
+        await retiring; return retired;
+      }
+      retiring = (async () => { await recover(); await retire(); })().finally(() => { retiring = null; });
       await retiring; return true;
     };
-    return Object.freeze({ owner: 'part-eight' as const, available, run, runBatch, collect, close, maintain, reserveCall, retireIdle });
+    return Object.freeze({ owner: 'part-eight' as const, available, run, runBatch, collect, close, maintain, reserveCall, retireIdle,
+      idleCleanupStatus: () => state.idleCleanup?.inhibited
+        ? ['Idle cleanup is paused after an unconfirmed closure; capacity release is uncertain and needs repair.']
+        : !state.worker && state.idleCleanup?.lastClosure ? [state.idleCleanup.lastClosure.detail] : [] });
   });
 }
