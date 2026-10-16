@@ -26,7 +26,7 @@ Prompt finding: 4106b49fff07 | protocol-literal | existing topic-awareness evide
 Prompt finding: 849db3a6296a | protocol-literal | existing saved-memory response protocol, unchanged by this unit.
 Prompt finding: e8708c7fea24 | protocol-literal | existing source-label uncertainty guidance, unchanged by this unit.
 
-Register regeneration: replayed generated artifacts from product commit f7476086f1579d369fc9d1dae7896b5d63c20a51 with scripts/build-register.mjs; no declaration or certificate was changed.
+Register regeneration: replayed generated artifacts from product commit 5b8c4da9c571836527edbcaf19f8c86b85535e6a with scripts/build-register.mjs; no declaration or certificate was changed.
 
 Decision: honest-progress-provenance | fixed host-generated liveness uses infrastructure signatures and retrospective labels; historical agent status records retain their original speaker on replay | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/honest-progress-1016-PROGRESS.md
 
