@@ -142,3 +142,32 @@ it('keeps recorded uncertain/undecided summaries, reviews and empty replies as h
     if (shape.kind === 'empty-reply-in-recorded-context') expect(substantiveReply(shape.raw)).toBe(false);
   }
 });
+
+it('carries a genuinely missing credential request into the next answer so the lowest-rung ask is not repeated (injected judgment)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'self-unblock-missing-'));
+  const now = recordedBlocker.at, key = new Uint8Array(32).fill(72);
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '12345678', chat: '7654321',
+    operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: now + 86400000,
+    maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 65536, cursor: 0 });
+  try {
+    const question = 'I checked the credential inventory and configured connectors. The library credential is missing; please provide it through secure intake.';
+    const sent: string[] = [];
+    const access = readSelfAccess({ ...inputs(), now, credentials: () => [], connectors: () => null });
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+      sources: () => [selfStateSource(selfStateBrief(journal.view, { launches: [], unreadable: 0 }, now, 'UTC', undefined, false, true), access)],
+      model: async input => {
+        const packet = JSON.parse(input.context);
+        expect(packet.sources[0].text).toContain('Credentials: []');
+        expect(packet.sources[0].text).toContain('ask once after checking pending asks');
+        const asked = packet.history.some((row: { answer?: string }) => row.answer === question);
+        expect(asked).toBe(sent.length === 1);
+        return JSON.stringify({ reply: asked ? 'The same credential request is still pending; no account action has been taken.' : question });
+      }, send: async value => { sent.push(value.expectedText); return sent.length; }, checkOutbound: () => {} });
+    for (const [index, text] of ['Check access for my library renewal.', 'Any change?'].entries()) {
+      worker.intake([{ update_id: index + 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: Math.floor(now / 1000) } }]);
+      await worker.drain();
+    }
+    expect(sent).toEqual([question, 'The same credential request is still pending; no account action has been taken.']);
+    expect(journal.view.order.filter(turn => turn.answer === question)).toHaveLength(1);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});

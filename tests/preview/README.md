@@ -1339,7 +1339,7 @@ restart, how the run before it ended, and launches today. "Today" is the local d
 in `--time-zone` (an IANA zone, default `America/Los_Angeles`; an unknown zone refuses start), and
 the zone is stated in the text. The counts include the message being answered; its
 own reply is not yet sent. Imported turns from an older root may have unknown
-times. Launches before this change were not recorded, and the text says so. It is
+times. Launches before this change were not recorded, and the text says so. Its
 counts are recomputed from memory each turn without a model call. The access snapshot below additionally reads existing local enrollment and custody. The 2000-turn
 timing check is quarantined under Rule 37 while its wall-clock flake is diagnosed;
 functional self-state checks remain active. `status` prints the same text as `self`
