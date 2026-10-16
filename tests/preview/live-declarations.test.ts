@@ -89,7 +89,7 @@ it('states the declaration slot in the fixed system prompt and gives the answer 
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('write instead "reply":<your plain-text reply> and each applicable field');
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('directives, openLoops or blocker');
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).not.toContain('in plain text, using the sources');
-  expect(OBLIGATION_DECISION).toContain('one packet.capabilities key');
+  expect(OBLIGATION_DECISION).toContain('evidence:packet.capabilities key');
   const blocker = (JSON.parse(runnerText(fixture.fixed.answers[1]!)!) as { blocker: { avenues: { evidence: string }[] } }).blocker;
   expect(blocker.avenues.every(item => Object.hasOwn(PREVIEW_CAPABILITIES, item.evidence))).toBe(true);
 });
