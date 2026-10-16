@@ -568,7 +568,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
             return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit continuation submitted' };
           }
           if (rate?.state === 'accepted' && throttled) {
-            if (config.now() < rate.submittedAt! + 5_000)
+            if (!classifyPaneIdle(pane, config.framework) || config.now() < rate.submittedAt! + 5_000)
               return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit continuation pending' };
             return { phase: 'pause-observed' as const, evidence: session.identity, detail: 'rate-limited' };
           }

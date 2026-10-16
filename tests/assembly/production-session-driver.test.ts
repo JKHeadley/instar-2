@@ -112,6 +112,21 @@ it('continues a throttled turn once after backoff, preserving its intake and ori
   expect(observe(restarted).phase).toBe('output-observed');
 });
 
+it('keeps a resumed worker busy under its original deadline despite old quota scrollback', () => {
+  const captured = JSON.parse(readFileSync(new URL('../preview/fixtures/work-silence-terminal-2026-10-14.json', import.meta.url), 'utf8'));
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  const observe = () => value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  f.changePane(`${recordedLimit}\n❯ `); expect(observe().phase).toBe('launched');
+  f.time(31_000); expect(observe().phase).toBe('launched'); const sends = f.sends;
+  for (const [index, at] of [36_000, 90_000].entries()) {
+    f.time(at); f.changePane(`${recordedLimit}\n${captured.captures[index + 1].capture}`);
+    expect(observe().phase).toBe('launched'); expect(f.sends).toBe(sends);
+    expect(f.journal.sessions[0]?.turnDeadline).toBe(121_000);
+  }
+  f.time(100_000); f.changePane(`${recordedLimit}\nanswer\n❯ `); f.hook(100_000);
+  expect(observe().phase).toBe('output-observed'); expect(f.sends).toBe(sends);
+});
+
 it('a fresh completed-turn receipt wins over quota text still visible in scrollback', () => {
   const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
   f.changePane(`${recordedLimit}\nanswer explaining the prior throttle\n❯ `); f.hook(1000);
@@ -143,11 +158,13 @@ it('exposes an uncompleted repeated throttle without a second nudge', () => {
   expect(f.journal.sessions[0]?.turnDeadline).toBe(121_000);
 });
 
-it('never retries a neutral continuation whose terminal delivery is uncertain after restart', () => {
+it.each(['before-input', 'after-enter'])('never retries an uncertain continuation after restart: %s', point => {
   const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
   f.changePane(`${recordedLimit}\n❯ `);
   value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
-  f.time(31_000); f.failNextSend();
+  f.time(31_000);
+  if (point === 'before-input') f.failNextSend();
+  else f.onEnter(() => { throw Error('simulated process death after Enter'); });
   refused(f.driver.observe({ operation: 'deliver', processIdentity: id }), 'simulated process death');
   expect(f.journal.sessions[0]?.rateRecovery?.state).toBe('sending');
   const sends = f.sends, restarted = createProductionSessionDriver(f.config);

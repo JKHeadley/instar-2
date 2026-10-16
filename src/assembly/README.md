@@ -58,7 +58,7 @@ input; an uncertain submission is never retried, including after host restart.
 The original admission, call allowance and effect identities remain in force.
 Compaction-owned sessions and uncertain intake are excluded. An open recovery keeps
 the turn open for idle cleanup; emergency stop and the independent deadline still
-win. A repeated throttle after a five-second observation window returns the existing
+win. An idle repeated throttle after a five-second observation window returns the existing
 typed pause, so the login pool can select capacity for subsequent work. Completion
 still requires the driver's existing evidence, never transcript growth or elapsed
 backoff. Unconfined sessions retain observation only because they lack the admitted
@@ -66,7 +66,8 @@ effect and model-call floors required for autonomous continuation (Rules 1, 55, 
 Fresh lifecycle receipts retain their precedence over stale quota text in scrollback;
 the conversation adapter still requires a reply artifact to return an answer. A new
 accepted input starts its own compaction episode, so a past completed compaction does
-not exclude later turns from throttle recovery.
+not exclude later turns from throttle recovery. Busy resumed work remains active under
+the original deadline even when old quota text remains visible.
 
 The host must call `close()` at shutdown, expiry or idle stop. Closing waits for
 pending admission to return before releasing its lease, preventing a late resource
