@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Compose truthful working progress, recovered promises, per-work observation, requested result delivery and durable worker-result recovery on the accepted live base.
 Affected rules: 1, 2, 4, 8, 26, 32, 33, 34, 36, 37, 41, 46, 49, 52, 55, 57, 58, 60, 63, 64, 68, 69, 74, 75, 83, 84, 87, 89, 90, 95, 101, 102, 105, 111, 112, 113, 116
-Affected floors: Existing secrets checks, spend ceilings, stop and ownership fencing, durable intake and unique signed sends remain. Unknown outcomes never authorize automatic replay.
+Affected floors: Existing secrets checks, spend ceilings, stop and ownership fencing, durable intake and no duplicate sends through unique signed intents remain. Unknown outcomes never authorize automatic replay.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
@@ -30,6 +30,13 @@ Decision: train-50-C | No irreconcilable product conflict; no member omitted and
 Decision: train-50-D | Portable targeted checks on WSL; disclose host-bound failures, reserve native certificate and live acceptance for Studio; no weakened checks. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-50-PROGRESS.md
 Decision: train-50-desk | Keep generated files at the base during merges, then regenerate the seven publications from merged committed source with existing repin/build/rehash/replay tools; no hand-merged generated contents. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-50-PROGRESS.md
 Deferral: generated/register.json:1 | not-a-deferral=Regenerated replay publication; no deferred implementation.
+
+Deferral: tests/preview/README.md:32 | not-a-deferral=Describes implemented owned deferral execution and receipt-bound result delivery, not postponed builder work.
+Deferral: tests/preview/fixtures/work-recovery-2026-10-15.json:5 | not-a-deferral=Recorded capture provenance and extraction notes; not a development commitment.
+Deferral: tests/preview/fixtures/work-recovery-2026-10-15.json:231 | not-a-deferral=Exact recorded worker output about deferred operator work; retained for replay evidence.
+Deferral: tests/preview/fixtures/work-recovery-2026-10-15.json:275 | not-a-deferral=Exact recorded report output, not a builder deferral.
+Deferral: tests/preview/journal.ts:2506 | not-a-deferral=Existing work prompt requires completing the deferred answer through the current obligation path.
+Deferral: tests/preview/owed-delivery.test.ts:181 | not-a-deferral=Regression exercises explicit requested follow-up delivery and its authority neighbor.
 
 simplestRobustRoute: This is the simplest robust route: five ordinary exact-head merges with additive conflict resolution and the established desk regeneration chain. No new machinery. Exact base and reviewed heads guard entry; existing secrets, spend, stop, durable cause and unique effects remain the floors. Builder exit is pushed composition with classified targeted evidence, not live acceptance or independent convergence.
 80/20: Member tests, direct source consumers, specified journal regressions and pinned tests; the pipeline owns full-suite and native live acceptance.
