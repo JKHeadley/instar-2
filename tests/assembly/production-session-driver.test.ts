@@ -717,3 +717,19 @@ it.each([3600, 3601])('holds the admission hook boundary at %s seconds', timeout
   if (timeoutSeconds === 3600) expect(build).not.toThrow();
   else expect(build).toThrow('bounded admission hook required');
 });
+
+
+it('idle reaping uses recorded ready bytes plus a closed turn and revalidates the frame at close', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../fixtures/claude-idle-2.1.280.json', import.meta.url), 'utf8'));
+  const f = fixture('claude-code', { requireTurnHook: true }); const identity = f.launch();
+  expect(value(f.driver.observeIdle(identity))).toBeNull();
+  value(f.deliver(identity)); f.time(1100); f.hook(1100); f.changePane(recorded.pane.capture);
+  value(f.driver.observe({ operation: 'deliver', processIdentity: identity }));
+  const evidence = value(f.driver.observeIdle(identity)); expect(evidence).toMatch(/^sha256:/);
+  f.changePane(recorded.pane.capture + '\nWorking… esc to interrupt');
+  expect(value(f.driver.observeIdle(identity))).toBeNull();
+  refused(f.driver.stop({ claim: 'topic', incarnation: 'inc', processIdentity: identity, idleEvidence: evidence! }), 'idle evidence changed');
+  expect(f.calls.some(row => row[0] === 'kill-session')).toBe(false);
+  f.changePane(recorded.pane.capture);
+  expect(value(f.driver.stop({ claim: 'topic', incarnation: 'inc', processIdentity: identity, idleEvidence: evidence! }))).toHaveLength(1);
+});

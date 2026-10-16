@@ -260,7 +260,9 @@ interface ContinuingHarnessAdapterPort {
   deliver(input: HarnessInputDelivery): Promise<Readonly<{ state: 'accepted' | 'busy-not-dispatched' | 'refused-not-dispatched' | 'uncertain'; evidence: string }>>;
   observe(input: HarnessWorkerHandle & Readonly<{ delivery: HarnessInputDelivery | null; cursor: number; limit: number }>): Promise<Readonly<{
     observations: readonly HarnessNormalizedObservation[]; cursor: number; complete: boolean }>>;
-  control(input: HarnessWorkerHandle & Readonly<{ action: 'interrupt' | 'close' | 'compact'; authority: string; reason: string }>): Promise<Readonly<{
+  /** Fresh affirmative idle fingerprint; null or an absent observer keeps the worker. */
+  observeIdle?(input: HarnessWorkerHandle): Promise<string | null>;
+  control(input: HarnessWorkerHandle & Readonly<{ idleEvidence?: string; action: 'interrupt' | 'close' | 'compact'; authority: string; reason: string }>): Promise<Readonly<{
     state: 'closed' | 'refused' | 'uncertain'; evidence: string }>>;
 }
 

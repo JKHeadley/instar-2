@@ -670,3 +670,91 @@ it('keeps intake when fresh action grounding exceeds its bound or its reader fai
     await f.port.close();
   }
 });
+
+
+it('idle cleanup confirms, waits through grace, and records only lost warm availability', async () => {
+  const f = fixture(); Object.assign(f.config, { deadlineMs: 200000 }); await f.port.run(f.request('one'));
+  Object.assign(f.adapter, { observeIdle: async () => 'frame:one' });
+  expect(await f.port.retireIdle('pressure')).toBe(false);
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(true);
+  expect(f.state().worker).toBeNull();
+  expect(f.state().inputs[0]?.outcome?.state).toBe('complete');
+  expect(f.state().idleCleanup?.lastClosure?.detail).toContain('Conversation history and accepted messages are retained');
+  await f.port.close();
+});
+
+it.each(['changed', 'unknown', 'child', 'new-input'] as const)('idle cleanup aborts grace for %s', async reason => {
+  const f = fixture(); Object.assign(f.config, { deadlineMs: 200000 }); await f.port.run(f.request('one'));
+  let frame: string | null = 'frame:one';
+  Object.assign(f.adapter, { observeIdle: async () => frame });
+  await f.port.retireIdle('pressure'); f.advance(30000); await f.port.retireIdle('pressure');
+  if (reason === 'changed') frame = 'frame:two';
+  if (reason === 'unknown') frame = null;
+  if (reason === 'child') f.config.io.admissionState = () => ({ refused: false, openDelegations: [f.edges[0] as SessionWorkEdge] });
+  if (reason === 'new-input') await f.port.run(f.request('two'));
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
+  expect(f.counts().stops).toBe(0);
+  await f.port.close();
+});
+
+it('idle cleanup keeps an adapter without affirmative idle evidence', async () => {
+  const f = fixture(); Object.assign(f.config, { deadlineMs: 200000 }); await f.port.run(f.request('one'));
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
+  expect(f.counts().stops).toBe(0); await f.port.close();
+});
+
+
+it.each(['refused', 'uncertain', 'throw'] as const)('idle actuator %s retains capacity, with durable inhibition only for unexplained failures', async mode => {
+  const f = fixture(); Object.assign(f.config, { deadlineMs: 200000 }); await f.port.run(f.request('one'));
+  Object.assign(f.adapter, { observeIdle: async () => 'frame' });
+  await f.port.retireIdle('pressure'); f.advance(30000); await f.port.retireIdle('pressure');
+  const control = f.adapter.control;
+  f.adapter.control = async () => { expect(f.state().idleCleanup?.inhibited).toBe(true); if (mode === 'throw') throw Error('actuator'); return { state: mode, evidence: 'changed' }; };
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
+  expect(f.closed).toEqual([]); expect(f.counts().releases).toBe(0);
+  expect(Boolean(f.state().idleCleanup?.inhibited)).toBe(mode !== 'refused');
+  if (mode !== 'refused') {
+    expect(f.port.idleCleanupStatus?.().join(' ')).toContain('uncertain');
+    expect(f.restart().idleCleanupStatus?.().join(' ')).toContain('uncertain');
+  }
+  f.adapter.control = control; await f.port.close();
+});
+
+it('new input during the final idle observation aborts cleanup before close and drains once', async () => {
+  const f = fixture(); Object.assign(f.config, { deadlineMs: 200000 }); await f.port.run(f.request('one'));
+  let observations = 0, pending: Promise<unknown> | undefined;
+  Object.assign(f.adapter, { observeIdle: async () => {
+    if (++observations === 4) pending = f.port.run(f.request('two'));
+    return 'frame';
+  } });
+  await f.port.retireIdle('pressure'); f.advance(30000); await f.port.retireIdle('pressure');
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
+  await pending; expect(f.counts().stops).toBe(0); expect(f.delivered).toHaveLength(2); await f.port.close();
+});
+
+it.each(capturedShapes.otherShapes)('replays recorded $kind ($id) through idle cleanup without interpreting model text as liveness', async sample => {
+  const f = fixture(); Object.assign(f.config, { deadlineMs: 200000 }); f.answer(sample.raw);
+  await f.port.run(f.request(sample.id));
+  const before = f.state().inputs;
+  Object.assign(f.adapter, { observeIdle: async () => 'recorded-turn-closed' });
+  await f.port.retireIdle('pressure'); f.advance(30000); await f.port.retireIdle('pressure');
+  f.advance(30000); const closed = await f.port.retireIdle('pressure');
+  expect(closed).toBe(Boolean(sample.raw.trim()));
+  expect(f.state().inputs).toEqual(before);
+  await f.port.close();
+});
+
+
+it('recorded worker edges remain protected while their work is open', async () => {
+  const recording = JSON.parse(readFileSync(new URL('../preview/fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8')) as {
+    workerRecords: { record: SessionWorkEdge | SessionWorkEdgeClose }[] };
+  const edge = recording.workerRecords.map(row => row.record).find((row): row is SessionWorkEdge => row.type === 'SessionWorkEdge' && !!row.drawsOn)!;
+  expect(edge).toBeDefined();
+  const f = fixture(); Object.assign(f.config, { deadlineMs: 200000 }); await f.port.run(f.request('one'));
+  Object.assign(f.adapter, { observeIdle: async () => 'frame' });
+  await f.port.retireIdle('pressure'); f.advance(30000); await f.port.retireIdle('pressure');
+  f.config.io.admissionState = () => ({ refused: false, openDelegations: [edge] });
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
+  expect(f.counts().stops).toBe(0); await f.port.close();
+});

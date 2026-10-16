@@ -122,7 +122,7 @@ export interface SessionWorkLease {
 export interface SessionWorkConfig {
   /** The session driver this port delegates through, built with `resolveIntake` below. */
   readonly createDriver: (resolveIntake: (intake: string, digest: string) => string) => NativeHarnessDriverPort
-    & Readonly<{ stop(input?: Readonly<{ claim: string; incarnation: string; processIdentity?: string }>): Result<readonly string[]> }>;
+    & Readonly<{ observeIdle?(identity: string): Result<string | null>; stop(input?: Readonly<{ claim: string; incarnation: string; processIdentity?: string; idleEvidence?: string }>): Result<readonly string[]> }>;
   readonly io: SessionWorkIO;
   /** The host's one resource owner. `null` from `admit` is a capacity refusal. */
   readonly resources: Readonly<{ admit(): Promise<SessionWorkLease | null> }>;

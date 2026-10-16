@@ -17,6 +17,7 @@ async function until(test: () => boolean) { for (let i = 0; i < 500 && !test(); 
 function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16, lifetime = 2000) {
   let state: ConversationTopicsState | null = null, now = 1000, live = 0, peak = 0, stopped = false, authorized = true, saveFails = false;
   let batchOutput: string | undefined, evidenceUnreadable = false;
+  const refusedClose = new Set<string>(), failedClose = new Set<string>();
   const exited = new Set<string>(), held = new Set<string>(), launches: { topic: string; worker: HarnessWorkerHandle }[] = [];
   const delivered: { topic: string; input: HarnessInputDelivery }[] = [], closed: string[] = [];
   const edges: (SessionWorkEdge | SessionWorkEdgeClose)[] = [];
@@ -51,12 +52,16 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16, lifetime = 200
         return { observations: [{ kind: 'reply', delivery: input.delivery.operation, text, digest: digest(text) },
           { kind: 'turn-end', delivery: input.delivery.operation, state: 'completed' }], cursor: input.cursor + 2, complete: true };
       },
-      control: async input => { closed.push(input.claim); return { state: 'closed', evidence: 'fake' }; },
+      observeIdle: async input => held.has(topic) || exited.has(topic) ? null : `idle:${input.launch}:${state!.topics[topic]!.turns}`,
+      control: async input => {
+        if (input.idleEvidence && failedClose.has(topic)) throw Error('actuator failed');
+        if (input.idleEvidence && refusedClose.has(topic)) return { state: 'refused', evidence: 'new activity; kept' };
+        closed.push(input.claim); return { state: 'closed', evidence: 'fake' }; },
     }),
   };
   let port = value(createConversationTopicsPort(config));
   const request = (operation: string) => ({ operation, question: 'hello', context: 'shared memory: Wren; own topic history', authority: 'grant' });
-  return { get port() { return port; }, config, request, held, exited, launches, delivered, closed, edges,
+  return { get port() { return port; }, config, request, held, exited, refusedClose, failedClose, launches, delivered, closed, edges,
     batchOutput: (text: string) => { batchOutput = text; },
     unreadableEvidence: () => { evidenceUnreadable = true; },
     state: () => state!, counts: () => ({ live, peak }), advance: (ms: number) => { now += ms; },
@@ -80,14 +85,16 @@ it('two topics run concurrently with separate queues, cursors and claims under o
 });
 
 it('the cap queues durably, retires an idle topic and resumes it with a fresh identity and saved history', async () => {
-  const f = fixture(1); f.held.add('7');
+  const f = fixture(1, 6, 16, 600000); f.held.add('7');
   const a = f.port.run(f.request('7:a')); await until(() => f.delivered.length === 1);
   const b = f.port.run(f.request('8:b'));
   await until(() => !!f.state().topics['8']?.inputs.length);
   expect(f.counts().peak).toBe(1); expect(f.delivered).toHaveLength(1);
   f.held.delete('7'); await a; await b;
+  f.advance(30000); await f.port.maintain(); f.advance(30000); await f.port.maintain();
   expect(f.closed).toContain(f.launches[0]!.worker.claim); expect(f.counts().peak).toBe(1);
   await f.port.run(f.request('7:c'));
+  f.advance(30000); await f.port.maintain(); f.advance(30000); await f.port.maintain();
   expect(f.launches.map(row => row.topic)).toEqual(['7', '8', '7']);
   expect(f.launches[2]!.worker.claim).not.toBe(f.launches[0]!.worker.claim);
   expect(f.delivered[2]!.input.text).not.toContain('answer in 7');
@@ -97,9 +104,11 @@ it('the cap queues durably, retires an idle topic and resumes it with a fresh id
 });
 
 it('idle maintenance retires a worker without resetting its spent allowance or cursor', async () => {
-  const f = fixture(); await f.port.run(f.request('main:a'));
+  const f = fixture(2, 6, 16, 600000); Object.assign(f.config, { idleMs: 500 }); await f.port.run(f.request('main:a'));
   f.advance(499); await f.port.maintain(); expect(f.counts().live).toBe(1);
-  f.advance(1); await f.port.maintain(); expect(f.counts().live).toBe(0);
+  f.advance(1); await f.port.maintain(); expect(f.counts().live).toBe(1);
+  f.advance(120000); await f.port.maintain(); expect(f.counts().live).toBe(1);
+  f.advance(30000); await f.port.maintain(); expect(f.counts().live).toBe(0);
   expect(f.state().topics.main?.spent).toBe(1);
   await f.port.run(f.request('main:b')); expect(f.launches).toHaveLength(2);
   expect(f.state().topics.main?.inputs[0]?.cursor).toBe(2); await f.port.close();
@@ -179,9 +188,11 @@ it('upgrades group custody in place: retires the old worker, splits queues and p
 });
 
 it('reclaims an idle topic when the installation resource ceiling is tighter than the topic cap', async () => {
-  const f = fixture(2, 6, 1);
+  const f = fixture(2, 6, 1, 600000);
   await f.port.run(f.request('7:a'));
-  expect(await f.port.run(f.request('8:b'))).toMatchObject({ state: 'complete' });
+  expect(await f.port.run(f.request('8:b'))).toMatchObject({ state: 'queued' });
+  f.advance(30000); await f.port.maintain(); f.advance(30000); await f.port.maintain();
+  expect((await f.port.collect('8:b'))?.outcome).toMatchObject({ state: 'complete' });
   expect(f.counts().peak).toBe(1); expect(f.launches.map(row => row.topic)).toEqual(['7', '8']);
   await f.port.close();
 });
@@ -370,7 +381,7 @@ it('idle context survives six minutes and two hours, with the same worker on ret
 });
 
 it('memory pressure retires the oldest idle worker, never a busy worker', async () => {
-  const f = fixture(8); let pressure = false;
+  const f = fixture(8, 6, 16, 600000); let pressure = false;
   Object.assign(f.config, { capacity: async () => ({ admit: !pressure, memoryPressure: pressure }) });
   await f.port.run(f.request('7:a')); f.advance(1);
   await f.port.run(f.request('8:a')); f.advance(1);
@@ -378,7 +389,9 @@ it('memory pressure retires the oldest idle worker, never a busy worker', async 
   await until(() => f.delivered.length === 3);
   // Refresh 7, so 8 is LRU despite map insertion order.
   await f.port.run(f.request('7:b')); pressure = true;
-  await f.port.maintain();
+  await f.port.maintain(); expect(f.closed).toEqual([]);
+  f.advance(30000); await f.port.maintain(); expect(f.closed).toEqual([]);
+  f.advance(30000); await f.port.maintain();
   expect(f.closed).toEqual([f.launches[1]!.worker.claim]);
   expect(f.counts().live).toBe(2);
   f.held.clear(); await busy; await f.port.close();
@@ -412,7 +425,7 @@ it('an observed idle exit cannot replace a worker without current capacity', asy
 });
 
 it('capacity is measured after a busy slot wait and queued input drains when it returns', async () => {
-  const f = fixture(1); let room = true, waiting = false;
+  const f = fixture(1, 6, 16, 600000); let room = true, waiting = false;
   Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: !room }) });
   f.held.add('7'); const first = f.port.run(f.request('7:a'));
   await until(() => f.delivered.length === 1);
@@ -423,7 +436,7 @@ it('capacity is measured after a busy slot wait and queued input drains when it 
   expect(await second).toMatchObject({ state: 'queued' });
   expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
   expect(f.state().topics['8']!.inputs[0]).toMatchObject({ state: 'queued', delivery: null, attempts: 0 });
-  room = true; await f.port.maintain();
+  room = true; f.advance(30000); await f.port.maintain(); f.advance(30000); await f.port.maintain();
   expect(await f.port.collect('8:b')).toMatchObject({ outcome: { state: 'complete' } });
   expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(2);
   await f.port.maintain(); expect(f.delivered).toHaveLength(2); await f.port.close();
@@ -476,7 +489,7 @@ it.each(recordedCapacityShapes.otherShapes)('capacity recovery preserves topic-l
 
 // The review reproduction also covers the retry after reclaiming an idle topic.
 it.each([false, true])('physical lease wait rechecks headroom (retry=%s)', async retry => {
-  const f = fixture(); let room = true, entered = false, calls = 0;
+  const f = fixture(2, 6, 16, 600000); let room = true, entered = false, calls = 0;
   Object.assign(f.config, { capacity: async () => ({ admit: room, memoryPressure: !room }) });
   if (retry) await f.port.run(f.request('8:resident'));
   const before = f.delivered.length;
@@ -485,11 +498,16 @@ it.each([false, true])('physical lease wait rechecks headroom (retry=%s)', async
   const admit = f.config.resources.admit;
   Object.assign(f.config.resources, { admit: async () => {
     calls++;
-    if (retry && calls === 1) return null;
+    if (retry && f.counts().live > 0) return null;
     entered = true; await waiting; return admit();
   } });
   const request = f.request('7:physical');
-  const pending = f.port.run(request);
+  let pending = f.port.run(request);
+  if (retry) {
+    expect(await pending).toMatchObject({ state: 'queued' });
+    f.advance(30000); await f.port.maintain();
+    f.advance(30000); pending = f.port.run(request);
+  }
   await until(() => entered);
   const reservation = structuredClone(f.state().edge);
   const input = structuredClone(f.state().topics['7']!.inputs[0]!);
@@ -534,4 +552,21 @@ it.each([false, true])('review: physical lease wait uses current headroom %s', a
   expect(evidence).toEqual(roomAfterWait
     ? { state: 'complete', launches: 1, deliveries: 1, live: 1 }
     : { state: 'queued', launches: 0, deliveries: 0, live: 0 });
+});
+
+
+it.each(['refused', 'failed'] as const)('pool cleanup handles %s closure without confusing refusal and unexplained failure', async mode => {
+  const f = fixture(8, 6, 16, 600000); let pressure = false;
+  Object.assign(f.config, { idleMs: 100, capacity: async () => ({ admit: true, memoryPressure: pressure }) });
+  await f.port.run(f.request('7:a')); await f.port.run(f.request('8:a'));
+  if (mode === 'refused') f.refusedClose.add('7'); else f.failedClose.add('7');
+  pressure = true; f.advance(100); await f.port.maintain();
+  f.advance(30000); await f.port.maintain(); f.advance(30000); await f.port.maintain();
+  // Both idle expiry and pressure were due; one reason must not reset the other's grace.
+  expect(f.closed).toEqual(mode === 'refused' ? [f.launches[1]!.worker.claim] : []);
+  if (mode === 'failed') {
+    expect(f.port.idleCleanupStatus?.().join(' ')).toContain('uncertain');
+    f.advance(30000); await f.port.maintain(); expect(f.closed).toEqual([]);
+  }
+  await f.port.close();
 });

@@ -164,8 +164,22 @@ and the same per-worker bounds. These ceilings do not replace physical headroom.
 
 Idle workers keep their context for up to four hours, within their admitted parent
 lifetime. Memory pressure reclaims the least-recently-used idle worker per maintenance
-tick; a needed slot reclaims the oldest idle worker first. Busy workers are never
-retired for these reasons. Retirement retains records and charges. Capacity waits
+tick; a needed slot assesses the oldest idle worker first. The existing conversation
+holder requires settled successful inputs, readable admission with no open children,
+and fresh affirmative adapter idleness. A stable fingerprint must span 30 seconds
+under pressure, or two minutes on ordinary idle expiry, followed by a separate
+30-second grace. Every assessment and the close itself recheck evidence; new input,
+progress, missing evidence or a sample gap over three minutes resets candidacy.
+Unknown adapters keep their workers. Busy workers are never retired for these reasons.
+The encrypted custody snapshot holds candidacy and unexplained-failure inhibition;
+no new watcher or store exists. One unexplained close or release failure inhibits
+all automatic cleanup in the topic pool until repair; an explained refusal keeps
+that target. Stop, authority withdrawal and admitted lifetime ceilings remain separate.
+Retirement retains records and charges. Confirmed closure appends the existing
+process-edge close, never closes the conversation allowance or unfinished work.
+The status pull and dashboard aggregate only warm workers currently lost to cleanup,
+explain the next-start cost and retained history, and expose uncertain release.
+A revived worker no longer counts as unavailable; its historical closure stays in the journal. Capacity waits
 keep durable intake and use the existing acknowledgement/progress and collection
 path. Independent topic drains run up to the configured ceiling. The serial
 compatibility path is unchanged when conversation sessions are off. All drains

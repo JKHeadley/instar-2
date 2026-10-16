@@ -2056,6 +2056,7 @@ async function main() {
         ? 'withdrawn since launch: the activation record changed or its grant no longer resolves' : null), Boolean(doorway.toolTurn?.harness)),
       ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : []),
       ...(loginPool ? [loginPool.status()] : []),
+      ...(sessionWork?.port.idleCleanupStatus?.() ?? []),
       ...(harness ? [harnessStatusLine(harness.state)] : identityRefusal !== null ? [harnessStatusLine({ ready: false, reason: identityRefusal })] : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
     const approvalSurface = approvalSurfaceOf(options), readOnly = readOnlyDashboardOf(options);
