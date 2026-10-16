@@ -32,6 +32,8 @@ Decision: train-51-desk | Use downloaded repin/build/rehash/replay tools; Linux 
 
 Decision: train-51-recall-fixture | Size the 90-turn raw-packet recall fixture at 12 KiB so reviewed sibling evidence and recalled facts coexist, keeping the original 200-call cap, recall/restart/capture and growth assertions. The 8 KiB diagnosis reached call cap; raising calls alone still omitted recall. Production limits and the fixed guard are unchanged, and the recorded sibling replay retains its final-omission neighbor. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-51-PROGRESS.md
 
+Decision: train-51-latency-fixture | Keep the 32 KiB performance probe and all 20 real journal turns; assert retained sibling provenance and displaced search. Compare the roomy probe after removing its sibling field to both unchanged historical hashes, preserving all unrelated historical bytes. No runtime limit or latency threshold changed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-51-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges, the existing desk regeneration chain and targeted consumer evidence. No new machinery. Start at the named live base, require membership and committed verified output, retain the named safety floors, and leave deployment and independent acceptance to the desk.
