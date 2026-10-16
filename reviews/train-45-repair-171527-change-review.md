@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Composition includes previously reviewed conversation delivery and prompt guidance; resolve their conflicting regression expectations without changing either implementation.
-Side effects: Delta-turn grounding joins completion guidance. Policy tests bind the current policy to the captured completion policy and distinguish its predecessor. Restore the captured verification fixture still consumed by completion tests. Generated publication is replayed from merged sources.
+Side effects: Delta-turn grounding joins completion guidance. Policy tests bind the current policy to the captured completion policy and distinguish its predecessor. Restore the captured verification fixture still consumed by completion tests. Generated publication is replayed from merged sources at cd1f465e82f34c4494db717b9ca3ba7270324cf1; all owner and grounding inventory pins already match the merged bytes.
 Undo and recovery: Revert this merge with its first parent as mainline through the normal reviewed release path; retain journal receipts and do not repeat uncertain effects.
 Multi-machine posture: Identical source on every host; current conversation ownership and durable journal transport remain unchanged. No new state or peer dependency.
 Layer below: Reviewed both merge parents, prompt constants, captured guidance policies, completion replay consumers, delta-turn session tests, physical resource launcher and register generation. The Linux shell rejects the unchanged launcher's ulimit -u; macOS certificate renewal remains desk-owned.
@@ -18,6 +18,7 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none; core.hooksPath unset and common hooks directory contains only sample files.
 Convergence: none
+Deferral: generated/register.json:1 | not-a-deferral=Machine-generated governance replay, not an authored promise.
 Prompt review: No prompt wording is authored by this repair. Preserve the two reviewed implementations and assert the complete current policy against recorded bytes. Fixture restoration preserves exact captured content.
 Skip: tests/assembly/production-conversation-session.test.ts:660 | scope=Inherited live rewalk replay requires DELTA_TURNS_WALK_ROOT on the Studio; its conditional skip is unchanged by the merge resolution.
 Decision: train-45-repair-171527-A | Keep completion guidance, assert its exact captured policy and inherited 508-character growth, retain the predecessor policy digest as historical evidence, and restore its consumed fixture. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-45-repair-171527-PROGRESS.md
