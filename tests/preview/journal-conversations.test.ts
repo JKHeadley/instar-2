@@ -122,7 +122,10 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
   let asked: string | undefined;
   let replay: string | undefined;
   let beforeQuestion: Buffer | undefined;
-  const open = (path = root) => world(path, { initial: genesis({ maxCalls: 200, maxReplies: 100, maxTurns: 100, maxBytes: 8192 }), model: input => {
+  // Give this raw-packet fixture room for both retained sibling words and recalled facts.
+  // The former 8 KiB forced final-rung omission and exhausted the same 200-call allowance.
+  // Production envelope/floor and cap enforcement stay unchanged; sibling-replay covers final omission.
+  const open = (path = root) => world(path, { initial: genesis({ maxCalls: 200, maxReplies: 100, maxTurns: 100, maxBytes: 12288 }), model: input => {
     if (input.id.startsWith('summary:')) return 'Ordinary talk about weather, errands and plans across two conversations.';
     if (input.question.includes('spare house key')) asked = input.context;
     return replay ?? 'noted';
@@ -141,11 +144,13 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
       if (i === 87) beforeQuestion = readFileSync(join(root, 'journal.encrypted'));
     }
     const view = current.journal.view;
-    expect(view.order.every(turn => turn.sent !== undefined)).toBe(true);
+    expect(view.order.every(turn => turn.sent !== undefined), JSON.stringify({ calls: view.calls,
+      unsent: view.order.filter(turn => turn.sent === undefined).map(turn => ({ update: turn.update, held: turn.held })) })).toBe(true);
     expect(view.summaries.length).toBeGreaterThan(0);
     const packet = JSON.parse(asked!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.audience.conversation).toBe('main chat');
+    expect(packet.actionFacts.siblingWords.items.length).toBeGreaterThan(0);
     expect(packet.recalled).toContainEqual(expect.objectContaining({ id: 'telegram:12345678:update:4', date: '2026-09-21T14:17Z', conversation: 'topic 7', user: fact,
       answer: 'noted', outcome: 'Telegram API accepted' }));
     // Exposure is only a tie breaker: repeatedly offered filler must yield to a new question.
@@ -157,7 +162,7 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
       expect.objectContaining({ kind: 'candidate', source: 'telegram:12345678:update:87' }));
     // The saved grounding must prove the same cross-topic source survived packet fitting.
     expect(view.turns.get('telegram:12345678:update:88')?.grounding?.recalled).toContain('telegram:12345678:update:4');
-    expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(8192);
+    expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(12288);
     const p95 = (values: number[]) => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]!;
     // Rule 37 repair (docs/defects/full-suite-load-timeouts.md): growth compares the median of the first and last
     // ten turns. A "p95" of ten samples is their maximum, so one scheduler stall under parallel load decided it —
@@ -183,7 +188,7 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
         await recorded.worker.drain();
         expect(JSON.parse(asked!).recalled, `${shape.kind} ${shape.id}`).toContainEqual(
           expect.objectContaining({ id: 'telegram:12345678:update:4', user: fact }));
-        expect(Buffer.byteLength(asked!), shape.id).toBeLessThanOrEqual(8192);
+        expect(Buffer.byteLength(asked!), shape.id).toBeLessThanOrEqual(12288);
       } finally { recorded.journal.close(); rmSync(replayRoot, { recursive: true, force: true }); }
     }
     current.journal.close();

@@ -171,6 +171,8 @@ describe('P14-NF-73/75: real reviewer outputs on recorded answer packets, this b
           const context = JSON.parse(messages.find(message => message.role === 'context')!.content).packet;
           expect(context.sources.map((source: { id: string }) => source.id))
             .toEqual(['purpose:purpose', 'purpose:coherency', 'rules:87', 'capability-note']);
+          expect(context.sources.find((source: { id: string }) => source.id === 'purpose:coherency').text)
+            .toContain('across sessions, including at the same time,');
           expect(context.candidateReply).toBe(candidate);
           reviewed = true;
           return { ...parsed(sample), confidence: null, latencyMs: 1 };
