@@ -25,5 +25,6 @@ Prompt finding: 849db3a6296a | quoted-evidence | Existing empty-memory response 
 Prompt finding: e8708c7fea24 | protocol-literal | Existing sourceLabel attribution instruction is retained unchanged; no new keyword decision is introduced.
 
 simplestRobustRoute: This is the simplest robust route: combine the two existing mechanisms in the one activity reader, retain all source histories, and regenerate derived pins using the delegated desk tools. Start with an operation baseline, require fresh advancing admitted evidence, reread completion, and stop reporting on end, stale evidence, or future timestamps. No new machinery or autonomous-completion claim.
+Derived artifacts: Replayed generated/ at merge c100bb3af782835bb24c55e6eb35cdf190902d8c with the existing builder; delegated owner-manifest and inventory repin scripts found no stale pins. Targeted activity/progress/typing tests: 55 passed.
 80/20: Resolve the two semantic conflicts and prove their interaction with targeted portable tests; the Studio retains full-suite and live acceptance duties.
 VERDICT: author submission; no independent verdict or live acceptance claimed
