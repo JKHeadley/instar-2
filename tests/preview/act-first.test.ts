@@ -8,7 +8,7 @@ import { CODEX_CONVERSATION_SYSTEM_PROMPT, CODEX_TOOLS_SYSTEM_PROMPT } from '../
 import { ANSWER_INSTRUCTIONS, MEMORY_LOOKUP_INSTRUCTIONS } from './briefing.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { readAnswer } from './answer-reading.js';
-import { parseReplyReviewVerdict, substantiveReply, guidanceReviewRules, replyReviewQuestion, replyReviewContext } from './reply-check.js';
+import { parseReplyReviewVerdict, REPLY_RULES, substantiveReply, guidanceReviewRules, replyReviewQuestion, replyReviewContext } from './reply-check.js';
 // @ts-expect-error Physical tool trace reader stays outside the pure core.
 import { toolTrace } from './tool-admission.mjs';
 
@@ -193,6 +193,9 @@ it('replays the real reviewer on both the unperformed lookup and actual read out
       expect(question.split(before)).toHaveLength(2);
       question = question.replace(before, after);
     }
+    // no-handback: preserve the historical question and verdict; compare the updated semantic guidance separately.
+    question = question.replace(/"parks_on_user":"(?:\\.|[^"\\])*"/u,
+      `"parks_on_user":${JSON.stringify(REPLY_RULES.parks_on_user)}`);
     expect(question).toBe(replyReviewQuestion(selected));
     expect(parseReplyReviewVerdict(decode(run), selected).findings?.find(row => row.rule === 'parks_on_user')?.verdict)
       .toBe(name === 'original' ? 'violation' : 'pass');
