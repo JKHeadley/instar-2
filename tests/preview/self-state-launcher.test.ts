@@ -93,13 +93,20 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(record.name).toBe('preview-activation');
     expect(record.identity).toBe(world.activation().reference);
     expect(record.expiresAt).toBe(trial.expiresAt);
-    expect(prompt[0]).not.toContain(record.name);
-    expect(prompt[0]).not.toContain(record.identity);
+    // The activation label stays plain; screened access metadata now accompanies it.
+    expect(prompt[0].split('\n').find(line => line.startsWith('Activation:')))
+      .toMatch(/^Activation: your activation; ends /u);
+    expect(prompt[0]).toContain(JSON.stringify({ name: record.name, identity: record.identity,
+      custody: record.custody, expiry: 'not expired', custodyPresent: null }));
+    expect(prompt[0]).toContain('configured is not authenticated');
+    expect(prompt[0]).not.toContain(env.INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN);
+    expect(prompt[0]).not.toContain(env.INSTAR_SECRET_PREVIEW_TYPESAFE_KEY);
+    expect(prompt[0]).not.toContain(env.INSTAR_SECRET_PREVIEW_STORAGE_KEY);
     expect(prompt[0]).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
     // The burst intake admits every waiting update before reply work, so both are already received.
-    expect(prompt[0]).toContain('Operator messages received: 2 today, 2 so far');
-    expect(prompt[1]).toContain('My replies Telegram accepted: 1 today, 1 so far');
-    expect(prompt[1]).toContain('Model attempts: 1 of 3 used, 2 left');
+    expect(prompt[0]).toContain('Messages today/total: operator=2/2, replies accepted=0/0; today combined=2;');
+    expect(prompt[1]).toContain('operator=2/2, replies accepted=1/1; today combined=3;');
+    expect(prompt[1]).toContain('Remaining: model=1 of 3 used, 2 left;');
     expect(readFileSync(prompts, 'utf8').trim().split('\n').every(line =>
       !packetOf(line).sources.some(source => source.id === 'restart-handoff'))).toBe(true);
     // The operator raises caps; run 2 answers a third message and knows its own restart and why.
@@ -119,11 +126,10 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       .toContain('pending turns 0; held items 0; UNKNOWN model outcomes 0; UNKNOWN sends 0; lost-answer notices due 0');
     expect(packetOf(lines[3]).sources.some(source => source.id === 'restart-handoff')).toBe(false);
     const now = prompt[2];
-    expect(now).toContain('Operator messages received: 4 today, 4 so far (including the one being answered now)');
-    expect(now).toContain('My replies Telegram accepted: 2 today, 2 so far');
-    expect(now).toContain('Messages exchanged today: 6');
-    expect(now).toContain('Model attempts: 2 of 6 used, 4 left');
-    expect(now).toContain('on the authority "Justin, offline test"');
+    expect(now).toContain('Messages today/total: operator=4/4, replies accepted=2/2; today combined=6;');
+    expect(now).toContain('Current reply not sent.');
+    expect(now).toContain('Remaining: model=2 of 6 used, 4 left;');
+    expect(now).toContain('Caps raised: Justin, offline test;');
     expect(now).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
     expect(now).toMatch(/Last restart: 2026-\d\d-\d\d \d\d:\d\d P[DS]T\. The run before it started .* and ended .*: cycle limit reached\./u);
     expect(now).toContain('Launches recorded: 2');

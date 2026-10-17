@@ -40,7 +40,9 @@ async function seed(w: ReturnType<typeof world>) {
 function checkGuidance(text: string) {
   expect(text).not.toContain('even with an older value');
   expect(text).toContain('same fact');
-  expect(text).toContain('mode:"update"');
+  // Initial guidance names update in the shared schema; repair guidance spells out mode.
+  // Both must bind a changed fact to the offered old source and the exact replacement.
+  expect(text).toMatch(/(?:Changed same fact: update|Changing the same fact uses mode:"update") with offered old source\/quote and exact new clause/u);
   expect(text).toContain('mode:"remember"');
 }
 
