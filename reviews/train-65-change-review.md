@@ -7,9 +7,9 @@ Outcome: Carry the exact reviewed Group U source head and regenerate its registe
 Affected rules: 26, 37, 49, 69, 74, 90, 101, 102, 107, 111, 112, 113, 116
 Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake unchanged; no source, prompt, policy or runtime-state change.
 Operator questions: none
-Suggested tier: mechanical
-Declared tier: mechanical
-Tier rationale: Sole member equals the prescribed live base; only generated publication metadata and this review change.
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Carry the critical tier of the inherited register publication; sole member equals the prescribed live base and only publication metadata and this review change.
 Side effects: Generated source commit and generation digest identify the prescribed source. Group U desk scripts remain Studio artifacts and are not represented as repository deliverables.
 Undo and recovery: Revert this publication and review commit; no product-state migration or service restart.
 Multi-machine posture: No runtime change. Local WSL build and checks; Studio owns desk scripts and native/live acceptance.
