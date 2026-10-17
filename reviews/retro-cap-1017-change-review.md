@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: significant
 Declared tier: significant
 Tier rationale: Model-facing instructions affect autonomous retrospective output. Recorded journal comparison, actual model replays and positive/negative parser/accounting tests are included; deployment proof belongs to the desk.
-Side effects: The prompt and discipline digest change, making benchmark reruns due through existing behavior. Optional non-recurrence explanatory fields are no longer requested; the validator already ignores them. Existing duty follow-up and per-row refusals remain active.
+Side effects: Generated register artifacts are mechanically refreshed against source commit d17ec6dc3d325f8ccbb67eeb68c0e8041a7f6a89 (shape-only replay, no runtime authority). The prompt and discipline digest change, making benchmark reruns due through existing behavior. Optional non-recurrence explanatory fields are no longer requested; the validator already ignores them. Existing duty follow-up and per-row refusals remain active.
 Undo and recovery: Revert the prompt change and regenerate register pins. No state migration. Cases omitted or refused still remain owed, including across restart.
 Multi-machine posture: Unchanged journal-backed retrospective on the existing owning worker. No new state, writer, replication rule or cross-machine dependency.
 Layer below: Compared train-55 and train-60 runtime bytes; traced estimatedAnswerBytes, retrospectivePlan, validateRetrospective, owedCases, journal retrospect worker and subscription provider maxTokens. Train-60 runtime did not change; the terminal frame shows an unnecessary operator-message grade after CLI truncation.
@@ -42,7 +42,7 @@ Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:351 | not-a-d
 Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:355 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
 Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:359 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
 
-Subject (4 paths): reviews/retro-cap-1017-change-review.md, tests/preview/fixtures/retrospective-cap-2026-10-17.json, tests/preview/retrospective-cap.test.ts, tests/preview/retrospective.ts
+Subject (11 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, reviews/retro-cap-1017-change-review.md, tests/preview/fixtures/retrospective-cap-2026-10-17.json, tests/preview/retrospective-cap.test.ts, tests/preview/retrospective.ts
 
 ## Closing block
 
