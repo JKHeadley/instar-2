@@ -23,9 +23,10 @@ Deferral: generated/register.json:1 | not-a-deferral=generated register output r
 
 Subject (15 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, src/assembly/conversation-harness-adapter.ts, src/assembly/harness.declarations.json, src/assembly/production-session-driver.ts, src/assembly/production-session-work.ts, tests/assembly/production-session-driver.test.ts, tests/preview/README.md, tests/preview/fixtures/fastswitch-incident-1017.json, tests/preview/journal-agent.mjs
 
+Prompt finding: 450c79237a95 | protocol-literal | carried unchanged from the merged inputs; as dispositioned in reviews/038cb318-merge-live-d169b80b-change-review.md at 06e4f3a5e76c: journal-people.test.ts asserts the existing general ambiguity instruction is present and carried by subscriptionConversationPolicy. The instruction asks the model to resolve meaning across conflicting or distinct referents, never to block on a fixture phrase or return an expected Sam answer. Both prompt and assertion are unchanged by this merge.
+
 ## Closing block
 
 simplestRobustRoute: an ordinary merge, conflicts limited to generated output, unioned changelog histories, unchanged or identical live docs bodies and derived pins, then the existing desk chain and register replay re-derive everything the merged bytes determine; real content conflicts go to a builder; tool failures stay desk-owned.
 80/20: mechanical only; cheap checks (lint, register:check, change-review check) run here; the pipeline's full gate runs the test suite and post-test checkers on the merged head.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-Prompt finding: 450c79237a95 | protocol-literal | carried unchanged from the merged inputs; as dispositioned in reviews/038cb318-merge-live-d169b80b-change-review.md at 06e4f3a5e76c: journal-people.test.ts asserts the existing general ambiguity instruction is present and carried by subscriptionConversationPolicy. The instruction asks the model to resolve meaning across conflicting or distinct referents, never to block on a fixture phrase or return an expected Sam answer. Both prompt and assertion are unchanged by this merge.
