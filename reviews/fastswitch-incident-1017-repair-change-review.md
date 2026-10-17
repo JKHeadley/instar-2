@@ -21,9 +21,9 @@ Convergence: none
 
 The original source-unit base is 4be4caf90b6b2c11fd06e05d6f682c333620843e, not the broader supplied d0944dba review base. Existing real broken-build switch/rollback proof and bigcut.off hold remain desk-owned and outstanding; this repair establishes unit conformance, not rollout readiness. No full-suite report is produced or substituted.
 
-Register publication: replayed source commit 372c2c6dcd738a3e4eab809ce96086681ac9b572 through scripts/build-register.mjs. Both delegated repin scripts ran and changed zero pins. All ten native contract cases passed after renewal in 23.05 seconds, including the exact certificate assertion.
+Register publication: initially replayed source commit 372c2c6dcd738a3e4eab809ce96086681ac9b572 through scripts/build-register.mjs. The push found concurrent desk renewal a540c8afc2c6773861b8686ee71fb128ae84566f and publication 45f04930 on remote head 70e262c9. Both declarations are byte-identical. Merge preserves both histories and adopts the desk-generated publication unchanged, binding source a540c8afc2c6773861b8686ee71fb128ae84566f; no second source repair or hand-edited pin. Both delegated repin scripts ran and changed zero pins. All ten native contract cases passed after renewal in 23.05 seconds, including the exact certificate assertion.
 
-Subject (8 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, src/assembly/harness.declarations.json
+Subject (8 paths, plus the inherited desk review reviews/native-conformance-c1ed329c2296-change-review.md): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, src/assembly/harness.declarations.json
 
 ## Closing block
 
