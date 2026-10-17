@@ -59,6 +59,8 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label and unkn
 Prompt finding: f6d7f3274c85 | protocol-literal | Test quotes the current instruction contract or normalizes historical prompt prose; no scenario answer or expected verdict is inserted as a trigger.
 Prompt finding: feadb66b8ad1 | protocol-literal | Test quotes the current instruction contract or normalizes historical prompt prose; no scenario answer or expected verdict is inserted as a trigger.
 
+Decision: train-58-carry-fixture | Update the two obsolete wording pins around unchanged MEMORY_ITEM_SHAPE in group-carry to the reviewed correction-keep wording. Preserve both carried/non-carried assertions, source presence/absence and actual parser shape; no capture or runtime behavior changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-58-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges, existing publication regeneration and targeted consumer verification. No new machinery. Start at the live base; preserve secrets, spend, stop, durable intake and unique sends; require committed membership and evidence before desk acceptance.
