@@ -1,5 +1,6 @@
+import { createCipheriv, randomBytes } from 'node:crypto';
 import { expect, it } from 'vitest';
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { appendFileSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,18 +20,30 @@ it('binds the recorded own-word quotes to delivery, despite competing operator t
   const index = rows.findIndex(row => row.kind === 'reserve' && row.id === id(715676633));
   const recorded = rows[index] as Extract<JournalRecord, { kind: 'reserve' }>;
   const original = packetOf(recorded.prompt!);
-  const journal = openPreviewJournal(join(root, 'journal'), new Uint8Array(32).fill(29), rows[0] as Extract<JournalRecord, { kind: 'genesis' }>);
+  const path = join(root, 'journal'), key = new Uint8Array(32).fill(29);
+  let journal = openPreviewJournal(path, key, rows[0] as Extract<JournalRecord, { kind: 'genesis' }>);
   try {
-    for (const row of rows.slice(1, index)) {
-      // Re-sign the captured subjects with the isolated test key, including split
-      // replies and agent progress. No source installation key is imported.
-      if (row.kind === 'intent' || row.kind === 'held-notice-intent') {
-        journal.append({ ...row, provenance: journal.signOutbound(row.provenance!.speaker, outboundSubjectOf(row)),
-          ...(row.kind === 'intent' && row.parts ? { parts: row.parts.map((part, index) => ({ ...part,
-            provenance: journal.signOutbound(part.provenance.speaker, { target: replyPartTarget(row.id, index + 2),
-              chat: row.chat, ...(row.thread === undefined ? {} : { thread: row.thread }), body: part.body }) })) } : {}) });
-      } else journal.append(row);
+    // These are historical admissions, including agent progress from the old build.
+    // Re-sign with the isolated key, then load through replay rather than asking the
+    // current new-record admission to accept the old progress policy.
+    const retained = rows.slice(1, index).map(row => {
+      if (row.kind !== 'intent' && row.kind !== 'held-notice-intent') return row;
+      return { ...row, provenance: journal.signOutbound(row.provenance!.speaker, outboundSubjectOf(row)),
+        ...(row.kind === 'intent' && row.parts ? { parts: row.parts.map((part, index) => ({ ...part,
+          provenance: journal.signOutbound(part.provenance.speaker, { target: replyPartTarget(row.id, index + 2),
+            chat: row.chat, ...(row.thread === undefined ? {} : { thread: row.thread }), body: part.body }) })) } : {}) };
+    });
+    journal.close();
+    let offset = readFileSync(path).length;
+    for (const row of retained) {
+      const nonce = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, nonce);
+      cipher.setAAD(Buffer.from(`preview-journal:${offset}`));
+      const body = Buffer.concat([cipher.update(JSON.stringify(row)), cipher.final()]);
+      const bytes = Buffer.concat([nonce, cipher.getAuthTag(), body]), length = Buffer.alloc(4);
+      length.writeUInt32BE(bytes.length);
+      appendFileSync(path, Buffer.concat([length, bytes])); offset += 4 + bytes.length;
     }
+    journal = openPreviewJournal(path, key);
     expect(original.memoryCandidates.find((item: { id: string }) => item.id === id(715676630)).sourceLabel)
       .toContain('/2026-10-16 12:40 PDT/');
     expect(original.actionFacts.siblingWords.items.find((item: { source: string }) => item.source === id(715676630)).at)
