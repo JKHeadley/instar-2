@@ -38,7 +38,8 @@ export function createSessionConversationAdapter(config: Readonly<{
       const observed = take(driver.observe({ operation: input.delivery?.operation ?? input.claim, processIdentity: input.launch,
         resultAvailable: Boolean(text?.trim()) }));
       let events: ConversationObservation[] = [];
-      if (observed.phase === 'exit-observed') events = [{ kind: 'exit', evidence: observed.evidence }];
+      if (observed.phase === 'exit-observed') events = [{ kind: 'exit', evidence: observed.evidence,
+        ...(observed.safetyDeadline === undefined ? {} : { safetyDeadline: observed.safetyDeadline }) }];
       else if (observed.phase === 'pause-observed' || observed.phase === 'uncertain') events = [{ kind: 'paused', evidence: observed.evidence, reason: observed.detail }];
       else if (input.delivery && observed.phase === 'output-observed' && observed.evidence.startsWith('turn-closed:')) {
         if (text?.trim()) events.push({ kind: 'reply', delivery: input.delivery.operation, text, digest: hash(text) });

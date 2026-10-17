@@ -6,7 +6,7 @@ import { ModelPending, type PreviewPorts } from './journal.js';
 export function conversationSessionAnswer(outcome: ConversationSessionOutcome, id: string,
   malformed: (shape: string) => void): Awaited<ReturnType<PreviewPorts['model']>> {
   if (outcome.state === 'queued') throw new ModelPending();
-  if (outcome.state !== 'complete') return { state: 'uncertain' };
+  if (outcome.state !== 'complete') return { state: 'uncertain', ...(outcome.safetyCeiling ? { safetyCeiling: outcome.safetyCeiling } : {}) };
   const usage = { inputTokens: null, outputTokens: null, charge: null };
   const reading = readAnswer(outcome.text ?? '', { wrapped: 'accept', evidence: [id] });
   if (!reading.ok) {

@@ -58,6 +58,15 @@ const gatedKind = () => DELEGATION_TOOLS.includes(String(call.tool_name)) ? 'del
     || NETWORK_TOOLS.includes(String(call.tool_name))
     || (call.tool_name === 'Bash' && call.tool_input?.dangerouslyDisableSandbox) ? 'effect' : null;
 if (mode === 'post') {
+  if (call.hook_event_name === 'PostToolUseFailure') {
+    if (typeof call.tool_use_id !== 'string' || !call.tool_use_id || typeof call.tool_name !== 'string' || !call.tool_name
+      || typeof call.error !== 'string') throw Error('invalid tool failure completion');
+    // A failed invocation ended, but its external effect may still be uncertain. Record activity
+    // completion without sending the success-shaped checkpoint post or settling a child edge.
+    record({ phase: 'post-failure', id: call.tool_use_id, tool: call.tool_name, result: clip(call.error),
+      ...(typeof call.agent_id === 'string' ? { agent: call.agent_id } : {}) });
+    process.exit(0);
+  }
   const agent = SUBAGENT_TOOLS.includes(call.tool_name) && typeof call.tool_response?.agentId === 'string' ? { agent: call.tool_response.agentId } : {};
   record({ phase: 'post', id: call.tool_use_id, tool: call.tool_name, result: clip(call.tool_response), ...agent });
   // On a checkpointed route the checkpoint settles the delegation's edge or the effect's record. A report that cannot be

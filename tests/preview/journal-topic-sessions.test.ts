@@ -455,7 +455,7 @@ it('refreshes sibling words at dispatch, excludes operator text and the current 
     expect(delivered).not.toContain('PRIVATE operator words');
     expect(f.journal.view.turns.get('telegram:12345678:update:2')!.prompt).not.toContain('I will hold the restart');
     const words = currentActionFacts(f.journal.view, 2000, true, '8').siblingWords!;
-    expect(words.items).toContainEqual(expect.objectContaining({ kind: 'promise', topic: '7', at: '1969-12-31 16:00 PST', state: 'open' }));
+    expect(words.items).toContainEqual(expect.objectContaining({ kind: 'promise', topic: '7', ownWords: expect.stringContaining('when I said it: 1969-12-31 16:00 PST (reply delivery); operator input received:'), state: 'open' }));
     expect(words.items.every(item => item.topic !== '8')).toBe(true);
     expect(currentActionFacts(f.journal.view, 2000, false, '8')).toEqual({ items: [], withheld: true });
     const reread = openPreviewJournal(join(f.root, 'journal.encrypted'), new Uint8Array(32).fill(61));
@@ -475,7 +475,7 @@ it.each([['America/Los_Angeles', '1969-12-31 16:00 PST'], ['UTC', '1970-01-01 00
       siblingReply(f, 1, 'The restart is on hold.', 7);
       f.worker.intake([siblingUpdate(f, 2, 'What about the restart?', 8)]); await f.worker.drain();
       const refreshed = JSON.parse(f.deliveries.at(-1)!.input.text.split('CURRENT ACTION FACTS')[1]!.split('\n')[1]!);
-      expect(refreshed.siblingWords.items[0].at).toBe(expected);
+      expect(refreshed.siblingWords.items[0].ownWords).toContain(`when I said it: ${expected} (reply delivery); operator input received:`);
     } finally { await f.close(); }
   });
 
@@ -487,7 +487,7 @@ it('bounds sibling excerpts, keeps newest first, scrubs secrets and forgetting, 
     const words = currentActionFacts(f.journal.view, 2000, true, '8').siblingWords!;
     expect(words.items.filter(item => item.kind === 'statement')).toHaveLength(12);
     expect(words.items[0]!.source).toBe(latest.id);
-    expect(words.items.every(item => item.excerpt.length <= 240)).toBe(true);
+    expect(words.items.every(item => JSON.parse(item.ownWords.split('; my words: ')[1]!).length <= 240)).toBe(true);
     expect(words.omitted).toBeGreaterThan(0);
     expect(Buffer.byteLength(JSON.stringify(currentActionFacts(f.journal.view, 2000, true, '8')))).toBeLessThan(32768);
     for (const turn of f.journal.view.order) turn.sentAt = 1000;
@@ -499,7 +499,7 @@ it('bounds sibling excerpts, keeps newest first, scrubs secrets and forgetting, 
     latest.intent = 'Authorization: Bearer sk-test-abcdefghijklmnopqrstuvwxyz123456789';
     expect(JSON.stringify(currentActionFacts(f.journal.view, 2000, true, '8'))).not.toContain('sk-test-abcdefghijklmnopqrstuvwxyz123456789');
     f.journal.view.memory.push({ mode: 'forget', source: latest.id, quote: latest.intent, trigger: latest.id });
-    expect(currentActionFacts(f.journal.view, 2000, true, '8').siblingWords!.items[0]!.excerpt).toContain('withheld');
+    expect(currentActionFacts(f.journal.view, 2000, true, '8').siblingWords!.items[0]!.ownWords).toContain('withheld');
     delete latest.sent;
     expect(currentActionFacts(f.journal.view, 2000, true, '8').siblingWords!.items.some(item => item.source === latest.id)).toBe(false);
   } finally { await f.close(); }
@@ -515,6 +515,7 @@ it.each(recordedBatchShapes.otherShapes)('refreshes sibling words with recorded 
     const delivery = f.deliveries.at(-1)!.input.text;
     expect(delivery).toContain('I will hold the restart until 5 pm.');
     expect(delivery).toContain('siblingWords');
+    expect(delivery).toContain('when I said it: 1969-12-31 16:00 PST (reply delivery); operator input received:');
     expect(delivery).toContain('1969-12-31 16:00 PST');
     expect(delivery).not.toContain('PRIVATE operator words');
     expect(f.state().topics['8']!.inputs[0]!.request.context).toContain(JSON.stringify(sample.raw));

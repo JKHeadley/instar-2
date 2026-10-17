@@ -204,11 +204,11 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     // Model dispatch: the allowance is taken before the call is forwarded, and a call past it is never forwarded.
     if (req.method === 'POST' && !UNCOUNTED.some(pattern => pattern.test(rest))) {
       if (state.calls >= state.allowance) {
-        state.refused = true; req.resume();
+        state.refused = true; state.refusalReason = 'calls'; req.resume();
         return refuseModel(res, `instar: this step's reserved model-call allowance (${state.allowance}) is used; the call was not dispatched`);
       }
       try { state.reserveCall?.(state.calls + 1); } catch {
-        state.refused = true; req.resume();
+        state.refused = true; state.refusalReason ??= 'reservation-unavailable'; req.resume();
         return refuseModel(res, 'instar: durable call reservation unavailable; nothing was dispatched');
       }
       state.calls += 1;
@@ -235,14 +235,14 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     open(claim, { framework, allowance, edge, reserveCall }) {
       if (!claimPattern.test(claim) || !upstreams[framework] || !Number.isSafeInteger(allowance) || allowance < 1 || !edge?.id)
         throw Error('admission gate: claim, framework, allowance and edge required');
-      claims.set(claim, { framework, allowance, edge, reserveCall, calls: 0, refused: false, closed: false, delegations: new Map(), effects: new Map(), toolPreparations: 0 });
+      claims.set(claim, { framework, allowance, edge, reserveCall, calls: 0, refused: false, refusalReason: null, closed: false, delegations: new Map(), effects: new Map(), toolPreparations: 0 });
     },
     /** Closes a claim: no further call or admission passes. Returns its final state. */
     close(claim) { const state = claims.get(claim); if (state) state.closed = true; return this.state(claim); },
     /** Calls admitted, whether one was refused at the ceiling, and the child edges still open; null for an unknown claim. */
     state(claim) {
       const state = claims.get(claim);
-      return state ? { calls: state.calls, refused: state.refused, closed: state.closed,
+      return state ? { calls: state.calls, refused: state.refused, refusalReason: state.refusalReason, closed: state.closed,
         uncertainEffects: state.effects.size, toolPreparations: state.toolPreparations,
         openDelegations: [...state.delegations.values()].filter(row => row.open).map(row => row.edge) } : null;
     },

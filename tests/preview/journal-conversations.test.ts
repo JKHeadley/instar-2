@@ -123,10 +123,11 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
   let replay: string | undefined;
   let beforeQuestion: Buffer | undefined;
   // Give this raw-packet fixture room for both retained sibling words and recalled facts.
-  // Zoned timestamps need another 512 bytes to retain the prior-turn exposure neighbor.
+  // Explicit delivery/intake labels need another 2 KiB to retain the prior-turn exposure neighbor.
   // The former 8 KiB forced final-rung omission and exhausted the same 200-call allowance.
   // Production envelope/floor and cap enforcement stay unchanged; sibling-replay covers final omission.
-  const open = (path = root) => world(path, { initial: genesis({ maxCalls: 200, maxReplies: 100, maxTurns: 100, maxBytes: 12800 }), model: input => {
+  const packetLimit = 14848;
+  const open = (path = root) => world(path, { initial: genesis({ maxCalls: 200, maxReplies: 100, maxTurns: 100, maxBytes: packetLimit }), model: input => {
     if (input.id.startsWith('summary:')) return 'Ordinary talk about weather, errands and plans across two conversations.';
     if (input.question.includes('spare house key')) asked = input.context;
     return replay ?? 'noted';
@@ -163,7 +164,7 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
       expect.objectContaining({ kind: 'candidate', source: 'telegram:12345678:update:87' }));
     // The saved grounding must prove the same cross-topic source survived packet fitting.
     expect(view.turns.get('telegram:12345678:update:88')?.grounding?.recalled).toContain('telegram:12345678:update:4');
-    expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(12800);
+    expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(packetLimit);
     const p95 = (values: number[]) => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]!;
     // Rule 37 repair (docs/defects/full-suite-load-timeouts.md): growth compares the median of the first and last
     // ten turns. A "p95" of ten samples is their maximum, so one scheduler stall under parallel load decided it —
@@ -189,7 +190,7 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
         await recorded.worker.drain();
         expect(JSON.parse(asked!).recalled, `${shape.kind} ${shape.id}`).toContainEqual(
           expect.objectContaining({ id: 'telegram:12345678:update:4', user: fact }));
-        expect(Buffer.byteLength(asked!), shape.id).toBeLessThanOrEqual(12800);
+        expect(Buffer.byteLength(asked!), shape.id).toBeLessThanOrEqual(packetLimit);
       } finally { recorded.journal.close(); rmSync(replayRoot, { recursive: true, force: true }); }
     }
     current.journal.close();

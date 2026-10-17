@@ -59,7 +59,7 @@ it('takes the allowance before dispatch: a call past it is refused at the checkp
   expect(third.body).toContain('reserved model-call allowance (2) is used');
   // The provider saw exactly the two admitted calls, with the child's own credential header forwarded untouched.
   expect(w.received.map(row => row[1])).toEqual(['/v1/messages?beta=true', '/v1/messages?beta=true']);
-  expect(w.gate.state('claim-a')).toMatchObject({ calls: 2, refused: true });
+  expect(w.gate.state('claim-a')).toMatchObject({ calls: 2, refused: true, refusalReason: 'calls' });
   // A request that starts no model call (token counting, a reachability probe) takes nothing.
   const tally = await world();
   tally.gate.open('claim-b', { framework: 'claude-code', allowance: 1, edge: tally.edge });
@@ -140,5 +140,5 @@ it('persists conversation charges before forwarding and refuses a failed durable
   expect((await w.send(url)).status).toBe(200);
   expect((await w.send(url)).status).toBe(400);
   expect(reserved).toEqual([1]); expect(w.received).toHaveLength(1);
-  expect(w.gate.state('claim-durable')).toMatchObject({ calls: 1, refused: true });
+  expect(w.gate.state('claim-durable')).toMatchObject({ calls: 1, refused: true, refusalReason: 'reservation-unavailable' });
 });

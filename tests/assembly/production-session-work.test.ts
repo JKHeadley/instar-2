@@ -26,7 +26,7 @@ const recordedWork = JSON.parse(readFileSync(new URL('../preview/fixtures/work-r
 
 function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadlineMs?: number;
   maxResultBytes?: number; failLaunch?: boolean; maxCalls?: number; calls?: () => number | null;
-  admit?: 'refuse' | 'unreleased'; stopFails?: boolean; refused?: () => boolean | null; prepareFails?: boolean;
+  admit?: 'refuse' | 'unreleased'; stopFails?: boolean; refused?: () => boolean | null; refusalReason?: 'calls' | 'reservation-unavailable'; prepareFails?: boolean;
   openDelegations?: () => readonly SessionWorkEdge[] } = {}) {
   const f = assemblyRuntimeFixture();
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'session-work-'))); roots.push(root);
@@ -49,7 +49,7 @@ function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadli
     wait: async ms => { clock += ms; },
     prepareAdmission: (claim, edge) => { if (options.prepareFails) throw Error('unwritable'); prepared.push(claim); edges.push(edge); },
     admissionState: () => { const refused = options.refused ? options.refused() : false;
-      return refused === null ? null : { refused, openDelegations: options.openDelegations ? options.openDelegations() : [] }; },
+      return refused === null ? null : { refused, refusalReason: refused ? options.refusalReason ?? 'calls' : null, openDelegations: options.openDelegations ? options.openDelegations() : [] }; },
     closeAdmission: () => { admissionsClosed += 1; },
   };
   const driver: NativeHarnessDriverPort & { stop(): ReturnType<typeof f.success<readonly string[]>> } = {
@@ -716,4 +716,12 @@ it('does not collect a different operation sharing the requested prefix or trust
   }
   f.rows[1] = close;
   expect(f.port.collect(request.operation)).toMatchObject({ state: 'failed', child: null });
+});
+
+it('a reservation failure stays uncertain without claiming that the allowance was exhausted', async () => {
+  const f = fixture({ phases: ['launched'], maxCalls: 3, refused: () => true, refusalReason: 'reservation-unavailable' });
+  expect(await f.port.run(f.request())).toMatchObject({ state: 'uncertain' });
+  const closed = f.rows.find(row => row.type === 'SessionWorkEdgeClose') as SessionWorkEdgeClose;
+  expect(closed.detail).toContain('model call reservation unavailable');
+  expect(closed.detail).not.toContain('past the reserved allowance');
 });

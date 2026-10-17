@@ -287,6 +287,11 @@ it.each(['stop', 'deadline', 'identity'] as const)('a waiting recovery cannot by
   const result = f.driver.observe({ operation: 'deliver', processIdentity: id });
   if (reason === 'identity') refused(result, 'identity changed');
   else expect(value(result).phase).toBe('exit-observed');
+  if (reason === 'deadline') {
+    expect(value(result)).toMatchObject({ safetyDeadline: 121_000 });
+    expect(f.journal.sessions[0]?.deadlineHalt).toEqual({ deadline: 121_000, at: 121_000 });
+    expect(value(f.driver.observe({ operation: 'again', processIdentity: id }))).toMatchObject({ safetyDeadline: 121_000 });
+  }
   expect(f.sends).toBe(sends);
 });
 
@@ -778,6 +783,7 @@ it.each(['claude-code', 'codex-cli'] as const)('an admitted %s session launches 
     const settings = JSON.parse(spawned[spawned.indexOf('--settings') + 1]!);
     expect(settings.hooks.PreToolUse).toEqual([{ matcher: '*', hooks: [{ type: 'command', command: '/node /repo/hook.mjs pre /state/topic', timeout: 600 }] }]);
     expect(settings.hooks.PostToolUse[0].hooks[0].command).toBe('/node /repo/hook.mjs post /state/topic');
+    expect(settings.hooks.PostToolUseFailure).toEqual(settings.hooks.PostToolUse);
     // No background model traffic, and every model call the session makes goes to this claim's checkpoint.
     expect(spawned).toContain('DISABLE_NON_ESSENTIAL_MODEL_CALLS=1');
     expect(spawned).toContain(`ANTHROPIC_BASE_URL=${modelGate('topic')}`);
@@ -1155,4 +1161,11 @@ it.each(['stop', 'identity', 'deadline', 'receipt', 'context'] as const)('preser
   const observation = value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
   expect(observation.phase).toBe(mode === 'receipt' ? 'output-observed' : mode === 'context' ? 'pause-observed' : 'exit-observed');
   expect(observation.detail).not.toBe('connection-exhausted');
+});
+
+it('retains the infrastructure deadline cause after the exact process has gone', () => {
+  const f = fixture(), id = f.launch(); value(f.deliver(id)); f.changePane('working'); f.time(2001);
+  const first = value(f.driver.observe({ operation: 'observe', processIdentity: id }));
+  expect(first.evidence).toBe(`safety-ceiling:deadline:${id}`);
+  expect(value(f.driver.observe({ operation: 'again', processIdentity: id })).evidence).toBe(first.evidence);
 });

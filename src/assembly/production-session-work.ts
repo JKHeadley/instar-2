@@ -84,6 +84,8 @@ export function sessionWorkEffect(input: Omit<SessionWorkEffect, 'type' | 'schem
  * is `failed`, and an interrupted or unobservable one is `uncertain` — never a guessed answer. */
 export interface SessionWorkOutcome {
   readonly state: 'complete' | 'uncertain' | 'failed';
+  /** Infrastructure safety halt; unfinished work and uncertain effects remain retained. */
+  readonly safetyCeiling?: 'deadline' | 'calls';
   readonly text?: string; readonly detail: string; readonly contextRecovery?: string;
   readonly edge: string; readonly child: string | null;
 }
@@ -104,9 +106,9 @@ export interface SessionWorkIO {
    * a child of `edge` before it starts. It may finish asynchronously (the step's shell network checkpoint starts with
    * it); the launch waits for it. Throws (or rejects) when it cannot. */
   prepareAdmission(claim: string, edge: SessionWorkEdge): void | Promise<void>;
-  /** The checkpoint's view of the claim: whether a call past the allowance was refused, and the child edges still
-   * open. Null when unread. */
-  admissionState(claim: string): Readonly<{ refused: boolean; uncertainEffects?: number; toolPreparations?: number; openDelegations: readonly SessionWorkEdge[] }> | null;
+  /** Exact checkpoint cause and child edges still open. Older untyped refusals remain
+   * uncertain; only `calls` proves exhaustion. Null when unread. */
+  admissionState(claim: string): Readonly<{ refused: boolean; uncertainEffects?: number; toolPreparations?: number; refusalReason?: 'calls' | 'reservation-unavailable' | null; openDelegations: readonly SessionWorkEdge[] }> | null;
   /** Closes the claim at the checkpoint: no further model call or admission of the child passes. */
   closeAdmission(claim: string): void;
   /** Resolves after at least `ms`, without blocking the host's timers. */
@@ -361,7 +363,9 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
               const admission = config.io.admissionState(claim);
               if (admission === null) return settledAs('uncertain', 'the child\'s admission state could not be read', child);
               if (admission.refused) return settledAs('uncertain',
-                `a model call past the reserved allowance (${config.maxCalls}) was refused before dispatch`, child);
+                admission.refusalReason === 'calls'
+                  ? `a model call past the reserved allowance (${config.maxCalls}) was refused before dispatch`
+                  : 'model call reservation unavailable; nothing dispatched', child);
               const calls = config.io.modelCalls(openedAt);
               observedCalls = calls;
               if (calls === null) return settledAs('uncertain', 'the child\'s model-call meter could not be read', child);
@@ -405,7 +409,9 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
         let admission: ReturnType<SessionWorkIO['admissionState']> = null;
         try { config.io.closeAdmission(claim); admission = config.io.admissionState(claim); } catch { admission = null; }
         if (launched && admission === null) unconfirmed.push('the step\'s admission state could not be read after it stopped');
-        if (admission?.refused) unconfirmed.push(`a model call past the reserved allowance (${config.maxCalls}) was refused before dispatch`);
+        if (admission?.refused) unconfirmed.push(admission.refusalReason === 'calls'
+          ? `a model call past the reserved allowance (${config.maxCalls}) was refused before dispatch`
+          : 'model call reservation unavailable; nothing dispatched');
         // A delegation still open when its parent closed never returned: its edge settles as uncertain, its liability
         // stays inside this step's reservation, and the parent cannot be complete over it.
         for (const nested of admission?.openDelegations ?? []) {
