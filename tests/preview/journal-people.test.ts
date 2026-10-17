@@ -620,9 +620,11 @@ it('keeps a plain summary and reports the missing people record; person notes gi
 it('keeps per-turn non-model overhead flat through 200 turns with person notes and a restart', async () => {
   const root = origin(), samples: number[] = [];
   try {
-    let w = world(root, { bad: false });
+    // Preserve the original evidence room after the 88-byte standing-preference guidance addition.
+    const options = { bad: false, maxBytes: 8000 + 118 };
+    let w = world(root, options);
     for (let i = 1; i <= 200; i++) {
-      if (i === 100) { w.journal.close(); w = world(root, { bad: false }); }
+      if (i === 100) { w.journal.close(); w = world(root, options); }
       const text = i % 10 === 1 ? `Sam ${i} reported that Priya wants item ${i} reviewed.`
         : i === 199 ? 'What have Sam and Priya said?' : filler(i);
       const start = performance.now();

@@ -36,3 +36,7 @@ simplestRobustRoute: This is the simplest robust route: merge the named live hea
 VERDICT: author submission; independent desk acceptance pending
 
 Publication: Delegated owner rehash and grounding repin both found zero stale source hashes. Replayed all seven generated artifacts from d5d21b8179f803287b30d78328e55655eb09161f, generation sha256:415a0856f2873db9eb5f419685a99ac5566841b99e45d20b622f07f29155900e. No certificate or declaration rewritten by repair.
+
+Decision: train58-054557-people-budget | Extend the already-reviewed 118-byte synthetic fixture allowance to the 200-turn people benchmark, preserving 88 bytes of evidence room after quarter review reserve. Keep all recall, restart, sends and timing assertions; production budgets unchanged. Reproduced missing people at 8000 bytes, passes at 8118. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-58-repair-054557-PROGRESS.md
+
+Targeted evidence: Recorded memory replay passes 6/6. Access inventory, run completion and consumer, proactive compaction, credential reminders and installed login tests pass 55/55. People benchmark initially failed because the synthetic budget omitted the standing-preference allowance; after applying it, all original benchmark assertions pass (p95 189.2 ms, final-minus-first 230.7 ms). WSL self-state launcher refuses before launch at admission, prior to the repaired prompt assertions; Studio must verify that host-dependent test.
