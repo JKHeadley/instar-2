@@ -27,6 +27,8 @@ Prompt finding: 849db3a6296a | quoted-evidence | Existing empty-memory status is
 Prompt finding: e8708c7fea24 | protocol-literal | Existing sourceLabel attribution instruction is retained unchanged.
 Deferral: tests/preview/fixtures/ownword-time-1016.json.gz:122 | not-a-deferral=Inherited compressed recorded evidence carried byte-identically from live d169b80b, not a promise to defer work.
 
+Publication: Existing desk chain found zero stale inventory or owner-manifest pins. Seven generated files replayed from source merge 9d616fee62c814dae849cc048fc6ea1d9bf21ae1. No conformance declaration was changed. Build, typecheck and architecture checks passed.
+
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merge, unchanged recorded fixture, existing derived publication tools and targeted consumer verification. No new mechanism or unattended semantic acceptance claimed. Existing secrets, cap, stop, durable intake and unique-send admission remain the start and limit guards; committed ancestry, byte identity and consumer tests are the composition exit checks.
 80/20: Conflict-focused checks, five member suites, recorded replay and pinned tests on WSL; the Studio runs the full gate and any native macOS renewal.
 VERDICT: author submission; no independent verdict or live acceptance claimed
