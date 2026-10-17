@@ -56,7 +56,7 @@ function world(writer: Step[], forum = false, media = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-stall-')));
   const path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, key, forum ? { ...genesis, chat: '-1001234', forum: true } : genesis);
-  const throughs: number[] = [], log: string[] = [];
+  const throughs: number[] = [], log: string[] = [], answerPackets: string[] = [];
   let clock = 0, calls = 0;
   const custody = createTelegramMediaCustody(root, key, { token: () => `${genesis.bot}:synthetic`, stopped: () => false,
     admission: createMediaAdmission({ root, incarnation: 'recorded-summary-replay', now: () => START + clock, monotonic: () => 0,
@@ -78,6 +78,7 @@ function world(writer: Step[], forum = false, media = false) {
         .toContain('across sessions, including at the same time,');
       expect(sources.at(-1)!.text).toContain('Activation: your activation; ends');
       if (!input.id.startsWith('summary:')) {
+        answerPackets.push(input.context);
         if (media && input.id.endsWith('715672501')) {
           expect(input.question).toContain('Received photo'); expect(input.question).toContain('current turn media access notice');
         }
@@ -114,7 +115,7 @@ function world(writer: Step[], forum = false, media = false) {
       elapsedMs: () => clock },
     send: async input => input.update, checkOutbound: () => {} });
   let open = true;
-  return { path, journal, worker, throughs, log,
+  return { path, journal, worker, throughs, log, answerPackets,
     intake: (id: number, text: string) => {
       const { text: _text, ...envelope } = update(id, text).message;
       const message = media ? { update_id: id, message: { ...envelope, caption: text,
@@ -199,5 +200,28 @@ it('a one-turn span keeps its second attempt under the over-cap ceiling, and a s
     expect(w.throughs.filter(through => through === 715672485)).toHaveLength(2);
     expect(() => w.journal.append({ kind: 'summary-reserve', through: 715672485, maxOutputTokens: 2048, at: START + 1e9 }))
       .toThrow('repeated summary reservation');
+  } finally { w.close(); }
+});
+
+it('proactively compacts the recorded room at idle pressure, retaining facts and owed work without a forced recovery', async () => {
+  const w = world([{ kind: 'over-cap', index: 0 }, { kind: 'complete', output: WRITER_484 }]);
+  try {
+    w.replayLiveRoom();
+    const before = w.journal.view.summaries.length;
+    await w.worker.summarizeIfNeeded();
+    expect(w.journal.view.summaries.length).toBeGreaterThan(before);
+    expect(w.log).toContain('jev-faithfulness');
+    expect(w.log).toContain('review');
+    const accepted = w.journal.view.summaries.slice(before);
+    expect(accepted.some(item => item.text.includes('probe-5f1ba73c'))).toBe(true);
+    expect(accepted.some(item => /tomato/iu.test(item.text))).toBe(true);
+    expect(w.journal.view.commitments.some(item => /tomato/iu.test(item.quote))).toBe(true);
+    // All original inbound/reply/unknown rows remain replayable, including malformed/empty replies.
+    expect(w.journal.view.order.map(item => item.update)).toEqual(expect.arrayContaining([715672480, 715672483, 715672484]));
+    w.intake(715672501, 'What marker did I give you, and what is still owed?'); await w.worker.drain();
+    expect(w.answerPackets.at(-1)).toContain('probe-5f1ba73c');
+    expect(w.answerPackets.at(-1)).toMatch(/tomato/iu);
+    expect(w.journal.view.order.at(-1)?.grounding?.summaryThrough).toBeGreaterThan(715672484);
+    expect(w.journal.view.order.at(-1)?.sent).toBeDefined();
   } finally { w.close(); }
 });

@@ -4,7 +4,7 @@ import { AgentPathRefused, assertAgentPaths } from '../../scripts/agent-paths.mj
 import { prepareSessionConnectors, conversationAccountActions, admitSessionConnector } from './session-connectors.mjs';
 import { recordPhaseTiming } from './phase-timing.js';
 import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice } from './reply-check.js';
-import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin } from './installed-harness-logins.mjs';
+import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin, observeInstalledSessionLogin } from './installed-harness-logins.mjs';
 import { loadHarnessLogins, harnessLoginPoolStatus, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { groupMembershipReader } from './group-membership-io.mjs';
 import { appendGroupCarry } from './group-carry.js';
@@ -71,7 +71,7 @@ import { agreementLine, agreementStatus, runDueAgreements } from './store-agreem
 import { connectConversationAuthority } from './conversation-authority.js';
 import { createLeaseHolder } from './two-machine-serving.js';
 import { adoptReceivedCopy, connectReplicaPeer, createJournalShipper, createReplicatedDispatch, openReplicaStore, serveReplicaStore,
-  sharedHistoryStatus, takeoverEligibility } from './journal-replication.js';
+  backupStatusLine, sharedHistoryStatus, takeoverEligibility } from './journal-replication.js';
 import { createApprovalSurfaceClient } from './approval-surface-client.mjs';
 import { dashboardSnapshot } from './operator-dashboard.js';
 import { parseExplicitYesInstallation } from './explicit-yes-installation.js';
@@ -90,7 +90,7 @@ import { createTelegramMediaCustody, journalMediaSource, telegramInboundMedia } 
 import { createLocalTranscriber } from '../../scripts/local-transcriber.mjs';
 import { prepareMediaInput, invokeMediaTurn, protectMediaBytes } from './media-understanding.mjs';
 import { createMediaAdmission } from './media-admission.js';
-import { credentialNotices, doorwayNotices, dueWithDelivery } from './credential-reminders.js';
+import { credentialNotices, doorwayNotices, dueWithDelivery, sessionLoginNotices, sessionLoginStatus } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
 import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, untilStopped, waitWorking } from './live-sentinels.js';
 import { SENTINEL_FAMILIES } from './sentinel-record.js';
@@ -1643,6 +1643,7 @@ async function main() {
       },
       noteIntake() { if (sharedJournal.view.cursor > dispatch.cursor) settle = { token: shipper.token(), cursor: sharedJournal.view.cursor }; },
       peerCurrent: () => report(),
+      backupLine: () => backupStatusLine(posture, shipper.status(PEER_FRESH_MS)),
       line: () => { const status = shipper.status(PEER_FRESH_MS);
         return `Two machines: this runner holds the conversation (lease epoch ${fence.epoch}); every reply waits until the other machine has acknowledged its record. ${status.current
           ? 'The other machine holds the whole journal.' : `Waiting for it now (${status.reason}).`}`; },
@@ -1721,6 +1722,7 @@ async function main() {
       throw Error('preview: this doorway does not use harness login custody');
     const harness = harnessOf(options, root, doorway);
     const loginRuntimes = new Map();
+    const sessionLoginObservations = new Map();
     let loginPool = null;
     const selectLogin = tools => loginPool ? loginPool.select(tools) : loginConfiguration.entries[0];
     // Plan #473: why a Claude Code tool turn is refused for its identity (null: a harness user is configured, or the
@@ -2040,7 +2042,7 @@ async function main() {
     const ownerLines = () => {
       const refused = refusedLaunches(ownersDirectory(), g.bot, g.chat);
       return [`Serving: this runner on ${ownerMachine} owns this conversation (claimed ${Math.max(0, Math.round((wallNow() - ownerClaim.holder.since) / 60000))} min ago); ${refused} duplicate launch(es) refused on this machine.`,
-        agreementLine(agreementsPath, wallNow()), ...(shared ? [shared.line()] : [])];
+        agreementLine(agreementsPath, wallNow()), ...(shared ? [shared.line(), shared.backupLine()] : [backupStatusLine(posture, null)])];
     };
     // Rule 15, pull surface: whether a message past an ordinary cap would get its limited answer, and what clears it if not.
     const minimalLines = () => {
@@ -2056,6 +2058,8 @@ async function main() {
         ? 'withdrawn since launch: the activation record changed or its grant no longer resolves' : null), Boolean(doorway.toolTurn?.harness)),
       ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : []),
       ...(loginPool ? [loginPool.status()] : []),
+      ...(sessionLoginObservations.size ? [sessionLoginStatus([...sessionLoginObservations.values()], wallNow())] : []),
+      ...(sessionWork?.port.idleCleanupStatus?.() ?? []),
       ...(harness ? [harnessStatusLine(harness.state)] : identityRefusal !== null ? [harnessStatusLine({ ready: false, reason: identityRefusal })] : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
     const approvalSurface = approvalSurfaceOf(options), readOnly = readOnlyDashboardOf(options);
@@ -2152,6 +2156,7 @@ async function main() {
         if (turn !== undefined && identityRefusal !== null && (journal.view.toolTurns?.identityRefused ?? []).includes(turn))
           notices.push({ key: `harness:${turn}`, line: harnessRefusedNotice(identityRefusal) });
         notices.push(...(loginPool?.notices() ?? []));
+        notices.push(...sessionLoginNotices([...sessionLoginObservations.values()], now));
         try { notices.push(...credentialNotices(dueCredentialReminders(createSecretCustody(root, key(), wallNow).records(), now), now)); } catch { /* status shows it */ }
         try { notices.push(...doorwayNotices(readDoorwayMap(doorwaysPath), now)); } catch { /* status shows it */ }
         return notices;
@@ -2604,7 +2609,15 @@ async function main() {
           ...(conversationSession ? { connectors: claim => sessionConnectors.get(claim)?.launch() } : {}),
           framework, executable: binding.entry().profile.executable, cwd: project, home: binding.entry().profile.home, configHome: binding.entry().profile.configDirectory,
           model: required(options, 'model'), context, io: { ...binding.physical(), transcriptExists: (...args) => (!handoff || handoff.resumeAllowed) && binding.physical().transcriptExists(...args) }, now: wallNow, stopped: binding.stopped, resolveIntake,
-          observeActivity: observation => workActivity.set(observation.subject, observation),
+          observeActivity: observation => {
+            workActivity.set(observation.subject, observation);
+            // This callback follows exact live process verification. A configured profile,
+            // identity drift, or a failed worker probe alone never produces a login alarm.
+            if (binding.harness()) {
+              const health = observeInstalledSessionLogin(binding.entry().profile, { ...observation, slot: binding.entry().index + 1 }, undefined, ownerMachine);
+              if (health) sessionLoginObservations.set(health.key, health);
+            }
+          },
           maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
           readyTimeoutMs: 30000, protectedSessions: [],
           ...(conversationSession ? { requireTurnHook: true, inboxDirectory: binding.physical().inboxDirectory,

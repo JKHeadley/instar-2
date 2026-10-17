@@ -52,11 +52,16 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     const touched = new Map<string, number>();
     let stopped = false, recovered = false;
     let admission = Promise.resolve();
-    const oldestIdle = () => [...active].filter(key => !busy.get(key))
-      .sort((a, b) => (touched.get(a) ?? 0) - (touched.get(b) ?? 0))[0];
+    const cleanupInhibited = () => Object.values(state.topics).some(row => row.idleCleanup?.inhibited);
+    const idleCandidates = () => (cleanupInhibited() ? [] : [...active])
+      .filter(key => !busy.get(key)).sort((a, b) => (touched.get(a) ?? 0) - (touched.get(b) ?? 0));
     const reclaim = async () => {
-      const idle = oldestIdle();
-      return idle !== undefined && await hosts.get(idle)!.retireIdle();
+      // Bounded by maxSessions. One refusal must not hide another eligible worker.
+      for (const topic of idleCandidates()) {
+        if (cleanupInhibited()) return false;
+        if (!busy.get(topic) && await hosts.get(topic)!.retireIdle('pressure')) return true;
+      }
+      return false;
     };
     let wake: (() => void) | null = null;
     const notify = () => { const resolve = wake; wake = null; resolve?.(); };
@@ -95,8 +100,11 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
         resources: { admit: async () => {
           const acquire = async () => {
             while (active.size >= config.maxSessions && !stopped && !config.stopped()) {
-              const idle = oldestIdle();
-              if (idle !== undefined) { ensure(await hosts.get(idle)!.retireIdle(), 'idle worker retirement raced'); continue; }
+              if (cleanupInhibited()) return null;
+              if (idleCandidates().length) {
+                if (await reclaim()) continue;
+                return null; // Confirmation/grace keeps this input queued without dispatch.
+              }
               await Promise.race([new Promise<void>(resolve => { wake = resolve; }), config.io.wait(config.pollMs)]);
               ensure(config.now() < parentDeadline(), 'parent lifetime exhausted');
             }
@@ -105,8 +113,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
             if (!lease) {
               // The installation resource owner may have a tighter ceiling (or
               // another work family using it). Reclaim one idle topic and retry once.
-              const idle = oldestIdle();
-              if (idle !== undefined && await hosts.get(idle)!.retireIdle()) lease = await resources.admit();
+              if (await reclaim()) lease = await resources.admit();
             }
             if (!lease) return null;
             // Physical admission can wait too. Measure after its final retry,
@@ -178,18 +185,28 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     const maintain = async () => {
       await recover();
       if (config.stopped() || config.now() >= parentDeadline()) { await close(); return; }
-      if (config.capacity && (await config.capacity()).memoryPressure) await reclaim();
-      for (const [topic, host] of hosts) if (!busy.get(topic)) {
-        if (active.has(topic) && config.now() - (touched.get(topic) ?? 0) >= config.idleMs)
-          await host.retireIdle();
+      const pressured = config.capacity && (await config.capacity()).memoryPressure;
+      if (pressured) await reclaim();
+      // A queued worker needs a slot or resource lease. Its admission below owns
+      // pressure assessment; ordinary expiry must not reset that confirmation.
+      const waitingForWorker = Object.entries(state.topics).some(([topic, row]) =>
+        !active.has(topic) && row.inputs.some(input => input.state === 'queued'));
+      for (const [topic, host] of hosts) if (!pressured && !waitingForWorker && !busy.get(topic)) {
+        if (!cleanupInhibited() && active.has(topic) && config.now() - (touched.get(topic) ?? 0) >= config.idleMs)
+          await host.retireIdle('idle');
       }
       // Pending queues survive restart. Run in parallel so one busy topic cannot
       // starve another, with physical admission still capped above.
-      await Promise.all([...hosts].map(async ([topic, host]) => {
+      const maintainHost = async ([topic, host]: [string, ConversationSessionPort]) => {
         if (busy.get(topic)) return;
         busy.set(topic, 1);
         try { await host.maintain(); } finally { busy.set(topic, busy.get(topic)! - 1); notify(); }
-      }));
+      };
+      // Finish idle account maintenance before queued hosts assess those workers for reclamation.
+      // Otherwise a harmless idle maintenance promise looks busy on every admission retry.
+      const idleHosts = [...hosts].filter(([topic]) => !state.topics[topic]?.inputs.some(input => input.state === 'queued'));
+      for (const entry of idleHosts) await maintainHost(entry);
+      await Promise.all([...hosts].filter(([topic]) => state.topics[topic]?.inputs.some(input => input.state === 'queued')).map(maintainHost));
     };
     const close = async () => {
       stopped = true; notify(); await recover();
@@ -199,6 +216,13 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     return Object.freeze({ owner: 'part-eight' as const,
       available: () => !stopped && !config.stopped() && config.authorized() && config.now() < parentDeadline(),
       run, runBatch, maintain, close,
+      idleCleanupStatus: () => {
+        const rows = Object.values(state.topics);
+        const lost = rows.filter(row => !row.worker && row.idleCleanup?.lastClosure).length;
+        const inhibited = rows.some(row => row.idleCleanup?.inhibited);
+        return [...(lost ? [`Idle cleanup: ${lost} warm worker(s) closed; the next message needs a worker start. Conversation history and accepted messages are retained.`] : []),
+          ...(inhibited ? ['Idle cleanup is paused after an unconfirmed closure; capacity release is uncertain and needs repair.'] : [])];
+      },
       collect: async (operation: string) => {
         await recover();
         const topic = config.topicOf(operation);

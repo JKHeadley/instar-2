@@ -200,6 +200,8 @@ it('recalls an older cofounder by role or nickname without letting newer neighbo
       await w.say(next, filler(next));
     }
     expect(next).toBeLessThan(80);
+    // Establish this recall fixture's post-compaction state explicitly; automatic passes now cool down.
+    await w.worker.summarizeIfNeeded(true);
     const sources = (question: string) => {
       const probe = w.worker.probe(question);
       if ('reason' in probe) throw Error(probe.reason);

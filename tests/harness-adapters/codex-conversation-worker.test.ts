@@ -15,7 +15,7 @@ import { createSessionProtocolIO } from '../../scripts/session-protocol-io.mjs';
 import threadConfig from './fixtures/codex-thread-config-0.156.1.json' with { type: 'json' };
 import captured from './fixtures/codex-app-server-0.156.1.json' with { type: 'json' };
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
-function fixture(run = captured.runs[0]!) {
+function fixture(run: { events: readonly { method: string; params: unknown }[] } = captured.runs[0]!) {
   const terminals = run.events.filter(event => event.method === 'turn/completed').map(event => event.params as { threadId: string; turn: { id: string } });
   let frames: unknown[] = [], live = true, stopped = false, turn = 0, file: string | null = null, cache = true, hold = false;
   let journal: SessionJournal = { sessions: [], deliveries: [], resumes: {} };
@@ -217,4 +217,24 @@ it('continues across a real replay-process restart through the installed physica
     await physical.close('claim1', 'inc1'); await physical.close('claim2', 'inc2');
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+
+it('recorded protocol completion permits idle cleanup, while open turns and changed fingerprints refuse', async () => {
+  const run = captured.runs[0]!;
+  const terminal = run.events.findIndex(event => event.method === 'turn/completed');
+  const f = fixture({ ...run, events: run.events.slice(0, terminal + 1) });
+  const adapter = f.make(), worker = await adapter.launch(f.spec);
+  expect(await adapter.observeIdle!(worker)).toBeNull();
+  await adapter.deliver(f.delivery(worker));
+  const evidence = await adapter.observeIdle!(worker); expect(evidence).toMatch(/^sha256:/);
+  expect(await adapter.control({ ...worker, action: 'close', authority: 'grant', reason: 'idle cleanup', idleEvidence: 'stale' }))
+    .toMatchObject({ state: 'refused' });
+  expect(await adapter.observeIdle!(worker)).toBe(evidence);
+  expect(await adapter.control({ ...worker, action: 'close', authority: 'grant', reason: 'idle cleanup', idleEvidence: evidence! }))
+    .toMatchObject({ state: 'closed' });
+  const busy = fixture({ ...run, events: run.events.slice(0, terminal + 1) }); busy.hold = true;
+  const busyAdapter = busy.make(), busyWorker = await busyAdapter.launch(busy.spec);
+  await busyAdapter.deliver(busy.delivery(busyWorker));
+  expect(await busyAdapter.observeIdle!(busyWorker)).toBeNull();
 });

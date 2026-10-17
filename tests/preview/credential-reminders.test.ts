@@ -1,11 +1,11 @@
 // Rules 8, 56, 100: a due credential reminder and a failing doorway check ride the next operator answer as one line.
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
-import { credentialNotices, doorwayNotices, dueWithDelivery, openReplyNotices, remainingText, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
+import { sessionLoginNotices, sessionLoginStatus, SESSION_LOGIN_FRESH_MS, credentialNotices, doorwayNotices, dueWithDelivery, openReplyNotices, remainingText, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
 import { installDoorways, observeExchange, standingDoorwayCheck, DOORWAY_FRESH_MS } from './doorway-map.js';
 
 const key = new Uint8Array(32).fill(41);
@@ -48,13 +48,13 @@ function activation(root: string, expiresAt: number, now: () => number) {
   return custody;
 }
 
-function world(root: string, notices: () => readonly ReplyNotice[], receipt: () => boolean = () => true) {
+function world(root: string, notices: () => readonly ReplyNotice[], receipt: () => boolean = () => true, answer = JSON.stringify({ reply: 'Noted.', memory: [] })) {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
   const clock = { now: T0 }, sent: string[] = [];
   const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false, timeZone: 'UTC',
     prepareModel: input => input.context, replyNotices: notices,
     model: async input => input.id.startsWith('summary:')
-      ? JSON.stringify({ summary: 'Small talk.', people: [], commitments: [], closed: [] }) : JSON.stringify({ reply: 'Noted.', memory: [] }),
+      ? JSON.stringify({ summary: 'Small talk.', people: [], commitments: [], closed: [] }) : answer,
     send: async input => { if (!receipt()) return null; sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
   let next = 1;
   const say = async (text: string) => {
@@ -203,4 +203,67 @@ it('accepts a recorded notice only when the answer says it verbatim', () => {
   expect(validAnswerNotices([notice], 'Noted.')).toBe(false);
   expect(validAnswerNotices([notice, notice], 'Reminder: renew.')).toBe(false);
   expect(validAnswerNotices([{ ...notice, key: 'other:1' }], 'Reminder: renew.')).toBe(false);
+});
+
+it('carries one missing-login reminder in an answer and keeps its identity spent after restart or an unknown send', async () => {
+  for (const received of [true, false]) {
+    const root = origin();
+    const health = { key: 'credential:session-login:recorded-profile', state: 'missing' as const, slot: 1, at: T0 };
+    const notices = () => sessionLoginNotices([health], T0);
+    try {
+      const w = world(root, notices, () => received);
+      await w.say('Hello.');
+      expect(w.journal.view.order[0]!.intent).toContain(notices()[0]!.line);
+      expect(validAnswerNotices(w.journal.view.order[0]!.answerNotices, w.journal.view.order[0]!.intent!)).toBe(true);
+      await w.say('Still there?');
+      expect(w.journal.view.order[1]!.intent).not.toContain('is missing from this machine');
+      w.journal.close();
+      const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
+      expect(openReplyNotices(reopened.view.order, notices(), 'new')).toEqual([]);
+      reopened.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('makes missing-login status visible but never alarms on present, unknown, stale, future or absent observations', () => {
+  const health = { key: 'credential:session-login:a', state: 'missing' as const, slot: 1, at: T0 };
+  expect(sessionLoginNotices([health], T0)).toHaveLength(1);
+  expect(sessionLoginStatus([health], T0)).toContain('1 missing');
+  for (const state of ['present', 'unknown'] as const)
+    expect(sessionLoginNotices([{ ...health, state }], T0)).toEqual([]);
+  expect(sessionLoginNotices([], T0)).toEqual([]);
+  expect(sessionLoginNotices([health], T0 - 1)).toEqual([]);
+  expect(sessionLoginNotices([health], T0 + SESSION_LOGIN_FRESH_MS)).toHaveLength(1);
+  expect(sessionLoginNotices([health], T0 + SESSION_LOGIN_FRESH_MS + 1)).toEqual([]);
+  expect(sessionLoginStatus([health], T0 + SESSION_LOGIN_FRESH_MS + 1)).toContain('1 unknown or stale');
+});
+
+it('replays recorded summary, verdict, delivered and empty shapes without turning their words into login evidence', () => {
+  const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')).otherShapes;
+  expect(shapes.map((row: { kind: string }) => row.kind)).toEqual(['summary-writer', 'summary-uncertain', 'jev-undecided', 'jev-unsure',
+    'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
+  const health = { key: 'credential:session-login:a', state: 'missing' as const, slot: 1, at: T0 };
+  for (const row of shapes) {
+    // Real recorded text is deliberately not a login signal; only the verified worker/custody join is.
+    expect(sessionLoginNotices([], T0)).toEqual([]);
+    const notice = sessionLoginNotices([health], T0)[0]!;
+    expect(validAnswerNotices([notice], `${row.raw}\n${notice.line}`)).toBe(true);
+    expect(openReplyNotices([{ id: 'recorded', intent: `${row.raw}\n${notice.line}`, answerNotices: [notice] }], [notice], 'next')).toEqual([]);
+  }
+});
+
+it('adds the reminder to a real recorded worker answer through the journal, once', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/conversation-session-userwalk-2026-10-13.json', import.meta.url), 'utf8')).records[0];
+  expect(recorded.id).toBe('telegram:8989505249:update:6233124');
+  const answer = JSON.parse(recorded.output), root = origin();
+  const notices = () => sessionLoginNotices([{ key: 'credential:session-login:recorded-answer', state: 'missing', slot: 1, at: T0 }], T0);
+  try {
+    const w = world(root, notices, () => true, recorded.output);
+    await w.say(answer.dated[0].quote);
+    expect(w.journal.view.order[0]!.answer).toContain(answer.reply);
+    expect(w.journal.view.order[0]!.intent).toContain(notices()[0]!.line);
+    await w.say('Thank you.');
+    expect(w.journal.view.order[1]!.intent).not.toContain(notices()[0]!.line);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
