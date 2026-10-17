@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: A conversation that reconstructs history after a root move or login/cache change can reach its host model checkpoint before the host delivers the next operator input. Shutdown signals remain serviceable during restoration.
 Affected rules: 1, 14, 15, 26, 34, 36, 42, 46, 49, 55, 60, 70, 74, 77, 101, 111, 113, 116
-Affected floors: Restoration still requires its existing completion evidence before further input. Stop, original session deadlines and model-call admission remain enforced. No secret, spend, intake or send-fence storage changes. No uncertain delivery is replayed.
+Affected floors: Restoration still requires its existing completion evidence before further input. Stop, original session deadlines and model-call admission remain enforced. Secrets and spend cap remain enforced; durable intake and no duplicate sends retain their existing journal and send-fence boundaries. No uncertain delivery is replayed.
 Operator questions: none
 Suggested tier: ordinary
 Declared tier: ordinary
@@ -25,3 +25,5 @@ Prompt review: No model wording or semantic parser changes. Replayed recorded su
 simplestRobustRoute: Replace the synchronous completion wait with one-shot observation, awaited by the existing asynchronous conversation/delegated-work hosts. This is the simplest robust route: it removes the host/model circular wait without another process, retry policy or completion heuristic. Start guards remain session authority and recorded history; end guards remain genuine completion receipts; original deadlines, stop and call admission remain the limits. The deterministic unattended case is the real local HTTP checkpoint regression; real model/proof-room acceptance remains unclaimed.
 80/20: Driver completion, stop, deadline, uncertain delivery, normal no-continuation launch and recorded output neighbors are covered. The desk owns independent review and the real proof-room gate. No claim of independent convergence or deployment readiness.
 VERDICT: author submission; real proof-room/model rollback evidence and independent review remain required
+
+Register publication: This record also covers generated-register commit 9fcfb09c5ec995694637a196c8f3aa5aad7fd9a6 and this review correction. The generated artifacts bind source commit 782056b18ee701d24a8a5c2427a5a46da4ce73d4; no additional runtime behavior changes.
