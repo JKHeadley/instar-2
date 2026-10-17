@@ -35,6 +35,8 @@ Publication: Seven generated files replayed from cb0b5742c8619248e6a0dbe31dfde11
 
 Consumer follow-up: Preserve the credential-history phrase pinned by credential-label-boundary while shortening the supported/unsupported/uncertain and ordinary-conversation prose. All 64 focused tests pass, with 6 optional capture skips; original budget assertions remain unchanged.
 
+Final publication: Replay from b55956566c4dc8837249dcd86f5797d8a48ba14e refreshes the seven generated files with the credential-history-preserving wording. Measured answer 23225 bytes, review 29317, delta 6092 within reserve 6136 and required 40-byte margin.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges, existing publication regeneration and targeted consumer verification. No new machinery. Start at the live base; preserve secrets, spend, stop, durable intake and unique sends; require committed membership and evidence before desk acceptance.
