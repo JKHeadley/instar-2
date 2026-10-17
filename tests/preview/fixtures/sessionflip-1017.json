@@ -1,0 +1,47 @@
+{
+  "source": "sessionflip-diag-1017-evidence/snapshot/journal.encrypted; failure-frames.json",
+  "capturedAt": "2026-10-17",
+  "update": 969390553,
+  "message": 494,
+  "frames": [
+    {
+      "kind": "intake",
+      "id": "telegram:8820318295:update:969390553",
+      "update": 969390553,
+      "text": "From Echo (desk live check, not Justin): what is 13 times 7?",
+      "raw": "{\"update_id\":969390553,\"message\":{\"message_id\":494,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"language_code\":\"en\"},\"chat\":{\"id\":-1004290919884,\"title\":\"Instar 2.0\",\"is_forum\":true,\"type\":\"supergroup\"},\"date\":1792254040,\"message_thread_id\":3,\"reply_to_message\":{\"message_id\":3,\"from\":{\"id\":8820318295,\"is_bot\":true,\"first_name\":\"Instar 2.0\",\"username\":\"echo_mmtest_seam_b27x_bot\"},\"chat\":{\"id\":-1004290919884,\"title\":\"Instar 2.0\",\"is_forum\":true,\"type\":\"supergroup\"},\"date\":1791594517,\"message_thread_id\":3,\"forum_topic_created\":{\"name\":\"Getting started\",\"icon_color\":7322096},\"is_topic_message\":true},\"text\":\"From Echo (desk live check, not Justin): what is 13 times 7?\",\"is_topic_message\":true}}",
+      "accepted": true,
+      "cursor": 969390554,
+      "at": 1792254040462,
+      "writer": {
+        "id": "7812716706",
+        "kind": "person",
+        "adapter": "telegram-bot-api",
+        "class": "channel-attested",
+        "reference": "capture:telegram-bot-api:a7cf17c6524b59b0f9aa35d6f427812881b4136c4cfd094a1ca2225dd36e38ff",
+        "hash": "sha256:b6385ab399ddbd7b46e92bcd344258f27b77c4d8fc52107bbcc5ddcea9684e18"
+      },
+      "thread": 3
+    },
+    {
+      "kind": "hold",
+      "id": "telegram:8820318295:update:969390553",
+      "reason": "model not started",
+      "unusedModel": {
+        "corrections": [],
+        "toolCalls": 0
+      },
+      "at": 1792254040918
+    },
+    {
+      "kind": "limited-sent",
+      "id": "telegram:8820318295:update:969390553",
+      "message": 495,
+      "at": 1792254041860
+    }
+  ],
+  "installedSessionActivations": [
+    null,
+    null
+  ]
+}
