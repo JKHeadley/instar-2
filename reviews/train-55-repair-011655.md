@@ -26,6 +26,8 @@ Prompt finding: 849db3a6296a | quoted-evidence | Existing empty-memory response 
 Prompt finding: e8708c7fea24 | protocol-literal | Existing sourceLabel attribution instruction is retained, not a new keyword decision.
 Deferral: tests/preview/fixtures/ownword-time-1016.json.gz:122 | not-a-deferral=Inherited compressed recorded evidence, not a promise to defer this repair.
 
+Verification: Typecheck and build passed. All 419 tests in the ten conflict-focused files pass across initial run and the corrected 133-test rerun; initial six integration failures repaired at their causes. Register replay binds generated artifacts to merge acad1f2d. Only the permitted native Darwin composition-certificate finding remains in architecture.
+
 simplestRobustRoute: This is the simplest robust route: merge the two existing behaviors at their common driver, watchdog, owner and notice boundaries, preserve both histories and regenerate derived pins using the delegated desk scripts. No new mechanism or autonomous-completion claim. Original deadline, cap, stop, durable intake, uncertain outcome and unique send intent remain the start and limit guards; correlated result plus timely turn closure is the completion guard.
 80/20: Verify the conflict interactions and real recorded shapes with targeted portable tests; the Studio owns full-suite execution and native macOS conformance renewal.
 VERDICT: author submission; no independent verdict or live acceptance claimed
