@@ -22,11 +22,11 @@ Decision: gap-progress-open-occurrence | Refresh eligibility only for a still-op
 Decision: gap-progress-recorded-replay | Replay update 6234450's actual tool input, completion, final model output and relative times with a fake clock; never run the captured sampling command or claim a new live proof. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/gap-progress-1017-PROGRESS.md
 Prompt review: no prompt, semantic parser or model disposition changes. Existing recorded summary uncertain, Jev unsure/undecided, reply review, delivered reply and empty-context cases remain tested. New fixture preserves the real 6234450 model output; admission rows are explicitly projections of captured tool events, not purported captured admission bytes.
 
+Register refresh: replay-generated existing shape-only outputs from committed source 655f8cfe33ca52c807485442f214985b5c0e74b2. No declaration, owner manifest, conformance certificate or authority was changed.
+Deferral: generated/register.json:1 | not-a-deferral=Existing declaration wording reproduced by the generator, with no deferred repair introduced.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: distinguish an open occurrence from completed work in the existing bounded activity reader. No new timer, sender, store or model call. The old ten-second occurrence-age test made long foreground work ineligible even when live observations continued. Fresh observation and exact pending occurrence are start guards; completion, final answer and stop are end guards; stable occurrence identity and existing cadence/cap bound notifications. Unattended live acceptance belongs to the desk proof and is not claimed here.
 80/20: Recorded 572-second tool replay sends before completion with no renewed completed activity or post-answer line. Existing failure closure, unknown sends, stop, cadence, batch, rollback and final-answer serialization checks remain targeted regression coverage. The Studio owns live proof and native conformance renewal.
 VERDICT: author submission; independent review pending
-
-Register refresh: replay-generated existing shape-only outputs from committed source 655f8cfe33ca52c807485442f214985b5c0e74b2. No declaration, owner manifest, conformance certificate or authority was changed.
-Deferral: generated/register.json:1 | not-a-deferral=Existing declaration wording reproduced by the generator, with no deferred repair introduced.
