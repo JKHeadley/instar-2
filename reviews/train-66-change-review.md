@@ -41,7 +41,7 @@ Prompt finding: f6d7f3274c85 | protocol-literal | Existing instruction contract 
 Prompt finding: feadb66b8ad1 | protocol-literal | Existing instruction contract or explicit historical-prompt translation; no scenario answer is installed as a verdict trigger.
 Deferral: generated/register.json:1 | not-a-deferral=Existing register declarations replayed mechanically; no deferred work introduced.
 
-Subject (27 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/README.md, tests/preview/act-first.test.ts, tests/preview/answer-provenance-live-test.md, tests/preview/answer-provenance.ts, tests/preview/briefing.ts, tests/preview/claim-evidence.test.ts, tests/preview/correction-keep.test.ts, tests/preview/credential-label-boundary.test.ts, tests/preview/fixtures/memory-prefer-1016.json, tests/preview/group-carry.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal-commitments.test.ts, tests/preview/journal-people.test.ts, tests/preview/journal.ts, tests/preview/literal-copy.test.ts, tests/preview/memory-prefer.test.ts, tests/preview/no-handback.test.ts, tests/preview/reply-check.ts, tests/preview/review-yes-live.test.ts, tests/preview/selfdesc-abilities.test.ts
+Subject (28 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/README.md, tests/preview/act-first.test.ts, tests/preview/answer-provenance-live-test.md, tests/preview/answer-provenance.ts, tests/preview/briefing.ts, tests/preview/claim-evidence.test.ts, tests/preview/correction-keep.test.ts, tests/preview/credential-label-boundary.test.ts, tests/preview/fixtures/memory-prefer-1016.json, tests/preview/group-carry.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal-commitments.test.ts, tests/preview/journal-people.test.ts, tests/preview/journal.ts, tests/preview/literal-copy.test.ts, tests/preview/memory-prefer.test.ts, tests/preview/memory-sentinel.test.ts, tests/preview/no-handback.test.ts, tests/preview/reply-check.ts, tests/preview/review-yes-live.test.ts, tests/preview/selfdesc-abilities.test.ts
 
 
 
@@ -65,6 +65,9 @@ Decision: train-66-person-benchmark | Reserve enough synthetic packet headroom f
 
 Consumer capture translation: literal-copy.test.ts compared its historical answer instructions to current instructions after translating self-description only. Also translate the newly added CLAIM_EVIDENCE_GUIDANCE at its exact protocol position; retain the captured bytes, outputs and all three delivery/restart assertions. No fresh model-quality claim.
 Decision: train-66-copy-capture | Extend the historical prompt translation for the new claim guidance while retaining the literal-copy capture and current-envelope delivery checks. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-66-PROGRESS.md
+
+Consumer recall fixture repair: memory-sentinel.test.ts uses a synthetic 200-turn packet below the production floor. Reserve 10000 rather than 9000 bytes for combined standing guidance beside optional recalled evidence. Retain the summary frontier, absent-in-recent-history, early-fact recall, two restarts, 200-turn runtime and pure-selection timing assertions. No production budget or recall algorithm change.
+Decision: train-66-recall-fixture | Preserve the recall/restart scenario under expanded standing guidance while keeping compaction and latency assertions and independent production-floor tests. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-66-PROGRESS.md
 
 ## Closing block
 
