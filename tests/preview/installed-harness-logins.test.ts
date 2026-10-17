@@ -325,3 +325,54 @@ it('observes actual isolated custody removal and restoration without confusing a
   writeFileSync(path, JSON.stringify(value)); expect(observe().state).toBe('present');
   expect(JSON.stringify(observe())).not.toContain(value.token);
 });
+
+it('retains an explicit session activation through the installed pool (969390553 regression)', () => {
+  // Live update 969390553 / Telegram 494: both installed members lacked sessionActivation.
+  // The launcher supplied one, but default pool resolution erased it before sessionSetup.
+  const f = fixture(); f.install(f.logins[0]); f.install(f.logins[1]);
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/sessionflip-1017.json', import.meta.url), 'utf8'));
+  expect(read(join(f.root, 'harness-logins.json')).logins.map(row => row.sessionActivation ?? null))
+    .toEqual(recorded.installedSessionActivations);
+  expect(recorded.frames.find(row => row.kind === 'hold')).toMatchObject({
+    id: `telegram:8820318295:update:${recorded.update}`, reason: 'model not started',
+    unusedModel: { corrections: [], toolCalls: 0 } });
+  const before = f.prepare();
+  const session = join(f.root, 'launch-session.json');
+  writeFileSync(session, JSON.stringify({ reference: 'reviewed-primary-session' }));
+  const options = { model: f.world.model, 'harness-user': 'offline',
+    'conversation-session': 'on', 'session-work-activation': session };
+  const prepare = selected => prepareInstalledHarnessLogins({ root: f.root, options: selected,
+    doorway: f.doorway, build: 'build-a', now: Date.now(), verify: f.verify });
+  const selected = installedHarnessLaunch({ root: f.root, options, prepare });
+  expect(selected.options['session-work-activation']).toBe(session);
+  expect(selected.options['login-pool']).not.toBe(before);
+  const pool = loadHarnessLogins(selected.options);
+  expect(pool.entries[0].sessionActivation).toBe(session);
+  expect(pool.entries[1].sessionActivation).toBeUndefined();
+  expect(pool.entries[0].sources).toContainEqual({ path: session,
+    digest: createHash('sha256').update(JSON.stringify(read(session))).digest('hex') });
+  expect(read(join(f.root, 'harness-logins.json')).logins[0].sessionActivation).toBeUndefined();
+  expect(prepare(selected.options)).toBe(selected.options['login-pool']);
+  writeFileSync(session, JSON.stringify({ reference: 'withdrawn' }));
+  expect(() => verifyPreparedHarnessLogin(pool.entries[0])).toThrow('source withdrawn');
+  expect(prepare(selected.options)).not.toBe(selected.options['login-pool']);
+  const ordinary = installedHarnessLaunch({ root: f.root,
+    options: { model: f.world.model, 'harness-user': 'offline' }, prepare });
+  expect(ordinary.options['session-work-activation']).toBeUndefined();
+  expect(ordinary.options['login-pool']).toBe(before);
+});
+
+it('a singleton keeps the launch session grant and an installed grant remains the default', () => {
+  const f = fixture(); f.install(f.logins[0]);
+  const options = { model: f.world.model, 'harness-user': 'offline',
+    'conversation-session': 'on', 'session-work-activation': '/reviewed/session.json' };
+  const prepare = () => { throw Error('singleton must not prepare'); };
+  expect(installedHarnessLaunch({ root: f.root, options, prepare }).options['session-work-activation'])
+    .toBe(options['session-work-activation']);
+  installHarnessLogin({ root: f.root,
+    options: { ...f.options(f.logins[0]), 'session-work-activation': '/installed/session.json' }, verify: f.verify });
+  expect(installedHarnessLaunch({ root: f.root, options: { model: f.world.model }, prepare }).options['session-work-activation'])
+    .toBe('/installed/session.json');
+  expect(installedHarnessLaunch({ root: f.root, options, prepare }).options['session-work-activation'])
+    .toBe('/reviewed/session.json');
+});
