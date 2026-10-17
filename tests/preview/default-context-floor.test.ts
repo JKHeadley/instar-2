@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { LITERAL_COPY_INSTRUCTIONS, SOURCE_PINS, deskStatusSource, sourcePacket } from './briefing.js';
 import { disciplineSource } from './retrospective.js';
-import { readRuns, selfStateBrief, selfStateSource } from './self-state.js';
+import { readRuns, readSelfAccess, selfStateBrief, selfStateSource } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { PREVIEW_FIXED_PROMPT_BYTES, PREVIEW_LIVE_LIMITS, PREVIEW_MIN_SERVABLE_CONTEXT_BYTES,
   PREVIEW_MIN_TURN_HEADROOM_BYTES, PREVIEW_REPLY_BOUND_BYTES, REPLY_REVIEW_FIXED_BYTES,
@@ -49,7 +49,8 @@ async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0) {
     const desk = { text: `# desk\n${'Preview work remains a supervised private chat trial with a reviewed activation.\n'.repeat(40)}`,
       modifiedAt: now };
     const sources = () => [...briefing, disciplineSource(journal.view),
-      selfStateSource(selfStateBrief(journal.view, runs as never, now, 'UTC', now - 60_000)),
+      selfStateSource(selfStateBrief(journal.view, runs as never, now, 'UTC', now - 60_000, false, true), readSelfAccess({ credentials: () => [],
+        connectors: () => null, missing: () => [], held: () => [], bot: 'Telegram bot 12345678', now })),
       deskStatusSource(desk, now, DESK_PATH)!];
     let answer: { context: string; prepared: string } | undefined;
     let summary: { context: string; prepared: string } | undefined;

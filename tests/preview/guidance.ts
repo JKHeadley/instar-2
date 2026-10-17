@@ -14,6 +14,10 @@
 import type { Turn } from './journal.js';
 import type { ObjectionDecision, ReplyCheckResult, ReplyRule } from './reply-check.js';
 
+/** Rules 18, 20–23, 98, 100, 104: instructions on the existing answer/review path.
+ * The self-state snapshot is evidence of reads, not authority or a successful login. */
+export const SELF_UNBLOCK_GUIDE = 'Before escalating check access, capabilities/grants and scoped tools; say what you checked. Use usable held access; configured is not authenticated. Outside granted scope, refuse and name the grant. Unknown/omitted is not exhaustion. Record lawful avenues in the blocker; ask once after checking pending asks: nothing, needed yes/no, or operator-only credential via secure intake, never chat.';
+
 export type GuidanceMember = 'tone-self-stop' | 'deferral' | 'claim-verification' | 'correction-learning' | 'sensitivity';
 export interface GuidanceMemberDefinition {
   id: GuidanceMember;
