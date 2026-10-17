@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: An exact-composition support claim requires actual contract evidence on its declared native runtime.
-Side effects: Only the supported preview-self-host-native / claude-code-subscription / darwin / self-hosting conformance digest and its generated publication change. Runtime, entry points, supported status, tool inventory, checkpoints and executable bytes remain unchanged.
+Side effects: Only the supported preview-self-host-native / claude-code-subscription / darwin / self-hosting conformance digest and its generated publication change. Runtime, entry points, supported status, tool inventory, checkpoints and executable bytes remain unchanged. Register replay publishes source commit 322bc9938621bf5699f39f7c397e6e5891faffdd with shape-only authority. Both delegated desk repin commands ran and required zero pin changes.
 Undo and recovery: Revert with the matching executable composition and regenerate publication. An old certificate cannot certify changed bytes; execute the existing native contract again before renewing another composition.
 Multi-machine posture: The certificate binds the measured Darwin composition and Node executable only. It asserts no additional support for another runtime, platform or doorway and changes no shared ownership or durable state.
 Layer below: Read compositionClosure/compositionDigest/currentRuntime, selfHostCompositionEvidence, the exact native contract, D17 section 2 and the architecture parity consumer. Verified the complete 268-file closure, digest and runtime were identical before and after the contract. The contract uses actual confined launches, installed tests and a capability probe with captured provider frames; it also checks admission/accounting, stop, refusal and timeout outcomes.
@@ -22,5 +22,5 @@ Convergence: none
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: run the existing native contract on the Studio, confirm its executable composition stayed unchanged, renew only the certificate and regenerate the existing publication. Keep all tools and checkpoint enforcement; no new mechanism or weakened check.
-80/20: One certificate finding; bounded native contract, TypeScript checks, pinned READY tests and cheap publication/review gates. The pipeline owns the full suite and the separate live answer check retains its original evidence boundary.
+80/20: All ten native contract cases passed after renewal with no skips; the complete composition and runtime still match the before-run snapshot. Build and typecheck passed. Final pinned READY tests and cheap publication/review gates check the published head. The pipeline owns the full suite and the separate live answer check retains its original evidence boundary.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
