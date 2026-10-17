@@ -2078,6 +2078,11 @@ still decides whether the statement is a direct, durable preference. An uncued s
 can be recorded by the ordinary reply decision. Quoted and imported statements are data,
 and a different sender has no operator authority. Invalid actions remain pending rather
 than producing an acknowledgement that the preference was saved.
+The answer memory instructions always carry the standing-correction distinction, even with
+recalled candidates; the summary writer uses the same guidance. Ordinary disagreement and
+one-off instructions are not standing corrections. Active preferences are restated after
+restart and remain beneath governing rules and safety floors. The existing advisory
+`breaks_preference` review signals a reply that repeats the corrected behavior.
 
 Preferences live in the existing encrypted journal memory actions. Every later model
 packet carries the active `preferences` with their source IDs. A later verified operator
