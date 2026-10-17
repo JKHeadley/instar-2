@@ -512,7 +512,7 @@ it('keeps per-turn non-model overhead flat through 200 turns with commitments an
 }, 120000);
 
 /** The desk's live script through the real sources and real envelope at the live 32768-byte bound,
- * driven only by the read-only `inspect` command: the final question is answered from a summary
+ * driven with explicit compaction between fixture turns and the read-only `inspect` command: the final question is answered from a summary
  * that carries both open items. The model and Telegram are stubs. */
 it('the live script reaches compaction and the question carries the open commitments', async () => {
   const root = origin(), model = 'claude-opus-5-5';
@@ -538,7 +538,12 @@ it('the live script reaches compaction and the question carries the open commitm
     const sentence = 'The garden plan has tomatoes, beans, squash and herbs along the south fence. ';
     const LIVE_FILLER = `Filler for the memory test, just reply ok. ${sentence.repeat(50).trim()}`;
     let id = 1;
-    const say = async (text: string) => { worker.intake([update(id++, text)]); await worker.drain(); await worker.summarizeIfNeeded(); };
+    const say = async (text: string) => {
+      worker.intake([update(id++, text)]); await worker.drain();
+      // This tests post-compaction recall, not the automatic ten-minute cooldown.
+      // Like the people-memory live script, explicitly compact between fixture turns.
+      await worker.summarizeIfNeeded(true);
+    };
     await say(LOCKER); await say(DENTIST);
     const question = 'What did I ask you to remember or do?';
     let fillers = 0;
