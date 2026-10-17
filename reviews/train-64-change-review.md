@@ -26,6 +26,12 @@ Decision: train-64-D | Apply explicit WSL host exceptions to unchanged native an
 Decision: train-64-desk | Use downloaded repin/build/rehash/replay chain at the reviewed member head, with Linux sed syntax only; no hand edits to generated files or guard constant. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-64-PROGRESS.md
 Verification: Targeted captured-output regression, direct journal consumers, journal tests, provider subscription and pinned text checks run in foreground chunks with one worker. Static checks and final results are recorded in the progress report. Fresh live group A acceptance belongs to the desk, and historical RA3 remains FAIL rather than being relabeled by this merge.
 
+Prompt review: No prompt wording or dispatch instruction changes. The existing journal module is classified as a prompt source, but this patch only combines explicitly declared reminder IDs before the existing citation validator. Captured model outputs test both admitted and refused evidence; no fixture phrase determines user meaning.
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged existing protocol or fixed output wording; no semantic classifier copied from the fixture.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged existing protocol or fixed output wording; no semantic classifier copied from the fixture.
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged existing protocol or fixed output wording; no semantic classifier copied from the fixture.
+Decision: train-64-review-metadata | Supply missing required review fields and classify unchanged protocol literals in member and integration records; preserve all product and original review prose. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-64-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge of the exact reviewed head and reuse of the existing generation and verification chain. No new machinery. Exact base and reviewed head guard the start, durable cancellation and surviving unrelated requests are the tested end state, and all five safety floors remain intact. No autonomous product-completion claim.
