@@ -75,10 +75,14 @@ export function createWorkingActivities({ read, now }) {
       const state = active.get(operation);
       const time = now();
       if (!state || state.observedAt === null || state.observedAt > time || time - state.observedAt > 10_000) return null;
-      // Polling cannot renew unchanged evidence; reread only to reflect completion.
-      if (state.advancedAt === null || state.advancedAt > time || time - state.advancedAt > 10_000 || state.offset === null) return null;
+      // An open admitted occurrence plus a fresh session observation supports liveness,
+      // not a claim of productivity. Keep its identity: the send path consumes it once.
+      // Completed work cannot borrow the session heartbeat to become fresh again.
+      if (state.advancedAt === null || state.advancedAt > time || state.offset === null) return null;
       const activity = admissionActivity(read(state.claim), state.offset, state.claim);
-      return activity && activity.step === state.lastStep ? { ...activity, observedAt: state.advancedAt } : null;
+      if (!activity || activity.step !== state.lastStep) return null;
+      const observedAt = activity.running ? state.observedAt : state.advancedAt;
+      return time - observedAt <= 10_000 ? { ...activity, observedAt } : null;
     },
   };
 }
