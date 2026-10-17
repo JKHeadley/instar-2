@@ -38,10 +38,10 @@ Deferral: tests/preview/fixtures/deferral-finish-2026-10-17.json:82 | not-a-defe
 Deferral: tests/preview/journal.ts:2589 | not-a-deferral=Recorded deferred-work evidence or instructions under test; no unfinished builder work.
 
 
+Register publication:existing replay generator consumed source ad263c4a3ee720f950dcdaff39c4f7022d0b19e1 and produced generation sha256:e71cc6a1c57aa2e79629319bde6e43b1c5432ed3571bb02211778b73bc8b9ada. Seven generated files refresh source/generation metadata only; no owner declaration, certificate or runtime authority changes. Owner-manifest rehash changed zero pins.
+
 ## Closing block
 
 simplestRobustRoute: this is the simplest robust route: clarify one existing prompt clause and reuse the owned commitment, scheduled attempt and durable report machinery. No added mechanism. Durable intake starts work, the model reports actual completion, existing authenticated delivery and receipts close it, and secrets/caps/stop/uniqueness remain enforced. Two recorded real provider reruns finish unattended; isolated shipped-worker replay proves storage and next-message delivery. The desk owns fresh live Telegram acceptance.
 80/20: target the changed obligation prompt and its direct test consumers, existing recorded-shape replay, and the mandatory pinned gate; the pipeline owns the full suite.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
-Register publication: existing replay generator consumed source ad263c4a3ee720f950dcdaff39c4f7022d0b19e1 and produced generation sha256:e71cc6a1c57aa2e79629319bde6e43b1c5432ed3571bb02211778b73bc8b9ada. Seven generated files refresh source/generation metadata only; no owner declaration, certificate or runtime authority changes. Owner-manifest rehash changed zero pins.

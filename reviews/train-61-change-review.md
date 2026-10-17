@@ -42,6 +42,8 @@ Deferral: tests/preview/fixtures/deferral-finish-2026-10-17.json:58 | not-a-defe
 Deferral: tests/preview/fixtures/deferral-finish-2026-10-17.json:82 | not-a-deferral=Recorded deferred-work evidence or instructions under test; no unfinished builder work.
 Deferral: tests/preview/journal.ts:2589 | not-a-deferral=Recorded deferred-work evidence or instructions under test; no unfinished builder work.
 
+Decision: train-61-review-format | Move the member publication note before its closing block to satisfy Rule 116, preserving all words and reviewed product bytes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-61-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: Ordinary merge and existing generation chain are the simplest robust route. No added machinery. Start at exact live base, preserve all five safety floors, test existing consumers and defer deployment to the authorized desk. No autonomous product-completion claim.
