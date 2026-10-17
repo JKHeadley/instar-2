@@ -63,6 +63,8 @@ Decision: train-58-carry-fixture | Update the two obsolete wording pins around u
 
 Decision: train-58-people-fixture-budget | Account for 88 additional serialized bytes in the reviewed no-candidate memoryDecision by adding 118 bytes to two synthetic fixture limits (quarter review reserve leaves 88 bytes). Preserve prior evidence capacity and all positive/negative history assertions; production limits and guard assertions stay unchanged. Both suites pass all 23 tests. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-58-PROGRESS.md
 
+Decision: train-58-literal-capture | Extend the explicit historical instruction translation for recorded update 715675751 with current claim-evidence guidance, matching the existing selfdesc translation. Preserve captured bytes, delivered error and all three real corrected outputs; no runtime change. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-58-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges, existing publication regeneration and targeted consumer verification. No new machinery. Start at the live base; preserve secrets, spend, stop, durable intake and unique sends; require committed membership and evidence before desk acceptance.
