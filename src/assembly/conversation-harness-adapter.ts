@@ -21,7 +21,14 @@ export function createSessionConversationAdapter(config: Readonly<{
   });
   return {
     describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false }),
-    launch: async input => ({ launch: take(driver.launch({ ...input, handles: [] })), incarnation: input.incarnation, claim: input.claim }),
+    launch: async input => {
+      const launch = take(driver.launch({ ...input, handles: [] }));
+      // Pending-turn recovery already contains the accepted input. Ordinary restoration
+      // must finish before delivering the next input, with the checkpoint free to serve.
+      if (!input.restore && driver.continuationReady)
+        while (!take(driver.continuationReady(launch))) await config.io.wait(100);
+      return { launch, incarnation: input.incarnation, claim: input.claim };
+    },
     deliver: async input => {
       config.io.clearResult(input.resultPath);
       ensure(config.io.readResult(input.resultPath, input.maxBytes) === null, 'stale conversation result remains');
