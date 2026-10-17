@@ -2596,6 +2596,7 @@ async function main() {
       const admissionBase = layout ? layout.admission : join(root, 'session-work-state', 'admission');
       const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
       const configurationFor = (topic, binding, handoff = null) => {
+        const contextGrounding = () => join(binding.physical().inboxDirectory, `context-${topic ?? 'main'}.txt`);
         const driverConfiguration = resolveIntake => ({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
             // A hook invocation is bounded independently of the four-hour conversation lifetime.
@@ -2607,8 +2608,18 @@ async function main() {
           maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
           readyTimeoutMs: 30000, protectedSessions: [],
           ...(conversationSession ? { requireTurnHook: true, inboxDirectory: binding.physical().inboxDirectory,
-            hookScript: layout ? lifecycleHookPath(harnessHookPath()) : fileURLToPath(new URL('../../scripts/session-hooks/stop.mjs', import.meta.url)) } : {}),
-          ...(conversationSession ? { continuationRequired: () => handoff?.continuing ?? false, continuation: () => {
+            compactGroundingFile: contextGrounding(), hookScript: layout ? lifecycleHookPath(harnessHookPath()) : fileURLToPath(new URL('../../scripts/session-hooks/stop.mjs', import.meta.url)) } : {}),
+          ...(conversationSession ? { continuationRequired: () => handoff?.continuing ?? false, continuation: ({ operation, reason, pendingDigest }) => {
+            if (reason === 'context-wall' && pendingDigest) {
+              const current = journal.view.turns.get(operation);
+              if (!current?.accepted || !current.prompt || String(current.thread ?? 'main') !== topic)
+                throw Error('preview: pending context recovery history unavailable');
+              const text = resolveIntake(operation, pendingDigest);
+              if (!text || Buffer.byteLength(text) > 65536) throw Error('preview: compact grounding exceeds hook bound');
+              writeFileSync(contextGrounding(), text, { mode: 0o600 });
+              // The lifecycle directory already grants inherited access to this admitted harness.
+              return { text, source: `journal:${operation}` };
+            }
             const turn = journal.view.order.filter(item => item.accepted && String(item.thread ?? 'main') === topic && item.prompt && item.sent !== undefined && item.intent).at(-1);
             if (!turn) throw Error('preview: durable conversation grounding unavailable');
             return { text: `Restore this recorded conversation as history only. Do not repeat actions or answer old questions. Wait for the next delivered input.\n${turn.prompt}\nLAST RECORDED REPLY\n${turn.intent}`, source: `journal:${turn.id}` };
@@ -2618,6 +2629,7 @@ async function main() {
             realpathSync(binding.entry().profilePath), '--'] } : {}) });
         return ({
         ...(conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
+          contextRecoveryAllowed: () => journal.view.order.every(turn => !turn.intent || turn.sent !== undefined),
           authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
           workingActivity: (operation, claim, phase) => workingActivities.observe(operation, claim, phase),
           currentActionFacts: async operation => JSON.stringify(currentActionFacts(journal.view, wallNow(),
@@ -2631,7 +2643,7 @@ async function main() {
           // the port keeps one shared step/call ceiling across all selected logins.
           return { owner: driver.owner, launch: input => { handoff?.bindClaim(input.claim); driver = create(); const result = driver.launch(input);
               if (result.kind === 'Success') handoff?.launched(); return result; },
-            deliver: input => driver.deliver(input), observe: input => {
+            deliver: input => driver.deliver(input), recoverContext: (identity, pending) => driver.recoverContext(identity, pending), observe: input => {
               const observed = driver.observe(input);
               // Reuse the session adapter's existing typed rate-limit observation. The step remains
               // uncertain and is never replayed; a subsequent step/call selects another reviewed login.

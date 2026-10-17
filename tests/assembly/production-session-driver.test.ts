@@ -15,7 +15,8 @@ import type { ProductionSessionConfig, SessionIO, SessionJournal } from '../../s
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const fixtureRoots: string[] = [];
 afterEach(() => { for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: Readonly<{ launchVia?: readonly string[]; requireTurnHook?: boolean; observeActivity?: NonNullable<ProductionSessionConfig['observeActivity']> }> = {}) {
+function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: Partial<Pick<ProductionSessionConfig,
+  'confinement' | 'toolAdmission' | 'modelGate' | 'turnDeadlineMs' | 'launchVia' | 'requireTurnHook' | 'observeActivity'>> = {}) {
   const f = assemblyRuntimeFixture(); let now = 1000, stopped = false, pane = '❯ ', sends = 0;
   const root = mkdtempSync(join(tmpdir(), 'instar-session-test-')); fixtureRoots.push(root);
   const homes = { a: join(root, 'login-a'), b: join(root, 'login-b') };
@@ -81,9 +82,234 @@ function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: 
     onPrepared: (callback: () => void) => { onPrepared = callback; },
     hook: (at: number) => { hooks = [...hooks, { kind: 'turn-closed', sessionId: '12345678-1234-1234-1234-123456789abc',
       at, receiptId: `receipt-${hooks.length + 1}` }]; },
+    compactHook: (at: number) => { hooks = [...hooks, { kind: 'compact', sessionId: '12345678-1234-1234-1234-123456789abc',
+      at, receiptId: `compact-${hooks.length + 1}` }]; },
     markPrepared: () => { journal = { ...journal, deliveries: journal.deliveries.map(row => ({ ...row, state: 'prepared' })) }; },
     stop: () => { stopped = true; }, time: (value: number) => { now = value; }, config };
 }
+
+const rateConfig = { turnDeadlineMs: 120_000, requireTurnHook: true,
+  confinement: 'admitted' as const, toolAdmission: { command: () => '/hook', timeoutSeconds: 10 },
+  modelGate: () => 'http://127.0.0.1:1234/' + 'a'.repeat(32) + '/claim' };
+const recordedLimit = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8')).result as string;
+it('continues a throttled turn once after backoff, preserving its intake and original deadline across driver restart', () => {
+  const f = fixture('claude-code', rateConfig);
+  const id = f.launch(); value(f.deliver(id));
+  const limited = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8'));
+  f.changePane(`${limited.result}\n❯ `);
+  const observe = (driver = f.driver) => value(driver.observe({ operation: 'deliver', processIdentity: id }));
+  expect(observe()).toMatchObject({ phase: 'launched', detail: 'rate-limit recovery waiting' });
+  const deadline = f.journal.sessions[0]?.turnDeadline;
+  const before = f.sends;
+  f.time(30_999); expect(observe().phase).toBe('launched'); expect(f.sends).toBe(before);
+  f.time(31_000);
+  const restarted = createProductionSessionDriver(f.config);
+  expect(observe(restarted)).toMatchObject({ phase: 'launched', detail: 'rate-limit continuation submitted' });
+  expect(f.journal.sessions[0]?.turnDeadline).toBe(deadline);
+  expect(f.journal.deliveries).toHaveLength(1);
+  expect(f.calls.filter(call => call[0] === 'send-keys' && call.includes('hello'))).toHaveLength(1);
+  const after = f.sends;
+  expect(observe(restarted).phase).toBe('launched'); expect(f.sends).toBe(after);
+  f.changePane(`${limited.result}\nanswer\n❯ `); f.hook(31_001); f.time(31_001);
+  expect(value(restarted.observe({ operation: 'deliver', processIdentity: id, resultAvailable: true })).phase).toBe('output-observed');
+});
+
+it('keeps a resumed worker busy under its original deadline despite old quota scrollback', () => {
+  const captured = JSON.parse(readFileSync(new URL('../preview/fixtures/work-silence-terminal-2026-10-14.json', import.meta.url), 'utf8'));
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  const observe = () => value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  f.changePane(`${recordedLimit}\n❯ `); expect(observe().phase).toBe('launched');
+  f.time(31_000); expect(observe().phase).toBe('launched'); const sends = f.sends;
+  for (const [index, at] of [36_000, 90_000].entries()) {
+    f.time(at); f.changePane(`${recordedLimit}\n${captured.captures[index + 1].capture}`);
+    expect(observe().phase).toBe('launched'); expect(f.sends).toBe(sends);
+    expect(f.journal.sessions[0]?.turnDeadline).toBe(121_000);
+  }
+  f.time(100_000); f.changePane(`${recordedLimit}\nanswer\n❯ `); f.hook(100_000);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id, resultAvailable: true })).phase).toBe('output-observed');
+  expect(f.sends).toBe(sends);
+});
+
+it('a fresh completed-turn receipt wins over quota text still visible in scrollback', () => {
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  f.changePane(`${recordedLimit}\nanswer explaining the prior throttle\n❯ `); f.hook(1000);
+  const sends = f.sends;
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id, resultAvailable: true })).phase).toBe('output-observed');
+  expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
+  expect(f.sends).toBe(sends);
+});
+
+it.each(['initial', 'waiting', 'accepted'] as const)('a throttle Stop without a result preserves recovery at %s', async phase => {
+  const f = fixture('claude-code', rateConfig);
+  const adapter = createSessionConversationAdapter({ createDriver: () => f.driver,
+    resolveDelivery: () => undefined, io: {
+      clearResult: () => undefined, readResult: () => null, modelCalls: () => 2,
+      prepareAdmission: () => undefined, admissionState: () => ({ refused: false, openDelegations: [] }),
+      closeAdmission: () => undefined, wait: async () => undefined,
+    } });
+  const worker = await adapter.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test',
+    incarnation: 'inc', workingScope: '/work' });
+  const delivery = { ...worker, operation: 'deliver', text: 'hello', digest: hash('hello'),
+    resultPath: '/work/result', maxBytes: 1000 };
+  await adapter.deliver(delivery);
+  f.changePane(`${recordedLimit}\n❯ `);
+  const observe = () => adapter.observe({ ...worker, delivery, cursor: 0, limit: 2 });
+  if (phase !== 'initial') expect((await observe()).observations).toEqual([]);
+  if (phase === 'accepted') { f.time(31_000); expect((await observe()).observations).toEqual([]); }
+  const at = phase === 'initial' ? 1001 : phase === 'waiting' ? 2000 : 36_000;
+  f.time(at); f.hook(at);
+  const sends = f.sends;
+  expect((await observe()).observations).toEqual(phase === 'accepted'
+    ? [{ kind: 'paused', evidence: worker.launch, reason: 'rate-limited' }] : []);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: worker.launch })))
+    .toMatchObject(phase === 'accepted' ? { phase: 'pause-observed', detail: 'rate-limited' }
+      : { phase: 'launched', detail: 'rate-limit recovery waiting' });
+  expect(f.journal.sessions[0]).toMatchObject({ turnDeadline: 121_000, closedAt: null,
+    turnCloseEvidence: null, rateRecovery: { state: phase === 'accepted' ? 'accepted' : 'waiting' } });
+  expect(f.sends).toBe(sends);
+  expect(f.journal.deliveries).toHaveLength(1);
+});
+
+it('a past compaction does not exclude a newly admitted input from throttle recovery', () => {
+  const f = fixture('claude-code', rateConfig), id = f.launch();
+  f.config.io.save({ ...f.journal, sessions: f.journal.sessions.map(row => ({ ...row, recovery: 1 })) });
+  value(f.deliver(id)); f.changePane(`${recordedLimit}\n❯ `);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })))
+    .toMatchObject({ phase: 'launched', detail: 'rate-limit recovery waiting' });
+});
+
+it('exposes an uncompleted repeated throttle without a second nudge', () => {
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  f.changePane(`${recordedLimit}\n❯ `);
+  const observe = () => value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  expect(observe().phase).toBe('launched');
+  refused(f.driver.recoverContext(id), 'idle prompt');
+  f.time(31_000); expect(observe().phase).toBe('launched');
+  const sends = f.sends;
+  f.time(36_000);
+  expect(observe()).toMatchObject({ phase: 'pause-observed', detail: 'rate-limited' });
+  expect(observe().phase).toBe('pause-observed'); expect(f.sends).toBe(sends);
+  expect(f.journal.sessions[0]?.turnDeadline).toBe(121_000);
+});
+
+it.each(['before-input', 'after-enter'])('never retries an uncertain continuation after restart: %s', point => {
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  f.changePane(`${recordedLimit}\n❯ `);
+  value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  f.time(31_000);
+  if (point === 'before-input') f.failNextSend();
+  else f.onEnter(() => { throw Error('simulated process death after Enter'); });
+  refused(f.driver.observe({ operation: 'deliver', processIdentity: id }), 'simulated process death');
+  expect(f.journal.sessions[0]?.rateRecovery?.state).toBe('sending');
+  const sends = f.sends, restarted = createProductionSessionDriver(f.config);
+  expect(value(restarted.observe({ operation: 'deliver', processIdentity: id })).phase).toBe('uncertain');
+  expect(f.sends).toBe(sends);
+});
+
+it('accepts genuine completion during the wait without injecting a continuation', () => {
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  f.changePane(`${recordedLimit}\n❯ `);
+  value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  const sends = f.sends;
+  f.time(2000); f.changePane('completed answer\n❯ '); f.hook(2000);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).phase).toBe('output-observed');
+  expect(f.sends).toBe(sends);
+});
+
+it('the conversation adapter returns one answer for the original input after bounded throttle recovery', async () => {
+  const f = fixture('claude-code', rateConfig); let result: string | null = null;
+  const adapter = createSessionConversationAdapter({ createDriver: () => f.driver,
+    resolveDelivery: () => undefined, io: {
+      clearResult: () => { result = null; }, readResult: () => result, modelCalls: () => 2,
+      prepareAdmission: () => undefined, admissionState: () => ({ refused: false, openDelegations: [] }),
+      closeAdmission: () => undefined, wait: async () => undefined,
+    } });
+  const worker = await adapter.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test',
+    incarnation: 'inc', workingScope: '/work' });
+  const delivery = { ...worker, operation: 'deliver', text: 'hello', digest: hash('hello'),
+    resultPath: '/work/result', maxBytes: 1000 };
+  expect((await adapter.deliver(delivery)).state).toBe('accepted');
+  f.changePane(`${recordedLimit}\n❯ `);
+  const observe = (cursor = 0) => adapter.observe({ ...worker, delivery, cursor, limit: 2 });
+  expect((await observe()).observations).toEqual([]);
+  f.time(31_000); expect((await observe()).observations).toEqual([]);
+  result = 'The requested result'; f.changePane(`${recordedLimit}\nanswer\n❯ `); f.time(31_001); f.hook(31_001);
+  const answered = await observe();
+  expect(answered.observations).toEqual([
+    { kind: 'reply', delivery: 'deliver', text: result, digest: hash(result) },
+    { kind: 'turn-end', delivery: 'deliver', state: 'completed' },
+  ]);
+  expect((await observe(answered.cursor)).observations).toEqual([]);
+  expect(f.journal.deliveries).toHaveLength(1);
+});
+
+it('replays recorded summary, Jev, review, delivered and empty shapes across the Stop/result boundary', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8'));
+  const shapes = recorded.otherShapes as { kind: string; id: string; raw: string }[];
+  expect(shapes.map(row => row.kind)).toEqual(['summary-writer', 'summary-uncertain', 'jev-undecided',
+    'jev-unsure', 'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
+  expect(shapes.map(row => row.id)).toEqual(['summary:715672480', '715672483', '715672482', '969389570',
+    '969389923', 'telegram:8994258214:update:715672479', 'telegram:8994258214:update:715672550']);
+  for (const row of shapes) {
+    const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+    f.changePane(row.raw); const sends = f.sends;
+    value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+    expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
+    expect(f.sends).toBe(sends);
+    const adapter = createSessionConversationAdapter({ createDriver: () => f.driver,
+      resolveDelivery: () => undefined, io: {
+        clearResult: () => undefined, readResult: () => row.raw, modelCalls: () => 2,
+        prepareAdmission: () => undefined, admissionState: () => ({ refused: false, openDelegations: [] }),
+        closeAdmission: () => undefined, wait: async () => undefined,
+      } });
+    f.changePane(`${recordedLimit}\n❯ `); f.hook(1000);
+    const worker = { launch: id, incarnation: 'inc', claim: 'topic' };
+    const delivery = { ...worker, operation: 'deliver', text: 'hello', digest: hash('hello'),
+      resultPath: '/work/result', maxBytes: 100_000 };
+    const actual = await adapter.observe({ ...worker, delivery, cursor: 0, limit: 2 });
+    expect(actual.observations).toEqual(row.raw.trim()
+      ? [{ kind: 'reply', delivery: 'deliver', text: row.raw, digest: hash(row.raw) },
+        { kind: 'turn-end', delivery: 'deliver', state: 'completed' }] : []);
+    expect(f.journal.sessions[0]?.turnDeadline).toBe(row.raw.trim() ? null : 121_000);
+    expect(f.sends).toBe(sends);
+  }
+});
+
+it.each(['stop', 'deadline', 'identity'] as const)('a waiting recovery cannot bypass %s', reason => {
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  f.changePane(`${recordedLimit}\n❯ `);
+  value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  const sends = f.sends;
+  f.time(31_000);
+  if (reason === 'stop') f.stop();
+  if (reason === 'deadline') { f.time(121_000); f.hook(1001); }
+  if (reason === 'identity') f.changeStamp('999:1000');
+  const result = f.driver.observe({ operation: 'deliver', processIdentity: id });
+  if (reason === 'identity') refused(result, 'identity changed');
+  else expect(value(result).phase).toBe('exit-observed');
+  if (reason === 'deadline') {
+    expect(value(result)).toMatchObject({ safetyDeadline: 121_000 });
+    expect(f.journal.sessions[0]?.deadlineHalt).toEqual({ deadline: 121_000, at: 121_000 });
+    expect(value(f.driver.observe({ operation: 'again', processIdentity: id }))).toMatchObject({ safetyDeadline: 121_000 });
+  }
+  expect(f.sends).toBe(sends);
+});
+
+it.each(['compaction', 'uncertain-input', 'busy', 'unconfined', 'short-deadline'] as const)(
+  'does not start throttle continuation for %s', reason => {
+    const f = fixture('claude-code', reason === 'unconfined' ? { turnDeadlineMs: 120_000 }
+      : { ...rateConfig, ...(reason === 'short-deadline' ? { turnDeadlineMs: 20_000 } : {}) });
+    const id = f.launch(); value(f.deliver(id));
+    if (reason === 'compaction') f.config.io.save({ ...f.journal,
+      sessions: f.journal.sessions.map(row => ({ ...row, recovery: 1 })) });
+    if (reason === 'uncertain-input') f.config.io.save({ ...f.journal,
+      deliveries: f.journal.deliveries.map(row => ({ ...row, state: 'uncertain' })) });
+    f.changePane(`${recordedLimit}\n${reason === 'busy' ? 'Working… (esc to interrupt)' : '❯ '}`);
+    const sends = f.sends;
+    value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+    expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
+    expect(f.sends).toBe(sends);
+  });
 
 it('ports byte bounded tmux chunks, menu precedence, and tail gated stuck signatures', () => {
   expect(chunkLiteralForTmux('🙂'.repeat(3000)).every(part => Buffer.byteLength(part) <= 8000)).toBe(true);
@@ -516,7 +742,7 @@ it('recovers a delivered no-hook context failure, then respawns after failed com
   expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('pause-observed');
   expect(f.journal.sessions[0]?.turnDeadline).toBeNull();
   expect(value(f.driver.recoverContext(id))).toBe('compact-requested');
-  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('pause-observed');
+  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('launched');
   expect(f.journal.sessions[0]?.turnDeadline).not.toBeNull();
   refused(f.driver.recoverContext(id), 'idle prompt');
   f.changePane('error during compaction: too long\n› ');
@@ -528,7 +754,8 @@ it('recovers a delivered no-hook context failure, then respawns after failed com
 it('refuses context recovery while the failed turn is still busy', () => {
   const f = fixture(), id = f.launch(); value(f.deliver(id));
   f.changePane('conversation is too long\n❯ hello\n✻ Working… (esc to interrupt)');
-  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('pause-observed');
+  // A context signal during work cannot begin idle compaction.
+  expect(value(f.driver.observe({ operation: 'observe', processIdentity: id })).phase).toBe('launched');
   refused(f.driver.recoverContext(id), 'idle prompt');
   expect(f.journal.sessions[0]?.turnDeadline).not.toBeNull();
 });
@@ -556,6 +783,7 @@ it.each(['claude-code', 'codex-cli'] as const)('an admitted %s session launches 
     const settings = JSON.parse(spawned[spawned.indexOf('--settings') + 1]!);
     expect(settings.hooks.PreToolUse).toEqual([{ matcher: '*', hooks: [{ type: 'command', command: '/node /repo/hook.mjs pre /state/topic', timeout: 600 }] }]);
     expect(settings.hooks.PostToolUse[0].hooks[0].command).toBe('/node /repo/hook.mjs post /state/topic');
+    expect(settings.hooks.PostToolUseFailure).toEqual(settings.hooks.PostToolUse);
     // No background model traffic, and every model call the session makes goes to this claim's checkpoint.
     expect(spawned).toContain('DISABLE_NON_ESSENTIAL_MODEL_CALLS=1');
     expect(spawned).toContain(`ANTHROPIC_BASE_URL=${modelGate('topic')}`);
@@ -691,7 +919,7 @@ function journalDriverConfiguration(conversationSession: boolean, base: ReturnTy
     binding: { entry: () => ({ profile: { executable: base.executable, home: base.home, configDirectory: base.configHome } }),
       physical: () => ({ ...base.io, inboxDirectory: '/fixture/inbox' }), stopped: base.stopped },
     required: () => 'fixture-model', options: {}, context: base.context, wallNow: base.now, handoff: null,
-    workActivity: new Map(), fileURLToPath: () => '/fixture/stop.mjs', URL,
+    contextGrounding: () => '/fixture/grounding.txt', workActivity: new Map(), fileURLToPath: () => '/fixture/stop.mjs', URL,
   };
   // import.meta.url is only used to resolve the lifecycle hook's physical script path.
   const source = body.replaceAll('import.meta.url', JSON.stringify(import.meta.url));
@@ -716,4 +944,228 @@ it.each([3600, 3601])('holds the admission hook boundary at %s seconds', timeout
     toolAdmission: { ...config.toolAdmission!, timeoutSeconds } });
   if (timeoutSeconds === 3600) expect(build).not.toThrow();
   else expect(build).toThrow('bounded admission hook required');
+});
+
+it('recognizes the captured context wall and quiet prompt from proof update 1016001', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/context-wall-worker-1016001-2026-10-16.json', import.meta.url), 'utf8'));
+  expect(recorded.source.updateIds).toEqual([1016001, 1016002]);
+  expect(recorded.deliveredAnswer).toBeNull();
+  expect(classifyStuckSignature(recorded.wall.stdout)).toBe('context-too-long');
+  expect(classifyPaneIdle(recorded.wall.stdout, 'claude-code')).toBe(true);
+  expect(classifyPaneIdle(recorded.transientWall.stdout, 'claude-code')).toBe(false);
+  expect(classifyPaneIdle(recorded.compactFailure.stdout, 'claude-code')).toBe(true);
+  expect(classifyPaneIdle(`${recorded.wall.stdout}\nesc to interrupt`, 'claude-code')).toBe(false);
+});
+
+it('replays the captured wall through adapter compact control before requesting owner retirement', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/context-wall-worker-1016001-2026-10-16.json', import.meta.url), 'utf8'));
+  const f = fixture('claude-code', { requireTurnHook: true });
+  let delivery: import('../../src/assembly/contracts.js').HarnessInputDelivery | undefined;
+  const adapter = createSessionConversationAdapter({
+    createDriver: resolveIntake => createProductionSessionDriver({ ...f.config, resolveIntake,
+      continuation: ({ operation, pendingDigest }) => ({ text: resolveIntake(operation, pendingDigest!), source: 'journal:1016001' }) }),
+    resolveDelivery: () => delivery,
+    io: { clearResult: () => {}, readResult: () => null, modelCalls: () => 1,
+      wait: async ms => f.time(f.config.now() + ms), prepareAdmission: () => {}, closeAdmission: () => {},
+      admissionState: () => ({ refused: false, uncertainEffects: 0, openDelegations: [] }) },
+  });
+  const worker = await adapter.launch({ operation: 'claim', claim: 'topic', artifact: 'sha256:test', incarnation: 'inc', workingScope: '/work' });
+  delivery = { ...worker, operation: 'telegram:12345678:update:1016001', text: 'copper finch', digest: hash('copper finch'), resultPath: '/work/answer', maxBytes: 4096 };
+  await adapter.deliver(delivery);
+  f.changePane(recorded.wall.stdout);
+  expect((await adapter.observe({ ...worker, delivery, cursor: 0, limit: 16 })).observations)
+    .toEqual([{ kind: 'paused', evidence: worker.launch, reason: 'context-too-long' }]);
+  f.onEnter(() => f.changePane(recorded.compactFailure.stdout));
+  const result = await adapter.control({ ...worker, action: 'compact', authority: 'role', reason: 'context-too-long', delivery, deadline: 1900 });
+  expect(result.state).toBe('replace-required');
+  expect(f.calls.filter(call => call.includes('/compact'))).toHaveLength(1);
+  expect(f.calls.filter(call => call[0] === 'kill-session')).toHaveLength(0);
+  expect(f.journal.deliveries).toHaveLength(1);
+  expect(f.journal.sessions[0]?.continuation).toMatchObject({ state: 'prepared', pending: { operation: delivery.operation, deadline: 1900 } });
+});
+
+it('restores the real refused recipe envelope byte-for-byte as the admitted task', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/context-recovery-envelope-1016106-2026-10-16.json', import.meta.url), 'utf8')) as {
+    operation: string; pendingText: string; digest: string; wall: string; compactFailure: string };
+  const f = fixture('claude-code', { requireTurnHook: true });
+  let delivery: import('../../src/assembly/contracts.js').HarnessInputDelivery | undefined;
+  const adapter = createSessionConversationAdapter({
+    createDriver: resolveIntake => createProductionSessionDriver({ ...f.config, resolveIntake,
+      continuation: ({ operation, pendingDigest }) => ({ text: resolveIntake(operation, pendingDigest!), source: 'journal:1016106' }) }),
+    resolveDelivery: () => delivery,
+    io: { clearResult: () => {}, readResult: () => null, modelCalls: () => 1,
+      wait: async ms => f.time(f.config.now() + ms), prepareAdmission: () => {}, closeAdmission: () => {},
+      admissionState: () => ({ refused: false, uncertainEffects: 0, openDelegations: [] }) },
+  });
+  const old = await adapter.launch({ operation: 'claim', claim: 'topic', artifact: 'sha256:test', incarnation: 'inc', workingScope: '/work' });
+  delivery = { ...old, operation: recorded.operation, text: recorded.pendingText, digest: recorded.digest, resultPath: '/work/answer', maxBytes: 4096 };
+  expect(recorded.digest).toBe(hash(recorded.pendingText));
+  await adapter.deliver(delivery); f.changePane(recorded.wall);
+  await adapter.observe({ ...old, delivery, cursor: 0, limit: 16 });
+  f.onEnter(() => f.changePane(recorded.compactFailure));
+  expect((await adapter.control({ ...old, action: 'compact', authority: 'role', reason: 'context-too-long', delivery, deadline: 1900 })).state).toBe('replace-required');
+  await adapter.control({ ...old, action: 'close', authority: 'role', reason: 'failed compact' }); f.changePane('❯ ');
+  const start = f.calls.length;
+  await adapter.launch({ operation: 'next', claim: 'next', artifact: 'sha256:test', incarnation: 'next', workingScope: '/work',
+    restore: { operation: recorded.operation, digest: recorded.digest, deadline: 1900 } });
+  const text = f.calls.slice(start).filter(call => call[0] === 'send-keys' && call.includes('-l')).map(call => call.at(-1)).join('');
+  expect(text).toBe(recorded.pendingText);
+  expect(text).toContain(recorded.operation);
+  expect(f.calls.filter(call => call.includes('/compact'))).toHaveLength(1);
+});
+
+it.each(['busy', 'unknown', 'menu', 'policy', 'rate', 'stop', 'history', 'uncertain', 'deadline'] as const)(
+  'never compacts or replaces an unsafe context recovery neighbor: %s', mode => {
+    const f = fixture(), identity = f.launch(); value(f.deliver(identity));
+    f.changePane('conversation is too long\n❯ ');
+    value(f.driver.observe({ operation: 'deliver', processIdentity: identity }));
+    if (mode === 'busy') f.changePane('conversation is too long\nesc to interrupt\n❯ ');
+    if (mode === 'unknown') f.changePane('unknown terminal frame');
+    if (mode === 'menu') f.changePane('❯ 1. Yes\n2. No');
+    if (mode === 'policy') f.changePane('appears to violate our Usage Policy\nappears to violate our Usage Policy\n❯ ');
+    if (mode === 'rate') f.changePane("You've hit your limit\n❯ ");
+    if (mode === 'stop') f.stop();
+    if (mode === 'uncertain') f.markPrepared();
+    const driver = mode === 'history' ? createProductionSessionDriver({ ...f.config, continuation: undefined }) : f.driver;
+    expect(driver.recoverContext(identity, { operation: 'deliver', digest: hash('hello'), deadline: mode === 'deadline' ? 999 : 1900 }).kind).toBe('Refused');
+    expect(f.calls.some(call => call.includes('/compact'))).toBe(false);
+    expect(f.calls.filter(call => call[0] === 'new-session')).toHaveLength(1);
+    expect(f.calls.filter(call => call[0] === 'kill-session')).toHaveLength(mode === 'stop' ? 1 : 0);
+  });
+
+it('restores only after exact retirement, submits once without blocking the checkpoint, and retains the deadline', () => {
+  const f = fixture('claude-code', { requireTurnHook: true }), old = f.launch(); value(f.deliver(old));
+  const pending = { operation: 'deliver', digest: hash('hello'), deadline: 1900 };
+  f.changePane('conversation is too long\n❯ ');
+  value(f.driver.observe({ operation: 'deliver', processIdentity: old }));
+  expect(value(f.driver.recoverContext(old, pending))).toBe('compact-requested');
+  f.changePane('❯ /compact\nNot enough messages to compact.\n❯ ');
+  expect(value(f.driver.recoverContext(old, pending))).toBe('replace-required');
+  const next = { operation: 'next', claim: 'topic-next', artifact: 'sha256:test', incarnation: 'next', workingScope: '/work', handles: [], restore: pending };
+  refused(f.driver.launch(next), 'retired original worker');
+  value(f.driver.stop({ claim: 'topic', incarnation: 'inc', processIdentity: old })); f.changePane('❯ ');
+  const identity = value(f.driver.launch(next));
+  expect(identity).not.toBe(old);
+  expect(f.journal.sessions.at(-1)).toMatchObject({ turnDeadline: 1900, continuation: { state: 'accepted', pending } });
+  const submits = f.calls.filter(call => call[0] === 'send-keys' && call.includes('-l')
+    && call.at(-1) === f.journal.sessions.at(-1)!.continuation!.text);
+  expect(submits).toHaveLength(1);
+  const restored = submits[0]!.at(-1)!;
+  expect(restored).toBe(f.journal.sessions.at(-1)!.continuation!.text);
+  expect(value(f.driver.launch(next))).toBe(identity);
+  refused(f.driver.launch({ ...next, operation: 'third', claim: 'topic-third', incarnation: 'third' }), 'already submitted');
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('launched');
+  f.time(1001); f.hook(1001);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('output-observed');
+  expect(f.journal.sessions.at(-1)?.continuation?.state).toBe('completed');
+});
+
+it('resumes the same worker only with a fresh compact receipt and a quiet prompt', () => {
+  const f = fixture('claude-code', { requireTurnHook: true }), identity = f.launch(); value(f.deliver(identity));
+  const pending = { operation: 'deliver', digest: hash('hello'), deadline: 1900 };
+  f.compactHook(999);
+  f.changePane('Prompt is too long\n❯ ');
+  value(f.driver.observe({ operation: 'deliver', processIdentity: identity }));
+  expect(value(f.driver.recoverContext(identity, pending))).toBe('compact-requested');
+  f.changePane('Conversation compacted\n❯ ');
+  expect(value(f.driver.recoverContext(identity, pending))).toBe('compacting');
+  f.time(1001); f.compactHook(1001); f.changePane('Working…\nesc to interrupt\n❯ ');
+  expect(value(f.driver.recoverContext(identity, pending))).toBe('compacting');
+  f.changePane('Conversation compacted\n❯ ');
+  expect(value(f.driver.recoverContext(identity, pending))).toBe(identity);
+  expect(f.journal.sessions[0]).toMatchObject({ turnDeadline: 1900, continuation: { state: 'accepted', pending } });
+  expect(f.calls.filter(call => call[0] === 'new-session')).toHaveLength(1);
+  refused(f.driver.recoverContext(identity, pending), 'already submitted');
+  expect(f.journal.deliveries).toHaveLength(1);
+});
+
+it('a correlated completed turn takes precedence over context-wall words left in the pane', () => {
+  const f = fixture('claude-code', { requireTurnHook: true }), identity = f.launch(); value(f.deliver(identity));
+  f.changePane('The previous error was: Prompt is too long\n❯ ');
+  f.time(1001); f.hook(1001);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('output-observed');
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('output-observed');
+  expect(f.calls.some(call => call.includes('/compact'))).toBe(false);
+});
+
+const socketCapture = JSON.parse(readFileSync(new URL('../preview/fixtures/socket-drop-worker-1016101-2026-10-16.json', import.meta.url), 'utf8'));
+const socketRun = socketCapture.runs.find((run: { name: string }) => run.name === 'persistent');
+const socketExhausted: string = socketRun.panes.at(-1).stdout;
+
+it('replays the real exhausted native retry without another input or a false completion', () => {
+  const f = fixture('claude-code', { requireTurnHook: true }), id = f.launch(); value(f.deliver(id));
+  const sends = f.sends, deadline = f.journal.sessions[0]!.turnDeadline;
+  for (const frame of socketRun.panes.filter((frame: { stdout: string }) => frame.stdout.includes('Retrying in'))) {
+    f.changePane(frame.stdout);
+    expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).phase).toBe('launched');
+    expect(f.journal.sessions[0]!.turnDeadline).toBe(deadline);
+  }
+  f.changePane(socketExhausted);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })))
+    .toMatchObject({ phase: 'pause-observed', detail: 'connection-exhausted' });
+  expect(f.sends).toBe(sends);
+  expect(f.journal.deliveries[0]!.state).toBe('accepted');
+  expect(f.journal.sessions[0]!.turnCloseEvidence).toBeNull();
+  expect(f.journal.sessions[0]!.turnDeadline).toBe(deadline);
+});
+
+const socketRetry: string = socketRun.panes.find((frame: { stdout: string }) => frame.stdout.includes('attempt 10/10')).stdout;
+function retryingSocket() {
+  const f = fixture('claude-code', { requireTurnHook: true }), id = f.launch(); value(f.deliver(id));
+  f.changePane(socketRetry); value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  return { f, id };
+}
+
+it.each(['quoted', 'stale', 'working', 'menu', 'unknown-footer'] as const)('does not retire the %s socket-error neighbour', mode => {
+  const { f, id } = retryingSocket();
+  const pane = mode === 'quoted' ? socketExhausted.split('\n').map(line => `  ${line}`).join('\n')
+    : mode === 'stale' ? `${socketExhausted}\n⏺ Later ordinary answer\n❯ `
+      : mode === 'working' ? socketRetry
+        : mode === 'menu' ? `${socketExhausted}\n❯ 1. Continue\n  2. Cancel`
+          : `${socketExhausted}\nunknown state`;
+  f.changePane(pane);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).phase).toBe('launched');
+  expect(f.journal.sessions[0]!.turnDeadline).toBe(2000);
+});
+
+it('requires a native retry in this exact turn, and a changed pane, before exhausted-error retirement', () => {
+  const f = fixture('claude-code', { requireTurnHook: true }), id = f.launch(); value(f.deliver(id));
+  f.changePane(socketExhausted);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).phase).toBe('launched');
+  const { f: g, id: other } = retryingSocket();
+  g.hook(1100); g.time(1100); value(g.driver.observe({ operation: 'deliver', processIdentity: other }));
+  g.changePane(socketExhausted);
+  value(g.driver.deliver({ operation: 'second', processIdentity: other, intake: 'second', digest: hash('hello'), incarnation: 'inc' }));
+  expect(g.journal.sessions[0]!.connectionRetry).toBeNull();
+  expect(value(g.driver.observe({ operation: 'second', processIdentity: other })).phase).toBe('launched');
+});
+
+it('persists native retry pressure across driver restart without resetting the deadline or sending again', () => {
+  const { f, id } = retryingSocket(), sends = f.sends;
+  expect(f.journal.sessions[0]!.connectionRetry).toEqual({ turnStartedAt: 1000, attempt: 10 });
+  const restarted = createProductionSessionDriver(f.config);
+  f.changePane(socketExhausted);
+  expect(value(restarted.observe({ operation: 'deliver', processIdentity: id })).detail).toBe('connection-exhausted');
+  expect(f.sends).toBe(sends); expect(f.journal.sessions[0]!.turnDeadline).toBe(2000);
+});
+
+it.each(['stop', 'identity', 'deadline', 'receipt', 'context'] as const)('preserves %s precedence over socket recovery', mode => {
+  const { f, id } = retryingSocket(); f.changePane(socketExhausted);
+  if (mode === 'identity') {
+    f.changeStamp('999:1001'); refused(f.driver.observe({ operation: 'deliver', processIdentity: id }), 'identity changed'); return;
+  }
+  if (mode === 'stop') f.stop();
+  if (mode === 'deadline') f.time(2000);
+  if (mode === 'receipt') { f.time(1100); f.hook(1100); }
+  if (mode === 'context') f.changePane('conversation is too long\n❯ ');
+  const observation = value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  expect(observation.phase).toBe(mode === 'receipt' ? 'output-observed' : mode === 'context' ? 'pause-observed' : 'exit-observed');
+  expect(observation.detail).not.toBe('connection-exhausted');
+});
+
+it('retains the infrastructure deadline cause after the exact process has gone', () => {
+  const f = fixture(), id = f.launch(); value(f.deliver(id)); f.changePane('working'); f.time(2001);
+  const first = value(f.driver.observe({ operation: 'observe', processIdentity: id }));
+  expect(first.evidence).toBe(`safety-ceiling:deadline:${id}`);
+  expect(value(f.driver.observe({ operation: 'again', processIdentity: id })).evidence).toBe(first.evidence);
 });

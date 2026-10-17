@@ -44,7 +44,7 @@ function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | '
     createAdapter: () => adapter,
     io: { clearResult: () => {}, readResult: () => null, modelCalls: () => used, wait: async ms => { clock += ms; },
       prepareAdmission: (_claim, edge) => { admissions.push(edge); }, closeAdmission: claim => { closed.push(claim); },
-      admissionState: () => ({ refused, openDelegations: [] }) },
+      admissionState: () => ({ refused, refusalReason: refused ? 'calls' : null, openDelegations: [] }) },
     resources: { admit: async () => ({ attach: async () => {}, release: async () => { releases++; return releaseOK; } }) },
     context: f.c, now: () => clock, stopped: () => stopped, append: row => { edges.push(row); },
     parent: 'run-1', owner: 'machine-1', placement: 'local', transport: 'fake', workingScope: '/scope',
@@ -379,12 +379,13 @@ it('a grant superseded during asynchronous resource admission cannot launch or c
 
 it('an input arriving during idle retirement waits for exact stop before replacement', async () => {
   const f = fixture(); await f.port.run(f.request('one'));
-  let release!: () => void;
+  let release!: () => void, entered!: () => void;
+  const stopping = new Promise<void>(resolve => { entered = resolve; });
   const control = f.adapter.control;
-  f.adapter.control = async input => { await new Promise<void>(resolve => { release = resolve; }); return control(input); };
+  f.adapter.control = async input => { await new Promise<void>(resolve => { release = resolve; entered(); }); return control(input); };
   const retirement = f.port.retireIdle();
   const next = f.port.run(f.request('two'));
-  await Promise.resolve(); await Promise.resolve();
+  await stopping;
   expect(f.delivered).toHaveLength(1);
   f.adapter.control = control; release();
   expect(await retirement).toBe(true); expect(await next).toMatchObject({ state: 'complete' });
@@ -410,7 +411,7 @@ it.each([200000, 50000])('reopen enforces the earlier persisted/admitted parent 
   next.reserveCall(f.state().claim!, 1);
   f.advance(500);
   expect(next.available()).toBe(false);
-  expect(() => next.reserveCall(f.state().claim!, 2)).toThrow(/parent lifetime/);
+  expect(() => next.reserveCall(f.state().claim!, 2)).toThrow(/safety ceiling: deadline/);
   await expect(next.run(f.request('three'))).rejects.toThrow(/unavailable/);
   await next.maintain(); expect(f.state().worker).toBeNull();
   expect(f.launches).toHaveLength(2);
@@ -669,4 +670,220 @@ it('keeps intake when fresh action grounding exceeds its bound or its reader fai
     expect(f.state().inputs[0]!.request.operation).toBe('first');
     await f.port.close();
   }
+});
+
+it.each(['resumed', 'replace-required'] as const)('continues one accepted turn after %s without a second delivery or refreshed liability', async disposition => {
+  const f = fixture(); Object.assign(f.config, { contextRecoveryAllowed: () => true });
+  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  const observe = f.adapter.observe, control = f.adapter.control, launch = f.adapter.launch;
+  let paused = false, restored = false, originalDeadline = 0;
+  f.adapter.observe = async input => {
+    if (input.delivery && !paused) { paused = true; return { observations: [{ kind: 'paused', evidence: 'recorded-wall', reason: 'context-too-long' }], cursor: input.cursor, complete: true }; }
+    return observe(input);
+  };
+  f.adapter.control = async input => {
+    if (input.action !== 'compact') return control(input);
+    expect(f.state().inputs[0]?.contextRecovery).toBe('compacting');
+    expect(input.delivery?.operation).toBe('pending');
+    originalDeadline = input.deadline!; f.advance(100); f.calls(2);
+    return { state: disposition, evidence: 'recorded compact outcome' };
+  };
+  f.adapter.launch = async input => {
+    if (input.restore) {
+      expect(f.counts()).toEqual({ stops: 1, releases: 1 });
+      expect(input.restore).toMatchObject({ operation: 'pending', deadline: originalDeadline });
+      restored = true;
+    }
+    return launch(input);
+  };
+  const result = await f.port.run(f.request('pending'));
+  expect(result).toMatchObject({ state: 'complete', contextRecovery: 'pending' });
+  expect(restored).toBe(disposition === 'replace-required');
+  expect(f.delivered).toHaveLength(1);
+  expect(f.state().deadline).toBe(originalDeadline);
+  expect(f.state().spent).toBe(2);
+  expect(f.edges.filter(row => row.type === 'SessionWorkEdge' && !row.drawsOn)).toHaveLength(1);
+  expect(await f.port.run(f.request('pending'))).toEqual(result);
+  expect(f.delivered).toHaveLength(1);
+  await f.port.close();
+});
+
+it.each(['unknown-effects', 'uncertain-tool', 'completed-tool', 'uncertain-send', 'exhausted', 'repeated', 'rate', 'policy', 'stop'] as const)(
+  'retains uncertainty without context replay for %s', async mode => {
+    const f = fixture(); Object.assign(f.config, { contextRecoveryAllowed: () => mode !== 'uncertain-send' });
+    f.config.io.admissionState = () => ({ refused: false, openDelegations: [], toolPreparations: 0,
+      ...(mode === 'unknown-effects' ? {} : { uncertainEffects: mode === 'uncertain-tool' ? 1 : 0 }) });
+    let compacts = 0;
+    const control = f.adapter.control;
+    f.adapter.control = async input => {
+      if (input.action !== 'compact') return control(input);
+      compacts++; return { state: 'resumed', evidence: 'one compact' };
+    };
+    f.adapter.observe = async input => {
+      if (!input.delivery) return { observations: [], cursor: 0, complete: true };
+      if (mode === 'completed-tool') f.config.io.admissionState = () => ({ refused: false, openDelegations: [], uncertainEffects: 0, toolPreparations: 1 });
+      if (mode === 'exhausted') f.calls(6);
+      if (mode === 'stop') f.stop();
+      return { observations: [{ kind: 'paused', evidence: 'recorded', reason: mode === 'rate' ? 'rate-limited' : mode === 'policy' ? 'policy-wedge' : 'context-too-long' }], cursor: input.cursor, complete: true };
+    };
+    expect((await f.port.run(f.request('pending'))).state).toBe('uncertain');
+    expect(compacts).toBe(mode === 'repeated' ? 1 : 0);
+    expect(f.delivered).toHaveLength(1);
+    expect(f.launches).toHaveLength(1);
+    await f.port.close();
+  });
+
+it.each(capturedShapes.otherShapes)('restores recorded $kind ($id) through the context recovery path with the exact pending input', async sample => {
+  const f = fixture(); Object.assign(f.config, { contextRecoveryAllowed: () => true });
+  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  const request = preparedRequest(sample.id, JSON.stringify({ recorded: sample.raw }));
+  const observe = f.adapter.observe, control = f.adapter.control, launch = f.adapter.launch;
+  let paused = false, restored = false;
+  f.adapter.observe = async input => {
+    if (input.delivery && !paused) { paused = true; return { observations: [{ kind: 'paused', evidence: 'captured context wall', reason: 'context-too-long' }], cursor: 0, complete: true }; }
+    return observe(input);
+  };
+  f.adapter.control = async input => input.action === 'compact' ? { state: 'replace-required', evidence: 'recorded failed compaction' } : control(input);
+  f.adapter.launch = async input => {
+    if (input.restore) {
+      const original = f.state().inputs[0]!.delivery!;
+      expect(input.restore).toMatchObject({ operation: sample.id, digest: hash(original.text) });
+      expect(original.text).toContain(request.question);
+      expect(f.state().inputs[0]!.request.context).toBe(request.context);
+      restored = true;
+    }
+    return launch(input);
+  };
+  expect(await f.port.run(request)).toMatchObject({ state: 'complete', contextRecovery: sample.id });
+  expect(restored).toBe(true); expect(f.delivered).toHaveLength(1);
+  await f.port.close();
+});
+
+it('host restart during native connection backoff keeps spent attempts and never replays uncertain work', async () => {
+  const f = fixture({ maxCalls: 12 }); f.finish(false);
+  let interrupted: ConversationState | null = null;
+  f.config.io.wait = async () => {
+    f.port.reserveCall(f.state().claim!, 1);
+    f.port.reserveCall(f.state().claim!, 2);
+    f.port.reserveCall(f.state().claim!, 3);
+    interrupted = f.state();
+    throw Error('host cut during native backoff');
+  };
+  expect((await f.port.run(f.request('socket-turn'))).state).toBe('uncertain');
+  expect(interrupted).not.toBeNull();
+  f.restore(interrupted!); f.calls(0);
+  const next = f.restart();
+  expect((await next.collect('socket-turn'))!.outcome).toMatchObject({ state: 'uncertain', detail: expect.stringContaining('no automatic replay') });
+  expect(f.state().spent).toBe(interrupted!.spent);
+  expect(f.delivered).toHaveLength(1);
+  expect(f.state().inputs[0]!.request).toEqual(f.request('socket-turn'));
+  await next.close();
+});
+
+it('durably halts deadline-exhausted work before resource closure and never revives it on restart', async () => {
+  const f = fixture(); f.finish(false);
+  const control = f.adapter.control;
+  f.adapter.control = async input => {
+    if (f.state().inputs.some(row => row.state === 'accepted')) expect(f.state().halt).toMatchObject({ reason: 'deadline' });
+    return control(input);
+  };
+  expect(await f.port.run(f.request('ceiling'))).toMatchObject({ state: 'uncertain', safetyCeiling: 'deadline' });
+  expect(f.state().halt).toMatchObject({ reason: 'deadline', limit: 3000 });
+  expect(f.state().worker).toBeNull(); expect(f.closed).toHaveLength(1);
+  expect(f.counts().releases).toBe(1); expect(f.port.available()).toBe(false);
+  const next = f.restart(); await next.maintain();
+  expect((await next.collect('ceiling'))?.outcome).toMatchObject({ state: 'uncertain', safetyCeiling: 'deadline' });
+  expect(f.launches).toHaveLength(1); expect(next.available()).toBe(false);
+});
+
+it('records a refused spend ceiling as infrastructure halt but unknown accounting is not a ceiling', async () => {
+  for (const refused of [true, false]) {
+    const f = fixture(); await f.port.run(f.request('one'));
+    if (refused) f.refuse(); else f.calls(null);
+    const result = await f.port.run(f.request('two'));
+    expect(result.state).toBe('uncertain');
+    expect('safetyCeiling' in result ? result.safetyCeiling : undefined).toBe(refused ? 'calls' : undefined);
+    expect(f.state().halt?.reason).toBe(refused ? 'calls' : undefined);
+    expect(f.delivered).toHaveLength(1);
+  }
+});
+
+it('replays recorded worker and model shapes without mistaking available bytes for finished work at the ceiling', async () => {
+  const capture = JSON.parse(readFileSync(new URL('../preview/fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  expect(capture.workerRecords.some((row: { record: { type: string } }) => row.record.type === 'SessionWorkEdge')).toBe(true);
+  for (const recorded of capture.negativeOutputs as { id: string; shape: string; output: string | null }[]) {
+    const f = fixture(); f.answer(recorded.output ?? ''); f.finish(false);
+    const result = await f.port.run({ ...f.request(`recorded-${recorded.id.replace(/[^a-zA-Z0-9:-]/gu, '-').slice(-90)}`),
+      context: JSON.stringify({ recordedWorker: capture.workerRecords[0], recordedShape: recorded.shape }) });
+    expect(result).toMatchObject({ state: 'uncertain', safetyCeiling: 'deadline' });
+    expect(f.state().worker).toBeNull(); expect(f.counts().releases).toBe(1);
+    expect((await f.restart().collect(f.state().inputs[0]!.request.operation))?.outcome).toEqual(result);
+  }
+});
+
+it('keeps a safety halt and exact worker identity when closure cannot be confirmed', async () => {
+  const f = fixture(); f.finish(false); f.stopFailure();
+  expect(await f.port.run(f.request('ceiling'))).toMatchObject({ state: 'uncertain', safetyCeiling: 'deadline' });
+  expect(f.state().worker).not.toBeNull(); expect(f.port.available()).toBe(false);
+  expect(f.counts().releases).toBe(0);
+});
+
+it.each([false, true])('the independent watchdog halt prevents worker replacement, restarted=%s', async restart => {
+  const f = fixture(); await f.port.run(f.request('one'));
+  const observe = f.adapter.observe;
+  f.adapter.observe = async input => input.delivery ? observe(input)
+    : { observations: [{ kind: 'exit', evidence: 'exact-driver-deadline', safetyDeadline: 1750 }], cursor: 0, complete: true };
+  const next = restart ? f.restart() : f.port;
+  if (restart) {
+    await next.maintain(); expect(next.available()).toBe(false);
+  } else expect(await next.run(f.request('two'))).toMatchObject({ state: 'uncertain', safetyCeiling: 'deadline' });
+  expect(f.state().halt).toMatchObject({ reason: 'deadline', limit: 1750 }); expect(f.state().worker).toBeNull();
+  expect(f.launches).toHaveLength(1);
+});
+
+it.each(['expiry', 'turns', 'authority', 'maintain', 'idle', 'prepare'] as const)(
+  'harvests a retained uncertain worker halt before %s retirement', async path => {
+    const f = fixture(path === 'turns' ? { maxSteps: 1 } : {}); f.stopFailure();
+    const observe = f.adapter.observe;
+    f.adapter.observe = async input => input.delivery ? { observations: [], cursor: 0, complete: false } : observe(input);
+    expect(await f.port.run(f.request('uncertain'))).toMatchObject({ state: 'uncertain' });
+    expect(f.state().worker).not.toBeNull(); expect(f.state().halt).toBeUndefined();
+    f.adapter.observe = async () => ({ observations: [{ kind: 'exit', evidence: 'exact-driver-deadline', safetyDeadline: 3000 }], cursor: 0, complete: true });
+    f.adapter.control = async () => ({ state: 'closed', evidence: 'closed' });
+    if (path === 'expiry' || path === 'maintain') f.advance(2000);
+    if (path === 'authority') f.grant('new-role');
+    if (path === 'prepare') Object.assign(f.config, { prepareTurn: async ({ retire }: { retire: () => Promise<void> }) => { await retire(); return true; } });
+    if (path === 'maintain') await f.port.maintain();
+    else if (path === 'idle') await f.port.retireIdle();
+    else expect(await f.port.run(f.request('next'))).toMatchObject({ state: 'uncertain', safetyCeiling: 'deadline' });
+    expect(f.state().halt).toMatchObject({ reason: 'deadline', limit: 3000 });
+    expect(f.state().worker).toBeNull(); expect(f.launches).toHaveLength(1);
+    expect(f.port.available()).toBe(false);
+  });
+
+it('a real HTTP reservation-write refusal retains uncertainty without inventing exhaustion', async () => {
+  // @ts-expect-error physical checkpoint stays outside the pure core
+  const { createAdmissionGate } = await import('../preview/admission-gate.mjs');
+  const f = fixture();
+  const gate = await createAdmissionGate({ append: () => {}, stopped: () => false, now: () => 1000 });
+  let fail = true;
+  const save = f.config.store.save;
+  f.config.store.save = state => { if (fail && state.spent > 0) { fail = false; throw Error('disk unavailable'); } save(state); };
+  f.config.io.prepareAdmission = (claim, edge) => gate.open(claim, { framework: 'claude-code', allowance: 6, edge,
+    reserveCall: (ordinal: number) => f.port.reserveCall(claim, ordinal) });
+  f.config.io.admissionState = claim => gate.state(claim);
+  f.config.io.closeAdmission = claim => { gate.close(claim); };
+  const deliver = f.adapter.deliver;
+  f.adapter.deliver = async input => {
+    const response = await fetch(`${gate.base(input.claim)}/v1/messages`, { method: 'POST', body: '{}' });
+    expect(response.status).toBe(400); expect(await response.text()).toContain('durable call reservation unavailable');
+    expect(gate.state(input.claim)).toMatchObject({ calls: 0, refused: true, refusalReason: 'reservation-unavailable' });
+    const result = await deliver(input); f.calls(0); return result;
+  };
+  try {
+    const result = await f.port.run(f.request('failed-write'));
+    expect(result).toMatchObject({ state: 'uncertain' }); expect(result).not.toHaveProperty('safetyCeiling');
+    expect(f.state().halt).toBeUndefined(); expect(f.state().spent).toBe(0);
+    expect(f.port.available()).toBe(true);
+  } finally { await gate.stop(); }
 });

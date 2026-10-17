@@ -121,7 +121,7 @@ const status = (root: string) => {
   { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
     encoding: 'utf8', timeout: 20000 });
   expect(result.status, result.stderr).toBe(0);
-  return JSON.parse(result.stdout) as { directives: { quote: string }[]; obligations: { byKind: Record<string, number> } };
+  return JSON.parse(result.stdout) as { directives: { quote: string; since: number }[]; obligations: { byKind: Record<string, number> } };
 };
 const quotes = (context: string) => ((JSON.parse(context) as { commitments?: { items: { quote: string }[] }[] }).commitments ?? [])
   .flatMap(entry => entry.items.map(item => item.quote));
@@ -181,6 +181,46 @@ it('resurfaces an unrelated open loop once its cadence passes, then waits a cade
 });
 
 const AISLE = 'Please keep every grocery list you make for me sorted by aisle.';
+// Recorded proof-room 4 evidence: preswitch-train-56-b55334d3-20261017-011741,
+// inspect-d5b.json last.preferences (update 46040189) carries this exact quote from
+// update 46040188. D5c reads status.directives, a different projection.
+const D5 = 'From now on, end every shopping list you write for me with "— K".';
+it.each(['directive', 'preference'] as const)('D5 %s retains its source across a summary and journal reopen', async mode => {
+  const root = origin();
+  try {
+    const w = world(root, { maxBytes: 16000, answer: question => question === D5
+      ? { reply: 'Understood.', ...(mode === 'directive' ? { directives: [{ quote: D5 }] }
+        : { memory: [{ mode: 'prefer', source: 'telegram:12345678:update:1', quote: D5 }] }) }
+      : 'Noted.' });
+    await w.say(D5);
+    const source = w.journal.view.order[0]!.id;
+    const original = status(root).directives;
+    if (mode === 'directive') expect(original).toMatchObject([{ quote: D5, since: T0 }]);
+    else {
+      expect(original).toEqual([]);
+      expect(w.journal.view.memory).toMatchObject([{ mode: 'prefer', source, quote: D5 }]);
+    }
+    for (let i = 0; !w.journal.view.summaries.length && i < 100; i++) {
+      w.clock.now += 60_000; await w.say(filler(i));
+    }
+    expect(w.journal.view.summaries.length).toBeGreaterThan(0);
+    expect(w.journal.view.summaries.at(-1)!.through).toBeGreaterThanOrEqual(1);
+    w.journal.close();
+    const again = world(root, { maxBytes: 16000 });
+    again.clock.now = T0 + 30 * DAY;
+    const probe = again.worker.probe('Make me a shopping list for pancakes.');
+    if ('reason' in probe) throw Error(probe.reason);
+    const packet = JSON.parse(probe.context);
+    if (mode === 'directive') expect(packet.directives).toMatchObject([{ quote: D5 }]);
+    else {
+      expect(packet.preferences).toEqual([{ source, text: D5 }]);
+      expect(packet.directives ?? []).toEqual([]);
+    }
+    expect(status(root).directives).toEqual(original);
+    again.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('admits an operator directive, carries it into every later packet with no expiry, and closes it only by completion (Rule 93)', async () => {
   const root = origin();
   try {
@@ -1231,19 +1271,20 @@ it('revives a queued runner, stops on inhibited or none, and bounds relaunches a
       if (revival) appendRun(path, { v: 1, launch: at, exit: at + 1, reason: 'cycle limit reached', unfinished: 1, revival });
       return { code, signal: null };
     };
-    const supervise = () => superviseJournal(config, { launch: async () => script[launch]!(++launch * 10),
-      wait: async (_root: string, ms: number) => { waits.push(ms); } });
+    let now = 1000;
+    const supervise = () => superviseJournal(config, { now: () => now, launch: async () => script[launch]!(++launch * 10),
+      wait: async (_root: string, ms: number) => { waits.push(ms); now += ms; } });
     // Queued work after a clean exit is relaunched; an inhibited exit ends supervision.
     script.push(run('queued'), run('queued'), run('inhibited'));
     expect(await supervise()).toBe(0);
     expect(launch).toBe(3);
     expect(lastJournalRun(root)).toEqual({ launch: 30, revival: 'inhibited' });
-    // Crashes (no exit record) are relaunched with backoff, at most maxRestarts times in a row.
+    // The two rapid queued exits already consumed the shared window. The next crash pauses durably.
     launch = 0; script.length = 0; waits.length = 0;
     for (let i = 0; i < 10; i++) script.push(run(undefined, 1));
     expect(await supervise()).toBe(0);
-    expect(launch).toBe(4);
-    expect(waits).toEqual([1, 2, 4]);
+    expect(launch).toBe(1);
+    expect(waits).toEqual([]);
     await expect(() => superviseJournal({ ...config, agent: [process.execPath, agent, 'run', '--root', '/elsewhere'] })).rejects.toThrow('invalid journal launch configuration');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

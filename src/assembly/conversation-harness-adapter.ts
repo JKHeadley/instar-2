@@ -32,13 +32,16 @@ export function createSessionConversationAdapter(config: Readonly<{
     observe: async input => {
       ensure(Number.isSafeInteger(input.cursor) && input.cursor >= 0 && input.cursor <= 2 && input.limit >= 1 && input.limit <= 64,
         'bounded observation cursor and batch required');
-      const observed = take(driver.observe({ operation: input.delivery?.operation ?? input.claim, processIdentity: input.launch }));
+      const text = input.delivery ? config.io.readResult(input.delivery.resultPath, input.delivery.maxBytes) : null;
+      ensure(text === null || input.delivery != null && Buffer.byteLength(text) <= input.delivery.maxBytes,
+        'conversation result exceeds byte bound');
+      const observed = take(driver.observe({ operation: input.delivery?.operation ?? input.claim, processIdentity: input.launch,
+        resultAvailable: Boolean(text?.trim()) }));
       let events: ConversationObservation[] = [];
-      if (observed.phase === 'exit-observed') events = [{ kind: 'exit', evidence: observed.evidence }];
-      else if (observed.phase === 'pause-observed' || observed.phase === 'uncertain') events = [{ kind: 'paused', evidence: observed.evidence }];
+      if (observed.phase === 'exit-observed') events = [{ kind: 'exit', evidence: observed.evidence,
+        ...(observed.safetyDeadline === undefined ? {} : { safetyDeadline: observed.safetyDeadline }) }];
+      else if (observed.phase === 'pause-observed' || observed.phase === 'uncertain') events = [{ kind: 'paused', evidence: observed.evidence, reason: observed.detail }];
       else if (input.delivery && observed.phase === 'output-observed' && observed.evidence.startsWith('turn-closed:')) {
-        const text = config.io.readResult(input.delivery.resultPath, input.delivery.maxBytes);
-        ensure(text === null || Buffer.byteLength(text) <= input.delivery.maxBytes, 'conversation result exceeds byte bound');
         if (text?.trim()) events.push({ kind: 'reply', delivery: input.delivery.operation, text, digest: hash(text) });
         events.push({ kind: 'turn-end', delivery: input.delivery.operation, state: text?.trim() ? 'completed' : 'no-reply' });
       }
@@ -48,7 +51,20 @@ export function createSessionConversationAdapter(config: Readonly<{
       return { observations: batch, cursor: input.cursor + batch.length, complete: true };
     },
     control: async input => {
-      if (input.action === 'compact') return { state: 'refused', evidence: 'use grounded replacement; in-place compaction unsupported' };
+      if (input.action === 'compact') {
+        if (!driver.recoverContext || !input.delivery || input.deadline === undefined)
+          return { state: 'refused', evidence: 'context recovery requires the exact accepted delivery and deadline' };
+        const pending = { operation: input.delivery.operation, digest: input.delivery.digest, deadline: input.deadline };
+        // Await through the host IO: the model checkpoint must keep serving during compaction.
+        for (let attempt = 0; attempt < 300; attempt++) {
+          const next = take(driver.recoverContext(input.launch, pending));
+          if (next === 'replace-required') return { state: 'replace-required', evidence: 'idle compaction failed' };
+          if (next === input.launch) return { state: 'resumed', evidence: 'compaction receipt and pending continuation submitted' };
+          ensure(next === 'compact-requested' || next === 'compacting', 'unexpected context recovery state');
+          await config.io.wait(100);
+        }
+        return { state: 'refused', evidence: 'bounded compaction produced no verified idle result' };
+      }
       take(driver.stop({ claim: input.claim, incarnation: input.incarnation,
         ...(input.launch ? { processIdentity: input.launch } : {}) }));
       return { state: 'closed', evidence: input.reason };

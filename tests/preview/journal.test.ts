@@ -452,7 +452,7 @@ it('does not notify while the model invocation is still in flight', async () => 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('reviews the UNKNOWN notice and distinguishes it from an answer in later history', async () => {
+it('checks the fixed UNKNOWN notice without model review and distinguishes it from an answer in later history', async () => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
@@ -471,14 +471,14 @@ it('reviews the UNKNOWN notice and distinguishes it from an answer in later hist
     const history = JSON.parse(context).history;
     expect(history[0]).toMatchObject({ user: 'question 1', answer: null,
       notice: UNKNOWN_ANSWER_NOTICE, outcome: 'loss notice delivered; model UNKNOWN' });
-    expect(reviews).toBe(2);
-    expect(journal.view.calls).toBe(4); // two answers, two separately reserved reply reviews
+    expect(reviews).toBe(1);
+    expect(journal.view.calls).toBe(3); // two answers; only the model-written answer needs a model review
     expect(Object.fromEntries(journal.view.providerStates)).toEqual({ uncertain: 1, complete: 1 });
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('sends the loss notice despite a review objection and labels it truthfully in later history', async () => {
+it('uses the fixed notice check and labels the unknown outcome truthfully in later history', async () => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
@@ -500,7 +500,8 @@ it('sends the loss notice despite a review objection and labels it truthfully in
     expect(history[0]).toMatchObject({ user: 'question 1', answer: null,
       notice: UNKNOWN_ANSWER_NOTICE,
       outcome: 'loss notice delivered; model UNKNOWN' });
-    expect(journal.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['parks_on_user'] });
+    expect(journal.view.order[0]?.replyChecks?.at(-1)).toMatchObject({ verdict: 'pass', path: 'holding' });
+    expect(journal.view.order[0]?.release).toBeUndefined();
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
