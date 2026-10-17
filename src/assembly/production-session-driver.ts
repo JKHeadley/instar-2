@@ -237,6 +237,7 @@ export interface SessionStopPort {
 }
 
 export function createProductionSessionDriver(config: ProductionSessionConfig): NativeHarnessDriverPort & SessionStopPort & Readonly<{
+  continuationReady(identity: string): Result<boolean>;
   observeIdle(identity: string): Result<string | null>;
   bootSweep(): Result<readonly string[]>;
   recoverDelivery(input: Readonly<{ operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }>): Result<string>;
@@ -443,21 +444,23 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     config.io.save(replaceSession(config.io.load(), { ...session,
       continuation: { ...continuation, state: 'accepted' } }));
   };
-  const waitContinuation = (identity: string) => {
-    for (let elapsed = 0; elapsed < config.turnDeadlineMs; elapsed += 100) {
-      const pending = loadSession(identity).continuation;
-      if (!pending || pending.state === 'completed') return;
+  // Observe once, then return to the host. The model checkpoint and signal handlers
+  // run on that host's event loop; a synchronous wait here deadlocks restoration.
+  const continuationReady = (identity: string): Result<boolean> =>
+    lockedBoundary('ProductionSessionContinuationReady', identity, () => {
+      checkStop();
+      const session = loadSession(identity);
+      const pending = session.continuation;
+      if (!pending || pending.state === 'completed') return true;
       ensure(pending.state === 'accepted', 'continuation delivery uncertain or incomplete');
-      const outcome = take(api.observe({ operation: `${loadSession(identity).operation}:continuation`, processIdentity: identity }));
+      const outcome = take(api.observe({ operation: `${session.operation}:continuation`, processIdentity: identity }));
       if (outcome.phase === 'output-observed') {
         ensure(loadSession(identity).continuation?.state === 'completed', 'continuation completion not recorded');
-        return;
+        return true;
       }
       ensure(outcome.phase === 'launched', `continuation did not complete: ${outcome.detail}`);
-      config.io.sleep(100);
-    }
-    throw Error('continuation completion deadline exceeded');
-  };
+      return false;
+    });
   const idleFingerprint = (identity: string): string | null => {
     const session = loadSession(identity); verifyLive(session);
     if (config.stopped() || config.protectedSessions.includes(session.name) || session.turnDeadline !== null
@@ -493,6 +496,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
   }
   const api = {
     owner: 'part-eight' as const,
+    continuationReady,
     observeIdle: (identity: string) => lockedBoundary('ProductionSessionIdle', identity, () => idleFingerprint(identity)),
     launch(input: { operation: string; claim: string; artifact: string; incarnation: string; workingScope: string; handles: readonly string[]; restore?: { operation: string; digest: string; deadline: number } }) {
       return boundary('ProductionSessionLaunch', input, config.context, () => {
@@ -538,7 +542,6 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           if (continuation) submitContinuation(identity);
           return identity;
         });
-        if (!input.restore) waitContinuation(identity);
         return identity;
       });
     },
@@ -761,14 +764,14 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
             if (session.recovery === 1) {
               ensure(session.continuation?.state === 'prepared' && session.continuation.pending?.operation === pending.operation,
                 'context recovery already submitted or belongs to another input');
-              if (!classifyPaneIdle(pane, config.framework)) return { identity: 'compacting', needsWait: false };
+              if (!classifyPaneIdle(pane, config.framework)) return 'compacting';
               const failed = /not enough messages to compact|error during compaction/i.test(tail(pane));
               const compacted = config.io.readInbox(session.name).some(row => row.kind === 'compact'
                 && row.at >= (session.turnStartedAt ?? Infinity) && row.at <= config.now());
-              if (!compacted) return { identity: failed ? 'replace-required' : 'compacting', needsWait: false };
+              if (!compacted) return failed ? 'replace-required' : 'compacting';
               config.io.save(replaceSession(config.io.load(), { ...session, turnDeadline: null, closedAt: config.now() }));
               submitContinuation(identity);
-              return { identity, needsWait: false };
+              return identity;
             }
             ensure(session.turnDeadline === null && classifyPaneIdle(pane, config.framework), 'context recovery requires an idle prompt');
             ensure(['context-too-long', 'context-wedge'].includes(classifyStuckSignature(pane) ?? ''), 'no context wall evidence');
@@ -777,7 +780,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
             config.io.save(replaceSession(config.io.load(), prepared));
             armTurn(prepared, 1);
             sendText(prepared, '/compact');
-            return { identity: 'compact-requested', needsWait: false };
+            return 'compact-requested';
           }
           ensure(session.turnDeadline === null && classifyPaneIdle(pane, config.framework),
             'context recovery requires an idle prompt');
@@ -786,7 +789,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           if (session.recovery === 0) {
             armTurn(session, 1);
             sendText(session, '/compact');
-            return { identity: 'compact-requested', needsWait: false };
+            return 'compact-requested';
           }
           const continuation = requireContinuation(session.operation, session.claim, session.incarnation, 'context-wall');
           ensure(!config.protectedSessions.includes(session.name), 'protected session cannot be killed');
@@ -795,10 +798,9 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           run(['kill-session', '-t', literalTarget(session.name)]);
           const nextIdentity = spawn(session.operation, session.claim, session.incarnation, config.cwd, null, 0, continuation);
           submitContinuation(nextIdentity);
-          return { identity: nextIdentity, needsWait: true };
+          return nextIdentity;
         });
-        if (recovered.needsWait) waitContinuation(recovered.identity);
-        return recovered.identity;
+        return recovered;
       });
     },
   };

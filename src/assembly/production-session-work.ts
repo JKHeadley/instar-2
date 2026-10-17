@@ -125,7 +125,7 @@ export interface SessionWorkLease {
 export interface SessionWorkConfig {
   /** The session driver this port delegates through, built with `resolveIntake` below. */
   readonly createDriver: (resolveIntake: (intake: string, digest: string) => string) => NativeHarnessDriverPort
-    & SessionStopPort & Readonly<{ observeIdle?(identity: string): Result<string | null>; recoverContext?(identity: string, pending?: { operation: string; digest: string; deadline: number }): Result<string> }>;
+    & SessionStopPort & Readonly<{ continuationReady?(identity: string): Result<boolean>; observeIdle?(identity: string): Result<string | null>; recoverContext?(identity: string, pending?: { operation: string; digest: string; deadline: number }): Result<string> }>;
   readonly io: SessionWorkIO;
   /** The host's one resource owner. `null` from `admit` is a capacity refusal. */
   readonly resources: Readonly<{ admit(): Promise<SessionWorkLease | null> }>;
@@ -349,6 +349,10 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
             child = take(driver.launch({ operation: request.operation, claim, artifact: config.artifact,
               incarnation: config.incarnation, workingScope: config.workingScope, handles: [] }));
             await lease.attach(child);
+            if (driver.continuationReady) while (!take(driver.continuationReady(child))) {
+              ensure(!config.stopped() && config.now() < deadline, 'session stopped or deadline during restoration');
+              await config.io.wait(100);
+            }
             take(driver.deliver({ operation: request.operation, processIdentity: child, intake: request.operation,
               digest: digestOf(text), incarnation: config.incarnation }));
             // The previous poll's present result, or null; and whether the child's turn has closed.

@@ -4432,6 +4432,7 @@ it does not claim coverage for idle workers that the driver has not recently obs
 or harnesses without this custody adapter. A proof-room check removes only a synthetic
 login after its worker starts, verifies one reminder and status, then tests restored
 custody, identity drift, stale samples and a restart/uncertain-send duplicate neighbor.
+
 ### Check held access before escalating
 
 The answer writer's existing self-state source includes a fresh machine-local read of
@@ -4454,3 +4455,15 @@ its reply review, with no new store, watcher or model call. A compact rendering 
 self-state counts pays for the fixed instructions within the existing context floor.
 `self-unblock.test.ts` replays recorded update 46039927 and the recorded uncertain/review/
 empty-output shapes; live account behavior still requires the desk's proof-room check.
+
+### Conversation restoration keeps the host responsive
+
+A session launch records and submits any required agent-owned history, then returns its
+process identity. The conversation adapter and delegated-work owner poll
+`continuationReady` through their existing asynchronous wait. The host can therefore
+serve the session's model checkpoint and process shutdown signals while restoration is
+pending. Only the existing completion evidence admits the next operator input; an
+uncertain restoration, stop or expired original deadline still refuses delivery. The
+journal launch wrapper forwards this readiness observation when rebuilding a driver for
+a selected login. Incident replay and a real local HTTP checkpoint exercise the shared
+event loop in `tests/assembly/production-session-driver.test.ts`.
