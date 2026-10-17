@@ -18,11 +18,11 @@ it('a current admission and fresh live observation are both required, scoped to 
   const reader = createWorkingActivities({ read: () => bytes, now: () => now });
   reader.observe('one', 'claim', 'start'); reader.observe('one', 'claim', 'working');
   expect(reader.current('one')).toBeNull(); // previous turn is never activity for this message
-  bytes += pre('current'); expect(reader.current('one')?.text).toBe('Status: Run the build');
+  bytes += pre('current'); reader.observe('one', 'claim', 'working'); expect(reader.current('one')?.text).toBe('Status: Run the build');
   expect(reader.current('two')).toBeNull();
   now = 10002; expect(reader.current('one')).toBeNull();
-  reader.observe('one', 'claim', 'working'); expect(reader.current('one')).not.toBeNull();
-  bytes += post('current'); expect(reader.current('one')?.text).toBe('Status: latest main-session tool call ended');
+  reader.observe('one', 'claim', 'working'); expect(reader.current('one')).toBeNull();
+  bytes += post('current'); reader.observe('one', 'claim', 'working'); expect(reader.current('one')).toBeNull();
   bytes += pre('next'); reader.observe('one', null, 'end'); expect(reader.current('one')).toBeNull();
 });
 it('replays real native tool admission bytes from the 2026-10-03 live task, without fabricated activity', () => {
@@ -58,6 +58,35 @@ it('a background launch ending says nothing about its still-running child', () =
   expect(admissionActivity(bytes([launch, ended, child]) + pre('next'), 0, 'async-neighbor')?.text)
     .toBe('Status: Run the build');
 });
+it('fresh polls cannot renew unchanged tool evidence; only advancing admitted work renews liveness', () => {
+  let bytes = '', now = 1;
+  const reader = createWorkingActivities({ read: () => bytes, now: () => now });
+  reader.observe('one', 'claim', 'start');
+  bytes = pre('a'); reader.observe('one', 'claim', 'working');
+  expect(reader.current('one')?.text).toBe('Status: Run the build');
+  now = 120001; reader.observe('one', 'claim', 'working');
+  expect(reader.current('one')).toBeNull();
+  bytes += pre('b'); reader.observe('one', 'claim', 'working');
+  expect(reader.current('one')?.text).toBe('Status: Run the build');
+});
+it('unreadable start establishes a baseline on recovery instead of announcing old work', () => {
+  let bytes: string | null = null;
+  const reader = createWorkingActivities({ read: () => bytes, now: () => 1 });
+  reader.observe('one', 'claim', 'start');
+  bytes = pre('old'); reader.observe('one', 'claim', 'working');
+  expect(reader.current('one')).toBeNull();
+  bytes += pre('new'); reader.observe('one', 'claim', 'working');
+  expect(reader.current('one')).not.toBeNull();
+});
+it('a failed observation and recovery do not freshen the same stale step', () => {
+  let bytes: string | null = '', now = 1;
+  const reader = createWorkingActivities({ read: () => bytes, now: () => now });
+  reader.observe('one', 'claim', 'start');
+  bytes = pre('old'); reader.observe('one', 'claim', 'working');
+  now = 20000; bytes = null; reader.observe('one', 'claim', 'working');
+  bytes = pre('old'); reader.observe('one', 'claim', 'working');
+  expect(reader.current('one')).toBeNull();
+});
 
 it('a clock rollback cannot make future observation current', () => {
   let bytes = '', now = 10;
@@ -66,4 +95,26 @@ it('a clock rollback cannot make future observation current', () => {
   now = 9; expect(reader.current('one')).toBeNull();
   now = 10; expect(reader.current('one')?.running).toBe(true);
   bytes += post('a'); expect(reader.current('one')?.running).toBe(false);
+});
+
+it('completion is reflected without renewing evidence and rollback polls cannot revive a future step', () => {
+  let bytes = '', now = 10;
+  const reader = createWorkingActivities({ read: () => bytes, now: () => now });
+  reader.observe('one', 'claim', 'start');
+  bytes = pre('a'); reader.observe('one', 'claim', 'working');
+  now = 9; reader.observe('one', 'claim', 'working'); expect(reader.current('one')).toBeNull();
+  now = 20; reader.observe('one', 'claim', 'working');
+  bytes += post('a'); expect(reader.current('one')).toMatchObject({ running: false, observedAt: 10 });
+  now = 10011; reader.observe('one', 'claim', 'working'); expect(reader.current('one')).toBeNull();
+});
+
+it('an unobserved new step cannot borrow the previous step timestamp', () => {
+  let bytes = '', now = 1;
+  const reader = createWorkingActivities({ read: () => bytes, now: () => now });
+  reader.observe('one', 'claim', 'start');
+  bytes = pre('a'); reader.observe('one', 'claim', 'working');
+  now = 2; bytes += post('a') + pre('b');
+  expect(reader.current('one')).toBeNull();
+  reader.observe('one', 'claim', 'working');
+  expect(reader.current('one')).toMatchObject({ running: true, observedAt: 2 });
 });

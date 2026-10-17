@@ -14,5 +14,8 @@ export function conversationSessionAnswer(outcome: ConversationSessionOutcome, i
     return { state: 'complete', failureClass: 'malformed', defect: reading.defect, usage };
   }
   if (!reading.value.trim()) return { state: 'complete', failureClass: 'empty', usage };
-  return { state: 'complete', text: reading.value, reason: reading.reason, usage };
+  // Recovery belongs to the host, not the model's reply schema. The journal adds its
+  // disclosure after decoding and revision, only for an actual nonempty answer.
+  return { state: 'complete', text: reading.value, reason: reading.reason, usage,
+    ...(outcome.contextRecovery === id ? { contextRecovery: id } : {}) };
 }

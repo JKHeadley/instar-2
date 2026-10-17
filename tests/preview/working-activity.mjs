@@ -57,17 +57,28 @@ export function createWorkingActivities({ read, now }) {
       if (phase === 'end' || claim === null) { active.delete(operation); return; }
       if (phase === 'start') {
         const bytes = read(claim);
-        active.set(operation, { claim, offset: typeof bytes === 'string' ? bytes.length : 0, observedAt: null });
+        active.set(operation, { claim, offset: typeof bytes === 'string' ? bytes.length : null, observedAt: null, activity: null, lastStep: null, advancedAt: null });
       } else {
         const current = active.get(operation);
-        if (current?.claim === claim) current.observedAt = now();
+        if (current?.claim === claim) {
+          current.observedAt = now();
+          const bytes = read(claim);
+          // If the start read failed, first establish a baseline; old work cannot become new evidence.
+          if (current.offset === null) { if (typeof bytes === 'string') current.offset = bytes.length; return; }
+          const activity = admissionActivity(bytes, current.offset, claim);
+          if (activity && activity.step !== current.lastStep) { current.advancedAt = now(); current.lastStep = activity.step; }
+          current.activity = activity;
+        }
       }
     },
     current(operation) {
       const state = active.get(operation);
-      if (!state || state.observedAt === null || state.observedAt > now() || now() - state.observedAt > 10_000) return null;
+      const time = now();
+      if (!state || state.observedAt === null || state.observedAt > time || time - state.observedAt > 10_000) return null;
+      // Polling cannot renew unchanged evidence; reread only to reflect completion.
+      if (state.advancedAt === null || state.advancedAt > time || time - state.advancedAt > 10_000 || state.offset === null) return null;
       const activity = admissionActivity(read(state.claim), state.offset, state.claim);
-      return activity ? { ...activity, observedAt: state.observedAt } : null;
+      return activity && activity.step === state.lastStep ? { ...activity, observedAt: state.advancedAt } : null;
     },
   };
 }

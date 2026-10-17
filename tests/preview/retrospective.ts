@@ -540,7 +540,7 @@ export function retrospectivePopulation(view: JournalView, operator: (turn: Turn
     for (const progress of turn.workingProgress ?? []) if (operator(turn)) cases.push({
       id: `working-progress:${progress.ordinal}:${turn.id}`, category: 'message', at: progress.at, seq,
       text: clip(progress.text), meta: { question: `turn:${turn.id}`, activity: progress.step,
-        observedAt: progress.observedAt, sent: progress.sent !== undefined, speaker: 'agent' } });
+        observedAt: progress.observedAt, sent: progress.sent !== undefined, speaker: progress.speaker ?? 'agent' } });
     (turn.replyChecks ?? []).forEach((check, index) => {
       if (check.reason === undefined || check.verdict === 'unavailable') return;
       cases.push({ id: `verdict:${turn.id}:${String(index)}`, category: 'verdict', at: turn.at, seq,

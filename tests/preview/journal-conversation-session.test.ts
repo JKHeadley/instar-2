@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { readAnswer } from './answer-reading.js';
 import { conversationSessionAnswer } from './conversation-session-answer.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
 import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
 import { createConversationTopicsPort, type ConversationTopicsState } from '../../src/assembly/conversation-topics.js';
 import { parseReplyReviewVerdict, type ReplyCheckResult } from './reply-check.js';
@@ -452,6 +453,15 @@ it.each(recorded.records)('collects recorded frame $frame into the same consumer
 
 const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
   otherShapes: { kind: string; id: string; raw: string }[] };
+it.each(shapes.otherShapes.filter(row => row.kind === 'delivered-reply' || row.kind === 'empty-reply-in-recorded-context'))(
+  'carries host recovery separately from recorded $kind ($id) for the ordinary answer consumer', row => {
+    const outcome = { state: 'complete' as const, text: JSON.stringify({ reply: row.raw, memory: [] }), detail: 'correlated reply',
+      edge: 'edge', child: 'worker', contextRecovery: row.id };
+    const answer = conversationSessionAnswer(outcome, row.id, () => { throw Error('unexpected malformed answer'); });
+    expect(answer).toMatchObject({ state: 'complete', contextRecovery: row.id,
+      text: JSON.stringify({ reply: row.raw, memory: [] }) });
+    expect(conversationSessionAnswer({ ...outcome, state: 'uncertain' }, row.id, () => {})).toEqual({ state: 'uncertain' });
+  });
 it.each(shapes.otherShapes)('keeps recorded $kind ($id) in the original packet across deferred collection', async row => {
   const f = fixture();
   try {
@@ -802,6 +812,88 @@ it('the journal sends each answer once across a real pool boundary and host/jour
     f.worker.intake([update(1, 'First question'), update(2, 'Second question')]); await f.worker.drain(); await f.worker.reviewReplies();
     expect(f.sent).toHaveLength(2); expect(f.delivered).toHaveLength(2);
     expect(pool.state.handoffs).toHaveLength(1); expect(await f.replay()).toBe(1); expect(f.sent).toHaveLength(2);
+  } finally { await f.close(); }
+});
+
+const recoveredAnswer = JSON.parse(readFileSync(new URL('./fixtures/context-recovery-answer-1016104-2026-10-16.json', import.meta.url), 'utf8')) as {
+  output: string; outcome: import('../../src/assembly/production-conversation-session.js').ConversationSessionOutcome };
+const recoveryDisclosure = 'I restored this conversation after a context limit and continued your last message.';
+
+it.each([false, true])('retains recovery disclosure for the real nested reply, after revision=%s and journal replay', async revised => {
+  const f = fixture(true, true, 200, revised ? { replyCheck: { elapsedMs: () => 1,
+    jev: async () => { throw Error('Jev unavailable'); },
+    escalate: async () => ({ verdict: 'violation' as const, ruleIds: ['raw_path'], confidence: null, latencyMs: 1 }),
+    revise: async () => ({ state: 'complete' as const, text: 'Tea is your preferred drink.' }) } } : {});
+  try {
+    f.prepare(input => prepareJournalEnvelope(input as Parameters<typeof prepareJournalEnvelope>[0], 'claude-sonnet-5', 'grant:preview', 9999999999999, 262144));
+    f.answer(recoveredAnswer.output);
+    f.intercept(async request => ({ ...await f.port.run(request), contextRecovery: request.operation }));
+    f.worker.intake([update(1, 'Which drink did I name?')]); await f.worker.drain();
+    expect(f.sent).toEqual([`${recoveryDisclosure} ${revised ? 'Tea is your preferred drink.' : 'You prefer tea to coffee.'}`]);
+    if (revised) expect(f.journal.view.order[0]!.release).toMatchObject({ revised: true });
+    f.journal.compact();
+    await f.replay(); expect(f.sent).toHaveLength(1);
+  } finally { await f.close(); }
+});
+
+it.each(['empty', 'uncertain', 'different-input', 'model-field'] as const)(
+  'does not invent a recovery answer or disclosure for %s', async neighbor => {
+    const f = fixture();
+    try {
+      f.answer(neighbor === 'empty' ? JSON.stringify({ reply: { answer: '' }, memory: [] })
+        : neighbor === 'model-field' ? JSON.stringify({ ...JSON.parse(recoveredAnswer.output), contextRecovery: 'telegram:12345678:update:1' })
+          : recoveredAnswer.output);
+      if (neighbor !== 'model-field') f.intercept(async request => ({ ...await f.port.run(request),
+        ...(neighbor === 'uncertain' ? { state: 'uncertain' as const } : {}),
+        contextRecovery: neighbor === 'different-input' ? 'another-input' : request.operation }));
+      f.worker.intake([update(1, 'Which drink did I name?')]); await f.worker.drain();
+      expect(f.sent).toHaveLength(1);
+      expect(f.sent[0]).not.toContain(recoveryDisclosure);
+      expect(f.journal.view.order[0]!.contextRecovery).toBeUndefined();
+      if (neighbor === 'empty') expect(f.journal.view.order[0]!.failureClass).toBe('empty');
+      if (neighbor === 'uncertain') expect(f.journal.view.order[0]!.noticeClass).toBe('unknown-answer');
+    } finally { await f.close(); }
+  });
+
+it('retains the disclosed intent across an uncertain send and never sends that answer again', async () => {
+  const attempts: string[] = [];
+  const f = fixture(true, true, 200, { send: async input => { attempts.push(input.expectedText); return null; } });
+  try {
+    f.answer(recoveredAnswer.output);
+    f.intercept(async request => ({ ...await f.port.run(request), contextRecovery: request.operation }));
+    f.worker.intake([update(1, 'Which drink did I name?')]); await f.worker.drain();
+    expect(attempts[0]).toBe(`${recoveryDisclosure} You prefer tea to coffee.`);
+    await f.restart(); await f.worker.drain();
+    expect(attempts.filter(text => text.includes('You prefer tea to coffee.'))).toHaveLength(1);
+    expect(f.journal.view.order[0]!.contextRecovery).toBe('telegram:12345678:update:1');
+    expect(f.journal.view.order[0]!.sent).toBeUndefined();
+  } finally { await f.close(); }
+});
+
+it.each(shapes.otherShapes)('carries recorded $kind ($id) through recovery and the final disclosure path', async row => {
+  const f = fixture();
+  try {
+    f.evidence({ recordedShape: row });
+    const empty = row.kind === 'empty-reply-in-recorded-context';
+    f.answer(row.kind === 'delivered-reply' || empty ? JSON.stringify({ reply: row.raw, memory: [] }) : recoveredAnswer.output);
+    f.intercept(async request => ({ ...await f.port.run(request), contextRecovery: request.operation }));
+    f.worker.intake([update(1, 'Continue the conversation')]); await f.worker.drain();
+    expect(f.state().inputs[0]!.request.context).toContain(JSON.stringify(row.raw));
+    expect(f.sent).toHaveLength(1);
+    expect(f.sent[0]!.startsWith(recoveryDisclosure)).toBe(!empty);
+    await f.replay(); expect(f.sent).toHaveLength(1);
+  } finally { await f.close(); }
+});
+
+it.each(['other-input', 'failed-answer'] as const)('refuses unsupported durable recovery evidence: %s', async neighbor => {
+  const f = fixture();
+  try {
+    f.worker.intake([update(1, 'Question')]);
+    const id = f.journal.view.order[0]!.id;
+    f.journal.append({ kind: 'reserve', id, at: 1000 });
+    expect(() => f.journal.append({ kind: 'answer', id, state: 'complete', text: 'Answer',
+      contextRecovery: neighbor === 'other-input' ? 'other' : id,
+      ...(neighbor === 'failed-answer' ? { state: 'uncertain' as const } : {}), at: 1001 })).toThrow('context recovery answer differs');
   } finally { await f.close(); }
 });
 

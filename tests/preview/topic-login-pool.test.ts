@@ -224,7 +224,7 @@ it('the shipped configuration captures each topic account for launch, observatio
   const drivers = [], observed = [], admitted = [], stopped = [], bound = [];
   const recovery = [{ kind: 'dispatch-intent', claim: 'prior-claim' }];
   const journal = { view: { expires: 100000, order: [] }, sessionWorkRecords: () => recovery };
-  const env = { conversationSession: true, sessionAdapter: {}, sha256: () => 'a'.repeat(64), conversationOf: () => 'operator', g: {}, journal,
+  const env = { join, conversationSession: true, sessionAdapter: {}, sha256: () => 'a'.repeat(64), conversationOf: () => 'operator', g: {}, journal,
     sessionWork: { authority: 'grant' }, createProductionSessionDriver: config => {
       drivers.push(config); return { owner: 'part-eight', launch: () => ({ kind: 'Success', value: 'worker' }),
         deliver: () => ({}), observe: () => ({}), stop: target => { stopped.push(target); return {}; } };

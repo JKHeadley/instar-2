@@ -63,7 +63,7 @@ it.each([0, 1, 2])('recorded failure %i stays failed; matched activity closes an
   bytes += failed.bytes;
   expect(reader.current('turn')?.text).toBe('Status: latest main-session tool call ended');
   now += 10001; expect(reader.current('turn')).toBeNull();
-  reader.observe('turn', claim, 'working'); expect(reader.current('turn')).not.toBeNull();
+  reader.observe('turn', claim, 'working'); expect(reader.current('turn')).toBeNull(); // polls cannot renew unchanged evidence
   reader.observe('turn', claim, 'end'); expect(reader.current('turn')).toBeNull();
 });
 

@@ -86,7 +86,7 @@ export interface SessionWorkOutcome {
   readonly state: 'complete' | 'uncertain' | 'failed';
   /** Infrastructure safety halt; unfinished work and uncertain effects remain retained. */
   readonly safetyCeiling?: 'deadline' | 'calls';
-  readonly text?: string; readonly detail: string;
+  readonly text?: string; readonly detail: string; readonly contextRecovery?: string;
   readonly edge: string; readonly child: string | null;
 }
 /** The physical boundary this port needs; the core reaches no disk, clock or timer itself. */
@@ -108,7 +108,7 @@ export interface SessionWorkIO {
   prepareAdmission(claim: string, edge: SessionWorkEdge): void | Promise<void>;
   /** Exact checkpoint cause and child edges still open. Older untyped refusals remain
    * uncertain; only `calls` proves exhaustion. Null when unread. */
-  admissionState(claim: string): Readonly<{ refused: boolean; refusalReason?: 'calls' | 'reservation-unavailable' | null; openDelegations: readonly SessionWorkEdge[] }> | null;
+  admissionState(claim: string): Readonly<{ refused: boolean; uncertainEffects?: number; toolPreparations?: number; refusalReason?: 'calls' | 'reservation-unavailable' | null; openDelegations: readonly SessionWorkEdge[] }> | null;
   /** Closes the claim at the checkpoint: no further model call or admission of the child passes. */
   closeAdmission(claim: string): void;
   /** Resolves after at least `ms`, without blocking the host's timers. */
@@ -124,7 +124,7 @@ export interface SessionWorkLease {
 export interface SessionWorkConfig {
   /** The session driver this port delegates through, built with `resolveIntake` below. */
   readonly createDriver: (resolveIntake: (intake: string, digest: string) => string) => NativeHarnessDriverPort
-    & Readonly<{ stop(input?: Readonly<{ claim: string; incarnation: string; processIdentity?: string }>): Result<readonly string[]> }>;
+    & Readonly<{ recoverContext?(identity: string, pending?: { operation: string; digest: string; deadline: number }): Result<string>; stop(input?: Readonly<{ claim: string; incarnation: string; processIdentity?: string }>): Result<readonly string[]> }>;
   readonly io: SessionWorkIO;
   /** The host's one resource owner. `null` from `admit` is a capacity refusal. */
   readonly resources: Readonly<{ admit(): Promise<SessionWorkLease | null> }>;
@@ -269,8 +269,10 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
     const collect = (operation: string): SessionWorkOutcome | null => {
       ensure(safeName.test(operation), 'exact session work identity required');
       const records = config.recoveryEdges?.() ?? [];
+      // Nested edges share the attempt's id prefix but are not competing attempts.
+      const prefix = `session-work-edge:${operation}:`;
       const edges = records.filter((record): record is SessionWorkEdge => record.type === 'SessionWorkEdge'
-        && record.id.startsWith(`session-work-edge:${operation}:`));
+        && record.drawsOn === undefined && record.id.startsWith(prefix) && /^[1-9][0-9]*$/u.test(record.id.slice(prefix.length)));
       if (edges.length === 0) return null;
       const edge = edges[0]!;
       const uncertain = (detail: string): SessionWorkOutcome => freeze({ state: 'uncertain', detail, edge: edge.id, child: null });
@@ -281,10 +283,16 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
       const closes = records.filter((record): record is SessionWorkEdgeClose => record.type === 'SessionWorkEdgeClose' && record.edge === edge.id);
       if (closes.length !== 1) return uncertain('child closure is not established; no automatic replay');
       const close = closes[0]!;
+      if (close.closedAt < edge.openedAt || close.reserved !== edge.budget.calls)
+        return uncertain('child closure does not match the delegated time or call reservation');
       if (close.cleanupConfirmed && close.state === 'failed' && close.child === null && close.calls === 0 && close.evidence === 'no-child')
-        return freeze({ state: 'failed', detail: 'child never launched; the next bounded work step may run', edge: edge.id, child: null });
-      if (close.state !== 'complete' || !close.cleanupConfirmed || !close.resultDigest || close.calls === null || close.calls === undefined
-        || close.child === null || close.closedAt < edge.openedAt || close.reserved !== edge.budget.calls
+        return freeze({ state: 'failed', detail: `${close.detail}; child never launched; the next bounded work step may run`, edge: edge.id, child: null });
+      // A failed or stalled launched helper may already have acted. Return its exact diagnosis
+      // to the parent without granting replay (only the no-child proof above permits that).
+      if (close.state !== 'complete')
+        return freeze({ state: 'uncertain', detail: `${close.detail}; no automatic replay`, edge: edge.id, child: close.child });
+      if (!close.cleanupConfirmed || !close.resultDigest || close.calls === null || close.calls === undefined
+        || close.child === null
         || close.calls > edge.budget.calls || edge.budget.maxResultBytes > config.maxResultBytes
         || close.resultBytes === null || close.resultBytes > edge.budget.maxResultBytes)
         return uncertain('work outcome is not a recoverable completed result; no automatic replay');
@@ -371,7 +379,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
                 return settledAs('failed', `the turn closed with no result at the destination (${turnClosed})`, child);
               seen = present;
               if (turnClosed === null) {
-                const observation = take(driver.observe({ operation: request.operation, processIdentity: child }));
+                const observation = take(driver.observe({ operation: request.operation, processIdentity: child, resultAvailable: present !== null }));
                 if (observation.phase === 'output-observed') turnClosed = observation.detail;
                 else if (observation.phase === 'exit-observed')
                   return settledAs('uncertain', `the child ended before a result (${observation.detail})`, observation.evidence);

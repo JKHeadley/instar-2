@@ -33,6 +33,8 @@ export interface ConversationInput {
   readonly reply: string | null; readonly outcome: SessionWorkOutcome | null;
   readonly attempts: number; readonly retryAt: number;
   readonly batch?: readonly string[];
+  readonly effectsAtDispatch?: number;
+  readonly contextRecovery?: 'compacting' | 'restoring' | 'continued';
 }
 export interface ConversationState {
   readonly version: 1; readonly conversation: string; readonly epoch: number;
@@ -57,6 +59,8 @@ export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'crea
   /** Host journal projection, refreshed after worker admission immediately before delivery. */
   readonly currentActionFacts?: (operation: string) => Promise<string>;
   readonly batchWaiting?: boolean;
+  /** The host refuses continuation while an outward send has no definitive outcome. */
+  readonly contextRecoveryAllowed?: () => boolean;
   /** Host observation only: after a live adapter observation, or null when this input ends.
    * No extra model call and no authority is conferred by a status sample. */
   readonly workingActivity?: (operation: string, claim: string | null, phase: 'start' | 'working' | 'end') => void;
@@ -294,13 +298,13 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         settle(input.request.operation, outcome('host restarted with an unresolved turn; no automatic replay'));
       recovered = true;
     };
-    const replace = async (request: SessionWorkRequest) => {
+    const replace = async (request: SessionWorkRequest, restore?: { operation: string; digest: string; deadline: number }) => {
       await retire(); guard();
       const used = calls(); if (used >= config.maxCalls) halt('calls', config.maxCalls);
       const now = config.now(), epoch = state.epoch + 1;
       const claim = `conversation-${slug(config.conversation)}-${epoch}`;
       const incarnation = `${config.incarnation}:${epoch}`;
-      persist({ epoch, claim, incarnation, close: null, claimCalls: 0, authority: request.authority, deadline: Math.min(now + config.deadlineMs, parentDeadline()), turns: 0 });
+      persist({ epoch, claim, incarnation, close: null, claimCalls: 0, authority: request.authority, deadline: Math.min(now + config.deadlineMs, parentDeadline(), restore?.deadline ?? Infinity), turns: 0 });
       if (!state.edge) {
         const edge: SessionWorkEdge = freeze({ type: 'SessionWorkEdge', schemaVersion: 1, id: `${claim}:edge`, parent: config.parent,
           child: claim, scope: config.workingScope, owner: config.owner, authority: request.authority,
@@ -329,7 +333,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         budget: { ...edge.budget, deadline: state.deadline, calls: config.maxCalls - calls() } });
       config.append(processEdge);
       await config.io.prepareAdmission(claim, processEdge); guard();
-      const worker = await adapter.launch({ operation: claim, claim, artifact: config.artifact, incarnation, workingScope: config.workingScope });
+      const worker = await adapter.launch({ operation: claim, claim, artifact: config.artifact, incarnation, workingScope: config.workingScope, ...(restore ? { restore } : {}) });
       ensure(worker.claim === claim && worker.incarnation === incarnation && worker.launch, 'launch identity differs from admission');
       persist({ worker }); await lease.attach(worker.launch); guard();
       return true;
@@ -385,9 +389,9 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           ids = candidate; text = combined;
         }
         ensure(Buffer.byteLength(text) <= 1_048_576, 'current conversation grounding exceeds delivery bound');
-        const delivery: ConversationDelivery = { ...state.worker!, operation: id, text, digest: digest(text),
+        let delivery: ConversationDelivery = { ...state.worker!, operation: id, text, digest: digest(text),
           resultPath: path, maxBytes: config.maxResultBytes };
-        updateBatch({ state: 'dispatching', delivery, batch: ids, attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
+        updateBatch({ state: 'dispatching', delivery, batch: ids, ...(admission.toolPreparations === undefined ? {} : { effectsAtDispatch: admission.toolPreparations }), attempts: row(id).attempts + 1 }); // durable before the adapter can touch input
         for (const operation of ids) config.workingActivity?.(operation, state.claim, 'start');
         const accepted = await adapter.deliver(delivery);
         if (accepted.state === 'busy-not-dispatched' || accepted.state === 'refused-not-dispatched') {
@@ -405,6 +409,29 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           ensure(admission !== null, 'conversation allowance refused or unreadable');
           const batch = await adapter.observe({ ...state.worker!, delivery, cursor: row(id).cursor, limit: 16 });
           ensure(batch.complete && batch.cursor >= row(id).cursor, 'observation gap requires reconciliation');
+          const pause = batch.observations.find(event => event.kind === 'paused');
+          if (pause?.kind === 'paused' && (pause.reason === 'context-too-long' || pause.reason === 'context-wedge')) {
+            guard();
+            const recoveryAdmission = config.io.admissionState(state.claim!);
+            ensure(recoveryAdmission !== null && !recoveryAdmission.refused, 'context recovery admission unavailable');
+            ensure(!row(id).contextRecovery && ids.length === 1, 'context recovery already attempted or batched input requires reconciliation');
+            ensure(config.contextRecoveryAllowed?.() === true && recoveryAdmission.uncertainEffects === 0
+              && Number.isSafeInteger(row(id).effectsAtDispatch) && recoveryAdmission.toolPreparations === row(id).effectsAtDispatch
+              && recoveryAdmission.openDelegations.length === 0 && calls() < config.maxCalls,
+            'context recovery requires known sends, no tool effects since dispatch, no child work and remaining allowance');
+            updateBatch({ contextRecovery: 'compacting' }); // durable before any control input
+            const deadline = state.deadline;
+            const compact = await adapter.control({ ...state.worker!, action: 'compact', authority: request.authority,
+              reason: pause.reason, delivery, deadline });
+            guard();
+            if (compact.state === 'replace-required') {
+              updateBatch({ contextRecovery: 'restoring' });
+              ensure(await replace(request, { operation: id, digest: delivery.digest, deadline }), 'context replacement admission unavailable');
+              delivery = { ...delivery, ...state.worker! };
+            } else ensure(compact.state === 'resumed', compact.evidence);
+            updateBatch({ delivery, contextRecovery: 'continued', cursor: 0 });
+            continue;
+          }
           let reply = row(id).reply, ended = false, completed = false;
           for (const event of batch.observations) {
             if (event.kind === 'exit' && event.safetyDeadline !== undefined) halt('deadline', event.safetyDeadline);
@@ -420,7 +447,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           if (ended) {
             ensure(admission.openDelegations.length === 0, 'turn ended with pending child work');
             const result: SessionWorkOutcome = completed && reply?.trim()
-              ? { state: 'complete', text: reply, detail: 'correlated reply and turn end', edge: state.edge!.id, child: state.worker!.launch }
+              ? { state: 'complete', text: reply, detail: 'correlated reply and turn end', ...(row(id).contextRecovery ? { contextRecovery: id } : {}), edge: state.edge!.id, child: state.worker!.launch }
               : outcome('turn ended without a complete reply');
             const results = batchResults(ids, result);
             persist({ inputs: state.inputs.map(input => {

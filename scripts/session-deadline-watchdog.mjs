@@ -14,7 +14,7 @@ export function enforceSessionDeadline(io, name, identity, deadline, now) {
     const closed = io.readInbox(name).some(event => event.kind === 'turn-closed'
       && event.at >= session.turnStartedAt && event.at <= deadline
       && (event.receiptId ? !session.turnReceiptIds?.includes(event.receiptId) : event.at > session.turnStartedAt));
-    return closed ? null : { journal, session };
+    return closed && !session.rateRecovery ? null : { journal, session };
   };
   const enforce = locked => {
     if (!expired()) return false;

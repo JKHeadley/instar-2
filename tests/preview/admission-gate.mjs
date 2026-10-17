@@ -100,7 +100,12 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
   const admit = (state, call) => {
     const tool = String(call.tool_name ?? ''), id = String(call.tool_use_id ?? '');
     if (!/^[A-Za-z0-9._:-]{1,200}$/u.test(id)) return { decision: 'deny', reason: 'admission: exact tool call identity required' };
-    if (call.kind === 'tool') return { decision: 'allow', reason: 'admission: the step is open and no stop is held' };
+    if (call.kind === 'tool') {
+      // Even an ordinary local write or shell command can be unfinished at a context wall.
+      // The owner must not restore a packet prepared before any such work began.
+      state.toolPreparations++;
+      return { decision: 'allow', reason: 'admission: the step is open and no stop is held' };
+    }
     // Plan #507: the text an outward tool request would carry, checked against the runner's held secret values before it
     // is dispatched (tool-turn.mjs heldVerdict); a check that cannot decide refuses (fails closed).
     if (call.kind === 'held') {
@@ -165,6 +170,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       const verdict = effects.admit({ parent: state.edge, tool, input: call.tool_input ?? null, call: id });
       const record = verdict.doorway ? { doorway: verdict.doorway } : {};
       if (!verdict.admitted) return { decision: 'deny', reason: verdict.reason, ...record };
+      state.toolPreparations++;
       state.effects.set(id, { identity: verdict.identity, operation: verdict.operation, digest: verdict.digest });
       return { decision: 'allow', reason: verdict.reason, ...record };
     }
@@ -229,7 +235,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     open(claim, { framework, allowance, edge, reserveCall }) {
       if (!claimPattern.test(claim) || !upstreams[framework] || !Number.isSafeInteger(allowance) || allowance < 1 || !edge?.id)
         throw Error('admission gate: claim, framework, allowance and edge required');
-      claims.set(claim, { framework, allowance, edge, reserveCall, calls: 0, refused: false, refusalReason: null, closed: false, delegations: new Map(), effects: new Map() });
+      claims.set(claim, { framework, allowance, edge, reserveCall, calls: 0, refused: false, refusalReason: null, closed: false, delegations: new Map(), effects: new Map(), toolPreparations: 0 });
     },
     /** Closes a claim: no further call or admission passes. Returns its final state. */
     close(claim) { const state = claims.get(claim); if (state) state.closed = true; return this.state(claim); },
@@ -237,6 +243,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     state(claim) {
       const state = claims.get(claim);
       return state ? { calls: state.calls, refused: state.refused, refusalReason: state.refusalReason, closed: state.closed,
+        uncertainEffects: state.effects.size, toolPreparations: state.toolPreparations,
         openDelegations: [...state.delegations.values()].filter(row => row.open).map(row => row.edge) } : null;
     },
     /** Marks a still-open child edge settled by its parent (the parent closes it, never this server). */
