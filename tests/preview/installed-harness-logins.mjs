@@ -71,7 +71,12 @@ export function installHarnessLogin({ root, options, verify }) {
  * build policy pin with a predecessor. The member's OWN sealed authority must resolve each
  * resulting route. No successor grant is manufactured or copied from a different account. */
 export function prepareInstalledHarnessLogins({ root, options, doorway, build, now, verify }) {
-  const source = inventory(root);
+  const installed = inventory(root);
+  const source = { ...installed, logins: [...installed.logins] };
+  // A launch-supplied session grant belongs to the installation's primary anchor.
+  // Retain it in preparation and its fingerprint; never lend it to another member.
+  if (options['session-work-activation'] !== undefined)
+    source.logins[0] = { ...source.logins[0], sessionActivation: options['session-work-activation'] };
   const fingerprints = source.logins.map(row => [row.profile, row.activation, row.authority, row.toolsActivation, row.sessionActivation]
     .filter(Boolean).map(path => { try { return hash(readFileSync(path, 'utf8')); } catch { return null; } }));
   const key = hash({ build, admissionRevision: source.admissionRevision, logins: source.logins, fingerprints, model: options.model, tools: options.tools ?? 'default',
@@ -120,7 +125,7 @@ export function prepareInstalledHarnessLogins({ root, options, doorway, build, n
     keepRecord(manifestPath, manifest);
   }
   if (source.preparedManifest !== manifestPath)
-    durablePreviewWrite(inventoryPath(root), { ...source, preparedManifest: manifestPath });
+    durablePreviewWrite(inventoryPath(root), { ...installed, preparedManifest: manifestPath });
   return manifestPath;
 }
 
@@ -131,7 +136,8 @@ export function installedHarnessLaunch({ root, options, prepare }) {
     return { options, mode: options['login-pool'] ? 'explicit-pool' : 'explicit-profile' };
   if (!existsSync(inventoryPath(root))) return { options, mode: 'legacy-single' };
   const source = inventory(root), primary = source.logins[0];
-  const selected = optionsOf(options, primary);
+  const selected = optionsOf(options, { ...primary,
+    sessionActivation: options['session-work-activation'] ?? primary.sessionActivation });
   if (source.logins.length === 1) return { options: selected, mode: 'single-installed' };
   const manifestPath = prepare(selected);
   const manifest = read(manifestPath);

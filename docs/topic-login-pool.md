@@ -16,6 +16,15 @@ If no eligible account exists, input stays queued and the ordinary host tick
 retries within the existing parent lifetime. Stop and the shared spend allowance
 still apply. Sign-in repair items are recorded for the desk, never executed here.
 
+For an installed pool, a launch-supplied `--session-work-activation` applies to
+its primary login. Preparation retains that path and fingerprints its bytes;
+the normal session validator still checks its account, policy and sealed authority.
+The override does not rewrite the installed inventory or supply another member's
+grant. Other members need their own session activations. Without an override,
+the primary's installed activation remains the default. Continuing conversation
+requires the conversation-session policy, which differs from scheduled work's
+session policy even though both use the same command-line option.
+
 Each topic's encrypted `topic-login-<topic>.json` records the selected account,
 last claim and pending move. The pool registers the topic so loss of that snapshot
 cannot look like a first launch. A move records its source, destination and exact
