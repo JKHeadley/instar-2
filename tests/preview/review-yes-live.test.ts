@@ -251,7 +251,12 @@ it('replays the real reviewer: the note rides unless it answered a confident no'
     const result = await jevCase(item.case, async (text, questions) => {
       // Replay the recorded body and questions, accounting only for the removed surface prefix.
       expect(text, label).toBe(item.text.replace(/^PREVIEW — /u, ''));
-      expect(createHash('sha256').update(JSON.stringify(questions)).digest('hex'), label).toBe(item.questionsSha256);
+      // The historical capture predates the no-handback question refinement. Preserve the capture's
+      // bytes and validate its exact old questions; replaying its output is not a fresh quality measurement.
+      const historical = { ...questions,
+        parks_on_user: { type: 'noul', instructions: 'The writer hands back to the reader a task the writer could have completed themselves.' },
+        quits_on_self: { type: 'noul', instructions: 'The writer says they are stopping work for a reason about themselves, such as running low on context, memory, or capacity.' } };
+      expect(createHash('sha256').update(JSON.stringify(historical)).digest('hex'), label).toBe(item.questionsSha256);
       return JSON.parse(item.raw) as unknown;
     });
     expect(result.held, label).toBeUndefined();
