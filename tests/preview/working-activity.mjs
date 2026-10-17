@@ -25,11 +25,16 @@ export function admissionActivity(bytes, offset, claim) {
   for (const line of complete) {
     let row; try { row = JSON.parse(line); } catch { return null; }
     if (row.phase === 'post') pending.delete(row.id);
+    if (row.phase === 'post-failure' && !row.agent && pending.get(row.id)?.tool === row.tool) pending.delete(row.id);
     if (row.phase === 'pre' && row.decision === 'allow' && typeof row.id === 'string' && !row.agent) { pending.set(row.id, row); latest = row; }
   }
   const running = [...pending.values()].at(-1);
   const row = running ?? latest;
   if (!row || typeof row.tool !== 'string') return null;
+  const step = createHash('sha256').update(`${claim}:${row.id}:${row.input}`).digest('hex');
+  // All admitted root occurrences have completion evidence. Do not describe an ended
+  // command as current work, or infer what the model or background children are doing.
+  if (!running) return { step, text: 'Status: latest main-session tool call ended', running: false };
   let input; try { input = JSON.parse(row.input); } catch { return null; }
   if (!input || typeof input !== 'object') return null;
   const own = typeof input.description === 'string' ? input.description.trim() : '';
@@ -37,15 +42,12 @@ export function admissionActivity(bytes, offset, claim) {
   const target = path ? path.split('/').filter(Boolean).at(-1) : '';
   // A tool name by itself is not a useful account of what is being done.
   const command = typeof input.command === 'string' ? input.command.trim() : '';
-  // Between tools only an actual self-written description can speak for the agent;
-  // a completed tool name/target is not evidence of current work. State its past-tense role.
-  if (!running && !own) return null;
   const detail = own || (target ? `${row.tool}: ${target}` : command ? `${row.tool}: ${command}` : '');
   if (!detail) return null;
-  const text = `Status: ${running ? '' : 'latest step — '}${detail.replace(/\s+/gu, ' ')}`;
+  const text = `Status: ${detail.replace(/\s+/gu, ' ')}`;
   // Do not cut a credential before the existing exact outbound wall can inspect it.
   if (text.length > 280) return null;
-  return { step: createHash('sha256').update(`${claim}:${row.id}:${row.input}`).digest('hex'), text, running: running !== undefined };
+  return { step, text, running: true };
 }
 
 export function createWorkingActivities({ read, now }) {
@@ -55,17 +57,28 @@ export function createWorkingActivities({ read, now }) {
       if (phase === 'end' || claim === null) { active.delete(operation); return; }
       if (phase === 'start') {
         const bytes = read(claim);
-        active.set(operation, { claim, offset: typeof bytes === 'string' ? bytes.length : 0, observedAt: null });
+        active.set(operation, { claim, offset: typeof bytes === 'string' ? bytes.length : null, observedAt: null, activity: null, lastStep: null, advancedAt: null });
       } else {
         const current = active.get(operation);
-        if (current?.claim === claim) current.observedAt = now();
+        if (current?.claim === claim) {
+          current.observedAt = now();
+          const bytes = read(claim);
+          // If the start read failed, first establish a baseline; old work cannot become new evidence.
+          if (current.offset === null) { if (typeof bytes === 'string') current.offset = bytes.length; return; }
+          const activity = admissionActivity(bytes, current.offset, claim);
+          if (activity && activity.step !== current.lastStep) { current.advancedAt = now(); current.lastStep = activity.step; }
+          current.activity = activity;
+        }
       }
     },
     current(operation) {
       const state = active.get(operation);
-      if (!state || state.observedAt === null || state.observedAt > now() || now() - state.observedAt > 10_000) return null;
+      const time = now();
+      if (!state || state.observedAt === null || state.observedAt > time || time - state.observedAt > 10_000) return null;
+      // Polling cannot renew unchanged evidence; reread only to reflect completion.
+      if (state.advancedAt === null || state.advancedAt > time || time - state.advancedAt > 10_000 || state.offset === null) return null;
       const activity = admissionActivity(read(state.claim), state.offset, state.claim);
-      return activity ? { ...activity, observedAt: state.observedAt } : null;
+      return activity && activity.step === state.lastStep ? { ...activity, observedAt: state.advancedAt } : null;
     },
   };
 }

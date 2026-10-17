@@ -47,7 +47,7 @@ for (const mode of ['recorded', 'fresh'] as const) {
       const worker = createJournalWorker(journal, ports);
       worker.intake([update(capture.provenance.update)]);
       await worker.drain(); await worker.drain();
-      expect({ models, reviews, revisions }).toEqual({ models: 1, reviews: mode === 'recorded' ? 1 : 0, revisions: 0 });
+      expect({ models, reviews, revisions }).toEqual({ models: 1, reviews: 0, revisions: 0 });
       expect(sent).toEqual([capture.notice]);
       expect(journal.view.order[0]).toMatchObject({ modelState: 'uncertain', noticeClass: 'unknown-answer', sent: 1 });
       expect(journal.view.order[0]?.answer).toBeUndefined();
@@ -101,4 +101,47 @@ it('replays the captured uncertain state and delivered/empty-context bytes on di
       } else expect(sent[0]).not.toBe(UNKNOWN_ANSWER_NOTICE);
     } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
   }
+});
+
+it('retains the real exhausted socket-turn notice despite memory acknowledgement and recorded revision', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/socket-drop-worker-1016101-2026-10-16.json', import.meta.url), 'utf8')).failedSurface;
+  const review = recorded.journal.find((row: { kind: string; result?: { path: string } }) => row.kind === 'reply-check' && row.result?.path === 'subscription').result;
+  const revision = recorded.journal.find((row: { kind: string }) => row.kind === 'reply-revision');
+  const root = mkdtempSync(join(tmpdir(), 'socket-notice-')), path = join(root, 'journal');
+  let journal = openPreviewJournal(path, key, genesis), reviews = 0, revisions = 0;
+  const sent: string[] = [];
+  const ports = { now: () => 1000, stopped: () => false,
+    prepareModel: () => JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet: {
+      audience: { surface: 'telegram-private' }, history: [] } }) },
+    { role: 'user', content: 'I prefer tea to coffee. Tell me which drink I prefer in one short sentence.' }] }),
+    model: async () => ({ state: 'uncertain' as const }), checkOutbound: () => {},
+    send: async (input: { expectedText: string }) => { sent.push(input.expectedText); return 1; },
+    replyCheck: { elapsedMs: () => 0, jev: async () => { throw Error('recorded Jev unavailable'); },
+      escalate: async () => { reviews++; return review; }, revise: async () => { revisions++; return revision; } } };
+  try {
+    const worker = createJournalWorker(journal, ports);
+    worker.intake([{ ...update(recorded.update), message: { ...update(recorded.update).message,
+      text: 'I prefer tea to coffee. Tell me which drink I prefer in one short sentence.' } }]);
+    await worker.drain(); await worker.drain();
+    expect(sent).toEqual([UNKNOWN_ANSWER_NOTICE]);
+    expect({ reviews, revisions }).toEqual({ reviews: 0, revisions: 0 });
+    expect(journal.view.order[0]).toMatchObject({ modelState: 'uncertain', noticeClass: 'unknown-answer', sent: 1 });
+    journal.close(); journal = openPreviewJournal(path, key); await createJournalWorker(journal, ports).drain();
+    expect(sent).toHaveLength(1);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('still reviews model-written text equal to the notice when no unknown outcome was recorded', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'model-notice-text-'));
+  const journal = openPreviewJournal(join(root, 'journal'), key, genesis);
+  let reviews = 0;
+  try {
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      model: async () => UNKNOWN_ANSWER_NOTICE, checkOutbound: () => {}, send: async () => 1,
+      replyCheck: { elapsedMs: () => 0, jev: async () => { throw Error('unavailable'); },
+        escalate: async () => { reviews++; return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0 }; } } });
+    worker.intake([update(1)]); await worker.drain();
+    expect(reviews).toBe(1); expect(journal.view.order[0]?.noticeClass).toBeUndefined();
+    expect(journal.view.order[0]?.modelState).toBe('complete');
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });

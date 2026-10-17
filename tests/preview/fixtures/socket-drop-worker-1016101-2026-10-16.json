@@ -1,0 +1,1608 @@
+{
+  "source": {
+    "capturedAt": "2026-10-16",
+    "root": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/socketdrop-1016b-evidence",
+    "method": "Existing admission-gate request test port returns Anthropic-shaped HTTP 529 after real reservation. Claude Code 2.1.280 and its real tmux lifecycle render all pane bytes. No prompt, pane or classifier substitution. Loopback test bot 12345678; isolated test-origin rooms; no live bot.",
+    "updates": [
+      1016101,
+      1016102
+    ],
+    "extraction": "Pane stdout is an exact final 24-line slice of capture-pane output; full capture sha256 is recorded. Full journals and owner inputs remain at source.root; fixture retains identities, states, results and accounting, omitting repeated prepared prompt bodies."
+  },
+  "runs": [
+    {
+      "name": "transient",
+      "update": 1016101,
+      "panes": [
+        {
+          "at": 1792168548828,
+          "kind": "capture-pane",
+          "target": "=instar20-b608ecdbd5590e63b5dfa499:",
+          "code": 0,
+          "stdout": "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+          "fullCaptureSha256": "1374c0ecff9f5520ea4a144c5754ae434cfea5ca52ec9af6e9916f20bd9275ed"
+        },
+        {
+          "at": 1792168559604,
+          "kind": "capture-pane",
+          "target": "=instar20-b608ecdbd5590e63b5dfa499:",
+          "code": 0,
+          "stdout": "  Return the JSON object requested by the owner-message envelope, without code fences, in one write\n  to:\n  /private/tmp/its-78516ec7aa16/conversation-71fb6d477a0d3148bb7e7f220063a1e3.json\n  The host records promises, checks work evidence and sends your answer. Do not send to the\n  operator yourself. Finish this turn after writing the result, then wait for the next message in\n  this same conversation.\n\n\u23fa Write(conversation-71fb6d477a0d3148bb7e7f220063a1e3.json)\n  \u23bf \u00a0Wrote 1 line to conversation-71fb6d477a0d3148bb7e7f220063a1e3.json\n      1 {\"reply\":{\"answer\":\"You prefer tea to coffee.\"},\"memory\":[{\"mode\":\"prefer\",\"source\":\"\n        telegram:12345678:update:1016101\",\"quote\":\"I prefer tea to coffee.\"}],\"dated\":[],\"las\n        tNamedPerson\":null,\"personAttributes\":[]}\n\n\u23fa Done \u2014 wrote the decision JSON (answer: \"You prefer tea to coffee.\", with the preference saved to\n  memory) to the specified file. Waiting for the next message.\n\n\u273b Crunched for 9s \u00b7 done 9:35 AM\n\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\u276f\u00a0\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u23f5\u23f5 bypass permissions on (shift+tab to cycle) \u00b7 \u2190 for agents\n\n",
+          "fullCaptureSha256": "7ce806b96518b56a34f29734a2a4aa86ace569f7bbd3f91157382ad2b85e6f90"
+        }
+      ],
+      "errors": [
+        {
+          "at": 1792168549962,
+          "path": "/v1/messages?beta=true",
+          "status": 529,
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "overloaded_error",
+              "message": "Overloaded"
+            }
+          }
+        }
+      ],
+      "sessionJournal": {
+        "sessions": [
+          {
+            "name": "instar20-b608ecdbd5590e63b5dfa499",
+            "operation": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+            "claim": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+            "incarnation": "1792168532173:1",
+            "resumeId": "aa3bc835-1097-48d5-974f-202bae48f388",
+            "recovery": 0,
+            "startedAt": 1792168548608,
+            "identity": "instar20-b608ecdbd5590e63b5dfa499:26242:1792168548",
+            "turnDeadline": null,
+            "turnStartedAt": 1792168549156,
+            "closedAt": 1792168559259,
+            "turnCloseEvidence": "turn-closed:instar20-b608ecdbd5590e63b5dfa499:1792168559259",
+            "turnBaseline": "sha256:6ae50d7d993b983833a72620a46ac7e0c2faa6da2fce4db910c02b669dca6fc6",
+            "turnReceiptIds": []
+          }
+        ],
+        "deliveries": [
+          {
+            "operation": "telegram:12345678:update:1016101",
+            "processIdentity": "instar20-b608ecdbd5590e63b5dfa499:26242:1792168548",
+            "intake": "telegram:12345678:update:1016101",
+            "digest": "sha256:a3f81c632811227a4c60f8f67593942a05a997a1c806787ef8d161c8de87bf4b",
+            "incarnation": "1792168532173:1",
+            "identity": "instar20-b608ecdbd5590e63b5dfa499:26242:1792168548",
+            "state": "accepted",
+            "baseline": "sha256:6ae50d7d993b983833a72620a46ac7e0c2faa6da2fce4db910c02b669dca6fc6",
+            "redeliveries": 0,
+            "evidence": "tmux-input:telegram:12345678:update:1016101"
+          }
+        ],
+        "resumes": {
+          "conversation-c5fc3bed7aab3415bfa4394644100dae-1": "aa3bc835-1097-48d5-974f-202bae48f388"
+        },
+        "reservations": []
+      },
+      "owner": {
+        "version": 1,
+        "conversation": "operator-d28386c09804d69405bb31d8c5292aef:main",
+        "epoch": 1,
+        "edge": {
+          "type": "SessionWorkEdge",
+          "schemaVersion": 1,
+          "id": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+          "parent": "launch:telegram/bot-12345678/chat-7812716706",
+          "child": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+          "scope": "/private/tmp/its-78516ec7aa16",
+          "owner": "DaBombs-Mac-Studio.local",
+          "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+          "budget": {
+            "steps": 1,
+            "deadline": 1794519600000,
+            "maxResultBytes": 65536,
+            "calls": 128,
+            "tokens": null
+          },
+          "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+          "placement": "machine:DaBombs-Mac-Studio.local",
+          "transport": "tmux session on this machine",
+          "resultDestination": "/private/tmp/its-78516ec7aa16",
+          "openedAt": 1792168546139
+        },
+        "worker": null,
+        "claim": null,
+        "incarnation": null,
+        "authority": null,
+        "deadline": 1792182946139,
+        "turns": 1,
+        "inputs": [
+          {
+            "request": {
+              "operation": "telegram:12345678:update:1016101"
+            },
+            "digest": "sha256:ec19da6dcbfdf507be4bb94c32674e43f999b2ad8b0c13584980d3c9617cf1d9",
+            "acceptedAt": 1792168546111,
+            "state": "settled",
+            "delivery": {
+              "launch": "instar20-b608ecdbd5590e63b5dfa499:26242:1792168548",
+              "incarnation": "1792168532173:1",
+              "claim": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+              "operation": "telegram:12345678:update:1016101",
+              "digest": "sha256:a3f81c632811227a4c60f8f67593942a05a997a1c806787ef8d161c8de87bf4b",
+              "resultPath": "/private/tmp/its-78516ec7aa16/conversation-71fb6d477a0d3148bb7e7f220063a1e3.json",
+              "maxBytes": 65536
+            },
+            "cursor": 2,
+            "reply": "{\"reply\":{\"answer\":\"You prefer tea to coffee.\"},\"memory\":[{\"mode\":\"prefer\",\"source\":\"telegram:12345678:update:1016101\",\"quote\":\"I prefer tea to coffee.\"}],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+            "outcome": {
+              "state": "complete",
+              "text": "{\"reply\":{\"answer\":\"You prefer tea to coffee.\"},\"memory\":[{\"mode\":\"prefer\",\"source\":\"telegram:12345678:update:1016101\",\"quote\":\"I prefer tea to coffee.\"}],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+              "detail": "correlated reply and turn end",
+              "edge": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+              "child": "instar20-b608ecdbd5590e63b5dfa499:26242:1792168548"
+            },
+            "attempts": 1,
+            "retryAt": 0,
+            "batch": [
+              "telegram:12345678:update:1016101"
+            ]
+          }
+        ],
+        "close": {
+          "type": "SessionWorkEdgeClose",
+          "schemaVersion": 1,
+          "id": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:process:host-close:1",
+          "edge": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:process",
+          "child": null,
+          "state": "complete",
+          "detail": "conversation closed",
+          "evidence": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+          "resultBytes": null,
+          "closedAt": 1792168604530,
+          "calls": 3,
+          "reserved": 128
+        },
+        "reserved": true,
+        "spent": 3,
+        "claimCalls": 3
+      },
+      "journal": [
+        {
+          "kind": "intake",
+          "id": "telegram:12345678:update:1016101",
+          "update": 1016101,
+          "text": "I prefer tea to coffee. Tell me which drink I prefer in one short sentence.",
+          "raw": "{\"update_id\":1016101,\"message\":{\"message_id\":1016101,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Proof operator\"},\"chat\":{\"id\":7812716706,\"type\":\"private\"},\"date\":1792168523,\"text\":\"I prefer tea to coffee. Tell me which drink I prefer in one short sentence.\"}}",
+          "accepted": true,
+          "cursor": 1016102,
+          "at": 1792168532728,
+          "writer": {
+            "id": "7812716706",
+            "kind": "person",
+            "adapter": "telegram-bot-api:offline-test-endpoint",
+            "class": "channel-attested",
+            "reference": "capture:telegram-bot-api:offline-test-endpoint:73c18f4b2e78b8a2ffe99d9ced3a5ca2fb1d174595cc3647db2ad19dab1ad723",
+            "hash": "sha256:b6385ab399ddbd7b46e92bcd344258f27b77c4d8fc52107bbcc5ddcea9684e18"
+          }
+        },
+        {
+          "kind": "session-work",
+          "record": {
+            "type": "SessionWorkEdge",
+            "schemaVersion": 1,
+            "id": "operator-d28386c09804d69405bb31d8c5292aef:allowance",
+            "parent": "launch:telegram/bot-12345678/chat-7812716706",
+            "child": "operator-d28386c09804d69405bb31d8c5292aef",
+            "scope": "/private/tmp/its-78516ec7aa16",
+            "owner": "DaBombs-Mac-Studio.local",
+            "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+            "budget": {
+              "steps": 1,
+              "deadline": 1794519600000,
+              "maxResultBytes": 65536,
+              "calls": 128,
+              "tokens": null
+            },
+            "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+            "placement": "machine:DaBombs-Mac-Studio.local",
+            "transport": "tmux session on this machine",
+            "resultDestination": "/private/tmp/its-78516ec7aa16",
+            "openedAt": 1792168546139
+          },
+          "at": 1792168546166
+        },
+        {
+          "kind": "session-work",
+          "record": {
+            "type": "SessionWorkEdge",
+            "schemaVersion": 1,
+            "id": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+            "parent": "operator-d28386c09804d69405bb31d8c5292aef:allowance",
+            "child": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+            "scope": "/private/tmp/its-78516ec7aa16",
+            "owner": "DaBombs-Mac-Studio.local",
+            "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+            "budget": {
+              "steps": 1,
+              "deadline": 1794519600000,
+              "maxResultBytes": 65536,
+              "calls": 128,
+              "tokens": null
+            },
+            "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+            "placement": "machine:DaBombs-Mac-Studio.local",
+            "transport": "tmux session on this machine",
+            "resultDestination": "/private/tmp/its-78516ec7aa16",
+            "openedAt": 1792168546139,
+            "drawsOn": "operator-d28386c09804d69405bb31d8c5292aef:allowance"
+          },
+          "at": 1792168546181
+        },
+        {
+          "kind": "session-work",
+          "record": {
+            "type": "SessionWorkEdge",
+            "schemaVersion": 1,
+            "id": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:process",
+            "parent": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+            "child": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+            "scope": "/private/tmp/its-78516ec7aa16",
+            "owner": "DaBombs-Mac-Studio.local",
+            "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+            "budget": {
+              "steps": 1,
+              "deadline": 1792182946139,
+              "maxResultBytes": 65536,
+              "calls": 128,
+              "tokens": null
+            },
+            "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+            "placement": "machine:DaBombs-Mac-Studio.local",
+            "transport": "tmux session on this machine",
+            "resultDestination": "/private/tmp/its-78516ec7aa16",
+            "openedAt": 1792168546139,
+            "drawsOn": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge"
+          },
+          "at": 1792168547115
+        },
+        {
+          "kind": "answer",
+          "id": "telegram:12345678:update:1016101",
+          "text": "You prefer tea to coffee.\n\nModel route check: typesafe-jev/jev-1.13.0 is unavailable.",
+          "state": "complete",
+          "memory": [],
+          "dated": [],
+          "notices": [
+            {
+              "key": "doorway:1792168527186",
+              "line": "Model route check: typesafe-jev/jev-1.13.0 is unavailable."
+            }
+          ],
+          "unlabeledRecall": true,
+          "usage": {
+            "inputTokens": null,
+            "outputTokens": null,
+            "charge": null
+          },
+          "latencyMs": 13527,
+          "at": 1792168559635
+        },
+        {
+          "kind": "intent",
+          "id": "telegram:12345678:update:1016101",
+          "text": "Saved the requested fact.",
+          "body": "Saved the requested fact.",
+          "chat": "7812716706",
+          "provenance": {
+            "speaker": "agent",
+            "principal": "agent:telegram-bot:12345678",
+            "signer": "sha256:b0fee6096ed5bedc28deed14ea7fb2cabca8ea801cc6341ec564ae948defe3b8",
+            "contentHash": "sha256:f93c2c0e90b4a236c0412d4b6d5598076f9b4ed19a15abf16996a8d0e4ab3a9d",
+            "signature": "cef8614b927651a69dfd9e79b697e6426ed02537aa911d748ec87200e797961c371a32ca50722ac481b74916e3542d0b9543e75cc4ba5dd537ceaef76473ce0a"
+          },
+          "promises": [],
+          "fulfills": [],
+          "update": 1016101,
+          "grant": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+          "at": 1792168559642
+        },
+        {
+          "kind": "sent",
+          "id": "telegram:12345678:update:1016101",
+          "message": 1,
+          "latencyMs": 73,
+          "at": 1792168559715
+        },
+        {
+          "kind": "session-work",
+          "record": {
+            "type": "SessionWorkEdgeClose",
+            "schemaVersion": 1,
+            "id": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:process:host-close:1",
+            "edge": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:process",
+            "child": null,
+            "state": "complete",
+            "detail": "conversation closed",
+            "evidence": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+            "resultBytes": null,
+            "closedAt": 1792168604530,
+            "calls": 3,
+            "reserved": 128
+          },
+          "at": 1792168604530
+        }
+      ],
+      "lifecycle": [
+        {
+          "at": 1792168548622,
+          "kind": "new-session",
+          "target": "new-session",
+          "code": 0,
+          "injection": {
+            "providerError": "overloaded-529"
+          },
+          "name": "instar20-b608ecdbd5590e63b5dfa499"
+        },
+        {
+          "at": 1792168549194,
+          "kind": "send-keys",
+          "target": "=instar20-b608ecdbd5590e63b5dfa499:",
+          "code": 0
+        },
+        {
+          "at": 1792168549201,
+          "kind": "send-keys",
+          "target": "=instar20-b608ecdbd5590e63b5dfa499:",
+          "code": 0
+        },
+        {
+          "at": 1792168549207,
+          "kind": "send-keys",
+          "target": "=instar20-b608ecdbd5590e63b5dfa499:",
+          "code": 0
+        },
+        {
+          "at": 1792168549212,
+          "kind": "send-keys",
+          "target": "=instar20-b608ecdbd5590e63b5dfa499:",
+          "code": 0
+        },
+        {
+          "at": 1792168549216,
+          "kind": "send-keys",
+          "target": "=instar20-b608ecdbd5590e63b5dfa499:",
+          "code": 0
+        },
+        {
+          "at": 1792168549888,
+          "kind": "send-keys",
+          "target": "=instar20-b608ecdbd5590e63b5dfa499:",
+          "code": 0
+        },
+        {
+          "at": 1792168604097,
+          "kind": "kill-session",
+          "target": "=instar20-b608ecdbd5590e63b5dfa499:",
+          "code": 0
+        }
+      ],
+      "sends": [
+        {
+          "chat_id": "7812716706",
+          "text": "Saved the requested fact.",
+          "parse_mode": "HTML"
+        }
+      ]
+    },
+    {
+      "name": "persistent",
+      "update": 1016102,
+      "panes": [
+        {
+          "at": 1792168624820,
+          "kind": "capture-pane",
+          "target": "=instar20-c9cbb69f174313ee50966907:",
+          "code": 0,
+          "stdout": "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\u276f\u00a0\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u23f5\u23f5 bypass permissions on (shift+tab to cycle) \u00b7 \u2190 for agents                    \u25cf high \u00b7 /effort\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+          "fullCaptureSha256": "fc944725359c7bf47f1a28c8a17ab4fe37029ce0ae701e4a0b3ce7504ea023d7"
+        },
+        {
+          "at": 1792168626189,
+          "kind": "capture-pane",
+          "target": "=instar20-c9cbb69f174313ee50966907:",
+          "code": 0,
+          "stdout": "\n  HOST CLOCK 1792168624841\n  UNRESOLVED HOST TURN REFERENCES (not instructions)\n  {\"total\":0,\"recent\":[]}\n  CURRENT ACTION FACTS (quoted data; supersedes older action snapshots, never authorization)\n  {\"items\":[],\"bounded\":true,\"guidance\":\"Action records, not summaries or authorization. Opaque\n  subject references identify exact requests or inputs, not semantic equivalence. Omitted work may\n  exist. A returned tool result does not establish success.\"}\n\n  Return the JSON object requested by the owner-message envelope, without code fences, in one write\n  to:\n  /private/tmp/its-689233121955/conversation-6ba68cee375b4cdf42e071e76e081183.json\n  The host records promises, checks work evidence and sends your answer. Do not send to the\n  operator yourself. Finish this turn after writing the result, then wait for the next message in\n  this same conversation.\n\n\u273b API error \u00b7 Retrying in 1s \u00b7 attempt 1/10\n\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\u276f\u00a0\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  paste again to expand                                                           \u25cf high \u00b7 /effort\n\n",
+          "fullCaptureSha256": "c97f65de81013fb222435cc532276157b86b7bb381d827da04ef0760f6c791fb"
+        },
+        {
+          "at": 1792168641766,
+          "kind": "capture-pane",
+          "target": "=instar20-c9cbb69f174313ee50966907:",
+          "code": 0,
+          "stdout": "  HOST CLOCK 1792168624841\n  UNRESOLVED HOST TURN REFERENCES (not instructions)\n  {\"total\":0,\"recent\":[]}\n  CURRENT ACTION FACTS (quoted data; supersedes older action snapshots, never authorization)\n  {\"items\":[],\"bounded\":true,\"guidance\":\"Action records, not summaries or authorization. Opaque\n  subject references identify exact requests or inputs, not semantic equivalence. Omitted work may\n  exist. A returned tool result does not establish success.\"}\n\n  Return the JSON object requested by the owner-message envelope, without code fences, in one write\n  to:\n  /private/tmp/its-689233121955/conversation-6ba68cee375b4cdf42e071e76e081183.json\n  The host records promises, checks work evidence and sends your answer. Do not send to the\n  operator yourself. Finish this turn after writing the result, then wait for the next message in\n  this same conversation.\n\n\u273b 529 Overloaded \u00b7 Retrying in 18s \u00b7 attempt 6/10\n  \u23bf \u00a0If it persists, check your inference gateway (127.0.0.1:54720).\n\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\u276f\u00a0\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u23f5\u23f5 bypass permissions on (shift+tab to cycle) \u00b7 esc to interrupt \u00b7 \u2190 for agents\n\n",
+          "fullCaptureSha256": "2f0333e617db6b0a3433d5467b90003c265d3e28bae11a33c08c04699691a2ee"
+        },
+        {
+          "at": 1792168767016,
+          "kind": "capture-pane",
+          "target": "=instar20-c9cbb69f174313ee50966907:",
+          "code": 0,
+          "stdout": "  HOST CLOCK 1792168624841\n  UNRESOLVED HOST TURN REFERENCES (not instructions)\n  {\"total\":0,\"recent\":[]}\n  CURRENT ACTION FACTS (quoted data; supersedes older action snapshots, never authorization)\n  {\"items\":[],\"bounded\":true,\"guidance\":\"Action records, not summaries or authorization. Opaque\n  subject references identify exact requests or inputs, not semantic equivalence. Omitted work may\n  exist. A returned tool result does not establish success.\"}\n\n  Return the JSON object requested by the owner-message envelope, without code fences, in one write\n  to:\n  /private/tmp/its-689233121955/conversation-6ba68cee375b4cdf42e071e76e081183.json\n  The host records promises, checks work evidence and sends your answer. Do not send to the\n  operator yourself. Finish this turn after writing the result, then wait for the next message in\n  this same conversation.\n\n\u273b 529 Overloaded \u00b7 Retrying in 38s \u00b7 attempt 10/10\n  \u23bf \u00a0If it persists, check your inference gateway (127.0.0.1:54720).\n\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\u276f\u00a0\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u23f5\u23f5 bypass permissions on (shift+tab to cycle) \u00b7 esc to interrupt \u00b7 \u2190 for agents\n\n",
+          "fullCaptureSha256": "1efb5437fc9667aefe3a9f4ef8e21e147391e1b7624ee1c2d609de4bd52f19e3"
+        },
+        {
+          "at": 1792168804441,
+          "kind": "capture-pane",
+          "target": "=instar20-c9cbb69f174313ee50966907:",
+          "code": 0,
+          "stdout": "  {\"total\":0,\"recent\":[]}\n  CURRENT ACTION FACTS (quoted data; supersedes older action snapshots, never authorization)\n  {\"items\":[],\"bounded\":true,\"guidance\":\"Action records, not summaries or authorization. Opaque\n  subject references identify exact requests or inputs, not semantic equivalence. Omitted work may\n  exist. A returned tool result does not establish success.\"}\n\n  Return the JSON object requested by the owner-message envelope, without code fences, in one write\n  to:\n  /private/tmp/its-689233121955/conversation-6ba68cee375b4cdf42e071e76e081183.json\n  The host records promises, checks work evidence and sends your answer. Do not send to the\n  operator yourself. Finish this turn after writing the result, then wait for the next message in\n  this same conversation.\n\n\u23fa API Error: 529 Overloaded. This is a server-side issue, usually temporary \u2014 try again in a\n  moment. If it persists, check your inference gateway (127.0.0.1:54720).\n\n\u273b Churned for 2m 59s \u00b7 done 9:40 AM\n\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\u276f\u00a0\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u23f5\u23f5 bypass permissions on (shift+tab to cycle) \u00b7 \u2190 for agents\n\n",
+          "fullCaptureSha256": "8fc5e6174a7b92a859df5aa59dadf67971e4f1c6bb3d52baa030639939424dcc"
+        },
+        {
+          "at": 1792168822819,
+          "kind": "capture-pane",
+          "target": "=instar20-c9cbb69f174313ee50966907:",
+          "code": 0,
+          "stdout": "  {\"total\":0,\"recent\":[]}\n  CURRENT ACTION FACTS (quoted data; supersedes older action snapshots, never authorization)\n  {\"items\":[],\"bounded\":true,\"guidance\":\"Action records, not summaries or authorization. Opaque\n  subject references identify exact requests or inputs, not semantic equivalence. Omitted work may\n  exist. A returned tool result does not establish success.\"}\n\n  Return the JSON object requested by the owner-message envelope, without code fences, in one write\n  to:\n  /private/tmp/its-689233121955/conversation-6ba68cee375b4cdf42e071e76e081183.json\n  The host records promises, checks work evidence and sends your answer. Do not send to the\n  operator yourself. Finish this turn after writing the result, then wait for the next message in\n  this same conversation.\n\n\u23fa API Error: 529 Overloaded. This is a server-side issue, usually temporary \u2014 try again in a\n  moment. If it persists, check your inference gateway (127.0.0.1:54720).\n\n\u273b Churned for 2m 59s \u00b7 done 9:40 AM\n\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n\u276f\u00a0\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n  \u23f5\u23f5 bypass permissions on (shift+tab to cycle) \u00b7 \u2190 for agents\n\n",
+          "fullCaptureSha256": "8fc5e6174a7b92a859df5aa59dadf67971e4f1c6bb3d52baa030639939424dcc"
+        }
+      ],
+      "errors": [
+        {
+          "at": 1792168625675,
+          "path": "/v1/messages?beta=true",
+          "status": 529,
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "overloaded_error",
+              "message": "Overloaded"
+            }
+          }
+        },
+        {
+          "at": 1792168625686,
+          "path": "/v1/messages?beta=true",
+          "status": 529,
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "overloaded_error",
+              "message": "Overloaded"
+            }
+          }
+        },
+        {
+          "at": 1792168626248,
+          "path": "/v1/messages?beta=true",
+          "status": 529,
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "overloaded_error",
+              "message": "Overloaded"
+            }
+          }
+        },
+        {
+          "at": 1792168627355,
+          "path": "/v1/messages?beta=true",
+          "status": 529,
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "overloaded_error",
+              "message": "Overloaded"
+            }
+          }
+        },
+        {
+          "at": 1792168629473,
+          "path": "/v1/messages?beta=true",
+          "status": 529,
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "overloaded_error",
+              "message": "Overloaded"
+            }
+          }
+        },
+        {
+          "at": 1792168633617,
+          "path": "/v1/messages?beta=true",
+          "status": 529,
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "overloaded_error",
+              "message": "Overloaded"
+            }
+          }
+        },
+        {
+          "at": 1792168641709,
+          "path": "/v1/messages?beta=true",
+          "status": 529,
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "overloaded_error",
+              "message": "Overloaded"
+            }
+          }
+        },
+        {
+          "at": 1792168659473,
+          "path": "/v1/messages?beta=true",
+          "status": 529,
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "overloaded_error",
+              "message": "Overloaded"
+            }
+          }
+        },
+        {
+          "at": 1792168695189,
+          "path": "/v1/messages?beta=true",
+          "status": 529,
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "overloaded_error",
+              "message": "Overloaded"
+            }
+          }
+        },
+        {
+          "at": 1792168734466,
+          "path": "/v1/messages?beta=true",
+          "status": 529,
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "overloaded_error",
+              "message": "Overloaded"
+            }
+          }
+        },
+        {
+          "at": 1792168766559,
+          "path": "/v1/messages?beta=true",
+          "status": 529,
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "overloaded_error",
+              "message": "Overloaded"
+            }
+          }
+        },
+        {
+          "at": 1792168804229,
+          "path": "/v1/messages?beta=true",
+          "status": 529,
+          "body": {
+            "type": "error",
+            "error": {
+              "type": "overloaded_error",
+              "message": "Overloaded"
+            }
+          }
+        }
+      ],
+      "sessionJournal": {
+        "sessions": [
+          {
+            "name": "instar20-c9cbb69f174313ee50966907",
+            "operation": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+            "claim": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+            "incarnation": "1792168611739:1",
+            "resumeId": "b6ab1110-233b-4d10-b242-f811d691913e",
+            "recovery": 0,
+            "startedAt": 1792168624521,
+            "identity": "instar20-c9cbb69f174313ee50966907:32615:1792168624",
+            "turnDeadline": 1792183024881,
+            "turnStartedAt": 1792168624881,
+            "closedAt": null,
+            "turnCloseEvidence": null,
+            "turnBaseline": "sha256:4d2ab9c69e4b979257e7939ecb242a5a38ec0498bb1a5a9b6bb668644688e7ad",
+            "turnReceiptIds": []
+          }
+        ],
+        "deliveries": [
+          {
+            "operation": "telegram:12345678:update:1016102",
+            "processIdentity": "instar20-c9cbb69f174313ee50966907:32615:1792168624",
+            "intake": "telegram:12345678:update:1016102",
+            "digest": "sha256:dfae5b35bc42bb3f4eff73c17bddf7460a21ddb5972ae836cfe9981b00a9ccac",
+            "incarnation": "1792168611739:1",
+            "identity": "instar20-c9cbb69f174313ee50966907:32615:1792168624",
+            "state": "accepted",
+            "baseline": "sha256:4d2ab9c69e4b979257e7939ecb242a5a38ec0498bb1a5a9b6bb668644688e7ad",
+            "redeliveries": 0,
+            "evidence": "tmux-input:telegram:12345678:update:1016102"
+          }
+        ],
+        "resumes": {
+          "conversation-c5fc3bed7aab3415bfa4394644100dae-1": "b6ab1110-233b-4d10-b242-f811d691913e"
+        },
+        "reservations": []
+      },
+      "owner": {
+        "version": 1,
+        "conversation": "operator-d28386c09804d69405bb31d8c5292aef:main",
+        "epoch": 1,
+        "edge": {
+          "type": "SessionWorkEdge",
+          "schemaVersion": 1,
+          "id": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+          "parent": "launch:telegram/bot-12345678/chat-7812716706",
+          "child": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+          "scope": "/private/tmp/its-689233121955",
+          "owner": "DaBombs-Mac-Studio.local",
+          "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+          "budget": {
+            "steps": 1,
+            "deadline": 1794519600000,
+            "maxResultBytes": 65536,
+            "calls": 128,
+            "tokens": null
+          },
+          "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+          "placement": "machine:DaBombs-Mac-Studio.local",
+          "transport": "tmux session on this machine",
+          "resultDestination": "/private/tmp/its-689233121955",
+          "openedAt": 1792168622137
+        },
+        "worker": {
+          "launch": "instar20-c9cbb69f174313ee50966907:32615:1792168624",
+          "incarnation": "1792168611739:1",
+          "claim": "conversation-c5fc3bed7aab3415bfa4394644100dae-1"
+        },
+        "claim": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+        "incarnation": "1792168611739:1",
+        "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+        "deadline": 1792183022137,
+        "turns": 1,
+        "inputs": [
+          {
+            "request": {
+              "operation": "telegram:12345678:update:1016102"
+            },
+            "digest": "sha256:c68adbf1c5e0e989c32d24c16fc54a0ce9418d77808c77dcf69625662fb4945f",
+            "acceptedAt": 1792168622108,
+            "state": "accepted",
+            "delivery": {
+              "launch": "instar20-c9cbb69f174313ee50966907:32615:1792168624",
+              "incarnation": "1792168611739:1",
+              "claim": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+              "operation": "telegram:12345678:update:1016102",
+              "digest": "sha256:dfae5b35bc42bb3f4eff73c17bddf7460a21ddb5972ae836cfe9981b00a9ccac",
+              "resultPath": "/private/tmp/its-689233121955/conversation-6ba68cee375b4cdf42e071e76e081183.json",
+              "maxBytes": 65536
+            },
+            "cursor": 0,
+            "reply": null,
+            "outcome": null,
+            "attempts": 1,
+            "retryAt": 0,
+            "batch": [
+              "telegram:12345678:update:1016102"
+            ]
+          }
+        ],
+        "close": null,
+        "reserved": true,
+        "spent": 12,
+        "claimCalls": 12
+      },
+      "journal": [
+        {
+          "kind": "intake",
+          "id": "telegram:12345678:update:1016102",
+          "update": 1016102,
+          "text": "I prefer tea to coffee. Tell me which drink I prefer in one short sentence.",
+          "raw": "{\"update_id\":1016102,\"message\":{\"message_id\":1016102,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Proof operator\"},\"chat\":{\"id\":7812716706,\"type\":\"private\"},\"date\":1792168604,\"text\":\"I prefer tea to coffee. Tell me which drink I prefer in one short sentence.\"}}",
+          "accepted": true,
+          "cursor": 1016103,
+          "at": 1792168612282,
+          "writer": {
+            "id": "7812716706",
+            "kind": "person",
+            "adapter": "telegram-bot-api:offline-test-endpoint",
+            "class": "channel-attested",
+            "reference": "capture:telegram-bot-api:offline-test-endpoint:b9ea6ac3441c3941a95e01151eff509484b06be1e1fea1836d225d7ff03dab8c",
+            "hash": "sha256:b6385ab399ddbd7b46e92bcd344258f27b77c4d8fc52107bbcc5ddcea9684e18"
+          }
+        },
+        {
+          "kind": "session-work",
+          "record": {
+            "type": "SessionWorkEdge",
+            "schemaVersion": 1,
+            "id": "operator-d28386c09804d69405bb31d8c5292aef:allowance",
+            "parent": "launch:telegram/bot-12345678/chat-7812716706",
+            "child": "operator-d28386c09804d69405bb31d8c5292aef",
+            "scope": "/private/tmp/its-689233121955",
+            "owner": "DaBombs-Mac-Studio.local",
+            "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+            "budget": {
+              "steps": 1,
+              "deadline": 1794519600000,
+              "maxResultBytes": 65536,
+              "calls": 128,
+              "tokens": null
+            },
+            "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+            "placement": "machine:DaBombs-Mac-Studio.local",
+            "transport": "tmux session on this machine",
+            "resultDestination": "/private/tmp/its-689233121955",
+            "openedAt": 1792168622137
+          },
+          "at": 1792168622167
+        },
+        {
+          "kind": "session-work",
+          "record": {
+            "type": "SessionWorkEdge",
+            "schemaVersion": 1,
+            "id": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+            "parent": "operator-d28386c09804d69405bb31d8c5292aef:allowance",
+            "child": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+            "scope": "/private/tmp/its-689233121955",
+            "owner": "DaBombs-Mac-Studio.local",
+            "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+            "budget": {
+              "steps": 1,
+              "deadline": 1794519600000,
+              "maxResultBytes": 65536,
+              "calls": 128,
+              "tokens": null
+            },
+            "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+            "placement": "machine:DaBombs-Mac-Studio.local",
+            "transport": "tmux session on this machine",
+            "resultDestination": "/private/tmp/its-689233121955",
+            "openedAt": 1792168622137,
+            "drawsOn": "operator-d28386c09804d69405bb31d8c5292aef:allowance"
+          },
+          "at": 1792168622186
+        },
+        {
+          "kind": "session-work",
+          "record": {
+            "type": "SessionWorkEdge",
+            "schemaVersion": 1,
+            "id": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:process",
+            "parent": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+            "child": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+            "scope": "/private/tmp/its-689233121955",
+            "owner": "DaBombs-Mac-Studio.local",
+            "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+            "budget": {
+              "steps": 1,
+              "deadline": 1792183022137,
+              "maxResultBytes": 65536,
+              "calls": 128,
+              "tokens": null
+            },
+            "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+            "placement": "machine:DaBombs-Mac-Studio.local",
+            "transport": "tmux session on this machine",
+            "resultDestination": "/private/tmp/its-689233121955",
+            "openedAt": 1792168622137,
+            "drawsOn": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge"
+          },
+          "at": 1792168623080
+        }
+      ],
+      "lifecycle": [
+        {
+          "at": 1792168624536,
+          "kind": "new-session",
+          "target": "new-session",
+          "code": 0,
+          "injection": {
+            "providerError": "overloaded-529"
+          },
+          "name": "instar20-c9cbb69f174313ee50966907"
+        },
+        {
+          "at": 1792168624915,
+          "kind": "send-keys",
+          "target": "=instar20-c9cbb69f174313ee50966907:",
+          "code": 0
+        },
+        {
+          "at": 1792168624922,
+          "kind": "send-keys",
+          "target": "=instar20-c9cbb69f174313ee50966907:",
+          "code": 0
+        },
+        {
+          "at": 1792168624928,
+          "kind": "send-keys",
+          "target": "=instar20-c9cbb69f174313ee50966907:",
+          "code": 0
+        },
+        {
+          "at": 1792168624932,
+          "kind": "send-keys",
+          "target": "=instar20-c9cbb69f174313ee50966907:",
+          "code": 0
+        },
+        {
+          "at": 1792168624936,
+          "kind": "send-keys",
+          "target": "=instar20-c9cbb69f174313ee50966907:",
+          "code": 0
+        },
+        {
+          "at": 1792168625602,
+          "kind": "send-keys",
+          "target": "=instar20-c9cbb69f174313ee50966907:",
+          "code": 0
+        }
+      ],
+      "sends": []
+    }
+  ],
+  "failedSurface": {
+    "update": 1016104,
+    "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/socketdrop-1016b-evidence/proof-persistent",
+    "journal": [
+      {
+        "kind": "notice",
+        "id": "telegram:12345678:update:1016104",
+        "noticeClass": "unknown-answer",
+        "at": 1792169225585
+      },
+      {
+        "kind": "reply-check",
+        "id": "telegram:12345678:update:1016104",
+        "result": {
+          "verdict": "unavailable",
+          "ruleIds": [],
+          "confidence": null,
+          "path": "jev",
+          "latencyMs": 25.04537499998696,
+          "cause": "other",
+          "candidateDigest": "b594c498e2f2f26dcc2e9758f1bdadd8c3f1ab084d70eb2d9a5765fac2b841cf"
+        },
+        "at": 1792169225619
+      },
+      {
+        "kind": "reply-check",
+        "id": "telegram:12345678:update:1016104",
+        "result": {
+          "verdict": "unavailable",
+          "ruleIds": [],
+          "confidence": null,
+          "path": "jev",
+          "latencyMs": 23.9273749999993,
+          "cause": "other",
+          "candidateDigest": "b594c498e2f2f26dcc2e9758f1bdadd8c3f1ab084d70eb2d9a5765fac2b841cf"
+        },
+        "at": 1792169225651
+      },
+      {
+        "kind": "reply-check",
+        "id": "telegram:12345678:update:1016104",
+        "result": {
+          "verdict": "violation",
+          "ruleIds": [
+            "self_state_claim",
+            "breaks_preference"
+          ],
+          "confidence": null,
+          "latencyMs": 11847,
+          "reason": "self_state_claim: Reply claims it 'reviewed a memory request' though the operator asked to state a drink preference, not a memory save, misrepresenting the actual task performed.; breaks_preference: Operator explicitly asked to be told which drink they prefer in one short sentence; reply never states the preference, failing the current explicit request.",
+          "findings": [
+            {
+              "rule": "raw_path",
+              "verdict": "pass",
+              "reason": "No filesystem path appears in the reply."
+            },
+            {
+              "rule": "cli_command",
+              "verdict": "pass",
+              "reason": "No terminal command is requested or shown."
+            },
+            {
+              "rule": "config_key",
+              "verdict": "pass",
+              "reason": "No dotted configuration key is named."
+            },
+            {
+              "rule": "credential",
+              "verdict": "pass",
+              "reason": "No authentication secret is exposed in the reply."
+            },
+            {
+              "rule": "api_endpoint",
+              "verdict": "pass",
+              "reason": "No internal endpoint or URL is shown."
+            },
+            {
+              "rule": "quits_on_self",
+              "verdict": "pass",
+              "reason": "Reply does not cite its own capacity or state as a reason to stop."
+            },
+            {
+              "rule": "claims_blocked",
+              "verdict": "pass",
+              "reason": "No claim of impossibility or block is made."
+            },
+            {
+              "rule": "parks_on_user",
+              "verdict": "pass",
+              "reason": "Reply does not hand back work to the user; it is merely non-responsive."
+            },
+            {
+              "rule": "defers_work",
+              "verdict": "pass",
+              "reason": "No promise of future work is made, so no deferral record is needed."
+            },
+            {
+              "rule": "unrecorded_blocker",
+              "verdict": "pass",
+              "reason": "No final claim that something cannot be done is made."
+            },
+            {
+              "rule": "self_state_claim",
+              "verdict": "violation",
+              "reason": "Reply claims it 'reviewed a memory request' though the operator asked to state a drink preference, not a memory save, misrepresenting the actual task performed."
+            },
+            {
+              "rule": "breaks_preference",
+              "verdict": "violation",
+              "reason": "Operator explicitly asked to be told which drink they prefer in one short sentence; reply never states the preference, failing the current explicit request."
+            }
+          ],
+          "usage": {
+            "inputTokens": 10745,
+            "outputTokens": 837,
+            "charge": null,
+            "inputComplete": true
+          },
+          "path": "subscription",
+          "candidateDigest": "b594c498e2f2f26dcc2e9758f1bdadd8c3f1ab084d70eb2d9a5765fac2b841cf"
+        },
+        "at": 1792169237507
+      },
+      {
+        "kind": "reply-revision",
+        "id": "telegram:12345678:update:1016104",
+        "state": "complete",
+        "text": "You prefer tea to coffee.",
+        "promises": [],
+        "fulfills": [],
+        "dispositions": [
+          {
+            "objection": "self_state_claim",
+            "decision": "accept",
+            "reason": "The draft falsely described the task as reviewing a memory request when the operator only asked for a one-sentence statement of their drink preference."
+          },
+          {
+            "objection": "breaks_preference",
+            "decision": "accept",
+            "reason": "The draft never stated the preference the operator explicitly asked to be told, so it failed the current request."
+          }
+        ],
+        "usage": {
+          "inputTokens": 10928,
+          "outputTokens": 406,
+          "charge": null,
+          "inputComplete": true
+        },
+        "at": 1792169245216
+      },
+      {
+        "kind": "intent",
+        "id": "telegram:12345678:update:1016104",
+        "text": "You prefer tea to coffee.",
+        "body": "You prefer tea to coffee.",
+        "chat": "7812716706",
+        "provenance": {
+          "speaker": "infrastructure",
+          "principal": "infrastructure:preview-runner:12345678",
+          "signer": "sha256:b0fee6096ed5bedc28deed14ea7fb2cabca8ea801cc6341ec564ae948defe3b8",
+          "contentHash": "sha256:95c6d2bddd2a130d0ac0b6f3d0949ff391a455da6c101c809abecd5627ea78a4",
+          "signature": "ac5798c92341968ab46c0476ae5c9f2adce5022600e242fc6c6d5071044d1ec70e0ad200e237d11b16fc771948e95a93c81fd2f2bbf721daee4d936e5917b905"
+        },
+        "release": {
+          "review": "violation",
+          "objections": [
+            "self_state_claim",
+            "breaks_preference"
+          ],
+          "reason": "self_state_claim: Reply claims it 'reviewed a memory request' though the operator asked to state a drink preference, not a memory save, misrepresenting the actual task performed.; breaks_preference: Operator explicitly asked to be told which drink they prefer in one short sentence; reply never states the preference, failing the current explicit request.",
+          "revised": true,
+          "dispositions": [
+            {
+              "objection": "self_state_claim",
+              "decision": "accept",
+              "reason": "The draft falsely described the task as reviewing a memory request when the operator only asked for a one-sentence statement of their drink preference."
+            },
+            {
+              "objection": "breaks_preference",
+              "decision": "accept",
+              "reason": "The draft never stated the preference the operator explicitly asked to be told, so it failed the current request."
+            }
+          ]
+        },
+        "promises": [],
+        "fulfills": [],
+        "update": 1016104,
+        "grant": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+        "at": 1792169252785
+      },
+      {
+        "kind": "sent",
+        "id": "telegram:12345678:update:1016104",
+        "message": 1,
+        "latencyMs": 66,
+        "at": 1792169252851
+      }
+    ],
+    "sends": [
+      {
+        "chat_id": "7812716706",
+        "text": "You prefer tea to coffee.",
+        "parse_mode": "HTML"
+      }
+    ]
+  },
+  "proofs": [
+    {
+      "name": "persistent",
+      "update": 1016105,
+      "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/socketdrop-1016b-evidence/proof-final",
+      "owner": {
+        "version": 1,
+        "conversation": "operator-d28386c09804d69405bb31d8c5292aef:main",
+        "epoch": 1,
+        "edge": {
+          "type": "SessionWorkEdge",
+          "schemaVersion": 1,
+          "id": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+          "parent": "launch:telegram/bot-12345678/chat-7812716706",
+          "child": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+          "scope": "/private/tmp/its-8ed28213bdbc",
+          "owner": "DaBombs-Mac-Studio.local",
+          "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+          "budget": {
+            "steps": 1,
+            "deadline": 1794519600000,
+            "maxResultBytes": 65536,
+            "calls": 128,
+            "tokens": null
+          },
+          "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+          "placement": "machine:DaBombs-Mac-Studio.local",
+          "transport": "tmux session on this machine",
+          "resultDestination": "/private/tmp/its-8ed28213bdbc",
+          "openedAt": 1792169450049
+        },
+        "worker": null,
+        "claim": null,
+        "incarnation": null,
+        "authority": null,
+        "deadline": 1792183850049,
+        "turns": 1,
+        "inputs": [
+          {
+            "request": {
+              "operation": "telegram:12345678:update:1016105"
+            },
+            "digest": "sha256:c1c2abed7d98cebc7123925085c3859f3d30651d441d2c6fc30485ef47657d62",
+            "acceptedAt": 1792169450024,
+            "state": "settled",
+            "delivery": {
+              "launch": "instar20-a0dbef237c2162d903c80213:86135:1792169452",
+              "incarnation": "1792169439466:1",
+              "claim": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+              "operation": "telegram:12345678:update:1016105",
+              "digest": "sha256:59f9a7e7a497b373d27368bd39f663c9ea5f8afa2a436fac9cbfb91830ce858f",
+              "resultPath": "/private/tmp/its-8ed28213bdbc/conversation-47276fd02419caab9a3f2dec0ef4a962.json",
+              "maxBytes": 65536
+            },
+            "cursor": 0,
+            "reply": null,
+            "outcome": {
+              "state": "uncertain",
+              "detail": "worker ended before a correlated turn end",
+              "edge": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+              "child": "instar20-a0dbef237c2162d903c80213:86135:1792169452"
+            },
+            "attempts": 1,
+            "retryAt": 0,
+            "batch": [
+              "telegram:12345678:update:1016105"
+            ]
+          }
+        ],
+        "close": null,
+        "reserved": true,
+        "spent": 12,
+        "claimCalls": 12
+      },
+      "sessionJournal": {
+        "sessions": [
+          {
+            "name": "instar20-a0dbef237c2162d903c80213",
+            "operation": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+            "claim": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+            "incarnation": "1792169439466:1",
+            "resumeId": "a3b3bc67-402a-4d32-a3a5-4a87af1d3b16",
+            "recovery": 0,
+            "startedAt": 1792169452430,
+            "identity": "instar20-a0dbef237c2162d903c80213:86135:1792169452",
+            "turnDeadline": 1792183852945,
+            "turnStartedAt": 1792169452945,
+            "closedAt": null,
+            "turnCloseEvidence": null,
+            "connectionRetry": {
+              "turnStartedAt": 1792169452945,
+              "attempt": 10
+            },
+            "turnBaseline": "sha256:d9a7aefaee88a010c4a52caf820957638a532b80a26a8c242b1045732b7da72b",
+            "turnReceiptIds": []
+          }
+        ],
+        "deliveries": [
+          {
+            "operation": "telegram:12345678:update:1016105",
+            "processIdentity": "instar20-a0dbef237c2162d903c80213:86135:1792169452",
+            "intake": "telegram:12345678:update:1016105",
+            "digest": "sha256:59f9a7e7a497b373d27368bd39f663c9ea5f8afa2a436fac9cbfb91830ce858f",
+            "incarnation": "1792169439466:1",
+            "identity": "instar20-a0dbef237c2162d903c80213:86135:1792169452",
+            "state": "accepted",
+            "baseline": "sha256:d9a7aefaee88a010c4a52caf820957638a532b80a26a8c242b1045732b7da72b",
+            "redeliveries": 0,
+            "evidence": "tmux-input:telegram:12345678:update:1016105"
+          }
+        ],
+        "resumes": {
+          "conversation-c5fc3bed7aab3415bfa4394644100dae-1": "a3b3bc67-402a-4d32-a3a5-4a87af1d3b16"
+        },
+        "reservations": []
+      },
+      "journal": [
+        {
+          "kind": "intake",
+          "id": "telegram:12345678:update:1016105",
+          "update": 1016105,
+          "text": "I prefer tea to coffee. Tell me which drink I prefer in one short sentence.",
+          "raw": "{\"update_id\":1016105,\"message\":{\"message_id\":1016105,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Proof operator\"},\"chat\":{\"id\":7812716706,\"type\":\"private\"},\"date\":1792169432,\"text\":\"I prefer tea to coffee. Tell me which drink I prefer in one short sentence.\"}}",
+          "accepted": true,
+          "cursor": 1016106,
+          "at": 1792169440055,
+          "writer": {
+            "id": "7812716706",
+            "kind": "person",
+            "adapter": "telegram-bot-api:offline-test-endpoint",
+            "class": "channel-attested",
+            "reference": "capture:telegram-bot-api:offline-test-endpoint:f0609193030f091be65217ade10e6f01ab13a27435b2ade1582161a10d711162",
+            "hash": "sha256:b6385ab399ddbd7b46e92bcd344258f27b77c4d8fc52107bbcc5ddcea9684e18"
+          }
+        },
+        {
+          "kind": "session-work",
+          "record": {
+            "type": "SessionWorkEdge",
+            "schemaVersion": 1,
+            "id": "operator-d28386c09804d69405bb31d8c5292aef:allowance",
+            "parent": "launch:telegram/bot-12345678/chat-7812716706",
+            "child": "operator-d28386c09804d69405bb31d8c5292aef",
+            "scope": "/private/tmp/its-8ed28213bdbc",
+            "owner": "DaBombs-Mac-Studio.local",
+            "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+            "budget": {
+              "steps": 1,
+              "deadline": 1794519600000,
+              "maxResultBytes": 65536,
+              "calls": 128,
+              "tokens": null
+            },
+            "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+            "placement": "machine:DaBombs-Mac-Studio.local",
+            "transport": "tmux session on this machine",
+            "resultDestination": "/private/tmp/its-8ed28213bdbc",
+            "openedAt": 1792169450049
+          },
+          "at": 1792169450074
+        },
+        {
+          "kind": "session-work",
+          "record": {
+            "type": "SessionWorkEdge",
+            "schemaVersion": 1,
+            "id": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+            "parent": "operator-d28386c09804d69405bb31d8c5292aef:allowance",
+            "child": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+            "scope": "/private/tmp/its-8ed28213bdbc",
+            "owner": "DaBombs-Mac-Studio.local",
+            "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+            "budget": {
+              "steps": 1,
+              "deadline": 1794519600000,
+              "maxResultBytes": 65536,
+              "calls": 128,
+              "tokens": null
+            },
+            "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+            "placement": "machine:DaBombs-Mac-Studio.local",
+            "transport": "tmux session on this machine",
+            "resultDestination": "/private/tmp/its-8ed28213bdbc",
+            "openedAt": 1792169450049,
+            "drawsOn": "operator-d28386c09804d69405bb31d8c5292aef:allowance"
+          },
+          "at": 1792169450088
+        },
+        {
+          "kind": "session-work",
+          "record": {
+            "type": "SessionWorkEdge",
+            "schemaVersion": 1,
+            "id": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:process",
+            "parent": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+            "child": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+            "scope": "/private/tmp/its-8ed28213bdbc",
+            "owner": "DaBombs-Mac-Studio.local",
+            "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+            "budget": {
+              "steps": 1,
+              "deadline": 1792183850049,
+              "maxResultBytes": 65536,
+              "calls": 128,
+              "tokens": null
+            },
+            "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+            "placement": "machine:DaBombs-Mac-Studio.local",
+            "transport": "tmux session on this machine",
+            "resultDestination": "/private/tmp/its-8ed28213bdbc",
+            "openedAt": 1792169450049,
+            "drawsOn": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge"
+          },
+          "at": 1792169450984
+        },
+        {
+          "kind": "model-uncertain",
+          "id": "telegram:12345678:update:1016105",
+          "state": "uncertain",
+          "latencyMs": 181712,
+          "at": 1792169631734
+        },
+        {
+          "kind": "notice",
+          "id": "telegram:12345678:update:1016105",
+          "noticeClass": "unknown-answer",
+          "at": 1792169631740
+        },
+        {
+          "kind": "reply-check",
+          "id": "telegram:12345678:update:1016105",
+          "result": {
+            "verdict": "pass",
+            "ruleIds": [],
+            "confidence": null,
+            "path": "holding",
+            "latencyMs": 0,
+            "candidateDigest": "7e1c02df045a870387ff2c49264100b7cf8c747d99cd69cb70c8c84932ed99c2"
+          },
+          "at": 1792169631747
+        },
+        {
+          "kind": "intent",
+          "id": "telegram:12345678:update:1016105",
+          "text": "The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.",
+          "body": "The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.",
+          "chat": "7812716706",
+          "provenance": {
+            "speaker": "infrastructure",
+            "principal": "infrastructure:preview-runner:12345678",
+            "signer": "sha256:b0fee6096ed5bedc28deed14ea7fb2cabca8ea801cc6341ec564ae948defe3b8",
+            "contentHash": "sha256:dcdc8b9b22cb348855ba9f39bcb6665b61d604770fb12a03cf088c9951f50fa3",
+            "signature": "9534514cf58167f41e3a3cdf56c651bb2bdac7c6c19357a53bd8a36816183760e22fd5c85a2e559aba653100b5ebec9e279f1e872a81fe589b2c8dd7760d7d02"
+          },
+          "promises": [],
+          "fulfills": [],
+          "update": 1016105,
+          "grant": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+          "at": 1792169631753
+        },
+        {
+          "kind": "sent",
+          "id": "telegram:12345678:update:1016105",
+          "message": 1,
+          "latencyMs": 79,
+          "at": 1792169631832
+        }
+      ],
+      "sends": [
+        {
+          "chat_id": "7812716706",
+          "text": "The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.",
+          "parse_mode": "HTML"
+        }
+      ]
+    },
+    {
+      "name": "transient",
+      "update": 1016106,
+      "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/socketdrop-1016b-evidence/proof-transient",
+      "owner": {
+        "version": 1,
+        "conversation": "operator-d28386c09804d69405bb31d8c5292aef:main",
+        "epoch": 7,
+        "edge": {
+          "type": "SessionWorkEdge",
+          "schemaVersion": 1,
+          "id": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+          "parent": "launch:telegram/bot-12345678/chat-7812716706",
+          "child": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+          "scope": "/private/tmp/its-b0908f96a42c",
+          "owner": "DaBombs-Mac-Studio.local",
+          "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+          "budget": {
+            "steps": 1,
+            "deadline": 1794519600000,
+            "maxResultBytes": 65536,
+            "calls": 128,
+            "tokens": null
+          },
+          "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+          "placement": "machine:DaBombs-Mac-Studio.local",
+          "transport": "tmux session on this machine",
+          "resultDestination": "/private/tmp/its-b0908f96a42c",
+          "openedAt": 1792169660974
+        },
+        "worker": {
+          "launch": "instar20-4d5b0c26c8663eb24092022c:4394:1792169679",
+          "incarnation": "1792169660000:7",
+          "claim": "conversation-c5fc3bed7aab3415bfa4394644100dae-7"
+        },
+        "claim": "conversation-c5fc3bed7aab3415bfa4394644100dae-7",
+        "incarnation": "1792169660000:7",
+        "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+        "deadline": 1792184077267,
+        "turns": 1,
+        "inputs": [
+          {
+            "request": {
+              "operation": "telegram:12345678:update:1016106"
+            },
+            "digest": "sha256:c1a4397714bba3c695358d6b6d46433977e06eb092e45f460501007cb3796d69",
+            "acceptedAt": 1792169660940,
+            "state": "settled",
+            "delivery": {
+              "launch": "instar20-4d5b0c26c8663eb24092022c:4394:1792169679",
+              "incarnation": "1792169660000:7",
+              "claim": "conversation-c5fc3bed7aab3415bfa4394644100dae-7",
+              "operation": "telegram:12345678:update:1016106",
+              "digest": "sha256:245d8186cd307ffb24eb020f5ecbbdcb76612233b81374f8556fff7a20208910",
+              "resultPath": "/private/tmp/its-b0908f96a42c/conversation-5ac16c02994885ee86e8a42084aa5660.json",
+              "maxBytes": 65536
+            },
+            "cursor": 2,
+            "reply": "{\"reply\":{\"answer\":\"51\"},\"memory\":[],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+            "outcome": {
+              "state": "complete",
+              "text": "{\"reply\":{\"answer\":\"51\"},\"memory\":[],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+              "detail": "correlated reply and turn end",
+              "edge": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+              "child": "instar20-4d5b0c26c8663eb24092022c:4394:1792169679"
+            },
+            "attempts": 1,
+            "retryAt": 0,
+            "batch": [
+              "telegram:12345678:update:1016106"
+            ]
+          }
+        ],
+        "close": null,
+        "reserved": true,
+        "spent": 3,
+        "claimCalls": 3
+      },
+      "sessionJournal": {
+        "sessions": [
+          {
+            "name": "instar20-4d5b0c26c8663eb24092022c",
+            "operation": "conversation-c5fc3bed7aab3415bfa4394644100dae-7",
+            "claim": "conversation-c5fc3bed7aab3415bfa4394644100dae-7",
+            "incarnation": "1792169660000:7",
+            "resumeId": "c2b2a0b1-f1bd-4435-a82a-b08de4175ff8",
+            "recovery": 0,
+            "startedAt": 1792169679897,
+            "identity": "instar20-4d5b0c26c8663eb24092022c:4394:1792169679",
+            "turnDeadline": null,
+            "turnStartedAt": 1792169680505,
+            "closedAt": 1792169701075,
+            "turnCloseEvidence": "turn-closed:instar20-4d5b0c26c8663eb24092022c:1792169701075",
+            "connectionRetry": null,
+            "turnBaseline": "sha256:272dbee06e40a833e6923c1182fff9f199362f8883348acf063b10bc721788ba",
+            "turnReceiptIds": []
+          }
+        ],
+        "deliveries": [
+          {
+            "operation": "telegram:12345678:update:1016106",
+            "processIdentity": "instar20-4d5b0c26c8663eb24092022c:4394:1792169679",
+            "intake": "telegram:12345678:update:1016106",
+            "digest": "sha256:245d8186cd307ffb24eb020f5ecbbdcb76612233b81374f8556fff7a20208910",
+            "incarnation": "1792169660000:7",
+            "identity": "instar20-4d5b0c26c8663eb24092022c:4394:1792169679",
+            "state": "accepted",
+            "baseline": "sha256:272dbee06e40a833e6923c1182fff9f199362f8883348acf063b10bc721788ba",
+            "redeliveries": 0,
+            "evidence": "tmux-input:telegram:12345678:update:1016106"
+          }
+        ],
+        "resumes": {
+          "conversation-c5fc3bed7aab3415bfa4394644100dae-7": "c2b2a0b1-f1bd-4435-a82a-b08de4175ff8"
+        },
+        "reservations": []
+      },
+      "journal": [
+        {
+          "kind": "intake",
+          "id": "telegram:12345678:update:1016106",
+          "update": 1016106,
+          "text": "What is 17 times 3? Reply with the number.",
+          "raw": "{\"update_id\":1016106,\"message\":{\"message_id\":1016106,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Proof operator\"},\"chat\":{\"id\":7812716706,\"type\":\"private\"},\"date\":1792169651,\"text\":\"What is 17 times 3? Reply with the number.\"}}",
+          "accepted": true,
+          "cursor": 1016107,
+          "at": 1792169660795,
+          "writer": {
+            "id": "7812716706",
+            "kind": "person",
+            "adapter": "telegram-bot-api:offline-test-endpoint",
+            "class": "channel-attested",
+            "reference": "capture:telegram-bot-api:offline-test-endpoint:32c6b30747fb43576d05ea6fe5dc5660472e1f00a2647246b0ca356ca4815a2f",
+            "hash": "sha256:b6385ab399ddbd7b46e92bcd344258f27b77c4d8fc52107bbcc5ddcea9684e18"
+          }
+        },
+        {
+          "kind": "session-work",
+          "record": {
+            "type": "SessionWorkEdge",
+            "schemaVersion": 1,
+            "id": "operator-d28386c09804d69405bb31d8c5292aef:allowance",
+            "parent": "launch:telegram/bot-12345678/chat-7812716706",
+            "child": "operator-d28386c09804d69405bb31d8c5292aef",
+            "scope": "/private/tmp/its-b0908f96a42c",
+            "owner": "DaBombs-Mac-Studio.local",
+            "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+            "budget": {
+              "steps": 1,
+              "deadline": 1794519600000,
+              "maxResultBytes": 65536,
+              "calls": 128,
+              "tokens": null
+            },
+            "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+            "placement": "machine:DaBombs-Mac-Studio.local",
+            "transport": "tmux session on this machine",
+            "resultDestination": "/private/tmp/its-b0908f96a42c",
+            "openedAt": 1792169660974
+          },
+          "at": 1792169661006
+        },
+        {
+          "kind": "session-work",
+          "record": {
+            "type": "SessionWorkEdge",
+            "schemaVersion": 1,
+            "id": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+            "parent": "operator-d28386c09804d69405bb31d8c5292aef:allowance",
+            "child": "conversation-c5fc3bed7aab3415bfa4394644100dae-1",
+            "scope": "/private/tmp/its-b0908f96a42c",
+            "owner": "DaBombs-Mac-Studio.local",
+            "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+            "budget": {
+              "steps": 1,
+              "deadline": 1794519600000,
+              "maxResultBytes": 65536,
+              "calls": 128,
+              "tokens": null
+            },
+            "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+            "placement": "machine:DaBombs-Mac-Studio.local",
+            "transport": "tmux session on this machine",
+            "resultDestination": "/private/tmp/its-b0908f96a42c",
+            "openedAt": 1792169660974,
+            "drawsOn": "operator-d28386c09804d69405bb31d8c5292aef:allowance"
+          },
+          "at": 1792169661022
+        },
+        {
+          "kind": "session-work",
+          "record": {
+            "type": "SessionWorkEdge",
+            "schemaVersion": 1,
+            "id": "conversation-c5fc3bed7aab3415bfa4394644100dae-7:process",
+            "parent": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+            "child": "conversation-c5fc3bed7aab3415bfa4394644100dae-7",
+            "scope": "/private/tmp/its-b0908f96a42c",
+            "owner": "DaBombs-Mac-Studio.local",
+            "authority": "continuing conversation grant preview-harness-profile-gearfinity3d-v1-activation bytes 63d64850e474b188cd11acca8d138c1548d3c92a753ff89d0cd8b7ac518039f6: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-gearfinity3d-v1-activation",
+            "budget": {
+              "steps": 1,
+              "deadline": 1792184077267,
+              "maxResultBytes": 65536,
+              "calls": 128,
+              "tokens": null
+            },
+            "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+            "placement": "machine:DaBombs-Mac-Studio.local",
+            "transport": "tmux session on this machine",
+            "resultDestination": "/private/tmp/its-b0908f96a42c",
+            "openedAt": 1792169677267,
+            "drawsOn": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge"
+          },
+          "at": 1792169678501
+        },
+        {
+          "kind": "answer",
+          "id": "telegram:12345678:update:1016106",
+          "text": "51\n\nModel route check: preview-subscription/claude-sonnet-5 is unverified; typesafe-jev/jev-1.13.0 is unverified.",
+          "state": "complete",
+          "memory": [],
+          "dated": [],
+          "notices": [
+            {
+              "key": "doorway:1792169654951",
+              "line": "Model route check: preview-subscription/claude-sonnet-5 is unverified; typesafe-jev/jev-1.13.0 is unverified."
+            }
+          ],
+          "usage": {
+            "inputTokens": null,
+            "outputTokens": null,
+            "charge": null
+          },
+          "latencyMs": 1,
+          "at": 1792169701177
+        },
+        {
+          "kind": "intent",
+          "id": "telegram:12345678:update:1016106",
+          "text": "51\n\nModel route check: preview-subscription/claude-sonnet-5 is unverified; typesafe-jev/jev-1.13.0 is unverified.",
+          "body": "51\n\nModel route check: preview-subscription/claude-sonnet-5 is unverified; typesafe-jev/jev-1.13.0 is unverified.",
+          "chat": "7812716706",
+          "provenance": {
+            "speaker": "agent",
+            "principal": "agent:telegram-bot:12345678",
+            "signer": "sha256:b0fee6096ed5bedc28deed14ea7fb2cabca8ea801cc6341ec564ae948defe3b8",
+            "contentHash": "sha256:ed874ab920b2ea1f177597e20c9ece53664726987c638cd9dedff7f5f3011d9b",
+            "signature": "ca8cc40a0c081ce4b20d4dbcb784b96f3c1c932574899c8a02664ce637a139a3b6ec33d0bdf5b7d5ae8787e514788713b5193df37db63557e552c8d644126a08"
+          },
+          "promises": [],
+          "fulfills": [],
+          "update": 1016106,
+          "grant": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+          "at": 1792169701185
+        },
+        {
+          "kind": "sent",
+          "id": "telegram:12345678:update:1016106",
+          "message": 1,
+          "latencyMs": 78,
+          "at": 1792169701264
+        }
+      ],
+      "sends": [
+        {
+          "chat_id": "7812716706",
+          "text": "51\n\nModel route check: preview-subscription/claude-sonnet-5 is unverified; typesafe-jev/jev-1.13.0 is unverified.",
+          "parse_mode": "HTML"
+        }
+      ]
+    }
+  ]
+}

@@ -81,10 +81,10 @@ it.each([
       return;
     }
     expect(words?.items).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'statement', topic: '3',
-      source: 'telegram:8994258214:update:715676485', excerpt: expect.stringContaining('Approval requested: may the test build machine') })]));
+      source: 'telegram:8994258214:update:715676485', ownWords: expect.stringContaining('Approval requested: may the test build machine') })]));
     if (update === 715676488) expect(words?.items).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'promise', topic: '3',
-      state: 'open', excerpt: "I will not restart it before 5 pm Pacific tomorrow, October 16, and even after that time, I won't restart it without your explicit go-ahead first." })]));
-    expect(words.items.every((item: { at: string }) => /^2026-10-15 22:0[013] PDT$/u.test(item.at))).toBe(true);
+      state: 'open', ownWords: expect.stringContaining("I will not restart it before 5 pm Pacific tomorrow, October 16, and even after that time, I won't restart it without your explicit go-ahead first.") })]));
+    expect(words.items.every((item: { ownWords: string }) => /^when I said it: 2026-10-15 22:0[013] PDT \(reply delivery\); operator input received:/u.test(item.ownWords))).toBe(true);
     expect(words.guidance).toContain('Reconcile your answer');
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 }, 120000);

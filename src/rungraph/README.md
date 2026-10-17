@@ -156,3 +156,10 @@ Production probes, cadence and Tier-1 supervision remain eleven's assembly duty.
 
 - `rungraph-core`: records each run as signed facts and refuses a step outside its budget or grant.
   Details: records each run's opening, grounding, steps, transitions and exit as signed facts, and refuses a step outside its declared budget or grant.
+
+Helper return accounting binds each new or received delegation destination to its
+accountable parent run and edge before custody. The session-work collector selects
+only the top-level attempt, so nested child edges cannot hide a completed result.
+Failed or stalled launched helpers retain their recorded diagnosis and exact child
+identity on collection; they stay uncertain for replay because they may have acted.
+Only a proven pre-launch refusal permits the existing bounded next-step schedule.
