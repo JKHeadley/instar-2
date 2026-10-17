@@ -33,7 +33,7 @@ const topicOfBody = source.split('topicOf: operation => {')[1]!.split('\n       
 const update = (id: number, text: string, thread?: number) => ({ update_id: id,
   message: { message_id: id, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
     ...(thread === undefined ? {} : { message_thread_id: thread, is_topic_message: true }) } });
-function fixture(forum = false, prepared = false, maxSessions = 2, timeZone = 'America/Los_Angeles') {
+function fixture(forum = false, prepared = false, maxSessions = 2, timeZone = 'America/Los_Angeles', lifetime = 2000) {
   const root = mkdtempSync(join(tmpdir(), 'topic-session-journal-')); roots.push(root);
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
     kind: 'genesis', bot: '12345678', chat: forum ? '-7654321' : '7654321', operator: '7654321', ...(forum ? { forum: true } : {}), grant: 'grant:preview',
@@ -53,7 +53,7 @@ function fixture(forum = false, prepared = false, maxSessions = 2, timeZone = 'A
     context: assemblyRuntimeFixture().c, conversation: 'operator', topicOf,
     allowanceDeadline: 9999999999999, authorized: () => true, currentAuthority: () => 'grant',
     prepareTurn: async () => quota,
-    maxSessions, capacity: async () => ({ admit: capacity, memoryPressure: false }), idleMs: 500, deadlineMs: 2000, pollMs: 25, maxSteps: 3, maxCalls: 10, maxResultBytes: 65536,
+    maxSessions, capacity: async () => ({ admit: capacity, memoryPressure: false }), idleMs: 500, deadlineMs: lifetime, pollMs: 25, maxSteps: 3, maxCalls: 10, maxResultBytes: 65536,
     now: () => now, stopped: () => journal.view.stop !== null, parent: 'run', owner: 'machine', placement: 'local', transport: 'fake',
     workingScope: '/scope', resultDirectory: '/scope/results', artifact: 'artifact', incarnation: 'boot',
     store: { load: () => state, save: next => { state = structuredClone(next); } },
@@ -82,7 +82,8 @@ function fixture(forum = false, prepared = false, maxSessions = 2, timeZone = 'A
         return { observations: [{ kind: 'reply', delivery: input.delivery.operation, text,
           digest: `sha256:${createHash('sha256').update(text).digest('hex')}` },
         { kind: 'turn-end', delivery: input.delivery.operation, state: 'completed' }], cursor: input.cursor + 2, complete: true };
-      }, control: async () => ({ state: 'closed', evidence: 'fake' }),
+      }, observeIdle: async input => held.has(topic) ? null : `idle:${input.launch}:${state!.topics[topic]!.turns}`,
+      control: async () => ({ state: 'closed', evidence: 'fake' }),
     }),
   }));
   const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
@@ -101,6 +102,7 @@ function fixture(forum = false, prepared = false, maxSessions = 2, timeZone = 'A
       answer: conversationSessionAnswer(saved.outcome, id, () => {}) };
   };
   const worker = createJournalWorker(journal, { timeZone, topicConcurrency: maxSessions, groupDisclosure: async () => verifiedAudience, now: () => now, stopped: () => false, model, modelBatch: async inputs => { if (batchFailure) throw batchFailure; return modelBatch(inputs); }, collectModel,
+    statusLines: () => port.idleCleanupStatus?.() ?? [],
     sources: () => evidence ? [evidence] : [],
     prepareModel: input => prepared ? prepareJournalEnvelope(input, 'offline-model', 'grant:offline', now, 262144) : JSON.stringify(input), checkOutbound: () => {},
     send: async input => {
@@ -139,10 +141,12 @@ it('a newly arriving topic answers during another busy turn, routes its own repl
 });
 
 it('the general topic is one session and idle replacement retains its journal-grounded history', async () => {
-  const f = fixture();
+  const f = fixture(false, false, 2, 'America/Los_Angeles', 600000);
   try {
     f.worker.intake([update(1, 'The boat is at berth K4.')]); await f.worker.drain();
-    f.advance(500); await f.port.maintain(); expect(f.live()).toBe(0);
+    f.advance(500); await f.port.maintain(); expect(f.live()).toBe(1);
+    f.advance(120000); await f.port.maintain(); expect(f.live()).toBe(1);
+    f.advance(30000); await f.port.maintain(); expect(f.live()).toBe(0);
     f.worker.intake([update(2, 'Where is the boat?')]); await f.worker.drain();
     expect(f.launches).toEqual(['main', 'main']);
     expect(f.deliveries[1]!.input.text).toContain('The boat is at berth K4.');
@@ -547,5 +551,27 @@ it.each(['capacity', 'quota'] as const)('%s wait sends an honest acknowledgement
     f[cause](true); await f.port.maintain(); await f.worker.drain(); await f.worker.drain();
     expect(f.sent).toHaveLength(2); expect(f.sent.every(row => row.thread === 7)).toBe(true);
     expect(f.deliveries).toHaveLength(1);
+  } finally { await f.close(); }
+});
+
+
+it('confirmed idle closure is journaled and reaches the existing status reply without an unsolicited send', async () => {
+  const f = fixture(false, false, 2, 'America/Los_Angeles', 600000);
+  try {
+    f.worker.intake([update(101, 'Remember berth K4.')]); await f.worker.drain();
+    f.advance(500); await f.port.maintain(); f.advance(120000); await f.port.maintain();
+    f.advance(30000); await f.port.maintain();
+    expect(f.sent).toHaveLength(1); expect(f.live()).toBe(0);
+    const closures = f.journal.sessionWorkRecords().filter(row => row.type === 'SessionWorkEdgeClose' && row.id.endsWith(':idle-close'));
+    expect(closures).toHaveLength(1);
+    expect(closures[0]).toMatchObject({ state: 'complete', detail: expect.stringContaining('Conversation history and accepted messages are retained') });
+    expect(f.journal.view.turns.get('telegram:12345678:update:101')?.accepted).toBeDefined();
+    f.worker.intake([update(102, 'status')]); await f.worker.drain();
+    expect(f.sent.at(-1)?.text).toContain('warm worker(s) closed');
+    expect(source).toContain('...(sessionWork?.port.idleCleanupStatus?.() ?? [])');
+    f.worker.intake([update(103, 'Where is the boat?')]); await f.worker.drain();
+    expect(f.port.idleCleanupStatus?.()).toEqual([]);
+    expect(f.journal.sessionWorkRecords().filter(row => row.type === 'SessionWorkEdgeClose' && row.id.endsWith(':idle-close'))).toHaveLength(1);
+    expect(f.deliveries.at(-1)?.input.text).toContain('berth K4');
   } finally { await f.close(); }
 });
