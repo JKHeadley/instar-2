@@ -26,6 +26,8 @@ The supplied review range contains 2,853 inherited commits and 1,834 files. Its 
 before: 9/10 passed; 1 failed; report sha256 de48b45d0a70c05fc9d06fa595c62c21ed6b1f4ecfb190a6e42561f06b57bbf1.
 after: 10/10 passed; 0 failed; report sha256 2f119d60d06307b06ce371c713c8fd948d895de424713cbd92f3de8da00de7a5.
 
+Publication: Mechanically replayed generated/ from source commit 8698604b9dd457cfcb7d2f8f9870141a16c8239a, generation sha256:cb50e88a78971d7b1c9ad0da26d715a2d7b9ac88e1001037473e3e7dd623bad3.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reuse the existing guarded native contract renewal and mechanical publication. Start guards require Darwin, the exact runtime and complete closure; only stale certification may fail before renewal; all ten cases must pass afterward or the old declaration is restored. Existing admission, confinement, resource bounds, stop and durable accounting enforce the floors. No new machinery, capability reduction or live autonomous-completion claim.
