@@ -26,7 +26,7 @@ Prompt finding: 849db3a6296a | quoted-evidence | Existing empty-memory fixture r
 Prompt finding: e8708c7fea24 | protocol-literal | Existing sourceLabel attribution protocol retained.
 Deferral: tests/preview/fixtures/ownword-time-1016.json.gz:122 | not-a-deferral=Inherited compressed recorded evidence, not a promise to defer this repair.
 
-Verification: Typecheck and build pass; 450 tests in nine conflict-focused portable files pass. Architecture reports only the explicitly permitted native Darwin composition certificate mismatch. Final register and pinned-text verification are recorded in the repair report.
+Verification: Typecheck and build pass; 450 tests in nine conflict-focused portable files pass. Architecture reports only the explicitly permitted native Darwin composition certificate mismatch. Register replay binds generated artifacts to source commit e81a424172d5c6484540a966e0d92322ebd2a3e9; this record also covers that publication. Final register and pinned-text verification are recorded in the repair report.
 
 simplestRobustRoute: This is the simplest robust route: compose existing controls and retain both behavior histories and tests, then regenerate derived pins. No new mechanism. Start guards are exact owned worker and accepted delivery; limits remain original deadline, cap, stop and uncertainty; end guards remain correlated reply and turn close. No unattended live acceptance claim is made.
 80/20: Target the actual conflict boundaries and captured shapes; Studio owns full-suite execution and native Darwin conformance renewal.
