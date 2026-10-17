@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Exact live merge includes harness restoration and its existing certificate, although the manual repair is documentation and regenerated publication.
-Side effects: Both README sections survive; automatic source merges preserve fresh held-access context and nonblocking restoration. Existing ready polling stays in conversation and delegated-work owners. Keep the live native certificate byte-identical; a composition mismatch requires Studio renewal rather than a declaration fabricated on Linux. Generated publications are replayed from merged sources.
+Side effects: Both README sections survive; automatic source merges preserve fresh held-access context and nonblocking restoration. Existing ready polling stays in conversation and delegated-work owners. Keep the live native certificate byte-identical; a composition mismatch requires Studio renewal rather than a declaration fabricated on Linux. Generated publications are replayed from merged source commit 0b7e40d33cdeda2f5eadac6c430cd4239f9c97e8; all owner and inventory pins already match (zero updates).
 Undo and recovery: Revert this merge with a new reviewed commit and regenerate publications; do not rewrite history or replay uncertain effects. No live installation is changed here.
 Multi-machine posture: Build work is local to WSL; source history travels through git. Runtime restoration and custody remain machine-local beneath existing distributed ownership fences. Studio lane files are read-only.
 Layer below: Full main constitution; both merge parents; restoration launch, readiness, delivery and stop boundaries; incident fixture update 969390559; existing README sections and publication generators.
