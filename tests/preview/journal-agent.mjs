@@ -2653,6 +2653,7 @@ async function main() {
           // the port keeps one shared step/call ceiling across all selected logins.
           return { owner: driver.owner, launch: input => { handoff?.bindClaim(input.claim); driver = create(); const result = driver.launch(input);
               if (result.kind === 'Success') handoff?.launched(); return result; },
+            continuationReady: identity => driver.continuationReady(identity),
             deliver: input => driver.deliver(input), recoverContext: (identity, pending) => driver.recoverContext(identity, pending), observe: input => {
               const observed = driver.observe(input);
               // Reuse the session adapter's existing typed rate-limit observation. The step remains

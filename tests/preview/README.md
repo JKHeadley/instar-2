@@ -4437,3 +4437,15 @@ it does not claim coverage for idle workers that the driver has not recently obs
 or harnesses without this custody adapter. A proof-room check removes only a synthetic
 login after its worker starts, verifies one reminder and status, then tests restored
 custody, identity drift, stale samples and a restart/uncertain-send duplicate neighbor.
+
+### Conversation restoration keeps the host responsive
+
+A session launch records and submits any required agent-owned history, then returns its
+process identity. The conversation adapter and delegated-work owner poll
+`continuationReady` through their existing asynchronous wait. The host can therefore
+serve the session's model checkpoint and process shutdown signals while restoration is
+pending. Only the existing completion evidence admits the next operator input; an
+uncertain restoration, stop or expired original deadline still refuses delivery. The
+journal launch wrapper forwards this readiness observation when rebuilding a driver for
+a selected login. Incident replay and a real local HTTP checkpoint exercise the shared
+event loop in `tests/assembly/production-session-driver.test.ts`.
