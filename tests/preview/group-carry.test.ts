@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appendGroupCarry, buildCarriedMemory, groupCarryPacket, validCarriedMemory } from './group-carry.js';
-import { createJournalWorker, openPreviewJournal, openRequests, CARRIED_MEMORY_ITEM_SOURCE, MEMORY_ITEM_SHAPE, type JournalRecord } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, openRequests, CARRIED_MEMORY_ITEM_SOURCE, MEMORY_ITEM_SHAPE, PREFERENCE_DECISION, type JournalRecord } from './journal-test-worker.js';
 import { resolveGroupDisclosure, verifyGroupAudience, createGroupAudienceCache } from './group-disclosure.js';
 import { now, key, sealKey, scope, records, authority, membership, permissionFor } from './group-carry-fixture.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -121,7 +121,8 @@ it('names carried sources in memory guidance only for a carried root; a root wit
   const uncarried = createJournalWorker(w.source, { now: () => now - 1000, stopped: () => false,
     model: async input => { plain = input.context; return 'Noted.'; }, send: async () => 11, checkOutbound: () => {} });
   uncarried.intake([update(2, 'Where do we meet?')]); await uncarried.drain();
-  expect(decision(plain)).toContain(`style. ${MEMORY_ITEM_SHAPE} For an earlier answer`);
+  expect(decision(plain)).toContain(`${MEMORY_ITEM_SHAPE} Earlier answer correction:`);
+  expect(decision(plain)).toContain(PREFERENCE_DECISION);
   expect(plain).not.toContain(CARRIED_MEMORY_ITEM_SOURCE); expect(plain).not.toContain('predecessorMemory');
   appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false);
   let carried = '';
@@ -129,7 +130,8 @@ it('names carried sources in memory guidance only for a carried root; a root wit
     groupDisclosure: async () => true, model: async input => { carried = input.context; return 'The arboretum.'; },
     send: async () => 1, checkOutbound: () => {} });
   worker.intake([update(2, 'Where do we meet?', true)]); await worker.drain();
-  expect(decision(carried)).toContain(`style. ${MEMORY_ITEM_SHAPE} ${CARRIED_MEMORY_ITEM_SOURCE} For an earlier answer`);
+  expect(decision(carried)).toContain(`${MEMORY_ITEM_SHAPE} ${CARRIED_MEMORY_ITEM_SOURCE} Earlier answer correction:`);
+  expect(decision(carried)).toContain(PREFERENCE_DECISION);
   w.destination.close(); w.source.close();
 });
 
