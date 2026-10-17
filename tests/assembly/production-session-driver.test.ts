@@ -773,6 +773,11 @@ it('refuses changed identity and protects named sessions from stop', () => {
   expect(f.calls.filter(row => row[0] === 'kill-session')).toHaveLength(0);
 });
 
+it('leaves unconfined session tool selection with its existing harness defaults', () => {
+  const f = fixture(); f.launch();
+  expect(f.calls.find(row => row[0] === 'new-session')).not.toContain('--tools');
+});
+
 it.each(['claude-code', 'codex-cli'] as const)('an admitted %s session launches with every tool, the admission hook and the model-dispatch checkpoint', framework => {
   const f = fixture(framework);
   const toolAdmission = { command: (claim: string, phase: 'pre' | 'post') => `/node /repo/hook.mjs ${phase} /state/${claim}`, timeoutSeconds: 600 };
@@ -792,6 +797,7 @@ it.each(['claude-code', 'codex-cli'] as const)('an admitted %s session launches 
     expect(spawned).toContain('DISABLE_NON_ESSENTIAL_MODEL_CALLS=1');
     expect(spawned).toContain(`ANTHROPIC_BASE_URL=${modelGate('topic')}`);
   } else {
+    expect(spawned).not.toContain('--tools');
     expect(spawned).toEqual(expect.arrayContaining(['--dangerously-bypass-approvals-and-sandbox', '--dangerously-bypass-hook-trust',
       `hooks.PreToolUse=[{matcher='*',hooks=[{type='command',command='/node /repo/hook.mjs pre /state/topic',timeout=600}]}]`,
       `hooks.PostToolUse=[{matcher='*',hooks=[{type='command',command='/node /repo/hook.mjs post /state/topic',timeout=600}]}]`,
