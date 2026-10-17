@@ -1231,8 +1231,9 @@ it('revives a queued runner, stops on inhibited or none, and bounds relaunches a
       if (revival) appendRun(path, { v: 1, launch: at, exit: at + 1, reason: 'cycle limit reached', unfinished: 1, revival });
       return { code, signal: null };
     };
-    const supervise = () => superviseJournal(config, { launch: async () => script[launch]!(++launch * 10),
-      wait: async (_root: string, ms: number) => { waits.push(ms); } });
+    let now = 1000;
+    const supervise = () => superviseJournal(config, { now: () => now, launch: async () => script[launch]!(++launch * 10),
+      wait: async (_root: string, ms: number) => { waits.push(ms); now += ms; } });
     // Queued work after a clean exit is relaunched; an inhibited exit ends supervision.
     script.push(run('queued'), run('queued'), run('inhibited'));
     expect(await supervise()).toBe(0);

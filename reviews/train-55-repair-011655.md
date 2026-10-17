@@ -20,6 +20,7 @@ Hook bypass: none; core.hooksPath unset and common hooks directory has sample ho
 Convergence: none
 Decision: train55-repair-011655-compose | Combine recovery with persistent safety halts; a throttle Stop cannot erase its ceiling, and late Stop cannot count as timely completion. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-55-repair-011655-PROGRESS.md
 Decision: train55-repair-011655-freshness | Preserve advancing-evidence freshness and live scoped ended-tool status without refreshing time on polls or completed evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-55-repair-011655-PROGRESS.md
+Decision: train55-repair-011655-clock | Inject the supervisor test clock and advance it with backoff so the retained next-launch deadline is tested deterministically. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-55-repair-011655-PROGRESS.md
 Prompt review: No new model instruction or semantic classifier is authored by this resolution. Inherited live prompt edits retain their original reviews. Recorded summary, Jev, reply-review and delivered/empty reply shapes run through the retained recovery and safety-halt tests.
 Prompt finding: 4106b49fff07 | quoted-evidence | Existing limitation text in the topic-awareness fixture; no new phrase-triggered decision.
 Prompt finding: 849db3a6296a | quoted-evidence | Existing empty-memory response is fixture evidence rather than a new output requirement.
