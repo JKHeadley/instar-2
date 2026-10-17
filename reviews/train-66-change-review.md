@@ -41,7 +41,7 @@ Prompt finding: f6d7f3274c85 | protocol-literal | Existing instruction contract 
 Prompt finding: feadb66b8ad1 | protocol-literal | Existing instruction contract or explicit historical-prompt translation; no scenario answer is installed as a verdict trigger.
 Deferral: generated/register.json:1 | not-a-deferral=Existing register declarations replayed mechanically; no deferred work introduced.
 
-Subject (23 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/README.md, tests/preview/act-first.test.ts, tests/preview/answer-provenance-live-test.md, tests/preview/answer-provenance.ts, tests/preview/briefing.ts, tests/preview/claim-evidence.test.ts, tests/preview/correction-keep.test.ts, tests/preview/credential-label-boundary.test.ts, tests/preview/fixtures/memory-prefer-1016.json, tests/preview/journal-agent.mjs, tests/preview/journal.ts, tests/preview/memory-prefer.test.ts, tests/preview/no-handback.test.ts, tests/preview/reply-check.ts, tests/preview/review-yes-live.test.ts, tests/preview/selfdesc-abilities.test.ts
+Subject (26 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/README.md, tests/preview/act-first.test.ts, tests/preview/answer-provenance-live-test.md, tests/preview/answer-provenance.ts, tests/preview/briefing.ts, tests/preview/claim-evidence.test.ts, tests/preview/correction-keep.test.ts, tests/preview/credential-label-boundary.test.ts, tests/preview/fixtures/memory-prefer-1016.json, tests/preview/group-carry.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal-commitments.test.ts, tests/preview/journal-people.test.ts, tests/preview/journal.ts, tests/preview/memory-prefer.test.ts, tests/preview/no-handback.test.ts, tests/preview/reply-check.ts, tests/preview/review-yes-live.test.ts, tests/preview/selfdesc-abilities.test.ts
 
 
 
@@ -59,6 +59,9 @@ Decision: train-66-consumer | Refresh plain/carried-root memory-guidance asserti
 
 Consumer boundary repair: journal-commitments.test.ts added a 4 KiB filler after its inspect probe found summary-plus-recent with commitments. Combined guidance made that extra filler evict the optional commitment block. Ask at the established boundary instead; retain all three commitment, summary-frontier, continuity and briefing assertions. Yield between fixture turns so synchronous inspect children do not starve Vitest IPC. No production selection or budget change.
 Decision: train-66-commitment-fixture | Use the detected compaction boundary instead of a historical extra filler, preserving all outcome assertions; yield between fixture turns for runner responsiveness. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-66-PROGRESS.md
+
+Consumer benchmark repair: the 200-turn person-note runtime fixture used an 8000-byte synthetic packet, below the supported production floor. Expanded standing guidance evicted its optional people block while the durable notes remained. Give only that runtime benchmark 9000 bytes before and after restart; retain all recall, 200-turn and latency assertions and leave separate pressure/eviction tests and production limits unchanged.
+Decision: train-66-person-benchmark | Reserve enough synthetic packet headroom for the person-note runtime measurement while preserving dedicated pressure tests and all production guards. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-66-PROGRESS.md
 
 ## Closing block
 
