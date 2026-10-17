@@ -34,3 +34,5 @@ Decision: train58-054557-evidence | Preserve prior assertion repairs and run rec
 simplestRobustRoute: This is the simplest robust route: merge the named live head, retain independent documentation, regenerate existing derived artifacts and verify targeted consumers. No new machinery. Start from named commits, retain all floors, finish with pushed ancestry and measured checks; no unattended live acceptance claim.
 80/20: Targeted tests and typecheck plus cheap architecture, register and change-review checks. Full-suite and native-host proof remain the Studio gate's work.
 VERDICT: author submission; independent desk acceptance pending
+
+Publication: Delegated owner rehash and grounding repin both found zero stale source hashes. Replayed all seven generated artifacts from d5d21b8179f803287b30d78328e55655eb09161f, generation sha256:415a0856f2873db9eb5f419685a99ac5566841b99e45d20b622f07f29155900e. No certificate or declaration rewritten by repair.
