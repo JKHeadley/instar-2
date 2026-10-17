@@ -15,7 +15,7 @@ Undo and recovery: Revert this merge against its first parent and regenerate the
 Multi-machine posture: Identical repository composition on every host; existing replication, local login custody and ownership remain unchanged. WSL runs portable checks; Studio owns native launcher acceptance.
 Layer below: Read full purpose and rules, identical to origin/main, both README sections, memory recorded-shape replay and corrected self-state assertions, member merge reviews, generated source pins and existing repin/replay tooling. No safeguard or model ability narrowed.
 Bug class: integration
-Bug evidence: reproducer=tests/preview/memory-update-replaces.test.ts
+Bug evidence: reproducer=tests/preview/journal-people.test.ts
 Hook bypass: none; core.hooksPath unset; common hooks directory contains only sample hooks.
 Convergence: none
 Prompt review: This repair authors no model-facing text, parsing or acceptance changes. Preserve both parent paths and replay their existing recorded-shape tests; no claim of new live semantic proof.
@@ -31,12 +31,13 @@ Decision: train58-054557-merge | Merge exact live 5f31a9f2; concatenate independ
 Decision: train58-054557-publication | Keep first-parent generated artifacts provisionally, then regenerate pins and replay publication using delegated desk tools; never hand-edit hashes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-58-repair-054557-PROGRESS.md
 Decision: train58-054557-evidence | Preserve prior assertion repairs and run recorded memory replay; report WSL prelaunch refusal separately for Studio verification. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-58-repair-054557-PROGRESS.md
 
-simplestRobustRoute: This is the simplest robust route: merge the named live head, retain independent documentation, regenerate existing derived artifacts and verify targeted consumers. No new machinery. Start from named commits, retain all floors, finish with pushed ancestry and measured checks; no unattended live acceptance claim.
-80/20: Targeted tests and typecheck plus cheap architecture, register and change-review checks. Full-suite and native-host proof remain the Studio gate's work.
-VERDICT: author submission; independent desk acceptance pending
 
 Publication: Delegated owner rehash and grounding repin both found zero stale source hashes. Replayed all seven generated artifacts from d5d21b8179f803287b30d78328e55655eb09161f, generation sha256:415a0856f2873db9eb5f419685a99ac5566841b99e45d20b622f07f29155900e. No certificate or declaration rewritten by repair.
 
 Decision: train58-054557-people-budget | Extend the already-reviewed 118-byte synthetic fixture allowance to the 200-turn people benchmark, preserving 88 bytes of evidence room after quarter review reserve. Keep all recall, restart, sends and timing assertions; production budgets unchanged. Reproduced missing people at 8000 bytes, passes at 8118. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-58-repair-054557-PROGRESS.md
 
 Targeted evidence: Recorded memory replay passes 6/6. Access inventory, run completion and consumer, proactive compaction, credential reminders and installed login tests pass 55/55. People benchmark initially failed because the synthetic budget omitted the standing-preference allowance; after applying it, all original benchmark assertions pass (p95 189.2 ms, final-minus-first 230.7 ms). WSL self-state launcher refuses before launch at admission, prior to the repaired prompt assertions; Studio must verify that host-dependent test.
+
+simplestRobustRoute: This is the simplest robust route: merge the named live head, retain independent documentation, regenerate existing derived artifacts and verify targeted consumers. No new machinery. Start from named commits, retain all floors, finish with pushed ancestry and measured checks; no unattended live acceptance claim.
+80/20: Targeted tests and typecheck plus cheap architecture, register and change-review checks. Full-suite and native-host proof remain the Studio gate's work.
+VERDICT: author submission; independent desk acceptance pending
