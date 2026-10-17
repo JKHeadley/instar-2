@@ -8,15 +8,16 @@ import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, capabilitySentence, SEL
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS } from '../../src/assembly/tool-answer-guidance.js';
 import { readAnswer } from './answer-reading.js';
+import { CLAIM_EVIDENCE_GUIDANCE } from './answer-provenance.js';
 
 // These provider captures predate train-41's requested-step verification guidance.
 // Preserve the captures; the dedicated guidance tests cover the added instruction.
 const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
 
 const evidence = JSON.parse(readFileSync(new URL('./fixtures/train-12-capability-2026-10-12.json', import.meta.url), 'utf8'));
-// Historical prompts remain immutable; translate self-description and add literal-copy guidance.
+// Historical prompts remain immutable; translate self-description and add literal-copy and claim-evidence guidance.
 const currentInstructions = (text: string) => text.replace(text.split('\n').find(line => line.startsWith(SELF_IDENTITY))!, SELF_DESCRIPTION)
-  .replace('For a later-action promise', `${LITERAL_COPY_INSTRUCTIONS}\nFor a later-action promise`);
+  .replace('For a later-action promise', `${LITERAL_COPY_INSTRUCTIONS}\n${CLAIM_EVIDENCE_GUIDANCE}\nFor a later-action promise`);
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 
 // Replay the shipped second reading stage too: readAnswer serializes structured
