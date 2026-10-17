@@ -25,7 +25,7 @@ it('preserves recorded provider provenance and both merged work instructions', (
   for (const sample of capture.cases) {
     // The recording predates completion accounting. Keep its bytes honest: the merged
     // question inserts exactly the live checklist paragraph before the runner-task suffix.
-    const boundary = 'This is a runner task, not a message from the operator.';
+    const boundary = 'This is a runner task';
     const prefix = sample.after.question.slice(0, sample.after.question.indexOf(boundary));
     const suffix = sample.after.question.slice(sample.after.question.indexOf(boundary));
     expect(OBLIGATION_WORK_QUESTION.startsWith(prefix)).toBe(true);
