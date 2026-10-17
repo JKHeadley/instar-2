@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { createServer, get } from 'node:http';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -254,17 +255,22 @@ it('replays recorded summary, Jev, review, delivered and empty shapes across the
   expect(shapes.map(row => row.id)).toEqual(['summary:715672480', '715672483', '715672482', '969389570',
     '969389923', 'telegram:8994258214:update:715672479', 'telegram:8994258214:update:715672550']);
   for (const row of shapes) {
-    const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
-    f.changePane(row.raw); const sends = f.sends;
-    value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
-    expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
-    expect(f.sends).toBe(sends);
-    const adapter = createSessionConversationAdapter({ createDriver: () => f.driver,
+    const f = fixture('claude-code', rateConfig);
+    const driver = createProductionSessionDriver({ ...f.config, continuationRequired: () => true });
+    const adapter = createSessionConversationAdapter({ createDriver: () => driver,
       resolveDelivery: () => undefined, io: {
         clearResult: () => undefined, readResult: () => row.raw, modelCalls: () => 2,
         prepareAdmission: () => undefined, admissionState: () => ({ refused: false, openDelegations: [] }),
-        closeAdmission: () => undefined, wait: async () => undefined,
+        closeAdmission: () => undefined, wait: async () => { await new Promise(resolve => setImmediate(resolve)); f.hook(1000); },
       } });
+    const launched = await adapter.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test', incarnation: 'inc', workingScope: '/work' });
+    const id = launched.launch;
+    expect(f.journal.sessions[0]?.continuation?.state).toBe('completed');
+    value(f.deliver(id));
+    f.changePane(row.raw); const sends = f.sends;
+    value(driver.observe({ operation: 'deliver', processIdentity: id }));
+    expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
+    expect(f.sends).toBe(sends);
     f.changePane(`${recordedLimit}\n❯ `); f.hook(1000);
     const worker = { launch: id, incarnation: 'inc', claim: 'topic' };
     const delivery = { ...worker, operation: 'deliver', text: 'hello', digest: hash('hello'),
@@ -566,6 +572,7 @@ it.each(['claude-code', 'codex-cli'] as const)('reconstructs once from agent-own
   expect(f.calls.filter(row => row[0] === 'new-session')).toHaveLength(2);
   expect(f.calls.at(-1)).toBeDefined();
   expect(f.calls.filter(row => row[0] === 'new-session')[1]).not.toContain(resume);
+  expect(value(f.driver.continuationReady(next))).toBe(true);
   expect(f.journal.sessions.find(row => row.identity === next)?.continuation?.state).toBe('completed');
   expect(value(driver.launch({ operation: 'next', claim: 'topic', artifact: 'sha256:test',
     incarnation: 'next', workingScope: '/work', handles: [] }))).toBe(next);
@@ -621,6 +628,7 @@ it('keeps a prepared continuation when startup menu persists across launch retry
   expect(f.sends).toBe(0);
   f.changePane('❯ ');
   expect(value(driver.launch(launch))).toBe(next);
+  expect(value(driver.continuationReady(f.journal.sessions.at(-1)!.identity))).toBe(true);
   expect(f.journal.sessions.at(-1)?.continuation?.state).toBe('completed');
 });
 
@@ -641,6 +649,7 @@ it('checks readiness after reconciling a prepared continuation reservation', () 
   expect(f.sends).toBe(0);
   f.changePane('❯ ');
   value(driver.launch(launch));
+  expect(value(driver.continuationReady(f.journal.sessions.at(-1)!.identity))).toBe(true);
   expect(f.journal.sessions.at(-1)?.continuation?.state).toBe('completed');
 });
 
@@ -713,6 +722,7 @@ it('compacts an idle context wall once and then respawns through agent-owned con
   const next = value(f.driver.recoverContext(id));
   expect(next).not.toBe(id);
   expect(f.calls.some(row => row[0] === 'kill-session' && row[2]?.endsWith(':'))).toBe(true);
+  expect(value(f.driver.continuationReady(next))).toBe(true);
   expect(f.journal.sessions.find(row => row.identity === next)?.continuation?.state).toBe('completed');
   expect(f.calls.filter(row => row[0] === 'new-session')).toHaveLength(2);
   expect(f.journal.resumes.topic).toBe(f.journal.sessions.find(row => row.identity === next)?.resumeId);
@@ -736,6 +746,7 @@ it('retains context-wall continuation intent across a cut immediately after kill
   expect(spawned).toHaveLength(2);
   expect(spawned[1]).not.toContain('--resume');
   expect(spawned[1]).not.toContain(resume);
+  expect(value(f.driver.continuationReady(next))).toBe(true);
   expect(f.journal.sessions.find(row => row.identity === next)?.continuation?.state).toBe('completed');
 });
 
@@ -881,6 +892,7 @@ it('a new topic claim with prior history requires continuation even without a na
   const driver = createProductionSessionDriver({ ...f.config, continuationRequired: () => true });
   const id = value(driver.launch({ operation: 'new-claim', claim: 'new-claim', artifact: 'sha256:test',
     incarnation: 'next', workingScope: '/work', handles: [] }));
+  expect(value(driver.continuationReady(id))).toBe(true);
   expect(f.journal.sessions.find(row => row.identity === id)?.continuation?.state).toBe('completed');
   expect(f.calls.some(row => row.includes('--resume'))).toBe(false);
   const missing = createProductionSessionDriver({ ...f.config, maxSessions: 2, continuationRequired: () => true, continuation: undefined });
@@ -1132,6 +1144,7 @@ it('restores only after exact retirement, submits once without blocking the chec
   expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('launched');
   f.time(1001); f.hook(1001);
   expect(value(f.driver.observe({ operation: 'deliver', processIdentity: identity })).phase).toBe('output-observed');
+  expect(value(f.driver.continuationReady(f.journal.sessions.at(-1)!.identity))).toBe(true);
   expect(f.journal.sessions.at(-1)?.continuation?.state).toBe('completed');
 });
 
@@ -1243,4 +1256,47 @@ it('retains the infrastructure deadline cause after the exact process has gone',
   const first = value(f.driver.observe({ operation: 'observe', processIdentity: id }));
   expect(first.evidence).toBe(`safety-ceiling:deadline:${id}`);
   expect(value(f.driver.observe({ operation: 'again', processIdentity: id })).evidence).toBe(first.evidence);
+});
+
+// Incident 969390559: a restored native session must reach the host's model
+// checkpoint before it can emit Stop. Its previous synchronous wait starved both.
+it.each(['reply', 'stop', 'deadline'] as const)('restoration yields to the real host event loop: %s', async outcome => {
+  const incident = JSON.parse(readFileSync(new URL('../preview/fixtures/fastswitch-incident-1017.json', import.meta.url), 'utf8'));
+  expect(incident.continuation.state).toBe('accepted');
+  expect(incident.restoration.closedAt).toBeNull();
+  expect(incident.restoration.turnDeadline - incident.restoration.turnStartedAt).toBe(14_400_000);
+  const f = fixture('claude-code', { ...rateConfig, turnDeadlineMs: 1000 });
+  let requested = false, completed = false;
+  const server = createServer((_request, response) => {
+    requested = true;
+    if (outcome === 'stop') f.stop();
+    else if (outcome === 'deadline') f.time(2001);
+    else { f.time(1001); f.hook(1001); completed = true; }
+    response.end('recorded restoration acknowledged');
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw Error('test endpoint missing');
+  const driver = createProductionSessionDriver({ ...f.config, continuationRequired: () => true,
+    continuation: () => ({ text: 'Recorded history retained privately in incident evidence', source: incident.continuation.source }) });
+  f.onEnter(() => { get(`http://127.0.0.1:${address.port}`, response => response.resume()).on('error', () => undefined); });
+  const adapter = createSessionConversationAdapter({ createDriver: () => driver,
+    resolveDelivery: () => ({ launch: 'unused-by-fixture', incarnation: 'inc', claim: 'topic', operation: 'operator', text: 'hello', digest: hash('hello'), resultPath: '/work/result', maxBytes: 1000 }),
+    io: { clearResult() {}, readResult: () => null, modelCalls: () => 1, prepareAdmission() {},
+      admissionState: () => ({ refused: false, openDelegations: [] }), closeAdmission() {},
+      wait: async ms => { expect(f.journal.deliveries).toHaveLength(0); await new Promise(resolve => setTimeout(resolve, ms)); } } });
+  try {
+    const launch = adapter.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test', incarnation: 'inc', workingScope: '/work' });
+    if (outcome === 'reply') {
+      const worker = await launch;
+      expect(completed).toBe(true);
+      await adapter.deliver({ ...worker, operation: 'operator', text: 'hello', digest: hash('hello'), resultPath: '/work/result', maxBytes: 1000 });
+      expect(f.journal.deliveries).toHaveLength(1);
+    } else {
+      await expect(launch).rejects.toThrow(outcome === 'stop' ? /stop/ : /deadline/);
+      expect(f.journal.deliveries).toHaveLength(0);
+    }
+    expect(requested).toBe(true);
+    expect(f.calls.filter(row => row[0] === 'send-keys' && row.includes('Enter'))).toHaveLength(outcome === 'reply' ? 2 : 1);
+  } finally { await new Promise<void>(resolve => server.close(() => resolve())); }
 });

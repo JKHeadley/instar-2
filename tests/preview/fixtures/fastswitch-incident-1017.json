@@ -1,0 +1,54 @@
+{
+  "source": "copy of justin-group-20261010; native transcript e2d6d9b1-5f31-4eb2-ae52-02e9790cbd7e.jsonl",
+  "update": 969390559,
+  "acceptedAt": 1792264999790,
+  "sentAt": 1792266726279,
+  "reply": "probe-4b137aa6",
+  "restoration": {
+    "name": "instar20-aea14408a8243455ca049cb6",
+    "identity": "instar20-aea14408a8243455ca049cb6:42563:1792265002",
+    "startedAt": 1792265002224,
+    "turnStartedAt": 1792265002583,
+    "turnDeadline": 1792279402583,
+    "closedAt": null,
+    "turnCloseEvidence": null
+  },
+  "continuation": {
+    "state": "accepted",
+    "source": "journal:telegram:8820318295:update:969390558"
+  },
+  "nativeTimeline": [
+    {
+      "at": "2026-10-17T19:23:23.210Z",
+      "type": "user"
+    },
+    {
+      "at": "2026-10-17T19:51:49.215Z",
+      "type": "user"
+    },
+    {
+      "at": "2026-10-17T19:51:49.215Z",
+      "type": "assistant"
+    },
+    {
+      "at": "2026-10-17T19:51:52.262Z",
+      "type": "user"
+    },
+    {
+      "at": "2026-10-17T19:51:56.982Z",
+      "type": "assistant"
+    },
+    {
+      "at": "2026-10-17T19:51:58.436Z",
+      "type": "assistant"
+    },
+    {
+      "at": "2026-10-17T19:51:58.540Z",
+      "type": "user"
+    },
+    {
+      "at": "2026-10-17T19:52:01.244Z",
+      "type": "assistant"
+    }
+  ]
+}
