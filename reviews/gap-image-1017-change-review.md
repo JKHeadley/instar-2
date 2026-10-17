@@ -1,0 +1,28 @@
+# Change review — Continuing sessions receive attached images
+
+Subject base: 4be4caf90b6b2c11fd06e05d6f682c333620843e
+Review state: open
+Reviewed content: none
+Outcome: Deliver protected source-bound attachments to the existing continuing session's file-reading tool, with their access notices retained in the exact durable delivery before dispatch.
+Affected rules: 1, 4, 26, 32, 34, 36, 41, 49, 60, 62, 74, 75, 84, 100, 101, 105, 111, 113, 116
+Affected floors: secrets — reuse protectMediaBytes and encrypted source custody; spend cap — prepare files only after existing session admission and allowance checks, no new provider; stop — existing guard before and after preparation; no duplicate sends — original request identity, durable delivery and result/send paths unchanged; durable intake — encrypted original remains authoritative on success and failure
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Changes model-visible input and temporary protected file lifetime on the continuing-session path.
+Side effects: The existing per-turn bridge now exposes a synchronous resource handle while retaining its async wrapper. Continuing sessions prepare each batch member separately, attach source-labelled notices without changing request/envelope bytes, retain exact delivery before dispatch, and close all derivatives on end or failure. Topic-hashed temporary prefixes prevent sibling topics from sweeping each other's attachments. A subsequent admitted delivery clears that topic's crash residue; the existing session volume bounds storage. Voice retains its existing locally transcribed text path. Existing session transcripts retain their ordinary history; no new transcript store is introduced. A protected image may remain in that harness history, as other model-visible conversation data does; removing temporary files does not claim to remove model context. No alternate provider, download, notification, send, authority or queue is added.
+Undo and recovery: Revert this commit to remove the continuing-session bridge. Keep encrypted intake and uncertain outcomes; never replay a previously dispatched input to obtain new image proof. Temporary files are disposable derivatives; same-topic crash residue is swept on the next admitted preparation, and a missing source yields an honest unreadable notice.
+Multi-machine posture: Machine-local deliberately, like existing inbound media custody and bounded session volume. The current conversation owner opens only locally authenticated source bytes. Another machine lacking those bytes reports unreadability; no new refetch or replication policy is introduced.
+Layer below: Read the source-bound media custody, existing credential protection, generated private path handling, session admission, exact delivery digest, correlated turn-end, restart non-replay and cumulative call accounting. The original session route bypassed invokeMediaTurn entirely. The new host port runs after that route's admission; native file tools remain behind its existing admission hook.
+Bug class: user-facing
+Bug evidence: reproducer=tests/assembly/production-conversation-session.test.ts; live=tests/preview/fixtures/gap-image-1017.json
+Hook bypass: none
+Convergence: none
+Decision: gap-image-existing-bridge | Reuse protected media preparation and the admitted session's existing Read tool; no separate vision provider or second answer call. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/gap-image-1017-PROGRESS.md
+Decision: gap-image-delivery-lifetime | Bind notices to each source in the durable delivery; close files after correlated completion or failure and isolate crash sweeps by topic. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/gap-image-1017-PROGRESS.md
+Decision: gap-image-proof-honesty | Preserve the real walk refusal as failure evidence; local replay proves file wiring, not successful live recognition. A proof-room conversation remains required. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/gap-image-1017-PROGRESS.md
+Prompt review: Reuses the existing file-reading instruction, including source-data-not-authority and honest unreadability. The current attachment access section contains only the selected batch's source identities and file notices. Original request bytes remain unchanged. Replay retains update 715676899, reply 875 and native request req_011Cg8KRUWcUrBx2YR8Qrv6t from the read-only parity walk evidence. The model's historical failure is not rewritten to success. Existing recorded summary/uncertain, Jev undecided/unsure, reply-review, delivered and empty shapes remain covered by the directly affected session and media suites. A real proof-room run is not claimed from WSL.
+
+simplestRobustRoute: This is the simplest robust route through existing custody, file preparation, session admission and native file-reading tools. The small preparation port is necessary because continuing sessions bypass the per-turn bridge; it adds no independent vision service. Per-source directories prevent one batched image deleting another; topic-specific cleanup prevents another live session losing its image. Admission and stop guard the start, correlated turn end or failure closes derivatives, and existing source/volume/call limits bound the operation. No unattended live success is claimed until the required proof-room copy has run.
+80/20: Limit the repair to attachment delivery and targeted regression checks. The desk owns the native macOS composition certificate and real proof-room execution.
+VERDICT: author submission; no independent convergence or live acceptance claim
