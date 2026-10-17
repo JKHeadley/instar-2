@@ -226,3 +226,25 @@ it('sweeps only a finished topic’s crash residue and preserves a concurrent to
     a.close(); b.close(); replacement.close(); expect(readdirSync(tmp)).toEqual([]);
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
+
+it('runs the shipped host callback and admits its protected image through the real file hook', () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'host-session-media-'));
+  try {
+    mkdirSync(join(tmp, '.tmp')); mkdirSync(join(tmp, 'state'));
+    const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
+    const expression = host.split('prepareInputFiles: ')[1]!.split(',\n          currentActionFacts:')[0]!;
+    const custody = createSecretCustody(tmp, new Uint8Array(32).fill(5), () => 1000);
+    const prepare = Function('join', 'openConversationMedia', 'project', 'topic', 'currentMedia', 'protectMediaBytes', 'custody', 'heldSecrets',
+      `return (${expression});`)(join, openConversationMedia, tmp, '4', () => ({ media: { kind: 'photo' }, saved: { bytes: fixture('shapes.png') } }),
+      protectMediaBytes, custody, () => ({ values: [], unavailable: null }));
+    const opened = prepare(['telegram:8994258214:update:715676899']);
+    const notice = opened.notices['telegram:8994258214:update:715676899'];
+    const path = JSON.parse(notice.match(/: ("[^"]+")\./u)[1]);
+    writeFileSync(join(tmp, 'state/config.json'), JSON.stringify({ workspace: tmp, tmp: join(tmp, '.tmp'), maxCalls: 5, maxWriteBytes: 1048576, operations: [] }));
+    const pre = spawnSync(process.execPath, [join(process.cwd(), 'tests/preview/tool-admission-hook.mjs'), 'pre', join(tmp, 'state')], {
+      input: JSON.stringify({ tool_name: 'Read', tool_input: { file_path: path }, tool_use_id: 'read-attached-photo' }), encoding: 'utf8' });
+    expect(pre.status, pre.stderr).toBe(0);
+    expect(readFileSync(path)).toEqual(fixture('shapes.png'));
+    opened.close(); expect(existsSync(path)).toBe(false);
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
+});
