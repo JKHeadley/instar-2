@@ -8960,7 +8960,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const heldForgets: MemoryChange[] = [];
             if (output.trim()) try {
               const parsed = JSON.parse(output) as { reply?: unknown; correction?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
-                conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown;
+                conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown; cancelDeliveries?: unknown;
                 directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown; blockerRechecks?: unknown;
                 promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
               const replyValue = parsed?.reply;
@@ -9024,6 +9024,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 // away with its reply, so nothing recorded that this turn's withdrawal question had been read at
                 // all -- and every request made before it stayed held for the rest of the day. The decision is now
                 // recorded either way: the keys withdrawn, or the empty set when none was (Rules 2, 57, 93).
+                // Live RA3 6234241: the model put a reminder's exact id and withdrawal under cancelDeliveries.
+                // Commitment ids are numbers; string ids go through the existing reminder citation checks,
+                // including the offered/open id, operator quote and count bounds. Never infer from reply prose.
+                if (Array.isArray(parsed.cancelDeliveries)
+                  && (parsed.cancelReminders === undefined || Array.isArray(parsed.cancelReminders))) {
+                  const reminders = parsed.cancelDeliveries.filter((item: unknown) => item !== null && typeof item === 'object'
+                    && 'id' in item && typeof item.id === 'string');
+                  if (reminders.length) parsed.cancelReminders = [...(parsed.cancelReminders ?? []), ...reminders];
+                }
                 if (parsed.cancelReminders !== undefined) {
                   const offered = new Map(openRequests(journal.view).map(item => [reminderId(item), datedKey(item)]));
                   const listed = new Set(((JSON.parse(context) as { reminders?: { id: string }[] }).reminders ?? []).map(item => item.id));

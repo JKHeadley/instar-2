@@ -1,0 +1,22 @@
+# Change review — reminder withdrawal field compatibility
+
+Subject base: 6186a2c71f4bc81228f2c3496f13cc0718c9a029
+Review state: open
+Reviewed content: none
+Outcome: A model's exact reminder withdrawal under cancelDeliveries reaches the existing cancelReminders validator and durable cancellation path. The withdrawn reminder stays cancelled after restart; the other request remains due.
+Affected rules: 2, 10, 12, 26, 34, 36, 41, 47, 49, 57, 58, 62, 74, 93, 101, 107, 110, 111, 113, 116
+Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake retain their existing doorways. No calls, grants, retries, send paths or journal record types are added.
+Operator questions: none
+Suggested tier: significant
+Declared tier: significant
+Tier rationale: Changes how an existing model decision reaches a durable reminder cancellation. Recorded-output replay and negative evidence checks accompany the repair; the desk owns fresh live acceptance.
+Side effects: String IDs in cancelDeliveries are checked as reminder IDs. Numeric commitment IDs still use the existing commitment cancellation path. Both fields combine under the same ten-entry cap and exact operator quote, listed/open ID and verified-operator checks; duplicate reminder IDs cancel once. Malformed primary fields are not overwritten. No inference from the reply's prose is added.
+Undo and recovery: Revert this source change to restore prior field handling. Preserve all journal records, cancellations and send receipts; never revive cancelled requests or repeat uncertain effects. The separate desk check can be restored from A.sh.bak-1017-ra3a7.
+Multi-machine posture: Cancellation remains in the existing durable journal frame and projection, carried by the existing replication and conversation ownership mechanisms. No new state or ownership path. The desk's A.sh checks read machine-local captured evidence and never send in replay mode.
+Layer below: Read the recorded model output, the answer reader, existing reminder citation checks, durable answer projection, openRequests and requested-action dispatch. The real RA3 output at update 6234241 supplies reminder-1f91820188 and the exact operator withdrawal under cancelDeliveries; it was silently dropped while its reply claimed cancellation. The result folder metadata names train-59/1577b27a although the task describes train-61; the replay runs against train-61.
+Verification: The captured RA3 regression fails without the repair (zero cancellations) and passes with it. Recorded updates 6234239–6234241 are replayed through readAnswer and the worker with their original IDs and output bytes. Tests check restart persistence, one surviving due request, deduplication, empty primary field, unlisted IDs, unsupported quotes, numeric commitment IDs, absent decisions, excess entries and malformed primary fields. Additional captured summary, uncertain, Jev undecided/unsure, reply review, delivered reply and empty-reply shapes from the existing train-1 fixture cannot create a withdrawal. Existing cancellation, requested-action, owed-delivery, continuity and memory-save tests pass. These are local regression results, not a fresh live PASS.
+Desk check: A7b/A7d now select the latest accepted integer-update inbound from the captured predecessor/current turn windows rather than assume the previous scripted send was the previous inbound. The real intervening update 6234235 received Telegram 8256; fill-44 correctly accounts for it. Replay passes those checks and deliberately retains historical RA3 FAIL. Neighbour checks reject wrong predecessor, wrong receipt, false disposition, missing evidence and wrong pending reason.
+
+simplestRobustRoute: This is the simplest robust route: pass the model's explicitly identified reminder through the existing citation validator, and use recorded inbound evidence in the existing continuity checks. No new parser, prompt, retry, journal type, migration or service is needed. Start guards remain the listed/open reminder and verified operator; the durable cancellation is the end state; existing resource and send limits remain intact. Fresh unattended live acceptance belongs to the desk rerun.
+80/20: One small compatibility branch and targeted real-output regressions; no redesign of reminder or commitment storage. The separate check repair changes only which captured predecessor it verifies.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
