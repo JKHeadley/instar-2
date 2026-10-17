@@ -6460,8 +6460,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const lexical = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_RECALL_LIMIT, summary: summary.text,
       ...(previous ? { previous } : {}),
       candidates: older.map((item, index) => ({ text: texts[index]!, measurementText: clean(item.text, true, item.id), at: sentAt(item) ?? 0 })) });
-    const ranked = ownedRecall(turn.text, lexical, older.map((item, index) => ({ id: item.id, text: texts[index]!, indexable: fromOperator(item) })),
-      PREVIEW_RECALL_LIMIT).order.map(index => older[index]!);
+    const selected = ownedRecall(turn.text, lexical, older.map((item, index) => ({ id: item.id, text: texts[index]!, indexable: fromOperator(item) })),
+      PREVIEW_RECALL_LIMIT);
+    const ranked = selected.order.map(index => older[index]!);
     // A nearby date is useful context, but five unrelated dates must not hide
     // the source that actually matches the question.
     const dated = asksForUpcoming(turn.text) ? older.filter(item => dueSoon(clean(item.text, true))).at(-1) : undefined;
@@ -6472,8 +6473,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       .slice(-PREVIEW_CONTINUED_TURNS).filter(item => item.update <= summary.through);
     // Part 21 §16: a fact that keeps being forgotten rides recall on every turn whose verbatim history no longer shows it.
     const pinned = learnedLessons().pinned.flatMap(id => older.filter(item => item.id === id));
-    return [...new Map([...pinned, ...continued, ...(earliest ? [earliest] : []), ...(dated ? [dated] : []), ...ranked].map(item => [item.id, item])).values()]
-      .slice(0, PREVIEW_RECALL_LIMIT + continued.length + pinned.length);
+    return { turns: [...new Map([...pinned, ...continued, ...(earliest ? [earliest] : []), ...(dated ? [dated] : []), ...ranked].map(item => [item.id, item])).values()]
+      .slice(0, PREVIEW_RECALL_LIMIT + continued.length + pinned.length),
+      meaningOrder: selected.meaningOrder.map(index => older[index]!.id) };
   };
   /** Rule 11: the answer model's own search phrases, run through the same word stage and the same recall owner as a
    * question, over the turns verbatim history no longer shows. Bounded like recall; empty when nothing relates. */
@@ -7833,10 +7835,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // With no summary, verbatim history used to be the only path to an older turn -- so a turn the floor set
       // aside would have been in no block at all. Recall is offered against the floor itself in that case, which
       // is what makes "nothing is lost, it is still reachable" true rather than a hope (Rule 2).
+      const recallSelection = said ? undefined : summary ? recallFor(turn, summary)
+        : setAside >= 0 ? recallFor(turn, { through: setAside, text: '' }) : undefined;
       const chosen = said ? said.indices.map(index => older[index]!).filter(item => !summary
         || item.update <= Math.max(summary.through, setAside))
-        : summary ? recallFor(turn, summary)
-          : setAside >= 0 ? recallFor(turn, { through: setAside, text: '' }) : [];
+        : recallSelection?.turns ?? [];
       // What the lookup found leads the recalled turns and yields late under byte pressure (see the drop order).
       const lookedUp = new Set(compact && lookup ? lookup.found.map(item => item.id) : []);
       const recalled = lookedUp.size ? [...new Map([...lookup!.found, ...chosen].map(item => [item.id, item])).values()] : chosen;
@@ -7866,7 +7869,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           || b.turn!.update - a.turn!.update).slice(0, PREVIEW_COMMITMENT_LIMIT)
         .sort((a, b) => a.turn!.update - b.turn!.update || a.id - b.id);
       type Optional = { kind: 'commitment' | 'dated' | 'correction' | 'person' | 'attribute' | 'recent' | 'candidate' | 'fact';
-        key: string; signal: string; rank: number; lookupPriority?: number; match: number; recent: number; index: number };
+        key: string; signal: string; rank: number; lookupPriority?: number; meaningPriority?: number; match: number; recent: number; index: number };
       const optional: Optional[] = [];
       const askedTerms = new Set(terms(turn.text));
       const matches = (value: string) => terms(value).filter(term => askedTerms.has(term)).length;
@@ -7896,6 +7899,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const due = dueSoon(clean(item.text, true));
         optional.push({ kind: due ? 'dated' : 'recent', key: item.id, signal: item.id, rank: due || lookedUp.has(item.id) || pinnedFacts.has(item.id) ? 1 : 4,
           ...(lookedUp.has(item.id) ? { lookupPriority: lookup!.found.length - index } : {}),
+          ...(!said && recallSelection?.meaningOrder.includes(item.id)
+            ? { meaningPriority: recallSelection.meaningOrder.length - recallSelection.meaningOrder.indexOf(item.id) } : {}),
           match: matches(item.text), recent: sentAt(item) ?? 0, index });
       });
       channels.forEach((item, index) => {
@@ -7911,10 +7916,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         match: matches(item.quote), recent: journal.view.turns.get(item.source)?.update ?? 0, index }));
       // Within a tier, preserve the lookup owner's order before matching the original question:
       // a paraphrase lookup exists precisely because that question may share no words with the fact.
-      // Without a lookup, current-question matches lead; earlier exposure only breaks ties.
+      // Generated-cue/semantic hits retain their owner's order too: original word overlap cannot
+      // measure a paraphrase's value. Otherwise current-question matches lead; exposure breaks ties.
       // Otherwise unrelated sources keep reinforcing themselves and evict a newly asked-for fact.
       const value = (item: Optional) => Number(questionTies.has(item.signal)) * 2 + Number(referenced.has(item.signal));
       const dropOrder = optional.sort((a, b) => b.rank - a.rank || (a.lookupPriority ?? 0) - (b.lookupPriority ?? 0)
+        || (a.meaningPriority ?? 0) - (b.meaningPriority ?? 0)
         || a.match - b.match || value(a) - value(b)
         || a.recent - b.recent || a.key.localeCompare(b.key));
       // Rule 2 / Rule 9: the floor leaves a proof artifact on the reply itself. `reserve` keeps `packetDropped`
