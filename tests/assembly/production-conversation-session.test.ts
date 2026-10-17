@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { prepareJournalEnvelope } from '../preview/journal-envelope.js';
 import { createHash } from 'node:crypto';
@@ -13,7 +14,7 @@ import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
 
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
-function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | 'maxSteps' | 'maxResultBytes' | 'workingActivity' | 'currentActionFacts'>> = {}) {
+function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | 'maxSteps' | 'maxResultBytes' | 'workingActivity' | 'currentActionFacts' | 'prepareInputFiles'>> = {}) {
   const f = assemblyRuntimeFixture();
   let clock = 1000, stopped = false, authorized = true, authority = 'existing-role', used: number | null = 0, dead = false, paused = false, finish = true;
   let state: ConversationState | null = null, answer = '{"answer":"hello"}', active: ConversationDelivery | null = null;
@@ -996,4 +997,68 @@ it('a real HTTP reservation-write refusal retains uncertainty without inventing 
     expect(f.state().halt).toBeUndefined(); expect(f.state().spent).toBe(0);
     expect(f.port.available()).toBe(true);
   } finally { await gate.stop(); }
+});
+
+
+it('adds source-specific attachment access after admission, durably before delivery, and closes on completion', async () => {
+  let closes = 0;
+  const f = fixture({ prepareInputFiles: operations => {
+    expect(f.admissions).toHaveLength(1);
+    expect(f.state().inputs[0]!.state).toBe('queued');
+    return { notices: Object.fromEntries(operations.map(id => [id, `file for ${id}`])), close: () => { closes++; } };
+  } });
+  await f.port.run(f.request('photo'));
+  expect(f.delivered[0]!.text).toContain('photo: file for photo');
+  expect(f.state().inputs[0]!.delivery!.text).toBe(f.delivered[0]!.text);
+  expect(closes).toBe(1);
+  await f.port.run(f.request('photo')); // duplicate does not reopen files or call the model
+  expect(closes).toBe(1);
+  await f.port.close();
+});
+
+it('opens no attachment on stop or exhausted allowance, and closes files on a delivery failure', async () => {
+  for (const mode of ['stop', 'calls', 'delivery']) {
+    let opens = 0, closes = 0;
+    const f = fixture({ prepareInputFiles: () => { opens++; return { notices: {}, close: () => { closes++; } }; } });
+    if (mode === 'stop') f.stop();
+    if (mode === 'calls') f.calls(6);
+    if (mode === 'delivery') f.adapter.deliver = async () => { throw Error('delivery failed'); };
+    if (mode === 'stop') await expect(f.port.run(f.request(mode))).rejects.toThrow('conversation unavailable');
+    else await f.port.run(f.request(mode));
+    expect(opens).toBe(mode === 'delivery' ? 1 : 0); expect(closes).toBe(opens);
+    await f.port.close();
+  }
+});
+
+
+it('delivers two source-bound images through the real media bridge in one admitted batch and cleans both', async () => {
+  // @ts-expect-error Host-only filesystem bridge.
+  const { openConversationMedia } = await import('../preview/media-understanding.mjs');
+  const root = mkdtempSync(join(tmpdir(), 'session-images-'));
+  const tmp = join(root, '.tmp'); mkdirSync(tmp);
+  const bytes = readFileSync(new URL('../preview/fixtures/media-understanding/shapes.png', import.meta.url));
+  const capture = JSON.parse(readFileSync(new URL('../preview/fixtures/gap-image-1017.json', import.meta.url), 'utf8'));
+  const paths: string[] = [];
+  const f = fixture({ prepareInputFiles: operations => openConversationMedia({ tmp, scope: 'topic-4', operations,
+    lookup: () => ({ media: { kind: 'photo' }, saved: { bytes } }), protect: (input: Buffer) => input }) });
+  Object.assign(f.config, { batchWaiting: true });
+  const original = f.adapter.deliver;
+  f.adapter.deliver = async delivery => {
+    expect(f.admissions).toHaveLength(1);
+    for (const match of delivery.text.matchAll(/photo: ("[^"]+")\./gu)) {
+      const path = JSON.parse(match[1]!); paths.push(path); expect(readFileSync(path)).toEqual(bytes);
+    }
+    expect(paths).toHaveLength(2);
+    expect(f.state().inputs[0]!.delivery!.text).toBe(delivery.text);
+    return original(delivery);
+  };
+  try {
+    const ids = [capture.updateId, 'telegram:8994258214:update:715676999'];
+    f.answer(JSON.stringify({ results: ids.map(operation => ({ operation, answer: JSON.parse(capture.native.input.content) })) }));
+    const results = await f.port.runBatch(ids.map(id => ({ ...f.request(id), question: capture.question })));
+    expect(results).toMatchObject([{ state: 'complete' }, { state: 'complete' }]);
+    expect(f.delivered).toHaveLength(1);
+    for (const path of paths) expect(existsSync(path)).toBe(false);
+    expect(new Set(paths).size).toBe(2);
+  } finally { await f.port.close(); rmSync(root, { recursive: true, force: true }); }
 });
