@@ -40,6 +40,8 @@ Deferral: tests/preview/journal.ts:2597 | not-a-deferral=Recorded deferral behav
 
 Subject (3 paths): tests/preview/deferral-finish.test.ts, tests/preview/fixtures/deferral-finish-2026-10-17.json, tests/preview/journal.ts
 
+Register publication: replay generator consumed merge 90b3d73dd19937c3e04aa4ad2c35f9cdfe8e1ee8 and generated sha256:971573392d19667976c5d6d83c8ca68fd7d8ff9123d541706adaff18caaf58b5. Seven generated files refresh source metadata; owner-manifest and grounding repin tools changed zero pins.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: concatenate the two compatible parent clauses at the single conflict and adjust the historical prompt assertion. Existing intake, work accounting, stop/cap and delivery guards remain the start, limit and end-state guards. No added runtime machinery or claim of fresh unattended live acceptance.
