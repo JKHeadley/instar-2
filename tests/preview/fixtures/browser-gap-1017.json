@@ -1,0 +1,53 @@
+{
+  "source": ".instar/lanes/parity-walk-1017-evidence/walk-messages.json; native-actions.json",
+  "walk": {
+    "updateId": "telegram:8994258214:update:715676901",
+    "inputMessage": 873,
+    "topic": 4,
+    "acceptedAt": "2026-10-17T11:55:50.194-07:00",
+    "textSent": "From Echo (parity walk, not Justin): Open example.com in a browser and tell me the page heading you actually see. If you cannot browse or sign in to sites in this session, say exactly what is missing; do not pretend you opened it.",
+    "attachments": {},
+    "answerText": "I did not open example.com. No browsing tool is available to me in this session, so I can't fetch pages or report a heading I actually saw \u2014 I won't pretend otherwise.",
+    "replies": [
+      {
+        "messageId": 878,
+        "at": "2026-10-17T11:56:09.254-07:00",
+        "part": 1,
+        "telegramText": "I did not open example.com. No browsing tool is available to me in this session, so I can't fetch pages or report a heading I actually saw \u2014 I won't pretend otherwise."
+      }
+    ],
+    "noticeIds": [
+      873
+    ],
+    "latencySeconds": 19.06
+  },
+  "actions": [
+    {
+      "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/parity-walk-1017-evidence/native-transcripts/b1cd7787-eb30-4b1e-bf8e-2946d348a277.jsonl",
+      "timestamp": "2026-10-17T18:56:05.317Z",
+      "requestId": "req_011Cg8KSqiagHBviiLXfWwQA",
+      "type": "tool_use",
+      "text": null,
+      "tool": "Write",
+      "input": {
+        "file_path": "/private/tmp/its-d7df61c32f9f/conversation-8f5c3392f04a3b8c84fa4fc3b322e52a.json",
+        "content": "{\"reply\":{\"answer\":\"I did not open example.com. No browsing tool is available to me in this session, so I can't fetch pages or report a heading I actually saw \u2014 I won't pretend otherwise.\"},\"memory\":[],\"dated\":[],\"lastNamedPerson\":\"Justin\",\"personAttributes\":[]}"
+      }
+    },
+    {
+      "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/parity-walk-1017-evidence/native-transcripts/b1cd7787-eb30-4b1e-bf8e-2946d348a277.jsonl",
+      "timestamp": "2026-10-17T18:56:07.956Z",
+      "requestId": "req_011Cg8KTZ51MhnaHSEbQYNPD",
+      "type": "text",
+      "text": "Done \u2014 reported honestly that I have no browsing tool available this session, so I did not open example.com and won't fabricate a page heading, as Echo asked. Waiting for the next message.",
+      "tool": null,
+      "input": null
+    }
+  ],
+  "publicPage": {
+    "url": "https://example.com/",
+    "capturedAt": "2026-10-17",
+    "sha256": "25ddf2c883e0d1958ea971d279a7e4f0fd446724ee3db7db19dadabd4a62e484",
+    "body": "<!doctype html><html lang=en><head><meta charset=utf-8><link rel=icon href=data:,><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>Example Domain</title><style>html{color-scheme:light dark;background:light-dark(#eee,#222)}body{font:16px/1.6 system-ui,sans-serif;max-width:26em;margin:auto;padding:25vh 2em 2em;text-align:center}</style></head><body><p>This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.</p><script src=/s.js></script></body></html>\n"
+  }
+}

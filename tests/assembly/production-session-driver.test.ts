@@ -783,6 +783,7 @@ it.each(['claude-code', 'codex-cli'] as const)('an admitted %s session launches 
   if (framework === 'claude-code') {
     // Every tool stays (no permission prompt); the settings install the hook for every tool, before and after.
     expect(spawned).toContain('--dangerously-skip-permissions');
+    expect(spawned[spawned.indexOf('--tools') + 1]!.split(',')).toEqual(expect.arrayContaining(['Bash', 'WebFetch', 'WebSearch']));
     const settings = JSON.parse(spawned[spawned.indexOf('--settings') + 1]!);
     expect(settings.hooks.PreToolUse).toEqual([{ matcher: '*', hooks: [{ type: 'command', command: '/node /repo/hook.mjs pre /state/topic', timeout: 600 }] }]);
     expect(settings.hooks.PostToolUse[0].hooks[0].command).toBe('/node /repo/hook.mjs post /state/topic');

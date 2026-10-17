@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { prepareJournalEnvelope } from '../preview/journal-envelope.js';
 import { createHash } from 'node:crypto';
 import { expect, it } from 'vitest';
-import { createConversationSessionPort, conversationSessionPrompt, conversationSessionPolicy, CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
+import { createConversationSessionPort, conversationSessionPrompt, conversationSessionPolicy, CONVERSATION_WEB_GUIDANCE, CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
 import type { ConversationSessionConfig, ConversationState } from '../../src/assembly/production-conversation-session.js';
 import type { ConversationDelivery, ConversationWorker } from '../../src/assembly/conversation-harness-adapter.js';
 import type { HarnessAdapterPort } from '../../src/assembly/contracts.js';
@@ -579,7 +579,8 @@ it('replays recorded walk requests through single and batched prompt constructio
     expect(text).not.toContain(contextHeading);
     expect(occurrences(text, group.hostContext)).toBe(1);
     const afterBytes = Buffer.byteLength(text);
-    expect(group.beforeBytes - afterBytes).toBe(removedBytes);
+    expect(occurrences(text, CONVERSATION_WEB_GUIDANCE)).toBe(1);
+    expect(group.beforeBytes - afterBytes + Buffer.byteLength(CONVERSATION_WEB_GUIDANCE)).toBe(removedBytes);
     measurements.push({ operations: group.requests.map(request => request.operation), beforeBytes: group.beforeBytes, afterBytes, removedBytes });
     await f.port.close();
   }
@@ -604,7 +605,8 @@ it('matches train-46 native deliveries for recorded single and batch requests on
     expect((await f.port.runBatch(requests)).every(result => result.state === 'complete')).toBe(true);
     const delivery = f.delivered.at(-1)!;
     const text = delivery.text.replace(hostFacts(delivery.text), group.hostContext).replace(delivery.resultPath, group.resultPath);
-    actual.push({ operations: requests.map(r => r.operation), digest: hash(text) });
+    actual.push({ operations: requests.map(r => r.operation), digest: hash(text.replace(CONVERSATION_WEB_GUIDANCE, '')) });
+    expect(occurrences(text, CONVERSATION_WEB_GUIDANCE)).toBe(1);
     expect(text).not.toContain('packetFromOperation');
     expect(text).not.toContain('Use the unchanged instructions');
   }

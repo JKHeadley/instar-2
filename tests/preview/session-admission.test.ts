@@ -11,6 +11,8 @@ import { tmpdir } from 'node:os';
 import { createServer, request } from 'node:http';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
+import { conversationSessionPrompt } from '../../src/assembly/production-conversation-session.js';
+import { conversationSessionAnswer } from './conversation-session-answer.js';
 import type { SessionWorkEdge } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error The hook and its state stay plain JavaScript: the harness runs them without a loader.
 import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
@@ -85,6 +87,28 @@ const hook = (state: string, input: string, mode = 'pre') => new Promise<{ statu
   child.stdin.end(input);
 });
 const recordOf = (state: string) => { try { return readFileSync(join(state, 'admission.jsonl'), 'utf8'); } catch { return ''; } };
+
+it('replays the walk browser refusal and exposes a public fetch through the continuing-session hook', async () => {
+  const recorded = JSON.parse(readFileSync(join(__dirname, 'fixtures/browser-gap-1017.json'), 'utf8'));
+  const write = recorded.actions.find((row: { tool: string }) => row.tool === 'Write');
+  const decoded = await conversationSessionAnswer({ state: 'complete', text: write.input.content } as Parameters<typeof conversationSessionAnswer>[0],
+    recorded.walk.updateId, () => { throw Error('recorded output malformed'); });
+  expect(decoded).toMatchObject({ state: 'complete', text: write.input.content });
+  expect(JSON.parse(write.input.content).reply.answer).toBe(recorded.walk.answerText);
+  const prompt = conversationSessionPrompt({ question: recorded.walk.textSent,
+    context: JSON.stringify({ history: [recorded.walk.answerText] }) }, '/scope/result');
+  expect(prompt).toContain('bounded HTTP GET through the admitted shell');
+  expect(prompt).toContain('before reporting no browsing access');
+  expect(prompt).toContain('login requirements and unreadable pages as observed');
+  expect(prompt).toContain(recorded.walk.answerText); // History survives; it is not silently rewritten as success.
+  const s = await step();
+  expect((await hook(s.state, call('WebFetch', { url: 'https://example.com/' }, 'public'))).decision).toBe('allow');
+  expect((await hook(s.state, call('WebFetch', { url: 'http://127.0.0.1/' }, 'private'))).decision).toBe('deny');
+  expect((await hook(s.state, call('WebFetch', { url: `https://example.com/?secret=${HELD_SYNTHETIC}` }, 'secret'))).decision).toBe('deny');
+  const capped = await step({ maxCalls: 1 });
+  expect((await hook(capped.state, call('WebFetch', { url: 'https://example.com/' }, 'first'))).decision).toBe('allow');
+  expect((await hook(capped.state, call('WebFetch', { url: 'https://example.com/' }, 'second'))).decision).toBe('deny');
+});
 
 it('lays out a fresh admission state per step: config with the checkpoint address and the confined-shell profile', async () => {
   const s = await step();

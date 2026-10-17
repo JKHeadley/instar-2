@@ -1,5 +1,6 @@
 import { createCodexConversationWorker } from '../harness-adapters/index.js';
 import { createSessionConversationAdapter } from './conversation-harness-adapter.js';
+import { SUBSCRIPTION_TOOL_NAMES } from './production-provider.js';
 import type { SessionProtocolIO } from '../harness-adapters/index.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { boundary, ensure, take } from './boundary.js';
@@ -93,7 +94,8 @@ export interface ProductionSessionConfig {
  * here is this runner's own reviewed script, so an admitted Codex session trusts it for the invocation.
  * Exported so a reviewed grant can bind exactly what it admits. */
 export function sessionLaunchFlags(framework: SessionFramework, admitted = false): readonly string[] {
-  return framework === 'claude-code' ? ['--dangerously-skip-permissions']
+  return framework === 'claude-code' ? ['--dangerously-skip-permissions',
+    ...(admitted ? ['--tools', SUBSCRIPTION_TOOL_NAMES.join(',')] : [])]
     : ['--dangerously-bypass-approvals-and-sandbox', '-c', 'check_for_update_on_startup=false',
       ...(admitted ? ['--dangerously-bypass-hook-trust'] : [])];
 }

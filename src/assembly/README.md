@@ -37,6 +37,12 @@ after compaction. This adds no watcher, store, send authority or cross-machine l
 
 The conversation prompt keeps each prepared grounding packet once, with host clock and unresolved references separate. Ordinary questions retain their separate context; a batch preserves each complete envelope and arrival order.
 
+Admitted Claude sessions explicitly receive the same tool inventory as admitted tool turns,
+including WebFetch and WebSearch. Every call still passes the session admission hook. The
+continuing prompt directs public-page requests to an available fetch or bounded shell GET,
+cites returned content, and distinguishes a page read from an interactive or signed-in browser.
+Login walls and redirects are reported as observed, without claiming unseen content.
+
 `production-conversation-session.ts` composes the existing Eight-owned session
 driver with the session-work admission, resource lease and durable edge interfaces.
 Unlike scheduled work, successive inputs use the same child. One reserved call
