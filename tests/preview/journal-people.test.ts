@@ -399,7 +399,9 @@ it('links an introductory claim even when its source ends in a question', async 
     // cint-L40 (w3-retrocluster, Rule 19): the 130-byte pushback sentence rides once an answer is in history; the merge
     // candidates yield again. Re-measured in 10-byte steps, fit 7110, fail 7100; the same 70 bytes of headroom kept.
     // w3-floorduty: plus the obligation guide's floor form, which now outranks optional evidence under pressure (Rules 3, 93).
-    const w = world(root, { maxBytes: 7180 + OBLIGATION_FLOOR_PACKET_BYTES, summarize: sourceSummarizer, answer: mergeAnswer });
+    // train-58: standing-preference guidance adds 88 serialized bytes with no offered candidates.
+    // 118 total bytes leave 88 after the quarter review reserve; keep the same evidence room.
+    const w = world(root, { maxBytes: 7180 + OBLIGATION_FLOOR_PACKET_BYTES + 118, summarize: sourceSummarizer, answer: mergeAnswer });
     await w.say(1, 'My cofounder Sam prefers October. Can you remember that?');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     const n = await w.fillUntilRecall(3, 'Are Sam and Sam Ortiz the same person?');
@@ -421,7 +423,9 @@ it.each(['Can you remember that?', 'Please remember that.'])
   const root = origin();
   try {
     // Match the positive merge neighbor: ambiguity must refuse with all person evidence present, not because it was trimmed.
-    const w = world(root, { maxBytes: 7180 + OBLIGATION_FLOOR_PACKET_BYTES, summarize: sourceSummarizer, answer: mergeAnswer });
+    // train-58: standing-preference guidance adds 88 serialized bytes with no offered candidates.
+    // 118 total bytes leave 88 after the quarter review reserve; keep the same evidence room.
+    const w = world(root, { maxBytes: 7180 + OBLIGATION_FLOOR_PACKET_BYTES + 118, summarize: sourceSummarizer, answer: mergeAnswer });
     await w.say(1, 'My cofounder Sam prefers October.');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     await w.say(3, `My neighbour Sam lent me a ladder. ${ending}`);

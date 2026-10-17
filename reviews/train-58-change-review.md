@@ -61,6 +61,8 @@ Prompt finding: feadb66b8ad1 | protocol-literal | Test quotes the current instru
 
 Decision: train-58-carry-fixture | Update the two obsolete wording pins around unchanged MEMORY_ITEM_SHAPE in group-carry to the reviewed correction-keep wording. Preserve both carried/non-carried assertions, source presence/absence and actual parser shape; no capture or runtime behavior changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-58-PROGRESS.md
 
+Decision: train-58-people-fixture-budget | Account for 88 additional serialized bytes in the reviewed no-candidate memoryDecision by adding 118 bytes to two synthetic fixture limits (quarter review reserve leaves 88 bytes). Preserve prior evidence capacity and all positive/negative history assertions; production limits and guard assertions stay unchanged. Both suites pass all 23 tests. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-58-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges, existing publication regeneration and targeted consumer verification. No new machinery. Start at the live base; preserve secrets, spend, stop, durable intake and unique sends; require committed membership and evidence before desk acceptance.
