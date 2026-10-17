@@ -31,7 +31,9 @@ Decision: train-58-D | Run targeted consumer and required journal tests on WSL; 
 Decision: train-58-desk | Use existing repin/build/rehash/replay chain; no declaration or certificate changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-58-PROGRESS.md
 Decision: train-58-review-margin | Combined review delta exceeded its maintenance margin by 39 bytes. Shorten self_state_claim wording without changing its meaning or the inherited budgets and guard assertions; replay recorded neighbors. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-58-PROGRESS.md
 
-Publication: Seven generated files replayed from cb0b5742c8619248e6a0dbe31dfde11707ae71f5 in f103deb28aba4a18a3bb805d834849abd9b00873; no declaration or certificate changed. Final combined answer 23225 bytes, review 29319 bytes, unchanged minimum 29595. Lint and register checks pass.
+Publication: Seven generated files replayed from cb0b5742c8619248e6a0dbe31dfde11707ae71f5 in f103deb28aba4a18a3bb805d834849abd9b00873; no declaration or certificate changed. Combined answer and review pass the unchanged context-floor guards; the report records final measured bytes. Lint and register checks pass.
+
+Consumer follow-up: Preserve the credential-history phrase pinned by credential-label-boundary while shortening the supported/unsupported/uncertain and ordinary-conversation prose. All 64 focused tests pass, with 6 optional capture skips; original budget assertions remain unchanged.
 
 ## Closing block
 
