@@ -27,6 +27,30 @@ Decision: train-62-C | No product conflict or omitted head; prove both exact hea
 Decision: train-62-D | Run targeted and named tests in bounded foreground groups on WSL; disclose host-dependent checks separately. Desk owns native certificate renewal and live proof. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-62-PROGRESS.md
 Decision: train-62-desk | Use downloaded repin/build/rehash/replay tools; regenerate publication from composed committed sources. Keep fixed prompt guard unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-62-PROGRESS.md
 
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:30 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:34 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:38 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:42 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:46 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:50 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:54 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:58 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:62 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:66 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:319 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:323 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:327 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:331 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:335 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:339 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:343 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:347 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:351 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:355 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:359 | not-a-deferral=verbatim recorded owed-case reason; not deferred implementation work
+Deferral: tests/preview/fixtures/requested-report-proofroom4-2026-10-17.json:13 | not-a-deferral=immutable captured operator request for a later answer, replayed by this completed test.
+Deferral: tests/preview/requested-report-live.test.ts:17 | not-a-deferral=test name identifies the recorded deferred report; no builder work is postponed.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merges of two reviewed heads, existing artifact regeneration, recorded replays and targeted consumer tests. No new machinery. Exact base and membership guard the start and end state; existing safety and resource floors remain. Independent acceptance and unattended deployed proof belong to the desk.
