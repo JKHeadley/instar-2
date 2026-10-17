@@ -291,12 +291,17 @@ it('grounds a later pronoun question in an early summarized turn across a restar
       const incoming = { update_id: i, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
         date: 1780000000 + i * 60 } };
       const start = performance.now();
-      current.worker.intake([incoming]); await current.worker.drain(); await current.worker.summarizeIfNeeded();
+      current.worker.intake([incoming]); await current.worker.drain();
+      // This fixed-clock fixture tests recall after compaction, not automatic cooldown cadence.
+      // Compact the filler before the final two-turn question; otherwise its recent tail can
+      // legitimately consume the byte envelope and shed the selected fact. Keep the 9000-byte cap.
+      await current.worker.summarizeIfNeeded(i === 198);
       samples.push(performance.now() - start);
     }
     const packet = JSON.parse(asked!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.summary.through).toBeGreaterThan(3);
+    expect(packet.summary.through).toBeGreaterThanOrEqual(198);
     expect(packet.summary.text).not.toContain('Maya');
     expect(packet.history.some((turn: { user: string }) => turn.user.includes('ranunculus'))).toBe(false);
     expect(packet.recalled.map((turn: { user: string }) => turn.user)).toContain(fact);
