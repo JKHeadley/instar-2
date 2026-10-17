@@ -3474,14 +3474,21 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   unchanged, and `status` shows `retracted {turns, retiredSummaries}` and marks retired summaries. A
   closure that a retracted turn made of a real item (a directive superseded, a blocker cleared, a
   commitment closed) is not reopened. Tests: `retract-turns.test.ts`.
-- **Supervised incidents (Rules 15, 88; P-14).** `scripts/host-watch.mjs` with
-  `{"mode":"journal", "alerts": {"grant": "..."}}` restarts the runner after a failed exit with
-  bounded backoff. After three consecutive failed restarts it records one incident episode with the
-  failure evidence in `host-watch.json` (shown by `status.incident`) and a clean run closes it. It
-  sends nothing: an internal-issue notice must be Part Eight's admitted `infrastructure-notice`
-  effect through Part Ten's confined notice driver, neither of which exists yet, so the episode is
-  `inhibited` and names both (`inhibitedBy`). Without a recorded alerts grant it is `unbound`. An
-  episode an earlier build left uncertain is preserved and never repeated.
+- **Supervised incidents and crash pauses (Rules 15, 52, 55, 61, 88; P-14).**
+  `scripts/host-watch.mjs` in journal mode records one incident after failed recovery and uses the
+  existing confined infrastructure-notice driver only with a configured alerts grant/destination.
+  Its `host-watch.json` also retains the shared local runner crash window: abnormal exits, failed
+  spawns, hangs and rapid queued exits count together, even across supervisor restarts or intervening
+  successes. At `maxRestarts` failures in `crashWindowMs` (defaults 10 / 600000 ms), it durably pauses
+  before another launch. Waiting does not clear the pause. Clean completion, declared inhibition,
+  operator stop and expected capacity outcomes are not crashes; no effect or unfinished work is erased.
+  `node scripts/host-watch.mjs /absolute/config.json status` shows the pause and exact episode ID;
+  after repair, `node scripts/host-watch.mjs /absolute/config.json resume <episode-id>` clears only
+  that pause, and the normal supervisor launch can continue. Stop/expiry and runner authority/spend/
+  UNKNOWN checks still apply. Resume cannot repeat an earlier uncertain notice. These commands are
+  local deployment control under the existing host account, not a new conversational grant. The
+  host's existing exclusive deployment owner must serialize supervision and manual resume. This
+  window covers one supervised runner root on one machine, not a pool-wide or all-job breaker.
 
 Held notices from earlier builds replay unchanged, but no new held notice is pushed: a held
 message's status stays on the pull surface (`status.holds`, self-state and the mind's packet).

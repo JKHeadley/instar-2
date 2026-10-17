@@ -51,6 +51,26 @@ Its tests include the real production session driver over simulated physical I/O
 not a live harness or Telegram proof. The journal launcher wiring below is step 1;
 foundation intake/effect/judgment integration remains in the later plan steps.
 
+An admitted session at an unclosed idle quota wall retains its accepted input and original
+turn deadline while the driver waits 30 seconds, then submits at most one neutral
+continuation of the same turn. The existing journal records intent before terminal
+input; an uncertain submission is never retried, including after host restart.
+The original admission, call allowance and effect identities remain in force.
+Compaction-owned sessions and uncertain intake are excluded. An open recovery keeps
+the turn open for idle cleanup; emergency stop and the independent deadline still
+win. An idle repeated throttle after a five-second observation window returns the existing
+typed pause, so the login pool can select capacity for subsequent work. Completion
+still requires the driver's existing evidence, never transcript growth or elapsed
+backoff. Unconfined sessions retain observation only because they lack the admitted
+effect and model-call floors required for autonomous continuation (Rules 1, 55, 60).
+A fresh Stop plus a bounded nonempty result takes precedence over stale quota text
+in scrollback. A throttle Stop without that result retains recovery and its original
+deadline, or exposes the existing pause after the single attempt. Both result-consuming
+callers pass their current result presence to the driver; pane text cannot invent an answer. A new
+accepted input starts its own compaction episode, so a past completed compaction does
+not exclude later turns from throttle recovery. Busy resumed work remains active under
+the original deadline even when old quota text remains visible.
+
 The host must call `close()` at shutdown, expiry or idle stop. Closing waits for
 pending admission to return before releasing its lease, preventing a late resource
 allocation from escaping cleanup. A failed turn closes admission, stops the exact
@@ -235,6 +255,23 @@ hook; its inbox is shared only with the worker identity. A hook is worker lifecy
 not proof of tool completion, reply delivery, or independent authenticity against a malicious
 worker. The existing tool and outward effect owners still decide those facts.
 
+A context-limit pause on an accepted single input carries its exact reason to the owner.
+Once per input, with known send outcomes, no tool effect since dispatch, no open child work
+and remaining call allowance, it tries idle compaction for at most 30 seconds. The compact
+hook restores the full permitted pending envelope and its last inbound identity. A verified
+compact receipt continues that answer in the same worker. A recorded compaction failure
+retires the exact old worker and verifies resource cleanup before admitting a fresh worker
+with the same input, original deadline and remaining cumulative allowance. Both paths retain
+durable continuation intent before submission and restore the exact admitted packet, including
+its pending input identity and history, without an additional model-facing recovery wrapper.
+The host carries recovery evidence separately
+from the model's answer schema and records it with a nonempty decoded answer. The journal adds
+the transition disclosure to the final reply after memory acknowledgements and rewriting,
+before the durable send intent; an unknown send is never replayed. Empty output remains an
+answer failure. Missing history, uncertain submission, unknown/busy terminal state,
+policy refusal, active stop and repeated context triggers retain uncertainty without replay.
+This recovery uses the current conversation owner on its owning machine; it creates no service.
+
 At a process ceiling, exit or changed verified grant, the host retires the old process and
 admits a replacement, delivering the current journal-prepared history/clock/work packet.
 Vendor transcript resume is not required. Signed activation changes are revalidated at
@@ -344,3 +381,48 @@ existing presence cycle records each registered work subject even while its ordi
 unchanged observed activity becomes an advisory stall after one minute. Registered helper waits,
 unavailable observations and advancing work never authorize a restart or termination. The existing
 step deadline, result receipt, stop, resource owner and effect identities remain authoritative.
+
+## Native connection retry exhaustion
+
+The terminal session driver leaves Claude Code's bounded same-turn 529 retry and
+backoff in charge. Every native attempt passes the existing model admission gate;
+the conversation owner's durable call reservation is charged before dispatch and
+survives restart. Observed native retry pressure is kept with its exact turn in the
+existing session journal. A fresh, quiet final 529 error after that retry is reported
+to the existing owner as a pause, because the captured client emits no Stop receipt
+on exhaustion. The owner retains the request and uncertain outcome, closes admission
+and retires its worker. A real correlated Stop takes precedence. No recovery input,
+tool, send or original request is replayed, and no deadline or allowance is renewed.
+Unknown terminal shapes keep the original deadline. Driver reconstruction retains
+retry evidence; host restart retains spent calls and unresolved input without replay.
+
+The recorded fixture `socket-drop-worker-1016101-2026-10-16.json` contains isolated
+loopback update identities, native countdown/error bytes, call timing and owner
+state. Driver and owner replay tests cover both recovery and exhaustion. This
+behavior remains local to the admitted conversation owner; it grants no other
+machine permission to act.
+
+The preview journal's typed unknown-answer notice takes precedence over a memory
+acknowledgement. Its exact fixed wording passes the existing secret check and uses
+the existing content-free notice path. Review may record signals about decorated
+notices, but cannot rewrite an unknown outcome into an answer. An existing send
+intent still owns delivery; an uncertain send is never repeated.
+
+### Safety-ceiling halts
+
+The continuing conversation owner records a `halt` with its exact deadline or call
+allowance before resource closure. It fences new calls and inputs under that
+allowance, retains unfinished inputs and uncertain effects, and preserves the halt
+across host restart. The existing admission close, adapter close and resource lease
+release own cleanup; an unconfirmed close retains the exact worker for reconciliation.
+A completed last allowed call is still accepted; unknown accounting or an ordinary
+worker exit is not relabelled as a measured limit.
+
+The independent session deadline watchdog uses the driver's journal lock and writes
+`deadlineHalt` before closing the verified session identity. The driver carries that
+cause through its lifecycle observation even after the process has disappeared.
+The journal runner consumes the typed safety cause through its normal uncertain-result
+path and sends one signed infrastructure notice under the original reply identity,
+with the existing stop, cap, ownership, audience and unknown-send protections. No
+operator stop is fabricated, no run is declared complete, and no uncertain action is
+retried. The minimal operator responder retains its independent admission.

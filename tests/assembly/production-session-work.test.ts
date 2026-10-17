@@ -26,7 +26,7 @@ const recordedWork = JSON.parse(readFileSync(new URL('../preview/fixtures/work-r
 
 function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadlineMs?: number;
   maxResultBytes?: number; failLaunch?: boolean; maxCalls?: number; calls?: () => number | null;
-  admit?: 'refuse' | 'unreleased'; stopFails?: boolean; refused?: () => boolean | null; prepareFails?: boolean;
+  admit?: 'refuse' | 'unreleased'; stopFails?: boolean; refused?: () => boolean | null; refusalReason?: 'calls' | 'reservation-unavailable'; prepareFails?: boolean;
   openDelegations?: () => readonly SessionWorkEdge[] } = {}) {
   const f = assemblyRuntimeFixture();
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'session-work-'))); roots.push(root);
@@ -49,7 +49,7 @@ function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadli
     wait: async ms => { clock += ms; },
     prepareAdmission: (claim, edge) => { if (options.prepareFails) throw Error('unwritable'); prepared.push(claim); edges.push(edge); },
     admissionState: () => { const refused = options.refused ? options.refused() : false;
-      return refused === null ? null : { refused, openDelegations: options.openDelegations ? options.openDelegations() : [] }; },
+      return refused === null ? null : { refused, refusalReason: refused ? options.refusalReason ?? 'calls' : null, openDelegations: options.openDelegations ? options.openDelegations() : [] }; },
     closeAdmission: () => { admissionsClosed += 1; },
   };
   const driver: NativeHarnessDriverPort & { stop(): ReturnType<typeof f.success<readonly string[]>> } = {
@@ -120,6 +120,18 @@ it('records the edge before the child exists, delivers the task, and returns the
   expect(f.delivered).toEqual([digestOf(sessionWorkPrompt({ question: 'Do the one due step.',
     context: '{"obligation":{"kind":"request"}}' }, f.resultPath()))]);
   for (const row of f.rows) expect(() => validateSessionWorkRow(row)).not.toThrow();
+});
+
+it('passes bounded current result presence to lifecycle observation without accepting Stop as the result', async () => {
+  const f = fixture({ phases: ['launched'] });
+  const observed: boolean[] = [], observe = f.driver.observe;
+  f.driver.observe = input => {
+    observed.push(input.resultAvailable === true);
+    if (observed.length === 1) f.writeNow(recordedWork.workOutput);
+    return observe(input);
+  };
+  expect(await f.port.run(f.request())).toMatchObject({ state: 'complete', text: recordedWork.workOutput });
+  expect(observed).toEqual([false, true]);
 });
 
 it('tells the child the one destination that counts, and nothing about sending to the operator', () => {
@@ -354,13 +366,16 @@ it.each([null, 25])('the disposition is judged on the accounting read after the 
 it('a delegation still open when its parent closes settles as uncertain, and the parent cannot be complete over it', async () => {
   let parent: SessionWorkEdge | null = null;
   const f = fixture({ openDelegations: () => parent ? [nestedSessionWorkEdge(parent, { id: 'toolu_nested_1', tool: 'Agent' }, 1_000_100)] : [] });
-  f.io.prepareAdmission = (_claim, edge) => { parent = edge; };
+  f.io.prepareAdmission = (_claim, edge) => { parent = edge;
+    f.rows.push(nestedSessionWorkEdge(edge, { id: 'toolu_nested_1', tool: 'Agent' }, 1_000_100)); };
   f.answers('{"reply":"done"}');
   const outcome = await f.port.run(f.request());
   expect(outcome.state).toBe('uncertain');
   expect(outcome.detail).toContain('delegated agent delegated:toolu_nested_1 did not return before the step closed');
   const nestedClose = f.rows.find(row => row.type === 'SessionWorkEdgeClose' && row.edge.includes(':delegated:')) as SessionWorkEdgeClose;
   expect(nestedClose).toMatchObject({ state: 'uncertain', child: 'delegated:toolu_nested_1', edge: `${parent!.id}:delegated:toolu_nested_1` });
+  expect(f.port.collect(f.request().operation)).toMatchObject({ state: 'uncertain', child: outcome.child });
+  expect(f.port.collect(f.request().operation)!.detail).toContain(outcome.detail);
   // The nested close is written before its parent's close.
   expect(f.rows.indexOf(nestedClose)).toBeLessThan(f.rows.length - 1);
   for (const row of f.rows) expect(() => validateSessionWorkRow(row)).not.toThrow();
@@ -642,4 +657,71 @@ it('a recorded frozen worker with no inbound turn becomes visibly stalled and re
     expect(Object.values(reopened.view.sentinels?.work ?? {}).some(row => row.state === 'stalled')).toBe(true);
     reopened.close();
   } finally { journal.close(); }
+});
+
+it.each(['pause-observed', 'exit-observed', 'output-observed'] as const)(
+  'returns the recorded helper diagnosis to its parent after restart: %s', async phase => {
+    const f = fixture({ phases: [phase] });
+    const outcome = await f.port.run(f.request());
+    const before = f.counts();
+    const collected = f.port.collect(f.request().operation);
+    // A launched helper may have acted even when it returned no result. Preserve that
+    // uncertainty, but do not erase its diagnosis or the exact child the parent must reconcile.
+    expect(collected).toMatchObject({ state: 'uncertain', child: outcome.child });
+    expect(collected!.detail).toContain(outcome.detail);
+    expect(collected!.text).toBeUndefined();
+    expect(f.counts()).toEqual(before);
+  });
+
+it('a returned nested helper does not hide the parent result during collection', async () => {
+  const f = fixture();
+  f.io.prepareAdmission = (_claim, parent) => {
+    const nested = nestedSessionWorkEdge(parent, { id: 'toolu_returned', tool: 'Agent' }, f.now());
+    f.rows.push(nested, { type: 'SessionWorkEdgeClose', schemaVersion: 1, id: `${nested.id}:close`,
+      edge: nested.id, child: nested.child, state: 'complete', detail: 'returned to parent', evidence: 'tool-result',
+      resultBytes: 2, closedAt: f.now() });
+  };
+  f.answers(recordedWork.workOutput);
+  const outcome = await f.port.run(f.request());
+  expect(f.port.collect(f.request().operation)).toMatchObject({ state: 'complete', text: recordedWork.workOutput, child: outcome.child });
+});
+
+it('replays recorded summary, Jev, review and reply bytes without treating uncertainty or an empty return as success', async () => {
+  for (const sample of recordedWork.negativeOutputs) {
+    const f = fixture();
+    f.answers(sample.output);
+    const outcome = await f.port.run(f.request());
+    const recovered = f.port.collect(f.request().operation)!;
+    if (typeof sample.output === 'string' && sample.output.trim()) {
+      // Complete here means transport of bytes only, not acceptance of the model's judgment.
+      expect(recovered, sample.id).toMatchObject({ state: 'complete', text: sample.output });
+    } else {
+      expect(recovered, sample.id).toMatchObject({ state: 'uncertain', child: outcome.child });
+      expect(recovered.detail, sample.id).toContain(outcome.detail);
+      expect(recovered.text, sample.id).toBeUndefined();
+    }
+    expect(f.counts().launches, sample.id).toBe(1);
+  }
+});
+
+it('does not collect a different operation sharing the requested prefix or trust a mismatched close', async () => {
+  const f = fixture({ admit: 'refuse' });
+  const request = f.request('parent:child');
+  await f.port.run(request);
+  expect(f.port.collect('parent')).toBeNull();
+  const close = f.rows[1] as SessionWorkEdgeClose;
+  for (const patch of [{ closedAt: 0 }, { reserved: 99 }]) {
+    f.rows[1] = { ...close, ...patch };
+    expect(f.port.collect(request.operation)).toMatchObject({ state: 'uncertain', child: null });
+  }
+  f.rows[1] = close;
+  expect(f.port.collect(request.operation)).toMatchObject({ state: 'failed', child: null });
+});
+
+it('a reservation failure stays uncertain without claiming that the allowance was exhausted', async () => {
+  const f = fixture({ phases: ['launched'], maxCalls: 3, refused: () => true, refusalReason: 'reservation-unavailable' });
+  expect(await f.port.run(f.request())).toMatchObject({ state: 'uncertain' });
+  const closed = f.rows.find(row => row.type === 'SessionWorkEdgeClose') as SessionWorkEdgeClose;
+  expect(closed.detail).toContain('model call reservation unavailable');
+  expect(closed.detail).not.toContain('past the reserved allowance');
 });

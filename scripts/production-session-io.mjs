@@ -2,7 +2,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync, chmodSync, constants,
   openSync, closeSync, fsyncSync, fstatSync, lstatSync, realpathSync, statSync, unlinkSync, readSync, rmSync, linkSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertAgentPaths } from './agent-paths.mjs';
@@ -28,11 +28,22 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
   const scope = realpathSync(cwd);
   const env = Object.freeze({ PATH: '/usr/bin:/bin:/opt/homebrew/bin', HOME: home,
     CLAUDE_CONFIG_DIR: configHome, CODEX_HOME: configHome, LANG: 'en_US.UTF-8' });
+  // An independent deadline must not wait for a stalled journal owner. Keep its
+  // exact worker cause separately, and fold it into every later journal read/write.
+  const haltPath = identity => join(stateDirectory, `deadline-${createHash('sha256').update(identity).digest('hex')}.json`);
+  const withHalts = journal => ({ ...journal, sessions: journal.sessions.map(row => {
+    const path = haltPath(row.identity);
+    if (!existsSync(path)) return row;
+    const halt = JSON.parse(readFileSync(path, 'utf8'));
+    if (halt.identity !== row.identity || !Number.isSafeInteger(halt.deadline) || !Number.isSafeInteger(halt.at))
+      throw Error('invalid independent deadline evidence');
+    return { ...row, deadlineHalt: { deadline: halt.deadline, at: halt.at } };
+  }) });
   let depth = 0;
   return Object.freeze({ inboxDirectory,
-    exclusive(run) {
+    exclusive(run, timeoutMs = 5000) {
       if (depth) { depth++; try { return run(); } finally { depth--; } }
-      const limit = Date.now() + 5000;
+      const limit = Date.now() + timeoutMs;
       let fd;
       while (fd === undefined) {
         try {
@@ -79,10 +90,17 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
       return { code: result.status ?? 1, stdout: result.stdout ?? '' };
     },
     sleep(ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); },
-    load() { return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : base; },
+    load() { return withHalts(existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : base); },
+    recordDeadlineHalt(identity, deadline, at) {
+      const path = haltPath(identity), temporary = `${path}.${process.pid}.tmp`;
+      const fd = openSync(temporary, 'w', 0o600);
+      try { writeFileSync(fd, JSON.stringify({ identity, deadline, at })); fsyncSync(fd); } finally { closeSync(fd); }
+      renameSync(temporary, path);
+      const dir = openSync(stateDirectory, 'r'); try { fsyncSync(dir); } finally { closeSync(dir); }
+    },
     save(journal) {
       const temporary = join(stateDirectory, `sessions.${process.pid}.tmp`);
-      writeFileSync(temporary, JSON.stringify(journal), { mode: 0o600 });
+      writeFileSync(temporary, JSON.stringify(withHalts(journal)), { mode: 0o600 });
       const fd = openSync(temporary, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
       renameSync(temporary, file);
       const dir = openSync(stateDirectory, 'r'); try { fsyncSync(dir); } finally { closeSync(dir); }

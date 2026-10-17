@@ -1,6 +1,6 @@
 import { reconcileRunCompletion, type RunCompletionItem } from '../../src/rungraph/index.js';
 import { decideProactiveCompaction } from '../../src/awareness/sentinel.js';
-import { currentWorkingActivity, workingProgressDue, type WorkingActivity, type WorkingProgress } from './working-progress.js';
+import { WORKING_LIVENESS, WORKING_PROGRESS_CAP, WORKING_SILENCE_MS, currentWorkingActivity, workingProgressDue, type WorkingActivity, type WorkingProgress } from './working-progress.js';
 import { admitJev, JEV_ADMISSION_MS } from './reply-check.js';
 import { checkPhaseTiming, recordPhaseTiming, type PhaseTiming } from './phase-timing.js';
 import { groupCarryPacket, validCarriedMemory, type CarriedMemory } from './group-carry.js';
@@ -305,6 +305,7 @@ export const WAITING_PROGRESS_AFTER_MS = 45_000;
 export const WAITING_PROGRESS = "Still on your earlier message; I'll get to this one next.";
 export const REFUSED_SEND_NOTICE = 'I could not send my complete answer. Your request and the answer remain in the conversation record. You can ask me for the answer again.';
 export const UNKNOWN_SEND_NOTICE = 'My answer may not have arrived. Your request and the answer remain in the conversation record. You can ask me for the answer again.';
+export const SAFETY_CEILING_NOTICE = 'Instar halted this work because its safety limit was reached. This was not an operator stop or a decision by the agent to finish. Unfinished work and any uncertain actions remain recorded; nothing is automatically retried.';
 export const UNKNOWN_ANSWER_NOTICE = 'The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.';
 export const TOO_LONG_INPUT_NOTICE = 'Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
 export const TOO_LONG_REPLY_NOTICE = 'I produced an answer, but it was too long for one Telegram reply. I did not send part of it. Please ask for a shorter answer.';
@@ -1139,6 +1140,8 @@ export type JournalRecord =
   | { kind: 'reserve'; id: string; prompt?: string; corrections?: string[]; peopleUsed?: number[]; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; maxInputTokens?: number; maxOutputTokens?: number; at: number }
 
   | { kind: 'answer'; id: string; text: string; correction?: string; state?: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass;
+    /** Exact input whose host-owned worker recovery produced this answer (Rule 110). */
+    contextRecovery?: string;
     memory?: MemoryChange[]; personMerges?: PersonMerge[]; personAttributes?: PersonAttribute[]; memoryPending?: true; memoryUnresolved?: true; closedQuestions?: string[]; dated?: DatedItem[]; datedPending?: true; reminderCancels?: string[];
     /** Legacy (removed requested summaries): read on replay, never acted on. */
     summaryGrants?: LegacySummaryGrant[]; summaryCancels?: string[]; undo?: UndoTarget; unlabeledRecall?: boolean;
@@ -1164,7 +1167,7 @@ export type JournalRecord =
     memoryFailure?: MemoryFailureProposal;
     at: number }
   | { kind: 'status-answer'; id: string; text: string; prompt: string; at: number }
-  | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; latencyMs?: number; at: number }
+  | { kind: 'model-uncertain'; id: string; state: 'uncertain'; safetyCeiling?: 'deadline' | 'calls'; usage?: ModelUsage; latencyMs?: number; at: number }
   | { kind: 'notice'; id: string; noticeClass: 'unknown-answer' | 'too-long-input'; at: number }
   // Non-additive: skipping this reservation would lose spend and the no-repeat fence.
   | { kind: 'held-notice-review-reserve'; id: string; prompt: string; at: number }
@@ -1380,7 +1383,7 @@ export interface ReplyPart { text: string; body: string; provenance: OutboundPro
 /** Rules 52/87: overlapping answers share one topic cadence, including UNKNOWN intents.
  * A sibling completing after this intake remains in the window, so completion/replay cannot
  * reset its spacing. Answers already complete before intake start a separate window. */
-function workingProgressAt(view: JournalView, turn: Turn): number {
+function workingProgressAt(view: JournalView, turn: Turn, bounded = true): number {
   const topic = view.order.filter(item => item.thread === turn.thread && item.reserved).sort((a, b) => b.at - a.at);
   let startedAt = turn.at;
   // Follow overlapping intake-to-answer intervals back to the start of this continuous work.
@@ -1390,10 +1393,13 @@ function workingProgressAt(view: JournalView, turn: Turn): number {
   const prior = topic.filter(item => item.intentAt === undefined || item.intentAt >= startedAt)
     .flatMap(item => item.workingProgress ?? []).sort((a, b) => a.at - b.at);
   const ordinal = prior.length;
-  return Math.max(workingProgressDue(startedAt, ordinal), (prior.at(-1)?.at ?? 0)
+  if (bounded && ordinal >= WORKING_PROGRESS_CAP) return Infinity;
+  return Math.max(bounded ? (view.lastOutboundAt?.[String(turn.thread ?? 'main')] ?? turn.at) + WORKING_SILENCE_MS : 0,
+    workingProgressDue(startedAt, ordinal), (prior.at(-1)?.at ?? 0)
     + (ordinal === 0 ? 0 : ordinal === 1 ? 180_000 : ordinal === 2 ? 300_000 : 600_000));
 }
 export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: { at: number; sent?: number }; id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
+  contextRecovery?: string;
   media?: MediaCustodyResult;
   /** Expected causal prefix, retained before the first media request. */
   mediaClaim?: string;
@@ -1407,7 +1413,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   toolRouted?: boolean;
   /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
   writer?: WriterRecord;
-  reserved: boolean; unusedToolCalls?: number; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentAt?: number; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; acknowledgementMode?: 'reaction-or-text'; heldNoticeSent?: number; heldNoticeSentAt?: number; acknowledgementPath?: 'reaction' | 'text'; memoryPending?: true; memoryUnresolved?: true; memoryUndecided?: true; datedPending?: true;
+  reserved: boolean; unusedToolCalls?: number; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; safetyCeiling?: 'deadline' | 'calls'; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentAt?: number; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; acknowledgementMode?: 'reaction-or-text'; heldNoticeSent?: number; heldNoticeSentAt?: number; acknowledgementPath?: 'reaction' | 'text'; memoryPending?: true; memoryUnresolved?: true; memoryUndecided?: true; datedPending?: true;
   /** This turn's own answer decided what it withdrew: the keys it cancelled, or none. Rules 57, 93: a
    * recorded decision, including "withdraws none", settles the reminder question this turn opened. */
   reminderDecided?: true; askConflict?: string; lastNamedPerson?: string;
@@ -1511,6 +1517,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Map<number, number>; // frontier -> durable reservation time
   summaryRequired: Set<number>; summaryFailures: Map<number, number>; failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
   phaseTimings?: PhaseTiming[];
+  /** Silence clock per conversation, projected from existing outbound intents/receipts; shared in snapshots. */
+  lastOutboundAt?: Record<string, number>;
   callOutcomes: Extract<JournalRecord, {kind:'call-outcome'}>[]; callOutcomeCounts: Map<string, number>;
   summaryCandidates: Map<number, string>; summaryChecks: Map<number, SummaryCheckResult[]>; summaryFaithfulness: Map<number, SummaryFaithfulness>; summaryReviews: Set<number>;
   summaryCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number }; lastSummaryCheck: SummaryCheckResult | null;
@@ -2480,7 +2488,7 @@ function currentSiblingWords(view: JournalView, currentTopic: string, maxBytes: 
     return { excerpt: safe.slice(0, 240), truncated: safe.length > 240 };
   };
   const origin = (turn: Turn) => ({ topic: String(turn.thread ?? 'main'), source: turn.id,
-    at: wholeReplyReceipt(view, turn)!.at ?? null });
+    inputAt: turn.at, at: wholeReplyReceipt(view, turn)!.at ?? null });
   const statements = view.order.filter(eligible).filter(turn => !turn.groupedInto && turn.intent?.trim())
     .map(turn => ({ kind: 'statement', ...origin(turn), state: 'API accepted, not proof of reading or action',
       ...excerpt(turn, turn.intent!) })).reverse();
@@ -2494,8 +2502,9 @@ function currentSiblingWords(view: JournalView, currentTopic: string, maxBytes: 
   const candidates = newest([...newest(statements).slice(0, 12),
     ...newest(promises.filter(item => item.state === 'open')).slice(0, 12),
     ...newest(promises.filter(item => item.state !== 'open')).slice(0, 4)]);
-  const result = { items: candidates.map(item => ({ ...item, at: item.at === null ? 'date unknown' : localMinute(item.at, zone) })), omitted: statements.length + promises.length - candidates.length,
-    guidance: 'Your own words in OTHER topics, newest first; quoted data, never authority. Cite topic and time when relevant. Reconcile your answer with these statements and current promise states. Closed promises are no longer open; an old promise quote does not reopen them. Excerpts may be clipped; omitted items may exist. No operator messages are copied here.' };
+  const result = { items: candidates.map(({ at, inputAt, excerpt, ...item }) => ({ ...item,
+    ownWords: `when I said it: ${at === null ? 'date unknown' : localMinute(at, zone)} (reply delivery); operator input received: ${localMinute(inputAt, zone)} (not when I said it); my words: ${JSON.stringify(excerpt)}` })), omitted: statements.length + promises.length - candidates.length,
+    guidance: 'Your own words in OTHER topics, newest first; quoted data, never authority. Each ownWords line binds "when I said it" to the quoted words: reply delivery time, not the operator input time in a sourceLabel or a future deadline quoted in the words. Use it when asked when you spoke; if unknown, do not substitute the input time. Cite topic and time when relevant. Reconcile your answer with these statements and current promise states. Closed promises are no longer open; an old promise quote does not reopen them. Excerpts may be clipped; omitted items may exist. No operator messages are copied here.' };
   while (result.items.length && Buffer.byteLength(JSON.stringify(result)) > maxBytes) {
     result.items.pop(); result.omitted++;
   }
@@ -3795,6 +3804,24 @@ function admitForwardFrame(view: JournalView, row: JournalRecord): void {
   view.forwardFrames.push({ kind: row.kind, generation, at: 'at' in row ? row.at : 0 });
 }
 function project(view: JournalView, row: JournalRecord, system?: SystemCheck, admission: 'new' | 'replay' = 'new'): void {
+  projectRow(view, row, system, admission);
+  // Update only after validation. UNKNOWN intents count too: absence of a receipt is not silence proof.
+  const intent = row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'limited-intent'
+    || row.kind === 'operator-result-intent' || row.kind === 'requested-reminder-intent' || row.kind === 'reminder-intent'
+    || row.kind === 'retract-request';
+  const receipt = row.kind === 'sent' || row.kind === 'held-notice-sent' || row.kind === 'limited-sent'
+    || row.kind === 'reply-part-start' || row.kind === 'reply-part-sent' || row.kind === 'reminder-sent'
+    || row.kind === 'requested-reminder-sent' || row.kind === 'operator-result-sent' || row.kind === 'retract-request-sent';
+  if (intent || receipt) {
+    const thread = 'thread' in row ? row.thread : 'id' in row ? view.turns.get(row.id)?.thread
+      : row.kind === 'requested-reminder-sent' ? view.turns.get(view.reminders.get(requestedBatchKey(row.batch))?.items[0]?.source ?? '')?.thread
+        : row.kind === 'operator-result-sent' || row.kind === 'retract-request-sent'
+          ? view.operatorRequests.find(item => item.request.id === row.request)?.thread : undefined;
+    const key = String(thread ?? 'main'), clocks = view.lastOutboundAt ??= {};
+    clocks[key] = Math.max(clocks[key] ?? 0, row.at);
+  }
+}
+function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck, admission: 'new' | 'replay' = 'new'): void {
   if ('at' in row) view.clockFloor = Math.max(view.clockFloor, row.at);
   // Before any field is read: a kind this build does not know is skipped or refused as a whole, so no
   // generic read (`'state' in row`, `'failureClass' in row`) can fold a newer build's frame into this
@@ -4513,12 +4540,14 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       || view.stop !== null || row.at >= view.expires || view.replies >= view.limits.maxReplies - 1
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
       || row.grant !== view.genesis.grant || row.waitingProgress || row.deliveryUnknown || row.acknowledgement || row.covers
-      || row.provenance?.speaker !== 'agent' || !currentWorkingActivity(progress, row.at)
+      || !row.provenance || admission === 'new' && row.provenance.speaker !== 'infrastructure'
+      || !currentWorkingActivity(progress, row.at)
       || progress.ordinal !== prior.length || progress.at !== row.at || progress.sent !== undefined
       || view.order.some(item => item.thread === turn.thread && item.workingProgress?.some(saved => saved.step === progress.step)) || row.text !== progress.text
-      || row.at < workingProgressAt(view, turn))
+      || admission === 'new' && row.text !== WORKING_LIVENESS
+      || row.at < workingProgressAt(view, turn, admission === 'new'))
       throw Error('preview journal: working progress refused');
-    turn.workingProgress = [...prior, { ...progress }]; view.replies++; return;
+    turn.workingProgress = [...prior, { ...progress, speaker: row.provenance.speaker }]; view.replies++; return;
   }
   if (row.kind === 'held-notice-sent' && row.workingProgress !== undefined) {
     const progress = turn.workingProgress?.[row.workingProgress];
@@ -4668,7 +4697,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       throw Error('preview journal: limited answer receipt order');
     turn.limitedSent = row.message; sentOperatorRequest(view, row.id, 'limited', row.message); return;
   }
-  const replyCandidate = turn.answer ?? (turn.noticeClass === 'unknown-answer' ? UNKNOWN_ANSWER_NOTICE
+  const replyCandidate = turn.answer ?? (turn.noticeClass === 'unknown-answer' ? (turn.safetyCeiling ? SAFETY_CEILING_NOTICE : UNKNOWN_ANSWER_NOTICE)
     : turn.noticeClass === 'too-long-input' ? TOO_LONG_INPUT_NOTICE : undefined);
 
   if (row.kind === 'reply-review-after-send') {
@@ -4894,7 +4923,10 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   }
   if (row.kind === 'model-uncertain') {
     if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: uncertain model order');
+    if (row.safetyCeiling !== undefined && row.safetyCeiling !== 'deadline' && row.safetyCeiling !== 'calls')
+      throw Error('preview journal: invalid safety ceiling');
     turn.modelState = row.state;
+    if (row.safetyCeiling) turn.safetyCeiling = row.safetyCeiling;
     if (row.latencyMs !== undefined) turn.answerMs = row.latencyMs;
     // This durable observation of the local invocation ending is also the notice due time.
     turn.noticeDueAt = row.at;
@@ -4907,11 +4939,16 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       || (row.noticeClass === 'too-long-input' && turn.reserved))
       throw Error('preview journal: notice order');
     turn.noticeClass = row.noticeClass;
-    operatorEvent(view, row.at, turn.update, 'lost answer notice prepared');
+    operatorEvent(view, row.at, turn.update, turn.safetyCeiling ? 'safety limit notice prepared' : 'lost answer notice prepared');
 
   }
   if (row.kind === 'answer') { if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: answer order');
     if (row.failureClass && row.text !== MODEL_FAILURE_REPLY) throw Error('preview journal: failure reply differs');
+    if (row.contextRecovery !== undefined) {
+      if (row.contextRecovery !== row.id || row.state !== 'complete' || row.failureClass || !row.text.trim())
+        throw Error('preview journal: context recovery answer differs');
+      turn.contextRecovery = row.contextRecovery;
+    }
     if (row.deliveryCancels !== undefined) {
       if (!Array.isArray(row.deliveryCancels) || row.deliveryCancels.length > 5
         || row.deliveryCancels.some(item => !deliveryCancellationSupported(view, turn, item)))
@@ -5821,11 +5858,12 @@ export interface PreviewPorts {
     answer: Awaited<ReturnType<PreviewPorts['model']>> } | null>;
   modelBatch?(inputs: readonly Parameters<PreviewPorts['model']>[0][]): Promise<readonly Awaited<ReturnType<PreviewPorts['model']>>[]>;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
+    /** Host recovery evidence, never parsed from the model's output. */ contextRecovery?: string;
     usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage;
       /** Exact zero-token provider quota refusal, carried separately from semantic rejection. */ capacity?: ModelCapacity;
       /** A malformed answer's exact protocol defect (answer-reading.ts), named in the one format re-ask. */ defect?: string;
       /** Rejected work output, kept only for the same step's bounded format repair. */ rawOutput?: string}
-    | {state:'uncertain'; usage?: ModelUsage}>;
+    | {state:'uncertain'; safetyCeiling?: 'deadline' | 'calls'; usage?: ModelUsage}>;
   /** Rule 42: a message id (accepted), null (UNKNOWN) or a closed outcome. Rule 89: `provenance`
    * is the journal's signature over exactly `target`, `chat`, `thread` and `text`. */
   send(input: { text: string; expectedText: string; chat: string; thread?: number; replyTo?: number; update: number;
@@ -7092,7 +7130,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const text = unsettledOutcome(item, whole?.outcome.kind === 'accepted');
     return whole && whole.outcome.kind !== 'accepted' ? text.replace('delivery UNKNOWN', partialReplyLabel(whole)) : text;
   };
-  const unsettledOutcome = (item: Turn, delivered: boolean) => delivered ? (lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
+  const unsettledOutcome = (item: Turn, delivered: boolean) => item.safetyCeiling
+    ? `infrastructure ${item.safetyCeiling === 'deadline' ? 'time' : 'model-call'} limit halted work; `
+      + (delivered ? 'notice Telegram API accepted; actions remain UNKNOWN'
+        : item.intent ? 'notice delivery UNKNOWN; actions remain UNKNOWN' : 'notice pending; actions remain UNKNOWN')
+    : delivered ? (lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
       : sizeRefused(item) ? item.intent?.replace(/^PREVIEW — /u, '') === TOO_LONG_INPUT_NOTICE ? 'too-long notice Telegram API accepted'
         : 'holding reply delivered in place of the too-long notice'
       : item.noticeClass ? 'holding reply delivered in place of the loss notice; model UNKNOWN'
@@ -7509,8 +7551,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const actionFacts = currentActionFacts(journal.view, now, question !== undefined && fromOperator(question)
       && (journal.view.genesis.forum !== true || operatorOnlyVerified), String(current ?? 'main'), zone);
     const packet = JSON.stringify({ now, ...(ports.workingActivity ? { progressReplies: {
-      cadenceMinutes: [2, 5, 10], thereafterMinutes: 10, source: 'your current tool description or tool and target; between tools, your latest self-written description',
-      note: 'While your answer is in progress, the host may quote one short status per tool step while the session is live. Describe tool steps accurately. The final answer ends these status lines.' } } : {}), clock: { utc: new Date(now).toISOString(), zone, day: localDay,
+      cadenceMinutes: [2, 5, 10], thereafterMinutes: 10, maxLines: WORKING_PROGRESS_CAP, silenceMinutes: 2, source: 'fresh advancing admitted work evidence',
+      note: 'While your answer is in progress, the host may send a bounded liveness-only line after silence and fresh work evidence. It does not narrate tools or claim progress. Any outbound resets silence; the final answer ends these lines.' } } : {}), clock: { utc: new Date(now).toISOString(), zone, day: localDay,
       time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`,
       weekday: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'long' }).format(now) },
       ...(resume ? { resume: { previous: turnLabel(journal.view.turns.get(resume.previous)!), elapsedHours: resume.elapsedHours,
@@ -8216,6 +8258,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const after = ports.acknowledgementTimer ?? ((ms: number, run: () => void) => {
       const timer = setTimeout(run, ms); timer.unref(); return () => clearTimeout(timer);
     });
+    if (!Number.isFinite(workingAt(turn))) return;
     workingTimers.set(turn, after(Math.max(1000, workingAt(turn) - ports.now()), () => {
       workingTimers.delete(turn);
       const run = async () => {
@@ -8223,21 +8266,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const activity = ports.workingActivity!(turn.id), now = ports.now();
         if (!currentWorkingActivity(activity, now) || now < workingAt(turn)
           || journal.view.order.some(item => item.thread === turn.thread && item.workingProgress?.some(saved => saved.step === activity.step))) return;
-        const text = activity.text, ordinal = turn.workingProgress?.length ?? 0;
+        const text = WORKING_LIVENESS, ordinal = turn.workingProgress?.length ?? 0;
         ports.checkOutbound(text);
         const chat = journal.view.genesis.chat, thread = turn.thread === undefined ? {} : { thread: turn.thread };
         const target = `working-progress:${ordinal}:${turn.id}`, body = encodeReply(text);
         ports.checkOutbound(body);
-        const provenance = journal.signOutbound('agent', { target, chat, ...thread, body });
+        const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body });
         let admitted = false;
         const current = () => (admitted ? !workingEnded.has(turn) && !halted() && !turn.intent : workingCurrent(turn)) && currentWorkingActivity(ports.workingActivity!(turn.id), ports.now())
-          && ports.workingActivity!(turn.id)?.step === activity.step && ports.workingActivity!(turn.id)?.text === text
+          && ports.workingActivity!(turn.id)?.step === activity.step && ports.workingActivity!(turn.id)?.text === activity.text
           && (admitted || ports.now() >= workingAt(turn));
         const outcome = await push('reply', target, provenance, { text: body, expectedText: text, chat, ...thread,
           update: turn.update, current }, () => {
           const at = ports.now();
           journal.append({ kind: 'held-notice-intent', id: turn.id, text, chat, ...thread, update: turn.update,
-            grant: journal.view.genesis.grant, provenance, workingProgress: { ...activity, ordinal, at }, at });
+            grant: journal.view.genesis.grant, provenance, workingProgress: { ...activity, text, ordinal, at }, at });
           admitted = true;
         });
         if (outcome.kind === 'accepted') journal.append({ kind: 'held-notice-sent', id: turn.id,
@@ -8763,8 +8806,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               return 'fulfilled must name an offered agent promise and quote an exact excerpt of this new reply, not the old promise; omit it if no promise was carried out';
             if (!turn.requestedAction && fromOperator(turn) && Array.isArray(value.dated)) {
               const admitted = datedFrom(value.dated, turn);
-              if (admitted?.some((item, index) => item.ambiguity === 'date expression unresolved'
-                && value.dated instanceof Array && value.dated[index]?.resolution === undefined))
+              // S update 715676632 copied packet.now instead of datedClock.at. A supplied but
+              // unbound resolution needs the same single re-ask as an absent one, never a host guess.
+              if (admitted?.some((item, index) => item.ambiguity === 'date resolution needs the original clock, zone and a valid UTC instant'
+                || item.ambiguity === 'date expression unresolved'
+                  && value.dated instanceof Array && value.dated[index]?.resolution === undefined))
                 return `dated needs a model resolution for this time phrase: keep quote and when verbatim; add resolution:{instant:UTC ISO timestamp with milliseconds,at:${sentAt(turn) ?? turn.at},zone:${JSON.stringify(ports.timeZone ?? 'America/Los_Angeles')}} using that original clock. If ambiguous, use resolution:{ambiguity:plain clarification question}. Never guess an ambiguous or invalid time`;
             }
             // Runner-authored due turns discard operator date declarations below; repairing one would
@@ -8884,6 +8930,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const answerMs = duration(answerStarted);
           if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') {
             journal.append({ kind: 'model-uncertain', id: turn.id, state: 'uncertain',
+              ...(answer.safetyCeiling ? { safetyCeiling: answer.safetyCeiling } : {}),
               ...('usage' in answer && answer.usage ? { usage: answer.usage } : {}), latencyMs: answerMs, at: ports.now() });
           } else if (typeof answer !== 'string' && 'failureClass' in answer) {
             journal.append({ kind: 'answer', id: turn.id, text: MODEL_FAILURE_REPLY,
@@ -9264,6 +9311,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const rejectedNow: RejectedObligations = { ...obligations.rejected,
               ...(refusedDeclarations ? { fulfills: refusedDeclarations } : {}) };
             journal.append({ kind: 'answer', id: turn.id, text: written,
+              ...(text.trim() && typeof answer !== 'string' && answer.contextRecovery === turn.id ? { contextRecovery: turn.id } : {}),
               ...(correction === undefined ? {} : { correction }),
               state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
               ...(memory === undefined ? {} : { memory }), ...(closedQuestions?.length ? { closedQuestions } : {}), ...(memoryFailure ? { memoryFailure } : {}), ...(personMerges?.length ? { personMerges } : {}), ...(personAttributes?.length ? { personAttributes } : {}), ...(dated === undefined ? {} : { dated }),
@@ -9315,9 +9363,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Live 46039931: replacing that answer also erased the loop quoted only in it.
         const memoryReplyFailed = turn.memoryPending && !turn.memoryUnresolved && !requestDecided;
         let reply = turn.noticeClass === 'too-long-input' ? TOO_LONG_INPUT_NOTICE
+          : turn.noticeClass === 'unknown-answer' ? (turn.safetyCeiling ? SAFETY_CEILING_NOTICE : UNKNOWN_ANSWER_NOTICE)
           : memoryReplyFailed && turn.memoryUndecided ? MEMORY_UNDECIDED_REPLY
           : memoryAcknowledgement(turn) ?? (memoryReplyFailed ? 'I reviewed your memory request.'
-            : `${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? UNKNOWN_ANSWER_NOTICE}`);
+            : `${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? (turn.safetyCeiling ? SAFETY_CEILING_NOTICE : UNKNOWN_ANSWER_NOTICE)}`);
         // Rule 110: a reply sent from a compacted context records its continuity account, and opens with the
         // fixed disclosure when that sentence is owed, on whatever text is finally sent (answer, loss, size or
         // holding notice). A silent account changes no text; its record still binds the text actually sent.
@@ -9381,7 +9430,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const retrospective = ports.replyReviewTiming === 'after-send' && turn.answer !== undefined && !turn.requestedAction;
         if (ports.replyCheck && !retrospective) {
           const reviewed = turn.replyChecks?.at(-1);
-          if (turn.reviewReserved && reviewed?.path === 'subscription' && (reviewed.verdict === 'pass' || reviewed.verdict === 'violation')
+          if (turn.noticeClass !== 'unknown-answer' && turn.reviewReserved && reviewed?.path === 'subscription' && (reviewed.verdict === 'pass' || reviewed.verdict === 'violation')
             && turn.reviewCandidate !== undefined && turn.reviewMentionedDates !== undefined
             && reviewed.candidateDigest === createHash('sha256').update(turn.reviewCandidate).digest('hex')) {
             reply = turn.reviewCandidate; mentionedKeys = turn.reviewMentionedDates;
@@ -9414,11 +9463,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'violation',
               ruleIds: ['credential'], confidence: 1, path: 'holding', latencyMs: 0, candidateDigest }, at: ports.now() });
             decision = 'violation';
-          } else if (memoryReplyFailed && turn.memoryUndecided
-            && fromOperator(turn) && reply === MEMORY_UNDECIDED_REPLY
+          } else if (fromOperator(turn) && (memoryReplyFailed && turn.memoryUndecided && reply === MEMORY_UNDECIDED_REPLY
+            || turn.noticeClass === 'unknown-answer' && turn.modelState === 'uncertain' && reply === (turn.safetyCeiling ? SAFETY_CEILING_NOTICE : UNKNOWN_ANSWER_NOTICE))
             && (!previous || previous.path === 'holding' && previous.verdict === 'pass')) {
             // Exact, content-free report of the durable validation outcome (Rules 4/42/95).
-            // A model review cannot repair memory or turn this recorded refusal into a save.
+            // A model review cannot repair memory or turn an unknown outcome into an answer.
             // Added dates, continuity text and all model prose still take the normal review.
             if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'pass',
               ruleIds: [], confidence: null, path: 'holding', latencyMs: 0, candidateDigest }, at: ports.now() });
@@ -9552,7 +9601,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               .map(reportLine).filter(line => reply.includes(line));
             // Rule 89: the status command's report is the runner's own fixed account, signed as infrastructure, so
             // no model rewrites it; an objection to it stays a signal recorded with the send (Rule 86).
-            const revisable = !(isStatusCommand(turn.text) && !turn.reserved);
+            const revisable = turn.noticeClass !== 'unknown-answer' && !(isStatusCommand(turn.text) && !turn.reserved);
             if (decision === 'violation' && revisable && ports.replyCheck.revise && originalPrompt !== undefined) {
               if (!turn.revisionReserved && journal.view.calls < journal.view.limits.maxCalls && inTime()) {
                 gate();
@@ -9748,6 +9797,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Rules 57, 93: a due turn is rechecked just before its send intent: never sent once withdrawn, and
         // held back while a later operator turn that may withdraw one of its requests is unsettled.
         if (actionHeader !== undefined && actionBlocked(turn)) continue;
+        // Rule 110: host recovery survives every supported reply shape, memory acknowledgement
+        // and downstream rewrite. Empty/failed model output never records this evidence. Bind
+        // the disclosure to the durable send intent so an unknown send is never replayed.
+        if (turn.contextRecovery === turn.id)
+          reply = withDisclosure(reply, 'I restored this conversation after a context limit and continued your last message.');
         if (!fits(reply)) { journal.append({kind:'hold',id:turn.id,reason:'reply size',at:ports.now()}); continue; }
         // Rule 106 on the final candidate: a revision or assembly can introduce a link the first check
         // never saw. The findings are recorded against this exact text; they advise, never hold.

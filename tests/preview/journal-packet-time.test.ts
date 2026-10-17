@@ -17,7 +17,7 @@ it.each([
     grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: at + 86400000,
     maxCalls: 30, maxReplies: 10, maxTurns: 10, maxBytes: 262144, cursor: 0,
   });
-  let packet: { actionFacts: { siblingWords: { items: { at: string }[] } }; history: { sourceLabel: string; date: string }[] };
+  let packet: { actionFacts: { siblingWords: { items: { ownWords: string }[] } }; history: { sourceLabel: string; date: string }[] };
   const worker = createJournalWorker(journal, { now: () => at, timeZone, stopped: () => false,
     groupDisclosure: async () => true, checkOutbound: () => {}, send: async () => 1,
     model: async input => { packet = JSON.parse(input.context); return 'The restart remains on hold.'; } });
@@ -28,7 +28,7 @@ it.each([
   try {
     intake(1, 3); await worker.drain();
     intake(2, 4); await worker.drain();
-    expect(packet!.actionFacts.siblingWords.items[0]!.at).toBe(expected);
+    expect(packet!.actionFacts.siblingWords.items[0]!.ownWords).toContain(`when I said it: ${expected} (reply delivery); operator input received:`);
     intake(3, 4); await worker.drain();
     expect(packet!.history[0]!.sourceLabel).toContain(expected);
     const current = journal.view.order.at(-1)!;
