@@ -4,12 +4,12 @@ Subject base: b279011f171b34366fffeaf901bd3b361c8ddd51
 Review state: open
 Reviewed content: none
 Outcome: Compose five exact reviewed members on live train-54: held-access awareness, no unnecessary handback, durable preference saves, standing corrections and evidence-based claims.
-Affected rules: 1, 4, 8, 10, 13, 14, 26, 34, 36, 37, 42, 44, 46, 49, 52, 55, 60, 63, 64, 68, 69, 74, 76, 77, 83, 84, 87, 89, 90, 92, 93, 95, 101, 102, 105, 111, 112, 113, 116
+Affected rules: 1, 4, 7, 10, 12, 18, 20, 21, 23, 26, 34, 36, 37, 42, 47, 49, 55, 57, 60, 69, 70, 74, 75, 77, 84, 85, 86, 90, 93, 95, 101, 102, 104, 111, 112, 113, 116
 Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake retain their existing doorways. No new grants, provider calls, retries or sender introduced by integration.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
-Tier rationale: Integrates durable reply scheduling and delivery behavior; live acceptance remains the desk's gate.
+Tier rationale: Integrates durable memory projection and model-facing answer/review behavior; live acceptance remains the desk's gate.
 Side effects: Combined model instructions share a fixed context budget. Shorten only redundant review prose to retain maintenance margin; preserve every semantic neighbor and recorded shape. No new store, watcher or provider call.
 Undo and recovery: Select the previous live build through the desk procedure; preserve durable journals and uncertain-send receipts. Existing memory history stays readable.
 Multi-machine posture: Credential enrollment remains a fresh bounded machine-local snapshot; durable preferences and corrections use the existing replicated journal. Existing ownership and unique-send admission remain unchanged.
@@ -30,6 +30,8 @@ Decision: train-58-C | No genuine product conflict; no head omitted. | reported=
 Decision: train-58-D | Run targeted consumer and required journal tests on WSL; report untouched host-dependent tests separately. Desk owns live proof. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-58-PROGRESS.md
 Decision: train-58-desk | Use existing repin/build/rehash/replay chain; no declaration or certificate changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-58-PROGRESS.md
 Decision: train-58-review-margin | Combined review delta exceeded its maintenance margin by 39 bytes. Shorten self_state_claim wording without changing its meaning or the inherited budgets and guard assertions; replay recorded neighbors. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-58-PROGRESS.md
+
+Publication: Seven generated files replayed from cb0b5742c8619248e6a0dbe31dfde11707ae71f5 in f103deb28aba4a18a3bb805d834849abd9b00873; no declaration or certificate changed. Final combined answer 23225 bytes, review 29319 bytes, unchanged minimum 29595. Lint and register checks pass.
 
 ## Closing block
 
