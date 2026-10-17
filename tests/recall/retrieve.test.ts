@@ -175,10 +175,12 @@ describe('composeRecall — the owner composition for in-memory drivers (Rule 11
     const withCues = composeRecall({ query: 'combination for my bike', lexical, candidates, maxResults: 5, stopped: () => false });
     expect(withCues.order).toContain(0);
     expect(withCues.order.slice(0, 2)).toEqual([12, 0]);
+    expect(withCues.meaningOrder).toEqual([0]);
     expect(withCues.disposition).toBe('complete');
     const bare = composeRecall({ query: 'combination for my bike', lexical, maxResults: 5, stopped: () => false,
       candidates: candidates.map(({ text, indexable }) => ({ text, indexable })) });
     expect(bare.order).not.toContain(0);
+    expect(bare.meaningOrder).toEqual([]);
     expect(bare).toMatchObject({ disposition: 'degraded', coverage: { indexable: 13, indexed: 0 } });
   });
   it('a charging reranker needs reserved spend and no stop; a zero-charge one is local computation', async () => {
@@ -191,6 +193,9 @@ describe('composeRecall — the owner composition for in-memory drivers (Rule 11
     expect(rr.calls).toHaveLength(0);
     const used = composeRecall({ ...base, stopped: () => false, spend: { reserve: () => true } });
     expect(used).toMatchObject({ rerank: 'used', charge: 1 });
+    // This concept table has no bike concepts: an empty semantic answer confers no priority.
+    expect(used.meaningOrder).toEqual([]);
+    expect(used.meaningOrder.every(index => used.order.includes(index))).toBe(true);
     expect(rr.calls).toHaveLength(1);
     const local = composeRecall({ ...base, stopped: () => true, reranker: { ...rr, chargePerCall: 0, rerank: rr.rerank } });
     expect(local.rerank).toBe('used');
