@@ -26,6 +26,8 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing sourceLabel attributi
 Decision: train57-merge1017-compose | Merge exact live d169b80b into 038cb318, preserve both histories, and regenerate the seven generated conflicts through the existing replay tool. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-57-merge-1017-PROGRESS.md
 Decision: train57-merge1017-prompt | Disposition 450c79237a95 as a protocol assertion after reading both sources; do not change correct semantic guidance to silence a scan. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-57-merge-1017-PROGRESS.md
 
+Publication: Seven generated artifacts replayed from source d155f6e94df1fc33c654c868de8df981a0692a7b, generation sha256:38ff94225194b1974c52d3524b300595b983de9e3028c6a063a70e6844a037de. Both desk pin tools report zero stale pins; architecture and typecheck pass. This record covers the merge and derived publication.
+
 simplestRobustRoute: This is the simplest robust route: ordinary merge, existing derived-register replay, one truthful finding disposition and targeted regression verification. No added mechanism. Start at the named heads; keep safety, ownership and uncertainty floors; finish with committed ancestry, fresh pins and measured checks. No unattended live acceptance claim.
 80/20: Five member tests, imported D5 tests and prompt consumer regression; portable pinned checks, build, typecheck, lint and register verification. Studio owns full-suite and native-host acceptance.
 VERDICT: author submission; independent desk acceptance pending
