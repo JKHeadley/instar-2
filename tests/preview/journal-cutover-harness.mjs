@@ -32,8 +32,15 @@ export function cutoverHarness(world, profile, childEnv = {}) {
     ...(role === 'canary' && !fenced ? { INSTAR_CONVERSATION_OWNERS: join(directory, 'owners-canary') } : {}) });
   const canaryRoot = join(directory, 'cutover-canary');
   const liveRoot = join(directory, 'cutover-live');
-  const startCanary = (fenced = false) => spawn(process.execPath, launchArgs(canaryRoot, 'canary', 1000),
-    { cwd: process.cwd(), env: env('canary', fenced), stdio: 'ignore' });
+  let canary, canaryError = '';
+  const startCanary = (fenced = false) => {
+    canaryError = '';
+    canary = spawn(process.execPath, launchArgs(canaryRoot, 'canary', 1000),
+      { cwd: process.cwd(), env: env('canary', fenced), stdio: ['ignore', 'ignore', 'pipe'] });
+    canary.stderr.setEncoding('utf8').on('data', chunk => { canaryError = (canaryError + chunk).slice(-4096); });
+    canary.once('error', error => { canaryError = error.message; });
+    return canary;
+  };
   const launchLive = cycles => spawnSync(process.execPath, launchArgs(liveRoot, 'live', cycles),
     { cwd: process.cwd(), env: env('live'), encoding: 'utf8', timeout: 30000 });
   /** The live runner as a child the test can kill at a chosen moment (a crash with no exit record). */
@@ -41,9 +48,18 @@ export function cutoverHarness(world, profile, childEnv = {}) {
     { cwd: process.cwd(), env: env('live'), stdio: 'ignore' });
   const status = () => spawnSync(process.execPath, [...args,
     'status', '--root', liveRoot], { cwd: process.cwd(), env: env('live'), encoding: 'utf8', timeout: 10000 });
-  const waitForOverlap = async () => {
-    for (let i = 0; i < 100; i++) { if (existsSync(marker)) return; await pause(50); }
-    throw Error('canary never entered a long poll');
+  // Startup includes the real loader and journal boot. Five seconds was a scheduling
+  // assumption, not an ownership condition. Keep a deadline, and fail promptly on exit.
+  const waitForOverlap = async (timeoutMs = 30000) => {
+    const deadline = performance.now() + timeoutMs;
+    while (true) {
+      if (!canary || canary.exitCode !== null || canary.signalCode !== null || canary.pid === undefined)
+        throw Error(`canary exited before long poll (status=${canary?.exitCode}, signal=${canary?.signalCode}): ${canaryError}`);
+      if (existsSync(marker)) return;
+      if (performance.now() >= deadline)
+        throw Error(`canary never entered a long poll within ${timeoutMs}ms: ${canaryError}`);
+      await pause(50);
+    }
   };
   const stopCanary = async child => {
     if (child.exitCode !== null || child.signalCode !== null) return;
