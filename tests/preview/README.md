@@ -22,6 +22,7 @@ The journal runner's capability briefing is generated from these lines and the f
   Details: only the verified operator is admitted; a forum journal serves all topics of one configured group, including General, with topic-specific recent history and harness sessions. Forum packets identify the current topic (General, its recorded name, or topic number); shared facts carry their source topic so the agent can attribute them across topics. Private-chat packets retain their existing format. Unknown send outcomes are never resent. Failed answers remain in the journal. After bounded proven-not-sent recovery is exhausted, a definite refusal gets one content-free delivery notice; uncertain sends keep uncertainty wording. Outstanding failures in one conversation coalesce, and a failed notice never generates another notice. Stops, expiry, reply caps and audience checks still apply.
 - `preview-durable-memory`: an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.
   Details: keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory.
+- Backup availability is shown in the running chat status and operator dashboard using the existing authenticated journal-peer observation. A single-machine installation says `no failover target` and keeps local operation supported. A missing observation is unknown; a stale or incomplete peer copy is unconfirmed. A recent complete acknowledgement is evidence of a backup, not a guarantee of takeover: the conversation authority must still be available. This pull-only line grants no authority and never lowers replication demands.
 - `preview-status-command`: "status" and "how are you doing" are answered from the journal without a model call.
   Details: the exact messages status and how are you doing are answered from the durable journal without generating an answer.
 - `preview-upcoming-date-mention`: a saved date within 48 hours can get one short mention in the next reply.
@@ -4414,3 +4415,20 @@ shows the count and up to three obligation identities; the JSON health view reta
 item and its start/age. Future scheduled steps, accounted waits and finished results are separate
 states. This is a pull-only signal: it never closes work, replays an uncertain effect, or kills a
 worker. A restart reconstructs it from the same journal, with no new store or service.
+### Missing session sign-in reminders
+
+The existing verified-live session activity check also checks that session's admitted
+harness login custody. Only a missing custody object is reported as missing; identity
+drift and unreadable custody remain unknown. The next operator answer can carry one
+plain reminder identifying the approved login slot. The existing journal notice key
+binds machine and admitted profile lifetime: sent and uncertain sends never repeat,
+including after restart. No new watcher, model call, credential copy or send route is
+introduced. Known credential expiry retains its existing escalating reminder schedule.
+
+Chat status and the operator dashboard show missing/present/unknown observations from
+this host. Samples older than 30 seconds become unknown and cannot raise a reminder.
+This is a local custody-availability observation, not a provider authentication probe;
+it does not claim coverage for idle workers that the driver has not recently observed
+or harnesses without this custody adapter. A proof-room check removes only a synthetic
+login after its worker starts, verifies one reminder and status, then tests restored
+custody, identity drift, stale samples and a restart/uncertain-send duplicate neighbor.

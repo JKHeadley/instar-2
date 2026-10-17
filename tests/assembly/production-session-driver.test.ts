@@ -3,6 +3,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
+// @ts-expect-error -- host composition module is JavaScript, exercised at runtime.
+import { observeInstalledSessionLogin } from '../preview/installed-harness-logins.mjs';
+import { sessionLoginNotices, type SessionLoginObservation } from '../preview/credential-reminders.js';
 import { CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
 import { SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
 import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
@@ -945,6 +948,78 @@ it.each([3600, 3601])('holds the admission hook boundary at %s seconds', timeout
   if (timeoutSeconds === 3600) expect(build).not.toThrow();
   else expect(build).toThrow('bounded admission hook required');
 });
+
+it('joins the recorded live worker captures to missing login custody, with no alarm from a dead or changed process', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/work-silence-terminal-2026-10-14.json', import.meta.url), 'utf8'));
+  const health: SessionLoginObservation[] = [];
+  const f = fixture('claude-code', { requireTurnHook: true, observeActivity: activity => {
+    health.push(observeInstalledSessionLogin({ reference: 'approved-login', activationReference: 'grant' }, activity,
+      () => { throw Object.assign(Error('synthetic removed login accompanying real worker bytes'), { code: 'ENOENT' }); }));
+  } });
+  const identity = f.launch(); value(f.deliver(identity));
+  expect(health).toEqual([]);
+  for (const row of recorded.captures) {
+    f.changePane(row.capture);
+    expect(value(f.driver.observe({ operation: 'work', processIdentity: identity })).phase).toBe('launched');
+    expect(sessionLoginNotices([health.at(-1)!], 1000)).toHaveLength(1);
+  }
+  const samples = health.length;
+  f.changeStamp('999:1001');
+  expect(f.driver.observe({ operation: 'work', processIdentity: identity }).kind).toBe('Refused');
+  expect(health).toHaveLength(samples);
+  f.stop();
+  expect(value(f.driver.observe({ operation: 'work', processIdentity: identity })).phase).toBe('exit-observed');
+  expect(health).toHaveLength(samples);
+});
+
+it('idle reaping uses recorded ready bytes plus a closed turn and revalidates the frame at close', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../fixtures/claude-idle-2.1.280.json', import.meta.url), 'utf8'));
+  const f = fixture('claude-code', { requireTurnHook: true }); const identity = f.launch();
+  expect(value(f.driver.observeIdle(identity))).toBeNull();
+  value(f.deliver(identity)); f.time(1100); f.hook(1100); f.changePane(recorded.pane.capture);
+  value(f.driver.observe({ operation: 'deliver', processIdentity: identity }));
+  const evidence = value(f.driver.observeIdle(identity)); expect(evidence).toMatch(/^sha256:/);
+  f.changePane(recorded.pane.capture + '\nWorking… esc to interrupt');
+  expect(value(f.driver.observeIdle(identity))).toBeNull();
+  expect(value(f.driver.stop({ claim: 'topic', incarnation: 'inc', processIdentity: identity, idleEvidence: evidence! })))
+    .toEqual({ state: 'refused', evidence: 'idle evidence changed; worker kept' });
+  expect(f.calls.some(row => row[0] === 'kill-session')).toBe(false);
+  f.changePane(recorded.pane.capture);
+  expect(value(f.driver.stop({ claim: 'topic', incarnation: 'inc', processIdentity: identity, idleEvidence: evidence! }))).toHaveLength(1);
+});
+
+it.each(['unchanged', 'changed', 'unreadable', 'after-kill'] as const)(
+  'adapter preserves action-time refusal, but not unknown or post-actuation failure (%s)', async mode => {
+    const recorded = JSON.parse(readFileSync(new URL('../fixtures/claude-idle-2.1.280.json', import.meta.url), 'utf8'));
+    const f = fixture('claude-code', { requireTurnHook: true }); const identity = f.launch();
+    value(f.deliver(identity)); f.time(1100); f.hook(1100); f.changePane(recorded.pane.capture);
+    value(f.driver.observe({ operation: 'deliver', processIdentity: identity }));
+    const evidence = value(f.driver.observeIdle(identity))!;
+    const adapter = createSessionConversationAdapter({
+      createDriver: () => ({ ...f.driver, observeIdle: (id: string) => {
+        const result = f.driver.observeIdle(id);
+        if (mode === 'changed') f.changePane(recorded.pane.capture + '\nWorking… esc to interrupt');
+        if (mode === 'unreadable') {
+          const tmux = f.config.io.tmux;
+          f.config.io.tmux = args => {
+            if (args[0] === 'capture-pane') throw Error('idle evidence changed; worker kept');
+            return tmux(args);
+          };
+        }
+        if (mode === 'after-kill') f.onKill(() => { throw Error('idle evidence changed; worker kept'); });
+        return result;
+      } }),
+      io: { clearResult: () => {}, readResult: () => null, modelCalls: () => 0, wait: async () => {},
+        prepareAdmission: () => {}, closeAdmission: () => {}, admissionState: () => ({ refused: false, openDelegations: [] }) },
+      resolveDelivery: () => undefined,
+    });
+    const control = adapter.control({ launch: identity, claim: 'topic', incarnation: 'inc',
+      action: 'close', authority: 'grant', reason: 'idle', idleEvidence: evidence });
+    if (mode === 'changed') await expect(control).resolves.toMatchObject({ state: 'refused' });
+    else if (mode === 'unchanged') await expect(control).resolves.toMatchObject({ state: 'closed' });
+    else await expect(control).rejects.toThrow('idle evidence changed; worker kept');
+    expect(f.calls.some(row => row[0] === 'kill-session')).toBe(mode === 'after-kill' || mode === 'unchanged');
+  });
 
 it('recognizes the captured context wall and quiet prompt from proof update 1016001', () => {
   const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/context-wall-worker-1016001-2026-10-16.json', import.meta.url), 'utf8'));

@@ -24,11 +24,19 @@ export function createCodexConversationWorker(input: Readonly<{
   let reader: ReturnType<typeof createCodexTurnReader> | null = null;
   const send = (request: ReturnType<typeof requests.initialize>) => connection!.request(request.method, request.params);
   const guard = () => { ensure(config && !config.stopped(), 'conversation stopped'); };
-  const feed = () => { for (const frame of connection?.drain() ?? []) reader?.consume(frame);
+  let frameCount = 0, idleDirty = false;
+  const feed = () => { for (const frame of connection?.drain() ?? []) { frameCount++; if (reader && reader.snapshot().status !== 'open') idleDirty = true; reader?.consume(frame); }
     if (connection && !connection.alive()) reader?.lost(); };
   const verify = (value: { launch: string; claim: string; incarnation: string }) => {
     ensure(connection && value.launch === connection.identity && value.claim === claim && value.incarnation === incarnation,
       'stale conversation worker');
+  };
+  const idleFingerprint = (target: { launch: string; claim: string; incarnation: string }) => {
+    verify(target); guard(); feed();
+    const result = reader?.snapshot();
+    return !config!.protectedSessions.includes(target.launch) && !config!.protectedSessions.includes(target.claim)
+      && !idleDirty && connection!.alive() && result?.status === 'completed'
+      ? hash(JSON.stringify([target.launch, target.claim, target.incarnation, operation, result, frameCount])) : null;
   };
   return {
     describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: true }),
@@ -85,7 +93,7 @@ export function createCodexConversationWorker(input: Readonly<{
       ensure(operation !== delivery.operation, 'input already submitted; no automatic replay');
       input.io.clearResult(delivery.resultPath);
       ensure(input.io.readResult(delivery.resultPath, delivery.maxBytes) === null, 'stale conversation result remains');
-      operation = delivery.operation; reader = null;
+      operation = delivery.operation; reader = null; idleDirty = false;
       // Host persists dispatch intent before calling this method. An RPC failure is uncertain.
       const response = await send(requests.deliver(thread, grounding ? `${grounding}\n\n${delivery.text}` : delivery.text));
       const turn = object(object(response).turn);
@@ -115,7 +123,10 @@ export function createCodexConversationWorker(input: Readonly<{
       const batch = events.slice(query.cursor, query.cursor + query.limit);
       return { observations: batch, cursor: query.cursor + batch.length, complete: true };
     },
+    async observeIdle(target) { return idleFingerprint(target); },
     async control(target) {
+      if (target.idleEvidence !== undefined && idleFingerprint(target) !== target.idleEvidence)
+        return { state: 'refused', evidence: 'idle evidence changed; worker kept' };
       if (target.action === 'compact') return { state: 'refused', evidence: 'use grounded replacement' };
       if (connection) {
         verify(target); feed();

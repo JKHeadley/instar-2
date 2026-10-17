@@ -28,7 +28,9 @@ function world(root: string) {
       prompts.push(input.context); return 'I can cite the source if it appears in context.';
     }, send: async () => 1, checkOutbound: () => {} });
   const say = async (id: number, text: string) => {
-    worker.intake([update(id, text)]); await worker.drain(); await worker.summarizeIfNeeded();
+    worker.intake([update(id, text)]); await worker.drain();
+    // This fixture exercises recall after explicit compaction, not the automatic idle cooldown.
+    await worker.summarizeIfNeeded(true);
   };
   return { journal, worker, prompts, say };
 }
