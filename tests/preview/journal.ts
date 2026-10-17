@@ -4964,6 +4964,11 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (row.state) turn.modelState = row.state;
     if (row.failureClass) turn.failureClass = row.failureClass;
     if (row.memoryPending) turn.memoryPending = true;
+    // Live 1016801: the summary failed, but this answer admitted the operator's preference.
+    // Its durable save settles the pending mutation; otherwise send replaces the valid answer
+    // with a false failure notice. Keep the summary's undecided history (and retry bound).
+    // Empty or unresolved decisions and refused proposals do not establish a saved change.
+    else if (row.memory?.length) delete turn.memoryPending;
     if (row.memoryUnresolved !== undefined) {
       if (row.memoryUnresolved !== true || !row.memoryPending || row.memory?.length || row.personMerges?.length
         || row.personAttributes?.length || row.undo !== undefined || row.failureClass || !row.text.trim())

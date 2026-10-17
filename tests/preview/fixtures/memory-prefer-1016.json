@@ -1,0 +1,87 @@
+{
+  "source": "liveproof-r08-10-1016-evidence/control, train-53 a82cdeac; read-only journal and exact worker result. Pre-answer summary rows retain decision fields; large prepared prompts and unrelated resource/call telemetry omitted.",
+  "worker": "instar20-574fd25f50de574e7fb37448:41612:1792167562",
+  "raw": {
+    "update_id": 1016801,
+    "message": {
+      "message_id": 1016801,
+      "from": {
+        "id": 7812716706,
+        "is_bot": false,
+        "first_name": "Proof operator"
+      },
+      "chat": {
+        "id": 7812716706,
+        "type": "private"
+      },
+      "date": 1792167540,
+      "text": "I prefer tea to coffee. Tell me which drink I prefer in one short sentence."
+    }
+  },
+  "answer": "{\"reply\":{\"answer\":\"You prefer tea to coffee.\"},\"memory\":[{\"mode\":\"prefer\",\"source\":\"telegram:12345678:update:1016801\",\"quote\":\"I prefer tea to coffee.\"}],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+  "beforeAnswer": [
+    {
+      "kind": "summary-reserve",
+      "through": 1016801,
+      "supervised": true,
+      "maxInputTokens": 32768,
+      "maxOutputTokens": 2048,
+      "at": 1792167547881
+    },
+    {
+      "kind": "summary-failed",
+      "format": 4,
+      "through": 1016801,
+      "state": "complete",
+      "failureClass": "malformed",
+      "memoryPendingFor": "telegram:12345678:update:1016801",
+      "usage": {
+        "inputTokens": 7895,
+        "outputTokens": 321,
+        "charge": null,
+        "inputComplete": true
+      },
+      "at": 1792167553813
+    },
+    {
+      "kind": "hold",
+      "id": "telegram:12345678:update:1016801",
+      "reason": "memory correction pending",
+      "at": 1792167553819
+    },
+    {
+      "kind": "summary-reserve",
+      "through": 1016801,
+      "supervised": true,
+      "maxInputTokens": 32768,
+      "maxOutputTokens": 2048,
+      "at": 1792167553935
+    },
+    {
+      "kind": "summary-failed",
+      "format": 4,
+      "through": 1016801,
+      "state": "complete",
+      "failureClass": "malformed",
+      "memoryPendingFor": "telegram:12345678:update:1016801",
+      "usage": {
+        "inputTokens": 7974,
+        "outputTokens": 328,
+        "charge": null,
+        "inputComplete": true
+      },
+      "at": 1792167560142
+    },
+    {
+      "kind": "memory-undecided",
+      "id": "telegram:12345678:update:1016801",
+      "reason": "summary-failed",
+      "at": 1792167560147
+    }
+  ],
+  "delivered": "Your message is retained, but I could not validate and save the requested memory change.",
+  "summaryOutputs": [
+    "{\"reasoning\":\"Single history item is a direct preference statement about tea vs coffee; no prior summary to condense. Capture as memoryItems fact, not memory (that's for save/correct/forget requests, not plain preference-of-fact statements). No people, commitments, questions beyond this.\",\"summary\":\"2026-10-16 (main chat): Operator stated a drink preference: tea over coffee, and asked for a one-sentence answer naming which drink they prefer.\",\"memory\":[],\"people\":[],\"personAttributes\":[],\"commitments\":[],\"closed\":[],\"memoryDisposition\":\"unresolved\",\"questions\":[],\"memoryItems\":[{\"source\":\"telegram:12345678:update:1016801\",\"quote\":\"I prefer tea to coffee.\"}],\"concepts\":[{\"source\":\"telegram:12345678:update:1016801\",\"terms\":[\"drink preference\",\"tea vs coffee\",\"beverage choice\",\"favorite drink\",\"likes tea\",\"dislikes coffee\"]}]}",
+    "{\"reasoning\":\"Single message: a correction (tea vs coffee preference) plus a question to answer. No prior memoryCandidates to correct against, so treat as unresolved since no source id exists for prior preference. Record tea preference as memoryItems fact. No other people/commitments.\",\"summary\":\"Conversation 'main chat', 2026-10-16T16:19Z: Operator (#1016801) stated \\\"I prefer tea to coffee\\\" and asked to be told which drink they prefer in one short sentence.\",\"memoryDisposition\":\"unresolved\",\"memory\":[],\"people\":[],\"personAttributes\":[],\"commitments\":[],\"closed\":[],\"questions\":[],\"memoryItems\":[{\"source\":\"telegram:12345678:update:1016801\",\"quote\":\"I prefer tea to coffee\"}],\"concepts\":[{\"source\":\"telegram:12345678:update:1016801\",\"terms\":[\"drink preference\",\"tea vs coffee\",\"beverage choice\",\"favorite drink\",\"personal preference\"]}]}"
+  ]
+}
