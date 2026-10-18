@@ -22,9 +22,6 @@ Prompt review: No new model instructions invented. Carry exact member guidance a
 
 Validation: Targeted and host-bound results recorded in the report. Register replay currently refuses the expired preview.step-check deadline (2026-10-18T00:00Z); the owned live graduation procedure belongs to the desk. Do not fake time, extend an owned deadline or claim graduation to conceal this finding.
 
-simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges and the established desk regeneration chain, with targeted consumer and recorded-shape verification. No new machinery. Exact live base and reviewed head guard entry; secrets, spend, stop, durable intake and unique effects remain floors. Builder completion is a pushed composition with classified checks, not live acceptance or independent convergence.
-80/20: Run changed tests, direct consumers, required journal and register cases, and required machine checks; the desk owns the combined full-suite and live gate.
-VERDICT: author submission; independent landing review remains desk-owned
 Decision: train-69-merge-selfunblock | Ordinary exact-head merge of 70f4c1ba; cite /Users/dabombstudio/.instar/agents/echo/.instar/lanes/selfunblock-1016-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-69-PROGRESS.md
 Decision: train-69-merge-groupn | Ordinary merge of 4be4caf9 reports already up to date; cite /Users/dabombstudio/.instar/agents/echo/.instar/lanes/groupn-1017-PROGRESS.md. Its desk payload remains unapplied here. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-69-PROGRESS.md
 Decision: train-69-merge-image | Ordinary exact-head merge of 1ebf7c9f; cite /Users/dabombstudio/.instar/agents/echo/.instar/lanes/gap-image-1017-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-69-PROGRESS.md
@@ -33,3 +30,7 @@ Decision: train-69-B | Branch created directly at the exact live commit; no bran
 Decision: train-69-C | No genuine product conflict and no omitted head. Native certificate conflict retains the live-base bytes pending actual combined Studio conformance; no declaration fabricated. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-69-PROGRESS.md
 Decision: train-69-D | Classify WSL-inaccessible checks separately and leave live acceptance to the desk. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-69-PROGRESS.md
 Decision: train-69-desk | Run repin/build/rehash/replay; publication blocked by an expired, separately owned step-check graduation deadline. Generated conflicts use unchanged live publication pending regeneration, never hand-combined. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-69-PROGRESS.md
+
+simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges and the established desk regeneration chain, with targeted consumer and recorded-shape verification. No new machinery. Exact live base and reviewed head guard entry; secrets, spend, stop, durable intake and unique effects remain floors. Builder completion is a pushed composition with classified checks, not live acceptance or independent convergence.
+80/20: Run changed tests, direct consumers, required journal and register cases, and required machine checks; the desk owns the combined full-suite and live gate.
+VERDICT: author submission; independent landing review remains desk-owned
