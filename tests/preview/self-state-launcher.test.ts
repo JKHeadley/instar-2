@@ -1,7 +1,7 @@
 // @ts-nocheck -- offline process and HTTP fixtures exercise the real launcher.
 import { expect, it } from 'vitest';
 import { spawn, spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
@@ -66,7 +66,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
         '--bot-username', world.configuration.botUsername, '--max-cycles', String(cycles), '--max-poll-seconds', '1',
         '--max-calls', '3', '--max-replies', '2', '--max-turns', '4', '--time-zone', 'America/Los_Angeles',
         ...(stepCheck ? ['--step-check', 'true'] : []));
-      expect(result.status, result.stderr).toBe(0);
+      const runsPath = join(root, 'runs.jsonl');
+      expect(result.status, result.stderr + (existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : '')).toBe(0);
       return performance.now() - start;
     };
     const status = () => JSON.parse(agent('status', '--root', root, '--time-zone', 'America/Los_Angeles').stdout);
@@ -93,13 +94,22 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(record.name).toBe('preview-activation');
     expect(record.identity).toBe(world.activation().reference);
     expect(record.expiresAt).toBe(trial.expiresAt);
-    expect(prompt[0]).not.toContain(record.name);
-    expect(prompt[0]).not.toContain(record.identity);
+    // The activation line remains human-readable; the access inventory deliberately
+    // carries bounded metadata so the agent knows which access it already holds.
+    const activationLine = prompt[0].split('\n').find(line => line.startsWith('Activation:'));
+    expect(activationLine).not.toContain(record.name);
+    expect(activationLine).not.toContain(record.identity);
+    const inventory = JSON.parse(prompt[0].match(/Credentials: (\[.*?\]); connectors:/u)[1]);
+    expect(inventory).toContainEqual({ name: record.name, identity: record.identity,
+      custody: 'activation-record', expiry: 'not expired', custodyPresent: null });
+    expect(prompt.every(text => !text.includes(env.INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN)
+      && !text.includes(env.INSTAR_SECRET_PREVIEW_TYPESAFE_KEY)
+      && !text.includes(env.INSTAR_SECRET_PREVIEW_STORAGE_KEY))).toBe(true);
     expect(prompt[0]).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
     // The burst intake admits every waiting update before reply work, so both are already received.
-    expect(prompt[0]).toContain('Operator messages received: 2 today, 2 so far');
-    expect(prompt[1]).toContain('My replies Telegram accepted: 1 today, 1 so far');
-    expect(prompt[1]).toContain('Model attempts: 1 of 3 used, 2 left');
+    expect(prompt[0]).toContain('Messages today/total: operator=2/2, replies accepted=0/0; today combined=2;');
+    expect(prompt[1]).toContain('operator=2/2, replies accepted=1/1; today combined=3;');
+    expect(prompt[1]).toContain('Remaining: model=1 of 3 used, 2 left;');
     expect(readFileSync(prompts, 'utf8').trim().split('\n').every(line =>
       !packetOf(line).sources.some(source => source.id === 'restart-handoff'))).toBe(true);
     // The operator raises caps; run 2 answers a third message and knows its own restart and why.
@@ -119,11 +129,10 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       .toContain('pending turns 0; held items 0; UNKNOWN model outcomes 0; UNKNOWN sends 0; lost-answer notices due 0');
     expect(packetOf(lines[3]).sources.some(source => source.id === 'restart-handoff')).toBe(false);
     const now = prompt[2];
-    expect(now).toContain('Operator messages received: 4 today, 4 so far (including the one being answered now)');
-    expect(now).toContain('My replies Telegram accepted: 2 today, 2 so far');
-    expect(now).toContain('Messages exchanged today: 6');
-    expect(now).toContain('Model attempts: 2 of 6 used, 4 left');
-    expect(now).toContain('on the authority "Justin, offline test"');
+    expect(now).toContain('Messages today/total: operator=4/4, replies accepted=2/2; today combined=6;');
+    expect(now).toContain('Current reply not sent.');
+    expect(now).toContain('Remaining: model=2 of 6 used, 4 left;');
+    expect(now).toContain('Caps raised: Justin, offline test;');
     expect(now).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
     expect(now).toMatch(/Last restart: 2026-\d\d-\d\d \d\d:\d\d P[DS]T\. The run before it started .* and ended .*: cycle limit reached\./u);
     expect(now).toContain('Launches recorded: 2');
