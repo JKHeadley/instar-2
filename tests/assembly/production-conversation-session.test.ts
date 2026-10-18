@@ -1062,3 +1062,19 @@ it('delivers two source-bound images through the real media bridge in one admitt
     expect(new Set(paths).size).toBe(2);
   } finally { await f.port.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+it.each(['complete', 'stop', 'failure'])('awaits asynchronous attachment protection before delivery and preserves cleanup: %s', async mode => {
+  let closes = 0;
+  const f = fixture({ prepareInputFiles: async operations => {
+    await Promise.resolve();
+    expect(f.delivered).toHaveLength(0);
+    if (mode === 'failure') throw Error('decoder unavailable');
+    if (mode === 'stop') f.stop();
+    return { notices: { [operations[0]!]: 'protected asynchronous attachment' }, close: () => { closes++; } };
+  } });
+  await f.port.run(f.request('async-attachment'));
+  expect(f.delivered).toHaveLength(mode === 'complete' ? 1 : 0);
+  expect(closes).toBe(mode === 'failure' ? 0 : 1);
+  if (mode === 'complete') expect(f.delivered[0]!.text).toContain('protected asynchronous attachment');
+  await f.port.close();
+});

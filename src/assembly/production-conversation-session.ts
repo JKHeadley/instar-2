@@ -71,7 +71,7 @@ export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'crea
    * the durable delivery. Host cleanup runs after the correlated end or refusal. */
   readonly prepareInputFiles?: (operations: readonly string[]) => Readonly<{
     notices: Readonly<Record<string, string>>; close(): void;
-  }>;
+  }> | Promise<Readonly<{ notices: Readonly<Record<string, string>>; close(): void }>>;
   readonly batchWaiting?: boolean;
   /** The host refuses continuation while an outward send has no definitive outcome. */
   readonly contextRecoveryAllowed?: () => boolean;
@@ -355,7 +355,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     };
     const work = async (waiting: readonly string[]) => {
       let ids = waiting;
-      let inputFiles: ReturnType<NonNullable<ConversationSessionConfig['prepareInputFiles']>> | undefined;
+      let inputFiles: Awaited<ReturnType<NonNullable<ConversationSessionConfig['prepareInputFiles']>>> | undefined;
       const id = waiting[0]!;
       const updateBatch = (patch: Partial<ConversationInput>) => persist({ inputs: state.inputs.map(input =>
         ids.includes(input.request.operation) ? { ...input, ...patch } : input) });
@@ -387,7 +387,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         const unresolved = state.inputs.slice(0, state.inputs.findIndex(input => input.request.operation === id))
           .filter(input => input.outcome?.state !== 'complete');
         const history = { total: unresolved.length, recent: unresolved.slice(-64).map(input => ({ operation: input.request.operation, state: input.state, outcome: input.outcome?.state ?? null })) };
-        inputFiles = config.prepareInputFiles?.(waiting);
+        inputFiles = await config.prepareInputFiles?.(waiting);
         guard();
         const actionFacts = await config.currentActionFacts?.(request.operation);
         guard();
