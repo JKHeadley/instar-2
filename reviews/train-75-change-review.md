@@ -4,7 +4,7 @@ Subject base: 090a0665257337f6412279699ca11693db23c5b2
 Review state: open
 Reviewed content: none
 Outcome: Integrate reviewed progress liveness and final-answer repairs while preserving live reminder withdrawal behavior.
-Affected rules: 2, 10, 12, 26, 34, 36, 37, 41, 49, 57, 58, 62, 69, 74, 90, 93, 101, 102, 107, 111, 112, 113, 116
+Affected rules: 2, 4, 8, 26, 34, 36, 37, 42, 46, 49, 52, 69, 70, 74, 77, 87, 89, 90, 95, 101, 102, 107, 111, 112, 113, 116
 Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake retain their existing enforcement. No model calls, grants, journal types or send paths added.
 Operator questions: none
 Suggested tier: significant
@@ -24,6 +24,9 @@ Decision: train-75-B | Branch created directly at exact live base; no main merge
 Decision: train-75-C | Only generated publication conflicted; retain base artifacts temporarily then regenerate from committed merged source. No product conflict or omitted member. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-75-PROGRESS.md
 Decision: train-75-D | Disclose WSL-only host limitations in unchanged tests; Studio owns native and live acceptance. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-75-PROGRESS.md
 Decision: train-75-desk | Downloaded repin/build/rehash/replay chain; Linux sed syntax only. No generated hand merge or guard constant change. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-75-PROGRESS.md
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged existing protocol or fixed output wording; no semantic classifier copied from the fixture.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged existing protocol or fixed output wording; no semantic classifier copied from the fixture.
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged existing protocol or fixed output wording; no semantic classifier copied from the fixture.
 Prompt review: No new prompt, parser or review threshold. Member captured real shapes are replayed through existing tests. No fixture phrase is used to classify meaning.
 Verification: Targeted member regressions, direct importers, journal tests, subscription tests, pinned gate and static checks; exact results in progress report.
 Deferral: generated/register.json:1 | not-a-deferral=Existing declaration wording reproduced by the generator, with no deferred repair introduced.
