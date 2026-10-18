@@ -1,6 +1,6 @@
 # Change review — Group P supervisor proof correction
 
-Subject base: 70e262c9fcd15535cb126d1e65775d043ffaa944
+Subject base: bbc554cb (origin/stepcheck-live-1018; live 70e262c9 plus the owned deadline repair)
 Review state: open
 Reviewed content: none
 Outcome: Correct the Group P offline proof's outdated crash threshold and refusal wording assumptions, with executable regression coverage of the unchanged supervisor.
@@ -18,9 +18,9 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none; core.hooksPath unset, hooks directory contains sample files only.
 Convergence: none
-Decision: groupp-1018-base | Use the explicitly named live commit 70e262c9 because origin/train-67 is no longer advertised; preserve the requested reproduction base. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/groupp-1018-PROGRESS.md
-Decision: groupp-1018-proof | Repair the proof, not the stricter durable crash brake: Rule 55 requires bounded recovery, not an extra failed launch. Count zero-cap launches instead of matching obsolete diagnostic text. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/groupp-1018-PROGRESS.md
-Decision: groupp-1018-desk | Supply the exact proof patch in this review artifact and local handoff for desk application; Studio access is read-only on this builder. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/groupp-1018-PROGRESS.md
+Decision: groupp-1018-base | Reuse owning repair ebd9199d on the requested stepcheck-live-1018 base; reproduce the three checks again rather than invent a second repair. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/groupp-1018b-PROGRESS.md
+Decision: groupp-1018-proof | Repair the proof, not the stricter durable crash brake: Rule 55 requires bounded recovery, not an extra failed launch. Count zero-cap launches instead of matching obsolete diagnostic text. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/groupp-1018b-PROGRESS.md
+Decision: groupp-1018-desk | Supply the exact proof patch in this review artifact and local handoff for desk application; Studio access is read-only on this builder. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/groupp-1018b-PROGRESS.md
 
 The adjacent groupp-1018-proof.patch targets the desk's pipeline/live-proof/P.sh and P-probe.mjs, relative to its lanes directory. It is a reviewable delivery artifact, not an applied Studio edit. Regression tests exercise the same real supervisor with injected time and local scratch files. No model-facing change or autonomous live completion is claimed.
 
