@@ -24,6 +24,8 @@ Prompt finding: 4106b49fff07 | protocol-literal | Existing unchanged protocol wo
 Prompt finding: 849db3a6296a | protocol-literal | Existing unchanged fixed output wording, not a fixture-derived semantic classifier.
 Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged source-citation protocol, not a fixture-derived semantic classifier.
 
+Verification: Build and 37 tests across four cancellation suites passed, including recorded output and refusal neighbors. Both review versions and incoming replay bytes match their parents exactly; both parents are ancestors. Register replay generated from merge c82d512f. Final portable checks are recorded in the repair report.
+
 simplestRobustRoute: This is the simplest robust route: ordinary merge, retain exact review versions at separate paths, regenerate derived output using the existing generator. No new machinery. Start guard is the assigned clean branch; end guards are ancestry, byte preservation, targeted recorded replay and cheap checks; existing safety floors remain enforced. No new unattended product-completion claim.
 80/20: Target the imported cancellation replay and neighboring cancellation behavior, typecheck, architecture, lint, register and pinned ready tests. The Studio owns the full suite and platform-only checks.
 VERDICT: author submission; no independent convergence claim — the desk records its judgment
