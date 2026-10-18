@@ -9,6 +9,13 @@ import { secretForms } from './reply-check.js';
 setLog({});
 
 export function protectPdf(bytes, protectText, heldSecrets) {
+  // Keep the original raw-byte floor too: comments/names can be read by file tools.
+  const checked = output => {
+    const utf8 = output.toString('utf8');
+    const original = Buffer.from(utf8).equals(output) ? utf8 : output.toString('latin1');
+    if (protectText(original) !== original) throw Error('PDF container protection unresolved');
+    return output;
+  };
   let document = new PDFDocument(bytes);
   try {
     if (document.needsPassword()) throw Error('PDF protection requires decoded content');
@@ -96,9 +103,9 @@ export function protectPdf(bytes, protectText, heldSecrets) {
         }
       } finally { object.destroy(); ref.destroy(); }
     }
-    if (!changed) return bytes;
+    if (!changed) return checked(bytes);
     // Full rewrite drops superseded compressed objects; incremental saving could leak them.
     const result = document.saveToBuffer('garbage=4,compress');
-    try { return Buffer.from(result.asUint8Array()); } finally { result.destroy(); }
+    try { return checked(Buffer.from(result.asUint8Array())); } finally { result.destroy(); }
   } finally { document.destroy(); }
 }

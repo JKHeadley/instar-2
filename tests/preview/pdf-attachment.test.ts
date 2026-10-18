@@ -52,7 +52,7 @@ function decodedPdf(bytes: Buffer): string {
 }
 
 it.each(['readable', 'clean-compressed', 'held-compressed', 'held-hex-split', 'credential-compressed',
-  'metadata-held', 'incremental-held', 'opaque-held', 'wrong-source', 'protection-unavailable', 'custody-unavailable', 'malformed', 'encrypted'])('replays PDF update 6234449 through the shipped custody-to-session callback: %s', async mode => {
+  'metadata-held', 'incremental-held', 'opaque-held', 'comment-held', 'wrong-source', 'protection-unavailable', 'custody-unavailable', 'malformed', 'encrypted'])('replays PDF update 6234449 through the shipped custody-to-session callback: %s', async mode => {
   const secret = mode.startsWith('held-') ? held : mode === 'credential-compressed' ? credential : ['metadata-held', 'incremental-held'].includes(mode) ? held : null;
   let pdf = mode === 'malformed' ? Buffer.from('%PDF-1.4\ncorrupt') : secret || mode === 'clean-compressed'
     ? compressedPdf(secret ?? 'No private content here', mode === 'held-hex-split') : cleanPdf;
@@ -67,6 +67,7 @@ it.each(['readable', 'clean-compressed', 'held-compressed', 'held-hex-split', 'c
     } finally { document.destroy(); }
   }
   if (mode === 'incremental-held') pdf = incrementalPdf();
+  if (mode === 'comment-held') pdf = Buffer.concat([cleanPdf, Buffer.from(`\n% ${held}\n`)]);
   const root = mkdtempSync(join(tmpdir(), 'pdf-session-'));
   try {
     mkdirSync(join(root, '.tmp')); mkdirSync(join(root, 'state'));
