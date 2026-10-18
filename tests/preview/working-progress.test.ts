@@ -160,16 +160,31 @@ it('reserves the last reply slot for the answer', async () => {
 });
 
 
-it('final answer waits for an already dispatched progress line, so transport delay cannot invert their order', async () => {
-  const f = fixture(), finishSend = f.holdProgress();
+it.each([
+  { kind: 'long answer', receipt: 10 }, { kind: 'tool count', receipt: 10 },
+  { kind: 'long answer', receipt: null }, { kind: 'tool count', receipt: null },
+])('final $kind never waits for a slow progress transport (receipt=$receipt)', async ({ kind, receipt }) => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/gap-progress-final-2026-10-18.json', import.meta.url), 'utf8'));
+  const answer = capture.turns[kind === 'long answer' ? 1 : 2].answer.split('\n\nFollow-up on "')[0];
+  const f = fixture({ receipt }), finishSend = f.holdProgress();
   try {
     await f.enteredPromise; await vi.advanceTimersByTimeAsync(127000);
     expect(f.sendEntered()).toBe(true); expect(f.progress()).toHaveLength(0);
-    f.release('Done.'); await vi.advanceTimersByTimeAsync(1);
-    expect(f.sent.some(row => row.text === 'Done.')).toBe(false);
-    finishSend(); await f.drain;
-    expect(f.sent.slice(-2).map(row => row.text)).toEqual([WORKING_LIVENESS, 'Done.']);
+    f.release(answer); await vi.advanceTimersByTimeAsync(1);
+    const replies = f.sent.filter(row => row.target?.startsWith('reply:') || row.target?.startsWith('reply-part:'));
+    expect(replies.length).toBeGreaterThan(0);
+    expect(replies.map(row => row.text).join('\n')).toContain(kind === 'long answer' ? '**December**' : 'Byte count: 25 bytes');
+    // Drain itself must finish while the already admitted progress transport is unresolved.
+    let drained = false; void f.drain.then(() => { drained = true; });
+    await vi.advanceTimersByTimeAsync(1); expect(drained).toBe(true);
+    finishSend(); await vi.advanceTimersByTimeAsync(1); await f.drain;
     await vi.advanceTimersByTimeAsync(1200000); expect(f.progress()).toHaveLength(1);
+    expect(f.journal.view.order[0]?.workingProgress?.[0]?.sent).toBe(receipt ?? undefined);
+    // Both accepted and UNKNOWN late progress retain their consumed identity after restart.
+    f.journal.compact(); f.journal.close();
+    const reopened = openPreviewJournal(f.path, f.key);
+    try { await createJournalWorker(reopened, f.ports).drain(); expect(f.progress()).toHaveLength(1); }
+    finally { reopened.close(); }
   } finally { finishSend(); f.release('Done.'); await f.drain; f.journal.close(); }
 });
 
@@ -322,8 +337,48 @@ it('replays advancing recorded worker evidence through the actual reader and sig
     expect(f.progress().map(row => row.text)).toEqual([WORKING_LIVENESS]);
     await vi.advanceTimersByTimeAsync(180000);
     reader.observe('answer', 'recorded-native-task', 'working');
+    expect(reader.current('answer')).toMatchObject({ running: true });
+    expect(f.progress()).toHaveLength(1); // same occurrence cannot send twice
+    reader.observe('answer', null, 'end'); f.release('12 bytes.'); await f.drain;
+  } finally { f.release('Done.'); await f.drain; f.journal.close(); }
+});
+
+it('6234450: the recorded 572-second foreground tool gets liveness during work, never renewed after completion or final', async () => {
+  const record = JSON.parse(readFileSync(new URL('./fixtures/gap-progress-6234450.json', import.meta.url), 'utf8'));
+  const invocation = record.records.find((row: { at: string }) => row.at === '2026-10-17T22:49:43.437Z');
+  const completion = record.records.find((row: { at: string }) => row.at === '2026-10-17T22:59:15.059Z');
+  const use = invocation.content[0];
+  const final = record.records.find((row: { at: string }) => row.at === '2026-10-17T22:59:22.690Z').content[0];
+  // Real model tool/input/result bytes, projected to the existing hook record shape.
+  // No sampling command executes: only the captured timeline advances on a fake clock.
+  const admitted = JSON.stringify({ phase: 'pre', decision: 'allow', id: use.id, tool: use.name, input: JSON.stringify(use.input) }) + '\n';
+  const ended = JSON.stringify({ phase: 'post', id: use.id, tool: use.name, result: completion.content[0].content }) + '\n';
+  let bytes = '';
+  const reader = createWorkingActivities({ read: () => bytes, now: () => Date.now() });
+  const f = fixture({ activityPort: () => reader.current('answer') });
+  try {
+    await f.enteredPromise; reader.observe('answer', 'recorded-6234450', 'start');
+    const started = Date.parse(invocation.at) - Date.parse(record.intakeAt);
+    const finished = Date.parse(completion.at) - Date.parse(record.intakeAt);
+    await vi.advanceTimersByTimeAsync(started);
+    bytes = admitted;
+    while (Date.now() < 1000 + finished) {
+      reader.observe('answer', 'recorded-6234450', 'working');
+      await vi.advanceTimersByTimeAsync(Math.min(2000, 1000 + finished - Date.now()));
+    }
+    expect(f.progress().map(row => row.text)).toEqual([WORKING_LIVENESS]);
+    expect(f.progress()[0]!.at).toBeLessThan(1000 + finished);
+    expect(f.progress()[0]!.at).toBeLessThan(131000);
+    bytes += ended; reader.observe('answer', 'recorded-6234450', 'working');
+    expect(reader.current('answer')).toBeNull();
+    await vi.advanceTimersByTimeAsync(300000);
+    reader.observe('answer', 'recorded-6234450', 'working');
     expect(reader.current('answer')).toBeNull();
     expect(f.progress()).toHaveLength(1);
-    reader.observe('answer', null, 'end'); f.release('12 bytes.'); await f.drain;
+    reader.observe('answer', null, 'end');
+    f.release(JSON.parse(final.input.content).reply.answer); await f.drain;
+    await vi.advanceTimersByTimeAsync(1200000);
+    expect(f.progress()).toHaveLength(1);
+    expect(f.sent.at(-1)?.text).toContain('572 seconds');
   } finally { f.release('Done.'); await f.drain; f.journal.close(); }
 });

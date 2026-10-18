@@ -6017,7 +6017,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
 
   // Bounded by admitted turn slots. Intake arms these independently of the serial answer worker.
   const workingTimers = new Map<Turn, () => void>();
-  const workingInFlight = new Map<Turn, Promise<void>>();
   const workingEnded = new Set<Turn>();
   const cancelWorkingProgress = (turn: Turn) => { workingEnded.add(turn); workingTimers.get(turn)?.(); workingTimers.delete(turn); };
   const progressTimers = new Map<Turn, () => void>();
@@ -8293,11 +8292,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (outcome.kind === 'accepted') journal.append({ kind: 'held-notice-sent', id: turn.id,
           workingProgress: ordinal, message: outcome.message, at: ports.now() });
       };
-      const job = run().catch(() => {}).finally(() => {
-        workingInFlight.delete(turn);
+      // Progress is advisory. Its durable intent consumes the occurrence even if transport
+      // stays UNKNOWN; a ready final answer must never wait for that transport to settle.
+      void run().catch(() => {}).finally(() => {
         if (workingCurrent(turn)) startWorkingProgress(turn);
       });
-      workingInFlight.set(turn, job);
     }));
   };
   const startAcknowledgement = (turn: Turn, knownPending = false) => {
@@ -9863,10 +9862,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         catch { journal.append({ kind: 'hold', id: turn.id, reason: 'outbound secret refused', at: ports.now() }); continue; }
         const thread = turn.thread === undefined ? {} : { thread: turn.thread };
         // Review is complete: dispatch owns the reply now. Cancel an unadmitted acknowledgement,
-        // but wait for an already dispatched one so it can never arrive after the answer.
+        // but wait for an already dispatched acknowledgement. Working progress has its own
+        // durable intent and receipt; an in-flight progress send cannot hold up the final answer.
         cancelAcknowledgement(turn);
         cancelWorkingProgress(turn);
-        await workingInFlight.get(turn);
         await acknowledgementsInFlight.get(turn);
         const intentAt = ports.now();
         const stopBase = approvalBase(journal.view);
@@ -9888,7 +9887,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             && fulfillableCommitment(journal.view.commitments, item.id) && !journal.view.closed.has(item.id) && !completionPending(journal.view, item.id)
             && journal.view.commitments[item.id]!.source !== turn.id).map(item => item.id),
           ...(heldBack || reply === HOLDING_REPLY ? {} : sentObligations(turn, reply, intentAt)),
-          ...(heldBack || reply === HOLDING_REPLY ? {} : withheldReports(turn, reply, objection)),
+          // A holding notice omitted the attached reports too. Preserve them as owned repair work
+          // instead of reattaching the same rejected text to every later answer (46040277-46040279).
+          ...withheldReports(turn, reply, held?.reason ?? (held ? held.objections.join(', ') : objection)),
           ...(continuity && turn.grounding ? { continuity: { prePauseInbound: continuity.before.id,
             capture: createHash('sha256').update(continuity.before.raw).digest('hex'), summarizedThrough: frontier!.through,
             ...(frontier!.basis === 'set-aside' ? { basis: 'set-aside' as const } : {}),
@@ -9943,7 +9944,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (!due && pendingMemory()?.editOf) settleBehind();
       if (!due && pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
     } finally {
-      try { await Promise.all([...acknowledgementsInFlight.values(), ...progressInFlight.values(), ...workingInFlight.values()]); } finally {
+      try { await Promise.all([...acknowledgementsInFlight.values(), ...progressInFlight.values()]); } finally {
         for (const cancel of workingTimers.values()) cancel();
         workingTimers.clear();
         for (const cancel of progressTimers.values()) cancel();
