@@ -1,6 +1,6 @@
 # Change review — Group P supervisor proof correction
 
-Subject base: bbc554cb (origin/stepcheck-live-1018; live 70e262c9 plus the owned deadline repair)
+Subject base: bbc554cb1ebb6d50850ea78b6db2237c9fa5a816
 Review state: open
 Reviewed content: none
 Outcome: Correct the Group P offline proof's outdated crash threshold and refusal wording assumptions, with executable regression coverage of the unchanged supervisor.
