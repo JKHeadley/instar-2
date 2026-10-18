@@ -46,7 +46,7 @@ Deferral: tests/preview/requested-report-live.test.ts:17 | not-a-deferral=record
 
 Subject (5 paths): tests/preview/fixtures/requested-report-proofroom4-2026-10-17.json, tests/preview/fixtures/retrospective-cap-2026-10-17.json, tests/preview/requested-report-live.test.ts, tests/preview/retrospective-cap.test.ts, tests/preview/retrospective.ts
 
-Verification: Typecheck and build passed. Delegated owner-manifest and inventory-chain repin scripts made no changes. Publication regenerated from merge c6187bc6f5416bc9222723600b67a85f08601add using build-register --replay. Final targeted tests and cheap gate outcomes are in the repair report.
+Verification: Typecheck and build passed. Delegated owner-manifest and inventory-chain repin scripts made no changes. Publication regenerated from merge c6187bc6f5416bc9222723600b67a85f08601add using build-register --replay. Final targeted tests and cheap gate outcomes are in the repair report. The merged deadline review explicitly disposes the 23 recorded-fixture deferral matches in its expanded subject; both inherited decision ids are named in the repair report.
 
 ## Closing block
 

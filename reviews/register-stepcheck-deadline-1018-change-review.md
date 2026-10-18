@@ -19,15 +19,41 @@ Bug evidence: none
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains sample hooks only.
 Convergence: none
 Prompt review: The promotion record appends the owner’s deadline, reason and rollback as status metadata. These strings contain neither a fixture trigger nor an asserted dispatch answer; no model prompt or output interpretation is changed.
-Decision: stepcheck-deadline-second-extension | step-check graduation not yet proven; deadline extended 72 h so dated gates do not block unrelated builds; this is the SECOND extension and the desk must open the outstanding graduation item. Keep dark status and append reason, owner and rollback to the existing promotion record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stepcheck-live-1018-PROGRESS.md
+Decision: stepcheck-deadline-second-extension | step-check graduation not yet proven; deadline extended 72 h so dated gates do not block unrelated builds; this is the SECOND extension and the desk must open the outstanding graduation item. Keep dark status and append reason, owner and rollback to the existing promotion record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-69-repair-083118-PROGRESS.md
 
-Decision: stepcheck-review-coverage | Apply reviewed PR 167 metadata to assigned live base 70e262c9 (origin/train-67 is absent), preserve live subscription expiry and both earlier branch promotion decisions, and include generated publication. Merge ordinarily into assigned trains and regenerate their publications. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stepcheck-live-1018-PROGRESS.md
+Decision: stepcheck-review-coverage | Apply reviewed PR 167 metadata to assigned live base 70e262c9 (origin/train-67 is absent), preserve live subscription expiry and both earlier branch promotion decisions, and include generated publication. Merge ordinarily into assigned trains and regenerate their publications. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-69-repair-083118-PROGRESS.md
 
 Verification: Typecheck and build passed; 21 targeted files / 222 tests passed. Register regenerated from 4b8954656b4fc935e1a59d92d732338e5558a9a4. Train-62 integration: ordinary merge of the deadline branch, with publication regenerated from merged source. Final gate and per-train outcomes are recorded in the stepcheck-live-1018 PROGRESS report.
 
 Train-62 publication: rebuilt with the project generator after the ordinary merge; build-register --check, typecheck and the targeted suite passed.
 
 Train-69 publication: rebuilt with the project generator after the ordinary merge; build-register --check, typecheck and the targeted suite passed.
+
+Integration scope: The ordinary live merge also preserves the retrospective prompt correction and captured replay fixtures. Their deferral-like text below is recorded evidence, not deferred work. The inherited deadline edit itself changes no prompt or parser.
+
+Deferral: tests/preview/fixtures/requested-report-proofroom4-2026-10-17.json:13 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:30 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:34 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:38 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:42 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:46 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:50 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:54 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:58 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:62 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:66 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:319 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:323 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:327 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:331 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:335 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:339 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:343 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:347 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:351 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:355 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:359 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
+Deferral: tests/preview/requested-report-live.test.ts:17 | not-a-deferral=recorded fixture or regression description of already-owned work, not deferred implementation
 
 ## Closing block
 
