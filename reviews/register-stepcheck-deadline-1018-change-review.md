@@ -1,6 +1,6 @@
 # Change review — extend the dark step-check graduation deadline
 
-Subject base: d0944dbaee4acee514c53c25c3f1ba13026953d6
+Subject base: 3670796c5de0d2b671d88e6116af6fede999f098
 Review state: open
 Reviewed content: none
 Outcome: SECOND 72-hour extension of the dark step-check graduation deadline, from 2026-10-18T00:00:00Z to 2026-10-21T00:00:00Z. Graduation itself is the outstanding work; the desk owns opening a graduation item and recording ordered stage evidence or retiring the feature.
@@ -20,6 +20,10 @@ Hook bypass: none; core.hooksPath is unset and the common hooks directory contai
 Convergence: none
 Prompt review: The promotion record appends the owner’s deadline, reason and rollback as status metadata. These strings contain neither a fixture trigger nor an asserted dispatch answer; no model prompt or output interpretation is changed.
 Decision: stepcheck-deadline-second-extension | step-check graduation not yet proven; deadline extended 72 h so dated gates do not block unrelated builds; this is the SECOND extension and the desk must open the outstanding graduation item. Keep dark status and append reason, owner and rollback to the existing promotion record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stepcheck-deadline-1018-PROGRESS.md
+
+Decision: stepcheck-review-coverage | Cover baseline merge d0944dba from its second parent 3670796c: git diff between their trees is empty, so this adds no product scope. Include the generated publication commit in this record's range. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stepcheck-deadline-1018-PROGRESS.md
+
+Verification: Typecheck, build, architecture, lint and register replay passed; 19 targeted files / 206 tests passed. Generated publication binds source commit 1db7eae4296104a3d29af3bb5187223ac8bc9a21.
 
 ## Closing block
 
