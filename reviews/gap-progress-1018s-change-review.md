@@ -24,6 +24,39 @@ Prompt review: no prompt or parser changes. Replay captures exact Studio updates
 Register refresh: merged generated artifacts and final source pins are regenerated using the existing shape-only replay command. No declaration or native conformance certificate is altered.
 Deferral: generated/register.json:1 | not-a-deferral=Existing declaration wording reproduced by the generator, with no deferred repair introduced.
 
+Deferral: tests/preview/fixtures/gap-progress-final-2026-10-18.json:135 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/gap-progress-final-2026-10-18.json:202 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/gap-progress-final-2026-10-18.json:255 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/gap-progress-final-2026-10-18.json:276 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/gap-progress-final-2026-10-18.json:434 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/requested-report-proofroom4-2026-10-17.json:13 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:30 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:34 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:38 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:42 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:46 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:50 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:54 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:58 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:62 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:66 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:319 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:323 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:327 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:331 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:335 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:339 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:343 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:347 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:351 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:355 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:359 | not-a-deferral=Recorded model/preview evidence contains quoted future-work wording; it is a replay fixture, not an engineering deferral.
+Deferral: tests/preview/gap-progress-final.test.ts:80 | not-a-deferral=Test name or fixture setup describes report delivery; it does not defer implementation work.
+Deferral: tests/preview/gap-progress-final.test.ts:114 | not-a-deferral=Test name or fixture setup describes report delivery; it does not defer implementation work.
+Deferral: tests/preview/requested-report-live.test.ts:17 | not-a-deferral=Test name or fixture setup describes report delivery; it does not defer implementation work.
+
+Register source: 2cc7e082c916881af60c3398f56a0ef17c86da5e; generated pins committed in f84cbe43745693d33e2ebfb0c0f81a7a3c6e77f6. Both lint and build-register --check pass without exceptions.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: remove the progress wait and use the existing withheldReports intent field and repair transition. No new queue, timer, model judgment, retry allowance or migration. Start guards are unchanged admitted activity and reviewed final candidate; end guards cancel new progress at final dispatch; durable occurrence identity, cadence/cap, outbound secrets, spend and stop retain the named floors. The original recorded C/T cases drive offline replay; unattended live acceptance belongs to the desk proof and is not claimed here.
