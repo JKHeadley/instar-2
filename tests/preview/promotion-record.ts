@@ -37,6 +37,11 @@ export const PROMOTION_RECORD: readonly PromotionEntry[] = Object.freeze([
     reason: 'step-check graduation not yet proven; deadline extended 72 h so dated gates do not block unrelated builds; graduation work tracked by the desk',
     owner: 'the desk: run tests/preview/jev-step-supervisor-live-test.md and record the ordered graduation evidence, or retire it',
     rollback: 'relaunch the same reviewed command without --step-check true; no step-check frames are written while off' },
+  { capability: 'preview.step-check', decision: 'new-deadline', recordedAt: 1792312984000, by: 'agent (stepcheck-deadline-1018)',
+    deadline: 1792540800000, // 2026-10-21 00:00 UTC
+    reason: 'SECOND 72-hour extension: step-check graduation remains unproven; the expired deadline blocks unrelated builds. Graduation itself is the outstanding work.',
+    owner: 'the desk: open a graduation item, run tests/preview/jev-step-supervisor-live-test.md and record the ordered graduation evidence, or retire it',
+    rollback: 'relaunch the same reviewed command without --step-check true; no step-check frames are written while off' },
 ]);
 
 /** The UTC calendar day of an epoch millisecond (civil-from-days), without an ambient clock. */
