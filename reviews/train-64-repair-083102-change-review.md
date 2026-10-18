@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Merge live a1b3b8fb into train-64 without losing either train’s behavior or review history. Keep the train-64 deadline review at its original path and preserve the complete train-62 version at a train-qualified review path. Regenerate publication with the existing register replay.
 Affected rules: Rules 26, 37, 49, 69, 74, 90, 101, 102, 111, 112, 113 and 116.
-Affected floors: secrets — ; spend cap — ; stop — ; no duplicate sends — ; durable intake — 
+Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake retain the merged inputs’ existing enforcement; this repair adds no runtime authority or effects.
 Operator questions: none
 Suggested tier: significant
 Declared tier: significant
