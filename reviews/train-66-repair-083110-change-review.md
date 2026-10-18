@@ -46,6 +46,8 @@ Deferral: tests/preview/requested-report-live.test.ts:17 | not-a-deferral=record
 
 Subject (5 paths): tests/preview/fixtures/requested-report-proofroom4-2026-10-17.json, tests/preview/fixtures/retrospective-cap-2026-10-17.json, tests/preview/requested-report-live.test.ts, tests/preview/retrospective-cap.test.ts, tests/preview/retrospective.ts
 
+Verification: Typecheck and build passed; five targeted replay files / 53 tests passed. Architecture passed. Delegated owner-manifest and inventory repin tools found zero changed pins; publication regenerated with build-register --replay from dd04f89ae6d5c628940ef3485abd86e83cdbac99. Final cheap-gate and pinned-test outcomes are in the repair report.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge preserving both parents, retain both verification paragraphs, and regenerate existing publication. No additional machinery or weakened checkpoint. No deployment completion claim.
