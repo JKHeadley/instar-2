@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -95,7 +95,12 @@ it.each(['readable', 'clean-compressed', 'held-compressed', 'held-hex-split', 'c
       `return (${expression});`)(join, openConversationMedia, root, '3', lookup, protectMediaBytes,
       mode === 'custody-unavailable' ? { custody: () => ({ custody: { state: 'failed' } }) } : custody,
       () => ({ values: [held], unavailable: mode === 'protection-unavailable' ? ['vault'] : null }));
-    const opened = prepare([source]);
+    const diagnostics = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    let opened;
+    try {
+      opened = prepare([source]);
+      expect(diagnostics.mock.calls).toEqual([]); // parser failures cannot log raw source
+    } finally { diagnostics.mockRestore(); }
     try {
       const notice = opened.notices[source];
       if (mode === 'readable' || mode === 'clean-compressed' || secret) {

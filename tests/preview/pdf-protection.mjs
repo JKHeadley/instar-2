@@ -1,8 +1,12 @@
 // Host-only PDF decoding at the existing attachment protection boundary (Rules 4/95/100).
 // No provider, process, download, durable state or authority is introduced here.
-import { PDFDocument, PDFPage } from 'mupdf';
+import { PDFDocument, PDFPage, setLog } from 'mupdf';
 import { credentialSpans } from '../../src/recall/redact.js';
 import { secretForms } from './reply-check.js';
+
+// Decoder diagnostics may quote unprotected source bytes. The attachment boundary
+// already reports failures without source content; suppress raw library diagnostics.
+setLog({});
 
 export function protectPdf(bytes, protectText, heldSecrets) {
   let document = new PDFDocument(bytes);
