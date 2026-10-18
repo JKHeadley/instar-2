@@ -1,0 +1,11 @@
+{"type":"thread.started","thread_id":"01a10363-29fe-7a93-b272-be3f0ff586fc"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Codex is ignoring 2 unrecognized configuration settings. Check for typos or deprecated settings.\n  user (/HOME/.codex/config.toml): `mcp_servers.playwright.kind` is ignored.\n  user (/HOME/.codex/config.toml): `mcp_servers.threadline.kind` is ignored."}}
+{"type":"item.completed","item":{"id":"item_1","type":"error","message":"`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."}}
+{"type":"item.completed","item":{"id":"item_2","type":"error","message":"Codex is ignoring 2 unrecognized configuration settings. Check for typos or deprecated settings.\n  user (/HOME/.codex/config.toml): `mcp_servers.playwright.kind` is ignored.\n  user (/HOME/.codex/config.toml): `mcp_servers.threadline.kind` is ignored."}}
+{"type":"item.completed","item":{"id":"item_3","type":"error","message":"`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."}}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_4","type":"agent_message","text":"I’ll run both commands in order and report the results.\n"}}
+{"type":"item.started","item":{"id":"item_5","type":"command_execution","command":"/bin/zsh -lc 'echo hello > a.txt'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_5","type":"command_execution","command":"/bin/zsh -lc 'echo hello > a.txt'","aggregated_output":"","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_6","type":"agent_message","text":"- `echo hello > a.txt` succeeded, writing `hello` to `a.txt`.\n- `echo DENYME` was blocked by the PreToolUse hook: “refused by probe.”"}}
+{"type":"turn.completed","usage":{"input_tokens":30829,"cached_input_tokens":27264,"cache_write_input_tokens":0,"output_tokens":115,"reasoning_output_tokens":0}}

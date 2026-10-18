@@ -1,13 +1,18 @@
 import { expect, it } from 'vitest';
-import { appendFileSync, mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, realpathSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { auditJournal, auditPacket } from './journal-audit.mjs';
-import { createJournalWorker, importChannelItems, openPreviewJournal, probeTurn } from './journal-test-worker.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, importChannelItems, openPreviewJournal, probeTurn } from './journal-test-worker.js';
+import { appendGroupCarry } from './group-carry.js';
+import { now as carryNow, permissionFor, scope, scope as carryScope } from './group-carry-fixture.js';
+import type { JournalRecord } from './journal.js';
 import { memoryHealthLine } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
+import type { MediaCustodyResult } from './telegram-media.js';
+import { authenticateTelegramSender, writerRecord } from './intake-principal.js';
 
 const key = new Uint8Array(32).fill(41);
 
@@ -44,35 +49,239 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
 const update = (id: number, text: string) => ({ update_id: id, message: {
   chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: 1790000000 + id * 60 } });
 
-it('checks every ordinary accepted turn with and without a latest packet', async () => {
+it.each([false, true])('checks every ordinary accepted turn with and without a latest packet (forum=%s)', async forum => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-turns-')));
   try {
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const binding = { ...genesis, ...(forum ? { forum: true as const, chat: '-1007654321' } : {}) };
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, binding);
+    const envelope = (id: number, text: string) => {
+      const raw = update(id, text);
+      return { ...raw, message: { ...raw.message, chat: { id: Number(binding.chat),
+        type: forum ? 'supergroup' : 'private', ...(forum ? { is_forum: true } : {}) }, ...(forum ? { message_thread_id: id === 1 ? 3 : 4 } : {}) } };
+    };
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
       prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
         { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
-      model: async () => 'Noted.', send: async () => 1, checkOutbound: () => {} });
-    worker.intake([update(1, 'First ordinary message.')]); await worker.drain();
-    worker.intake([update(2, 'Second ordinary message.')]); await worker.drain();
+      model: async input => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: 'Two ordinary messages.', people: [], commitments: [], closed: [] }) : 'Noted.', send: async () => 1, checkOutbound: () => {} });
+    worker.intake([envelope(1, 'First ordinary message.')]); await worker.drain();
+    worker.intake([envelope(2, 'Second ordinary message.')]); await worker.drain();
+    expect(journal.view.order.every(turn => turn.accepted)).toBe(true);
     for (const noPacket of [false, true]) {
       const clean = structuredClone(journal.view);
       if (noPacket) clean.lastPrompt = null;
       expect(auditJournal(clean).findings).toEqual([]);
       expect(auditJournal(clean).items.filter((item: { kind: string }) => item.kind === 'conversation-turn')).toHaveLength(2);
-      const forged = structuredClone(clean);
-      const first = forged.turns.get(forged.order[0]!.id)!;
-      const raw = JSON.parse(first.raw);
-      raw.message.text = 'A different message.';
-      first.raw = JSON.stringify(raw);
-      expect(auditJournal(forged).findings.map((item: { code: string }) => item.code))
-        .toContain('memory-operator-source-absent');
+      for (const field of ['text', 'sender', 'chat', 'type', 'update', ...(forum ? ['forum'] : [])]) {
+        const forged = structuredClone(clean);
+        const first = forged.turns.get(forged.order[0]!.id)!;
+        const raw = JSON.parse(first.raw);
+        if (field === 'text') raw.message.text = 'A different message.';
+        if (field === 'sender') raw.message.from.id++;
+        if (field === 'chat') raw.message.chat.id++;
+        if (field === 'type') raw.message.chat.type = forum ? 'private' : 'supergroup';
+        if (field === 'update') raw.update_id++;
+        if (field === 'forum') delete raw.message.chat.is_forum;
+        first.raw = JSON.stringify(raw);
+        expect(auditJournal(forged).findings.map((item: { code: string }) => item.code), field)
+          .toContain('memory-operator-source-absent');
+      }
     }
-    journal.close();
+    // Answers remain topic-local; summaries deliberately cover every topic.
+    const packetOf = (view: typeof journal.view) => JSON.parse(JSON.parse(view.lastPrompt!.prompt!).messages
+      .find((message: { role: string }) => message.role === 'context').content).packet;
+    expect(packetOf(journal.view).history).toHaveLength(forum ? 0 : 1);
+    const candidate = structuredClone(packetOf(journal.view));
+    candidate.memoryCandidates[0].message = '[operator message in another topic omitted]';
+    expect(auditPacket(journal.view, journal.view.order[1]!, candidate).findings.some(item => item.code === 'candidate-text-source'))
+      .toBe(!forum);
+    candidate.memoryCandidates[0].message = 'Invented private message';
+    expect(auditPacket(journal.view, journal.view.order[1]!, candidate).findings.map(item => item.code))
+      .toContain('candidate-text-source');
+    if (forum) {
+      const leaked = structuredClone(packetOf(journal.view));
+      leaked.history = [{ id: journal.view.order[0]!.id, user: journal.view.order[0]!.text, answer: 'Noted.' }];
+      expect(auditPacket(journal.view, journal.view.order[1]!, leaked).findings.map(item => item.code))
+        .toContain('history-coverage');
+    }
+    await worker.summarizeIfNeeded(true);
+    expect(journal.view.lastPrompt!.kind).toBe('summary');
+    const checkSummary = (view: typeof journal.view) => {
+      expect(auditJournal(view).findings).toEqual([]);
+      expect(packetOf(view).history).toHaveLength(2);
+      for (const mutation of ['missing', 'text', 'reply']) {
+        const forged = structuredClone(view), envelope = JSON.parse(forged.lastPrompt!.prompt!);
+        const context = envelope.messages.find((message: { role: string }) => message.role === 'context');
+        const body = JSON.parse(context.content);
+        if (mutation === 'missing') body.packet.history.pop();
+        if (mutation === 'text') body.packet.history[0].user = 'Altered source.';
+        if (mutation === 'reply') body.packet.history[0].answer = 'Altered reply.';
+        context.content = JSON.stringify(body); forged.lastPrompt!.prompt = JSON.stringify(envelope);
+        expect(auditJournal(forged).findings.map(item => item.code)).toContain(mutation === 'missing'
+          ? 'history-coverage' : mutation === 'text' ? 'history-text-source' : 'reply-text-source');
+      }
+    };
+    checkSummary(journal.view);
+    journal.compact(); journal.close();
     const replay = openPreviewJournal(join(root, 'journal.encrypted'), key);
-    expect(auditJournal(replay.view).findings).toEqual([]);
+    checkSummary(replay.view);
     replay.close();
+    const audit = await runAgent(['audit', '--root', root]);
+    expect(audit.status, audit.stderr).toBe(0);
+    expect(JSON.parse(audit.stdout).findings).toEqual([]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it.each(['correct', 'forget'] as const)('audits carried sources and %s projection across compacted replay', async mode => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-carry-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    // Replay the real proof-room decisions, uncertain summaries, reply reviews and deliveries
+    // into the predecessor before carrying its authenticated snapshot.
+    const capture = JSON.parse(readFileSync(new URL('./fixtures/proofroom-summary-cascade-stall-2026-09-30.json', import.meta.url), 'utf8')) as {
+      genesis: typeof genesis; rows: JournalRecord[] };
+    const source = openPreviewJournal(join(root, 'source.encrypted'), key, { ...capture.genesis, kind: 'genesis', expires: genesis.expires, cursor: 0 });
+    for (const row of capture.rows) source.append(row);
+    const scope = { ...carryScope, operator: capture.genesis.operator, bot: capture.genesis.bot };
+    let journal = openPreviewJournal(path, key, { ...genesis, operator: scope.operator, bot: scope.bot,
+      chat: scope.chat, forum: true, maxBytes: 65536 });
+    appendGroupCarry(journal, source, scope, permissionFor(scope), true, carryNow, () => false);
+    source.close();
+    let now = carryNow + 1000;
+    let correction: { mode: typeof mode; source: string; quote: string; replacement?: string } | undefined;
+    const worker = createJournalWorker(journal, { now: () => now++, stopped: () => false,
+      groupDisclosure: async () => true,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async input => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: 'The operator asks about prior memory.', people: [], commitments: [], closed: [] })
+        : correction ? JSON.stringify({ reply: 'Updated.', memory: [correction] }) : 'Noted.',
+      send: async () => 1, checkOutbound: () => {} });
+    const envelope = (id: number, text: string) => ({ update_id: id, message: { message_id: id,
+      chat: { id: Number(scope.chat), type: 'supergroup', is_forum: true }, from: { id: Number(scope.operator) },
+      message_thread_id: 3, text, date: Math.floor(now / 1000) } });
+    worker.intake([envelope(715672600, 'What do you remember from our earlier conversation?')]); await worker.drain();
+    await worker.summarizeIfNeeded(true);
+    const check = (view: typeof journal.view) => {
+      expect(view.lastPrompt!.kind).toBe('summary');
+      expect(auditJournal(view).findings).toEqual([]);
+      const envelope = JSON.parse(view.lastPrompt!.prompt!), context = envelope.messages
+        .find((message: { role: string }) => message.role === 'context');
+      const packet = JSON.parse(context.content).packet;
+      const candidate = packet.memoryCandidates.find((item: { id: string }) => !view.turns.has(item.id));
+      expect(candidate).toBeDefined();
+      expect(auditJournal(view).items.some(item => item.chain.some(link => link.kind === 'carried-source'))).toBe(true);
+      for (const mutation of ['missing', 'text', 'reply', 'snapshot', 'binding']) {
+        const forged = structuredClone(view), body = JSON.parse(context.content);
+        const target = body.packet.memoryCandidates.find((item: { id: string }) => item.id === candidate.id);
+        if (mutation === 'missing') target.id = 'absent-predecessor-source';
+        if (mutation === 'text') target.message += ' Invented content.';
+        if (mutation === 'reply') target.reply = 'Invented reply.';
+        if (mutation === 'snapshot') forged.groupCarry!.entries[0]!.text += ' Tampered snapshot.';
+        if (mutation === 'binding') forged.groupCarry!.scope.chat = '-1009999';
+        const changed = structuredClone(envelope);
+        changed.messages.find((message: { role: string }) => message.role === 'context').content = JSON.stringify(body);
+        forged.lastPrompt!.prompt = JSON.stringify(changed);
+        expect(auditJournal(forged).findings.map(item => item.code), mutation).toContain(mutation === 'text'
+          ? 'candidate-text-source' : mutation === 'reply' ? 'candidate-reply-source' : 'source-turn-absent');
+      }
+      return candidate as { id: string; message: string };
+    };
+    const candidate = check(journal.view);
+    // Persist a destination correction/forget over exact carried bytes. No predecessor intake is fabricated.
+    const quote = candidate.message;
+    worker.intake([envelope(715672601, `Please update the earlier memory. The new fact is that we meet at the library.`)]);
+    const trigger = journal.view.order.at(-1)!;
+    correction = { mode, source: candidate.id, quote,
+      ...(mode === 'correct' ? { replacement: 'The new fact is that we meet at the library.' } : {}) };
+    const reserved = structuredClone(journal.view.lastPrompt);
+    await worker.drain();
+    expect(journal.view.memory).toContainEqual({ ...correction, trigger: trigger.id });
+    // The earlier reservation must still use its original memoryCount after the correction.
+    const earlier = { ...journal.view, lastPrompt: reserved };
+    expect(auditJournal(earlier).findings).toEqual([]);
+    correction = undefined;
+    await worker.summarizeIfNeeded(true);
+    check(journal.view);
+    const context = JSON.parse(JSON.parse(journal.view.lastPrompt!.prompt!).messages
+      .find((message: { role: string }) => message.role === 'context').content).packet;
+    expect(context.memoryCandidates.some((item: { id: string; message: string }) => item.id === candidate.id
+      && item.message.includes('[withheld: operator correction or forgetting]'))).toBe(true);
+    journal.compact(); journal.close(); journal = openPreviewJournal(path, key);
+    check(journal.view); journal.close();
+    const cli = await runAgent(['audit', '--root', root]);
+    expect(cli.status, cli.stderr).toBe(0); expect(JSON.parse(cli.stdout).findings).toEqual([]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, AGENT_WATCHDOG_MS + 30_000);
+
+// These committed envelopes are synthetic Telegram fixtures, not a live-platform claim.
+it.each(['photo', 'voice', 'document'])('audits authenticated %s media and rejects tampering after compacted replay', async kind => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-media-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const fixture = JSON.parse(readFileSync(new URL(`./fixtures/telegram-media/${kind}.json`, import.meta.url), 'utf8'));
+    const binding = { ...genesis, bot: '123456789', operator: String(fixture.message.from.id),
+      chat: String(fixture.message.chat.id), forum: true as const, maxBytes: 65536 };
+    let journal = openPreviewJournal(path, key, binding);
+    const outcomes: MediaCustodyResult[] = [{ state: 'stored', reference: 'a'.repeat(64), bytes: 42 },
+      { state: 'unavailable' }, { state: 'failed' }, { state: 'failed', reason: 'admission-refused' },
+      { state: 'file-limit' }, { state: 'store-limit' }, { state: 'malformed' }];
+    if (kind === 'voice') outcomes.push({ state: 'stored', reference: 'b'.repeat(64), bytes: 42, transcript: 'Meet on Tuesday at nine.' });
+    let outcome = outcomes[0]!;
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      media: { receive: async () => outcome },
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async () => 'Noted.', send: async () => 1, checkOutbound: () => {} });
+    for (const [index, result] of outcomes.entries()) {
+      outcome = result;
+      worker.intake([{ ...fixture, update_id: fixture.update_id + index }]);
+      // Accepted intake remains auditable before custody completes too.
+      expect(auditJournal(journal.view).findings).toEqual([]);
+      await worker.drain();
+      expect(journal.view.order.at(-1)!.media).toEqual(result);
+      expect(auditJournal(journal.view).findings).toEqual([]);
+    }
+    const checkTampering = () => {
+      for (const field of ['caption', 'name', 'size', 'file', 'sender', 'chat', 'type', 'forum', 'update',
+        'accepted', 'text', 'annotation', 'outcome', 'missing-outcome', 'media-label']) {
+        const forged = structuredClone(journal.view);
+        const turn = forged.turns.get(forged.order[0]!.id)!;
+        const raw = JSON.parse(turn.raw);
+        const media = kind === 'photo' ? raw.message.photo.at(-1) : raw.message[kind];
+        if (field === 'caption') raw.message.caption = 'Invented caption.';
+        if (field === 'name') media.file_name = 'invented.bin';
+        if (field === 'size') media.file_size++;
+        if (field === 'file') media.file_id = 'different-file';
+        if (field === 'sender') raw.message.from.id++;
+        if (field === 'chat') raw.message.chat.id++;
+        if (field === 'type') raw.message.chat.type = 'private';
+        if (field === 'forum') delete raw.message.chat.is_forum;
+        if (field === 'update') raw.update_id++;
+        if (field === 'accepted') turn.accepted = false;
+        if (field === 'text') turn.text = 'Invented media description.';
+        if (field === 'annotation') turn.text += '\n[Media custody: invented success]';
+        if (field === 'outcome') turn.media = { state: 'failed' };
+        if (field === 'missing-outcome') delete turn.media;
+        if (field === 'media-label') { delete raw.message[kind]; raw.message.text = turn.text; }
+        turn.raw = JSON.stringify(raw);
+        // Rebind metadata changes so these neighbors exercise content derivation itself.
+        if (['caption', 'name', 'size'].includes(field))
+          turn.writer = writerRecord(authenticateTelegramSender(raw, 'production', turn.at)!);
+        expect(auditJournal(forged).findings.map(item => item.code), field)
+          .toContain(field === 'accepted' ? 'history-coverage' : 'memory-operator-source-absent');
+      }
+    };
+    checkTampering();
+    journal.compact(); journal.close(); journal = openPreviewJournal(path, key);
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    checkTampering();
+    journal.close();
+    const cli = await runAgent(['audit', '--root', root]);
+    expect(cli.status, cli.stderr).toBe(0);
+    expect(JSON.parse(cli.stdout).findings).toEqual([]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, AGENT_WATCHDOG_MS + 30_000);
 
 it('keeps a desk canary out of expected packet history while an ordinary omission still fails', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-canary-')));
@@ -116,6 +325,19 @@ it('attributes merged reply commitments to each recorded reply', async () => {
     expect(journal.view.commitments).toHaveLength(1);
     expect(journal.view.commitments[0]!.sources).toHaveLength(1);
     expect(auditJournal(journal.view).findings).toEqual([]);
+    // A historical packet may carry the full question; newer sibling packets omit it.
+    // Exercise the audit's exact field rule independently of relevance selection.
+    const source = journal.view.order[0]!, current = journal.view.order[1]!;
+    const packet = { commitments: [{ source: source.id, from: 'you, in your own earlier reply',
+      reply: source.intent!.replace(/^PREVIEW — /u, ''), answering: source.text, items: [] }] };
+    const replyFault = (thread?: number) => auditPacket(journal.view,
+      thread === undefined ? current : { ...current, thread }, packet).findings.some(item => item.code === 'commitment-reply-source');
+    expect(replyFault()).toBe(false);
+    Reflect.deleteProperty(packet.commitments[0]!, 'answering');
+    expect(replyFault()).toBe(true);
+    expect(replyFault(4)).toBe(false);
+    packet.commitments[0]!.answering = 'Invented question';
+    expect(replyFault(4)).toBe(true);
     const forged = structuredClone(journal.view);
     forged.commitments[0]!.sources![0]!.quote = forged.order[1]!.text;
     expect(auditJournal(forged).findings.map((item: { code: string }) => item.code))
@@ -226,7 +448,8 @@ it('keeps correction lineage valid when a later background summary completes', a
 it('audits the recorded packet without emitting bodies and refuses lost provenance or leaked claims', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-')));
   try {
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    // w3-floorduty (Rules 3, 93): plus the obligation guide's floor form, which now outranks optional evidence under pressure.
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxBytes: genesis.maxBytes + OBLIGATION_FLOOR_PACKET_BYTES });
     const account = 'agent@example.test';
     importChannelItems(journal, [{ source: 'conversation', account, id: 'Sam sent the itinerary.', from: 'sam@example.test',
       at: 1789999000000, text: 'Sam sent the itinerary.' }], account, 1790000000000);
@@ -606,4 +829,123 @@ it('audits a request, its scheduler-written due turn and the next answer clean, 
     expect(auditJournal(replay.view).findings).toEqual([]);
     replay.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each([false, true])('audits all summary topics and keeps answers topic-local after compaction (forum=%s)', async forum => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-summary-topics-')));
+  const path = join(root, 'journal.encrypted');
+  let journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 32768,
+    ...(forum ? { forum: true as const, chat: scope.chat } : {}) });
+  try {
+    const worker = createJournalWorker(journal, { now: () => carryNow, stopped: () => false,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async input => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: 'Sam likes tea. Lee likes coffee.', people: [], commitments: [], closed: [] }) : 'Noted.',
+      send: async () => 1, checkOutbound: () => {} });
+    for (const [id, text, thread] of [[1, 'Sam likes tea.', 3], [2, 'Lee likes coffee.', 4],
+      [3, 'What does Sam like?', 3]] as const) {
+      const raw = update(id, text);
+      worker.intake([{ ...raw, message: { ...raw.message, ...(forum ? {
+        chat: { id: Number(scope.chat), type: 'supergroup', is_forum: true }, message_thread_id: thread } : {}) } }]);
+      await worker.drain();
+    }
+    const packet = () => JSON.parse(JSON.parse(journal.view.lastPrompt!.prompt!).messages
+      .find((m: { role: string }) => m.role === 'context').content).packet;
+    expect(journal.view.lastPrompt!.kind).toBe('answer');
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    expect(packet().history.map((item: { id: string }) => item.id))
+      .toEqual(journal.view.order.slice(0, forum ? 1 : 2).map(turn => turn.id));
+    if (forum) {
+      const foreign = structuredClone(packet()); foreign.history.push({ id: journal.view.order[1]!.id });
+      expect(auditPacket(journal.view, journal.view.order[2]!, foreign).findings.map(item => item.code))
+        .toContain('history-coverage');
+    }
+    await worker.summarizeIfNeeded(true);
+    expect(journal.view.lastPrompt!.kind).toBe('summary');
+    const check = () => {
+      expect(auditJournal(journal.view).findings).toEqual([]);
+      expect(packet().history.map((item: { id: string }) => item.id)).toEqual(journal.view.order.map(turn => turn.id));
+      for (const alteration of ['missing', 'id', 'text', 'reply']) {
+        const forged = structuredClone(journal.view), envelope = JSON.parse(forged.lastPrompt!.prompt!);
+        const context = envelope.messages.find((m: { role: string }) => m.role === 'context');
+        const parsed = JSON.parse(context.content);
+        if (alteration === 'missing') parsed.packet.history.shift();
+        if (alteration === 'id') parsed.packet.history[0].id = 'absent';
+        if (alteration === 'text') parsed.packet.history[0].user = 'Altered source.';
+        if (alteration === 'reply') parsed.packet.history[0].answer = 'Altered reply.';
+        context.content = JSON.stringify(parsed); forged.lastPrompt!.prompt = JSON.stringify(envelope);
+        expect(auditJournal(forged).findings.map(item => item.code), alteration).toContain(
+          alteration === 'missing' ? 'history-coverage' : alteration === 'id' ? 'source-turn-absent'
+            : alteration === 'text' ? 'history-text-source' : 'reply-text-source');
+      }
+    };
+    check(); journal.compact(); journal.close(); journal = openPreviewJournal(path, key); check();
+    journal.close();
+    const cli = await runAgent(['audit', '--root', root]);
+    expect(cli.status, cli.stderr).toBe(0); expect(JSON.parse(cli.stdout).findings).toEqual([]);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+}, AGENT_WATCHDOG_MS + 30_000);
+
+it('traces carried summary candidates through authenticated, projected lineage before and after compaction', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-carried-')));
+  const source = openPreviewJournal(join(root, 'source.encrypted'), key, genesis);
+  const path = join(root, 'journal.encrypted');
+  let journal = openPreviewJournal(path, key, { ...genesis, forum: true, chat: scope.chat, maxBytes: 32768 });
+  try {
+    const previous = createJournalWorker(source, { now: () => carryNow - 1000, stopped: () => false,
+      model: async () => 'Noted.', send: async () => 1, checkOutbound: () => {} });
+    previous.intake([update(1, 'Sam likes tea.')]); await previous.drain();
+    appendGroupCarry(journal, source, scope, permissionFor(scope), true, carryNow, () => false);
+    const sourceId = source.view.order[0]!.id;
+    expect(journal.view.turns.has(sourceId)).toBe(false);
+    const worker = createJournalWorker(journal, { now: () => carryNow + 1000, stopped: () => false,
+      groupDisclosure: async () => true,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async input => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: 'Sam likes tea.', people: [], commitments: [], closed: [] }) : 'Noted.',
+      send: async () => 1, checkOutbound: () => {} });
+    const raw = update(2, 'What does Sam like?');
+    worker.intake([{ ...raw, message: { ...raw.message,
+      chat: { id: Number(scope.chat), type: 'supergroup', is_forum: true }, message_thread_id: 3 } }]);
+    await worker.drain(); await worker.summarizeIfNeeded(true);
+    const check = () => {
+      expect(journal.view.lastPrompt!.kind).toBe('summary');
+      expect(auditJournal(journal.view).findings).toEqual([]);
+      expect(auditJournal(journal.view).items).toContainEqual(expect.objectContaining({ kind: 'memory-candidate',
+        chain: [{ kind: 'carried-source', id: sourceId, ref: journal.view.groupCarry!.digest }] }));
+      for (const alteration of ['id', 'text', 'reply', 'missing-carry', 'changed-carry', 'wrong-kind']) {
+        const forged = structuredClone(journal.view), envelope = JSON.parse(forged.lastPrompt!.prompt!);
+        const context = envelope.messages.find((m: { role: string }) => m.role === 'context');
+        const parsed = JSON.parse(context.content), item = parsed.packet.memoryCandidates
+          .find((candidate: { id: string }) => candidate.id === sourceId);
+        expect(item).toEqual(expect.objectContaining({ message: 'Sam likes tea.', reply: '' }));
+        if (alteration === 'id') item.id = 'absent';
+        if (alteration === 'text') item.message = 'Sam likes coffee.';
+        if (alteration === 'reply') item.reply = 'Invented predecessor reply.';
+        if (alteration === 'missing-carry') delete forged.groupCarry;
+        if (alteration === 'changed-carry') forged.groupCarry!.entries[0]!.text = 'Changed snapshot.';
+        if (alteration === 'wrong-kind') item.id = 'summary:1';
+        context.content = JSON.stringify(parsed); forged.lastPrompt!.prompt = JSON.stringify(envelope);
+        expect(auditJournal(forged).findings.map(finding => finding.code), alteration).toContain(
+          alteration === 'text' ? 'candidate-text-source' : alteration === 'reply' ? 'candidate-reply-source' : 'source-turn-absent');
+      }
+      // The same immutable snapshot is served through the reservation's correction/forget state.
+      for (const mode of ['correct', 'forget'] as const) {
+        const view = structuredClone(journal.view), turn = view.order[0]!;
+        view.memory.push({ mode, source: sourceId, trigger: turn.id, quote: 'Sam likes tea.',
+          ...(mode === 'correct' ? { replacement: 'Sam likes coffee.' } : {}) });
+        const packet = { historyMode: 'complete', history: [], memoryCandidates: [
+          { id: sourceId, message: '[withheld: operator correction or forgetting]', reply: '' }] };
+        const audit = (memoryCount: number) => auditPacket(view, { ...turn, update: 3 }, packet, memoryCount);
+        expect(audit(1).findings.filter(item => item.at.startsWith('memoryCandidates'))).toEqual([]);
+        expect(audit(0).findings.map(item => item.code)).toContain('candidate-text-source');
+        packet.memoryCandidates[0]!.message = 'Sam likes tea.';
+        expect(audit(0).findings.filter(item => item.at.startsWith('memoryCandidates'))).toEqual([]);
+        expect(audit(1).findings.map(item => item.code)).toContain('candidate-text-source');
+      }
+    };
+    check(); journal.compact(); journal.close(); journal = openPreviewJournal(path, key); check();
+  } finally { source.close(); journal.close(); rmSync(root, { recursive: true, force: true }); }
 });

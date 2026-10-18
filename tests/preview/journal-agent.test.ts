@@ -5,34 +5,39 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, PER_RULE_PASS } from './successive-fixture.js';
-import { openPreviewJournal } from './journal.js';
+import { openPreviewJournal, UNKNOWN_SEND_NOTICE } from './journal.js';
 
 // The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride an answer as its own line. The answer itself stays exact,
 // and nothing else may be appended.
-const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+; send "status" for detail\.)$/u;
+const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+\.)$/u;
 const answerOf = (text: string) => {
   const [answer, ...notices] = text.split('\n\n');
-  for (const notice of notices) expect(notice).toMatch(NOTICE_LINE);
+  for (const notice of notices) {
+    expect(notice).toMatch(NOTICE_LINE);
+    if (notice.startsWith('Model route check:')) expect(notice).not.toContain('send "status"');
+  }
   return answer;
 };
 
-it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and %s Jev response follows the byte bound', async (_name, padding) => {
+it.each([['bounded', 0, false], ['oversized', 5000, false], ['forum', 0, true]])('polls status at the call cap and %s Jev response follows the byte bound', async (_name, padding, forum) => {
   const world = successiveWorld(), root = join(world.directory, 'status-cap-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
   const preload = join(world.directory, 'jev.mjs');
+  const chat = forum ? '-1001234' : world.configuration.chatId;
   writeFileSync(activation, JSON.stringify(world.activation()));
   writeFileSync(profile, JSON.stringify(offlineProfile));
   writeFileSync(updates, JSON.stringify([{ update_id: 1, message: { chat: {
-    id: Number(world.configuration.chatId), type: 'private' },
+    id: Number(chat), type: forum ? 'supergroup' : 'private', ...(forum ? { is_forum: true } : {}) },
+    ...(forum ? { message_thread_id: 7 } : {}),
     from: { id: Number(world.configuration.operatorSenderId) }, text: 'status' } }]));
   writeFileSync(preload, `globalThis.fetch = async () => new Response(JSON.stringify({
     model: 'jev-1.13.0', padding: 'x'.repeat(${padding}),
     answers: Object.fromEntries(['raw_path','cli_command','config_key','credential','api_endpoint',
       'quits_on_self','claims_blocked','parks_on_user','defers_work','unrecorded_blocker'].map(rule => [rule,{type:'noul',noul:0.01}])) }));\n`);
   let journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, {
-    kind: 'genesis', origin: 'test', bot: world.configuration.botId, chat: world.configuration.chatId,
+    kind: 'genesis', origin: 'test', bot: world.configuration.botId, chat, ...(forum ? { forum: true } : {}),
     operator: world.configuration.operatorSenderId, grant: world.state().read().trial.id,
     configurationDigest: world.state().read().trial.configurationDigest,
     expires: world.state().read().trial.expiresAt, maxCalls: 16, maxReplies: 16,
@@ -55,17 +60,29 @@ it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and
     const trial = world.state().read().trial;
     const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
       '--import', preload, 'tests/preview/journal-agent.mjs', 'run', '--root', root,
-      '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
+      '--bot-id', world.configuration.botId, '--chat-id', chat, ...(forum ? ['--forum', 'true'] : []),
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
-      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
+      '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
       '--bot-username', world.configuration.botUsername, '--max-cycles', '2', '--max-poll-seconds', '1'],
-      { cwd: process.cwd(), encoding: 'utf8', timeout: 10000, env });
+      // The launch boots the runner and spawns one bounded transport child per Telegram call through the
+      // resource owner's limit shim, so its wall time is process-start cost, not work. tests/preview/
+      // journal-agent-resources.test.ts budgets the same launch shape (one cycle more) at 30s under a 45s
+      // test; this one's 10s was the outlier and the gate's loaded full run crossed it after the run had
+      // already printed its final paused notice. Every assertion below is unchanged.
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env });
     expect(run.status, run.stderr).toBe(0);
+    expect(run.stderr.match(/^runner exiting: .+$/gm)).toEqual(['runner exiting: cycle limit reached']);
     expect(readFileSync(log, 'utf8')).toContain('getUpdates');
     journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY);
     expect(journal.view.order).toHaveLength(1);
     expect(journal.view.calls).toBe(16);
+    if (forum) {
+      expect(journal.view.order[0]?.thread).toBe(7);
+      const sends = readFileSync(`${log}.sends`, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+      expect(sends).toHaveLength(1);
+      expect(sends[0]).toMatchObject({ chat_id: '-1001234', message_thread_id: 7 });
+    }
     if (padding === 0) {
       expect(journal.view.order[0]?.replyChecks?.[0]?.verdict).toBe('pass');
       expect(journal.view.replies).toBe(1);
@@ -79,7 +96,7 @@ it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and
     }
     journal.close();
   } finally { endpoint.kill('SIGTERM'); }
-}, 30000);
+}, 45000);
 
 it.each(['SIGINT','SIGTERM','SIGHUP'])('pauses on %s during synchronous idle polls and resumes on launch', async signal => {
   const world = successiveWorld(), root = join(world.directory, 'idle-journal');
@@ -90,8 +107,9 @@ it.each(['SIGINT','SIGTERM','SIGHUP'])('pauses on %s during synchronous idle pol
   writeFileSync(activation, JSON.stringify(world.activation()));
   writeFileSync(profile, JSON.stringify(offlineProfile));
   writeFileSync(updates,'[]');
-  writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
-  validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
+  writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
+  validateSubscriptionActivation, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
+  subscriptionToolsPolicy } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
 ${PER_RULE_PASS}
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
@@ -122,7 +140,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       'run','--root',root,'--bot-id',world.configuration.botId,'--chat-id',world.configuration.chatId,
       '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
-      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
+      '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
       '--bot-username',world.configuration.botUsername,'--max-cycles','100000','--max-poll-seconds','1'];
     child = spawn(process.execPath,args,{cwd:process.cwd(),stdio:['ignore','pipe','pipe'],env:{...process.env,
       INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
@@ -141,6 +159,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       new Promise(done=>child.once('exit',(code,signal)=>done({code,signal}))),
       new Promise(done=>setTimeout(()=>done('timeout'),3000))]);
     expect(exit).not.toBe('timeout');
+    expect(stderr.match(/^runner exiting: .+$/gm)).toEqual([`runner exiting: paused by signal ${signal}`]);
     expect(readFileSync(log,'utf8').split('getUpdates').length-1).toBeLessThanOrEqual(pollsAtSignal+1);
     const status = spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
@@ -164,11 +183,11 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex')},
-        encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:2,replies:1,unknownCalls:1,
-          unknownCallBreakdown:{answers:0,summaries:0,reviews:0,jev:1,total:1},
-          replyChecks:{unavailable:1},unknownSends:0,
-          // Rules 41/75: every live model call, including the failed Jev check, is recorded at the one boundary.
-          modelCalls:{total:3,byJudgment:{answer:1,'reply-review':1,'jev-reply-check':1},byOutcome:{complete:2,failed:1},usageUnknown:1},
+        encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:2,replies:1,unknownCalls:2,
+          unknownCallBreakdown:{answers:0,summaries:0,reviews:0,jev:2,total:2},
+          replyChecks:{unavailable:2},unknownSends:0,
+          // Rules 41/75: the failed Jev attempt and its one bounded retry each retain their own UNKNOWN usage.
+          modelCalls:{total:4,byJudgment:{answer:1,'reply-review':1,'jev-reply-check':2},byOutcome:{complete:2,failed:2},usageUnknown:2},
           // Rules 42/89: the one reply was accepted and signed as the agent's own speech.
           sendOutcomes:{accepted:1,refused:0,unknown:0,speakers:{agent:1,infrastructure:0}},
           // Rules 28/29/35: the one admitted turn was written by the verified operator over the test endpoint.
@@ -201,8 +220,9 @@ it.each([['echo', 0], ['drop-thread', 1]])('the real launcher answers a topic fr
     {update_id:1,message:{chat:{id:chat,type:'private'},from:{id:operator},text:'My sister is called Wren.'}},
     {update_id:2,message:{chat:{id:chat,type:'private'},from:{id:operator},text:'What is my sister called?',
       message_thread_id:7,is_topic_message:true}}]));
-  writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
-  validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
+  writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
+  validateSubscriptionActivation, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
+  subscriptionToolsPolicy } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
 ${PER_RULE_PASS}
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
@@ -239,18 +259,21 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       'tests/preview/journal-agent.mjs','run','--root',root,'--bot-id',world.configuration.botId,'--chat-id',world.configuration.chatId,
       '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
-      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
+      '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
       '--bot-username',world.configuration.botUsername,'--max-cycles','4','--max-poll-seconds','1'],
       {cwd:process.cwd(),encoding:'utf8',timeout:20000,env});
     expect(run.status,run.stderr).toBe(0);
     const sends = readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line));
-    expect(sends).toHaveLength(2);
+    expect(sends).toHaveLength(2 + Number(unknown));
+    if (unknown) expect(sends[2]).toMatchObject({ chat_id: world.configuration.chatId,
+      message_thread_id: 7, text: UNKNOWN_SEND_NOTICE });
     expect(sends[0].message_thread_id).toBeUndefined();
     expect(sends[1]).toMatchObject({chat_id:world.configuration.chatId,message_thread_id:7});
-    expect(answerOf(sends[1].text)).toBe('PREVIEW — Your sister is Wren; you told me in the main chat.');
+    expect(answerOf(sends[1].text)).toBe('Your sister is Wren; you told me in the main chat.');
     expect(JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
-      {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:4,replies:2,unknownCalls:2,unknownCallBreakdown:{ jev:2,total:2 },unknownSends:unknown,
+      // Each turn records the unavailable Jev attempt and its retry without repeating the reply send.
+      {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:4,replies:2 + Number(unknown),unknownCalls:4,unknownCallBreakdown:{ jev:4,total:4 },unknownSends:2 * Number(unknown),
         lastReplyTiming: { update: mode === 'echo' ? 2 : 1,
           intakeToApiAcceptedMs: expect.any(Number), checkMs: expect.any(Number) },
         coherence:{checked:2,unchecked:0,failed:0}});
@@ -268,6 +291,15 @@ it.each([
     { role: 'reply-review', layer: 'decision', shape: 'prose-wrapped' }, {}],
   ['answer-two-objects', { 'answer/decision/malformed/multiple-objects': 2 },
     { role: 'answer', layer: 'decision', shape: 'multiple-objects' }, { malformed: 2 }],
+  // The live 2026-10-01 k6 failure: the answer model wrote its reasoning before the Decision. The answer side
+  // reads the one object and answers (Rules 15, 77); the shape is counted as tolerated, never hidden.
+  ['answer-prose-wrapped', { 'answer/decision/tolerated/prose-wrapped': 1 }, null, {}],
+  // Still ambiguous for the answer side too: a list could have held any number of objects, so it stays malformed.
+  ['answer-list-wrapped', { 'answer/decision/malformed/prose-wrapped': 2 },
+    { role: 'answer', layer: 'decision', shape: 'prose-wrapped' }, { malformed: 2 }],
+  // Accepted as one object, then refused by the same field checks an unwrapped Decision passes.
+  ['answer-prose-wrong-fields', { 'answer/decision/malformed/prose-wrapped-wrong-fields': 2 },
+    { role: 'answer', layer: 'decision', shape: 'prose-wrapped-wrong-fields' }, { malformed: 2 }],
   ['verdict-second-line', { 'reply-review/verdict/malformed/not-json': 2 },
     { role: 'reply-review', layer: 'verdict', shape: 'not-json' }, {}],
 ])('the real launcher accepts a whole-response Decision fence, never passes contradicting review text, still answers, and says why (%s)', async (mode, counts, last, failures) => {
@@ -279,8 +311,9 @@ it.each([
   writeFileSync(profile, JSON.stringify(offlineProfile));
   const chat = Number(world.configuration.chatId), operator = Number(world.configuration.operatorSenderId);
   writeFileSync(updates, JSON.stringify([{update_id:1,message:{chat:{id:chat,type:'private'},from:{id:operator},text:'Remember this.'}}]));
-  writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
-  validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
+  writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
+  validateSubscriptionActivation, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
+  subscriptionToolsPolicy } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
 ${PER_RULE_PASS}
 const mode = ${JSON.stringify(mode)};
@@ -296,7 +329,11 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     conclusion:{subject:'preview-stage2-answer',predicate:'answer-text',value,evidence:binding.evidence},
     reason:{subject:'question',predicate:'answered',value:true,evidence:binding.evidence},
     floor:{allowed:binding.floor,chosen:binding.floor.default}});
+  const prose='Looking at the history, there is one thing to check first. ';
   const bytes=mode === 'decision-contradicted' && review ? 'VIOLATION: this reply must not be sent. '+decision
+    : mode === 'answer-prose-wrapped' && !review ? prose+decision
+    : mode === 'answer-list-wrapped' && !review ? prose+'['+decision+']'
+    : mode === 'answer-prose-wrong-fields' && !review ? prose+JSON.stringify({type:'Other',conclusion:{subject:'preview-stage2-answer',value}})
     : mode === 'wrapped' || mode === 'wrapped-crlf' ? (review ? '\\u0060\\u0060\\u0060'+newline+decision+newline+'\\u0060\\u0060\\u0060' : '\\u0060\\u0060\\u0060json'+newline+decision+newline+'\\u0060\\u0060\\u0060')
     : mode === 'answer-two-objects' && !review ? decision+'\\n'+decision : decision;
   return {state:'complete',bytes,usage:{inputTokens:1,outputTokens:1}};
@@ -322,13 +359,15 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       'tests/preview/journal-agent.mjs','run','--root',root,'--bot-id',world.configuration.botId,'--chat-id',world.configuration.chatId,
       '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
-      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
+      '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
       '--bot-username',world.configuration.botUsername,'--max-cycles','3','--max-poll-seconds','1'],
       {cwd:process.cwd(),encoding:'utf8',timeout:20000,env});
     expect(run.status,run.stderr).toBe(0);
     const sends = existsSync(`${log}.sends`) ? readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line)) : [];
     // A contradicted review is unavailable, never a pass and never a veto (Rules 77, 86, 95).
-    expect(sends.some(send => answerOf(send.text) === 'PREVIEW — Noted.')).toBe(mode !== 'answer-two-objects');
+    // An answer that stays malformed after its one re-ask is never sent; every other mode still answers.
+    expect(sends.some(send => answerOf(send.text) === 'Noted.')).toBe(
+      !['answer-two-objects', 'answer-list-wrapped', 'answer-prose-wrong-fields'].includes(mode));
     const status = JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout);
@@ -352,6 +391,7 @@ it('Rule 35: a test-endpoint composition refuses a production journal before tak
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: 'http://127.0.0.1:9' } });
   expect(run.status).toBe(1);
+  expect(run.stderr.match(/^runner exiting: .+$/gm)).toEqual(['runner exiting: error (details suppressed)']);
   expect(readFileSync(path).equals(before)).toBe(true);
   expect(existsSync(join(root, '.writer'))).toBe(false);
   // Refused before the writer lease: no startup-refusal record is written into the production root either.
@@ -374,6 +414,7 @@ it('Rules 2, 42: a launch refused under the writer lease records its scrubbed re
   { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env });
   expect(run.status).toBe(1);
   expect(run.stderr).toContain('details suppressed');
+  expect(run.stderr.match(/^runner exiting: .+$/gm)).toEqual(['runner exiting: refused before launch']);
   expect(run.stderr).not.toContain('configuration-digest');
   const rows = readFileSync(join(root, 'runs.jsonl'), 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
   expect(rows).toHaveLength(2);

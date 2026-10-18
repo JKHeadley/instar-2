@@ -1,0 +1,29 @@
+# Change review — Protect media at the existing custody and resource checkpoints
+
+Subject base: c53ff668737eb5312c7930acc242bd2001e1e829
+Review state: open
+Reviewed content: none
+Outcome: Attachment bytes pass host credential custody and held-secret concealment before the harness-readable derivative is created. Local decoding and transcription enter the existing resource owner and Six allocation before launch.
+Affected rules: 1, 4, 7, 14, 32, 34, 36, 37, 46, 49, 55, 60, 66, 69, 70, 74, 86, 95, 100, 101, 111, 113, 116
+Affected floors: secrets — original encrypted custody remains authoritative; recognized credential spans enter the vault and become SecretRefs before exposure, held values are concealed and unreadable custody refuses exposure; spend cap — offline decoding and ordinary answer accounting remain; stop — the owner observes intake's stop and cancels enrolled processes; no duplicate sends — existing turn reservations and sends unchanged; durable intake — media failures retain encrypted originals and return an honest notice
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Repairs secret input exposure and physical resource admission at shipped host boundaries.
+Side effects: Clean attachment bytes preserve their encoding, binary bytes use a reversible Latin-1 view, and only the protected derivative is written. A failed custody read or unavailable held source prevents the attachment copy while the ordinary turn and tools remain available. Both local children run as maintenance under the answer reserve, allocation, process census and existing limits. The private transcription directory now exists before ffmpeg so both launches have a joined working area. Decoder output stays binary through stdoutBytes. Existing source pins and generated register are regenerated using the delegated desk tools, without hand editing pins.
+Undo and recovery: Roll forward at these checkpoints; do not restore raw exposure or unallocated launches. Original source-bound encrypted attachments remain readable by the host. The existing once-only attempt and interrupted-media cleanup retain their recovery behavior. No new durable state or queue is introduced.
+Multi-machine posture: Machine-local deliberately: each current owner uses its host vault, local scratch and shared host resource owner; original intake and transcript memory retain their existing journal behavior. No secret or resource authority crosses machines.
+Layer below: Inspected createSecretCustody durable vault write/read-back and capture, custodyHeldSources unavailable semantics, concealSecretMaterial exact held forms, resource-owner admission and Six reserve/return, durable gated launch, tree membership, stop and bounded stdoutBytes. Real Read pre/post hooks accept the clean/protected files and never see the synthetic secret. Real ffmpeg/whisper execution returns both allocations; allocation refusal leaves the would-be child marker absent and admitted count zero.
+Bug class: user-facing
+Bug evidence: reproducer=tests/preview/media-understanding.test.ts; live=tests/preview/fixtures/media-understanding/recorded/image.json
+Hook bypass: none
+Convergence: none
+Decision: media-custody-boundary | Apply existing custody and held-secret concealment before writing any harness-readable attachment, with no capability removal. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/media-understand-1010-repair-PROGRESS.md
+Decision: media-resource-boundary | Use the existing shared owner as maintenance, retaining the answer reserve and enrolling each private decoder launch in Six and the census. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/media-understand-1010-repair-PROGRESS.md
+Prompt review: Prompt wording, model parsing and review verdict policy are unchanged. The model-visible document is now the protected derivative. Tests replay captured summary writer #715672480, uncertain #715672483, Jev undecided #715672482 and unsure #969389570, reply review #969389923, delivered #715672479 and empty #715672550 through this exact boundary. Existing real confined image/voice/corrupt outputs are also replayed. Summary-cascade and held-cascade tests replay the real proof-room summary uncertain outcomes #715672492/#715672496/#715672497 and live Jev/review #969389800/#969389804. Synthetic documents exercise the credential/clean pair through actual hooks without an external model or send. The actual local OGG transcript still says Tuesday at nine. Fresh combined-build physical/full-run evidence belongs to the pipeline; this is no assertion of a fresh full-suite pass.
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: call the existing credential custody/concealment before temporary file creation, and replace the raw spawn wrapper with hostResources.execute. No decoder ledger, daemon, new provider or tool restriction is added. Start guards are authenticated retained source, readable custody/held values, current owner and resource allocation. End state is a protected temporary derivative or honest unavailable notice, plus returned allocations and removed scratch. Existing input/output/time/stop and sampled resource ceilings remain. Unattended real OGG execution and actual admitted Read-hook positive/negative cases are in the targeted test evidence; no new live Telegram send is claimed.
+80/20: Repair the two checkpoint bypasses at source and prove both neighbors. Reuse the existing resource owner and vault rather than parallel enforcement. Temporary derivative stores and the exact credential checkpoint are declared and bound through the existing register; the focused fixture is catalogued and all pins are regenerated by desk tooling. No quarantine or hook bypass is introduced.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

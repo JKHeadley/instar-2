@@ -5,7 +5,7 @@ import { resolve, posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 export const effectCommit = '503642b2d5bd04bd2a0b6e7a0d0fa859399237f4';
-const source = path => execFileSync('git', ['show', `${effectCommit}:${path}`], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+const source = path => execFileSync('git', ['show', `${effectCommit}:${path}`], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024, timeout: 60_000, killSignal: 'SIGKILL' });
 const data = code => 'data:text/javascript;base64,' + Buffer.from(code).toString('base64');
 const local = path => pathToFileURL(resolve(path)).href;
 const sixUrl = local('dist/transport/index.js');

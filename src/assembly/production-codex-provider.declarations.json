@@ -1,0 +1,30 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview-subscription-codex",
+    "kind": "model doorways",
+    "status": "live",
+    "requiredFacts": {
+      "models": [
+        {
+          "id": "gpt-5.6-sol",
+          "verifiedAt": 1791051039970,
+          "freshFor": 2885119381
+        }
+      ],
+      "billing": "subscription",
+      "subsidy": {
+        "ratio": 1,
+        "basis": "estimated",
+        "updatedAt": 1791051039970,
+        "freshFor": 2885119381
+      }
+    },
+    "standards": [
+      30,
+      56
+    ],
+    "holds": []
+  }
+]

@@ -5,7 +5,9 @@ import { replyContextDigest, retrospectiveStatusLine } from './retrospective.js'
 import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { redact } from '../../src/recall/redact.js';
-import { openRequests, replyTarget, sendOutcomeCounts, sendOutcomeOf, unknownCallCounts, type JournalView, type Turn } from './journal.js';
+import { openRequests, replyOutcomeOf, sendOutcomeCounts, unknownCallCounts, type JournalView, type Turn } from './journal.js';
+import { wholeReplySent, wholeReplySentAt } from './reply-parts.js';
+import { credentialDisplayLabel } from './credential-display.js';
 
 /** One line per launch, one per recorded end of that launch (paired by `launch`), and one per poll attempt that
  * changes the failure episode (Rule 55): each failure is durable when it happens, and a successful poll after
@@ -160,7 +162,7 @@ export function memoryHealthLine(view: JournalView): string {
     + ` (through Telegram update ${latest === undefined ? 'none' : String(latest.through)}); `
     + `${String(sum('recallHits'))} original-turn recall-sentinel hits and ${String(sum('channelRecallHits'))} channel-item recall-sentinel hits`
     + ` in ${String(measured.length)} recorded model prompts (${String(unmeasured)} unmeasured legacy prompts); `
-    + `${String(view.memory.filter(change => change.mode !== 'prefer').length)} old-claim items withheld; ${String(unresolved)} unresolved operator memory corrections; `
+    + `${String(view.memory.filter(change => (change.mode === 'correct' || change.mode === 'forget')).length)} old-claim items withheld; ${String(unresolved)} unresolved operator memory corrections; `
     + `${String(view.channelSources.size)} channel-import cursors recorded (${String(view.channelItems.size)} imported channel items); `
     + `${String(unknownCalls)} turn-model calls and ${String(view.summaryReservations.size)} summary-model calls without a durable result (in flight or UNKNOWN); `
     + `${String(unknownSends)} send(s) without a durable result (in flight or UNKNOWN).`;
@@ -246,9 +248,10 @@ function stateFacts(view: JournalView, now: number, timeZone: string, stopped: b
   const count = (turns: readonly Turn[], when: (turn: Turn) => number | null | undefined) =>
     ({ total: turns.length, today: turns.filter(turn => isToday(when(turn))).length });
   const incoming = count(accepted, messageTime);
-  const delivered = count(accepted.filter(turn => turn.sent !== undefined), turn => turn.sentAt);
+  // Rule 42: a split reply counts as delivered only when every message carrying it was accepted.
+  const delivered = count(accepted.filter(wholeReplySent), wholeReplySentAt);
   // Requested actions sent, including an older journal's fixed-text reminder batches.
-  const requestSends = [...view.order.filter(turn => turn.requestedAction && !turn.requestedAction.legacy && turn.sent !== undefined).map(turn => turn.sentAt),
+  const requestSends = [...view.order.filter(turn => turn.requestedAction && !turn.requestedAction.legacy && wholeReplySent(turn)).map(wholeReplySentAt),
     ...[...view.reminders.values()].filter(item => item.requested && item.sent !== undefined).map(item => item.sentAt)];
   const requestsToday = requestSends.filter(isToday).length;
   const holds = new Map<string, number>();
@@ -274,12 +277,12 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     summaryPending, heldNoticeCount, refused, when, left } = stateFacts(view, now, timeZone, stopped);
   const lines = [
     `As of ${when(now)} (time zone ${timeZone}; "today" means ${today} there).`,
-    `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} in this trial (including the one being answered now).`,
+    `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} so far (including the one being answered now).`,
     edits ? `Telegram edits recorded: ${String(edits)}; each revises an earlier message and opens no reply.` : '',
-    `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} in this trial (the reply to the current message is not sent yet).`,
-    `Requested actions Telegram accepted: ${String(requestsToday)} today, ${String(requestSends.length)} in this trial; ${String(openRequests(view).length)} requested and not yet sent.`,
+    `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} so far (the reply to the current message is not sent yet).`,
+    `Requested actions Telegram accepted: ${String(requestsToday)} today, ${String(requestSends.length)} so far; ${String(openRequests(view).length)} requested and not yet sent.`,
     `Messages exchanged today: ${String(incoming.today + delivered.today)} (received plus replies accepted).`,
-    `My memory: ${String(incoming.total)} accepted operator turns, ${String(view.summaries.length)} summaries and ${String(view.memory.length)} validated memory changes in this trial's encrypted local journal. It survives runner restarts and spans this trial's topics; I can recall it while the trial is active. The verified operator can ask me to correct or forget a recorded fact. Later reply packets withhold the old claim, but the original audit record remains in the journal. This is not production or other-agent memory.`,
+    `My memory: ${String(incoming.total)} accepted operator turns, ${String(view.summaries.length)} summaries and ${String(view.memory.length)} validated memory changes in my encrypted local journal. It survives runner restarts and spans our topics; I can recall it while this installation is active. The verified operator can ask me to correct or forget a recorded fact. Later reply packets withhold the old claim, but the original audit record remains in the journal. This does not include other-agent memory.`,
     `Model attempts: ${left(view.limits.maxCalls, view.calls)} (answers, summaries and reply reviews share them). Replies: ${left(view.limits.maxReplies, view.replies)}. Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.`,
     `Model tokens by call kind (input/output; missing usage counts at its reservation): ${Object.entries(view.tokenTotals)
       .map(([kind, total]) => `${kind} ${String(total.inputTokens)}/${String(total.outputTokens)} (${String(total.calls)} calls, ${String(total.unknownCalls)} unmeasured)`)
@@ -324,21 +327,22 @@ export function selfStateBrief(view: JournalView, runs: RunLog, now: number, tim
   const held = [...holds.values()].reduce((sum, n) => sum + n, 0);
   return [
     `As of ${when(now)} (${timeZone}; "today" is ${today}).`,
-    `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} in this trial (including the one being answered now).`
+    `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} so far (including the one being answered now).`
       + (edits ? ` Edits: ${String(edits)}.` : '') + (refused ? ` Refused non-operator updates: ${String(refused)}.` : ''),
-    `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} in this trial (this reply not yet sent).`,
+    `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} so far (this reply not yet sent).`,
     `Messages exchanged today: ${String(incoming.today + delivered.today)}.`,
     `Model attempts: ${left(view.limits.maxCalls, view.calls)}. Replies: ${left(view.limits.maxReplies, view.replies)}. `
       + `Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.${exhausted.length ? ` Exhausted: ${exhausted.join(', ')}.` : ''}`,
     view.capAuthority === null ? 'Caps not raised.'
       : `Caps last raised ${view.capRaisedAt ? when(view.capRaisedAt) : 'at an unrecorded time'} on the authority "${redact(view.capAuthority).text}".`,
-    view.stop ? `Permanent stop latched: ${view.stop}.` : `Trial ends ${when(view.expires)}.`,
+    view.stop ? `Permanent stop latched: ${view.stop}.`
+      : `Activation: ${credentialDisplayLabel({ kind: 'activation', identity: view.genesis.grant })}; ends ${when(view.expires)}.`,
     // One line per owned obligation class; a class with nothing open is named once, so its absence is a stated fact.
     obligations([['held replies', held], ['replies held today', heldToday.count], ['requested actions open', openRequests(view).length],
       ['UNKNOWN model calls', unknownCalls], ['UNKNOWN sends', unknownSends], ['summary calls in flight or unknown', summaryPending],
       ['unresolved memory corrections', corrections]]),
-    `Requested actions sent: ${String(requestsToday)} today, ${String(requestSends.length)} in this trial. Summaries: ${String(view.summaries.length)}.`,
-    `Memory: ${String(view.memory.length)} validated changes; a corrected or forgotten fact is withheld from later packets, but its original audit record remains.`,
+    `Requested actions sent: ${String(requestsToday)} today, ${String(requestSends.length)} so far. Summaries: ${String(view.summaries.length)}.`,
+    `Memory: ${String(view.memory.length)} validated changes; a forgotten fact is withheld from later packets; a corrected fact stays recallable only as labelled earlier history; both keep their original audit record.`,
     ...runLines(runs, now, format, current),
     'Not shown here: memory health, tokens, failures, hold reasons, retrospective detail (in the runner\'s read-only status record).',
   ].filter(Boolean).join('\n');
@@ -346,7 +350,7 @@ export function selfStateBrief(view: JournalView, runs: RunLog, now: number, tim
 
 /** The packet source: labelled as the runner's own verified record, not a claim anyone typed. */
 export function selfStateSource(text: string) {
-  return { id: 'self-state', title: 'This preview\'s own state (runner-computed at this turn)',
+  return { id: 'self-state', title: 'This agent\'s own state (runner-computed at this turn)',
     text: `Your own verified state, derived only from durable records at this turn: state it as fact; say which parts are unknown.\n${text}`,
     provenance: { path: 'journal.encrypted + runs.jsonl', derived: 'tests/preview/self-state.ts#stateFacts' } };
 }
@@ -363,7 +367,7 @@ export function restartHandoff(view: JournalView, runs: RunLog, launch: number) 
     && (turn.modelState === 'uncertain' || turn.answer === undefined));
   const heldNotices = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
   const unknownSends = view.order.filter(turn => turn.accepted && turn.intent !== undefined
-    && sendOutcomeOf(view, replyTarget(turn), turn.sent).kind === 'unknown');
+    && (whole => whole.started && whole.outcome.kind === 'unknown')(replyOutcomeOf(view, turn)));
   const noticesDue = pending.filter(turn => turn.modelState === 'uncertain' && turn.noticeDueAt !== undefined
     && turn.noticeDueAt <= launch);
   const ids = (turns: readonly Turn[]) => `${String(turns.length)}${turns.length

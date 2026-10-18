@@ -2,26 +2,35 @@
 
 This is a machine-local, supervised test driver, not the production entry or production-admission evidence. It uses the real production Telegram custodian and physical bridge, long-poll ingress, Four intake, Five run graph, fixture Six admission callbacks, and the real Eight Telegram reply operation. It stops before every provider/model path and can send only this model-independent text:
 
-> PREVIEW — experimental test agent; production safeguards incomplete. Your message was preserved and grounded for this supervised trial. No model was called.
+> Your message was preserved and grounded. No model was called.
 
 The prefix is present before HTML rendering, digesting, and Eight preparation. There is no provider SecretRef, route, model call, tool call, or model spend. `stage2GuardedProviderPath` is selected only by explicit Stage 2 activation; the Stage 1 path remains closed to model work.
 
+The capability note renders the tools/outbound paragraph from the current tool grant,
+MCP state and effect doorway checks. Self-descriptions quote it verbatim; its digest in
+existing source provenance lets K11 verify that paragraph before judging the remaining
+prose by meaning. Free text describes other abilities; all limits stay in verbatim record
+quotations, including when another source reports unavailable information. This adds no
+authority, store or outbound path.
+
 ## Capabilities
 
-The journal runner's capability briefing is generated from these lines and the feature declarations in `journal.declarations.json`; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
+The journal runner's capability briefing is generated from these lines and the feature declarations beside the shipped sources; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
 
-- `preview-conversation`: answers the operator in their private Telegram chat and topics, one PREVIEW-prefixed reply per admitted message.
-  Details: answers the verified operator in their private Telegram chat and its topics, with at most one plain-text reply per admitted message; every reply starts with PREVIEW, and an outcome the system could not confirm is marked unknown and never resent.
+- `fetch-inbound-media`: saves inbound Telegram files with bounded effect admission; refused downloads retain the original message.
+- `preview-conversation`: answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.
+  Details: only the verified operator is admitted; a forum journal serves all topics of one configured group, including General, with topic-specific recent history and harness sessions. Forum packets identify the current topic (General, its recorded name, or topic number); shared facts carry their source topic so the agent can attribute them across topics. Private-chat packets retain their existing format. Unknown send outcomes are never resent. Failed answers remain in the journal. After bounded proven-not-sent recovery is exhausted, a definite refusal gets one content-free delivery notice; uncertain sends keep uncertainty wording. Outstanding failures in one conversation coalesce, and a failed notice never generates another notice. Stops, expiry, reply caps and audience checks still apply.
 - `preview-durable-memory`: an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.
   Details: keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory.
+- Backup availability is shown in the running chat status and operator dashboard using the existing authenticated journal-peer observation. A single-machine installation says `no failover target` and keeps local operation supported. A missing observation is unknown; a stale or incomplete peer copy is unconfirmed. A recent complete acknowledgement is evidence of a backup, not a guarantee of takeover: the conversation authority must still be available. This pull-only line grants no authority and never lowers replication demands.
 - `preview-status-command`: "status" and "how are you doing" are answered from the journal without a model call.
   Details: the exact messages status and how are you doing are answered from the durable journal without generating an answer.
 - `preview-upcoming-date-mention`: a saved date within 48 hours can get one short mention in the next reply.
   Details: when a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; the mention is remembered across restarts.
-- `preview-requested-actions`: an explicit request for a settled later day and time (a reminder, say) is answered once then, quoting it.
-  Details: when the operator explicitly asks for something at a settled later day and time (a reminder is one case), answers that request once then as an ordinary reply through the same checks, first quoting the request and when it was made; requests due together in a conversation share one message, inside the reply limit.
-- `preview-owned-obligations`: keeps standing instructions and works the promises its replies leave open, holding results for the next message.
-  Details: keeps the operator's standing instructions until superseded or done, and works the deferrals and promises its replies leave open, holding each result for the operator's next message.
+- `preview-requested-actions`: an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.
+  Details: when the operator explicitly asks for something at a settled later day and time (a reminder is one case), the runner brings that request back as an ordinary turn at the time asked, with no new operator message, and the answer is sent then through the same checks, first quoting the request and when it was made; requests due together in a conversation share one message, inside the reply limit. Daily or weekday requests at a local time repeat until cancelled; missed occurrences combine into one on recovery. Each occurrence uses the existing spend, stop and delivery limits. A later request for the same time adds a request; only the operator withdrawing one cancels it.
+- `preview-owned-obligations`: keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.
+  Details: keeps the operator's standing instructions until superseded or done, and works the deferrals and promises its replies leave open. An exact operator request to deliver the finished result authorizes a follow-up in its original chat and topic through the existing requested-action reply path. A promise or remembered date alone authorizes no initiated send. Completed reports retain their obligation and work-slot identity, bind once to a durable reply intent, and close only after every transport part has a receipt. Stops, caps, withdrawn requests and unadmitted audiences retain the result; unknown sends are never repeated. Cancellation uses the existing source-backed commitment closure. No new outbox or sender is introduced.
 - `preview.rolling-summary`: keeps a faithfulness-checked rolling summary of earlier turns.
 - `preview.coherence-check`: checks each reply against remembered earlier turns without a model call.
   Details: checks each reply against remembered earlier turns, without a model call, and records the findings.
@@ -46,6 +55,124 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/agent.mjs run --root /
 ```
 
 Replace the example expiry and placeholders with the desk-approved values. Private chat is first-class and is the narrowest audience. For an authorized forum topic, use `--chat-kind group-topic --chat-id -100… --forum true --message-thread-id TOPIC_ID`. Only the bound operator can trigger a reply, but a group/topic reply is visible to everyone who can see that group/topic; sender binding does not make it private.
+
+## All-topic forum mode in the journal launcher
+
+The agent's journal launcher is `tests/preview/journal-agent.mjs`. On a fresh, separately authorized
+root, pass `--forum true --chat-id NEGATIVE_FORUM_GROUP_ID --operator-sender-id OPERATOR_USER_ID`
+alongside the existing `--bot-id`, `--bot-username`, `--grant-reference`, `--configuration-digest`,
+`--expires-at`, `--activation-record`, `--operator-records`, `--login-profile` and model/limit options.
+Do not pass a fixed `--message-thread-id`: this mode admits every topic in that one group. The bot must
+receive the operator's messages in the group. Group replies are visible to the group's audience.
+Keep only one active polling root per bot. If reusing the private chat's bot, stop that runner
+before starting the forum root; keep its private journal intact for a later private-mode restart.
+
+The encrypted genesis stores `forum: true`, `chat`, `bot`, and `operator`. Mode cannot be changed on an
+existing journal. General (absent topic or topic 1) has one identity; other topics retain their exact
+Telegram thread ID. Conversation/session keys include bot, group and topic, while one durable poll
+cursor, stop latch and spend/reply caps cover the whole group. Restart preserves these identities.
+Recent conversational history stays within its topic. The existing source-labelled summaries and
+memory remain shared within this operator's configured group; moving topics does not forget facts.
+External/private history imports (`--agent-state-dir`) are refused in forum mode without a group
+source-disclosure grant. Reminder results, status, held replies and approval links use their source
+turn's topic. Telegram callbacks cannot decide an approval copied to a different topic.
+
+For existing private journals omit `--forum` (or pass `--forum false`); their keys, history and chat
+admission remain unchanged. Use a fresh root for the forum; never relabel the private journal. This
+configuration belongs to the journal launcher. The older `production-conversation-host.ts` successive
+fixture still takes one owner-admitted binding and one fixed target; these flags do not widen it.
+
+## Granted private-to-forum memory carry
+
+`journal-agent.mjs carry-group --root GROUP_ROOT --source-root PRIVATE_ROOT
+--authority-record AUTHORITY_JSON --operator-records OWNER_RECORDS --bot-username BOT_USERNAME`
+copies one source-labelled memory snapshot into an existing forum journal. Use the installation's
+existing storage and Telegram credential custody. Both roots must share that storage custody. The
+command takes both roots' existing exclusive single-machine writers, so it refuses while the private
+runner is live; park the private root (stop it) first.
+This command does not create or infer an approval. An activation grant alone cannot authorize it.
+
+Every model/review/send boundary still checks current disclosure authority and actual membership.
+Answer and review packets identify a currently verified operator-and-bot-only audience, which may
+receive the operator's own private information. Other members or unavailable membership evidence
+keep the existing disclosure hold; third-party confidences and credential protections remain intact.
+Claim removal uses the existing bounded revision review to judge the exact remainder against the
+question and the removed claims. Without a coherent cleared remainder, the content-free holding
+notice is sent. The reserved remainder and its verdict survive restart; an uncertain review is never
+repeated. A review slot already spent on another rewrite cannot clear a different remainder.
+
+The existing sealed `PreviewActivationAuthority` record must contain a `groupDisclosureGrants`
+entry with `id`, `grantor` (operator ID), `grantee: "echo-desk"`, the exact operator `words`, their
+authenticated `source` message reference, matching `issuedAt`, optional `expiresAt`, and:
+
+```json
+{
+  "action": "carry-private-journal",
+  "scope": {
+    "sourceRoot": "PRIVATE_ROOT_ABSOLUTE_REAL_PATH",
+    "destinationRoot": "GROUP_ROOT_ABSOLUTE_PATH",
+    "chat": "NEGATIVE_FORUM_CHAT_ID",
+    "operator": "OPERATOR_USER_ID",
+    "bot": "AGENT_BOT_ID"
+  },
+  "audience": "operator-and-agent-bot-only",
+  "surface": "telegram-forum",
+  "custodian": "OPERATOR_USER_ID",
+  "recovery": "stop-use-on-revocation-or-audience-change"
+}
+```
+
+These are schema placeholders, not an operator grant. The existing authority sealer and authenticated
+operator records must substantiate the disclosure. Existing `revocations` withdraw it. Actual
+Telegram reads must establish a forum with exactly two members: the named human operator and the
+named agent bot, with no public username or linked chat admitting a wider audience.
+Unknown membership, another member, expiry, revocation or mismatched scope refuses
+the copy. Keep the same authority and operator-record paths on subsequent `run` invocations.
+The initial carry binds the physical destination root. Serving a moved or copied encrypted journal
+keeps that original lineage scope; it does not require a new grant for the filesystem path.
+Replay verifies the same bot, operator and group, and conversation ownership still admits one runner.
+Model/review calls and group sends recheck authority and membership; Telegram does not provide an
+atomic membership-and-send operation, so a membership change after its last response remains a race.
+Local zero-charge semantic rerankers remain available, including on carried roots. A host binding
+that performs external reranking declares `external: true`; answer preparation gathers its bounded
+queries, checks disclosure asynchronously before each dispatch, awaits the results, then builds the
+packet with those results. The same zero helper-spend limit refuses charging callbacks. Read-only
+synchronous probes run local rerankers only and never start an external call.
+
+The snapshot retains projected recall, active preferences, corrections, settled summary prose and
+facts, and open promise context. It retains the original source references and counts any facts
+omitted from a bounded prompt selection. It does not copy intake, counters, approvals or send records.
+The ordinary answer and summary memory decisions can cite the carried source and its exact quote
+for correction or forgetting. Serving applies the destination's memory projection to each carried
+entry; the original snapshot remains immutable provenance.
+
+Execution of the operator's open dated requests moves exactly once. Before the group snapshot is
+written, the private journal records a `request-transfer` naming the group root and those requests;
+from then on the private root never fires them, including when it is resumed for rollback. The group
+root then owns them as ordinary requests: each fires once at its due time in the forum's General
+topic, and the operator can withdraw it there. A crash between the two records leaves a request
+owned by neither until the same command is run again, which reuses the recorded transfer; it never
+leaves two owners. A request that a later, still-unsettled private message may have withdrawn is not
+moved: the private root keeps holding it as before, and the group sees it only as labelled context.
+The command's output counts both (`transferredRequests`, `keptByPredecessor`). Agent promises are
+context in both roots; a promise grants no send. Nothing is recorded in the private journal when
+there is nothing to move.
+
+While the disclosure grant or the operator-only audience cannot be shown, every turn of the carried
+group, a due request included, is held unsent and continues once both hold again. The final model
+admission read precedes its reservation. The final send admission read precedes its durable intent;
+if disclosure disappears after the answer, the answer is kept for delivery without another model
+call. These proven pre-dispatch refusals retain the existing durable hold. A provider call or send
+that actually started and has an uncertain outcome remains non-repeatable.
+After ten minutes of such a hold, one fixed content-free notice goes to the group (at most one per
+hour) so the hold is never silent; it names no private item.
+
+Repeating the same carry is a no-op, including after restart and compaction; a different predecessor
+is refused, and a predecessor whose requests already moved to one group cannot move them to another.
+Later private activity is not automatically synced. Older builds refuse the new non-additive journal
+frames, in the group and in a private root that recorded a transfer, so neither can fire a moved
+request twice. A carried group must keep a build that enforces its disclosure condition, even if the
+snapshot is not selected in the current prompt.
 
 ## Stops, bounds, and status
 
@@ -102,7 +229,7 @@ Four preserves all recorded neighbours. A wrong verified bot identity refuses co
 | `fixture-reply-nine-assessor` | present in the fixture but deliberately disconnected via `assessment: null` | M4 G6, including Nine |
 | `real-telegram-effect` | actual Bot API `sendMessage`; exact API acceptance only | M5 |
 
-The actual live-effect authorization still comes from the separately recorded operator trial grant and any required waivers. This code and its PREVIEW label grant none.
+The actual live-effect authorization still comes from the separately recorded operator trial grant and any required waivers. This code grants none.
 
 ## Recorded verification
 
@@ -119,8 +246,8 @@ Graduation requires replacing every stand-in with its named hardening unit, espe
 `run --stage 2` explicitly selects the implemented provider path. Stage 1 remains the default and
 refuses a root with a Stage 2 sidecar. Stage 2 accepts only bot `8820318295` /
 `@echo_mmtest_seam_b27x_bot`, private chat and sender `7812716706`, with no topic. Its fixed expiry
-is `2026-10-05T20:40:00Z` (`1791232800000`), a one-week status-quo renewal of `2026-09-28T20:40:00Z`
-(see "Activation renewal" below). Existing trial limits, cursor and counters carry forward.
+is `2026-11-12T21:40:00Z` (`1794519600000`), a status-quo renewal of `2026-10-12T20:40:00Z`,
+itself a renewal of `2026-09-28T20:40:00Z` (see "Activation renewal" below). Existing trial limits, cursor and counters carry forward.
 This is the recorded supervised, unconfined preview waiver, not production admission or a
 replacement for M3/M4/M5. No code default supplies the model, login profile or activation record.
 
@@ -171,7 +298,7 @@ operatorAssertion, assertedAt, observer, observedAt, method, safeCaptureReferenc
 extraUsage: "observed-disabled" | "operator-asserted/unobservable" | "contradicted"
 extraUsageReason
 subscriptionLimit: "available" | "unobservable" | "exhausted"
-subscriptionLimitReason, acceptedResiduals: string[], expiresAt: 1791232800000
+subscriptionLimitReason, acceptedResiduals: string[], expiresAt: 1794519600000
 ```
 
 Digests are canonical SHA-256: profileDigest over the frozen descriptor, invocationPolicyDigest
@@ -232,7 +359,7 @@ Stage 2 connects actual Four input, a pending Five provider Run, genuine Six aut
 request/receipt, Eight dispatch/settlement, Nine output assessment and Seven acceptance in one
 signed owner store. Five opens and grounds the one dependent reply Run; Six admits its fixed pair
 and genuine reservation/claim/dispatch; Eight prepares the exact Telegram message. The text comes
-from the signed accepted Decision, with the fixed PREVIEW label and deterministic HTML escaping.
+from the signed accepted Decision, with deterministic HTML escaping and no preview label.
 The complete canonical OutboundMessage must fit the existing <=4096 definition, including metadata
 and escaping. Overflow holds even when the visible text itself fits. No adapter rewrites it.
 
@@ -284,6 +411,15 @@ Every other field is copied; `predecessor` names the prior reference and file di
 an exhausted limit, an unknown observation field or a record this build refuses writes nothing.
 Outputs are created exclusively and never replace an existing file.
 
+A build also carries its predecessor's reviewed end (`SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY`,
+2026-10-12T20:40:00Z for the 2026-11-12 build). `run` and each model call accept a record ending
+there only while the journal's current end is that same end, so a runner can stay on the current
+record with `--renewal-activation` naming the renewed one, propose the renewal from the phone and
+complete it on the operator's yes. Once the expiry frame lands only the governed end is accepted:
+the running launch ends its cycle (`activation renewed: restart on the renewed record`) before it
+answers anything further, and the next launch must name the renewed record. Any other end is
+refused, and nothing reads an allowed end from the record itself.
+
 When a reviewed build changes only the conversation invocation policy digest and the
 current record already has this build's expiry, the desk can issue a policy successor.
 Use a fresh observation with the same fields above and the **same reference** as the
@@ -311,7 +447,7 @@ once per reviewed expiry and only before it lapses, under the writer lease:
 node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs renew-expiry \
   --root /ABSOLUTE/ROOT --activation-record /ABSOLUTE/activation-next.json \
   --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID \
-  --expires-at 2026-10-05T20:40:00Z --authority "WHO APPROVED, WHERE, WHEN" \
+  --expires-at 2026-11-12T21:40:00Z --authority "WHO APPROVED, WHERE, WHEN" \
   --operator-records /ABSOLUTE/AGENT/.instar
 ```
 
@@ -791,9 +927,10 @@ permitted neighbor:
 | Fixture | Recorded failure | Regression boundary |
 |---|---|---|
 | F01 thinking overflow | Review output filled the shared 2,048-token allowance before a verdict. | Thinking remains disabled in the route; an over-cap reviewer result stays charged and held after replay, while a capped result can complete. The synthetic result does not reveal thinking tokens. |
-| F02 wrapped JSON | A complete fenced Decision was held as malformed. | Bare and whole-response LF/CRLF fences parse; prose, extra objects, and a real redacted Claude limit-result capture do not. The CRLF fence itself is a synthetic boundary because failed raw model text is not retained. |
+| F02 wrapped JSON | A complete fenced Decision was held as malformed. | Bare and whole-response LF/CRLF fences parse for every consumer; extra objects and a real redacted Claude limit-result capture do not, and prose around the object does not for a gate. The CRLF fence itself is a synthetic boundary: the live root that produced it is not readable from the machine running this catalog. |
 | F03 contradicting review prose | A PASS object appeared beside written rejection. | A lone PASS line or whole fence parses; rejecting prose around it cannot authorize a send. |
 | F04 too-long notice | An input or answer exceeded a preview limit. | A short reply sends whole; oversized input and answer send their fixed notices, never a prefix. The answer notice does not repeat after replay. |
+| F06 prose-wrapped answer | Both answer attempts put the Decision inside reasoning, so a plain question got "I couldn't produce an answer" (live 2026-10-01 12:38 PDT, k6 update 969389879). | Replaying real recorded prose-wrapped and prose-plus-fence answers: the answer side reads the one object and answers, while a gate still refuses them; a list wrapper, a cut object and wrong fields stay malformed. |
 | F05 held-item crowding | Many held turns competed for packet space. | The relevant older item reaches the bounded ten-item packet; excess items stay outside it. The answer model still judges relevance. |
 
 Run only this catalog and the parser unit test after a catalog change:
@@ -1087,7 +1224,7 @@ before them, so an authorized cap raise can fetch them again.
 
 At 80% of the call or reply limit, the runner writes one plain local terminal
 line with the used and remaining slots. At a cap it writes a final line:
-`PREVIEW — calls|replies|turns|bytes cap reached; work paused. Check status for held work.`
+`calls|replies|turns|bytes cap reached; work paused. Check status for held work.`
 The encrypted journal fences each 80% and final line per cap kind and limit
 across restarts; `status.capReports` shows those fences (for example
 `calls:80:16` and `calls:16`). If a single poll crosses 80% and reaches the
@@ -1112,7 +1249,7 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run 
   --root /ABSOLUTE/NEW_ROOT --bot-id BOT_ID --bot-username @BOT_USERNAME \
   --operator-sender-id OPERATOR_ID --chat-id PRIVATE_CHAT_ID \
   --grant-reference TRIAL_ID --configuration-digest sha256:TRIAL_CONFIGURATION_DIGEST \
-  --expires-at 2026-10-05T20:40:00Z --activation-record /ABSOLUTE/activation.json \
+  --expires-at 2026-11-12T21:40:00Z --activation-record /ABSOLUTE/activation.json \
   --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID \
   --max-calls 16 --max-replies 16 --max-turns 20 --max-context-bytes 32768 \
   --time-zone America/Los_Angeles \
@@ -1452,27 +1589,46 @@ evidence, not real-model reading. Justin's check is
 
 ### Remembering commitments
 
-An explicit first-person promise in the agent's **actual send intent** is captured immediately,
-before any rolling summary. The deterministic detector accepts a narrow sentence beginning
-`I'll`/`I will` (including `I’ll`) with `remind you`, `remind you to`, `check`, `follow up`, `send`, `tell`,
-`update`, or `keep`; quoted lines, code blocks, conditional or negated language do not qualify.
-The encrypted intent carries the exact quote, agent ownership, the next-relevant-reply wait,
-and any supported `today`, `tomorrow`, or `on YYYY-MM-DD` due date resolved in the configured
-time zone. An unsent candidate creates no commitment. An intent with an unknown send remains
-open because it may have reached Telegram. Replay reconstructs the same item without another
-store. Summary extraction skips an already captured promise rather than duplicating it.
+The answering model declares a promise with `promises:[{quote, when?}]` and a fulfillment
+with `fulfilled:[{id, quote}]`. Code verifies the declaration against the exact reply text;
+a fulfillment must name an offered agent promise and quote the new answer, not the old
+promise. Meaning remains the model's decision. The encrypted send intent records the
+admitted promises and fulfillment ids. A promise closes only after the complete reply is
+API-accepted; an unknown or refused send leaves it open. Replay preserves that outcome.
 
-Open agent promises enter the next reply packet even before compaction. Due or overdue ones
-take priority under the existing ten-item and prompt bounds; the existing memory sentinel
-selects older promises related to the current message. The model judges relevance and
-can mention a due promise only in a normal reply to a new operator message: this preview has
-no scheduler, tools, or unprompted send. A later API-accepted reply saying exactly
-`Reminder: <promised action>` closes a matching reminder once its due day arrives; an
-early or unreceipted send does not.
-Promises to check, send, or perform external work remain open until the verified operator
-reports completion or withdrawal through the existing summary closure path. No bare claim
-of having checked the world counts as evidence. For the supervised operator-channel check,
-see [agent-commitment-live-test.md](live-tests-archive/agent-commitment-live-test.md).
+The existing retrospective pass also reconciles missing work while grading delivered replies.
+It sees the whole final reply, its request, later messages and the conversation's existing
+commitments. Its `promises` grade field uses the same proposal shape, including undated
+future work; an empty list records inspection. Missing or malformed reconciliation leaves
+the case owed. Older grades receive this inspection on the existing review cadence.
+The durable grade admits supported work into the same commitment population with an agent
+owner and a declared wait. An existing unscheduled undated promise receives its first work
+cadence without a second task; closed, dated and already scheduled work keep their state.
+Quotes, hypotheticals, refusals, user-owned work and restatements require no new agent task.
+The model decides those meanings; code checks delivery, exact quotes and identity. Neither
+summary/review uncertainty nor an empty or partial delivery supplies promise evidence.
+Reconciliation adds no model call or send authority. Existing stop, spend and work admission
+hold, and finished results retain the existing delivery rules.
+
+A readable answer with an invalid promise, fulfillment, or dated-item declaration uses the
+same single format re-ask as an unreadable answer. The runner supplies the exact validation
+defect in the packet and keeps the operator message unchanged. It never repairs a citation
+or infers fulfillment itself. This re-ask occurs before the answer record and send, consumes
+the existing call/token budget, obeys stop, and shares the one-retry limit with envelope
+repairs. A second invalid declaration remains refused; unavailable capacity or an unknown
+replacement is not a successful repair. No new journal record kind or retry budget is added.
+Runner-authored requested-action turns discard operator date declarations, so those fields
+do not trigger a repair; the turn still cannot create a new operator-authorized date.
+A promise, fulfillment or format repair prepares a replacement packet and passes that exact
+packet through the same due-selection and preparation supervision before its retry reservation
+and model call. A refused or unavailable replacement check holds the turn without another
+call or send. Coverage remains bound to the packet actually used, never to an earlier digest.
+
+This is deterministic validation and bounded recovery, not a guarantee that a model will
+produce a valid declaration on its second attempt. `flap-a-declarations.test.ts` replays the
+recorded failures at updates 715674119 and 715674175 and checks both repair and refusal,
+including cap, stop, uncertain replacement, and restart. The fulfillment repair uses recorded passing output 6232374; the date repair is explicitly
+synthetic. Passing declarations 6232373/6232376 remain single calls.
 
 The same summary call also lists what the operator asked the agent to remember or do
 (`in: "message"`, quoted from their message) and what the agent said in its own reply that
@@ -1833,6 +1989,12 @@ record: who asked (the verified operator), when (the message time), what (the ex
 when due (day, time and zone), and where (this private chat or topic). The immediate reply states the
 due time, or why nothing was scheduled (unsettled day or AM/PM, already past, or after the preview ends).
 
+One-shot requests with a persisted `resolution.instant` wait for that exact UTC instant, including
+seconds and milliseconds, after restart as well as before it. Local day/time text is for display;
+it does not round an exact deadline down to the start of its minute. Calendar-only older records
+retain their local-minute due time, and recurring requests retain their local occurrence schedule.
+The existing due-turn and send identities suppress repeat dispatch, including when delivery is UNKNOWN.
+
 **The due turn.** `sendRequested()` is the one due point; the launcher calls it only after a
 successful poll returned nothing new, so a cancellation already waiting in Telegram is read and
 settled first. At that point every due request in one conversation becomes ONE fsynced `action-due`
@@ -1843,7 +2005,7 @@ asked and when it is due. The ordinary answer path then answers it: its due sele
 packet are validated when the step supervisor is on (fail closed), then the call and reply caps, the
 model call, the reply check and review, the outbound secret check, one exact send intent and the
 UNKNOWN fence. The reply's first lines state why it was sent (Rule 54):
-`PREVIEW — You asked on <asked local time>: "<request>" (due <day time zone>)`, then the answer. An
+`You asked on <asked local time>: "<request>" (due <day time zone>)`, then the answer. An
 UNKNOWN or failed model result sends a truthful line under the same header, never a made-up result;
 a model call that dies with no recorded outcome is an orphaned UNKNOWN and is never repeated. A
 request not yet due stays open; a later request in the same conversation gets its own turn when it
@@ -1924,7 +2086,8 @@ the earlier source and exact old clause. Replay rebuilds the active set from the
 old actions and source messages remain as evidence. Each clause can be changed independently,
 including when one message supplied several preferences. Retiring a clause withholds its
 historical source without masking a new operator turn that uses the same words. Saving a
-preference leaves that turn's reply and commitments intact. `inspect --text` shows the active
+preference leaves that turn's reply and commitments intact. A clause stated again is one active
+preference, carried from its latest statement; every statement stays recorded. `inspect --text` shows the active
 preferences in the next packet. No second store or model call type is involved.
 The conversation prompt explicitly applies active, validated `packet.preferences` to
 answer length and detail on later replies. A direct request in the current operator
@@ -2076,26 +2239,55 @@ not a provider retry: it is a separate call, recorded as a `format-retry` journa
 keeps the first call's failure class and usage, and it reserves against the same call cap.
 It is skipped when that cap is reached, the stop latch holds or the trial has expired, and
 it always precedes any send. A second miss gets the fixed reply, or for a review the held
-outcome, as before. `status` reports
+outcome, as before. An answer turn may also make one memory lookup (Rule 11). Where older
+turns are summarized, the turn is the verified operator's and the call cap has room for a
+second answer call beside the reply review's reserved one, the packet carries
+`memoryLookup: "offered"` and the answer protocol tells the model what that means: when the
+packet does not show what the message asks about, it returns only `{"lookup":[...]}` (up to
+six short phrases) instead of a reply. The runner searches the summarized turns once with
+those phrases, through the same recall as the question, puts what it finds first among
+`recalled`, and asks again; the second packet's `memoryLookup` names the searched phrases
+and how many found turns it quotes. The phrases are data: bounded, redacted like any packet
+field, and used only as a search query. The lookup is a `lookup` journal row that settles
+the first call's usage, reserves the second under the same cap and replaces the turn's
+saved prompt and grounding with the second packet, so the reply review reads what the
+answer read. There is one per turn; it is skipped when the cap is reached, the stop latch
+holds or the trial has expired; nothing is sent between the two calls; and an unknown
+second call stays UNKNOWN and is never repeated. A lookup request that cannot run, or a
+second request after the one that ran, gets a fixed runner reply saying that the search
+did not happen or did not settle it, and that this is not proof it was never said. `status` reports
 `modelFailureClasses` and `modelResultStates`; `self` includes the same counts.
 Subscription reply reviews also record their returned provider state.
 The inner reply-review verdict is one exact line (`PASS | reason` or
 `VIOLATION:rule_id[,rule_id] | reason`); the whole-line pattern admits no other
 text, so a malformed line is counted as `reply-review/verdict/malformed/not-json`.
-Model JSON (the outer Decision and the inner summary-review verdict) is accepted when it is exactly one object: the whole text, or the sole
-content of one ```json or ``` fence that is itself the whole response. Prose
 Model JSON (the outer Decision and the inner reply-review or summary-review
 verdict) is accepted when it is exactly one object: the whole text, or the sole
 content of one ```json or ``` fence that is itself the whole response. Fence
-line endings may be LF or CRLF, including a mix of the two. Prose
-around the JSON is never discarded, because it may state a judgment (such as a
-rejection) that contradicts the object; such text and every other wrapper stays
-malformed under the held outcome, and every field check still applies. `status`
+line endings may be LF or CRLF, including a mix of the two.
+Whether text *around* that one object may be discarded is decided per consumer,
+not globally (Rule 95). The answer side — the answer, a reply revision and the
+summary writer, which `roleOf` folds into `answer` — accepts one complete object
+inside surrounding text and never reads the wrapper, because its own output is
+reviewed again before it can reach the operator, and refusing it costs the
+operator an answer the model did produce (Rules 15, 77: the live 2026-10-01 k6
+turn was answered "I couldn't produce an answer" twice for this reason alone).
+Every gate here — a reply or summary review verdict, and the retrospective —
+keeps the narrow reading, because prose beside a verdict may state a rejection
+that contradicts the object and no later review would catch it. Acceptance needs
+exactly one object and no other JSON structure outside it: a `[`, `]` or stray
+brace in the residual means a list of unknown length or a second object began,
+so it stays malformed, as do two objects, a cut object, and an object that fails
+the same field checks an unwrapped one passes. `status`
 reports `modelJsonShapes`: content-free counts keyed `role/layer/outcome/shape`
-(shapes `bare`, `fenced`, and for refusals `prose-wrapped`, `multiple-objects`, `truncated`, `not-json`,
+(shapes `bare`, `fenced`, `prose-wrapped`, and for refusals `fenced`, `prose-wrapped`,
+`multiple-objects`, `truncated`, `not-json`,
 or `<wrapper>-wrong-fields` when the JSON parsed but failed its checks), plus the
 last malformed one, from a plaintext sidecar `model-json-shapes.json` outside
-the journal. It never holds model text and never feeds an outcome.
+the journal. It never holds model text and never feeds an outcome. The raw bytes
+themselves stay in the journal's own `model-call` record (`output`, redacted and
+length-bounded by `modelCallRecord`, kept by `retainedEvidence` through
+compaction), so a refused shape is replayable from the root that produced it.
 Both LF and CRLF line endings are accepted for a whole-response fence. A CRLF
 fence containing one valid review verdict now reaches the existing field checks;
 prose before or after it, including prose that contradicts a PASS object, still
@@ -2106,8 +2298,12 @@ by class using the same `callOutcomeCounts`, `lastCallOutcomes` and
 `modelJsonShapes` shapes as status. The fixed fixture is a regression benchmark,
 not a measurement of the live incident frequency. Justin's supervised
 operator-channel procedure is [held-reply-reduction-live-test.md](live-tests-archive/held-reply-reduction-live-test.md).
-The journal never stores the failed model's raw output. To exercise this path in
-an isolated trial, follow [journal-model-failure-live-test.md](journal-model-failure-live-test.md).
+A call that never returned (a provider error or timeout) records no output at
+all. A call that *completed* and then missed its format does record its raw
+bytes, in its `model-call` record's `output`, redacted and length-bounded, so a
+refused shape can be replayed from the root that produced it; the
+`model-json-shapes.json` sidecar beside it stays content-free. To exercise this
+path in an isolated trial, follow [journal-model-failure-live-test.md](journal-model-failure-live-test.md).
 
 Each actual subscription CLI model invocation (answer, summary, or reply review)
 now appends one content-free physical outcome to the same encrypted journal before
@@ -2207,11 +2403,16 @@ summary synchronously. If summarization fails, the turn stays held with a
 visible reason until a covering summary succeeds. The full-history choice
 uses the complete system, packet and prepared prompt bound.
 Each summary covers at most four oldest unsummarized turns. Its exact prepared
-stdin plus the subscription system prompt must fit 24 KiB, leaving 8 KiB below
-the provider's 32 KiB prompt policy. The request asks for a complete JSON result
+stdin plus the subscription system prompt must fit the summary ceiling: three
+quarters of the context limit, at least 24 KiB (8 KiB below the provider's default
+32 KiB prompt policy) and at most 96 KiB. A raised limit raises the provider's prompt
+bound with it. The carried summary at its own accept bounds (8 KiB of prose, 20 memory
+items of 300 bytes), the packet's fixed parts and one turn of a 4096-character message
+with a 4096-byte reply measure about 61 KiB, so a pass can always advance by one turn,
+with room left for open reminders, corrections and preferences (`summary-fit.test.ts`). The request asks for a complete JSON result
 within 1024 output tokens, half the provider's 2048-token cap. The worker tries
 shorter prefixes when optional memory fields or envelope framing use the room,
-then extends from the saved summary. The 24 KiB threshold also starts background
+then extends from the saved summary. A 24 KiB history threshold also starts background
 summarization after a reply when a raised general context limit is larger.
 One pass makes at most eight attempts under the same call cap. An oversized single
 turn is shown as a hold in `status`, with its original still in the journal.
@@ -2289,7 +2490,7 @@ The exclusive writer prevents two processes on this machine; it is not a second
 independently failing replica.
 
 The rolling summary starts when the unsummarized packet reaches 45% of the
-configured context limit (or the existing 24 KiB summary ceiling), leaving room
+configured context limit (or 24 KiB, whichever is smaller), leaving room
 for the answer envelope, briefing, desk report and next question before 32 KiB
 is reached. Its existing four-turn chunks, call cap, stop, expiry, supervision,
 and synchronous overflow fallback remain in force. The offline
@@ -2299,17 +2500,93 @@ a faithful summary stub; a rejected summary leaves the overflowing turn visibly
 held with its original intake. Justin's private-chat procedure is
 [long-conversation-headroom-live-test.md](live-tests-archive/long-conversation-headroom-live-test.md).
 
+When a turn still cannot be prepared after the forced summary, the reachability floor sets
+earlier turns aside half at a time (the journal keeps them and recall reaches them). On its
+last rung, with every earlier turn set aside, the reply-review reserve yields too: the turn is
+answered, and a review that is then too large to build is recorded unavailable and the reply
+released. Only a turn that still cannot fit gets the size notice; none is held. A fresh root at
+the default 32768 bytes reaches that rung within a few short messages
+(`default-root-conversation.test.ts` replays room two's recorded shapes; `floor-last-rung.test.ts`).
+
 An UNKNOWN summary reservation remains charged and visible in `summaryPending`.
 It is never retried at its recorded update frontier. After 60 seconds of actual elapsed
-time from every outstanding UNKNOWN summary reservation, a new summary can cover a
-different, later update frontier under the same finite call cap. The earlier
+time from every outstanding UNKNOWN summary reservation, a new summary can cover any
+different update frontier, earlier or later, under the same finite call cap. (Requiring a
+later one made the shortest span run from the last accepted summary to past the UNKNOWN,
+which only grows; Justin's preview never summarized again after one UNKNOWN.) The earlier
 reservation remains unresolved even after the later summary succeeds; `status`
 still refuses a cap raise while it exists. The pause is a lower bound between
 uncertain summary calls; a reservation inherited on restart waits a full 60 seconds from
 reopening because prior process elapsed time cannot be established. A later accepted turn
-and a free call slot are still required. A correction whose deciding summary
+and a free call slot are still required. Past the pause, an UNKNOWN at or past the pass's target
+(a pending memory request below it, for instance) does not stop the pass; only the UNKNOWN
+frontier itself is never offered again. A correction whose deciding summary
 is UNKNOWN follows the existing `memory-undecided` path; the later summary
 does not silently turn that undecided request into a verified decision.
+
+The background pass runs after every poll cycle's ordinary drain, with or without a new
+message, so a root far behind its summary frontier catches up pass after pass (each at most
+eight attempts) while the operator is silent; an incoming message is answered beside the
+pass in flight, and the next pass starts only after that drain. A correction, preference or
+edit whose span lies more than one pass past the frontier (over 32 unsummarized turns) does
+not drive the catch-up synchronously before its reply: it is recorded `memory-undecided`
+(`summary-behind`) at once and answered, and its own answer may still decide it. Within one
+pass it is decided by its own summary as before (`summary-fit.test.ts`).
+
+A summary call is not UNKNOWN when its own physical outcome row proves that the
+writer's call ended and its output ran past the 2,048-token cap
+(`localLimit: output-cap`: the process ended with an exit code and a final result frame
+whose reported output is over the cap; the exit code may be non-zero and the frame may be an
+error, as with the proof room's #496, which ended exit 1 after 8,192 tokens). The provider still
+reports that attempt as uncertain, and the journal records it as such. The next summary
+pass then settles it as a failed attempt with the recorded reason `summary output over
+the cap`. That settlement carries the provider's reported usage. The pass then offers
+only a shorter span from the same base: no frontier at or past one that ran over the cap is
+offered again until a summary is accepted. The retry stays inside the pass's eight
+attempts and the shared call cap. A settlement row without that outcome row is refused. A call
+with no outcome row, or one without a finished result, stays UNKNOWN as above.
+`status.lastSummaryFailure` shows the reason of a failure newer than the last accepted
+summary. On the proof room (2026-09-30) all four summary calls after 03:03 ran over the cap
+(2,312 to 4,832 tokens). Each one floored every later span, and without an accepted summary
+each later span started at the first turn and only grew, so none ever reached Jev or the
+review. `summary-overcap-cascade.test.ts` replays those recorded outcomes, writer outputs
+and Jev verdicts.
+
+The summary's allowances are sized from that 2,048-token cap by measurement, not guaranteed:
+at the measured floor of 2.4 bytes per output token (88 recorded outputs on Justin's root, 2.44
+to 3.08; the tests check three recorded real outputs against it) the cap is 4,915 bytes. The
+reasoning and the span's lists have no whole-output acceptance bound, so when the estimate
+misses, the provider cap and the over-cap brake below are the protection. Of the 4,915 bytes, 800 are allowed for the
+Decision envelope (measured at most 725) and 800 for the reasoning, which the summary question
+limits to one sentence of 200 characters (the real model wrote 354 to 753 bytes with that wording,
+against a median of 1,888 before it). The rolling summary's prose, the one part every call
+re-emits whatever its span, is asked to stay within two fifths of the rest, 1,326 bytes. The question
+states that target in UTF-8 bytes, so non-ASCII prose that obeys it fits. The remainder carries
+the span's own lists, which shrink with the span down to one turn. Carried memory items are kept by
+the code and never re-emitted. The target is not a refusal line: the output cap is the real limit,
+and an answer that ended within it already fits. On cint-L28 the real writer's prose came back at
+956 to 1,583 bytes (11 readable answers on Justin's root, 6 past 1,326) in answers of 855 to 1,792
+output tokens; refusing three of them as over the bound braked his summary 220 updates behind. Acceptance
+now refuses prose only past the carried-summary ceiling every answer packet is sized for, min(8 KiB,
+a quarter of the context limit), as `summary answer over its bound`, the same class as an over-cap
+attempt. Prose between the target and the ceiling is accepted, and the next call is asked to rewrite
+it condensed within the target; every original turn stays in the journal and the meaning index.
+Prose the model writes in `reply` beside the other fields (four of those 11 answers) is read as the
+summary; the old reader measured the whole answer as the prose and never read its memoryDisposition. Once both attempts at a span asked too much (the full request and the
+reduced retry), no span from that base is offered again, because every later span contains it
+(Rule 55); `status.summaryStoppedAt` names that frontier, and replies keep being answered by the
+history floor. A span spent partly on a content failure never had its reduced retry and releases
+as before. Each summary failure records the summary format it was made under (`format`); only
+failures under the current format spend a span's two attempts or set the brake, so a build that
+changes what a summary is asked, or how its answer is read and accepted, may retry spans an older
+build exhausted. Format 3 (the target no longer a refusal line, `reply` read as prose) is how
+Justin's root, braked at 969389763 under format 2, advances on its next pass with no hand step. A
+compacted snapshot saves each failure with its format and restores only the current format's, so
+the same history gives the same brake as raw rows or as a snapshot; a cint-L28 snapshot saved its
+format-2 failures unstamped and they are read as format 2. Before this, a released
+ceiling walked forward through ever longer spans from one base, two calls each: Justin's preview
+spent 77 summary calls from frontier 969389761 on 2026-10-02 (69 over the cap) with none accepted
+(`summary-bound.test.ts`).
 
 Live test script for Justin, on a separately authorized, isolated private-chat
 preview trial with spare call and turn slots provisioned **before** the fault:
@@ -2360,10 +2637,13 @@ open commitments and correction or forgetting decisions. Verbatim coverage
 without a recorded memory change passes deterministically. A paraphrase or any
 correction or forgetting decision is undecided by that
 exact check, so the runner asks the existing pinned Jev route with the prior
-summary, covered turns, recorded decisions and candidate. Only a confident Jev
-pass commits it. A lost or undecidable item records the candidate and evidence
-in the encrypted journal, keeps the prior summary, and leaves a visible
-`summary faithfulness: active memory item lost` or `summary faithfulness:
+summary, covered turns, recorded decisions and candidate. A confident Jev pass
+commits it and a confident loss refuses it. Jev's unsure band, or no Jev answer,
+escalates once to the full-context subscription review, whose pass commits and
+whose violation refuses (the confidence cascade, observer #102). A refused
+candidate is recorded with its evidence in the encrypted journal, keeps the prior
+summary, and leaves a visible `summary faithfulness: active memory item lost`,
+`summary faithfulness: full-context review found loss` or `summary faithfulness:
 undecided` hold. The existing two-attempt summary bound and shared subscription
 call cap remain. `status.lastSummaryFaithfulness` shows the path, verdict and score
 without showing memory text. This adds a Jev request only when exact preservation
@@ -2411,7 +2691,7 @@ private-chat procedure is in
 
 ### One memory across conversations
 
-The runner serves every conversation in the operator's own private chat: the main
+In the default private mode, the runner serves every conversation in the operator's own private chat: the main
 chat and any Telegram topic in it (Bot API 9.3 private-chat topics,
 `message_thread_id`). Each is a conversation whose only audience is the verified
 operator, so no fact reaches anyone beyond the standing it came from. Anything
@@ -2419,7 +2699,7 @@ elsewhere stays refused. That includes a group or a group forum topic, even one
 where the operator writes, and any other sender. Those updates are kept encrypted
 for diagnosis and never read.
 
-There is no second store. The one journal is the agent's memory: every intake
+There is no second store. In private mode the one journal is the agent's memory: every intake
 records its topic (`thread`), and every packet carries the history of all
 conversations in update order. A turn from another conversation is labelled with
 its `conversation` ("main chat" or "topic N") and its Telegram date, and the
@@ -2431,6 +2711,8 @@ result counts as a receipt only if it names that topic; otherwise the send is
 UNKNOWN and is never resent. Intake durability, update-ID deduplication, one stop,
 one attempt cap and one reply cap are shared by every conversation. Journals
 written before this change replay unchanged; their turns belong to the main chat.
+The explicitly configured forum mode described above instead admits one group and gives each
+topic its own recent history and session, while retaining source-labelled shared group memory.
 
 
 The offline 60-turn assembled-path regression polls through the real Telegram
@@ -2537,8 +2819,8 @@ three UNKNOWN review calls and one review with a physical `output-cap` result;
 they do not contain the candidate or reviewer text, nor do they attribute the
 UNKNOWN send to an update. The worker replay therefore tests those observed
 boundaries with offline stubs and does not claim an exact reproduction of unseen
-provider output. It confirms that each review-unavailable turn keeps its reply
-held after restart, a completed review PASS releases a loss notice, and a send
+provider output. It confirms that each review-unavailable turn sends its loss notice
+once across restart, a completed review PASS also releases the notice, and a send
 with no receipt is not repeated. Run only the focused regression file:
 
 ```sh
@@ -2553,8 +2835,35 @@ launcher resolves vault entry `typesafe_api_key` into
 `INSTAR_SECRET_PREVIEW_TYPESAFE_KEY` for the runner process. Treat it like the
 existing storage and Telegram host bindings; never place it in command arguments,
 the journal, or logs. The key is required only for the Jev route. A missing key,
-timeout (2 seconds), or provider error invokes one contextual subscription
-review under the same journal call cap. Jev's pinned model is `jev-1.13.0`.
+provider timeout, or provider error permits one separately reserved retry, then
+invokes the contextual subscription review under the same journal call cap. Admission
+shares a 3000 ms allowance across worker disclosure and host audience/replication
+checks on each attempt. Only after admission does the provider's 850 ms first-call
+or 2500 ms retry allowance start; the turn deadline clips both phases. Late admission
+cannot dispatch. Two admissions and two calls therefore have a 9350 ms ceiling
+before fallback, subject to the earlier turn deadline. Unavailability remains an
+unavailable verdict, never an automatic pass. Jev's pinned model is `jev-1.13.0`.
+
+The 26 September Jev-default direction (observer #282) also applies to a group
+with current standing and membership verifying the operator alone. A pass on all
+ten Jev questions ends that review. An unsure, positive or unavailable Jev result
+still escalates and includes the group's sensitivity question. Other groups retain
+mandatory full-context review. This does not extend the operator-echo shortcut or
+change revision review, unavailable-review handling, or model/send audience checks.
+`operator-group-cascade.test.ts` replays recorded update 969390381 and tests both
+routes, each question's unsure/positive boundary, restart and the existing floors.
+
+A refusal grounded in an existing role or authority limit uses the existing blocker
+record: lawful avenues can be `outside-standing` or `inapplicable`, with capability
+evidence and a named governing constraint. No unauthorized attempt is required.
+Its exact quoted claim may occupy the existing 4096-byte reply budget; all other
+blocker validation, including the future recheck of standing, remains in force.
+A rejected declaration carries a fixed `blockerReason` in the answer or revision
+record and the reviewer context. An explicit rejected blocker with no current
+admitted record stays held even if review passes or is unavailable. Missing
+records and invented constraints are not excused by the longer quote allowance.
+`refusal-withheld.test.ts` replays recorded update 6233134 and checks both sides
+of admission, review and send boundaries.
 
 Jev checks the eight measured message questions in one batch. A clear pass sends
 the candidate. A violation, uncertain score, or unavailable Jev invokes one
@@ -2566,17 +2875,29 @@ never holds (Rules 4, 77, 86, 95): on a violation the mind gets one revision rou
 within the existing call cap, then the not-yet-sent reply (revised or original) is
 sent with the surviving objections recorded on its intent (`release`) and carried
 to the next packet's `corrections`. A deferral or blocker the answer declared but
-the runner refused always goes to the contextual review, and is held unless that
-review passes (build 4, Rules 6, 20, 21, 23). If no check can decide (review
+the runner refused always goes to the contextual review. A completed violation
+can withhold its claim (build 4, Rules 6, 20, 21, 23); an unavailable review
+releases the reply while the rejected declaration remains rejected. If no check can decide (review
 budget exhausted, reviewer outage, malformed output, or no call left for review),
 the reply is sent once with the review recorded unavailable; a malformed review is
-never a pass. When Jev had completed and flagged only non-secret rules,
-`status.reviewUnavailableReleases` counts those sends by flagged rule, without
-content. Rule 86's secrets exception still holds: when Jev flagged `credential` and
-no review verdict exists, the turn stays held as `reply check unavailable`; when
+never a pass. `status.reviewUnavailableReleases` counts released intents even
+without a Jev result, with any non-secret Jev flags counted by rule, without
+content. Holding notices do not count as releases. Rule 86's secrets exception
+still holds: when Jev confidently flagged `credential` and no review verdict
+exists, the content-free holding reply is sent instead of the candidate; when
 the review's violation names `credential`, or build 4's `defers_work` or
 `unrecorded_blocker` (an untracked deferral or an unevidenced cannot-do claim), the
-holding reply is sent instead.
+holding reply is sent instead. Earlier unavailable holds with no reply intent or
+holding notice resume through the same bounded send path, without repeating
+a paid review. Already-noticed holds remain recorded.
+Shared audiences require a completed full-context review. If no review completes,
+one content-free final notice says the review could not finish and asks for a resend;
+it promises no later work. The exact fixed notice can pass a failed audience check,
+but still consumes the normal signed intent, ownership, stop and no-duplicate-send
+checks. No draft or context rides it. Membership reads retain their existing single
+attempt and disclosure checkpoints. Topic replies anchor to the intake message,
+with delivery still allowed if that message was removed. Charged, interrupted or
+otherwise unknown provider calls are never repeated.
 Stop and expiry still gate every send. New answers
 leave one shared call-budget slot available for a possible review. The deterministic credential wall runs
 before Jev disclosure and again on the final send body.
@@ -2673,7 +2994,7 @@ The check result is encrypted and fsynced before the send intent; `status` and
 `inspect` report verdict counts, path counts, and the last result. A crashed
 subscription review is not retried or charged again from this runner; the reply
 is sent once with the review recorded unavailable (unless Jev flagged
-`credential`, which holds it). An interrupted revision is likewise never
+`credential`, which withholds the candidate and sends the holding notice). An interrupted revision is likewise never
 repeated: the original is released with its objection.
 An interrupted Jev check escalates without repeating Jev.
 `status.lastReplyTiming` derives intake-to-Bot-API-acceptance milliseconds and
@@ -2683,6 +3004,9 @@ The fixed subscription route keeps its 2048 output-token ceiling and reviewed
 invocation policy digest. Its Claude CLI process gets that ceiling through
 `CLAUDE_CODE_MAX_OUTPUT_TOKENS`; the fixed arguments have no per-call thinking
 control. Changing the CLI effort arguments would need a new activation.
+A tool turn's process gets its route's whole-turn bound (2048 for each of its
+turns) as that per-message cap instead (plan #612): with 2048 the CLI cut a long
+answer, resumed it in a second message, and returned only that fragment.
 
 Desk live check for this compact path: [reviewer-compact-call-live-test.md](live-tests-archive/reviewer-compact-call-live-test.md).
 
@@ -2882,14 +3206,54 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   Limited answers are fixed text grouped per conversation, with no model call.
 
   Whether the minimal path may speak is Part Eleven's own verdict (`evaluateMinimalPath`/
-  `minimalResponse` in `src/operator/live.ts`) over what the host actually observes. The live runner
-  reports the register generation, lease, fence and `replication-peer` as **not admitted**. The
-  installed register, the exclusive lease/fence and the signed P-08 single-machine installation
-  policy are not in this preview, and the activation record is not that evidence (Rule 26). So on
-  the live runner limited answers are **inhibited**: each message stays preserved, an owned outage
-  names the missing dependencies (`minimal-outage`, `status.minimalReserve.outages`), and an exact
-  `/stop` latches at once, since the brake needs no reply. The admitted behavior is proven offline
-  with an installed owner. Ordinary work runs beside the poll loop and is never awaited by it. A
+  `minimalResponse` in `src/operator/live.ts`) over what the host actually observes (Rule 26); the
+  activation record never stands in for an observation. The live runner observes:
+  - `register`: the register generation it read at launch (`generated/source.json`) is still the
+    installed one. This is Ten's rule for that dependency. A checkout switched under a running
+    process reports it missing until the runner is restarted.
+  - `lease` and `fence`: this runner's exclusive conversation claim (Rule 63), re-verified against
+    its durable owner record at the verdict. The send seam consumes the same fence again before
+    dispatch.
+  - `replication-peer`: never observed. The runner serves only the single-machine posture, and
+    Eleven §5 omits the peer on a single machine only under the operator's accepted P-08 policy.
+    The runner passes Eleven the installed shape (`minimal.shape`): the trial, the fixed profile
+    `SINGLE_MACHINE_PROFILE` (its closed operation set, the full causal-prefix requirement and the
+    permanent-machine-loss model) and the acceptance it resolved at launch, if any. Eleven omits
+    the peer only when that policy binds this trial and profile and holds the limited answer's
+    operation (`telegram:ordinary-reply`). The shape alone omits nothing.
+
+  **Single-machine acceptance (P-08).** The acceptance is one entry in the desk's sealed authority
+  record (`activation-authority.json`, see "Activation renewal"), beside the grants and waivers:
+
+  ```json
+  "installationPolicies": [{ "id": "p08-single-machine", "policy": "P-08", "shape": "single-machine",
+    "grantor": "OPERATOR_TELEGRAM_ID", "words": "THE OPERATOR'S EXACT MESSAGE",
+    "source": { "kind": "telegram-message", "topicId": N, "messageId": M }, "acceptedAt": EPOCH_MS_OF_THAT_MESSAGE,
+    "subject": { "trial": "TRIAL_ID", "profile": "single-machine-v1", "profileDigest": "sha256:…" } }]
+  ```
+
+  `profileDigest` is `singleMachineProfileDigest()` for this build. The operator's one step is one
+  message accepting the profile as presented: provider calls and reply-only Telegram and Slack
+  sends run from one machine with no peer copy; if that machine is lost for good, the records
+  needed to reconstruct a paid call or a send can be lost with it, and an earlier effect whose
+  outcome is unknown cannot safely be repeated. The desk then adds the entry, seals the record with
+  `seal-authority`, and restarts the runner. The entry resolves only as the desk's sealed
+  disposition, for this trial and the current profile digest, to that authenticated operator
+  message with its exact words and time (`resolveInstallationPolicy`, through
+  `--operator-records`). A revocation naming its `id` withdraws it. Its standing is the trial's
+  other recorded authority: an account-authenticated operator message under the desk's seal. It is
+  not a device-signed or independently verified approval, and `status` says so. A changed
+  operation set or loss model changes the digest, so an older acceptance stops resolving.
+
+  Without a resolving acceptance the launch still serves, and says on stderr that limited answers
+  are inhibited and why. Past a cap each message stays preserved, an owned outage names what is
+  missing (`minimal-outage`; `installation-policy` for the acceptance), and
+  `status.minimalReserve` reports the outage with its repair and the installed shape the launch
+  recorded (`installation`). The chat `status` reply carries one line saying whether a message
+  past a cap would get its limited answer, and what clears it if not. No notice is pushed for the
+  outage: a reply in the chat is the very operation that is not admitted, and the preview has no
+  admitted infrastructure-notice effect (see "Supervised incidents"). An exact `/stop` latches at
+  once, since the brake needs no reply. Ordinary work runs beside the poll loop and is never awaited by it. A
   failed ordinary pass no longer ends the run: the minimal path answers at once (reason `worker`)
   and the ordinary pass is retried with backoff; eight consecutive failures open the breaker and end
   the run for the host supervisor. Without the independent approval page (next item), a chat
@@ -2953,7 +3317,8 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   config file it owns (mode 0600): `{"operator":"telegram:OPERATOR_ID","operatorUid":UID_OF_THAT_USER,
   "agentUid":RUNNER_UID,"store":"/ABS/STORE","outbox":"/ABS/RUNNER_OUTBOX","publicBase":"https://STABLE.HOST",
   "ingressGrant":"desk:approvals-ingress-DATE","port":PORT}`. The runner's outbox is a directory the
-  runner owns, mode 0755. Publish `127.0.0.1:PORT` at that stable HTTPS host (a named tunnel; a
+  runner owns whose group is one the page's user is in (and no other account), mode 0750: the dashboard's message
+  excerpts are published only into an outbox other local accounts cannot enter. Publish `127.0.0.1:PORT` at that stable HTTPS host (a named tunnel; a
   passkey is bound to the host name, so an ephemeral tunnel name breaks it). Run
   `node scripts/approval-surface.mjs serve CONFIG` as that user, then `... enroll CONFIG` prints a
   one-use enrolment link (15 minutes) to open on the phone; enrol a second passkey or a synced
@@ -2961,14 +3326,169 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   --approval-outbox /ABS/RUNNER_OUTBOX --approval-operator-uid UID_OF_THAT_USER`; `status
   .approvalSurface` then reads `{ installed: true, ready: true, page, passkeys }`. A store owned by
   the runner's own identity is refused (`installed: false`).
-- **Supervised incidents (Rules 15, 88; P-14).** `scripts/host-watch.mjs` with
-  `{"mode":"journal", "alerts": {"grant": "..."}}` restarts the runner after a failed exit with
-  bounded backoff. After three consecutive failed restarts it records one incident episode with the
-  failure evidence in `host-watch.json` (shown by `status.incident`) and a clean run closes it. It
-  sends nothing: an internal-issue notice must be Part Eight's admitted `infrastructure-notice`
-  effect through Part Ten's confined notice driver, neither of which exists yet, so the episode is
-  `inhibited` and names both (`inhibitedBy`). Without a recorded alerts grant it is `unbound`. An
-  episode an earlier build left uncertain is preserved and never repeated.
+- **The operator dashboard (Rules 79, 80, 81, 87; Eleven §2; plan #439).** One phone page that shows
+  what the agent is doing and what needs the operator: the status (the exact chat `status` answer,
+  from `statusAnswer`), the requests waiting for a yes or no with a direct link to where each is
+  answered (the approval page itself, the GitHub review, or the chat), the recent messages and what
+  happened to each, the allowance used, and the stop (a link to the page's own standing Stop). It is
+  a page of the independent approval page above, served by that process at `/TOKEN/dashboard`
+  (linked from the approvals index), never by the agent. Nothing from the agent shows until the
+  operator's enrolled passkey signs in: one assertion over a fresh nonce whose signed bytes are a
+  different type from any act (`signInChallenge`), so a sign-in never stands for an approval. The
+  session is a random value held hashed in the page's memory for 30 minutes (at most 64); a restart
+  signs everyone out. The runner publishes the data: while the approval page is installed, every
+  cycle (at most every 15 seconds, and once at exit) it writes one snapshot,
+  `OUTBOX/dashboard.json` (`tests/preview/operator-dashboard.ts`), replaced whole, from the journal
+  and the same status lines it would send in chat. The page reads it as untrusted data
+  (`scripts/operator-dashboard.mjs`): a closed, bounded shape whose only links are a GitHub review
+  page or `https://t.me/BOT`, every field escaped, its age shown on every view; a missing,
+  unreadable or stale (over 2 minutes) snapshot is said in plain words. The page never refreshes
+  itself (reload to update). The snapshot carries credential-redacted message excerpts (at most 500
+  characters, the last 10 messages): the outbox directory's permissions are its access boundary on
+  the machine, so the runner publishes it (mode 0640) only into an outbox closed to other accounts (mode 0750, the
+  group shared with the page's user) and refuses an outbox others can enter.
+  Rule 81's eleven floors are checked on any tree by `node scripts/check-dashboard-floors.mjs`
+  (one JSON object; exit 0 only when every floor holds, every floor's negative control is caught,
+  and nothing shows without the passkey or, on the read-only page below, the PIN session);
+  live-proof check Q81 runs it on the deployed tree.
+- **The read-only operator dashboard (Rules 79, 81; plan #502).** Where no approval page is
+  installed (this deployment's approvals are the GitHub review and the chat, plan #91), the runner
+  serves the same dashboard itself, READ-ONLY: `run --dashboard-listen HOST:PORT
+  --dashboard-pin-check URL` (both or neither; off when absent). The views are the same module
+  and the same snapshot as above (`scripts/operator-dashboard.mjs`, rebuilt at most every 15
+  seconds from the journal and the chat status answer, kept in the runner's memory, never
+  written): status, the requests waiting with their existing links (the GitHub review page, or
+  the chat), recent messages, allowance and spend, and the stop, which says to send `/stop` in the
+  chat and tap Approve. It has no approval port: no approve, decline, stop or passkey route
+  exists, it sets no `approvalSurface`, and raises and stops keep their adopted routes; so it
+  changes no safeguard. Its sign-in is the operator's EXISTING dashboard PIN, checked by the
+  server that already holds it: `URL` is a loopback `http://127.0.0.1` endpoint that answers 200
+  for the PIN (an Instar 1.x host's `POST /dashboard/unlock`); the answer's body, which carries
+  that server's token, is never read, and the PIN never leaves the machine. Nothing from the agent
+  shows before sign-in (every view answers 401 with the sign-in page). A session is a random value
+  held hashed in the runner's memory for 30 minutes (at most 64), as an HttpOnly, SameSite=Strict
+  cookie on `/dashboard`; a runner restart signs everyone out. Five wrong PINs in five minutes
+  pause sign-in (the 1.x unlock keeps its own per-address limit too, and every check reaches it
+  from loopback). `HOST` is `127.0.0.1` or this machine's Tailscale address (100.64.0.0/10), so
+  there is no new public ingress ("nothing outward by default"); the operator's phone reaches it
+  over his own tailnet, which encrypts the traffic. A wildcard, LAN or public address, or a PIN
+  check off this machine, refuses the launch. The log line `preview: read-only operator dashboard
+  at http://HOST:PORT/dashboard` says where it is; a taken port is reported and never stops the
+  chat. To open it from a phone: turn Tailscale on, open `http://MACHINE.TAILNET.ts.net:PORT/dashboard`
+  (or the 100.x address), type the dashboard PIN, and reload to see newer details.
+- **Operator actions by explicit yes (Rules 28, 79, 82, 98; plan #91; `operator-yes.ts`).** The
+  two declared operator actions, `raise-caps` and `renew-expiry`, can be requested in chat and
+  completed by the verified operator's explicit yes, with no setup. The worker port is
+  `explicitYes: { context, installation, renewalActivation? }`: `installation` is the pinned
+  `ExplicitYesInstallation` record (the P-02 facts and whether a P-05 grant lets the agent speak as
+  the operator in the bound chat); `renewalActivation(expires)` returns the reviewed activation
+  record's digest for the new trial end when the host has one. The answer model may return
+  `operatorAction` (`{action:"raise-caps",limits:{maxCalls|maxReplies|maxTurns: number or "step"}}`
+  or exactly `{action:"renew-expiry"}` with no other field, the runner filling in the one reviewed end;
+  a proposal it cannot read, or one written under the runner's own `operatorRequest` field, replaces the
+  reply with the fixed "nothing was proposed" line, so the reply never announces a request that does not
+  exist); the guidance rides the packet whenever an explicit-yes source is
+  admissible on the root, so an ask is answerable at any time (621 bytes of text, 639 on the prepared
+  envelope), together with a route sentence (405 bytes) saying that proposing is how the change is
+  made, so the reply never claims it cannot raise or extend (plan #371); where the port is configured but no source is admissible, only near a limit (the cap
+  report's 80%), within 48 hours of the trial end, or while a request is open, so the answer carries
+  the runner's why-not. A root with no port sends none of it. The runner, never the model, writes ONE exact request inside the governed
+  bounds (one raise adds at most the larger of the trial's original and current allowance, so at most
+  doubles a limit; a renewal names only
+  `SUBSCRIPTION_PREVIEW_EXPIRY` and needs the reviewed activation installed), with its own id,
+  digest and lifetime, and appends its fixed wording to the reply. A request stays answerable for 18
+  hours by default (plan #373; the old one hour lapsed requests unseen overnight), configurable on the
+  root with `run --operator-request-hours N` (1 to 48), and never past the trial's current end (the end
+  a renewal extends and a raise lives within); the reply, the pull request body and the request file
+  state the lapse in UTC, then in the operator's local time from `--time-zone`, and say when the
+  trial's end cut the window short. Replay checks only the UTC sentence, so earlier recorded requests
+  (one-hour, UTC-only) replay unchanged. One request per action may
+  be open at a time (plan #371; rows carry `requestScope: 'action'`, while a legacy row without it
+  superseded every undecided request): a raise and a renewal can be approved together, a new request
+  supersedes only an undecided one of the same action, a raise applied by its approval carries an
+  open renewal forward to the moved base (any other base move still stales it), and the packet shows
+  the other action's open request as `otherOperatorRequest`; an out-of-bounds or
+  unproposable request is answered with why not. A capped limited answer carries the raise the same
+  way when no independent approval page is installed. The verified operator's message that answers
+  an open request (a Telegram reply to it, else the operator's next message after the latest request) is
+  judged once by the single admission (`produceExplicitYes`): exactly `yes` or `approve` completes
+  it, the caps or expiry frame records `operator-yes:<request>:<reference>`, and the chat-yes
+  reference is consumed once. Anything else (an ambiguous answer, a later message, an edit, another
+  sender, an expired or superseded request, a moved base) changes nothing; a judged non-yes is
+  recorded as `operator-yes` refused. Where the installation record says the agent can speak as the
+  operator in chat (P-05), no request is proposed in chat and the single admission refuses a chat
+  yes. That deployment's route is the GitHub review source (`review-yes-source.ts`): over an
+  injected client it opens one pull request whose body names the request and only the review route
+  (never a chat yes, which is not admissible there) (`issue`), links straight
+  to its Files page (`link`), polls its reviews with a widening wait and a breaker (`acts`, Rule 55)
+  and admits a review only through the same single admission (`verify`): an APPROVED review by the
+  pinned login on the exact head completes it once; a missing, COMMENTED or CHANGES_REQUESTED review,
+  another login, a stale head, a lapsed request, another request or a reused review refuses. Without
+  the installed P-02 fact for the GitHub account it opens nothing and `status()` names the missing
+  fact. The launcher connects it (plan rows #297, #307): `run` and `status` take
+  `--explicit-yes-installation /ABS/record.json` (an `ExplicitYesInstallation` v1, read strictly by
+  `explicit-yes-installation.ts`; every fact is required, none defaulted) and `--review-repository
+  OWNER/REPO`; the request pull requests are opened with the agent's OWN token from
+  `INSTAR_SECRET_PREVIEW_GITHUB_TOKEN` through `github-review-client.ts`, whose five operations
+  (open, read, list reviews, close) include none that submits a review. For the GitHub account the
+  record holds EITHER the P-02 fact that the agent holds no access, OR the operator's recorded
+  acceptance of the agent's access (Purpose, the approval-account exception, PR #144):
+  `{account, installation, operatorMessages, acceptedAt, withdrawn}`. Where chat cannot carry the
+  yes and the review source is admissible, the worker opens the request's pull request before the
+  reply and puts its direct link on it; `minimal()` polls the reviews of every open request, judges each review id once
+  (`operator-review` rows), applies an approval once, closes a lapsed or superseded request's pull
+  request (`operator-review-closed`), and sends one fixed completion line
+  (`operator-result-intent`/`-sent`). Every approval admitted under an acceptance carries the
+  shared-access disclosure (`SHARED_ACCESS_NOTE`, written once in `src/decode/explicit-yes.ts`) in
+  its recorded bytes, its journal row, the caps or expiry authority string, the completion line,
+  the mind's request state, and `status`/`inspect` (`operatorRequests`). The record is read afresh
+  on every use, so a withdrawal the desk records stops consumption from the next poll; an applied
+  effect stands. `status` reports `explicitYes` (chat, review with `acceptance {account, current}`)
+  and `operatorActionSurface`, which names the phone route only while a source is really
+  admissible on this root and otherwise the host command line the two declarations name. A renewal
+  is proposable only with `--renewal-activation /ABS/activation.json` (validated as `renew-expiry`
+  validates it, so `status` then also needs `--login-profile`, `--model`, `--authority-record` and
+  `--operator-records`). `status` runs that same validation: its `renewExpiry` names the phone route
+  alone only while that record is valid now for a trial end later than the journal's; otherwise it
+  adds that until then the renewal stays on the host command line. A capped limited answer still carries a request only where the chat yes is
+  admissible.
+- **Retracting test turns (plan #389, Rule 35).** Desk or test traffic sent through the operator's own
+  account lands in every store as theirs, and chat text from that account cannot be trusted to undo it.
+  The desk runs `journal-agent.mjs propose-retract --root R --updates-file F [--reason TEXT]` (one
+  Telegram update id per line; `#` comments allowed) during operator hours only (09:00 to 21:00 in the
+  trial's zone, `OPERATOR_HOURS`). It checks the list against a read-only open of the journal (each id one
+  accepted, not yet retracted message; a refusal prints `{"refused": reason}` and exits 1) and leaves one
+  proposal at `preview-retract-proposal.json`; it changes no journal state and sends nothing. The
+  running runner's `minimal()` issues it once (per proposal) as an exact `retract-turns` operator request
+  on the same explicit-yes route a raise uses, within an hour of the proposal and inside operator hours:
+  the operator reads the count, the first and last listed message (redacted, clipped), the reason and
+  Rule 35, and on the review route the pull request lists every id. The request is signed as
+  infrastructure (`retract-request`/`-sent` rows). A model's `operatorAction` can never name one. Only the
+  admitted yes applies it, as one `retract` row at its journal position. From that row on, `probeTurn`
+  is true for every listed turn (`retractedTurn`); directives, blockers, commitments and people notes
+  they created are not open or offered; memory and dated changes they sourced or triggered leave the
+  active projection (their change-history entries are marked undone); held questions, waiting
+  corrections and conflicts from them are dropped; and every rolling summary built over one of them is
+  retired (`retiredSummaries`, `liveSummaries`), so the next pass rebuilds from the remaining turns and
+  never ends a span on a retracted turn. Nothing is deleted (Rule 7): every earlier row replays
+  unchanged, and `status` shows `retracted {turns, retiredSummaries}` and marks retired summaries. A
+  closure that a retracted turn made of a real item (a directive superseded, a blocker cleared, a
+  commitment closed) is not reopened. Tests: `retract-turns.test.ts`.
+- **Supervised incidents and crash pauses (Rules 15, 52, 55, 61, 88; P-14).**
+  `scripts/host-watch.mjs` in journal mode records one incident after failed recovery and uses the
+  existing confined infrastructure-notice driver only with a configured alerts grant/destination.
+  Its `host-watch.json` also retains the shared local runner crash window: abnormal exits, failed
+  spawns, hangs and rapid queued exits count together, even across supervisor restarts or intervening
+  successes. At `maxRestarts` failures in `crashWindowMs` (defaults 10 / 600000 ms), it durably pauses
+  before another launch. Waiting does not clear the pause. Clean completion, declared inhibition,
+  operator stop and expected capacity outcomes are not crashes; no effect or unfinished work is erased.
+  `node scripts/host-watch.mjs /absolute/config.json status` shows the pause and exact episode ID;
+  after repair, `node scripts/host-watch.mjs /absolute/config.json resume <episode-id>` clears only
+  that pause, and the normal supervisor launch can continue. Stop/expiry and runner authority/spend/
+  UNKNOWN checks still apply. Resume cannot repeat an earlier uncertain notice. These commands are
+  local deployment control under the existing host account, not a new conversational grant. The
+  host's existing exclusive deployment owner must serialize supervision and manual resume. This
+  window covers one supervised runner root on one machine, not a pool-wide or all-job breaker.
 
 Held notices from earlier builds replay unchanged, but no new held notice is pushed: a held
 message's status stays on the pull surface (`status.holds`, self-state and the mind's packet).
@@ -3019,7 +3539,7 @@ marker; earlier steps keep their verdicts.
 The live private-chat procedure is in
 [jev-step-supervisor-live-test.md](jev-step-supervisor-live-test.md). The dark
 observation's first evaluation target, 2026-09-30, passed without a recorded
-trace, so its graduation deadline is now 2026-10-18, recorded with its reason,
+trace, so its graduation deadline is now 2026-10-21, recorded with its reason,
 owner and rollback in the promotion record below. The desk can decide whether
 to keep it on after Justin's script produces a recorded trace. While off, it is
 not a live safety guard.
@@ -3274,3 +3794,653 @@ npx vitest run tests/preview/probe-traffic-replay.test.ts --configLoader=runner
 ```
 
 The supervised procedure is [probe-traffic-live-test.md](live-tests-archive/probe-traffic-live-test.md).
+
+### One conversation on two machines (journal runner)
+
+Off unless asked for: the single-machine launch is unchanged. With `--machine-posture multi-machine
+--conversation-authority URL --replica-listen HOST:PORT --replica-peer URL --owner-machine NAME` (and the shared
+secret bound as `INSTAR_SECRET_PREVIEW_AUTHORITY_SECRET`) two runners serve one conversation with one voice:
+
+- One shared authority (`conversation-authority-server.mjs`, on one machine) issues the conversation lease, one
+  dispatch-claim per send, and the settled Telegram cursor. Only the lease holder polls or sends.
+- The lease holder's journal bytes are copied to the other machine and acknowledged (`journal-replication.ts`).
+  A send or a model call waits until the acknowledgement covers the journal through its own record: the purpose
+  document's `replicated(1)` default. With the other machine away, messages are still read, but nothing is spent or sent;
+  the reason is on stderr, in `status` (`sharedHistory.replication`) and in the supervisor's service observation.
+- A machine that takes the conversation over continues from the newest copy it holds. Its own older journal is
+  kept as `journal.encrypted.set-aside-<epoch>`. Exactly one machine is seeded (`--journal-lineage seed`) on the
+  first start; a machine with no enrolled history never serves.
+
+```sh
+npx vitest run tests/preview/two-machine-runner.test.ts tests/preview/two-machine-floors.test.ts \
+  tests/preview/journal-replication.test.ts tests/preview/two-machine-serving.test.ts --configLoader=runner
+```
+
+The supervised procedure on two real machines is [two-machine-live-test.md](two-machine-live-test.md).
+
+### Tool turns (journal runner)
+
+A separate sealed `conversation-capacity-limits-v1` disposition pins the complete Claude
+continuing-session policy except six named worker limits: `maxSessions`, `deadlineMs`, `idleMs`,
+`minCpuIdlePercent`, `minFreeMemoryBytes`, and `minFreeMemoryFraction`. Capacity admission retains
+an integer ceiling of at most eight workers, at most four hours of worker/idle lifetime (idle
+cannot exceed lifetime), and headroom of at least 12% CPU idle, 2 GiB free memory and 10% free
+memory. The legacy shape without headroom fields remains bounded to two workers, one hour and
+five minutes idle. Every other field, including prompt, launch flags, model, call allowance,
+other caps and unknown fields, is an exact sealed pin. Initial session admission, pool checks
+and activation refresh present the adapter's own policy to the same authority resolver.
+This class does not reinterpret the ordinary conversation policy's sealed digest: ordinary
+conversation and continuing sessions have separate policies. Full digests remain evidence.
+
+A separate sealed `tools-guidance-only-v1` class uses `scope.invocationPolicyPins`, computed by
+`guidanceOnlyPolicyPins` from the approved policy. It pins every policy field and the generated
+checkpoint settings, except the system prompt and each existing subagent's prompt and description.
+Tool set, permission mode, all caps (including lower caps), subagent execution settings, settings
+labels, runtime fields and checkpoints must match exactly. Trial, model, account, executable,
+artifact, version and profile remain exact grant subjects. A changed pinned field needs a new
+disposition. Full prompt bytes and the full invocation digest remain execution evidence; the
+resolver checks that digest before applying the class. Existing digest grants and the broader
+`full-tools-checkpointed-v1` class retain their recorded meanings.
+
+
+On by default under the operator's recorded grant. At launch the runner derives the tools activation from the
+conversation activation (the same record with `invocationPolicyDigest` = the digest of `subscriptionToolsPolicy(model)`,
+framing `preview-tools-v1`) and keeps it only when the sealed authority record resolves it; it is written to
+`ROOT/tools-activation.json`, the live withdrawal handle. `--tools-activation /ABSOLUTE/record.json` names a record
+the desk wrote instead; `--tools off` refuses tools, so every answer stays text only, the briefing keeps its no-tools
+line and `status` says `Tools: off (…)`. The operator's standing full-tools grant may be recorded for a policy CLASS
+instead of one digest: a grant whose scope carries `invocationPolicyClass: "full-tools-checkpointed-v1"` (and no
+`invocationPolicyDigest`) covers every build whose own tools policy keeps the class's checkpoints — the admission hook on
+every call, the confined shell, no flag that skips the hook or permission checks, and every cap at or below the reviewed
+ceiling (`tests/preview/tools-policy-class.ts`). The launch checks this against the build's own policy each time it
+resolves the grant, so a build that only rewrites the tools prompt or the settings label needs no new record, while one
+that removes a checkpoint or raises a cap is not covered. With no covering grant the runner REFUSES to start: stderr says
+`preview: refused to start: no recorded operator grant covers this build's tools policy (…)` with the reason, and the run
+log records `refused before launch`; it never starts silently text only. A launch that resolves records the grant, the
+class (or `exact policy`) and the digest on stderr (`preview: tools on: …`) and in its launch row (`tools`). With tools,
+an operator answer turn or a scheduled work step runs as one Claude Code invocation with the pinned harness's whole
+built-in tool set (`SUBSCRIPTION_TOOL_NAMES`; nothing is left out, the hook decides each call), plus the root's MCP
+servers (Part Thirteen §9,
+`docs/17-harness-adapters/09-claude-code-codex-and-future-runtime-mappings.md`):
+
+- Each conversation keeps one private workspace on its own fixed-size (128 MiB) volume: a sparse disk image under
+  `ROOT/workspaces/<key>/` (the key is derived from the root and the conversation), mounted only during that
+  conversation's turns at the fixed short path `/private/tmp/itw-<key>` (linked as `vol`), which is also the harness's
+  temporary directory, so every byte a tool, the shell or the harness writes lands on it. Between turns the volume is
+  unmounted and its image kept, so files the agent wrote are there next turn. A root keeps at most 4 workspaces; a
+  further conversation's turns each get a fresh one-turn volume under `ROOT/tool-turns/` (removed after the turn, no
+  kept session; journaled as overflow). A kept workspace is never deleted to make room; writes past its size fail.
+  The admission hook's state is per turn in `ROOT/tool-turns/<digest>-<n>/state/`; the newest 16 turn directories
+  are kept, and the journal's `tool-turn` rows are the record. The root must be on ordinary storage (a disk image
+  cannot be mounted from a RAM disk); if the volume cannot be mounted the turn fails closed.
+- The conversation's Claude Code session is kept between turns as a cache of the journal (`ROOT/workspaces/<key>/
+  session.json` names it; the transcript is in the login profile's `projects/` directory). Each turn still sends the
+  whole current journal packet. The runner resumes the session (`--resume <id>`) only while the tools authority,
+  harness, model and a digest of the journal's facts (corrections, forgets, closures, grants, the stop, …) are
+  unchanged; otherwise it removes the old transcript and starts a new one (`--session-id <new id>`). It also rotates
+  at 6 turns or 512 KiB, on a compaction or a missing/unreadable transcript or record, and after an unsettled turn,
+  and ends the session (transcript removed) when a turn is stopped, withdrawn or fails. The harness's own memory and
+  automatic compaction are off. Each trace row's `session` says new or resumed and why; status counts them.
+  A rejected resume with complete zero input/output token accounting and no tool or child calls gets one fresh
+  session attempt from the same durable packet. The original rejection and ended session stay recorded; the
+  recovery reserves its entire liability, including a new base call, and rechecks the normal admission boundaries.
+  Unknown usage, partial work, a stop, or insufficient call allowance keeps the original outcome without retry.
+  Physical outcome diagnostics include tool settings and session invocations, excluding empty-input preflights.
+- `tool-admission-hook.mjs` admits ordinary work: a file read or search of the workspace, the shell's temporary
+  directory or the system files the sandbox also lets commands read (binaries, libraries, `/System`, device nodes), a
+  file or notebook write or edit inside the workspace or that temporary directory, each decided on the RESOLVED file
+  (symlinks followed where they stand, so `link/..` leaves through the link; `/etc` and `/private/etc` are one place,
+  and since w4-t2boundary neither is readable, so both spellings of the hosts file are refused; a dangling link is
+  refused as unresolvable) with the resolved path handed to the harness. This is a check at admission, not
+  at open: a directory the agent itself swaps for a link between the hook's check and the harness's open can still be
+  followed by Read, Write, Edit, Glob or Grep; a sandboxed command has no such window, because the kernel decides at
+  open. The kernel closes that race when the harness runs as its own macOS user (`--harness-user _instarharness`,
+  below): a swapped path then reaches only the harness's own area and world-readable files, and the harness's own
+  login is a held value the reply floor and the outbound check withhold. Without the switch, or with a harness user
+  that is not ready, every Claude Code tool turn is refused (never run as the operator's account): the answer is text
+  only, and stderr, `status` (`Harness identity: REFUSED … (<reason>)`) and a notice under that answer say why
+  (`docs/defects/2026-10-03-file-tool-swap-race.md`).
+  Separately, and narrowly: the journal and the vault are ciphertext under the storage key, which only the runner's
+  environment holds; an MCP server's credential given as a SecretRef is handed to that server's launcher alone and is
+  not written to the launch configuration; the admission record holds any credential a tool result carried in
+  plaintext while the turn runs and is scrubbed when the turn ends (a process death before that scrub leaves it);
+  `secret-at-rest.test.ts` checks these cases. This is not a claim that every file the runner writes is secret-free,
+  and it is not what closes the race. It also admits sandboxed commands
+  whatever words they contain, a WebFetch (GET only) of a host whose every resolved address is public, a WebSearch,
+  an MCP tool listed as a read, the harness's bookkeeping (ToolSearch, ListAgents, CronList, ReportFindings,
+  TaskStop), a worktree inside the workspace, and a `worker` subagent within the turn's budget (rewritten to the
+  foreground), started by the turn or by a subagent. Effects that could be consequential go to the effect
+  doorway: an MCP tool not listed as a read, an unsandboxed command, a Monitor command (not shown to be sandboxed; Bash
+  in the background is), a send, a scheduled or remote trigger, a DesignSync, and a web read or listed MCP read whose
+  effect or target the `--effect-policy` registers or marks policy-sensitive. The doorway (`effect-doorway.mjs`, Part
+  Twelve) classifies each against the purpose's four consequential-effect tests (cannot be undone by the agent alone;
+  commits money or a resource above the operator's named level, an unknown cost counting as above; reaches outside the
+  granted scope; touches a matter marked policy-sensitive). All four false: admitted as ordinary. Any true: admitted only
+  when every held test is answered (an irreversible effect only as an operation of the installation's accepted closed
+  set, which on one machine no tool effect joins; a resource or policy-sensitive effect under a recorded grant),
+  otherwise refused with the tests that held and what would admit it. The decision is written durably (fsync) to the
+  admission record before the call proceeds, journaled with the turn's trace, counted in `status` ("Effect doorway:
+  …"), and a refusal rides below that turn's answer as one infrastructure line. A Skill is admitted when it is one of
+  the pinned harness's bundled skills verified to run inline (its instructions join the turn, which starts nothing;
+  the turn loads no user or project skills); a skill that can run forked, and Workflow, are refused for budget (the
+  agents they may start cannot be reserved before dispatch), and any other skill name is refused. A web read of a loopback, private or
+  local-name host is refused; a tool the hook does not classify is refused. Each call takes one of
+  the step's 32 slots (shared with the turn's subagents) by exclusive create, so overlapping calls cannot exceed the
+  cap. The sandbox refuses reads from `/` down except the scratch volume, the system files commands need (it reopens the
+  `/var` symlink itself, so a `/var/...` spelling reads what `/private/var/...` does and nothing else behind it opens;
+  the host's own configuration is not among them, so `/etc/hosts` and `/private/etc/hosts` are both refused at open,
+  however a command spells them — w4-t2boundary, plan #615) and the network tools' own locations (the runner's node and npm, the developer tools' git), writes outside the volume, unix
+  sockets and signals to other processes; the harness's messaging socket and token are removed from every command.
+- Shell network (`egress-proxy.mjs`): the sandbox lets a command reach exactly one place, the turn's checkpoint, a
+  proxy the runner starts on a loopback port before launch and stops after the turn (the settings' `httpProxyPort`).
+  It intercepts HTTPS with the turn's own trust root (key in `state/egress-trust/`, certificate at
+  `<volume>/egress-ca.pem`, trusted only through the variables the shell prefix sets), resolves each host and
+  requires every address public, connects to the address it checked, and decides each request by method and path:
+  GET, HEAD and a proven git fetch are reads; anything else (POST, PUT, PATCH, DELETE, a git push from
+  `service=git-receive-pack` on, a publish) is a `tool:network-write` on its host for the effect doorway's four tests,
+  which classify it at its worst and refuse it unless the `--effect-policy` registers and grants it; a read of a host
+  the policy registers or marks policy-sensitive goes to the doorway as `tool:network`, as a WebFetch of it does. A git fetch is proven, not named: its repository answered `info/refs?service=git-upload-pack` in
+  this turn with git's advertisement type, the POST is typed `application/x-git-upload-pack-request`, and its body
+  (held, at most 8 MiB, gunzipped when encoded, before any of it is forwarded) is only upload-pack pkt-lines. A
+  server may follow the request line or any method-override header (`X-HTTP-Method-Override`, `X-HTTP-Method`,
+  `X-Method-Override`), and the checkpoint forwards both unchanged, so a request is a read only when its line and every
+  method an override names are reads: an override naming a read never downgrades a POST or DELETE, and one override
+  cannot hide another's write. A loopback, private, link-local, CGNAT or local-name host is refused before any connection (the
+  prefix empties `NO_PROXY`, so those ranges reach the checkpoint and are refused on the record rather than by the
+  sandbox alone). Every decision is appended to `state/egress.jsonl` before the request goes anywhere and journaled
+  in the turn's trace (`egress`, `egressRequests`, `egressLimited`); `status` counts admitted and refused shell
+  network requests. Bounds per turn: 256 MiB through it, 16 connections at once, 512 requests, 30 s idle per
+  connection. Reaching the byte bound, or `close()` at the turn's end, is terminal: nothing more is admitted, connected
+  or forwarded, and a request that was waiting on name resolution or its body is re-checked before it is recorded or sent. The shell's HOME is `<volume>/home`, so caches and tool configuration stay on the volume; it is emptied at the start of every
+  turn, also in a kept workspace, where only the workspace and its temporary directory carry files between turns. The harness
+  protects `.git` under the workspace, so a repository is cloned under `$TMPDIR`. `npm install` succeeds, but its audit
+  request is a POST and is refused, so `npm audit` does not work; SSH remotes do not work (only HTTP(S) reaches the
+  checkpoint).
+- MCP: `ROOT/mcp.json` (the operator's file; absent means none) is `{"mcpServers": {name: {command, args?, env?}},
+  "reads": ["mcp__name__tool", …]}`. An `env` value is a plain string, kept as written, or `{"secretRef": "<name>"}`,
+  a credential in the root's custody vault: the runner opens it at the turn (a value it cannot open answers the turn
+  without tools, recorded) and hands it once, over a private socket with a per-turn nonce, to that server's launcher
+  (`mcp-launch.mjs`), which starts the server with it in its environment; the launch configuration holds no
+  SecretRef value. A credential in a recognised format written literally in a command, an argument or an env value is
+  refused, naming the SecretRef form; an opaque literal no pattern recognises is not detected and is kept in the
+  launch configuration as written.
+  Servers run outside the sandbox as the harness's identity (the runner's account, or the harness user with
+  `--harness-user`, whose launcher is its read-only copy beside the hook and whose socket lies in the harness area,
+  traversable by that user and the runner only); the sandboxed shell cannot reach the socket (no unix sockets). The turn's admission record is scrubbed when the turn ends: each served value is replaced by its
+  SecretRef marker and recognised credentials are redacted.
+- Subagents: at most 2 per turn at any depth (a `worker` may start its own), type `worker`, 4 model turns each. The
+  hook records each child's start and stop (synced) before it acts; the journal's `tool-turn` trace carries one Rule
+  114 edge per child, naming the subagent that started it (`parentAgent`, null for the turn) (`returned`,
+  `cancelled` by stop or withdrawal, or `unknown`).
+- Before dispatch the turn reserves its whole liability, `maxTurns - 1` model attempts beyond the answer's own plus
+  each subagent's turns, against the call cap, and keeps it. Subagent budget comes only from allowance beyond this
+  turn and one further plain tool turn. A short allowance, or a packet with no room for the longer tool prompt,
+  answers that turn without tools, recorded. `status` shows the tool set, tool-turn and subagent counts and refusals.
+- `/stop`, a latched stop file, expiry or withdrawal (changing or removing the record, or a sealed-authority change
+  under which the grant no longer resolves) ends a live turn and its subagents: the resource owner kills its process
+  group within its 25 ms poll, every cleanup census reclaims each member it finds, and quiescence is verified within
+  two seconds.
+- `--effect-policy /ABSOLUTE/effect-policy.json` (optional) is the doorway's operator policy: `{"type":"PreviewEffectPolicy",
+  "resourceLevelUsd":0,"policySensitive":[],"registered":[],"grants":[]}`. A registration classifies one effect (and
+  optionally one target, such as an MCP tool name or a host) with `consequence`, `reversibility`, `reach`, `costUsd` (null:
+  unknown) and its `source`; unregistered effects take their worst reachable classification. A grant names `id`,
+  `effect`, optional `target`, `approves` (`scope`, `resources` with its `resourceLevelUsd`, `policySensitive`), the
+  operator `source` it records, its `custodian`, its `recovery` obligation and an optional `expiresAt`. Absent, nothing
+  outward is granted. Launch refuses a policy that does not decode; each tool turn re-reads the file, and a removed or
+  broken file grants nothing.
+
+```sh
+npx vitest run --maxWorkers 1 tests/preview/tool-admission.test.ts
+npx vitest run --maxWorkers 1 tests/preview/effect-doorway.test.ts
+npx vitest run --maxWorkers 1 tests/preview/tool-turn.test.ts
+npx vitest run --maxWorkers 1 tests/preview/tool-turn-replay.test.ts
+npx vitest run --maxWorkers 1 tests/preview/egress-proxy.test.ts
+npx vitest run --maxWorkers 1 tests/preview/tools-default.test.ts
+npx vitest run --maxWorkers 1 tests/assembly/production-provider-tools.test.ts
+INSTAR_TOOL_TURN_LIVE_TEST=1 npx vitest run --maxWorkers 1 tests/integration/tool-turn-live.test.ts   # five real harness turns
+INSTAR_TOOL_TURN_FULL_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=full npx vitest run --maxWorkers 1 tests/integration/tool-turn-full-live.test.ts  # one per case: full, outward, stop-child, shellnet-reads, shellnet-writes, shellnet-stop
+```
+
+### The harness as its own macOS user (`--harness-user`)
+
+`--harness-user _instarharness` runs every Claude Code launch of the login profile (version and auth preflights, plain
+answers, tool turns and delegated session work) as that macOS user, so the kernel checks each file the harness and its in-process file tools
+open as an identity with no access to the operator account's private files. A path swapped between the admission
+hook's decision and the tool's open (docs/defects/2026-10-03-file-tool-swap-race.md) then reaches only what that user
+may open: its own area (its transcripts, a turn's admission state, the workspace), and operator files that every local
+user may read. No credential is in that set:
+
+- **The login** stays in the runner's custody (`/Users/Shared/instar-harness/custody/<profile.reference>.login.json`, the runner's alone:
+  no ACL entry for the harness user) and reaches each command through the launcher's stdin hand-off, which passes it
+  to Claude Code on a pipe (`CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3`), read once and never written to a file, an
+  argument or the environment. Store one with `node tests/preview/harness-user.mjs login <harness profile.json>`, the
+  token (from `claude setup-token` for the profile's account) on stdin; the record binds it to that profile reference, account,
+  organization and plan; each command declares that plan (`CLAUDE_CODE_SUBSCRIPTION_TYPE`), as a stored login's record
+  would, so the CLI fetches and caches no server policy into the profile (which the profile inspection would refuse as
+  unreviewed). Claude Code then reports an `oauth_token` login with no account fields; the shipped route
+  accepts that shape only from a host IO that declares the hand-off (`descriptorLogin`), and refuses a stored
+  `claude.ai` login there (a plain-text login the harness could open).
+- **MCP servers' credentials** (their `env`): a credential the root's `mcp.json` names by SecretRef is resolved by the
+  runner and served once, on the turn's runner socket, to that server's launcher (`mcp-launch.mjs`); the turn's
+  `mcp.json` holds no value, stays in the turn directory's runner-private `private/`, and the launcher hands it to
+  Claude Code as `--mcp-config /dev/fd/4`, a pipe read once.
+- **The operator's /private/tmp files** (other sessions leave output there with default, world-readable permissions):
+  a root step (`lanes/harness-user/tmp-acl.sh`) puts one inherited deny entry for the harness user on `/private/tmp`
+  (`HARNESS_TMP_DENY`, `only_inherit`), so every entry created there afterwards, by any user and whatever its mode, is
+  refused to the harness user by the kernel from the moment it exists; there is no window between a file's creation and
+  its closing. Entries that predate the rule are closed by the runner (group and other access removed from its own
+  top-level entries, mount points and links aside) at each readiness check. The turns' volumes mounted there stay
+  reachable (the entry is not applied to `/private/tmp` itself). The harness's own temporary files go to
+  `/Users/Shared/instar-harness/tmp` (the launcher's default `TMPDIR` and `CLAUDE_CODE_TMPDIR`).
+
+The resource owner launches `sudo -n -u _instarharness /Users/Shared/instar-harness/bin/harness-launch --handoff ENV...
+-- claude ARGS` (`tests/preview/harness-launch.mjs`, the one command the root step's sudoers rule names); the launcher
+runs only the pinned harness copy beside it and ends the harness's whole tree when it exits, on a relayed stop, or
+within 50 ms of sudo being killed, because the runner's account cannot signal another user's processes. The owner's
+census includes the harness user, so memory and process ceilings still hold, and it waits (boundedly) for the launcher
+to end a member it cannot signal. A tool turn's admission state lives in `/Users/Shared/instar-harness/turns/` (the
+turn directory's `state` links there; the hook may add files but not change or replace the runner's), the egress
+checkpoint's private state and the MCP configuration stay in the turn directory's `private/`, the hook runs from a
+read-only copy, and the turn's volume grants both identities by inherited ACL entries, never through a link.
+
+Delegated session work (the session work grant) runs the same way. The session's persistent volume (the same image)
+mounts at `/private/tmp/its-<12 hex>` instead of under the root, which the harness user cannot traverse, and both
+identities are granted on it. Each step's admission state lives in `/Users/Shared/instar-harness/turns/<root>/session/`,
+prepared as a tool turn's is, its config and shell profile opened read-only to the hook copy. The egress checkpoint's
+private state stays under the root. The step's preflights run as the harness user, and the tmux pane runs the
+harness through `tests/preview/harness-session.mjs`. That bridge runs as the runner, reads the custody login and starts
+the launcher in its terminal mode (`--handoff --tty`). The login arrives on descriptor 3, and the harness reads the
+pane's keys and draws on it. While the identity is held, a step's admission throws before anything is prepared or
+launched.
+
+The decision is made from live state (`harnessReadiness` in `tests/preview/harness-user.mjs`): the user exists, the
+launcher and hook copy are installed, the profile's executable is the installed copy of its artifact, its directories
+sit in the harness area and hold no plain-text login (`.credentials.json`), the custody holds a login bound to the
+profile, the runner's `/private/tmp` entries are closed, and a probe through the launcher shows the harness user can
+read and write its profile and its temporary directory and cannot open the root, the operator's home, the runner's
+repository, the login custody, any of those `/private/tmp` entries, or a world-readable canary the runner creates in
+`/private/tmp` after all of that (only the root step's entry can refuse it). **Not ready never falls back to the operator's account:** every harness launch
+is held (it throws before anything is launched; accepted work stays queued), the runner's journal, messaging and stop
+keep working, `status` says `Harness identity: UNAVAILABLE, so every Claude Code launch is held … (<reason>)`, and the
+identity is decided again on a later launch at most every 30 seconds (`harnessGate`). A user that did not exist when the
+runner started is added to the resource owner's census the first time it is ready, before anything runs as it.
+Ready, `status` names the user
+and each tool trace row carries `harness: {user}`. The setup (after the root step, `lanes/harness-user/root-steps.sh`)
+is `node --loader ./scripts/slice-ts-loader.mjs tests/preview/harness-user.mjs setup <operator profile.json>
+/Users/Shared/instar-harness/profile-<runner>.json <runner-reference>`; setup creates separate
+`profile/<runner-reference>/{home,config,work}` directories. The new profile needs its own activation and its own login (above).
+
+Existing single-login runners (no `--login-pool`) migrate the legacy custody `login.json`
+once at harness readiness when their profile-specific file is absent. Migration requires the
+runner-only directory/file permissions and exact account, organization and plan; a legacy
+reference, if present, must also match. The new record is reference-bound, fsynced and installed
+without replacing an existing file. Existing malformed entries remain refused, and the legacy
+file is retained for older runners. Dispatch reads only the profile-specific record. Pools never
+use this migration: provision each reviewed member explicitly before enabling the pool.
+
+An installation records already authenticated and independently admitted harness logins with the shipped
+`journal-agent.mjs install-login` command. Use the same installation, model, harness-user, operator-records,
+profile, activation and authority options as its existing single-login launch. Before the first run, also
+supply the trial's `--operator-sender-id`, `--grant-reference`, `--configuration-digest` and `--expires-at`.
+Each successful admission appends the login to `<root>/harness-logins.json`; a repeated admission updates
+that member in its recorded position. The first member stays the installation anchor. This command
+never signs in, copies credentials, creates grants or inherits authority from another login.
+
+`install-login` prepares conversation, tools and sealed authority records for every admitted login using
+one shared preparation step. `prepare-logins` runs that step at update time; an automatic launch also
+prepares a changed build. Records live in `<root>/harness-login-builds/`, derived from the running code,
+policy and source records. Conversation and explicit tools successors preserve their previous account observation, expiry and
+predecessor evidence. A changed policy must still resolve under that member's own sealed authority; the preparation
+cannot widen an exact grant to cover a new policy. Default tools records resolve the member's own tools
+grant. The original records remain withdrawal handles, checked together with the prepared records.
+
+With multiple installed logins, `run` without `--login-profile` or `--login-pool` derives and selects the pool
+automatically. With one installed login, it supplies the same single-login options and creates no pool
+selection state. With no installation inventory, the existing launch path is unchanged. An explicit
+`--login-profile` without `--login-pool` remains the single-login override; the run log records that choice.
+A secondary member with missing, withdrawn or unauthenticated records is excluded with one durable,
+reply-deduplicated notice. Its admitted non-secret profile, index, holds and history stay recorded; a missing profile can
+represent history and verify a predecessor but cannot authorize dispatch. Other members can continue.
+The primary still has to validate as the installation anchor. No call is retried by this preparation.
+
+Existing installations can pass their reviewed `--login-pool` to `install-login` together with the
+matching primary options. It admits the list in its existing order and retains that manifest as the
+predecessor, including its quota source and threshold. An explicit `--usage-file` overrides the imported
+source; 95 percent applies only when the source omits its threshold. Subsequent builds produce their manifests automatically. Adding or changing members once
+pool selection state exists refuses for an explicit membership migration; it never resets selection.
+
+An explicit `--login-pool /ABSOLUTE/runner-logins.json` remains supported. Its first entry must match
+`--login-profile` and `--activation-record` (and any explicit authority/tool/session paths). Every account
+has its own profile, custody record and sealed activation authority; accounts and profile directories
+must be distinct. Lists/accounts for serving and proof rooms remain disjoint. No machine-wide account
+scan, grant inheritance or fallback to the old singleton custody file occurs.
+
+```json
+{
+  "version": 1,
+  "thresholdPercent": 95,
+  "logins": [
+    { "profile": "/ABSOLUTE/serving-a-profile.json", "activation": "/ABSOLUTE/serving-a-activation.json",
+      "authority": "/ABSOLUTE/serving-a-authority.sealed.json", "toolsActivation": "/ABSOLUTE/serving-a-tools.json" },
+    { "profile": "/ABSOLUTE/serving-b-profile.json", "activation": "/ABSOLUTE/serving-b-activation.json",
+      "authority": "/ABSOLUTE/serving-b-authority.sealed.json", "toolsActivation": "/ABSOLUTE/serving-b-tools.json" }
+  ]
+}
+```
+
+The existing provider adapter's session/weekly-limit result holds only that login. On the next call, selection walks the
+reviewed list in order and chooses the next member with capacity, under that member's current activation. A failed call is
+never replayed. An in-flight tool turn keeps the login it was admitted with. A delegated step selects once before its durable
+edge; it carries that member's `sessionActivation`, and the existing session driver's `rate-limited` observation holds that
+member for subsequent calls/steps. Session calls already inside a running step keep their original credential; the held step
+ends uncertain and is never automatically repeated. Call, turn, step and spend caps do not increase on a switch.
+
+The installer’s optional `--usage-file` (manifest `usageFile`) names a read-only 1.x SubscriptionPool JSON snapshot (`version: 1`, `accounts[].email`, `configHome`,
+`lastQuota.measuredAt`, `lastQuota.fiveHour`/`sevenDay` with `utilizationPct` and ISO `resetsAt`). Only a reading matching
+the profile's exact account and config directory (or the entry's explicitly reviewed `usageAccount` id when the pool polls
+the account in its original config home), at most five minutes old and with no reported identity drift, can trigger the configured threshold
+(default 95 percent). Missing/stale/unreadable readings provide no exhaustion evidence; provider errors still do. A known
+reset time restores eligibility then. An unknown reset recovers when a newer, fresh, identity-matched
+reading shows both five-hour and seven-day windows below the threshold with valid future resets.
+Recovery is durable; missing, stale, partial or mismatched evidence preserves the hold. Legacy holds
+without observation times gain a durable freshness boundary on first reopen and need a later reading. Exhausting
+all listed members holds calls; it never picks an unlisted account. Status names each member, the active member,
+holds and their reset times, and the last switch with its reason. When a member’s quota reading is stale or
+unavailable, status states that selection for it switches only after a typed limit reply. Part 17 gives
+no numeric threshold; the shipped 95 percent default is retained. This path reads the existing quota
+snapshot without opening a credential or inventing a fresh measurement.
+
+`<root>/harness-login-pool.json` retains active selection, holds and all switch records through atomic fsynced writes under
+the root's writer lease. The existing run log names the pool configuration, so loss of its state after launch refuses instead of silently resetting.
+A changed manifest is refused until restart. Identity binds the ordered logins, accounts and profile homes,
+not per-build activation/authority paths. Old path-hashed state is adopted only when its hash matches the
+current or retained `previousManifest` and the ordered members agree. Adoption preserves active selection,
+holds, switch history and the original notice-key identity, and records its reason. No historical notice is
+reissued. Unknown identity or a real member change refuses for explicit migration. Retain predecessor
+manifests and profiles; never delete selection state to make a launch pass. Switch notices use the existing journal-deduplicated doorway notice on the next eligible operator reply:
+one line per switch, never a new chat, no account identities or tokens. Machine-local deliberately: each machine needs
+its own custody, profiles and grants; this file is not shared login authority.
+
+With no `--harness-user` at all on a Claude Code tool route, the runner never runs a tool turn as its own account
+(plan #473): each is refused and answered text only (the packet names no tools), and stderr at launch, `status`
+(`Harness identity: REFUSED … (no --harness-user was given)`, and `Tool turns: … N because the separate harness user was
+not ready`) and a notice under each such answer say why.
+
+**Held secret values (plans #442, #473, #507).** The runner holds every secret value it can read: its own
+`INSTAR_SECRET_*` values, the preview vault, the root's MCP credentials, and with `--harness-user` the custody login and
+any login Claude Code writes into the harness profile. A value once read stays held for the runner's life, so a source
+that later changes, empties or becomes unreadable never drops it (`createHeldSecrets` in `tool-turn.mjs`). Each value is
+matched exactly and in its derived forms (base64, base64url, hex, URL and JSON escaping, a provider key without its kind
+prefix). It is withheld from every reply like credential-shaped text, refused at the outbound check, scrubbed from
+recorded tool excerpts, and checked before any outward tool request is dispatched:
+
+- the admission hook asks the runner (the turn's runner socket, or the host checkpoint on a checkpointed route) about
+  every string and property name an outward tool call carries (WebFetch, WebSearch, a Codex network read, an MCP or other outward tool,
+  an unsandboxed command) before anything is done for it, a name lookup included, and refuses one that carries a held
+  value; its record keeps `[withheld …]` instead of the input;
+- the shell's network checkpoint checks each request's host, path and headers (a CONNECT authority before its name is
+  resolved), a held git-fetch body whole, and a streamed body as it arrives, holding back the longest held form so no
+  part of a value is forwarded before all of it is seen; its record never keeps the value.
+
+The check fails closed (Rule 95: its miss is a secret leaving): a held source that cannot be read now (a registered or
+MCP-referenced credential whose sealed object cannot be opened counts: `custodyHeldSources`), a check that does
+not answer, an input over 1 MiB, or no check at all refuses the outward request. Ordinary web reads, searches and shell
+network are otherwise unchanged; nothing is added to a request on the runner's behalf.
+
+What the race still reaches, stated: the harness's own transcripts and turn state, and operator files that every local
+user may read outside `/private/tmp`. A held value read that way cannot leave through a reply, an outward tool request
+or the shell's network; a value the runner never held (another session's credential in a file every local user may
+read) is not covered by this check.
+
+```bash
+npx vitest run --maxWorkers 1 tests/preview/harness-user.test.ts
+INSTAR_TOOL_TURN_HARNESS_USER_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=race npx vitest run --maxWorkers 1 tests/integration/tool-turn-harness-user-live.test.ts  # race, turn, stop, mcp, session
+```
+
+### Native tool turns (Instar's own agent loop)
+
+Rule 115: the same tool turn without a vendor agent harness (Part Thirteen §9, the native tool rule).
+`tests/preview/native-loop.mjs` is `runToolTurn`'s `invoke`: it uses the same allocation (scratch volume, workspace and
+admission state), whole-liability reservation, journaled trace and retention. Each step is one text-only model call under
+framing `preview-native-tools-v1` (`subscriptionNativePolicy(model)`: the conversation policy's single completion, no harness
+tools, one turn, with a system prompt naming the native tools). The model's answer is either the object
+`{"calls":[{"tool","input"}]}` (1 to 8 calls) or its ordinary answer. The loop:
+
+- runs every proposed call through the same `tool-admission-hook.mjs` executable (`pre`, then `post` with the result), so
+  admission, the per-turn call slots (32) and the admission record are those of a harness tool turn; a hook that cannot
+  decide refuses, and a tool the hook admits but the loop has no executor for (NotebookEdit, a subagent) returns an
+  error result and runs nothing;
+- executes each admitted Read, Write, Edit, Glob, Grep and Bash call as one worker (`native-tool-worker.mjs`, handed to
+  node as source) under `/usr/bin/sandbox-exec` with a profile built from the harness sandbox's read list plus the one
+  node executable (reads only the scratch volume, the runtime system files and the turn's network tools' locations, writes
+  only the volume, no network but the turn's egress checkpoint on its loopback port, whose decisions are a harness
+  shell's, no unix socket or mach service, no signal outside the sandbox) and an empty environment, so the kernel checks every open
+  as it happens: a path swapped into a link out of the volume after admission reads as `EPERM`, and a blocking open (a
+  FIFO) blocks only the worker. Results that leave the workspace through a link are dropped;
+- launches every worker through the host resource owner (`scripts/resource-owner.mjs`, the process's own owner in
+  production): per-process CPU time and handles and the user ID's process headroom in the kernel, the tree's memory and
+  process count sampled against the launch ceilings, the deadline (30 s for a file tool, the Bash timeout up to 120 s)
+  and the stop ending the launch within its 25 ms poll; a launch it ends is reported as `interrupted` with its reason
+  (`stopped`, `timeout`, `memory`, `processes`, `cpu`). The owner joins every descendant by the worker's sandbox
+  instance too (`membership: 'sandbox'`: the kernel's `sandbox_check`, read from outside the workload), so a daemon
+  that took a new session, lost its parent and left the volume still counts against the ceilings and is ended by the
+  stop and the cleanup; nothing inside the sandbox and no workload-writable file takes part. Each call's containment
+  evidence (owner `cleanup`, `membership: sandbox-joined`) is recorded, and `native.unresolved` lists every launch
+  whose end was not proven;
+- runs WebFetch in the loop's process as one GET whose redirect is reported, never followed (admitted by the hook's
+  web-read rule: a public host, and the effect doorway's decision for a host the `--effect-policy` names), ended by its
+  deadline or the stop, with the body read as a stream up to
+  256 KiB and then cancelled;
+- returns each call, its decision and result to the next step as a quoted `role:tool-steps` message (older results are
+  shortened first when the envelope would overflow);
+- ends on the model's answer, the step cap (8 model calls: the liability the turn reserved), a failed or empty step, or
+  the stop (a running call's tree is ended within 25 ms; a call admitted while the stop was latched is recorded as
+  stopped and never run).
+
+The launcher does not offer it yet: a native activation needs the operator's grant naming the native policy digest.
+
+```sh
+npx vitest run --maxWorkers 1 tests/preview/native-loop.test.ts
+npx vitest run --maxWorkers 1 tests/preview/native-loop-replay.test.ts
+INSTAR_NATIVE_LOOP_LIVE_TEST=1 npx vitest run --maxWorkers 1 tests/integration/native-loop-live.test.ts   # three real native turns
+```
+
+### Credential display names
+
+`credential-display.ts` keeps operator wording separate from custody keys. Installed
+records carry an optional `displayLabel`; old records derive the same plain label
+from their kind (and the subscription account). Reminder text, public credential
+facts supplied to reply review, and credential status name/identity fields use
+that label. Internal registry names, identity references and journal notice keys
+stay unchanged, so existing sent or uncertain reminders remain spent on restart.
+No journal rewrite is needed. A custom label still passes the existing public-label
+secret checks before it is included in model facts.
+
+### Inbound media custody
+
+The journal launcher accepts the bound operator's Telegram photos, voice/audio and
+files as ordinary turns, with kind, name, reported byte size and caption. The
+original update is encrypted and flushed before the cursor advances or download
+starts. The existing answer worker downloads after admission, before preparing its
+model packet. A `media-custody` journal row records the outcome on that same turn;
+it never creates a second sender event or a separate reply.
+
+`media-admission.ts` registers `fetch-inbound-media` with the existing four-test
+boundary, using the installed conversation grant only for its verified inbound
+file. Current effect policy may narrow that authority. The exact source, file
+digest, bot account, topic, Telegram target, custodian, limits and policy decision
+are durable before Six reserves, claims and consumes the fetch. Both HTTP requests
+recheck current source, policy, owner, stop and lifetime. The host credential is
+read only after admission and its bot id must match the admitted account. Missing
+admission, policy loss or revocation performs no further network request and leaves
+an honest outcome for the existing answer. No extra queue or paid provider is added.
+
+Signed request and claim facts live under `root/media-claims/<source-hash>` and are
+never pruned. The preview composition uses its existing fixture signing identity,
+like `six-host-resources.ts`; it does not certify independent physical key custody.
+A crash before complete encrypted bytes exist leaves an uncertain one-use claim;
+a restart preserves that evidence and reports refusal rather than fetching again.
+
+`telegram-media.ts` uses the existing durable-write primitive to retain encrypted
+bytes under `root/media`, addressed by a hash of the original turn identity. Names
+from Telegram never become paths. Downloads allow only the fixed Telegram origin,
+refuse redirects and unsafe returned paths, stream at most 8 MiB, and have a
+20-second deadline covering both metadata and file. A single worker owns the store;
+it reserves worst-case encrypted space before downloading against a 96 MiB ceiling.
+Capacity refusal retains existing files and the original intake. Nothing is pruned.
+Download, size and storage failures become plain statements in the answer packet.
+The runner holds the key and bot credential. Images and documents are decrypted only
+into a generated owner-only path in the harness turn's confined temporary area.
+The turn packet tells the model to read that file and to report unreadable content
+honestly. The file is removed when the model call returns or throws. Media turns
+use `--no-session-persistence` so the harness cannot retain image contents in a
+kept conversation transcript. Prior interrupted copies are removed on reuse.
+
+Voice/audio is transcribed once at intake using local whisper.cpp and ffmpeg;
+no paid transcription provider or extra conversation model call is introduced.
+`npm run install:media` is the idempotent installation/update step for each host:
+it installs missing executables through Homebrew (macOS or Linux) and verifies a
+pinned SHA-256 multilingual base model. Homebrew is required when executables are
+missing. Install this before starting either new or existing roots. The same
+per-user installation serves all roots on that machine. Conversation startup
+never downloads software or models; missing executables/model leave an honest
+transcription-unavailable notice while preserving the original file.
+
+The encrypted media object records the transcription attempt before execution,
+then its result. The local transcript is also attached to the original encrypted
+journal turn, so reply review, summaries and later recall see the same words.
+Restart never repeats an attempted transcription. A failed or
+interrupted attempt retains audio and reports the missing transcript. Local decode
+accepts at most five minutes, one CPU thread, 30 seconds decode and 90 seconds
+inference, and at most 16 KiB transcript output. Stops kill only the exact active
+child PID. Temporary decoded audio is private and removed on completion. Recognized
+credentials enter existing secret custody before any transcript reaches the model;
+transcript text receives the same held-secret/redaction pass as conversation text.
+The answer packet labels its source “voice note, transcribed locally.” Existing
+spend, stop, audience, reply review and reply uniqueness checks still hold.
+
+Media bytes are deliberately machine-local encrypted custody, not replicated
+journal payloads. Replicated journal rows retain the original reference and result;
+The media store is declared beside its existing durable-write primitive. The existing
+hourly `media-custody` store agreement and `status.media.missing` check each stored reference on the current machine and reports
+missing or corrupt custody. A crash after storing a file but before the result row
+reuses the exact encrypted file without another fetch. A crash before a complete
+file exists leaves the captured turn pending. After a recorded failure there is no
+automatic retry storm. Rollback must keep roots with `media-custody` rows on a reader
+that understands them; never discard those rows or ciphertext to downgrade.
+
+The photo, voice and document fixtures in `fixtures/telegram-media` were supplied by
+the desk under observer #207, synthesized from Telegram's API documentation, and are
+labelled as such. They are not recorded platform evidence. A live Telegram media
+proof and macOS confinement verification belong to the desk's gate host.
+
+Media attachment exposure holds Rules 4/86/100 at the host boundary: source-bound
+originals remain encrypted in media custody, recognized document credentials enter
+the existing vault before a temporary copy is created, and held secret material is
+redacted from that copy. Clean bytes retain their encoding. Missing custody or held
+credential state yields the ordinary unreadable attachment notice with tools enabled.
+Local ffmpeg and whisper-cli launches use the shared host resource owner as maintenance
+work, including Six allocation, answer reserve, tree census, stop and bounded output/time.
+Both run in the same private per-transcription directory, removed after completion.
+
+## Slow-reply acknowledgement
+
+Durable intake arms one cancellable timer per accepted operator message, independently of the
+serial answer worker. At seven seconds the admitted host dispatch sets 👀 on that exact inbound
+message with `setMessageReaction`. The timing measure is **acknowledged (reaction or text) under
+ten seconds**, including admission and transport. The signed held-notice intent declares
+`acknowledgementMode: reaction-or-text`; the receipt records `acknowledgementPath: reaction | text`.
+A reaction receipt uses the inbound message id, not an invented outgoing message id. Old records
+remain readable. Existing stop, disclosure, ownership, replication, allowance and UNKNOWN fences
+remain in force. A crash after dispatch never repeats the reaction or sends fallback text.
+
+A definite reaction rejection (including unsupported chats) or transport proof that nothing was
+sent falls back to “I got your message.” This acknowledges durable receipt without claiming
+that queued or stalled work has started. Historical “Checking that now.” intents remain readable
+and cannot be resent. The reaction call has a bounded ten-second transport timeout; transport
+latency can exceed the acknowledgement target and is measured separately. A lost or malformed response is
+UNKNOWN and cannot safely trigger fallback: the reaction may already have landed. No new model
+call or semantic judgment is involved. Final dispatch readiness suppresses an unadmitted ack;
+review still pending remains eligible. Final dispatch waits for an already dispatched ack.
+
+After acknowledgement, `telegram-acknowledgement.mjs` refreshes `sendChatAction: typing` every four
+seconds only with a fresh observation and an unfinished admitted tool for this exact turn.
+Queued input, a completed latest step, an absent observation and a call reservation alone do not
+produce typing. Each refresh rechecks this evidence after disclosure as well as stop, ownership
+and expiry. The loop stops on answer/progress dispatch, a failed refresh, or two minutes / 30
+observations, whichever comes
+first; Telegram expires the last indicator naturally. Timers are local, ephemeral, and never
+replayed as send obligations. The existing slow progress and earlier-message notices remain.
+The completion reaction remains 👀; no separate completion effect or durable state is added.
+
+Recorded timing cases 969390407–969390410 and 840342743–840342745, restart/crash neighbours,
+reaction and fallback transport, and typing cancellation are covered by the acknowledgement
+tests. Captured source frames retain their historical text; replay measures the new dispatch.
+No new store or ownership protocol is introduced. Journal intent and receipt state retain their
+existing replication; the current conversation owner alone creates ephemeral typing activity.
+
+The encrypted journal's `phase-timing` diagnostics expose numeric/boolean measurements through
+`status.phaseTimings` (the latest 100; original frames remain in retained journal evidence).
+Acknowledgements record the scheduled wall-clock due time and timer callback entry separately;
+a poll-triggered check is labelled `timerCallback: false` and does not invent a callback time.
+Send records carry entry, final audience admission, physical transport entry/return, the attempt
+number and the cumulative proved-not-sent count. The final reply has no timer, so it records only
+its applicable send phases. The host records transport time immediately around `sendMessage`,
+separately from audience and replication work. Audience records give the cache hit/miss and
+elapsed duration without member identities or message text. Version and auth preflight durations
+remain separate from the model's existing `call-outcome`. Jev reply attempts add
+`jev-disclosure` (worker), `jev-admission` (host), and `jev` (provider) phases keyed
+by the turn id. The two admission durations share one allowance, and both record
+acceptance; the provider duration excludes admission. The existing audience cache
+is runner-local, keyed by the exact lineage/bot/chat/operator, and expires ten
+seconds after probe start without sliding. It survives ordinary text turns; observed
+membership/service changes invalidate it before intake. A longer turn needs a fresh
+probe. This change does not widen the staleness bound or retain stale evidence on
+error (purpose least revelation; Rules 28, 32, 60, 95). Observations never admit an effect or
+make an UNKNOWN send retry; an observation write failure does not change the operation's result.
+
+The subscription runner retains one successful CLI version observation keyed by the complete
+pinned profile, including the executable artifact. Changed profiles/artifacts revalidate; failed
+checks are discarded. The observation is process-local and disappears on restart. It does not
+cache authorization or authentication: every invocation still checks the current artifact,
+authority, stop, login identity and `auth status --json` before dispatching its model command.
+
+
+### Active obligation progress on the status surface
+
+The existing journal-derived status marks an active obligation step stalled after more than
+30 minutes without a recorded result. It ages both commitment steps and blocker rechecks from
+the durable start, not a scheduling slot or another conversation reply. The bounded status line
+shows the count and up to three obligation identities; the JSON health view retains every stalled
+item and its start/age. Future scheduled steps, accounted waits and finished results are separate
+states. This is a pull-only signal: it never closes work, replays an uncertain effect, or kills a
+worker. A restart reconstructs it from the same journal, with no new store or service.
+### Missing session sign-in reminders
+
+The existing verified-live session activity check also checks that session's admitted
+harness login custody. Only a missing custody object is reported as missing; identity
+drift and unreadable custody remain unknown. The next operator answer can carry one
+plain reminder identifying the approved login slot. The existing journal notice key
+binds machine and admitted profile lifetime: sent and uncertain sends never repeat,
+including after restart. No new watcher, model call, credential copy or send route is
+introduced. Known credential expiry retains its existing escalating reminder schedule.
+
+Chat status and the operator dashboard show missing/present/unknown observations from
+this host. Samples older than 30 seconds become unknown and cannot raise a reminder.
+This is a local custody-availability observation, not a provider authentication probe;
+it does not claim coverage for idle workers that the driver has not recently observed
+or harnesses without this custody adapter. A proof-room check removes only a synthetic
+login after its worker starts, verifies one reminder and status, then tests restored
+custody, identity drift, stale samples and a restart/uncertain-send duplicate neighbor.
+
+### Conversation restoration keeps the host responsive
+
+A session launch records and submits any required agent-owned history, then returns its
+process identity. The conversation adapter and delegated-work owner poll
+`continuationReady` through their existing asynchronous wait. The host can therefore
+serve the session's model checkpoint and process shutdown signals while restoration is
+pending. Only the existing completion evidence admits the next operator input; an
+uncertain restoration, stop or expired original deadline still refuses delivery. The
+journal launch wrapper forwards this readiness observation when rebuilding a driver for
+a selected login. Incident replay and a real local HTTP checkpoint exercise the shared
+event loop in `tests/assembly/production-session-driver.test.ts`.

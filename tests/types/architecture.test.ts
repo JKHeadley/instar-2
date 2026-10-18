@@ -101,6 +101,7 @@ describe('NF-11: every memory retrieval entry point selects through the recall o
       'const ownedRecall = (q: string) => composeRecall({ query: q });',
       'const recallFor = (turn: Turn) => selectRecall({ message: turn.text });',
       'const searchFor = (turn: Turn) => ownedRecall(turn.text, selectRecall({ message: turn.text }));',
+      'const lookupRecall = (words: string[]) => ownedRecall(words.join(" "), selectRecall({ message: words.join(" ") }));',
       'const newRecall = (turn: Turn) => selectRecall({ message: turn.text });',
     ].join('\n') }).map((issue: { rule: string; detail: string }) => `${issue.rule} ${issue.detail}`);
     expect(flagged).toEqual(['NF-11 selectRecall in newRecall is an unlisted retrieval call site',

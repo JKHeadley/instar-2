@@ -4,6 +4,10 @@ _Generated from `12-the-effect-doorway.changelog.json` by `scripts/render-change
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 10 · 2026-10-03 · draft — Unit w4-doorway: the effect doorway wired onto the live answer and work path by the purpose's four consequential-effect tests (Justin 2026-10-03 10:15, topic 102965 message 121996, and his 10:45 re-grounding). No constitution change.
+
+- **§3 gains the live-path tool rule: ordinary in-workspace tool work is admitted without a doorway call; a tool call that could be consequential is classified against the four tests from its registered or worst reachable classification and admitted only when every held test is answered (closed set for irreversible effects, a recorded grant for resource, policy-sensitive and scope); a refusal names the held tests and what would admit it, rides below the answer, and every decision is durable, journaled and counted in status.** — The observer's audit found the doorway was not on the live path; the operator's direction is full ability with only consequential effects going to the doorway, enforced by the constitution's own definition. _(lanes/w4-doorway-PROGRESS.md; LIVE-PATH-PLAN.md rows #399-#400)_
+
 ## Revision 9 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
 
 - **Quote the five sign-off conditions, separate them from verification and standing, and align ordinary launch and local durability checks.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_

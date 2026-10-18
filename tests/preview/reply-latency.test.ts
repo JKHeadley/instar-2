@@ -47,7 +47,7 @@ async function runCase(scope: 'all' | 'selected' | 'pass') {
           return { verdict: 'pass' as const, ruleIds: [] as ReplyRule[], confidence: null, latencyMs: 40 + reviewBytes / 300 };
         },
       },
-      send: async input => { expect(input.expectedText).toBe('PREVIEW — I can answer that.');
+      send: async input => { expect(input.expectedText).toBe('I can answer that.');
         if (scope !== 'pass') expect(reviewedAt).toBeGreaterThan(0);
         await sleep(8); sentAt = performance.now(); return input.update; },
     });
@@ -63,7 +63,7 @@ async function runCase(scope: 'all' | 'selected' | 'pass') {
     const final = journal.view.order.at(-1)!;
     expect(final.sent).toBe(9);
     expect(final.replyChecks?.at(-1)?.verdict).toBe('pass');
-    expect(final.intent).toBe('PREVIEW — I can answer that.');
+    expect(final.intent).toBe('I can answer that.');
     const result = { scope, endToEndMs: Math.round((sentAt - started) * 10) / 10,
       reviewBytes, reviewCalls: journal.view.replyCheckPaths.subscription,
       path: final.replyChecks?.map(row => `${row.path}:${row.verdict}`) };

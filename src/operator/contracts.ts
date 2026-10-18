@@ -142,6 +142,17 @@ export interface ReplayAdmission {
 
 export type MinimalDependency = 'local-facts' | 'register' | 'identity-keys' | 'clock' | 'lease' | 'fence' |
   'replication-peer' | 'conversation-binding' | 'route' | 'delivery-evidence';
+/** The P-08 single-machine installation policy as the installed join resolved it (Purpose: "a
+ * single-machine installation is a supported deployment shape"; Eleven §5). `acceptance` references the
+ * operator's recorded acceptance; resolving and authenticating that record is the join's duty. */
+export interface SingleMachinePolicy {
+  readonly policy: 'P-08'; readonly installation: string; readonly profile: string; readonly operations: readonly string[];
+  readonly causalPrefix: 'full'; readonly lossModel: string; readonly acceptance: string;
+}
+/** The installed shape the minimal dependency verdict consumes. `single-machine` names what is installed
+ * now (installation, profile, loss model), the operation the response uses, and the accepted policy, if any. */
+export type InstalledShape = Readonly<{ kind: 'peer-backed' }> | Readonly<{ kind: 'single-machine'; installation: string;
+  profile: string; lossModel: string; operation: string; policy: SingleMachinePolicy | null }>;
 export interface MinimalPathState {
   readonly admitted: boolean; readonly missing: readonly MinimalDependency[]; readonly ordinaryUnavailable: readonly string[];
   readonly responseEligible: boolean; readonly preserved: boolean; readonly repairOwner: string;

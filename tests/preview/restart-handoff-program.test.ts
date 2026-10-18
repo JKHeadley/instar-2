@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { activationMatchesJournal, createJournalWorker, HELD_NOTICE_AFTER_MS, openPreviewJournal,
-  renewJournalExpiry } from './journal.js';
+  renewJournalExpiry, UNKNOWN_SEND_NOTICE } from './journal.js';
 
 const key = new Uint8Array(32).fill(7);
 const start = 1_790_000_000_000;
@@ -69,6 +69,24 @@ async function fixture(root: string, build: JournalModule = { createJournalWorke
   return { clock, before, heldPushed };
 }
 
+// Notice delivery adds exactly two history fields and changes the packet digest; recall and
+// the original answer's UNKNOWN outcome must remain byte-for-byte equivalent otherwise.
+function assertNoticeProjection(before: ReturnType<ReturnType<typeof createJournalWorker>['probe']>,
+  after: ReturnType<ReturnType<typeof createJournalWorker>['probe']>, updates: number[]) {
+  if (!before.context || !after.context || !before.grounding || !after.grounding)
+    throw Error('recall probe must carry its packet and grounding');
+  const context = JSON.parse(before.context);
+  for (const update of updates) {
+    const turn = context.history.find((item: { id: string }) => item.id.endsWith(`:update:${update}`));
+    expect(turn.outcome).toBe('delivery UNKNOWN');
+    Object.assign(turn, { deliveryNotice: UNKNOWN_SEND_NOTICE, deliveryNoticeOutcome: 'accepted' });
+  }
+  expect(JSON.parse(after.context)).toEqual(context);
+  expect(after).toEqual({ ...before, context: after.context,
+    grounding: { ...before.grounding, packetSha256: after.grounding.packetSha256 } });
+  expect(after.grounding.packetSha256).not.toBe(before.grounding.packetSha256);
+}
+
 async function assertReopened(root: string, clock: () => number, before: unknown, samePacket = true, heldPushed = false) {
   const journal = openPreviewJournal(pathFor(root), key);
   try {
@@ -79,7 +97,10 @@ async function assertReopened(root: string, clock: () => number, before: unknown
     await worker.drain();
     expect(journal.view.order.map(turn => turn.update)).toEqual([1, 2, 3, 4]);
     expect(journal.view.cursor).toBe(5);
-    expect(sends(root).map(sent => sent.update)).toEqual(heldPushed ? [1, 2, 4] : [1, 4]);
+    expect(sends(root).filter(sent => sent.text !== UNKNOWN_SEND_NOTICE).map(sent => sent.update))
+      .toEqual(heldPushed ? [1, 2, 4] : [1, 4]);
+    expect(sends(root).filter(sent => sent.text === UNKNOWN_SEND_NOTICE)).toEqual([{ update: 4, text: UNKNOWN_SEND_NOTICE }]);
+    expect(journal.view.order[3]?.deliveryNotice?.sent).toBeDefined();
     expect(new Set(calls(root)).size).toBe(calls(root).length);
     expect(calls(root)).not.toContain(journal.view.order[2]!.id);
     expect(journal.view.order[2]?.answer).toBeUndefined();
@@ -87,7 +108,8 @@ async function assertReopened(root: string, clock: () => number, before: unknown
     expect(journal.view.order[3]?.sent).toBeUndefined();
     expect(journal.view.order[1]?.intent).toBeUndefined();
     expect(journal.view.order[1]?.heldNoticeSent !== undefined).toBe(heldPushed);
-    expect(worker.probe('What was the code?')).toEqual(probe);
+    assertNoticeProjection(probe, worker.probe('What was the code?'), [4]);
+    const after = sends(root); await worker.drain(); expect(sends(root)).toEqual(after);
   } finally { journal.close(); }
 }
 
@@ -145,7 +167,9 @@ it.each(['after:reserve:5', 'after:intent:5'])('crash %s keeps uncertain work fe
       expect(sends(root).filter(sent => sent.update === 5)).toHaveLength(cut.includes('intent') ? 1 : 0);
       expect(calls(root)).not.toContain(id);
       expect(reopened.view.order[1]?.held).toBe('reply check unavailable');
-      expect(worker.probe('What was the code?')).toEqual(atCut);
+      assertNoticeProjection(atCut, worker.probe('What was the code?'), cut.includes('intent') ? [4, 5] : [4]);
+      expect(sends(root).filter(sent => sent.text === UNKNOWN_SEND_NOTICE)).toEqual([{ update: 4, text: UNKNOWN_SEND_NOTICE }]);
+      const after = sends(root); await worker.drain(); expect(sends(root)).toEqual(after);
       expect(JSON.stringify(before)).toContain('Silver otter 731');
     } finally { reopened.close(); }
   } finally { rmSync(root, { recursive: true, force: true }); }

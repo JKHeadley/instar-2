@@ -1,0 +1,33 @@
+{
+  "sourceCommit": "d97249b540e0f9804644f2fce0ca84ae2f3c52b1",
+  "sourceBlob": "aa5781940b6f2d23fefa11edc5aa5e4d8c337eca",
+  "recordedRequests": "packet-once-walk-2026-10-14.json",
+  "turns": [
+    {
+      "operations": [
+        "telegram:8968100844:update:840342886:replay:0"
+      ],
+      "digest": "sha256:c59346a2fa8782842203317df6b8cc7d927dfc50580968e7f383d83eb47e13ff"
+    },
+    {
+      "operations": [
+        "telegram:8968100844:update:840342891:replay:1",
+        "telegram:8968100844:update:840342892:replay:1"
+      ],
+      "digest": "sha256:8b81db836c0e1cecbb9be8c4d437279b02b5d4596470da8fbafafdeb1edfbfb9"
+    },
+    {
+      "operations": [
+        "telegram:8968100844:update:840342886:replay:2"
+      ],
+      "digest": "sha256:c59346a2fa8782842203317df6b8cc7d927dfc50580968e7f383d83eb47e13ff"
+    },
+    {
+      "operations": [
+        "telegram:8968100844:update:840342891:replay:3",
+        "telegram:8968100844:update:840342892:replay:3"
+      ],
+      "digest": "sha256:9ed6115fcec7252daf9035865d54c223d417dca1e15e2728d0b2931d184a6d2c"
+    }
+  ]
+}

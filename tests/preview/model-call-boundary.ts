@@ -52,15 +52,20 @@ export const ENVELOPE_FLOOR = Object.freeze({ type: 'ActionFloor', schemaVersion
 /** True when a returned Decision's floor, if any, is exactly the local one and its choice lies inside it.
  * The live model sometimes echoes only the floor's action list (`allowed: ["work"]`, copied from
  * bindings.floor.actions); that exact list is still the local floor and widens nothing, so it is read
- * the same. Any other list, type, version or default stays malformed. */
+ * the same. It also drops a descriptive field from the object echo (live 2026-10-03, update 715673368, both
+ * attempts: `{"actions":["work"],"default":"work","schemaVersion":1}` with no `type`, so "are you there?" got
+ * the failure reply). An absent field asserts nothing, so it widens nothing; every field that IS present must
+ * still be the local one, and the action list is always required. Any other list, type, version or default
+ * stays malformed. */
 export function decisionWithinFloor(decision: { floor?: unknown }): boolean {
   if (decision.floor === undefined) return true;
   const floor = decision.floor as { allowed?: { type?: unknown; schemaVersion?: unknown; actions?: unknown; default?: unknown } | unknown[]; chosen?: unknown } | null;
   const allowed = floor?.allowed;
   const exact = (actions: unknown) => Array.isArray(actions) && JSON.stringify(actions) === JSON.stringify(ENVELOPE_FLOOR.actions);
   return !!allowed && (Array.isArray(allowed) ? exact(allowed)
-    : allowed.type === ENVELOPE_FLOOR.type && allowed.schemaVersion === ENVELOPE_FLOOR.schemaVersion
-      && exact(allowed.actions) && allowed.default === ENVELOPE_FLOOR.default)
+    : (allowed.type === undefined || allowed.type === ENVELOPE_FLOOR.type)
+      && (allowed.schemaVersion === undefined || allowed.schemaVersion === ENVELOPE_FLOOR.schemaVersion)
+      && exact(allowed.actions) && (allowed.default === undefined || allowed.default === ENVELOPE_FLOOR.default))
     && typeof floor?.chosen === 'string' && ENVELOPE_FLOOR.actions.includes(floor.chosen);
 }
 

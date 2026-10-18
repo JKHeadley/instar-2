@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, activationMatchesJournal } from './journal.js';
+import { UNKNOWN_SEND_NOTICE, createJournalWorker, openPreviewJournal, activationMatchesJournal } from './journal.js';
 import { HOLDING_REPLY, JEV_MODEL, REPLY_RULES, parseReplyReviewVerdict } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
 import { parseModelJson } from './model-json.js';
@@ -60,8 +60,8 @@ it('answers, reviews a clean reply, and records a contradictory one-line review 
     worker.intake([update(1, 'What color is it?')]); await worker.drain();
     worker.intake([update(2, 'And the other color?')]); await worker.drain();
     worker.intake([update(3, 'And one more color?')]); await worker.drain();
-    expect(sent.map(item => item.expectedText)).toEqual(['PREVIEW — The answer is violet.', 'PREVIEW — The answer is amber.',
-      'PREVIEW — The answer is scarlet.']);
+    expect(sent.map(item => item.expectedText)).toEqual(['The answer is violet.', 'The answer is amber.',
+      'The answer is scarlet.']);
     // The malformed verdict is re-asked once with the same context (Rule 116); both misses release as before.
     expect(reviewPackets).toHaveLength(3);
     expect(reviewPackets[2]).toEqual(reviewPackets[1]);
@@ -70,7 +70,7 @@ it('answers, reviews a clean reply, and records a contradictory one-line review 
     expect(reviewPackets[0].rules).toContain('raw_path');
     expect(journal.view.order[2].answer).toBe('The answer is scarlet.');
     // A malformed review is never a pass, and never a veto either (Rules 86, 95).
-    expect(journal.view.order[2].intent).toBe('PREVIEW — The answer is scarlet.');
+    expect(journal.view.order[2].intent).toBe('The answer is scarlet.');
     expect(journal.view.order[2].held).toBeUndefined();
     expect(journal.view.order[2].release).toMatchObject({ review: 'unavailable' });
     expect(status(root)).toMatchObject({ turns: 3, calls: 6, replies: 3,
@@ -143,7 +143,7 @@ it('validates renewal and policy-successor records against the pinned policy, wi
     loginProfileIdentity: 'offline-identity', executable: '/offline/cli', artifact: 'sha256:offline',
     version: '2.1.280', activationReference: 'offline-activation', managedConfigurationDigest: 'sha256:offline' };
   const digest = encoded(subscriptionConversationPolicy(model)).hash;
-  expect(digest).toBe('sha256:aced65e686a665f11a02d7480501170ad3e2f8664fa5858ec69f42374390374a');
+  expect(digest).toBe('sha256:7b1d9af257f848e9cef4abad31771394af1cb4e1b6062a4538d3442a2045f220');
   const base = { type: 'SubscriptionActivationRecord', schemaVersion: 1, reference: profile.activationReference,
     waiver: 'waiver', p11: 'p11', reviewedHead: 'frozen predecessor', trial: genesis().grant,
     baseConfigurationDigest: genesis().configurationDigest, profileDigest: encoded(profile).hash,
@@ -161,6 +161,8 @@ it('validates renewal and policy-successor records against the pinned policy, wi
   const renewed = renewActivation({ current: base, currentBytes, profile, observation, now: at }).record;
   expect(() => validateSubscriptionActivation(renewed, profile, model, at, SUBSCRIPTION_CONVERSATION_FRAMING)).not.toThrow();
   expect(renewed.invocationPolicyDigest).toBe(digest);
+  expect(() => validateSubscriptionActivation({ ...renewed, invocationPolicyDigest: 'sha256:3598cc7514f4be6ffec52f1d321e1596cd2db420a67fd7958281f3862dd9ce8c' },
+    profile, model, at, SUBSCRIPTION_CONVERSATION_FRAMING)).toThrow();
   expect(renewed.predecessor.digest).toBe(`sha256:${createHash('sha256').update(currentBytes).digest('hex')}`);
   expect(() => validateSubscriptionActivation({ ...renewed, invocationPolicyDigest: 'sha256:wrong' },
     profile, model, at, SUBSCRIPTION_CONVERSATION_FRAMING)).toThrow();
@@ -186,18 +188,22 @@ it('upgrades the frozen live-format journal in place and preserves an UNKNOWN se
   // Generated with journal.ts whose bytes match frozen15 at 3695117d, then copied to a new root.
   copyFileSync(new URL('./fixtures/offline-canary-frozen15.encrypted', import.meta.url), path);
   let journal = openPreviewJournal(path, key);
+  const texts: string[] = [];
   let sends = 1; // the fixture has one physical send attempt with UNKNOWN result
   try {
     expect(journal.view.order[0].intent).toBe('PREVIEW — violet');
     journal.close(); journal = openPreviewJournal(path, key);
     const resumed = createJournalWorker(journal, { now: () => at, stopped: () => false,
       model: async () => 'amber', checkOutbound: () => {},
-      send: async () => { sends++; return sends; } });
+      send: async input => { texts.push(input.expectedText); sends++; return sends; } });
     resumed.intake([update(1, 'What color?'), update(2, 'Another color?')]); await resumed.drain();
-    expect(sends).toBe(2);
+    expect(sends).toBe(3);
+    expect(texts).toEqual(['amber', UNKNOWN_SEND_NOTICE]);
+    expect(journal.view.order[0].deliveryNotice?.sent).toBe(3);
+    await resumed.drain(); expect(sends).toBe(3);
     expect(journal.view.order.map(turn => [turn.update, turn.intent, turn.sent])).toEqual([
-      [1, 'PREVIEW — violet', undefined], [2, 'PREVIEW — amber', 2] ]);
-    expect(status(root)).toMatchObject({ cursor: 3, turns: 2, replies: 2, unknownSends: 1,
+      [1, 'PREVIEW — violet', undefined], [2, 'amber', 2] ]);
+    expect(status(root)).toMatchObject({ cursor: 3, turns: 2, replies: 3, unknownSends: 1,
       unknownCallBreakdown: { total: 0 }, stop: null });
     expect(readFileSync(path, 'utf8')).not.toContain('What color?');
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }

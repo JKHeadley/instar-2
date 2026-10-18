@@ -14,10 +14,13 @@ const fenced = value => `\`\`\`json\n${value}\n\`\`\``;
 // The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride the answer as its own line, as in journal-agent.test.ts.
 // The answer itself stays exact, and nothing else may be appended.
-const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+; send "status" for detail\.)$/u;
+const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+\.)$/u;
 const answerOf = text => {
   const [answer, ...notices] = text.split('\n\n');
-  for (const notice of notices) expect(notice).toMatch(NOTICE_LINE);
+  for (const notice of notices) {
+    expect(notice).toMatch(NOTICE_LINE);
+    if (notice.startsWith('Model route check:')) expect(notice).not.toContain('send "status"');
+  }
   return answer;
 };
 
@@ -46,8 +49,9 @@ global.fetch = async (url, init) => {
 };
 `);
     writeFileSync(provider, `import { appendFileSync } from 'node:fs';
-export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
-  validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
+export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
+  validateSubscriptionActivation, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
+  subscriptionToolsPolicy } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
 ${PER_RULE_PASS}
 const mode = ${JSON.stringify(mode)};
@@ -103,7 +107,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
         '--operator-sender-id', world.configuration.operatorSenderId,
         '--grant-reference', trial.id, '--configuration-digest', trial.configurationDigest,
-        '--expires-at', String(trial.expiresAt), '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),
+        '--expires-at', String(trial.expiresAt), '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),
         '--login-profile', profile, '--model', world.model,
         '--bot-username', world.configuration.botUsername, '--max-cycles',
         mode === 'summary-contradiction' ? '1' : '3', '--max-poll-seconds', '1'],
@@ -124,7 +128,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         ? { id: world.configuration.operatorSenderId, kind: 'person', adapter: 'telegram-bot-api:offline-test-endpoint' } : runner);
       if (mode !== 'summary-contradiction') {
         const reviewed = rows.find(row => row.role === 'reply-review').context;
-        expect(answerOf(reviewed.candidateReply)).toBe(`PREVIEW — ${reply}`);
+        expect(answerOf(reviewed.candidateReply)).toBe(`${reply}`);
         expect(reviewed).toMatchObject({
           operatorMessage: operatorText,
           audience: { surface: 'telegram-private-chat' },
@@ -186,16 +190,18 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
           'reply-review/decision/tolerated/fenced': mode === 'reply-contradiction' ? 2 : 1,
           'summary-review/decision/tolerated/fenced': 1 });
       if (mode === 'wrapped') {
-        expect(sends.map(send => answerOf(send.text))).toEqual([`PREVIEW — ${reply}`]);
+        expect(sends.map(send => answerOf(send.text))).toEqual([`${reply}`]);
         expect(view.summaries).toHaveLength(1);
         expect(view.summaryChecks.pass).toBe(1);
         // int11's reply verdict is one exact line, so no JSON wrapper is tolerated or recorded.
         expect(Object.keys(view.modelJsonShapes.counts).filter(key => key.startsWith('reply-review/verdict'))).toEqual([]);
       } else {
         // A contradicted reply review is unavailable, never a pass nor a veto (Rules 77, 86, 95). This canary's
-        // Jev is unsure (0.5) on every rule, credential included, so with no review verdict Rule 86's secrets
-        // exception holds the reply (cint-2 keeps cint-1's hold); nothing is sent.
-        expect(sends).toHaveLength(0);
+        // Jev is unsure (0.5) on every rule, credential included: below Jev's confident credential line, so with
+        // no review verdict the reply is sent once with the unavailable review recorded (plan #102). The summary
+        // contradiction keeps its own hold, and nothing is sent there.
+        if (mode === 'reply-contradiction') expect(sends.map(send => answerOf(send.text))).toEqual([`${reply}`]);
+        else expect(sends).toHaveLength(0);
         expect(view.modelJsonShapes.counts).toMatchObject({
           [mode === 'reply-contradiction' ? 'reply-review/verdict/malformed/not-json'
             : 'summary-review/verdict/malformed/prose-wrapped']:

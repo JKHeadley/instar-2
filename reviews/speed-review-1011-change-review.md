@@ -1,0 +1,35 @@
+# Change review — operator-only groups use the confident Jev cascade
+
+Subject base: 619bd113e02f1851ab86485f8eacc1469692b34e
+Review state: open
+Reviewed content: none
+Outcome: On recorded update 969390381 every Jev question passed, but the group surface still forced a full-context review. Current verified operator-only group topics now end review on that confident pass, following the 26 September Jev-default direction restated in observer #282. The same copied-root fake-clock replay removes 11.856 seconds from that stage, with identical delivered bytes and no duplicate after reopen.
+Affected rules: Purpose least revelation and durable cause; Rules 1/4/10/12/13/26/28/34/36/41/42/46/57/58/63/70/74/77/95/101/111/113/116.
+Affected floors: secrets — exact wall before review and send unchanged; spend cap — no new calls, original reservations and cap retained; stop — existing checks still refuse dispatch; no duplicate sends — original intent/receipt and reopen behavior retained; durable intake — original authenticated journal persists the question on every outcome.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Changes a live review-routing decision, with audience standing and recovery implications. Requires recorded-shape replay and both-sided route and floor tests.
+Side effects: Confident operator-only group replies omit the redundant full-context call and that absent call's admission probe. The remaining model/send probes retain their exact meaning. Every unsure, positive or unavailable Jev result still escalates with sensitivity and context questions. Unverified groups and other surfaces still require full review. Operator-echo, revision review and unavailable-group holding rules remain unchanged. A prior reserved review is still UNKNOWN after interruption; the new shortcut cannot erase it. A legacy Jev pass without ten complete clear scores cannot use the recovery exception.
+Undo and recovery: Revert the source change and regenerate register publications. No journal schema, state migration or new service. Existing reservations, uncertain outcomes and receipts remain readable. No live runner or root changed.
+Multi-machine posture: Existing owner admission and journal remain authoritative. No new runtime store, cache or authority. Replay copies and timing evidence are deliberately desk-local; each existing disclosure checkpoint still resolves current standing/membership.
+Layer below: Inspected sharedAudience, checkReply, projectedReplyPrompt, worker disclosure guards, durable review reservation/recovery and send. The worker derives operatorOnlyVerified from its current resolver, replacing stored packet flags during replay. The existing sharedAudience classifier remains the source for sensitivity selection, echo restrictions, revision rules and fail direction. The new predicate applies only to the already-confident pass. The constitution's least-revelation floor requires verified standing; it does not require a second model call for that operator-only audience. Part 18's older all-group draft is design intent beneath the constitution per the builder charter. The explicit 26 September direction and observer #282 scope decide this routing change.
+Bug class: user-facing
+Bug evidence: reproducer=tests/preview/operator-group-cascade.test.ts; live=tests/preview/fixtures/speed-review-live-2026-10-11.json
+Hook bypass: none; inspected core.hooksPath (unset) and common hooks directory (sample files only). Plain commits.
+Convergence: none
+Prompt review: No model question, threshold, output parser or semantic rule changed. New tests feed the real 969390381 answer/review bytes through their shipped readers, real scores through interpretJev, and recorded uncertain/undecided/summary/delivery shapes through both routes. Empty context remains empty context, not a claim of a delivered Telegram bubble.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged fixed memory-inventory response, not an intent classifier.
+Prompt finding: bd01de21286a | protocol-literal | Unchanged source-label instruction asserted by the existing grounding test.
+Prompt finding: fb5fa7e706c8 | protocol-literal | Unchanged semantic retrieval instruction asserted by the existing grounding test.
+Decision: operator-only-confidence | Keep sharedAudience semantics and introduce a narrow confident-pass route using the current verified group audience; uncertain/positive/unavailable and every other audience retain review. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speed-review-1011-PROGRESS.md
+Decision: conservative-recovery | Reuse a durable Jev pass only with all ten clear scores and no reserved review; otherwise preserve existing contextual review/recovery. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speed-review-1011-PROGRESS.md
+Verification: Targeted routing, audience, cascade and floor tests; tsc, architecture, lint, register and change-review outputs in the absolute desk PROGRESS/evidence directory. Full suite and independent landing review belong to the pipeline. Before/after copied-root worker replay uses speed-hold's exact recorded prefixes, outputs and injected timings. Plain question: full-review 11.856 to 0 seconds; total 46.888 to 35.032. Lookup neighbor: full-review 17.436 to 0; total 80.703 to 63.267. These are controlled replay timings, not new live provider latency or an under-15-second claim.
+
+Generated publication: Register generation from source commit 05cd8a8512635152e566853b99ca1356659584c5 produced sha256:b790f0733cd38c7d2bc54a3b73996ed1424845c71d2a03c6bfbb3caf02bc0507. Seven generated publications refresh their pins without manual hash edits.
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: use the existing Jev cascade when current standing establishes the operator-only audience. No new gate, model service, store or timer. A separate predicate preserves sensitivity and revision semantics; the recovery score/reservation checks prevent a legacy incomplete pass or interrupted paid review being mistaken for the ten-question pass. Start guards are durable intake and current verified standing, the end guard is the existing once-only send, and limits remain secrets, spend and stop. Shipped worker recorded-output replay completes unattended with one captured reply; no fresh live-model or Telegram deployment claim.
+80/20: Targeted tests and exact same replay establish the stage saving and its conservative neighbors. The pipeline owns full-suite and independent review; this author record asserts neither convergence nor deployment.
+VERDICT: author submission; independent landing review remains pipeline-owned

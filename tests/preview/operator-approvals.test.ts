@@ -78,7 +78,7 @@ it('raises only on the verified surface; a chat press and silence never raise, a
   expect(journal.view.order.find(turn => turn.approval)?.approval?.verified?.challenge).toBe(challenge.id);
   await worker.drain();
   expect(calls).toHaveLength(2);
-  expect(sent.at(-1)?.text).toBe('PREVIEW — ordinary answer');
+  expect(sent.at(-1)?.text).toBe('ordinary answer');
   // The same proof again (replay) and a second pass decide nothing more.
   await worker.minimal(); await worker.minimal();
   expect(journal.view.limits.maxCalls).toBe(2);
@@ -175,7 +175,7 @@ it('confirms /stop with prefilled buttons and latches the stop only on the opera
   const { journal, worker, sent, toasts, calls } = harness(path, { limits: { maxCalls: 4 } });
   worker.intake([message(1, '/stop')]); await worker.drain();
   expect(calls).toHaveLength(0);
-  expect(sent.at(-1)?.text).toBe(`PREVIEW — ${STOP_CONFIRM_TEXT}`);
+  expect(sent.at(-1)?.text).toBe(`${STOP_CONFIRM_TEXT}`);
   expect(sent.at(-1)?.kind).toBe('approval');
   const [approve] = buttons(sent.at(-1));
   expect(journal.view.stop).toBeNull();
@@ -193,7 +193,7 @@ it('keeps the phone stop reachable past the ordinary turn allowance', () => with
   worker.intake([message(1, 'one')]); await worker.drain();
   worker.intake([message(2, '/stop')]); await worker.minimal();
   expect(journal.view.order[1]?.reserve).toBe(true);
-  expect(sent.at(-1)?.text).toBe(`PREVIEW — ${STOP_CONFIRM_TEXT}`);
+  expect(sent.at(-1)?.text).toBe(`${STOP_CONFIRM_TEXT}`);
   worker.intake([press(3, buttons(sent.at(-1))[0]!.callback_data!)]);
   expect(journal.view.stop).toBe('operator');
   journal.close();

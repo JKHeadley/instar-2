@@ -158,7 +158,7 @@ it('enforces full outbound 4097 hold with Unicode/HTML expansion and no duplicat
   const s = stage2CompositionFixture({ answer }); const c = await s.create();
   try {
     c.pollOnce(); await c.resume();
-    expect(Buffer.byteLength('PREVIEW — experimental test agent; production safeguards incomplete.\n' + answer)).toBeLessThan(4096);
+    expect(Buffer.byteLength('' + answer)).toBeLessThan(4096);
     expect(c.sidecar.read().phase).toBe('held');
     expect(s.calls.filter(row => row.method === 'sendMessage')).toHaveLength(0);
     expect(c.pollOnce()).toBeNull(); await c.resume(); expect(s.models).toHaveLength(1);

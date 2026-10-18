@@ -1,0 +1,108 @@
+{
+  "source": "proof room 1 root proofroom1-ps-20261012-174650, train-16 0ed77d16 (behaviour reproduces on older builds per desk reading); long strings truncated by the desk",
+  "note": "Complete recorded model outputs; prompts omitted because desk truncated them. Fresh isolated replay, not a complete live prefix.",
+  "bot": "8994258214",
+  "operator": "7812716706",
+  "frames": [
+    {
+      "frame": 90,
+      "kind": "intake",
+      "id": "telegram:8994258214:update:715675724",
+      "update": 715675724,
+      "text": "Please remember that the desk test word is orchid-88c935deed4a.",
+      "at": 1791852641520
+    },
+    {
+      "frame": 95,
+      "kind": "model-call",
+      "id": "telegram:8994258214:update:715675724",
+      "output": "{\"reasoning\":\"Direct operator request to save a fact: the desk test word is orchid-88c935deed4a. This is a fact-save (memory mode: remember), analogous to the prior turn's save of a similar-looking word (orchid-4138891c5620). This is a new/different value, not identical to the prior one, so I save it as the current fact under mode \\\"remember\\\" with the exact current clause and source as preferenceSource (this turn). No clarifying question needed since this is a direct instruction to remember, not a query about which value is current. I should acknowledge the save in my reply without asserting it's delivered already (the runner reports saves). No web/file reads needed here — this is a pure memory-save instruction. No promises, no dated event, no directive beyond the save itself.\",\"reply\":\"Saved the requested fact: the desk test word is orchid-88c935deed4a.\",\"memory\":[{\"mode\":\"remember\",\"source\":\"telegram:8994258214:update:715675724\",\"quote\":\"the desk test word is orchid-88c935deed4a\"}],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+      "outcome": "complete",
+      "at": 1791852651227
+    },
+    {
+      "frame": 97,
+      "kind": "answer",
+      "id": "telegram:8994258214:update:715675724",
+      "text": "Saved the requested fact: the desk test word is orchid-88c935deed4a.",
+      "reason": "Direct operator request to save a fact: the desk test word is orchid-88c935deed4a. This is a fact-save (memory mode: remember), analogous to the prior turn's save of a similar-looking word (orchid-4138891c5620). This is a new/different value, not identical to the prior one, so I save it as the current fact under mode \"remember\" with the exact current clause and source as preferenceSource (this turn). No clarifying question needed since this is a direct instruction to remember, not a query about which value is current. I should acknowledge the save in my reply without asserting it's delivered already (the runner reports saves). No web/file reads needed here — this is a pure memory-save instruction. No promises, no dated event, no directive beyond the save itself.",
+      "at": 1791852651323
+    },
+    {
+      "frame": 146,
+      "kind": "intake",
+      "id": "telegram:8994258214:update:715675726",
+      "update": 715675726,
+      "text": "What is the desk test word? Please repeat the exact word.",
+      "at": 1791852731013
+    },
+    {
+      "frame": 155,
+      "kind": "model-call",
+      "id": "telegram:8994258214:update:715675726",
+      "output": "Looking at the memory records: there are two \"remembered\" entries for the desk test word, both from direct operator statements — \"orchid-4138891c5620\" (turn 715675723, 00:49Z) and \"orchid-88c935deed4a\" (turn 715675724, 00:50Z) — a later value with no correction language, so per protocol this is an update superseding the earlier one, not a conflict to ask about. The current value is the later one.\n\n{\"reasoning\":\"Two memoryCandidates/memory items both set 'the desk test word' with different values: orchid-4138891c5620 (turn 715675723, 2026-10-13T00:49Z) and orchid-88c935deed4a (turn 715675724, 2026-10-13T00:50Z). Both are mode:'remembered' operator-stated saves of the same fact (desk test word), not two different people/things, so this isn't the 'two active items disagree, ask' case — it's a direct restatement where the later save supersedes the earlier one (per memoryDecision: a newer fact without correction words uses mode:'update', keeping the old value retrievable as history). The current value is orchid-88c935deed4a. I'll answer directly with the current value, repeating the exact word as asked, and record memory as an update from the old clause to the new clause for the record (old value stays retrievable per protocol). No tool calls needed since this is answerable from packet memory/history.\",\"reply\":\"The desk test word is: orchid-88c935deed4a\",\"memory\":[{\"mode\":\"update\",\"source\":\"telegram:8994258214:update:715675723\",\"quote\":\"the desk test word is orchid-4138891c5620\",\"replacement\":\"the desk test word is orchid-88c935deed4a\"}]}",
+      "outcome": "complete",
+      "at": 1791852741898
+    },
+    {
+      "frame": 161,
+      "kind": "model-call",
+      "id": "telegram:8994258214:update:715675726",
+      "output": "The formatReminder tells me my previous memory declaration was rejected: it must use \"remember\" with preferenceSource and the current fact clause, not an \"update\" citing an unoffered old source. Let me correct that.\n\n{\"reasoning\":\"Prior turn's memory field used mode:'update' citing telegram:8994258214:update:715675723 as the old source, but formatReminder explicitly rejects this: for a direct fact-save, I must use mode:'remember' with source:preferenceSource (this turn's id) and the current fact clause, never citing an unoffered old source. The desk test word has two operator-stated saves: orchid-4138891c5620 (00:49Z) then orchid-88c935deed4a (00:50Z), both direct restatements with no correction language, so the later one is current. The answer itself is unchanged and correct: orchid-88c935deed4a. I'll fix the memory field per the reminder's exact instruction — mode:'remember', source:preferenceSource (telegram:8994258214:update:715675726), quote the current fact clause.\",\"reply\":\"The desk test word is: orchid-88c935deed4a\",\"memory\":[{\"mode\":\"remember\",\"source\":\"telegram:8994258214:update:715675726\",\"quote\":\"the desk test word is orchid-88c935deed4a\"}]}",
+      "outcome": "complete",
+      "at": 1791852750778
+    },
+    {
+      "frame": 163,
+      "kind": "answer",
+      "id": "telegram:8994258214:update:715675726",
+      "text": "The desk test word is: orchid-88c935deed4a",
+      "reason": "Prior turn's memory field used mode:'update' citing telegram:8994258214:update:715675723 as the old source, but formatReminder explicitly rejects this: for a direct fact-save, I must use mode:'remember' with source:preferenceSource (this turn's id) and the current fact clause, never citing an unoffered old source. The desk test word has two operator-stated saves: orchid-4138891c5620 (00:49Z) then orchid-88c935deed4a (00:50Z), both direct restatements with no correction language, so the later one is current. The answer itself is unchanged and correct: orchid-88c935deed4a. I'll fix the memory field per the reminder's exact instruction — mode:'remember', source:preferenceSource (telegram:8994258214:update:715675726), quote the current fact clause.",
+      "at": 1791852750889
+    },
+    {
+      "frame": 164,
+      "kind": "hold",
+      "id": "telegram:8994258214:update:715675726",
+      "reason": "memory correction pending",
+      "at": 1791852750895
+    },
+    {
+      "frame": 168,
+      "kind": "model-call",
+      "id": "summary:715675724",
+      "output": "{\"reasoning\":\"Second remember request replaces first desk test word (same slot). Correction: old clause from #715675723, new from memoryRequest. Replies id 715675723 restates old fact.\",\"summary\":\"2026-10-13, main chat: Operator asked who the agent is and what Instar is (#715675721), and what it can/can't do (#715675722); agent answered both from capability-note and purpose sources. Operator then asked the agent to remember a desk test word, first as orchid-4138891c5620 (#715675723), then corrected it to orchid-88c935deed4a (#715675724).\",\"memory\":[{\"mode\":\"correct\",\"source\":\"telegram:8994258214:update:715675723\",\"quote\":\"the desk test word is orchid-4138891c5620\",\"replacement\":\"the desk test word is orchid-88c935deed4a\"}],\"people\":[],\"personAttributes\":[],\"commitments\":[],\"closed\":[],\"memoryDisposition\":\"resolved\",\"replies\":[\"telegram:8994258214:update:715675723\"],\"summaryPassages\":[],\"questions\":[],\"memoryItems\":[{\"source\":\"telegram:8994258214:update:715675724\",\"quote\":\"the desk test word is orchid-88c935deed4a\"}],\"concepts\":[{\"source\":\"telegram:8994258214:update:715675721\",\"terms\":[\"instar identity\",\"agent capabilities overview\",\"coherence purpose\"]},{\"source\":\"telegram:8994258214:update:715675722\",\"terms\":[\"tools available\",\"limits\",\"chat abilities\"]},{\"source\":\"telegram:8994258214:update:715675723\",\"terms\":[\"desk test word\",\"remember fact\",\"orchid code\"]},{\"source\":\"telegram:8994258214:update:715675724\",\"terms\":[\"desk test word correction\",\"updated code\",\"orchid code\"]}]}",
+      "outcome": "complete",
+      "at": 1791852761329
+    },
+    {
+      "frame": 176,
+      "kind": "model-call",
+      "id": "summary:715675724:review",
+      "output": null,
+      "outcome": "uncertain",
+      "at": 1791852762319
+    },
+    {
+      "frame": 178,
+      "kind": "memory-undecided",
+      "id": "telegram:8994258214:update:715675726",
+      "reason": "summary-uncertain",
+      "at": 1791852762329
+    },
+    {
+      "frame": 181,
+      "kind": "intent",
+      "id": "telegram:8994258214:update:715675726",
+      "text": "Your message is retained, but I could not validate and save the requested memory change.",
+      "update": 715675726,
+      "at": 1791852781423
+    },
+    {
+      "frame": 183,
+      "kind": "sent",
+      "id": "telegram:8994258214:update:715675726",
+      "at": 1791852782150
+    }
+  ]
+}

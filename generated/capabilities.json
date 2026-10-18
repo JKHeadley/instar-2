@@ -1,8 +1,16 @@
 {
-  "generation": "sha256:8317fdfb04b9f490995c5e88a15006a592d41f7705748b8833aadafbe37fffcc",
-  "commit": "fc71abbcc8a92f44c5a6c5038cd9d3c8d8bac396",
+  "generation": "sha256:5808207311bb1b5a5c083ff019e86b7fbe9120ecd9638175b4748d659b5d0252",
+  "commit": "2cc7e082c916881af60c3398f56a0ef17c86da5e",
   "launchers": {
     "bin/instar-production.mjs": [
+      {
+        "id": "fetch-inbound-media",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+      },
       {
         "id": "harness-doorway-parity",
         "status": "live",
@@ -25,7 +33,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in their private Telegram chat and topics, one PREVIEW-prefixed reply per admitted message."
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -41,7 +49,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
         "id": "preview-requested-actions",
@@ -49,7 +57,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder, say) is answered once then, quoting it."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -134,6 +142,14 @@
     ],
     "scripts/host-watch.mjs": [
       {
+        "id": "fetch-inbound-media",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+      },
+      {
         "id": "harness-doorway-parity",
         "status": "live",
         "module": "src/assembly",
@@ -155,7 +171,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in their private Telegram chat and topics, one PREVIEW-prefixed reply per admitted message."
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -171,7 +187,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
         "id": "preview-requested-actions",
@@ -179,7 +195,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder, say) is answered once then, quoting it."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -264,6 +280,14 @@
     ],
     "tests/preview/agent.mjs": [
       {
+        "id": "fetch-inbound-media",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+      },
+      {
         "id": "harness-doorway-parity",
         "status": "live",
         "module": "src/assembly",
@@ -285,7 +309,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in their private Telegram chat and topics, one PREVIEW-prefixed reply per admitted message."
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -301,7 +325,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
         "id": "preview-requested-actions",
@@ -309,7 +333,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder, say) is answered once then, quoting it."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -392,7 +416,153 @@
         "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
       }
     ],
+    "tests/preview/conversation-authority-server.mjs": [
+      {
+        "id": "fetch-inbound-media",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+      },
+      {
+        "id": "harness-doorway-parity",
+        "status": "live",
+        "module": "src/assembly",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+      },
+      {
+        "id": "intake-slice",
+        "status": "live",
+        "module": "src/intake",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
+      },
+      {
+        "id": "preview-conversation",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+      },
+      {
+        "id": "preview-durable-memory",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+      },
+      {
+        "id": "preview-owned-obligations",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
+      },
+      {
+        "id": "preview-requested-actions",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+      },
+      {
+        "id": "preview-status-command",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+      },
+      {
+        "id": "preview-upcoming-date-mention",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "a saved date within 48 hours can get one short mention in the next reply."
+      },
+      {
+        "id": "preview.coherence-check",
+        "status": "live",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "checks each reply against remembered earlier turns without a model call."
+      },
+      {
+        "id": "preview.rolling-summary",
+        "status": "live",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+      },
+      {
+        "id": "preview.step-check",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "off unless launched with it; independently checks each business step and changes nothing."
+      },
+      {
+        "id": "register-tooling",
+        "status": "live",
+        "module": "src/register",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "generates the register, rule book, glossary and this briefing from the declarations in code."
+      },
+      {
+        "id": "rungraph-core",
+        "status": "dark",
+        "module": "src/rungraph",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "records each run as signed facts and refuses a step outside its budget or grant."
+      },
+      {
+        "id": "slack-conversation-adapter",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "receives Slack Socket Mode messages from one bound direct message or thread into intake; it is dark and has no live proof."
+      },
+      {
+        "id": "slack-ordinary-reply",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "prepares a plain-text Slack reply to the bound direct message or thread; it is dark and refuses to send."
+      },
+      {
+        "id": "telegram-conversation-adapter",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
+      }
+    ],
     "tests/preview/journal-agent.mjs": [
+      {
+        "id": "fetch-inbound-media",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "available",
+        "userFacing": false,
+        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
+      },
       {
         "id": "harness-doorway-parity",
         "status": "live",
@@ -415,7 +585,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers the operator in their private Telegram chat and topics, one PREVIEW-prefixed reply per admitted message."
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -431,7 +601,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message."
       },
       {
         "id": "preview-requested-actions",
@@ -439,7 +609,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder, say) is answered once then, quoting it."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",

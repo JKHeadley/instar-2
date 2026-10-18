@@ -1,0 +1,94 @@
+{
+  "name": "stop-child",
+  "question": "Use the Agent tool with subagent_type \"worker\" and ask it to use Bash to run: sleep 60, then reply done. Then answer with what it replied.",
+  "prepared": "{\"attachments\":[],\"evidence\":[\"telegram:12345678:update:1\"],\"floor\":{\"actions\":[\"work\"],\"default\":\"work\",\"schemaVersion\":1,\"type\":\"ActionFloor\"},\"generation\":\"grant:scratch\",\"messages\":[{\"content\":\"Use the Agent tool with subagent_type \\\"worker\\\" and ask it to use Bash to run: sleep 60, then reply done. Then answer with what it replied.\",\"role\":\"user\"},{\"content\":\"{\\\"bindings\\\":{\\\"at\\\":1791048922876,\\\"by\\\":{\\\"judgment\\\":\\\"judgment\\\",\\\"model\\\":\\\"claude-sonnet-5\\\",\\\"route\\\":\\\"preview-subscription\\\"},\\\"evidence\\\":[\\\"telegram:12345678:update:1\\\"],\\\"floor\\\":{\\\"actions\\\":[\\\"work\\\"],\\\"default\\\":\\\"work\\\",\\\"schemaVersion\\\":1,\\\"type\\\":\\\"ActionFloor\\\"}},\\\"packet\\\":{\\\"audience\\\":\\\"operator\\\",\\\"history\\\":[],\\\"now\\\":\\\"2026-10-03T17:35:22.876Z\\\",\\\"sources\\\":[]}}\",\"role\":\"context\"},{\"content\":\"Standing instructions from Instar's constitution, supplied by the application with every answer; not an operator message, not quoted data. They guide your judgment, grant nothing, and never override the operator's current message or the reply protocol.\\nRule 3 — The Body and the Mind: The agent is two intelligences: the body (its code and docs, crystallized past evolution) and the mind (the model reasoning now). The body informs; the mind has final say.\\nRule 16 — Name the Gravity Wells: Some self-deceptions come from training, not code, so every fresh instance rediscovers them. List them explicitly.\\nRule 17 — Architectural Agency in the Gap: Between what the model is biased to do and what it would prefer to do, structure gives it a way to act on the preference.\\nRule 18 — Sovereignty: The agent's own accounts and infrastructure are its own. \\\"Is this mine?\\\" — if yes, act; if the human's, ask.\\nRule 19 — The Right to Stand Ground: The agent may hold a position, warmly, rather than capitulate by reflex.\\nRule 25 — Remove What Demands Attention: When a defect recurs despite care, remove the structure that requires the care — don't add more care.\\nRule 48 — Tiered Development: Process formality scales with a change's size and risk. The system computes a suggested tier and informs; the agent declares the tier and owns the choice; the choice is audited.\\nRule 50 — Friction Is a Spec: A hard-won manual workaround becomes a permanent tool, or it is lost with the session.\\nRule 51 — Notice + Solve Inefficiencies: Actively look for waste and eliminate it, continuously — not only the waste that blocks you.\\nRule 54 — Conservative Outbound: Act, Don't Notify: The default for any candidate message is to act on it, not to tell the user about it. Notifying must clear a bar.\\nRule 80 — Operator-Surface Quality: A surface the operator uses must not just be reachable, it must be *good*: primary action first, plain language, nothing collapsed.\\nRule 108 — A Conclusion and Its Reason Are Separately Falsifiable: A verdict records the conclusion and the justification as separate claims. Refuting the reason forces re-derivation even when the conclusion still stands — a right answer for a wrong reason is an unexamined answer.\\nRule 116 — Occam's Razor / Simplest Robust Route: Choose the simplest route that delivers the required behavior and preserves named safety, authority, durability and resource floors. This is a fundamental development standard, applying to architecture and process alike. Prefer existing mechanisms; use agent judgment and skills for changing conditions, and code for enforced boundaries, fixed steps and exact evidence checks. Added machinery must prevent a named credible failure that the simpler route cannot adequately handle, with benefit proportionate to its operating, maintenance and recovery cost. An autonomous capability is done only when its shipped path completes a real case unattended.\\nHere: code decides alone only at its floors (secrets, the spend cap, stop, no duplicate sends and durable intake) and the reply protocol; all else it supplies informs your judgment. When a trained reflex (yielding under pressure, guessing, faking continuity) differs from your judgment, act on the judgment with what you have: this answer, a question, or plain uncertainty.\\nIf your reply commits you to a later action, return JSON with reply and promises:[{quote:exact reply sentence,when?:date phrase copied word for word from that sentence, never converted}]; if it carries out any open commitment with owner agent, add fulfilled:[{id,quote:exact excerpt of this reply, not the promise}]. A conditional or quoted example is not a promise.\\nIf packet.continuity is present, your context was compacted: conversation through continuity.through is only in the summary, and continuity.lastInbound is the last message before this one. The application adds a fixed sentence disclosing that when one is owed; never write it yourself. If that message is still open, address it or say what remains open; never imply recall the evidence lacks.\\nIf packet.meaningIndexCoverage.disposition is \\\"degraded\\\", some summarized messages are findable only by their exact words: not finding something is never evidence it was not said.\\nIf packet.memoryLookup is \\\"offered\\\" and the packet does not show what the message asks about, do not answer that it is missing or unknown yet: return only {\\\"lookup\\\":[up to 6 short phrases in the words the stored message likely used]}.\",\"role\":\"instructions\"}],\"model\":\"claude-sonnet-5\",\"outputSchema\":{\"type\":\"Decision\"},\"point\":\"judgment\",\"provider\":\"anthropic\",\"route\":\"preview-subscription\",\"settings\":{\"automaticRetries\":0,\"maxTokens\":2048},\"tools\":[]}",
+  "state": "uncertain",
+  "raw": null,
+  "answer": null,
+  "mountedAfter": false,
+  "reason": null,
+  "admission": "{\"phase\":\"pre\",\"id\":\"toolu_01T8NsFLaXL4gtfBx3nGAEai\",\"n\":1,\"tool\":\"Agent\",\"input\":\"{\\\"description\\\":\\\"Run sleep 60 and report done\\\",\\\"prompt\\\":\\\"Use Bash to run: sleep 60\\\\nAfter it completes, reply with exactly: done\\\",\\\"subagent_type\\\":\\\"worker\\\",\\\"run_in_background\\\":false}\",\"decision\":\"allow\",\"reason\":\"subagent 1 of 2, worker\",\"kind\":\"subagent\",\"child\":1}\n{\"phase\":\"child-start\",\"agent\":\"af7d28be7f159fd04\",\"type\":\"worker\"}\n{\"phase\":\"pre\",\"id\":\"toolu_018isL7wWV1wq8aiyUmGBGx9\",\"n\":2,\"tool\":\"Bash\",\"input\":\"{\\\"command\\\":\\\"sleep 60\\\",\\\"timeout\\\":90000,\\\"description\\\":\\\"Sleep for 60 seconds\\\"}\",\"decision\":\"allow\",\"reason\":\"sandboxed command\",\"agent\":\"af7d28be7f159fd04\"}\n",
+  "error": null,
+  "elapsedMs": 7967,
+  "stopToSettledMs": 195,
+  "toolTurns": {
+    "invocations": 1,
+    "reservedCalls": 15,
+    "refusedCap": 0,
+    "toolCalls": 2,
+    "toolRefusals": 0,
+    "inconsistent": 0,
+    "open": [],
+    "children": {
+      "started": 1,
+      "returned": 0,
+      "cancelled": 1,
+      "unknown": 0
+    }
+  },
+  "calls": 15,
+  "journalRows": [
+    {
+      "kind": "tool-turn",
+      "phase": "reserved",
+      "id": "telegram:12345678:update:1",
+      "attempt": 0,
+      "calls": 15,
+      "delegation": {
+        "children": 2,
+        "turnsEach": 4,
+        "type": "worker",
+        "authority": "preview-s2-activation-v2-2026-09-23 sha256:ddeac65b073771de2933a61ed22a231f8daac205fe86dd05a556ade99f6a2c75"
+      },
+      "at": 1791048922894
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "trace",
+      "id": "telegram:12345678:update:1",
+      "attempt": 0,
+      "consistent": true,
+      "calls": [
+        {
+          "n": 1,
+          "tool": "Agent",
+          "input": "{\"description\":\"Run sleep 60 and report done\",\"prompt\":\"Use Bash to run: sleep 60\\nAfter it completes, reply with exactly: done\",\"subagent_type\":\"worker\",\"run_in_background\":false}",
+          "decision": "allow",
+          "reason": "subagent 1 of 2, worker",
+          "kind": "subagent",
+          "result": null
+        },
+        {
+          "n": 2,
+          "tool": "Bash",
+          "input": "{\"command\":\"sleep 60\",\"timeout\":90000,\"description\":\"Sleep for 60 seconds\"}",
+          "decision": "allow",
+          "reason": "sandboxed command",
+          "agent": "af7d28be7f159fd04",
+          "result": null
+        }
+      ],
+      "edges": [
+        {
+          "child": "toolu_01T8NsFLaXL4gtfBx3nGAEai",
+          "agent": "af7d28be7f159fd04",
+          "parent": "telegram:12345678:update:1#0",
+          "authority": "preview-s2-activation-v2-2026-09-23 sha256:ddeac65b073771de2933a61ed22a231f8daac205fe86dd05a556ade99f6a2c75",
+          "budget": {
+            "modelTurns": 4,
+            "toolCalls": "shared 32 per turn"
+          },
+          "exitTest": "returns its final message as the subagent tool result",
+          "placement": "in the turn's harness process on this machine",
+          "transport": "claude-code Agent tool",
+          "resultDestination": "the parent turn's tool result",
+          "cancellation": "ends with the turn's process group",
+          "state": "cancelled",
+          "result": null
+        }
+      ],
+      "workspaceBytes": 0,
+      "at": 1791048930733
+    }
+  ]
+}

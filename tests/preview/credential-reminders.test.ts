@@ -1,11 +1,11 @@
 // Rules 8, 56, 100: a due credential reminder and a failing doorway check ride the next operator answer as one line.
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
-import { credentialNotices, doorwayNotices, dueWithDelivery, openReplyNotices, remainingText, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
+import { sessionLoginNotices, sessionLoginStatus, SESSION_LOGIN_FRESH_MS, credentialNotices, doorwayNotices, dueWithDelivery, openReplyNotices, remainingText, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
 import { installDoorways, observeExchange, standingDoorwayCheck, DOORWAY_FRESH_MS } from './doorway-map.js';
 
 const key = new Uint8Array(32).fill(41);
@@ -15,6 +15,31 @@ const genesis = () => ({ kind: 'genesis' as const, bot: '12345678', chat: '76543
   configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 400, maxReplies: 200, maxTurns: 200, maxBytes: 8000, cursor: 0 });
 const ACTION = 'approve a renewed activation record';
 
+it('loads an old journal and keeps its delivered reminder spent after adding a display label', async () => {
+  const root = origin(), expiresAt = T0 + 7 * DAY;
+  try {
+    const custody = activation(root, expiresAt, () => T0);
+    const prior = custody.records()[0]!;
+    const oldNotice = { key: `credential:preview-activation:${expiresAt}:0`,
+      line: `Reminder: the credential "preview-activation" (activation act-7) expires in 7 days. Smallest step for you: ${ACTION}.` };
+    const w = world(root, () => [oldNotice]);
+    await w.say('Hello.');
+    expect(w.sent[0]).toContain(oldNotice.line);
+    w.journal.close();
+    custody.register({ ...prior, displayLabel: 'your activation', recordedAt: T0 + HOUR });
+    const reopenedCustody = createSecretCustody(root, key, () => T0);
+    expect(reopenedCustody.records()).toEqual([{ ...prior, displayLabel: 'your activation' }]);
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    try {
+      const due = dueCredentialReminders(reopenedCustody.records(), T0);
+      expect(credentialNotices(due, T0)[0]!.line).toContain('Reminder: your activation');
+      expect(openReplyNotices(journal.view.order, credentialNotices(due, T0), 'new')).toEqual([]);
+      expect(dueWithDelivery(due, journal.view.order)[0]!.delivered?.current).toBe(true);
+      expect(journal.view.order[0]!.intent).toContain(oldNotice.line);
+    } finally { journal.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 function activation(root: string, expiresAt: number, now: () => number) {
   const custody = createSecretCustody(root, key, now);
   custody.register({ name: 'preview-activation', kind: 'activation', custody: 'activation-record', identity: 'activation act-7',
@@ -23,13 +48,13 @@ function activation(root: string, expiresAt: number, now: () => number) {
   return custody;
 }
 
-function world(root: string, notices: () => readonly ReplyNotice[], receipt: () => boolean = () => true) {
+function world(root: string, notices: () => readonly ReplyNotice[], receipt: () => boolean = () => true, answer = JSON.stringify({ reply: 'Noted.', memory: [] })) {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
   const clock = { now: T0 }, sent: string[] = [];
   const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false, timeZone: 'UTC',
     prepareModel: input => input.context, replyNotices: notices,
     model: async input => input.id.startsWith('summary:')
-      ? JSON.stringify({ summary: 'Small talk.', people: [], commitments: [], closed: [] }) : JSON.stringify({ reply: 'Noted.', memory: [] }),
+      ? JSON.stringify({ summary: 'Small talk.', people: [], commitments: [], closed: [] }) : answer,
     send: async input => { if (!receipt()) return null; sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
   let next = 1;
   const say = async (text: string) => {
@@ -48,7 +73,7 @@ it('makes the activation reminder due exactly at 7 days before expiry, not 1 ms 
     const due = dueCredentialReminders(custody.records(), T0);
     expect(due).toMatchObject([{ name: 'preview-activation', stage: 0, smallestHumanAction: ACTION }]);
     expect(credentialNotices(due, T0)).toEqual([{ key: `credential:preview-activation:${expiresAt}:0`,
-      line: `Reminder: the credential "preview-activation" (activation act-7) expires in 7 days. Smallest step for you: ${ACTION}.` }]);
+      line: `Reminder: your activation expires in 7 days. Smallest step for you: ${ACTION}.` }]);
     expect(credentialNotices(dueCredentialReminders(custody.records(), expiresAt - 3 * DAY), expiresAt - 3 * DAY)[0]!.key)
       .toBe(`credential:preview-activation:${expiresAt}:1`);
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -84,7 +109,7 @@ it('carries one reminder line on the next answer, never repeats it, and shows th
     expect(w.sent[2]).not.toContain('Model route check');
     // The next stage is a new key: it rides the next answer once.
     w.clock.now = expiresAt - 3 * DAY; await w.say('Still there?');
-    expect(w.sent[3]).toContain('Reminder: the credential "preview-activation" (activation act-7) expires in 3 days.');
+    expect(w.sent[3]).toContain('Reminder: your activation expires in 3 days.');
     expect(dueWithDelivery(dueCredentialReminders(custody.records(), w.clock.now), w.journal.view.order))
       .toMatchObject([{ stage: 1, delivered: { stage: 1, current: true } }]);
     // Replay rebuilds the same delivery from the durable journal.
@@ -102,7 +127,7 @@ it('starts a renewed credential lifetime undelivered: its next answer carries on
     const notices = () => credentialNotices(dueCredentialReminders(custody.records(), w.clock.now), w.clock.now);
     const w = world(root, notices);
     await w.say('Hello.');
-    expect(w.sent[0]).toContain('(activation act-7) expires in 7 days.');
+    expect(w.sent[0]).toContain('your activation expires in 7 days.');
     // Renewed under the same name with a new expiry; the journal is reopened before the next answer.
     w.clock.now = T0 + DAY;
     custody.register({ name: 'preview-activation', kind: 'activation', custody: 'activation-record', identity: 'activation act-8',
@@ -121,7 +146,7 @@ it('starts a renewed credential lifetime undelivered: its next answer carries on
         date: Math.floor(clock.now / 1000) } }]);
       await worker.drain(); clock.now += HOUR;
     }
-    expect(sent[0]).toContain('(activation act-8) expires in 7 days.');
+    expect(sent[0]).toContain('your activation expires in 7 days.');
     expect(sent[1]).not.toContain('Reminder:');
     expect(dueWithDelivery(dueCredentialReminders(custody.records(), clock.now), reopened.view.order))
       .toMatchObject([{ identity: 'activation act-8', stage: 0, delivered: { stage: 0, at: T0 + DAY, current: true } }]);
@@ -164,7 +189,7 @@ it('reports a failing doorway check once per verdict episode, and never a route 
   expect(doorwayNotices(fresh, T0 + 1)).toEqual([]);
   const stale = standingDoorwayCheck(verified, T0 + DOORWAY_FRESH_MS + 1);
   expect(doorwayNotices(stale, T0 + DOORWAY_FRESH_MS + 1)).toEqual([{ key: `doorway:${T0 + DOORWAY_FRESH_MS + 1}`,
-    line: 'Model route check: preview-subscription/m1 is stale; send "status" for detail.' }]);
+    line: 'Model route check: preview-subscription/m1 is stale.' }]);
   // The check recorded stale, but this answer's exchange re-verified the route: nothing to report.
   const reverified = observeExchange(stale, 'preview-subscription', 'm1', { ok: true, reportedModels: ['m1'], evidence: 'offline' },
     T0 + DOORWAY_FRESH_MS + 2);
@@ -178,4 +203,67 @@ it('accepts a recorded notice only when the answer says it verbatim', () => {
   expect(validAnswerNotices([notice], 'Noted.')).toBe(false);
   expect(validAnswerNotices([notice, notice], 'Reminder: renew.')).toBe(false);
   expect(validAnswerNotices([{ ...notice, key: 'other:1' }], 'Reminder: renew.')).toBe(false);
+});
+
+it('carries one missing-login reminder in an answer and keeps its identity spent after restart or an unknown send', async () => {
+  for (const received of [true, false]) {
+    const root = origin();
+    const health = { key: 'credential:session-login:recorded-profile', state: 'missing' as const, slot: 1, at: T0 };
+    const notices = () => sessionLoginNotices([health], T0);
+    try {
+      const w = world(root, notices, () => received);
+      await w.say('Hello.');
+      expect(w.journal.view.order[0]!.intent).toContain(notices()[0]!.line);
+      expect(validAnswerNotices(w.journal.view.order[0]!.answerNotices, w.journal.view.order[0]!.intent!)).toBe(true);
+      await w.say('Still there?');
+      expect(w.journal.view.order[1]!.intent).not.toContain('is missing from this machine');
+      w.journal.close();
+      const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
+      expect(openReplyNotices(reopened.view.order, notices(), 'new')).toEqual([]);
+      reopened.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('makes missing-login status visible but never alarms on present, unknown, stale, future or absent observations', () => {
+  const health = { key: 'credential:session-login:a', state: 'missing' as const, slot: 1, at: T0 };
+  expect(sessionLoginNotices([health], T0)).toHaveLength(1);
+  expect(sessionLoginStatus([health], T0)).toContain('1 missing');
+  for (const state of ['present', 'unknown'] as const)
+    expect(sessionLoginNotices([{ ...health, state }], T0)).toEqual([]);
+  expect(sessionLoginNotices([], T0)).toEqual([]);
+  expect(sessionLoginNotices([health], T0 - 1)).toEqual([]);
+  expect(sessionLoginNotices([health], T0 + SESSION_LOGIN_FRESH_MS)).toHaveLength(1);
+  expect(sessionLoginNotices([health], T0 + SESSION_LOGIN_FRESH_MS + 1)).toEqual([]);
+  expect(sessionLoginStatus([health], T0 + SESSION_LOGIN_FRESH_MS + 1)).toContain('1 unknown or stale');
+});
+
+it('replays recorded summary, verdict, delivered and empty shapes without turning their words into login evidence', () => {
+  const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')).otherShapes;
+  expect(shapes.map((row: { kind: string }) => row.kind)).toEqual(['summary-writer', 'summary-uncertain', 'jev-undecided', 'jev-unsure',
+    'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
+  const health = { key: 'credential:session-login:a', state: 'missing' as const, slot: 1, at: T0 };
+  for (const row of shapes) {
+    // Real recorded text is deliberately not a login signal; only the verified worker/custody join is.
+    expect(sessionLoginNotices([], T0)).toEqual([]);
+    const notice = sessionLoginNotices([health], T0)[0]!;
+    expect(validAnswerNotices([notice], `${row.raw}\n${notice.line}`)).toBe(true);
+    expect(openReplyNotices([{ id: 'recorded', intent: `${row.raw}\n${notice.line}`, answerNotices: [notice] }], [notice], 'next')).toEqual([]);
+  }
+});
+
+it('adds the reminder to a real recorded worker answer through the journal, once', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/conversation-session-userwalk-2026-10-13.json', import.meta.url), 'utf8')).records[0];
+  expect(recorded.id).toBe('telegram:8989505249:update:6233124');
+  const answer = JSON.parse(recorded.output), root = origin();
+  const notices = () => sessionLoginNotices([{ key: 'credential:session-login:recorded-answer', state: 'missing', slot: 1, at: T0 }], T0);
+  try {
+    const w = world(root, notices, () => true, recorded.output);
+    await w.say(answer.dated[0].quote);
+    expect(w.journal.view.order[0]!.answer).toContain(answer.reply);
+    expect(w.journal.view.order[0]!.intent).toContain(notices()[0]!.line);
+    await w.say('Thank you.');
+    expect(w.journal.view.order[1]!.intent).not.toContain(notices()[0]!.line);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

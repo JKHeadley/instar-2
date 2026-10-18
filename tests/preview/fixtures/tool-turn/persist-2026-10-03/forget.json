@@ -1,0 +1,161 @@
+{
+  "sends": [
+    "PREVIEW — Got it, noted for this conversation: your locker code is 4417. Just so you know, I haven't saved this anywhere durable or sent it anywhere — if you need it kept for later sessions, let me know how you'd like it handled.",
+    "PREVIEW — Forgot the requested information.",
+    "PREVIEW — I don't have your locker code — you asked me to forget that fact earlier, so I no longer retain it. If you'd like, you can share it again and I'll note it going forward."
+  ],
+  "seen": [
+    {
+      "id": "telegram:12345678:update:1",
+      "session": {
+        "id": "84091331-a207-449d-a5cc-294c169f752d",
+        "resume": false
+      }
+    },
+    {
+      "id": "telegram:12345678:update:2",
+      "session": {
+        "id": "84091331-a207-449d-a5cc-294c169f752d",
+        "resume": true
+      }
+    },
+    {
+      "id": "telegram:12345678:update:3",
+      "session": {
+        "id": "d554950b-85d2-4269-b82c-5ffde7075db5",
+        "resume": false
+      }
+    }
+  ],
+  "memory": [
+    {
+      "mode": "forget",
+      "source": "telegram:12345678:update:1",
+      "quote": "My locker code is 4417.",
+      "trigger": "telegram:12345678:update:2",
+      "replies": [
+        "telegram:12345678:update:1"
+      ]
+    }
+  ],
+  "journalRows": [
+    {
+      "kind": "tool-turn",
+      "phase": "reserved",
+      "id": "telegram:12345678:update:1",
+      "attempt": 0,
+      "calls": 15,
+      "delegation": {
+        "children": 2,
+        "turnsEach": 4,
+        "type": "worker",
+        "authority": "preview-s2-activation-v2-2026-09-23 sha256:7bf4d627659a1165a220978874d0b92a4ea7fb720799197cbd2937e481cc2d2b"
+      },
+      "workspace": {
+        "key": "9621c1eca2d7",
+        "retired": []
+      },
+      "at": 1791051797800
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "trace",
+      "id": "telegram:12345678:update:1",
+      "attempt": 0,
+      "consistent": true,
+      "calls": [],
+      "edges": [],
+      "workspaceBytes": 0,
+      "session": {
+        "id": "84091331-a207-449d-a5cc-294c169f752d",
+        "mode": "new",
+        "reason": "new",
+        "turn": 1,
+        "kept": true,
+        "transcriptBytes": 81006
+      },
+      "at": 1791051806527
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "reserved",
+      "id": "telegram:12345678:update:2",
+      "attempt": 1,
+      "calls": 15,
+      "delegation": {
+        "children": 2,
+        "turnsEach": 4,
+        "type": "worker",
+        "authority": "preview-s2-activation-v2-2026-09-23 sha256:7bf4d627659a1165a220978874d0b92a4ea7fb720799197cbd2937e481cc2d2b"
+      },
+      "workspace": {
+        "key": "9621c1eca2d7",
+        "retired": []
+      },
+      "at": 1791051806674
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "trace",
+      "id": "telegram:12345678:update:2",
+      "attempt": 1,
+      "consistent": true,
+      "calls": [],
+      "edges": [],
+      "workspaceBytes": 0,
+      "session": {
+        "id": "84091331-a207-449d-a5cc-294c169f752d",
+        "mode": "resume",
+        "reason": "resumed",
+        "turn": 2,
+        "kept": true,
+        "transcriptBytes": 127433
+      },
+      "at": 1791051815084
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "reserved",
+      "id": "telegram:12345678:update:3",
+      "attempt": 2,
+      "calls": 15,
+      "delegation": {
+        "children": 2,
+        "turnsEach": 4,
+        "type": "worker",
+        "authority": "preview-s2-activation-v2-2026-09-23 sha256:7bf4d627659a1165a220978874d0b92a4ea7fb720799197cbd2937e481cc2d2b"
+      },
+      "workspace": {
+        "key": "9621c1eca2d7",
+        "retired": []
+      },
+      "at": 1791051815239
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "trace",
+      "id": "telegram:12345678:update:3",
+      "attempt": 2,
+      "consistent": true,
+      "calls": [],
+      "edges": [],
+      "workspaceBytes": 0,
+      "session": {
+        "id": "d554950b-85d2-4269-b82c-5ffde7075db5",
+        "mode": "new",
+        "reason": "the journal changed a fact",
+        "turn": 1,
+        "kept": true,
+        "transcriptBytes": 92851
+      },
+      "at": 1791051822806
+    }
+  ],
+  "admissions": [
+    [],
+    [],
+    []
+  ],
+  "heldFactBeforeForget": true,
+  "oldTranscriptAfter": false
+}

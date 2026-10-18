@@ -1,0 +1,24 @@
+{
+  "source": {
+    "room": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/wedge-recover-1016c-evidence/continuation-tea",
+    "update": 1016104,
+    "worker": "instar20-c998ed4837f3864b81c18415:59175:1792167796",
+    "head": "87d92c2535f65db2889d7be9a1e3f3a3e8ce15b2"
+  },
+  "output": "{\"reply\":{\"answer\":\"You prefer tea to coffee.\"},\"memory\":[],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+  "outcome": {
+    "state": "complete",
+    "text": "{\"reply\":{\"answer\":\"You prefer tea to coffee.\"},\"memory\":[],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+    "detail": "correlated reply and turn end",
+    "contextRecovery": "telegram:12345678:update:1016104",
+    "edge": "conversation-c5fc3bed7aab3415bfa4394644100dae-1:edge",
+    "child": "instar20-c998ed4837f3864b81c18415:59175:1792167796"
+  },
+  "sent": [
+    {
+      "chat_id": "7812716706",
+      "text": "Saved the requested fact.",
+      "parse_mode": "HTML"
+    }
+  ]
+}

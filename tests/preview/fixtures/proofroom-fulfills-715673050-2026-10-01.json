@@ -1,0 +1,10 @@
+{
+  "source": "Proof room proofroom-2026-10-01 (cint-L16 30bda628), read 2026-10-01 by w3-fulfills from the desk brief for plan row #188. Recorded here: the answer row's sent text, its model-proposed `fulfills` claim, and the fact that commitment 1 is the operator's own reminder request and carries no `agentPromise`. NOT recorded: the raw model decision envelope and the journal's genesis identity fields — the live preview root is not reachable from the Mama PC (WSL), so only the values the brief states verbatim are replayed.",
+  "update": 715673050.0009766,
+  "turnKind": "requested-action (a self-initiated reminder delivery, the first synthetic update after operator update 715673050)",
+  "text": "Reminder: take a short walk — you asked for this nudge at 5:22 am today. Hope it feels good to step outside for a bit.",
+  "fulfills": [{ "id": 1, "quote": "Reminder: take a short walk — you asked for this nudge at 5:22 am today." }],
+  "commitment": { "id": 1, "agentPromise": null, "why": "a reminder the operator asked for, not a promise the agent made" },
+  "refusedBy": "preview journal: unsupported promise proposal (tests/preview/journal.ts answer-row decoder)",
+  "effect": "every command on the root, including `status`, refused; the conversation could not be opened by its own build"
+}

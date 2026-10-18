@@ -14,8 +14,8 @@ export const TELEGRAM_ADAPTER: Readonly<Record<WriteOrigin, string>> = Object.fr
 export const SCHEDULER_ADAPTER = 'preview-scheduler';
 /** The runner itself, when it authors a model input (review or rolling-summary envelopes). */
 export const RUNNER_ADAPTER = 'preview-runner';
-export type SystemMethod = 'requested-action' | 'reply-review' | 'summary-review' | 'rolling-summary';
-const SYSTEM_METHODS: readonly SystemMethod[] = ['requested-action', 'reply-review', 'summary-review', 'rolling-summary'];
+export type SystemMethod = 'requested-action' | 'reply-review' | 'summary-review' | 'rolling-summary' | 'operator-request';
+const SYSTEM_METHODS: readonly SystemMethod[] = ['requested-action', 'reply-review', 'summary-review', 'rolling-summary', 'operator-request'];
 /** The durable, replayable projection of a verified writer carried on every intake record. A
  * system writer also keeps the owner's signature, so replay re-verifies it instead of trusting a label. */
 export interface WriterRecord { id: string; kind: PrincipalKind; adapter: string; class: Provenance['class'];

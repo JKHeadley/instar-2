@@ -10,7 +10,7 @@ prompt reminder. Port of 1.x `session-start.sh`, `compaction-recovery.sh`,
 |---|---|
 | `grounding.ts` | Pure grounding block: identity, recent conversation, unanswered user messages, open commitments, other running work, recall packet. Credential floor, one-line untrusted text, 64 KiB bound with priority trimming. |
 | `work.ts` | Own-work index (one row per topic) and conservative duplicate-work overlap. |
-| `sentinel.ts` | Pure context sentinel: fresh files, receipt-verified re-grounding after compaction/respawn, bounded re-ground delivery, context-wall handoff to the session driver. Signal-only otherwise. |
+| `sentinel.ts` | Pure context sentinel: fresh files, receipt-verified re-grounding after compaction/respawn, bounded re-ground delivery, context-wall handoff to the session driver; idle/pressure/cooldown decision for proactive journal compaction. Signal-only otherwise. |
 | `service.ts` | `createAwareness` over small ports; `createLabelledFakeRecall` until port-memory lands; `groundingHookSettings` for the session driver. |
 
 Physical side (outside the pure core): `scripts/session-hooks/grounding.mjs` (the
@@ -23,3 +23,10 @@ Wiring with the session driver (port-sessions): spawn each session with
 observer supplies `ObservedSession` rows (pane idle/busy, `classifyStuckSignature`);
 `AwarenessActions.deliver` / `recoverContext` map to its `deliver` (deduped on the
 operation id) and `recoverContext`. Run `tick()` on the host's cadence.
+
+The journal worker uses the proactive decision at its existing summary threshold. Automatic
+passes start only between ordinary turns; a result finishing during a turn is recorded as deferred, with ten minutes between recorded passes; a restart
+retains the cooldown from the journal. Forced context-wall recovery and explicit memory work
+keep their existing admission. Summary attempts retain the existing call cap and per-span
+brakes. Originals, open obligations and first-reply continuity accounting remain in the journal;
+summary acceptance alone does not claim a resumed worker consumed its context.

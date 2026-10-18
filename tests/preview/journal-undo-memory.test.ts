@@ -62,7 +62,7 @@ it.each(['correct', 'forget', 'prefer', 'dated'] as const)('undo reverses the la
     expect(old.kind).toBe(kind === 'dated' ? 'dated' : 'memory');
     worker.intake([update(3, 'Undo that.')]); await worker.drain();
     expect(journal.view.undos).toMatchObject([{ change: journal.view.changeHistory.length - 1 }]);
-    expect(sends).toEqual(['PREVIEW — Undone.']);
+    expect(sends).toEqual(['Undone.']);
     expect(contexts.at(-1)?.undoCandidate).toMatchObject({ kind: old.kind });
     expect(journal.view.order.at(-1)?.sent).toBe(1);
     journal.close();

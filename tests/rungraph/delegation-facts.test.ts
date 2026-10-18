@@ -1,6 +1,7 @@
 /** Rule 114: every parent-child edge is a registered durable fact. The ledger over the real
  * part-two fact store: signed facts, restart replay, tamper refusal, achieved-durability demand. */
 import { expect, it } from 'vitest';
+import { canonical } from '../../src/index.js';
 import type { Json } from '../../src/index.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
 import { createDelegationLedger, createFactDelegationStore, DELEGATION_FACT_KIND, delegationFactSchema } from '../../src/rungraph/index.js';
@@ -62,4 +63,25 @@ it('an edge whose replicated demand was unmet is never dispatchable, even when r
   expect(value(local.store.read())).toHaveLength(1);
   expect(local.ledger.view().get([...local.ledger.view().keys()][0]!)!.dispatchable).toBe(false);
   expect(refusal(local.ledger.delegate(request))).toContain('replication demand unmet');
+});
+
+
+it('binds the result destination to the accountable parent before recording or receiving an edge', () => {
+  const net = createNetwork('local'), w = world(), first = w.open();
+  const request = net.request(net.rootAuthority('agent-a'), 'agent-b');
+  for (const resultDestination of [{ run: 'foreign-run', edge: null }, { run: request.parent.run, edge: 'foreign-edge' }]) {
+    expect(refusal(first.ledger.delegate({ ...request, resultDestination }))).toContain('result destination');
+  }
+  expect(value(first.store.read())).toHaveLength(0);
+  const contract = value(first.ledger.delegate(request));
+  expect(contract.resultDestination).toEqual({ run: request.parent.run, edge: request.parent.edge });
+  const receiving = world().open();
+  const { digest: _digest, ...body } = contract;
+  for (const resultDestination of [{ run: 'foreign-run', edge: null }, { run: request.parent.run, edge: 'foreign-edge' }]) {
+    const changed = { ...body, resultDestination };
+    expect(refusal(receiving.ledger.receiveEdge({ ...changed, digest: value(canonical(changed)).hash }, net.now())))
+      .toContain('result destination');
+  }
+  expect(value(receiving.store.read())).toHaveLength(0);
+  expect(value(receiving.ledger.receiveEdge(contract, net.now())).contract.id).toBe(contract.id);
 });

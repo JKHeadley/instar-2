@@ -45,7 +45,7 @@ it('turns an unusable link into a revision signal before the send, then sends th
         return { state: 'complete', text: 'The report is in the private view I shared in the dashboard.' }; } },
     send: async input => { sent.push(input.expectedText); return sent.length; } });
   worker.intake(hello); await worker.drain();
-  expect(sent).toEqual(['PREVIEW — The report is in the private view I shared in the dashboard.']);
+  expect(sent).toEqual(['The report is in the private view I shared in the dashboard.']);
   expect(journal.view.order[0]?.release).toMatchObject({ objections: ['api_endpoint'], revised: true });
 }));
 
@@ -55,7 +55,7 @@ it('never blocks on the link signal: without a reviser the reply is sent with th
     model: async () => 'It is saved at /Users/me/report.md for you.',
     send: async input => { sent.push(input.expectedText); return sent.length; } });
   worker.intake(hello); await worker.drain();
-  expect(sent).toEqual(['PREVIEW — It is saved at /Users/me/report.md for you.']);
+  expect(sent).toEqual(['It is saved at /Users/me/report.md for you.']);
   expect(journal.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['raw_path'], reason: LINK_SHAPE_REASON,
     revised: false, final: { links: ['raw_path'] } });
 }));
@@ -74,7 +74,7 @@ it('checks the final candidate: a revision that introduces a localhost link is r
       revise: async () => ({ state: 'complete', text: 'Open http://localhost:4042/new-report for your report.' }) },
     send: async input => { sent.push(input.expectedText); return sent.length; } });
   worker.intake(hello); await worker.drain();
-  const final = 'PREVIEW — Open http://localhost:4042/new-report for your report.';
+  const final = 'Open http://localhost:4042/new-report for your report.';
   expect(sent).toEqual([final]);
   const release = journal.view.order[0]?.release;
   expect(release?.revised).toBe(true);
@@ -155,7 +155,7 @@ it('turns a bare topic number into a revision signal naming the topic, then send
         return { state: 'complete', text: 'They are in the blue folder, as you said in the "Travel plans" topic.' }; } },
     send: async input => { sent.push(input.expectedText); return sent.length; } });
   worker.intake([...renamed, said(4, 'Where are the passports?')]); await worker.drain();
-  expect(sent.at(-1)).toBe('PREVIEW — They are in the blue folder, as you said in the "Travel plans" topic.');
+  expect(sent.at(-1)).toBe('They are in the blue folder, as you said in the "Travel plans" topic.');
   expect(journal.view.turns.get('telegram:12345678:update:4')?.release).toMatchObject({ objections: [BARE_TOPIC_OBJECTION], revised: true });
 }));
 
@@ -165,7 +165,7 @@ it('never blocks on the topic signal: an unnamed number passes, a named one is s
     model: async input => input.id.endsWith(':4') ? 'They are in topic 12.' : 'It is in topic 30.',
     send: async input => { sent.push(input.expectedText); return sent.length; } });
   worker.intake([...renamed, said(4, 'Where are the passports?'), said(5, 'And the tickets?')]); await worker.drain();
-  expect(sent.slice(-2)).toEqual(['PREVIEW — They are in topic 12.', 'PREVIEW — It is in topic 30.']);
+  expect(sent.slice(-2)).toEqual(['They are in topic 12.', 'It is in topic 30.']);
   expect(journal.view.turns.get('telegram:12345678:update:4')?.release).toMatchObject({ review: 'violation',
     objections: [BARE_TOPIC_OBJECTION], revised: false, final: { links: [BARE_TOPIC_OBJECTION] } });
   expect(journal.view.turns.get('telegram:12345678:update:5')?.release).toBeUndefined();

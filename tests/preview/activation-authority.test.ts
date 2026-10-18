@@ -2,8 +2,9 @@
 // authority. A renewal inside the standing grant needs no new yes; anything outside it refuses.
 import { expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { authoritySealKey, PREVIEW_DESK, resolveActivationAuthority, sealAuthorityRecord, type ActivationAuthorityRecord,
-  type ActivationFacts, type OperatorMessageRecords } from './activation-authority.js';
+import { authoritySealKey, PREVIEW_DESK, resolveActivationAuthority, resolveInstallationPolicy, sealAuthorityRecord,
+  singleMachineProfileDigest, SINGLE_MACHINE_PROFILE, type ActivationAuthorityRecord,
+  type ActivationFacts, type InstallationPolicyAcceptance, type OperatorMessageRecords } from './activation-authority.js';
 
 const BASE = 1_790_628_000_000, WEEK = 604_800_000, NOW = 1_790_600_000_000;
 const GRANT_WORDS = 'status-quo renewals preapproved', WAIVER_WORDS = 'trial waiver approved';
@@ -143,4 +144,49 @@ it('resolves only the desk\'s sealed disposition: a substituted grant, waiver, s
   refusedSeal(desk, activation, null);
   // Resealing is the desk's own recording step and yields the same seal for the same decision.
   expect(sealAuthorityRecord(desk, KEY).seal).toBe(desk.seal);
+});
+
+// P-08 (Purpose; Eleven §5): the single-machine profile is accepted once by the operator, as a whole.
+const ACCEPT_WORDS = 'I accept the single-machine profile and its loss model for this preview.';
+const acceptance = (change: Partial<InstallationPolicyAcceptance> = {}): InstallationPolicyAcceptance => ({ id: 'p08-single-machine',
+  policy: 'P-08', shape: 'single-machine', grantor: '7654321', words: ACCEPT_WORDS,
+  source: { kind: 'telegram-message', topicId: 52075, messageId: 3 }, acceptedAt: NOW - 3000,
+  subject: { trial: 'trial:1', profile: SINGLE_MACHINE_PROFILE.id, profileDigest: singleMachineProfileDigest() }, ...change });
+const accepting = (records = owner()) => ({ ...records, messages: [...records.messages, message(3, ACCEPT_WORDS, NOW - 3000)],
+  provenance: [...records.provenance, classified(3, ACCEPT_WORDS)] });
+const policy = (r: unknown, records: OperatorMessageRecords | null = accepting(), asGiven = false, key: Uint8Array | null = KEY, trial = 'trial:1') =>
+  resolveInstallationPolicy(trial, asGiven ? r : sealed(r), '7654321', NOW, records, key);
+
+it('P-08: the operator\'s sealed, authenticated acceptance of the current single-machine profile resolves for its trial', () => {
+  expect(policy(record({ installationPolicies: [acceptance()] }))).toEqual({ kind: 'resolved', id: 'p08-single-machine', trial: 'trial:1',
+    acceptance: 'telegram:topic:52075:message:3', acceptedAt: NOW - 3000, profile: 'single-machine-v1',
+    profileDigest: singleMachineProfileDigest(), digest: expect.stringMatching(/^sha256:/u) });
+  // The profile names the closed set and the permanent-machine-loss model the acceptance covers.
+  expect(SINGLE_MACHINE_PROFILE.operations).toEqual(['provider-call', 'telegram:ordinary-reply', 'slack:ordinary-reply']);
+  expect(SINGLE_MACHINE_PROFILE.lossModel).toContain('no peer survives');
+});
+
+it('P-08: nothing else settles the peer question: absent, unsealed, another trial, stale profile, invented or revoked acceptance refuse', () => {
+  const refused = (result: ReturnType<typeof policy>, why: RegExp) => expect(result).toMatchObject({ kind: 'refused', reason: expect.stringMatching(why) });
+  refused(policy(null), /absent or malformed/u);
+  refused(policy(record()), /no operator acceptance/u);                                         // the activation grant is not an acceptance
+  refused(policy(record({ installationPolicies: [] })), /no operator acceptance/u);
+  refused(policy(record({ installationPolicies: [acceptance()] }), accepting(), true), /not the desk's sealed disposition/u); // unsealed
+  refused(policy(record({ installationPolicies: [acceptance()] }), accepting(), false, OTHER_KEY), /not the desk's sealed disposition/u);
+  const sealedRecord = sealed(record({ installationPolicies: [acceptance({ subject: { ...acceptance().subject, trial: 'trial:2' } })] })) as ActivationAuthorityRecord;
+  refused(policy({ ...sealedRecord, installationPolicies: [acceptance()] }, accepting(), true), /not the desk's sealed disposition/u); // edited after sealing
+  refused(policy(sealedRecord, accepting(), true), /no operator acceptance/u);                   // another trial's acceptance
+  refused(policy(record({ installationPolicies: [acceptance()] }), accepting(), false, KEY, 'trial:2'), /no operator acceptance/u);
+  refused(policy(record({ installationPolicies: [acceptance({ grantor: '99' })] })), /no operator acceptance/u); // not the operator
+  refused(policy(record({ installationPolicies: [acceptance({ acceptedAt: NOW + 1 })] })), /no operator acceptance/u); // not yet given
+  refused(policy(record({ installationPolicies: [acceptance({ policy: 'P-07' as 'P-08' })] })), /no operator acceptance/u);
+  refused(policy(record({ installationPolicies: [acceptance({ subject: { ...acceptance().subject, profileDigest: 'sha256:older' } })] })),
+    /different profile, operation set or loss model/u);                                          // stale: the profile changed since
+  refused(policy(record({ installationPolicies: [acceptance()] }), owner()), /authenticated operator message/u); // no such message
+  refused(policy(record({ installationPolicies: [acceptance({ words: 'I accept everything.' })] })), /authenticated operator message/u); // words the operator never sent
+  refused(policy(record({ installationPolicies: [acceptance()] }), { ...accepting(), messages: [...owner().messages,
+    message(3, ACCEPT_WORDS, NOW - 3000, { telegramUserId: 99 })] }), /authenticated operator message/u); // sent by someone else
+  refused(policy(record({ installationPolicies: [acceptance()] }), null), /authenticated operator message/u);    // messaging owner's records unavailable
+  refused(policy(record({ installationPolicies: [acceptance()], revocations: [{ grantId: 'p08-single-machine', at: NOW - 10,
+    by: '7654321', source: 'telegram 4' }] })), /revoked/u);
 });

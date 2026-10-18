@@ -19,7 +19,7 @@ const script = ['Memory test. My cofounder Sam thinks we should delay the launch
 const question = 'What does Sam think about the launch, and did Sam tell you that himself?';
 
 /** Replays the desk's live script through the real sources and the real model envelope, driving it
- * only by the read-only `inspect` command the desk runs, and proves the actual question is
+ * with explicit compaction between fixture turns and the desk's read-only `inspect` command; the question is
  * answered from a summary with the sourced people notes. The model and Telegram are stubs. */
 it('the live script reaches recall: the real question\'s persisted prompt is summary-plus-recent with sourced people', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-people-live-')));
@@ -36,7 +36,7 @@ it('the live script reaches recall: the real question\'s persisted prompt is sum
       sources: () => {
         const now = Date.now(), runs = readRuns(join(root, 'runs.jsonl'));
         const desk = deskStatusSource(readDeskStatus(join(root, 'desk-status.md')), now, join(root, 'desk-status.md'));
-        return [...sources, selfStateSource(selfState(journal.view, runs, now, 'UTC')), desk];
+        return [...sources, selfStateSource(selfState(journal.view, runs, now, 'UTC')), ...(desk ? [desk] : [])];
       },
       prepareModel: input => prepareJournalEnvelope(input, model, g.grant, Date.now()),
       model: async ({ id, context }) => {
@@ -55,7 +55,8 @@ it('the live script reaches recall: the real question\'s persisted prompt is sum
         text, date: 1790000000 + update * 60 } };
       worker.intake([incoming]);
       update++;
-      await worker.drain(); await worker.summarizeIfNeeded(); // the desk waits until status shows summaryPending 0
+      // Establish post-compaction recall without waiting ten real minutes between fixture turns.
+      await worker.drain(); await worker.summarizeIfNeeded(true);
     };
     const inspect = (...extra: string[]) => {
       const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',

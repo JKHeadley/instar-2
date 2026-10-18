@@ -1,0 +1,84 @@
+{
+  "provenance": {
+    "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/postswitch37-c1-1014-evidence/c1-frames.json",
+    "sha256": "ca05723110322bd5d8c9e67412a825c437e5577409112177516aa48b27a29d52",
+    "method": "Exact read-only journal-frame extracts; no invented model output."
+  },
+  "intake": {
+    "index0": 219,
+    "id": "telegram:8993213212:update:46040043",
+    "update": 46040043,
+    "text": "Please write me a complete, detailed month-by-month plan for a backyard vegetable garden for one full year. For each of the twelve months give what to sow, what to transplant, what to harvest and the main care jobs, with a short reason for each."
+  },
+  "modelCall": {
+    "index0": 228,
+    "kind": "model-call",
+    "id": "telegram:8993213212:update:46040043",
+    "judgment": "answer",
+    "route": "preview-subscription",
+    "model": "claude-sonnet-5",
+    "inputSha256": "08fc6b0771d795f6a1e382000051eac9dc78fa01880e00cb6281fb1f32b724e9",
+    "inputRef": "reserve:telegram:8993213212:update:46040043",
+    "output": "{\"reasoning\":\"The current operator message is a standalone, self-contained request: a month-by-month vegetable garden plan for a full year. It doesn't depend on web lookups (general horticultural knowledge, not a fact requiring citation), doesn't touch any pending blockers/directives/open items, and isn't a memory, dated, promise, or capability question. No tools are needed here — this is general planning knowledge I can produce directly. I should note the plan is written for a generic temperate Northern Hemisphere climate since no location was given, so Justin can adjust for his zone. I'll also check the standing directive: it only applies to shopping lists, not garden plans, so no '— K' needed here. None of the open items (library card, three-things-for-the-week) are implicated by this request, so I don't need to resurface them unless relevant — this is a fresh, unrelated request, so I'll just answer it. No memory/dated/directive/openLoop/blocker fields apply since this is a plain informational answer with no new standing instruction, no promise of future action, no cannot-do, and nothing deferred.\",\"answer\":\"Here's a month-by-month vegetable garden plan for a full year. This is written for a generic temperate Northern Hemisphere climate (roughly USDA zones 5-7) — shift timing earlier if you're in a warmer zone, later if colder.\\n\\n**January** — Sow: nothing outdoors; start onions/leeks indoors under lights (long season crops need the head start). Transplant: none. Harvest: stored root crops (carrots, potatoes, beets) from the cellar; overwintered kale/leeks if mild. Care: order seeds early for best variety availability; check stored produce for rot; service tools.\\n\\n**February** — Sow: start tomatoes, peppers, eggplant indoors (8-10 weeks before last frost, since they're slow to mature); sow early lettuce/spinach under cover. Transplant: none yet. Harvest: remaining stored roots. Care: test soil pH/nutrients so amendments can work in before planting; chit seed potatoes (sprout them) for a head start.\\n\\n**March** — Sow: direct-sow peas, spinach, radishes outdoors as soil becomes workable (cool-season crops tolerate frost); start brassicas (broccoli, cabbage) indoors. Transplant: harden off and transplant onion sets outdoors. Harvest: late winter greens if overwintered. Care: prepare beds — dig in compost (feeds soil biology before the growing rush); install pea/bean supports now while beds are empty.\\n\\n**April** — Sow: direct-sow carrots, beets, lettuce, radish, Swiss chard (soil has warmed enough for germination). Transplant: brassica seedlings outdoors under row cover (protects from early pests/cold). Harvest: asparagus spears if established; early radishes. Care: mulch to suppress spring weeds before they establish; watch for slugs on tender seedlings.\n\"}",
+    "outcome": "complete",
+    "latencyMs": 17864,
+    "usage": {
+      "inputTokens": 42943,
+      "outputTokens": 984,
+      "charge": null
+    },
+    "occurrence": "telegram:8993213212:update:46040043",
+    "inputTransformations": [],
+    "outputTransformations": [],
+    "replay": "faithful",
+    "at": 1792043419252
+  },
+  "answer": {
+    "index0": 230,
+    "kind": "answer",
+    "id": "telegram:8993213212:update:46040043",
+    "text": "Here's a month-by-month vegetable garden plan for a full year. This is written for a generic temperate Northern Hemisphere climate (roughly USDA zones 5-7) — shift timing earlier if you're in a warmer zone, later if colder.\n\n**January** — Sow: nothing outdoors; start onions/leeks indoors under lights (long season crops need the head start). Transplant: none. Harvest: stored root crops (carrots, potatoes, beets) from the cellar; overwintered kale/leeks if mild. Care: order seeds early for best variety availability; check stored produce for rot; service tools.\n\n**February** — Sow: start tomatoes, peppers, eggplant indoors (8-10 weeks before last frost, since they're slow to mature); sow early lettuce/spinach under cover. Transplant: none yet. Harvest: remaining stored roots. Care: test soil pH/nutrients so amendments can work in before planting; chit seed potatoes (sprout them) for a head start.\n\n**March** — Sow: direct-sow peas, spinach, radishes outdoors as soil becomes workable (cool-season crops tolerate frost); start brassicas (broccoli, cabbage) indoors. Transplant: harden off and transplant onion sets outdoors. Harvest: late winter greens if overwintered. Care: prepare beds — dig in compost (feeds soil biology before the growing rush); install pea/bean supports now while beds are empty.\n\n**April** — Sow: direct-sow carrots, beets, lettuce, radish, Swiss chard (soil has warmed enough for germination). Transplant: brassica seedlings outdoors under row cover (protects from early pests/cold). Harvest: asparagus spears if established; early radishes. Care: mulch to suppress spring weeds before they establish; watch for slugs on tender seedlings.\n",
+    "state": "complete",
+    "datedPending": true,
+    "reason": "The current operator message is a standalone, self-contained request: a month-by-month vegetable garden plan for a full year. It doesn't depend on web lookups (general horticultural knowledge, not a fact requiring citation), doesn't touch any pending blockers/directives/open items, and isn't a memory, dated, promise, or capability question. No tools are needed here — this is general planning knowledge I can produce directly. I should note the plan is written for a generic temperate Northern Hemisphere climate since no location was given, so Justin can adjust for his zone. I'll also check the standing directive: it only applies to shopping lists, not garden plans, so no '— K' needed here. None of the open items (library card, three-things-for-the-week) are implicated by this request, so I don't need to resurface them unless relevant — this is a fresh, unrelated request, so I'll just answer it. No memory/dated/directive/openLoop/blocker fields apply since this is a plain informational an",
+    "usage": {
+      "inputTokens": 42943,
+      "outputTokens": 984,
+      "charge": null,
+      "inputComplete": true
+    },
+    "latencyMs": 18434,
+    "at": 1792043419356
+  },
+  "review": {
+    "index0": 236,
+    "kind": "reply-check",
+    "id": "telegram:8993213212:update:46040043",
+    "result": {
+      "verdict": "pass",
+      "ruleIds": [],
+      "confidence": 0.7,
+      "path": "jev",
+      "latencyMs": 178,
+      "scores": {
+        "raw_path": 0.01,
+        "cli_command": 0.02,
+        "config_key": 0.01,
+        "credential": 0.01,
+        "api_endpoint": 0.01,
+        "quits_on_self": 0.04,
+        "claims_blocked": 0.04,
+        "parks_on_user": 0.27,
+        "defers_work": 0.14,
+        "unrecorded_blocker": 0.3
+      },
+      "usage": {
+        "inputTokens": 1088,
+        "outputTokens": 184,
+        "charge": null
+      },
+      "candidateDigest": "b011b3dd9b69dd924fe6ecdb6c9c2a11308a4d87432f306257624d9764b0d472"
+    },
+    "at": 1792043419571
+  }
+}

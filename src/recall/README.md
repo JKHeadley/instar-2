@@ -47,7 +47,12 @@ It fuses, by declared rank interleaving, an optional spend-gated semantic rerank
 driver's lexical order, and the derived-index order (query terms against each candidate's generated
 `cues`, write-side index material that ranks but is never evidence). It reports `coverage` and a
 `degraded` disposition while an indexable candidate lacks cues, so a miss there is a word-match miss,
-never evidence of absence. A charging reranker is called only with reserved spend and no stop.
+never evidence of absence. Its `meaningOrder` identifies selected semantic/derived-cue hits in
+composed order. The journal keeps that priority during packet trimming before original-word
+matches, so a selected paraphrase is not evicted merely for using different words. Lookup
+priority and existing obligation, due-item and pinned-fact tiers still lead; all evidence can
+yield at the reachability floor. This does not claim complete semantic coverage or relevance
+beyond the selected candidates. A charging reranker is called only with reserved spend and no stop.
 
 `reader = { context, store, stopped, reranker?, spend? }`. Put `grounding.text` into the model
 context as quoted history. It is wrapped in `<recalled-history>`, labelled as data rather than

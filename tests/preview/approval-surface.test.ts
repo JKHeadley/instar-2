@@ -48,8 +48,9 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
   configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 1, maxReplies: 8, maxTurns: 8, maxBytes: 32768, cursor: 0 };
 const message = (id: number, text: string) => ({ update_id: id,
   message: { message_id: id, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
-// The live runner's posture: register, lease/fence and the P-08 join are not installed, so the chat's
-// limited answer stays inhibited (build 3). The approval page must still carry the request.
+// A host whose minimal path is not admitted (a missing register generation, lease/fence, or the
+// single-machine P-08 policy not yet accepted): the chat's limited answer stays inhibited. The approval
+// page must still carry the request.
 const liveDependencies = () => ({ ...admittedDependencies(), register: false, lease: false, fence: false, 'replication-peer': false });
 
 function setup() {
@@ -101,7 +102,7 @@ it('offers the raise on the approval page while the chat answer is inhibited, an
   t.worker.intake([message(1, 'one')]); await t.worker.drain();
   t.worker.intake([message(2, 'two')]); await t.worker.drain(); await t.worker.minimal();
   // Nothing goes to the chat for the capped message: the minimal path is not admitted (live posture).
-  expect(t.sent).toEqual(['PREVIEW — ordinary answer']);
+  expect(t.sent).toEqual(['ordinary answer']);
   const lead = t.journal.view.order[1]!;
   expect(lead.minimalOutage?.missing).toEqual(expect.arrayContaining(['register', 'lease']));
   const challenge = lead.approval!.challenge!;
@@ -109,7 +110,7 @@ it('offers the raise on the approval page while the chat answer is inhibited, an
   // The page lists the standing stop first, then the raise, in the surface's own fixed wording.
   const index = t.call('GET', '/');
   expect(index.status).toBe(200);
-  expect(index.body.indexOf('Stop this preview agent permanently?')).toBeLessThan(index.body.indexOf('allowance from 1 to 2'));
+  expect(index.body.indexOf('Stop this agent permanently?')).toBeLessThan(index.body.indexOf('allowance from 1 to 2'));
   expect(index.headers['content-security-policy']).toContain("default-src 'none'");
   const page = t.call('GET', `/c/${nameOf(challenge.id)}`).body;
   expect(page).toContain(approvalRequestText(t.journal.view, 'calls'));
@@ -131,7 +132,7 @@ it('offers the raise on the approval page while the chat answer is inhibited, an
   expect(t.journal.view.capAuthority).toBe(`verified-approval:${lead.approval!.id}:${challenge.id}`);
   expect(t.journal.view.order[1]!.approval?.verified?.receipt).toMatch(/^sha256:[a-f0-9]{64}$/u);
   await t.worker.drain();
-  expect(t.sent).toEqual(['PREVIEW — ordinary answer', 'PREVIEW — ordinary answer']);
+  expect(t.sent).toEqual(['ordinary answer', 'ordinary answer']);
   // One use on both sides: the page refuses a second decision, the runner a second consumption.
   expect(JSON.parse(t.decide(nameOf(challenge.id), 'approve').body).error).toMatch(/unknown request|already decided/u);
   const recorded = readFileSync(join(t.store, 'acts', `${nameOf(challenge.id)}.json`), 'utf8');

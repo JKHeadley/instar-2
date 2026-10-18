@@ -1,0 +1,34 @@
+# Change review — w3-k13a: a corrected-away value stays recallable as labelled history (Rule 7, live K13a)
+
+Subject base: 72fb5a824ce8c0535c223f146fba8eb9c3cf78fa
+Review state: open
+Reviewed content: none
+Outcome: Live K13a (Justin's preview, 2026-09-30 08:41-08:44 PDT, results K-live-20260930-082150) answered k6 "What was the code for my padlock P-082150 before?" with "I couldn't produce an answer". Evidence: inspect-k6.json shows the k6 packet held the correction only as its replacement (memory[1].replacement and memorySearch status corrected, quote "...is 2093"); the corrected-away "...is 5186" for this padlock was nowhere in the packet (the k4 history turn and its reply are withheld markers), so the question asked about something the packet withheld. status-k6.json shows both answer attempts arrived malformed (modelJsonShapes answer/decision/malformed/prose-wrapped 5 -> 7, modelFailureClasses.malformed 19 -> 21, two answer calls), so the format retry also failed and MODEL_FAILURE_REPLY was sent. The reply review and Jev passed the fallback; no reply check blocked anything. Fix at the source: a corrected memorySearch item now carries its corrected-away clause as `was` while its replacement is live, and a guidance sentence (riding only when some item carries `was`) labels it history, never current, to be given marked corrected when asked what it was before. Forgetting still withholds: a forgotten replacement drops `was`, and `was` itself passes every other memory change, so a separately forgotten clause stays withheld. History, summaries, memory records, inventory and reviewer prompts are unchanged. Evidence: tests/preview/journal-corrected-history.test.ts replays the recorded k4/k5/k6 texts, update ids 969389761-63, sender ids, the recorded change shape (status-k6.json withheld[1], inspect-k6.json last.memory) and the recorded k5 acknowledgement byte-for-byte; on the base code it sends exactly "I couldn't produce an answer" (test 1) and the corrected item has no `was` (test 2); on this change k6 answers 5186 and 2093 with "corrected", the current-value question answers 2093, and no item presents 5186 as its quote.
+Affected rules: 7 (the corrected-away value stays recallable as labelled history; forgetting still withholds), 10/11 (the model decides what the question means; the field is offered by structure, not keywords), 2 (the old value is no longer silently lost to answers), 4 (the self-state memory sentence now states the actual behaviour), 116 (one field and one conditional sentence on the existing search item; no new store, route or judge)
+Affected floors: secrets — unchanged (`was` passes the same redact as quote); spend cap — unchanged (no new call; the failure path previously spent a format retry); stop — unchanged; no duplicate sends — unchanged; durable intake — unchanged
+Operator questions: none
+Suggested tier: critical
+Declared tier: significant
+Tier rationale: preview journal answer packet only: one optional labelled field on corrected memory-search items plus a sentence that rides with it; send, intake, review, authority and storage paths are untouched
+Side effects: answer packets whose memorySearch selects a corrected item now carry the corrected-away clause as `was` (labelled history); tests that asserted a corrected clause never appears anywhere in later packets now assert it appears nowhere outside that labelled field (journal-conflicting-memory, -correction-ack-diff, -forget-property, -memory-inventory, -memory-search, -message-edit, realistic-recall, recall-benchmark; forget cases stay strict); the self-state memory sentence changed (self-state, journal-awareness); packet hashes and the packet-size mean are unchanged when no corrected item is present (recall-latency and packet-selection-quality pass unmodified, mean 11269)
+Undo and recovery: revert the fix commit and this record (and the desk's register regeneration)
+Multi-machine posture: machine-local, deliberately; the preview journal worker on the one preview machine
+Layer below: tests/preview/journal.ts searchFor (the corrected item's `was`), searchGuidance (SEARCH_GUIDANCE plus CORRECTED_HISTORY_GUIDANCE only with a `was`), packetFor and searchVariants (which append it)
+Bug class: integration
+Bug evidence: reproducer=tests/preview/journal-corrected-history.test.ts
+Hook bypass: none
+Convergence: none
+Decision: k13a-1 | the guidance sentence rides only when an item carries `was`, because an always-on sentence cost a memorySearch item under byte pressure (recall-latency: 5 -> 4 items) and moved the packet mean 11269 -> 11424 | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-k13a-PROGRESS.md
+Decision: k13a-2 | no `was` when the replacement is itself withheld (later forgotten), and `was` is projected through every other change, so forgetting keeps priority over history | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-k13a-PROGRESS.md
+Prompt review: one prompt text added: CORRECTED_HISTORY_GUIDANCE, a description of the `was` field (history, never current; give it marked corrected when asked about the earlier value). It tells the model what a field means; it does not decide what the operator meant (Rule 10).
+Prompt finding: 849db3a6296a | protocol-literal | an existing fixed reply literal in journal.ts, unchanged by this change
+Prompt finding: bd01de21286a | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change
+Prompt finding: fb5fa7e706c8 | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change
+
+Subject (15 paths): reviews/w3-k13a-change-review.md, tests/preview/journal-awareness.test.ts, tests/preview/journal-conflicting-memory.test.ts, tests/preview/journal-corrected-history.test.ts, tests/preview/journal-correction-ack-diff.test.ts, tests/preview/journal-forget-property.test.ts, tests/preview/journal-memory-inventory.test.ts, tests/preview/journal-memory-search.test.ts, tests/preview/journal-message-edit.test.ts, tests/preview/journal-test-worker.ts, tests/preview/journal.ts, tests/preview/realistic-recall.ts, tests/preview/recall-benchmark.ts, tests/preview/self-state.test.ts, tests/preview/self-state.ts
+
+## Closing block
+
+simplestRobustRoute: add the corrected-away clause to the correction's existing memory-search item, as the superseded-history path already does for ordinary updates, with a sentence that rides only with it. No new store, route, model, format or judge, and no change to what is withheld from history, summaries or reviewers.
+80/20: 0 must-fix, 2 notes (the live model's raw k6 text was not recorded, only its malformed shape, so the replay reproduces the outcome by shape; a correction chain keeps only the immediately previous value as `was`, and older links stay in the audit record)
+VERDICT: author submission; the independent verdict is recorded as a pass

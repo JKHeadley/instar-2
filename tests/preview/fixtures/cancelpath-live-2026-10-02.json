@@ -1,0 +1,145 @@
+{
+ "source": "Live proof room two, build cint-L27 d12bbf55, proof group A 2026-10-02 06:31-06:55 PDT (check RA3), read from lanes/pipeline/live-proof/results/cancelpath-evidence-20261002 on 2026-10-02. turns carry the operator messages (msg-*.txt) and the delivered reply bubbles (reply-*.json) verbatim. datedAtRa3 is the recorded dated selection in the ra3 packet (inspect-ra3.json last.dated), so the two bird-feeder requests \"the bird feeder one\" could have meant are the recorded ones. summaryAtRa3 is the recorded summary state after ra3 (status-ra3.json): the frontier stopped at ra2 and the span covering ra3 failed malformed twice. requestedActionsAfterRa4 is the recorded status after the next turn (status-ra4.json): three requests open, none fired, the 6:50 pair among them. The ra3 DECISION JSON itself was not captured in this evidence set; what is recorded is that requestedActions.cancelled did not move and the delivered reply was the fixed memory-undecided notice, so the tests replay the decision shapes consistent with exactly those facts and say so where they do.",
+ "turns": [
+  {
+   "label": "a5",
+   "update": 6230540,
+   "message": "Please promise to remind me about watering the tomato plants — say you will.",
+   "reply": "PREVIEW — I still can't honestly promise that — I have no scheduler, so I can't reach out to you unprompted later. Give me a specific time to log, or just ask me again when you want the nudge, like you did earlier tonight.",
+   "seconds": 31
+  },
+  {
+   "label": "ra1",
+   "update": 6230542,
+   "message": "Remind me today at 6:50 am to refill the bird feeder",
+   "reply": "PREVIEW — Got it — I've logged \"refill the bird feeder\" for 6:50 am today; I have no scheduler, so either the runner delivers this one at that fixed time or message me again then and I'll relay it. If you also want the earlier bird feeder reminders cancelled, let me know which ones. Date 1: 2026-10-02 06:50 (America/Los_Angeles). I will act on this once at 2026-10-02 06:50 (America/Los_Angeles) and send you the result here.",
+   "seconds": 33
+  },
+  {
+   "label": "ra2",
+   "update": 6230543,
+   "message": "Also remind me today at 6:50 am to call the plumber",
+   "reply": "PREVIEW — Got it — logged \"call the plumber\" for 6:50 am today too, alongside the bird feeder reminder already set for that time. I have no scheduler, so either the runner delivers it then or message me again at or after 6:50 am and I'll relay it. Date 1: 2026-10-02 06:50 (America/Los_Angeles). I will act on this once at 2026-10-02 06:50 (America/Los_Angeles) and send you the result here. Upcoming: Remind me today at 6:50 am to refill the bird feeder (2026-10-02 06:50).",
+   "seconds": 46
+  },
+  {
+   "label": "ra3",
+   "update": 6230544,
+   "message": "Actually, cancel the bird feeder one.",
+   "reply": "PREVIEW — I couldn't record that memory change. Please send it again. Upcoming: Also remind me today at 6:50 am to call the plumber (2026-10-02 06:50).",
+   "seconds": 400
+  }
+ ],
+ "datedAtRa3": [
+  {
+   "day": "2026-10-02",
+   "quote": "Remind me today at 1:25 am to refill the bird feeder",
+   "remind": true,
+   "source": "telegram:8989505249:update:6230514",
+   "state": "overdue",
+   "time": "01:25",
+   "when": "today at 1:25 am",
+   "zone": "America/Los_Angeles"
+  },
+  {
+   "day": "2026-10-02",
+   "quote": "Also remind me today at 1:25 am to call the plumber",
+   "remind": true,
+   "source": "telegram:8989505249:update:6230515",
+   "state": "overdue",
+   "time": "01:25",
+   "when": "today at 1:25 am",
+   "zone": "America/Los_Angeles"
+  },
+  {
+   "day": "2026-10-02",
+   "quote": "Remind me today at 4:38 am to refill the bird feeder",
+   "remind": true,
+   "source": "telegram:8989505249:update:6230528",
+   "state": "overdue",
+   "time": "04:38",
+   "when": "today at 4:38 am",
+   "zone": "America/Los_Angeles"
+  },
+  {
+   "day": "2026-10-02",
+   "quote": "Also remind me today at 4:38 am to call the plumber",
+   "source": "telegram:8989505249:update:6230529",
+   "state": "overdue",
+   "time": "04:38",
+   "when": "today at 4:38 am",
+   "zone": "America/Los_Angeles"
+  },
+  {
+   "day": "2026-10-02",
+   "quote": "Remind me today at 6:50 am to refill the bird feeder",
+   "remind": true,
+   "source": "telegram:8989505249:update:6230542",
+   "state": "due",
+   "time": "06:50",
+   "when": "today at 6:50 am",
+   "zone": "America/Los_Angeles"
+  },
+  {
+   "day": "2026-10-02",
+   "quote": "Also remind me today at 6:50 am to call the plumber",
+   "remind": true,
+   "source": "telegram:8989505249:update:6230543",
+   "state": "due",
+   "time": "06:50",
+   "when": "today at 6:50 am",
+   "zone": "America/Los_Angeles"
+  },
+  {
+   "day": "2026-10-01",
+   "quote": "Remind me today at 12:09 am to refill the bird feeder",
+   "source": "telegram:8989505249:update:6230472",
+   "state": "overdue",
+   "time": "00:09",
+   "when": "today at 12:09 am",
+   "zone": "America/Los_Angeles"
+  }
+ ],
+ "summaryAtRa3": {
+  "summaryThrough": 6230543,
+  "lastSummaryFailure": {
+   "through": 6230544,
+   "reason": "malformed"
+  },
+  "modelFailureClasses": {
+   "rejected": 35,
+   "malformed": 2
+  }
+ },
+ "requestedActionsAfterRa4": {
+  "requested": 5,
+  "cancelled": 1,
+  "accepted": 1,
+  "refused": 0,
+  "unknown": 0,
+  "open": [
+   {
+    "sourceUpdate": 6230528,
+    "quote": "Remind me today at 4:38 am to refill the bird feeder",
+    "due": "2026-10-02 04:38 America/Los_Angeles"
+   },
+   {
+    "sourceUpdate": 6230542,
+    "quote": "Remind me today at 6:50 am to refill the bird feeder",
+    "due": "2026-10-02 06:50 America/Los_Angeles"
+   },
+   {
+    "sourceUpdate": 6230543,
+    "quote": "Also remind me today at 6:50 am to call the plumber",
+    "due": "2026-10-02 06:50 America/Los_Angeles"
+   }
+  ],
+  "dueTurns": [
+   {
+    "update": 6230515.0009765625,
+    "requests": 1,
+    "state": "accepted"
+   }
+  ]
+ }
+}

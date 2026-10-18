@@ -58,12 +58,12 @@ it('P9-PREVIEW-startup P9-PREVIEW-store-agreements P9-PREVIEW-journal-restore P9
   // The optional step observer is off in this launch: it is never run and never counted.
   expect(plans).not.toContain('step-check-reached');
   const byPlan = new Map(log.proofs.map(row => [row.plan, row]));
-  expect(byPlan.get('startup')).toMatchObject({ disposition: 'passed', observed: { identity: 8820318295, stepCheck: false } });
+  expect(byPlan.get('startup')).toMatchObject({ disposition: 'passed', observed: { identity: 12345678, stepCheck: false } });
   expect(byPlan.get('journal-restore')).toMatchObject({ disposition: 'passed', observed: { restored: true, differing: null } });
   expect(byPlan.get('reply-delivered')).toMatchObject({ disposition: 'passed' });
   for (const plan of ['telegram-identity', 'reply-drain', 'reply-review-reached']) expect(byPlan.get(plan).disposition, plan).toBe('passed');
-  // Rule 33: build 11's declared comparisons ran at launch through this executor, each verdict durable in agreements.jsonl.
-  expect(byPlan.get('store-agreements')).toMatchObject({ disposition: 'passed', observed: { declared: 4, disagree: 0, unchecked: 0 } });
+  // Rule 33: build 11's declared comparisons (plus media-custody) ran at launch through this executor, each verdict durable in agreements.jsonl.
+  expect(byPlan.get('store-agreements')).toMatchObject({ disposition: 'passed', observed: { declared: 5, disagree: 0, unchecked: 0 } });
   expect(plans.indexOf('store-agreements')).toBe(1);
   expect(plans.length).toBe(new Set(plans).size);
 

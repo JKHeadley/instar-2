@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The physical host remains JavaScript.
-import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, hostQuery, cpuMilliseconds, LIMIT_FILE, LIMIT_FILE_TEXT, limitedFileArgv, HOST_BOUNDS } from '../../scripts/resource-owner.mjs';
+import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, hostQuery, cpuMilliseconds, LIMIT_FILE, LIMIT_FILE_TEXT, limitedFileArgv, HOST_BOUNDS, startIdentity } from '../../scripts/resource-owner.mjs';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 import { createHostResourceAllocation } from '../preview/six-host-resources.js';
 
@@ -14,14 +14,24 @@ type Ceilings = typeof RESOURCE_CEILINGS;
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
 const dir = () => { const root = mkdtempSync(join(tmpdir(), 'resource-owner-')); roots.push(root); return root; };
+// The launch process ceiling becomes the kernel limit of the whole user ID (its live census plus this
+// number), so a parallel suite's own churn spends the room a launch under the shipped 32 was given, and
+// the launch's fork is refused: a pid-less spawn. A test that asserts a tight process ceiling sets its
+// own; every other test here asserts membership and cleanup, so its room is roomy and still finite.
 const ceilings = (patch: { launch?: object; aggregate?: object; reserveLaunches?: number } = {}): Ceilings => ({
-  launch: { ...RESOURCE_CEILINGS.launch, ...patch.launch },
+  launch: { ...RESOURCE_CEILINGS.launch, processCount: 256, ...patch.launch },
   aggregate: { ...RESOURCE_CEILINGS.aggregate, ...patch.aggregate },
   reserveLaunches: patch.reserveLaunches ?? RESOURCE_CEILINGS.reserveLaunches, sampleMs: 100 });
 const script = (root: string, name: string, body: string) => { const path = join(root, name); writeFileSync(path, body); return path; };
 const input = (root: string, file: string, args: string[] = [], timeout = 15000) => ({ executable: process.execPath,
   args: [file, ...args], cwd: root, env: { PATH: '/usr/bin:/bin' }, stdin: '', timeout, maxBytes: 65536 });
-const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+// Rule 26: the real state, never a symbol standing for it. A launch whose fork was refused writes
+// `String(undefined)`, and reading that as `NaN` reported a process that never existed as a dead one —
+// a false pass where absence is asserted, and a false failure where the escapee must still be alive.
+const alive = (pid: number) => {
+  if (!Number.isSafeInteger(pid) || pid <= 1) throw Error(`resource owner test: ${pid} is no pid — this launch recorded no forked child`);
+  try { process.kill(pid, 0); return true; } catch { return false; }
+};
 const settle = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 let incarnations = 0;
 /** The durable owner's Six allocation over the same root (a restart is a new incarnation). */
@@ -133,7 +143,8 @@ it('refuses work it cannot admit before its deadline without launching it', { ti
   await owner.attach({});
   const busy = owner.execute(input(root, hold), 'answer');
   const refused = await owner.execute(input(root, mark, [marker], 300), 'maintenance');
-  expect(refused).toEqual({ code: null, limited: true, localLimit: 'capacity', stdout: '', stdoutBytes: new Uint8Array() });
+  expect(refused).toEqual({ code: null, signal: null, cancellationReason: null,
+    limited: true, localLimit: 'capacity', stdout: '', stdoutBytes: new Uint8Array() });
   expect(existsSync(marker)).toBe(false);
   await busy;
   // With capacity free again the same work is admitted and runs.
@@ -224,6 +235,41 @@ it('recovery observes an orphan without signalling it, keeps a live owner\'s row
   } finally {
     for (const child of [orphan, stranger, neighbour, ownerProcess]) try { process.kill(child.pid!, 'SIGKILL'); } catch { /* ended */ }
   }
+});
+
+it('recovery joins a sandboxed launch row by its recorded sandbox: a root-cwd survivor keeps the row and debit; only proved absence returns it', async () => {
+  // Host observations are injected (no real process is launched or signalled); the owner, inventory decoder and joins are real.
+  const start = 'Sat Oct 3 15:00:00 2026', childStart = 'Sat Oct 3 15:00:01 2026';
+  const recoverWith = async (survivor: 'inside' | 'root-cwd' | 'gone', sandbox: 'observed' | 'unreadable') => {
+    const root = dir(), area = join(root, 'scratch'), ledgerPath = join(root, 'launches.json');
+    const closes: string[] = [];
+    writeFileSync(ledgerPath, JSON.stringify({ version: 1, launches: { native: { pid: 41001, start, owner: { pid: 41000, start },
+      members: { 41001: start }, workingArea: area, sandboxArea: area, allocation: 'native-set' } } }));
+    const query = async (file: string, args: string[]) => {
+      if (file === '/bin/sh') return '256\n1024\nunlimited\nunlimited\n1024\n2048\n';
+      if (file === '/bin/ps' && args[0] === '-U') return survivor === 'gone' ? '' : `41002 1 41002 501 4096 0:00.10 S ${childStart} /bin/sleep 60\n`;
+      if (file === '/bin/ps' && args[0] === '-o') return args.at(-1) === '41002' && survivor !== 'gone' ? childStart : '';
+      if (file === '/usr/sbin/lsof') return `p41002\nn${survivor === 'inside' ? area : '/'}\n`;
+      if (file === '/usr/bin/python3') return sandbox === 'observed' ? '41002 in 0\n' : '';
+      throw Error(`unexpected query ${file}`);
+    };
+    const owner = createResourceOwner(ceilings());
+    await owner.attach({ ledgerPath, query, allocation: { close: (_set: string, cause: string) => { closes.push(cause); return { ok: true }; }, open: () => [] } });
+    return { orphans: owner.snapshot().orphans, rows: Object.keys(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches), closes };
+  };
+  // Inside the working area, and outside it (daemonized to /) but inside the launch's sandbox: both survive.
+  for (const survivor of ['inside', 'root-cwd'] as const) {
+    const seen = await recoverWith(survivor, 'observed');
+    expect(seen.orphans).toMatchObject([{ launch: 'native', state: 'surviving', unrecorded: 1 }]);
+    expect(seen.rows).toEqual(['native']); expect(seen.closes).toEqual([]);
+  }
+  // A root-cwd survivor whose sandbox membership cannot be read is unknown: the row and debit stay.
+  const unread = await recoverWith('root-cwd', 'unreadable');
+  expect(unread.orphans).toMatchObject([{ launch: 'native', state: 'unknown' }]);
+  expect(unread.rows).toEqual(['native']); expect(unread.closes).toEqual([]);
+  // Genuinely gone: the row closes and the debit returns once, citing recovery.
+  const gone = await recoverWith('gone', 'observed');
+  expect(gone.orphans).toEqual([]); expect(gone.rows).toEqual([]); expect(gone.closes).toEqual(['recovery-observed-gone:native']);
 });
 
 it('records launch evidence durably before the provider runs, and never runs a launch it could not record', { timeout: 30000 }, async () => {
@@ -327,9 +373,39 @@ const c = spawn('/bin/sleep', ['20'], { detached: true, stdio: 'ignore' }); c.un
   const survivor = Number(readFileSync(join(shared, 'pids'), 'utf8'));
   try {
     expect(alive(survivor)).toBe(true);
-    expect(open.resources).toMatchObject({ membership: 'unconfined', cleanup: 'unconfined' });
+    // Unconfined means it reclaimed nothing, not merely that it said so: no join reached the escapee.
+    expect(open.resources).toMatchObject({ membership: 'unconfined', cleanup: 'unconfined', leakedDescendants: 0 });
     expect(open.resources.cleanup).not.toBe('verified');
   } finally { try { process.kill(survivor, 'SIGKILL'); } catch { /* ended */ } }
+});
+
+it('reclaims a member that first appears in a later cleanup census, instead of waiting on it and leaving it running', { timeout: 30000 }, async () => {
+  // Live 2026-10-03 (w4-toolsfull stop-child): a stopped tool turn's subagent shell had forked `sleep 60` just after the
+  // first cleanup census (which saw the shell); the old cleanup only waited on later censuses, so the sleeper outlived the
+  // stop. Here the first census that could see the second child is made to miss it once, exactly as that race did: it sees
+  // the first child only. The reclaiming census must still end the second.
+  const root = dir(), pids = join(root, 'pids');
+  const escape = script(root, 'escape.mjs', `import { spawn } from 'node:child_process'; import { writeFileSync } from 'node:fs';
+const a = spawn('/bin/sleep', ['20'], { detached: true, stdio: 'ignore' }), b = spawn('/bin/sleep', ['20'], { detached: true, stdio: 'ignore' });
+a.unref(); b.unref(); writeFileSync(process.argv[2], a.pid + ' ' + b.pid);`);
+  let hidden = 0;
+  const query = async (file: string, args: string[]) => {
+    const text = await hostQuery(file, args);
+    if (args[0] !== '-U' || typeof text !== 'string' || hidden || !existsSync(pids)) return text;
+    const late = readFileSync(pids, 'utf8').trim().split(' ')[1];
+    const lines = text.split('\n'), kept = lines.filter(line => line.trim().split(/\s+/u)[0] !== late);
+    if (kept.length !== lines.length) hidden = 1;
+    return kept.join('\n');
+  };
+  const owner = createResourceOwner({ ...ceilings(), sampleMs: 60000 });
+  await owner.attach({ ledgerPath: join(root, 'owned-launches.json'), allocation: six(root), query });
+  const result = await owner.execute(input(root, escape, [pids]), 'maintenance');
+  const [first, second] = readFileSync(pids, 'utf8').trim().split(' ').map(Number);
+  try {
+    expect(hidden).toBe(1);
+    expect([alive(first!), alive(second!)]).toEqual([false, false]);
+    expect(result.resources).toMatchObject({ leakedDescendants: 2, cleanup: 'verified', membership: 'working-area-joined' });
+  } finally { for (const pid of [first, second]) try { process.kill(pid!, 'SIGKILL'); } catch { /* ended */ } }
 });
 
 it('an unreadable working directory of a live candidate is unknown membership: cleanup stays unresolved and the debit reserved', { timeout: 30000 }, async () => {
@@ -364,19 +440,22 @@ const c = spawn('/bin/sleep', ['20'], { detached: true, stdio: 'ignore' }); c.un
   expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
 });
 
-it('a refused allocation returns the debit it already prepared, so refused maintenance never takes the answer slot', () => {
-  const root = dir(), allocation = six(root);
+it.each([3, RESOURCE_CEILINGS.aggregate.launches])('a refused allocation returns its prepared debit and preserves the answer slot with %i launch slots', launchSlots => {
+  const root = dir(), allocation = six(root, ceilings({ aggregate: { launches: launchSlots }, reserveLaunches: 1 }));
   const reserve = (launch: string, work: string) => allocation.reserve({ launch, work, memoryBytes: 1024, processCount: 1 });
-  // Two maintenance launches still held (for example, their cleanup is unresolved).
-  expect(reserve('m1', 'maintenance').ok).toBe(true);
-  expect(reserve('m2', 'maintenance').ok).toBe(true);
-  // A third prepares the installation slot, then meets the maintenance-family ceiling.
-  const third = reserve('m3', 'maintenance');
-  expect(third.ok ? '' : third.reason).toMatch(/capacity exhausted/u);
-  expect(allocation.open().map(o => o.launch).sort()).toEqual(['m1', 'm2']);
-  // The answer reserve is intact, and the genuinely held launches stay reserved.
+  const held = Array.from({ length: launchSlots - 1 }, (_, i) => `m${i + 1}`);
+  // Fill the maintenance family, retaining each debit as unresolved cleanup would.
+  for (const launch of held) expect(reserve(launch, 'maintenance').ok).toBe(true);
+  // Each refused attempt prepares the final installation slot before meeting the family ceiling.
+  // Repeating proves that refunded debits do not accumulate between refusals.
+  for (const launch of ['refused-1', 'refused-2']) {
+    const refused = reserve(launch, 'maintenance');
+    expect(refused.ok ? '' : refused.reason).toMatch(/capacity exhausted/u);
+    expect(allocation.open().map(o => o.launch).sort()).toEqual([...held].sort());
+  }
+  // The answer reserve is intact, and genuinely held maintenance launches stay reserved.
   expect(reserve('a1', 'answer').ok).toBe(true);
-  expect(allocation.open().map(o => o.launch).sort()).toEqual(['a1', 'm1', 'm2']);
+  expect(allocation.open().map(o => o.launch).sort()).toEqual(['a1', ...held].sort());
 });
 
 it('recovery resumes a partial allocation return under its durable settlement, and a closed set counts as returned', { timeout: 30000 }, async () => {
@@ -507,10 +586,22 @@ writeFileSync(process.argv[2], String(spawn('/bin/sleep', ['30'], { stdio: 'igno
 });
 
 it('does not hold a tree process ceiling: with baseline churn and a concurrent launch, a tree can exceed it', { timeout: 30000 }, async () => {
-  const root = dir(), go = join(root, 'go');
-  // Baseline processes of the same user, counted into the user-ID limit at launch time.
-  const baseline = Array.from({ length: 12 }, () => spawn('/bin/sleep', ['30'], { detached: true, stdio: 'ignore' }));
-  const forker = script(root, 'forker.mjs', `import { spawn } from 'node:child_process'; import { existsSync } from 'node:fs';
+  const root = dir(), lead = { go: join(root, 'go-lead'), ready: join(root, 'ready-lead') },
+    follow = { go: join(root, 'go-follow'), ready: join(root, 'ready-follow') };
+  // Baseline processes of the same user, counted into the user-ID limit at launch time. The room they
+  // free on exit is the room a tree then grows into, so it is kept wider than the churn a parallel suite
+  // adds in the same second: with twelve, roughly six slots taken by unrelated same-user work left both
+  // trees at exactly their own ceiling of 4 and this proof flipped (rule 110 flake, 6 pass / 5 fail).
+  const baseline = Array.from({ length: 32 }, () => {
+    const child = spawn('/bin/sleep', ['30'], { detached: true, stdio: 'ignore' });
+    // A refused baseline spawn is asserted below rather than thrown as an uncaught child error.
+    child.on('error', () => { /* asserted below */ });
+    return child;
+  });
+  // Each launch reports when its tree is running. By then the shim has already applied the user-ID limit
+  // that launch was given, so the churn below provably happens after both limits were set.
+  const forker = script(root, 'forker.mjs', `import { spawn } from 'node:child_process'; import { existsSync, writeFileSync } from 'node:fs';
+writeFileSync(process.argv[3], '');
 const wait = () => existsSync(process.argv[2]) ? run() : setTimeout(wait, 25);
 const run = () => { const kids = []; let refused = 0;
   for (let i = 0; i < 8; i++) { const c = spawn('/bin/sleep', ['5'], { stdio: 'ignore' }); c.on('error', () => { refused++; }); kids.push(c); }
@@ -518,18 +609,28 @@ const run = () => { const kids = []; let refused = 0;
     process.stdout.write(JSON.stringify({ started, refused })); }, 300); };
 wait();`);
   try {
-    await settle(150);
+    // The room the churn will free is asserted, never assumed: a host that refused these spawns leaves
+    // a tree no room to grow into, and that must read as a failed setup rather than a failed proof.
+    expect(baseline.filter(child => typeof child.pid === 'number').length).toBeGreaterThanOrEqual(24);
     // No sampler acts: only what the kernel holds is in play.
     const owner = createResourceOwner({ ...ceilings({ launch: { processCount: 4 } }), sampleMs: 60000 });
     await owner.attach({});
-    const first = owner.execute(input(root, forker, [go]), 'answer');
-    const second = owner.execute(input(root, forker, [go]), 'review');
-    await settle(700);
-    // Churn: unrelated processes of the same user exit after both limits were set.
-    baseline.forEach(child => { try { process.kill(child.pid!, 'SIGKILL'); } catch { /* ended */ } });
-    await settle(200);
-    writeFileSync(go, '');
-    const results = await Promise.all([first, second]);
+    const answer = owner.execute(input(root, forker, [lead.go, lead.ready], 20000), 'answer');
+    const review = owner.execute(input(root, forker, [follow.go, follow.ready], 20000), 'review');
+    for (let i = 0; i < 400 && !(existsSync(lead.ready) && existsSync(follow.ready)); i++) await settle(25);
+    expect([existsSync(lead.ready), existsSync(follow.ready)]).toEqual([true, true]);
+    // Churn: unrelated processes of the same user exit after both limits were set. Their exit is awaited
+    // rather than slept on, because a zombie still counts against the user-ID limit it was counted into.
+    await Promise.all(baseline.map(child => new Promise<void>(resolve => {
+      if (child.exitCode !== null || child.signalCode !== null) { resolve(); return; }
+      child.once('exit', () => resolve());
+      try { process.kill(child.pid!, 'SIGKILL'); } catch { resolve(); }
+    })));
+    // One tree forks into that room first, so the proof never rests on how two trees split it.
+    writeFileSync(lead.go, '');
+    await settle(500);
+    writeFileSync(follow.go, '');
+    const results = await Promise.all([answer, review]);
     const started = results.map((r: { stdout: string }) => JSON.parse(r.stdout).started as number);
     // A tree grew past its own ceiling of 4 after the churn: the user-ID limit is not a tree bound.
     expect(Math.max(...started)).toBeGreaterThan(4);
@@ -735,4 +836,66 @@ it('returns a Six set whose launch has no durable row as never-launched: the row
   const after = six(root);
   await createResourceOwner(ceilings()).attach({ ledgerPath, allocation: after });
   expect(after.open()).toHaveLength(1);
+});
+
+it('reads a single-digit-day start as the same incarnation the census records, and a different start as different', () => {
+  // ps pads "Oct  1"; the census row collapses whitespace. Both must name one incarnation.
+  expect(startIdentity('Thu Oct  1 00:29:51 2026    ')).toBe('Thu Oct 1 00:29:51 2026');
+  expect(startIdentity('Wed Sep 30 23:59:59 2026')).toBe('Wed Sep 30 23:59:59 2026');
+  expect(startIdentity('Thu Oct  1 00:29:51 2026')).not.toBe(startIdentity('Thu Oct  1 00:29:52 2026'));
+  expect(startIdentity(null)).toBe(null);
+});
+
+it('retries an unknown cleanup census inside its bounded wait, instead of ending the wait on the first one', { timeout: 60000 }, async () => {
+  // Live 2026-10-05 (sb-w4-rollback full-suite gate): under the parallel suite a census can be briefly incomplete or
+  // failed (a candidate's working directory or start evidence unreadable while the host is loaded). The bounded wait
+  // ended on the first such reading, so a launch whose members were in fact reclaimed was recorded `unresolved`: its
+  // durable row stayed and its Six debit stayed reserved. Only the census is injected here; the owner, the wait and
+  // the ledger are real. The census call is the one carrying `-ww`; the user-ID process query is a different one.
+  const quiet = (root: string) => { const path = join(root, 'quick.mjs'); writeFileSync(path, 'process.stdout.write("done");'); return path; };
+  const run = async (unknownCensuses: number) => {
+    const root = dir(), ledgerPath = join(root, 'owned-launches.json');
+    let unknown = 0, censuses = 0;
+    const query = async (file: string, args: string[]) => {
+      if (file === '/bin/ps' && args[2] === '-ww') { censuses++; return unknown-- > 0 ? null : ''; }
+      return hostQuery(file, args);
+    };
+    const owner = createResourceOwner({ ...ceilings(), sampleMs: 60000 });
+    await owner.attach({ ledgerPath, allocation: six(root), query });
+    unknown = unknownCensuses;
+    const result = await owner.execute(input(root, quiet(root)), 'maintenance');
+    return { result, censuses, rows: Object.keys(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches) };
+  };
+  // Two unknown readings, then a complete one: the launch is verified gone and its debit returns.
+  const healed = await run(2);
+  expect(healed.censuses).toBeGreaterThanOrEqual(3);
+  expect(healed.result.resources).toMatchObject({ cleanup: 'verified', leakedDescendants: 0, membership: 'working-area-joined',
+    allocation: { state: 'returned' } });
+  expect(healed.rows).toEqual([]);
+  // The other side: a census that never clears is never read as quiescence. Cleanup stays unresolved, and the row
+  // and the debit are kept so recovery settles them later.
+  const blind = await run(Number.MAX_SAFE_INTEGER);
+  expect(blind.result.resources).toMatchObject({ cleanup: 'unresolved', allocation: { state: 'reserved' } });
+  expect(blind.rows).toHaveLength(1);
+});
+
+// Exact self-PID termination, no load generator or serving process.
+it('retains signal and bounded raw stderr while preserving the provider stdout contract', { timeout: 30000 }, async () => {
+  const root = dir();
+  const interrupted = script(root, 'diagnostic-interrupted.mjs', `process.stdout.write('partial result');
+process.stderr.write('provider interrupted\\n'); setTimeout(() => process.kill(process.pid, 'SIGTERM'), 100);`);
+  const successful = script(root, 'diagnostic-success.mjs', `process.stdout.write('complete'); process.stderr.write('warning');`);
+  const owner = createResourceOwner(ceilings());
+  await owner.attach({});
+  const signal = await owner.execute(input(root, interrupted), 'answer');
+  expect(signal).toMatchObject({ code: null, signal: 'SIGTERM', limited: false, localLimit: null,
+    cancellationReason: null, stdout: 'partial result', rawOutput: 'partial result', rawError: 'provider interrupted\n' });
+  const complete = await owner.execute(input(root, successful), 'answer');
+  expect(complete).toMatchObject({ code: 0, signal: null, limited: false, cancellationReason: null,
+    stdout: 'complete', rawOutput: 'complete', rawError: 'warning' });
+  const oversized = script(root, 'diagnostic-stderr-bound.mjs', `process.stderr.write('x'.repeat(9000)); process.stdout.write('ok');`);
+  expect(await owner.execute(input(root, oversized), 'answer')).toMatchObject({ code: 0, stdout: 'ok',
+    rawError: '[stderr exceeded capture bound; excerpt omitted]' });
+  const stopped = await owner.execute({ ...input(root, successful), stopped: () => true }, 'answer');
+  expect(stopped).toMatchObject({ code: null, signal: null, cancellationReason: 'stopped', stdout: '' });
 });

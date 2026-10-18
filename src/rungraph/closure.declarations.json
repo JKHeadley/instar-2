@@ -8,6 +8,7 @@
     "requiredFacts": {
       "authority": "block",
       "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "recorded-governed-state",
       "criticality": "Owner-record admission cannot itself close a run",
       "failDirection": "closed",
       "preservesInput": "part-two:run-input",
@@ -34,6 +35,7 @@
     "requiredFacts": {
       "authority": "block",
       "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "recorded-governed-state",
       "criticality": "An unreachable proposal cannot become terminal without exact signed exhaustion and settlement evidence",
       "failDirection": "closed",
       "preservesInput": "part-two:run-input",

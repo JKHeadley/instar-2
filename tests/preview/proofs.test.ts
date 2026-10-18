@@ -341,10 +341,10 @@ describe('every critical pipeline step, over its complete population (Rule 38)',
     // A held operation never hides an unreviewed one.
     expect(row(of(held, turn('u6', { sent: 6, sentAt: T0 })), 'send')).toMatchObject({ held: 1, missing: 1, state: 'missing' });
   });
-  it('no business step is exempt: every roster step names a supervisor, and an unobserved requested action is missing with its closed direction', () => {
+  it('no business step is exempt: every roster step names a supervisor, and an unobserved requested action is missing under the reply review\'s open direction', () => {
     const due = turn('requested-action:0', { update: 1.0009765625, sent: 3, sentAt: T0, requestedAction: { items: [{ source: 'u1', quote: 'call Sam', when: 'at 5' }] } });
     const pipeline = coverage({ order: [due], turns: new Map([[due.id, due]]) }, { ...supervisors, stepCheck: true })['requested-action']!;
-    expect(pipeline.failureDirection).toBe('closed');
+    expect(pipeline.failureDirection).toBe('open'); // Rule 95: its send runs the pre-send reply review, which fails open.
     expect(pipeline.rows.map(r => [r.boundary, r.population, r.state])).toEqual([['select-due', 1, 'missing'], ['prepare-packet', 1, 'missing'],
       ['answer', 1, 'missing'], ['send', 1, 'missing']]);
     for (const step of Object.values(CRITICAL_PIPELINES).flatMap(p => p.steps)) expect(step.supervisors.length, step.step).toBeGreaterThan(0);

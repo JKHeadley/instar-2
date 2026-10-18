@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { openPreviewJournal, openQuestionCandidates } from './journal.js';
+import { openPreviewJournal, openQuestionCandidates, REPLY_ACKNOWLEDGEMENT, UNKNOWN_SEND_NOTICE } from './journal.js';
 
 const child = 'tests/preview/journal-summary-crash-child.mjs';
 const key = new Uint8Array(32).fill(7);
@@ -90,19 +90,24 @@ it.each(cuts)('recovers from %s', cut => {
     expect(recovered.status, `${cut}: ${recovered.stderr}`).toBe(0);
     const sends = lines(root, 'sends.log').map(line => JSON.parse(line) as { update: number; text: string });
     // int11's reply-check budget runs from the durable Jev reservation, so a restart after it
-    // finds the budget spent and never repeats the check. Once this fixture's Jev row is durable it is
-    // unsure on every rule, credential included, so Rule 86's secrets exception holds the reply. A cut
-    // before that row leaves no check decided, and build 3 releases the reply once, recorded unavailable.
+    // finds the budget spent and never repeats the check. This fixture's Jev row is unsure on every rule,
+    // credential included: below Jev's confident credential line, so an interrupted review leaves no verdict
+    // and no confident secret finding, and the reply is released once, recorded unavailable (plan #102).
     const interruptedReview = points.indexOf(cut) >= points.indexOf('journal:after:reply-jev-reserve:2')
       && points.indexOf(cut) <= points.indexOf('journal:before:reply-check:3');
-    const heldBySecretFlag = interruptedReview && points.indexOf(cut) >= points.indexOf('journal:after:reply-check:2');
     const uncertainSend = points.indexOf(cut) >= points.indexOf('journal:after:intent:2')
       && points.indexOf(cut) < points.indexOf('journal:after:sent:2');
-    if (!heldBySecretFlag && !uncertainSend) expect(sends.filter(item => item.update === 2), cut).toEqual([
-      { update: 2, text: 'PREVIEW — From your note: Maya has the ORCHID key 731.' },
+    // Recovery's injected clock jumps 100 seconds, but its answer is immediate. The timer is cancelled;
+    // elapsed age alone must never cause an acknowledgement after the recovered answer is ready.
+    expect(sends.filter(item => item.text === REPLY_ACKNOWLEDGEMENT), cut).toEqual([]);
+    const notices = sends.filter(item => item.text === UNKNOWN_SEND_NOTICE);
+    expect(notices, cut).toEqual(uncertainSend ? [{ update: 2, text: UNKNOWN_SEND_NOTICE }] : []);
+    const answers = sends.filter(item => item.text !== REPLY_ACKNOWLEDGEMENT && item.text !== UNKNOWN_SEND_NOTICE);
+    if (!uncertainSend) expect(answers.filter(item => item.update === 2), cut).toEqual([
+      { update: 2, text: 'From your note: Maya has the ORCHID key 731.' },
     ]);
-    else expect(sends.filter(item => item.update === 2).length, cut).toBeLessThanOrEqual(1);
-    expect(new Set(sends.map(item => item.update)).size, cut).toBe(sends.length);
+    else expect(answers.filter(item => item.update === 2).length, cut).toBeLessThanOrEqual(1);
+    expect(new Set(answers.map(item => item.update)).size, cut).toBe(answers.length);
     const journal = read(root);
     try {
       const view = journal.view;
@@ -110,7 +115,8 @@ it.each(cuts)('recovers from %s', cut => {
       expect(new Set(frontiers).size, cut).toBe(frontiers.length);
       expect(view.order.map(item => item.update), cut).toEqual([1, 2]);
       expect(view.order[1]?.accepted, cut).toBe(true);
-      if (!heldBySecretFlag && !uncertainSend) {
+      expect(view.order[1]?.heldNoticeSent, cut).toBeUndefined();
+      if (!uncertainSend) {
         expect(frontiers.at(-1), cut).toBe(2);
         expect(view.summaries.at(-1)?.text, cut).toBe(baselineMemory);
         expect(JSON.stringify(view.people), cut).toBe(baselinePeople);
@@ -119,6 +125,7 @@ it.each(cuts)('recovers from %s', cut => {
         expect(openQuestionCandidates(view).some(item => item.source === view.order[1]?.id), cut).toBe(false);
       } else {
         expect(view.order[1]?.sent, cut).toBeUndefined();
+        expect(view.order[1]?.deliveryNotice?.sent, cut).toBeDefined();
         expect(view.order[1]?.held || view.order[1]?.intent, cut).toBeTruthy();
       }
       expect([...view.summaryReservations.keys()].every(through => through < 2), cut).toBe(true);
@@ -128,10 +135,7 @@ it.each(cuts)('recovers from %s', cut => {
       if (points.indexOf(cut) >= points.indexOf('journal:after:summary:1')
         && points.indexOf(cut) <= points.indexOf('journal:compact:after-reopen:1'))
         expect(frontiers, cut).toContain(1);
-      if (heldBySecretFlag) {
-        expect(['reply check unavailable', 'reply check budget exceeded'], cut).toContain(view.order[1]?.held);
-        expect(view.order[1]?.intent, cut).toBeUndefined();
-      } else if (interruptedReview) expect(view.order[1]?.release?.review, cut).toBe('unavailable');
+      if (interruptedReview) expect(view.order[1]?.release?.review, cut).toBe('unavailable');
     } finally { journal.close(); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 15000);

@@ -90,7 +90,10 @@ it.skip('measures 60 assembled journal turns with real adapters, polling, prompt
     const create=()=>{
       journal=openPreviewJournal(join(root,'journal.encrypted'),OFFLINE_STORAGE_KEY,g);
       return createJournalWorker(journal,{now:()=>now,stopped:()=>false,
-        sources:()=>[...sources,deskStatusSource(readDeskStatus(deskStatus),now,deskStatus)],
+        sources:()=>{
+          const desk=deskStatusSource(readDeskStatus(deskStatus),now,deskStatus);
+          return [...sources,...(desk ? [desk] : [])];
+        },
         prepareModel:input=>prepareJournalEnvelope(input,fixture.model,g.grant,now),
         model:async({id,prepared})=>{
           const result=await route.value.invoke(prepared,{operation:id,deadline:now+180000,

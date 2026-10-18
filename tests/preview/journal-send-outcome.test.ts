@@ -1,13 +1,15 @@
 // Rules 42 and 89: a live send consumes the journal's signed intent and settles as exactly
 // one of accepted, refused or unknown; infrastructure notices never speak as the agent.
 import { expect, it } from 'vitest';
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, sendOutcomeCounts, MODEL_FAILURE_REPLY } from './journal-test-worker.js';
+import { join, resolve } from 'node:path';
+import { createJournalWorker, openPreviewJournal, sendOutcomeCounts, MODEL_FAILURE_REPLY, UNKNOWN_SEND_NOTICE, REFUSED_SEND_NOTICE } from './journal-test-worker.js';
 import { outboundSigner, settleSendOutcome, type SendOutcome } from './outbound-provenance.js';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
+import { createServer } from 'node:net';
+import { loopHealth } from './obligations.js';
 
 const key = new Uint8Array(32).fill(7);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
@@ -16,6 +18,97 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
 const update = (id: number, text = `question ${id}`) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
 const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-send-outcome-')));
+
+// D1c, update 46039703: the live answer already contained its finished follow-up, but the
+// bridge collapsed all native fetch failures to UNKNOWN. Replay its bytes through the real
+// bridge and journal. The local provider exercises both connection refusal and lost receipt.
+it.each(['real-connect-recovery', 'real-connect-persistent', 'real-lost-receipt'])(
+  'recorded D1c follow-up through %s preserves delivery and no-duplicate boundaries', async mode => {
+    const dir = root();
+    const fixture = JSON.parse(readFileSync(new URL('./fixtures/deferral-send-failure-2026-10-08.json', import.meta.url), 'utf8')) as {
+      update: number; deferredUpdate: number; request: string; acknowledgement: string; quote: string;
+      greeting: string; report: string; candidate: string; sendOutcome: { reason: string } };
+    let now = 1791501522043;
+    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, { ...genesis, loopRevisitMs: 15 * 60_000 });
+    let sends = 0, answers = 0;
+    try {
+      const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {},
+        model: async input => input.id.startsWith('obligation:')
+          ? JSON.stringify({ outcome: 'report', report: fixture.report })
+          : input.id.startsWith('summary:')
+            ? JSON.stringify({ summary: 'Earlier turns.', people: [], commitments: [], closed: [], memory: [] })
+            : JSON.stringify({ reply: answers++ === 0 ? fixture.acknowledgement : fixture.greeting, memory: [],
+              ...(answers === 1 ? { openLoops: [{ kind: 'deferral', quote: fixture.quote, waitsOn: 'nothing' }] } : {}) }),
+        send: async input => {
+          sends++;
+          if (sends === 1) return 1;
+          if (input.expectedText === UNKNOWN_SEND_NOTICE) return 3;
+          expect(fixture.candidate).toBe(`PREVIEW — ${input.expectedText}`);
+          const count = join(dir, 'count.json');
+          const request = Buffer.from(JSON.stringify({ method: 'sendMessage', body: { chat_id: input.chat,
+            text: input.text, parse_mode: 'HTML' }, timeoutMs: 10_000 })).toString('base64url');
+          const response = JSON.stringify({ ok: true, result: { message_id: 2, chat: { id: Number(input.chat) },
+            text: input.expectedText } });
+          const child = spawnSync(process.execPath, ['--import', resolve('tests/assembly/telegram-bot-api-round6-transport.mjs'),
+            resolve('src/assembly/telegram-bot-api-bridge.mjs'), request], { input: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+            encoding: 'utf8', timeout: 15_000, env: { ...process.env, INSTAR_ROUND6_FAILURE: mode === 'real-connect-persistent' && sends > 2 ? 'real-connect-recovery' : mode,
+              INSTAR_ROUND6_COUNT_FILE: count, INSTAR_ROUND6_RESPONSE_BASE64: Buffer.from(response).toString('base64') } });
+          expect(child.status, child.stderr).toBe(0);
+          expect(JSON.parse(readFileSync(count, 'utf8'))).toMatchObject({
+            fetches: mode === 'real-lost-receipt' ? 1 : 2,
+            requests: mode === 'real-connect-persistent' && sends === 2 ? 0 : 1 });
+          return classifyTelegramSend(JSON.parse(child.stdout), { chat: input.chat, expectedText: input.expectedText });
+        } });
+      worker.intake([update(fixture.deferredUpdate, fixture.request)]); await worker.drain();
+      now += 25 * 60_000;
+      await worker.workObligations();
+      expect(loopHealth(journal.view, now).awaitingDelivery).toBe(1);
+      expect(sends).toBe(1); // no unsolicited message
+      worker.intake([update(fixture.update, 'hi')]); await worker.drain();
+      expect(sends).toBe(mode === 'real-connect-recovery' ? 2 : 3);
+      expect(loopHealth(journal.view, now)).toMatchObject({ awaitingDelivery: 0,
+        deliveryUnknown: mode === 'real-lost-receipt' ? 1 : 0 });
+      expect(journal.view.order.at(-1)?.sent).toBe(mode === 'real-lost-receipt' ? undefined : 2);
+      if (mode === 'real-lost-receipt')
+        expect(journal.view.sendOutcomes.at(-1)?.reason).toBe(`${fixture.sendOutcome.reason} (UND_ERR_SOCKET)`);
+      journal.close();
+      const reopened = world(dir, () => { throw Error('send repeated'); });
+      await reopened.worker.drain();
+      expect(reopened.seen).toHaveLength(0);
+      reopened.journal.close();
+    } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
+  }, 60_000);
+
+it('persistent native connection refusal stops after one outer retry and remains refused after restart', async () => {
+  const dir = root();
+  try {
+    const w = world(dir, input => {
+      if (input.target?.startsWith('delivery-notice:')) return 99;
+      const count = join(dir, 'count.json');
+      const request = Buffer.from(JSON.stringify({ method: 'sendMessage', body: {}, timeoutMs: 10_000 })).toString('base64url');
+      const child = spawnSync(process.execPath, ['--import', resolve('tests/assembly/telegram-bot-api-round6-transport.mjs'),
+        resolve('src/assembly/telegram-bot-api-bridge.mjs'), request], { input: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        encoding: 'utf8', timeout: 15_000, env: { ...process.env, INSTAR_ROUND6_FAILURE: 'real-connect-persistent',
+          INSTAR_ROUND6_COUNT_FILE: count, INSTAR_ROUND6_RESPONSE_BASE64: Buffer.from('{}').toString('base64') } });
+      expect(child.status, child.stderr).toBe(0);
+      expect(JSON.parse(readFileSync(count, 'utf8'))).toMatchObject({ fetches: 2, requests: 0 });
+      const reply = JSON.parse(child.stdout);
+      expect(reply).toMatchObject({ sent: false, transportErrors: [{ code: 'ECONNREFUSED', syscall: 'connect' }] });
+      return classifyTelegramSend(reply, { chat: genesis.chat, expectedText: 'an answer' });
+    });
+    w.worker.intake([update(1)]); await w.worker.drain();
+    expect(w.seen).toHaveLength(3);
+    expect(w.seen[2]).toMatchObject({ expectedText: REFUSED_SEND_NOTICE });
+    expect(w.journal.view.sendOutcomes).toHaveLength(1);
+    expect(w.journal.view.sendOutcomes[0]).toMatchObject({ outcome: 'refused',
+      reason: expect.stringContaining('ECONNREFUSED/connect') });
+    w.journal.close();
+    const reopened = world(dir, () => { throw Error('terminal refusal repeated'); });
+    await reopened.worker.drain();
+    expect(reopened.seen).toHaveLength(0);
+    reopened.journal.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}, 60_000);
 
 function world(dir: string, send: (input: { target?: string; provenance?: unknown }) => number | null | SendOutcome) {
   const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis);
@@ -37,12 +130,13 @@ const launcher = (dir: string, command: 'status' | 'inspect') => {
 it('keeps a definite refusal distinct from UNKNOWN and from delivery, through the journal, replay and status', async () => {
   const dir = root();
   try {
-    const first = world(dir, () => ({ kind: 'refused', reason: 'telegram 403: Forbidden: bot was blocked by the user' }));
+    const first = world(dir, input => input.target?.startsWith('delivery-notice:') ? 99
+      : ({ kind: 'refused', reason: 'telegram 403: Forbidden: bot was blocked by the user' }));
     first.worker.intake([update(1)]); await first.worker.drain();
     const turn = first.journal.view.order[0]!;
     expect(turn.intent).toBeDefined();
     expect(turn.sent).toBeUndefined();
-    expect(sendOutcomeCounts(first.journal.view)).toMatchObject({ accepted: 0, refused: 1, unknown: 0,
+    expect(sendOutcomeCounts(first.journal.view)).toMatchObject({ accepted: 1, refused: 1, unknown: 0,
       lastRefusal: { target: `reply:${turn.id}`, outcome: 'refused' } });
     first.journal.close();
     // Replay keeps the refusal, and a refused intent is never redispatched.
@@ -55,9 +149,9 @@ it('keeps a definite refusal distinct from UNKNOWN and from delivery, through th
     expect(launcher(dir, 'inspect').reply).toMatchObject({ update: 1, outcome: 'send-refused', refusal: 'telegram 403: Forbidden: bot was blocked by the user' });
     expect(launcher(dir, 'status')).toMatchObject({ unknownSends: 0, sendOutcomes: { refused: 1, unknown: 0 } });
     // The neighbouring case: an unknown dispatch stays UNKNOWN, not refused.
-    const unknown = world(dir, () => ({ kind: 'unknown', reason: 'transport timeout' }));
+    const unknown = world(dir, input => input.target?.startsWith('delivery-notice:') ? 99 : ({ kind: 'unknown', reason: 'transport timeout' }));
     unknown.worker.intake([update(2)]); await unknown.worker.drain();
-    expect(sendOutcomeCounts(unknown.journal.view)).toMatchObject({ accepted: 0, refused: 1, unknown: 1 });
+    expect(sendOutcomeCounts(unknown.journal.view)).toMatchObject({ accepted: 2, refused: 1, unknown: 1 });
     expect(unknown.journal.view.sendOutcomes.map(item => item.outcome)).toEqual(['refused', 'unknown']);
     // The next turn's history labels the earlier answer as refused, never as delivery UNKNOWN.
     const history = JSON.parse(unknown.contexts.at(-1)!).history as { outcome?: string }[];
@@ -77,7 +171,7 @@ it('the too-long notice status view keeps a definite refusal, with its reason, b
     refused.worker.intake([update(1, long)]); await refused.worker.drain();
     expect(refused.journal.view.order[0]?.noticeClass).toBe('too-long-input');
     refused.journal.close();
-    const unknown = world(dir, () => ({ kind: 'unknown', reason: 'transport timeout' }));
+    const unknown = world(dir, input => input.target?.startsWith('delivery-notice:') ? 99 : ({ kind: 'unknown', reason: 'transport timeout' }));
     unknown.worker.intake([update(2, long)]); await unknown.worker.drain();
     expect(unknown.seen).toHaveLength(1); // the refused notice is never re-sent
     unknown.journal.close();
@@ -120,7 +214,7 @@ it('labels a runner notice as infrastructure speech, never as the agent', async 
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, checkOutbound: () => {},
       model: async () => ({ state: 'rejected' as const, failureClass: 'rejected' as const }), send: async () => 3 });
     worker.intake([update(1)]); await worker.drain();
-    expect(journal.view.order[0]?.intent).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`);
+    expect(journal.view.order[0]?.intent).toBe(`${MODEL_FAILURE_REPLY}`);
     expect(journal.view.speakers).toEqual({ agent: 0, infrastructure: 1 });
     journal.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -139,4 +233,223 @@ it('classifies Telegram replies: 4xx ok:false refuses, transport or 5xx is unkno
     .toMatchObject({ kind: 'unknown' });
   expect(settleSendOutcome(null)).toEqual({ kind: 'unknown', reason: 'no receipt' });
   expect(settleSendOutcome(7)).toEqual({ kind: 'accepted', message: 7 });
+});
+
+// w3-sendstall (2026-09-30 17:39, update 969389787): the live reply's sendMessage settled as
+// {"outcome":"unknown","reason":"transport transport"} - the bridge's failure stage was dropped, so the
+// one lost reply could not be told apart as a connection that never opened, a child that died, or a
+// body that never arrived. The reason now keeps the bridge's own closed stage name.
+it('an uncertain send keeps the bridge stage in its recorded reason (the 17:39 "transport transport" row)', () => {
+  const expected = { chat: '7', expectedText: 'hi' };
+  // The recorded row's shape stays readable: no stage reported, no stage invented.
+  expect(classifyTelegramSend({ kind: 'uncertain', limitation: 'transport' }, expected))
+    .toEqual({ kind: 'unknown', reason: 'transport transport' });
+  for (const stage of ['resolver', 'child-exit', 'fetch-timeout', 'fetch-failure', 'body-read', 'invalid-response',
+    'scan-policy', 'scan-budget', 'sealed-capture'])
+    expect(classifyTelegramSend({ kind: 'uncertain', limitation: 'transport', stage }, expected))
+      .toEqual({ kind: 'unknown', reason: `transport transport at ${stage}` });
+  // Only the bridge's closed stage names are recorded, never free text from a reply.
+  expect(classifyTelegramSend({ kind: 'uncertain', limitation: 'transport', stage: 'token 123:abc' }, expected))
+    .toEqual({ kind: 'unknown', reason: 'transport transport' });
+});
+
+it('the real production bridge, refused a connection, proves non-delivery with closed diagnostics', { timeout: 30000 }, async () => {
+  const dir = root();
+  try {
+    // A port that was just free: nothing listens, so the real fetch is refused before any request is written.
+    const probe = createServer();
+    await new Promise<void>(done => probe.listen(0, '127.0.0.1', done));
+    const address = probe.address();
+    if (!address || typeof address === 'string') throw Error('probe port unbound');
+    await new Promise<void>(done => probe.close(() => done()));
+    // The production transport module (untyped .mjs), loaded as the runner loads it.
+    const { createProductionTelegramIO } = await import(new URL('../../scripts/production-boot-io.mjs', import.meta.url).href) as {
+      createProductionTelegramIO: (root: string, captures: { preserve(): boolean; read(): null }, testEndpoint: string) =>
+        { invoke(input: unknown, credential: string): unknown } };
+    const telegram = createProductionTelegramIO(join(dir, '.writer'), { preserve: () => true, read: () => null },
+      `http://127.0.0.1:${address.port}`);
+    const reply = telegram.invoke({ method: 'sendMessage', body: { chat_id: '7', text: 'hi', parse_mode: 'HTML' }, timeoutMs: 5000 },
+      '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+    expect(reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure', sent: false, transportPhase: 'connect-no-write',
+      transportErrors: [{ code: 'ECONNREFUSED', syscall: 'connect' }] });
+    expect(classifyTelegramSend(reply, { chat: '7', expectedText: 'hi' }))
+      .toEqual({ kind: 'not-sent', reason: 'not sent: transport transport at fetch-failure (ECONNREFUSED/connect)' });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// w3-sendunknown (plan #331, observer #134): live replies settle "send-unknown" and are never retried,
+// so the operator may never get the reply and every proof run that hits one waits its full reply
+// timeout (room two 2026-10-02: 4 of 58; group S lost ~30 min to two of them). A send the transport
+// PROVES it never put on the network is not ambiguous: nothing reached Telegram, so it is dispatched
+// once more and, if it still cannot be sent, recorded as a definite non-delivery with its reason.
+// The limit shim's `exit 125` (scripts/limit-exec.sh) and the bridge's `process.exit(2)` both precede
+// their exec/fetch; that exact fork failure was already seen live (the shim's own ordering comment:
+// "a count that rose since it was read made that fork fail: a sent message read UNKNOWN").
+it('tells a send that provably never reached the network apart from one that may have', () => {
+  const expected = { chat: '7', expectedText: 'hi' };
+  // The transport's two pre-network refusals: the host would not start the child, and the launcher
+  // refused before its exec. Both are definite non-deliveries that may be dispatched again.
+  expect(classifyTelegramSend({ kind: 'uncertain', limitation: 'transport', stage: 'spawn-refused', sent: false }, expected))
+    .toEqual({ kind: 'not-sent', reason: 'not sent: transport transport at spawn-refused' });
+  expect(classifyTelegramSend({ kind: 'uncertain', limitation: 'transport', stage: 'launch-refused', sent: false }, expected))
+    .toEqual({ kind: 'not-sent', reason: 'not sent: transport transport at launch-refused' });
+  // The neighbours, replayed from the shapes the live transport actually records: every one of these
+  // may have reached Telegram, so every one stays UNKNOWN and is never repeated.
+  for (const stage of ['fetch-failure', 'fetch-timeout', 'child-exit', 'body-read', 'invalid-response'])
+    expect(classifyTelegramSend({ kind: 'uncertain', limitation: 'transport', stage }, expected))
+      .toEqual({ kind: 'unknown', reason: `transport transport at ${stage}` });
+  // Only `sent: false` is proof. A missing field, a true field, or a non-boolean is never read as one.
+  for (const sent of [undefined, true, 'false', 0, null])
+    expect(classifyTelegramSend({ kind: 'uncertain', limitation: 'transport', stage: 'child-exit', sent }, expected))
+      .toEqual({ kind: 'unknown', reason: 'transport transport at child-exit' });
+  // A provider answer is never not-sent, whatever it says: the call was made.
+  expect(classifyTelegramSend({ kind: 'response', status: 502, bytes: 'gateway', sent: false }, expected))
+    .toEqual({ kind: 'unknown', reason: 'telegram status 502' });
+  expect(settleSendOutcome({ kind: 'not-sent', reason: 'not sent: transport transport at launch-refused' }))
+    .toEqual({ kind: 'not-sent', reason: 'not sent: transport transport at launch-refused' });
+});
+
+it('the real production transport, refused before its network call, states the send was never made', { timeout: 30000 }, async () => {
+  const dir = root();
+  try {
+    // A port that was just free, so there is provably nothing to reach even if a request were written.
+    const probe = createServer();
+    await new Promise<void>(done => probe.listen(0, '127.0.0.1', done));
+    const address = probe.address();
+    if (!address || typeof address === 'string') throw Error('probe port unbound');
+    await new Promise<void>(done => probe.close(() => done()));
+    const { createProductionTelegramIO } = await import(new URL('../../scripts/production-boot-io.mjs', import.meta.url).href) as {
+      createProductionTelegramIO: (root: string, captures: { preserve(): boolean; read(): null }, testEndpoint: string) =>
+        { invoke(input: unknown, credential: string): unknown } };
+    const telegram = createProductionTelegramIO(join(dir, '.writer'), { preserve: () => true, read: () => null },
+      `http://127.0.0.1:${address.port}`);
+    // A method the real bridge refuses at its own validation, strictly above its fetch: exit 2. On a host
+    // whose /bin/sh cannot apply the shim's process limit the shim refuses first with exit 125 — the same
+    // class, which is the point: both exit codes prove the network call was never made. The timeout stays
+    // generous so a loaded host cannot turn this into the ambiguous timeout-kill case instead.
+    const reply = telegram.invoke({ method: 'deleteMessage', body: { chat_id: '7', message_id: 1 }, timeoutMs: 20000 },
+      '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+    expect(reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'launch-refused', sent: false });
+    expect(classifyTelegramSend(reply, { chat: '7', expectedText: 'hi' }))
+      .toEqual({ kind: 'not-sent', reason: 'not sent: transport transport at launch-refused' });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('dispatches a never-sent reply once more and accepts it; a repeat proof is recorded refused, not UNKNOWN', async () => {
+  const dir = root();
+  try {
+    const neverSent = { kind: 'not-sent' as const, reason: 'not sent: transport transport at launch-refused' };
+    // One proof, then the provider accepts: the operator gets the reply instead of silence.
+    let call = 0;
+    const once = world(dir, () => (++call === 1 ? neverSent : 11));
+    once.worker.intake([update(1)]); await once.worker.drain();
+    expect(once.seen).toHaveLength(2); // dispatched again, never a third time
+    expect(once.journal.view.order[0]?.sent).toBe(11);
+    expect(once.journal.view.sendOutcomes).toEqual([]); // nothing to record: it was delivered
+    expect(sendOutcomeCounts(once.journal.view)).toMatchObject({ accepted: 1, refused: 0, unknown: 0, unknownReasons: {} });
+    once.journal.close();
+    // A second proof settles as a definite non-delivery with its reason, and is never dispatched a third time.
+    const twice = world(dir, input => input.target?.startsWith('delivery-notice:') ? 99 : neverSent);
+    twice.worker.intake([update(2)]); await twice.worker.drain();
+    expect(twice.seen).toHaveLength(3);
+    expect(twice.seen[2]).toMatchObject({ expectedText: REFUSED_SEND_NOTICE });
+    const turn = twice.journal.view.order[1]!;
+    expect(turn.sent).toBeUndefined();
+    expect(twice.journal.view.sendOutcomes).toEqual([{ target: `reply:${turn.id}`, outcome: 'refused',
+      reason: neverSent.reason, at: 1000 }]);
+    expect(sendOutcomeCounts(twice.journal.view)).toMatchObject({ accepted: 2, refused: 1, unknown: 0, unknownReasons: {},
+      lastRefusal: { target: `reply:${turn.id}`, outcome: 'refused', reason: neverSent.reason }, lastUnknown: null });
+    twice.journal.close();
+    // Replay keeps that refusal and never dispatches the intent again.
+    const replayed = world(dir, () => { throw Error('send repeated'); });
+    await replayed.worker.drain();
+    expect(replayed.seen).toHaveLength(0);
+    expect(sendOutcomeCounts(replayed.journal.view)).toMatchObject({ refused: 1, unknown: 0 });
+    replayed.journal.close();
+    // The operator views agree: refused, with the reason that says it was never sent.
+    expect(launcher(dir, 'inspect').reply).toMatchObject({ update: 2, outcome: 'send-refused', refusal: neverSent.reason });
+    expect(launcher(dir, 'status')).toMatchObject({ unknownSends: 0,
+      sendOutcomes: { accepted: 2, refused: 1, unknown: 0, unknownReasons: {}, lastUnknown: null } });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}, 60000);
+
+it('an ambiguous send is dispatched exactly once, and status names why it is UNKNOWN', async () => {
+  const dir = root();
+  try {
+    // The live shape: a transport failure that may already have reached Telegram. It is never repeated.
+    const ambiguous = world(dir, input => input.target?.startsWith('delivery-notice:') ? 99 : classifyTelegramSend(
+      { kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure' }, { chat: '7654321', expectedText: 'x' }));
+    ambiguous.worker.intake([update(1)]); await ambiguous.worker.drain();
+    expect(ambiguous.seen).toHaveLength(2);
+    expect(ambiguous.seen[1]).toMatchObject({ expectedText: UNKNOWN_SEND_NOTICE });
+    const turn = ambiguous.journal.view.order[0]!;
+    expect(turn.sent).toBeUndefined();
+    expect(sendOutcomeCounts(ambiguous.journal.view)).toMatchObject({ accepted: 1, refused: 0, unknown: 1,
+      unknownReasons: { 'transport transport at fetch-failure': 1 },
+      lastUnknown: { target: `reply:${turn.id}`, outcome: 'unknown', reason: 'transport transport at fetch-failure' } });
+    ambiguous.journal.close();
+    // A second UNKNOWN with the same reason counts beside the first; a different reason is its own row.
+    const again = world(dir, input => input.target?.startsWith('delivery-notice:') ? 99 : ({ kind: 'unknown' as const, reason: 'transport transport at fetch-failure' }));
+    again.worker.intake([update(2)]); await again.worker.drain();
+    const other = world(dir, input => input.target?.startsWith('delivery-notice:') ? 99 : ({ kind: 'unknown' as const, reason: 'receipt differs from intent' }));
+    other.worker.intake([update(3)]); await other.worker.drain();
+    expect(sendOutcomeCounts(other.journal.view)).toMatchObject({ unknown: 3,
+      unknownReasons: { 'transport transport at fetch-failure': 2, 'receipt differs from intent': 1 } });
+    other.journal.close(); again.journal.close();
+    // The desk reads the reasons from the status pull, with no journal dump.
+    expect(launcher(dir, 'status')).toMatchObject({ unknownSends: 3,
+      sendOutcomes: { unknown: 3, unknownReasons: { 'transport transport at fetch-failure': 2, 'receipt differs from intent': 1 },
+        lastUnknown: { outcome: 'unknown', reason: 'receipt differs from intent' } } });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}, 60000);
+
+// cint-L34 review MUST-FIX 1: ENOBUFS arrives AFTER the child started and the provider answered. The
+// bridge admits a body up to 2 MiB and JSON-encodes it, so escaping can overflow the parent's own
+// 2 MiB stdout bound. That send reached Telegram: it must settle UNKNOWN and never be dispatched again.
+it('a reply whose provider answer overflows the transport output is UNKNOWN, sent once, and not retried on reopen', { timeout: 60000 }, async () => {
+  const dir = root();
+  // The provider runs in its own process: the production send waits synchronously, so an in-process
+  // server could not answer. Each request is counted on its stdout.
+  const provider = spawn(process.execPath, ['--input-type=module', '-e', `
+    import { createServer } from 'node:http';
+    let count = 0;
+    const server = createServer((req, res) => { count++; req.resume();
+      res.end(JSON.stringify({ ok: true, result: { message_id: count, chat: { id: 7654321 }, text: 'an answer',
+        padding: '"'.repeat(600000) } })); console.log('request ' + count); });
+    server.listen(0, '127.0.0.1', () => console.log('port ' + server.address().port));`], { stdio: ['ignore', 'pipe', 'inherit'] });
+  try {
+    let output = '';
+    provider.stdout.on('data', data => { output += String(data); });
+    while (!/port \d+/.test(output)) await new Promise(done => setTimeout(done, 20));
+    const port = /port (\d+)/.exec(output)![1];
+    const { createProductionTelegramIO } = await import(new URL('../../scripts/production-boot-io.mjs', import.meta.url).href) as {
+      createProductionTelegramIO: (root: string, captures: { preserve(): boolean; read(): null }, testEndpoint: string) =>
+        { invoke(input: unknown, credential: string): unknown } };
+    const telegram = createProductionTelegramIO(join(dir, '.writer'), { preserve: () => true, read: () => null },
+      `http://127.0.0.1:${port}`);
+    const replies: unknown[] = [];
+    const first = world(dir, input => {
+      if (input.target?.startsWith('delivery-notice:')) return 99;
+      const reply = telegram.invoke({ method: 'sendMessage', body: { chat_id: '7654321', text: 'an answer' }, timeoutMs: 20000 },
+        '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+      replies.push(reply);
+      return classifyTelegramSend(reply, { chat: '7654321', expectedText: 'an answer' });
+    });
+    first.worker.intake([update(1)]); await first.worker.drain();
+    expect(replies).toEqual([{ kind: 'uncertain', limitation: 'transport', stage: 'child-exit' }]);
+    expect(first.seen).toHaveLength(2);
+    expect(first.seen[1]).toMatchObject({ expectedText: UNKNOWN_SEND_NOTICE });
+    expect(first.journal.view.order[0]?.sent).toBeUndefined();
+    expect(sendOutcomeCounts(first.journal.view)).toMatchObject({ accepted: 1, refused: 0, unknown: 1,
+      unknownReasons: { 'transport transport at child-exit': 1 } });
+    first.journal.close();
+    // Reopened, the UNKNOWN intent is never dispatched again.
+    const reopened = world(dir, () => { throw Error('send repeated'); });
+    await reopened.worker.drain();
+    expect(reopened.seen).toHaveLength(0);
+    expect(sendOutcomeCounts(reopened.journal.view)).toMatchObject({ refused: 0, unknown: 1 });
+    reopened.journal.close();
+    await new Promise(done => setTimeout(done, 100));
+    expect(output.match(/request \d+/g)).toEqual(['request 1']); // exactly one physical request
+  } finally { provider.kill(); rmSync(dir, { recursive: true, force: true }); }
 });

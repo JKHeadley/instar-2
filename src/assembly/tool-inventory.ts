@@ -63,6 +63,9 @@ export const DEVELOPMENT_TOOLS: readonly DevelopmentTool[] = freeze([
     packageScripts: [], grants: [], feature: 'self-hosting' },
   { id: 'repository-check', phase: 'review', run: { kind: 'process', argv: ['node'] },
     params: { pattern: path('scripts/check-[a-z0-9-]+\\.mjs'), max: 1 }, packageScripts: [], grants: [], feature: 'self-hosting' },
+  // Merges a split run's two half reports and runs the report-reading checks once over the whole suite.
+  { id: 'split-report-checks', phase: 'review', run: { kind: 'process', argv: ['node', 'scripts/split-checks.mjs'] },
+    params: { pattern: path('[A-Za-z0-9_.-][A-Za-z0-9_./-]*\\.json'), max: 2 }, packageScripts: ['test:split-checks'], grants: [], feature: 'self-hosting' },
   { id: 'register-check', phase: 'review', run: { kind: 'process', argv: ['node', 'scripts/build-register.mjs', '--check'] }, params: null,
     packageScripts: ['register:check'], grants: [], feature: 'self-hosting' },
   { id: 'register-generate', phase: 'package', run: { kind: 'process', argv: ['node', 'scripts/build-register.mjs'] }, params: null,
@@ -71,6 +74,8 @@ export const DEVELOPMENT_TOOLS: readonly DevelopmentTool[] = freeze([
     packageScripts: [], grants: [], feature: 'local-capability-packages' },
   { id: 'install-package', phase: 'install', run: { kind: 'port', port: 'installLocalCapability' }, params: null, options: packageOptions,
     packageScripts: [], grants: ['local-install'], feature: 'local-capability-packages' },
+  { id: 'install-media', phase: 'install', run: { kind: 'process', argv: ['node', 'scripts/install-local-media.mjs'] }, params: null,
+    packageScripts: ['install:media'], grants: ['local-install'], feature: 'media-understanding' },
   { id: 'journal-migrate', phase: 'migrate', run: { kind: 'process', argv: loaded('tests/preview/journal-migrate.mjs') }, params: null,
     subcommands: {
       export: [option('old-root', 'root'), option('export-file', 'file'), option('bot-id', 'account'), option('chat-id', 'account'),

@@ -1,0 +1,2 @@
+{"n":1,"tool":"Bash","input":{"command":"echo one","description":"Echo \"one\""},"decision":"allow","effective":"allow","reason":"ordinary in-scope operation"}
+{"n":2,"tool":"Bash","input":{"command":"echo two","description":"Echo \"two\""},"decision":"allow","effective":"allow","reason":"ordinary in-scope operation"}

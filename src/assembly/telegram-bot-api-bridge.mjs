@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { subscribe } from 'node:diagnostics_channel';
 import {
   closeSync, constants, existsSync, fsyncSync, linkSync, lstatSync, openSync,
   readFileSync, unlinkSync, writeSync,
@@ -34,7 +35,8 @@ if (testEndpoint !== undefined && (token !== TEST_TOKEN || !testMatch
   || Number(testMatch[1]) < 1 || Number(testMatch[1]) > 65535)) process.exit(2);
 // answerCallbackQuery only clears a pressed button with a short toast; it carries no message.
 const validMethod = request?.method === 'getMe' || request?.method === 'getUpdates' || request?.method === 'sendMessage'
-  || request?.method === 'answerCallbackQuery';
+  || request?.method === 'answerCallbackQuery' || request?.method === 'setMessageReaction' || request?.method === 'sendChatAction'
+  || request?.method === 'getChat' || request?.method === 'getChatMemberCount' || request?.method === 'getChatMember';
 const identityRequestPresent = request?.method !== 'getMe' || (
   typeof request.captureDirectory === 'string' && request.captureDirectory.length > 0
   && record(request.identityBinding));
@@ -43,8 +45,8 @@ if (!/^[0-9]+:[A-Za-z0-9_-]{20,}$/.test(token) || !validMethod
   || !Number.isSafeInteger(request.timeoutMs) || request.timeoutMs <= 0
   || !identityRequestPresent) process.exit(2);
 
-function uncertain(stage, limitation = 'transport') {
-  process.stdout.write(JSON.stringify({ kind: 'uncertain', limitation, stage }));
+function uncertain(stage, limitation = 'transport', details = {}) {
+  process.stdout.write(JSON.stringify({ kind: 'uncertain', limitation, stage, ...details }));
 }
 
 if (request.method === 'getMe' && (!Number.isSafeInteger(request.identityBinding.id)
@@ -242,7 +244,7 @@ function scanCredential(bytes) {
 // complete outbound body before the irreversible network call, including the
 // bounded representations above. Other credentials need exact evidence from
 // protected custody; a credential-shaped string alone cannot block a send.
-if (request.method === 'sendMessage') {
+if (request.method === 'sendMessage' || request.method === 'setMessageReaction' || request.method === 'sendChatAction') {
   const outgoing = JSON.stringify(request.body);
   if (scanCredential(outgoing) !== null) {
     uncertain('scan-policy'); process.exit(0);
@@ -293,21 +295,84 @@ function sealIdentity(bytes, directory) {
     byteLength: Buffer.byteLength(bytes, 'utf8') };
 }
 
+// Only connection setup failures prove that no HTTP request reached Telegram. A reset,
+// response timeout or missing cause can follow a delivered send and must never be repeated.
+// Node can aggregate failed IPv4/IPv6 connects: every member must prove the same thing.
+function connectionNeverOpened(cause, depth = 0) {
+  if (!cause || depth > 2) return false;
+  if (cause instanceof AggregateError)
+    return cause.errors.length > 0 && cause.errors.length <= 8
+      && cause.errors.every(error => connectionNeverOpened(error, depth + 1));
+  return cause.code === 'UND_ERR_CONNECT_TIMEOUT'
+    || (cause.code === 'ECONNREFUSED' || cause.code === 'ETIMEDOUT') && cause.syscall === 'connect'
+    || (cause.code === 'ENOTFOUND' || cause.code === 'EAI_AGAIN') && cause.syscall === 'getaddrinfo';
+}
+
+// Never expose error messages, URLs, addresses, stacks or arbitrary codes: they can contain
+// the bot credential. These diagnostics inform the reason; only the proof above permits retry.
+const TRANSPORT_CODES = new Set(['ECONNRESET', 'ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT',
+  'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET', 'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT', 'UND_ERR_ABORTED', 'EPIPE']);
+const TRANSPORT_SYSCALLS = new Set(['connect', 'getaddrinfo', 'read', 'write']);
+function transportErrors(error, depth = 0) {
+  if (!error || depth > 3) return [];
+  if (error instanceof AggregateError)
+    return error.errors.slice(0, 8).flatMap(item => transportErrors(item, depth + 1)).slice(0, 8);
+  if (TRANSPORT_CODES.has(error.code)) return [{ code: error.code,
+    ...(TRANSPORT_SYSCALLS.has(error.syscall) ? { syscall: error.syscall } : {}) }];
+  return transportErrors(error.cause, depth + 1);
+}
+
+// This child owns one fetch at a time. Observe the native connector, before fetch wraps its
+// exception tree. connectError means TCP/TLS setup failed; sendHeaders is published before
+// the first request write. Never retain channel payloads (they contain credentials/addresses).
+let connectionPhase;
+subscribe('undici:client:beforeConnect', () => { if (connectionPhase) connectionPhase.pending++; });
+subscribe('undici:client:connectError', () => {
+  if (connectionPhase) { connectionPhase.pending--; connectionPhase.failed = true; }
+});
+subscribe('undici:client:connected', () => { if (connectionPhase) connectionPhase.opened = true; });
+subscribe('undici:client:sendHeaders', () => { if (connectionPhase) connectionPhase.writing = true; });
+const observedNeverSent = () => connectionPhase.failed && connectionPhase.pending === 0
+  && !connectionPhase.opened && !connectionPhase.writing;
+
 let provider;
-try {
-  provider = await fetch(`${testEndpoint ?? 'https://api.telegram.org'}/bot${token}/${request.method}`, {
-    method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(request.body), signal: AbortSignal.timeout(request.timeoutMs),
-  });
-} catch (error) {
-  const timeout = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
-  uncertain(timeout ? 'fetch-timeout' : 'fetch-failure', timeout ? 'timeout' : 'transport');
-  process.exit(0);
+const signal = AbortSignal.timeout(request.timeoutMs);
+for (let attempt = 0; attempt < 2; attempt++) {
+  connectionPhase = { pending: 0, failed: false, opened: false, writing: false };
+  try {
+    provider = await fetch(`${testEndpoint ?? 'https://api.telegram.org'}/bot${token}/${request.method}`, {
+      method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(request.body), signal,
+    });
+    break;
+  } catch (error) {
+    // Stay inside the original physical admission and elapsed bound, including on replicated
+    // installations. No second dispatch claim, renewed timeout, or ambiguous-send retry.
+    const phaseProved = observedNeverSent();
+    const neverSent = phaseProved || !connectionPhase.opened && !connectionPhase.writing
+      && connectionNeverOpened(error?.cause);
+    if (attempt === 0 && !signal.aborted && neverSent) continue;
+    const timeout = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+    // All earlier attempts continued only on the same proof. A later timeout/reset cannot
+    // inherit an earlier connect refusal: it must independently prove non-delivery.
+    const diagnostics = transportErrors(error);
+    uncertain(timeout ? 'fetch-timeout' : 'fetch-failure', timeout ? 'timeout' : 'transport', {
+      ...(neverSent ? { sent: false } : {}),
+      ...(phaseProved ? { transportPhase: 'connect-no-write' } : {}),
+      ...(diagnostics.length ? { transportErrors: diagnostics } : {}),
+    });
+    process.exit(0);
+  }
 }
 
 let bytes;
 try { bytes = await provider.text(); }
-catch { uncertain('body-read'); process.exit(0); }
+catch (error) {
+  const diagnostics = transportErrors(error);
+  uncertain('body-read', 'transport', diagnostics.length ? { transportErrors: diagnostics } : {});
+  process.exit(0);
+}
 
 if (typeof bytes !== 'string' || Buffer.byteLength(bytes, 'utf8') > REPRESENTATION_POLICY.maximumBytes) {
   uncertain('scan-budget'); process.exit(0);
