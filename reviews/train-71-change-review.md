@@ -24,6 +24,7 @@ Decision: train-71-B | Create branch directly at exact live 70e262c9fcd15535cb12
 Decision: train-71-C | No product conflict or omitted head; exact requested head is an ancestor. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-71-PROGRESS.md
 Decision: train-71-D | Apply explicit WSL exceptions only to unchanged host-dependent tests and unavailable Studio report paths; report them without claiming native acceptance. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-71-PROGRESS.md
 Decision: train-71-desk | Use the downloaded repin/build/rehash/replay chain and existing register generator; change no guard constant or conformance declaration. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-71-PROGRESS.md
+Decision: train-71-shared-repair | Register replay refuses the expired dark step-check deadline. Existing shared repair bbc554cb1ebb6d50850ea78b6db2237c9fa5a816 is outside the brief's exact reviewed membership; request the desk owning-repair decision rather than author a competing fix, merge an unreviewed head or override the clock. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-71-PROGRESS.md
 Prompt review: No added model-facing instruction, parser or semantic disposition. Replay the member's captured 6234450 tool/result/final shapes and existing recorded uncertain summary, Jev unsure/undecided, reply review, delivered reply and empty-context shapes through existing tests; no live delivery claim.
 
 ## Closing block
