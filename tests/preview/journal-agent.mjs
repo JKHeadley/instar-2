@@ -88,7 +88,7 @@ import { credentialDisplayLabel } from './credential-display.js';
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
 import { createTelegramMediaCustody, journalMediaSource, telegramInboundMedia } from './telegram-media.js';
 import { createLocalTranscriber } from '../../scripts/local-transcriber.mjs';
-import { prepareMediaInput, invokeMediaTurn, protectMediaBytes } from './media-understanding.mjs';
+import { prepareMediaInput, invokeMediaTurn, protectMediaBytes, openConversationMedia } from './media-understanding.mjs';
 import { createMediaAdmission } from './media-admission.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery, sessionLoginNotices, sessionLoginStatus } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
@@ -2027,7 +2027,8 @@ async function main() {
       invoke: async (toolTurn, notice) => {
         const answer = mediaNotice => invokeSubscription(withWorkspaceNotice(prepared, [notice, mediaNotice].filter(Boolean).join('\n')), id, undefined, undefined, toolTurn, selected);
         return invokeMediaTurn(id, toolTurn, currentMedia, answer,
-          (bytes, source) => protectMediaBytes(bytes, source, custody, heldSecrets));
+          (bytes, source, area) => protectMediaBytes(bytes, source, custody, heldSecrets, { cwd: area,
+            stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive() }));
       } })).result;
     };
     const proofLines = () => {
@@ -2641,6 +2642,8 @@ async function main() {
           contextRecoveryAllowed: () => journal.view.order.every(turn => !turn.intent || turn.sent !== undefined),
           authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
           workingActivity: (operation, claim, phase) => workingActivities.observe(operation, claim, phase),
+          prepareInputFiles: operations => openConversationMedia({ tmp: join(project, '.tmp'), scope: String(topic ?? 'main'), operations,
+            lookup: currentMedia, protect: (bytes, source, area) => protectMediaBytes(bytes, source, custody, heldSecrets, { cwd: area, stopped: stoppedNow }) }),
           currentActionFacts: async operation => JSON.stringify(currentActionFacts(journal.view, wallNow(),
             journal.view.genesis.forum !== true || await verifiedActionAudience(),
             String(journal.view.turns.get(operation)?.thread ?? 'main'), timeZoneOf(options))),
