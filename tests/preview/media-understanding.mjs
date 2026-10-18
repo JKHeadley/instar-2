@@ -5,6 +5,7 @@ import { extname, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { bindBlockingSite } from '../../src/register/governance.js';
 import { concealSecretMaterial } from './reply-check.js';
+import { protectPdf } from './pdf-protection.mjs';
 
 export const MEDIA_UNREADABLE = 'The received file could not be read here. Say so honestly; do not invent its contents.';
 export function voiceNotice(saved) {
@@ -13,22 +14,27 @@ export function voiceNotice(saved) {
     : 'The voice note is saved, but local transcription was unavailable, failed, or interrupted. Say that honestly; do not invent words.';
 }
 
-/** Rule 100: source-bound encrypted media stays authoritative. Only the protected
- * derivative crosses into the harness. Latin-1 is a reversible byte view for binary
- * attachments; UTF-8 documents retain their original encoding and non-ASCII text. */
+/** Rules 4/95/100: fail closed before model consumption, preserving encrypted input.
+ * PDFs must be decoded before protection; searching their container is insufficient. */
 export function protectMediaBytes(bytes, source, custody, heldSecrets) {
   bindBlockingSite(JSON.parse(readFileSync(new URL('./media-understanding.declarations.json', import.meta.url), 'utf8')),
     'preview.media-understanding.protectMediaBytes', [
       { decidesAlone: 'ruled-three', decidesAloneBasis: 'live-secret-leaving', failDirection: 'closed' },
     ]);
+  const protectText = text => {
+    const protectedText = custody.custody({ text, raw: JSON.stringify({ text }), source });
+    if (protectedText.custody?.state === 'failed') throw Error('media credential custody unavailable');
+    const held = heldSecrets();
+    if (held.unavailable !== null) throw Error('media held credentials unavailable');
+    return concealSecretMaterial(protectedText.text, held.values);
+  };
+  // Also checks held-source availability for an empty/image-only PDF.
+  protectText('');
+  if (bytes.subarray(0, 1024).includes(Buffer.from('%PDF-'))) return protectPdf(bytes, protectText, heldSecrets);
   const utf8 = bytes.toString('utf8');
   const encoding = Buffer.from(utf8, 'utf8').equals(bytes) ? 'utf8' : 'latin1';
   const text = bytes.toString(encoding);
-  const protectedText = custody.custody({ text, raw: JSON.stringify({ text }), source });
-  if (protectedText.custody?.state === 'failed') throw Error('media credential custody unavailable');
-  const held = heldSecrets();
-  if (held.unavailable !== null) throw Error('media held credentials unavailable');
-  return Buffer.from(concealSecretMaterial(protectedText.text, held.values), encoding);
+  return Buffer.from(protectText(text), encoding);
 }
 
 /** The caller obtains saved only through custody.open with the current accepted

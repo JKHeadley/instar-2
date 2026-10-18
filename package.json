@@ -35,6 +35,9 @@
     "register:generate": "npm run build && node scripts/build-register.mjs",
     "register:check": "node scripts/build-register.mjs --check"
   },
+  "dependencies": {
+    "mupdf": "1.28.1"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "~5.9.3",
