@@ -1,0 +1,33 @@
+{
+  "provenance": {
+    "root": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/preview-trial-root/proofroom2-q-20261017-085354",
+    "results": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/pipeline/live-proof/results/A-proofroom2-20261017-085433",
+    "recordedCommit": "1577b27a07baae2480aa920dfbd7c4c85d4930ca"
+  },
+  "turns": [
+    {
+      "update": 6234239,
+      "id": "telegram:8989505249:update:6234239",
+      "at": 1792255004057,
+      "text": "Remind me today at 9:52 am to refill the bird feeder",
+      "reply": "Got it — I'll remind you at 9:52 am today to refill the bird feeder. Date 1: 2026-10-17 09:52 (America/Los_Angeles). I will act on this once at 2026-10-17 09:52 (America/Los_Angeles) and send you the result here.",
+      "output": "{\"reasoning\":\"The operator wants a reminder today at 9:52 am to refill the bird feeder. Current time per packet.now/clock is 2026-10-17 09:36 PDT, so 9:52 am today is later today, a specific resolvable time. This is a direct operator request to act at a specific time, so it belongs in dated with remind:true, quoting the whole request. The relative/absolute time '9:52 am' today resolves to 2026-10-17T16:52:00 PDT = 2026-10-17T16:52:00-07:00 -> UTC 2026-10-17T23:52:00.000Z. datedClock.at is 1792255003000 with zone America/Los_Angeles, confirming today is 2026-10-17 PDT (UTC-7). So instant = 2026-10-17T23:52:00.000Z.\\n\\nlastNamedPerson: no person named verbatim in this message, so null. personAttributes: none.\\n\\nNo memory save needed, no conflicting items, no lookup needed - this is a straightforward new reminder request, not a recall question. I should acknowledge the reminder was noted/set up for 9:52am today.\\n\\nNo need for tool calls here since this is a dated/reminder request answerable directly from context (current time is known, request is clear).\\n\\nI'll write a short acknowledgement answer and populate dated with remind:true for this request.\",\"reply\":\"Got it — I'll remind you at 9:52 am today to refill the bird feeder.\",\"dated\":[{\"quote\":\"Remind me today at 9:52 am to refill the bird feeder\",\"when\":\"today at 9:52 am\",\"resolution\":{\"instant\":\"2026-10-17T16:52:00.000Z\",\"at\":1792255003000,\"zone\":\"America/Los_Angeles\"},\"remind\":true}],\"lastNamedPerson\":null,\"personAttributes\":[]}"
+    },
+    {
+      "update": 6234240,
+      "id": "telegram:8989505249:update:6234240",
+      "at": 1792255045613,
+      "text": "Also remind me today at 9:52 am to call the plumber",
+      "reply": "Got it — I'll remind you at 9:52 am today to call the plumber. Date 1: 2026-10-17 09:52 (America/Los_Angeles). I will act on this once at 2026-10-17 09:52 (America/Los_Angeles) and send you the result here. Upcoming: Remind me today at 9:52 am to refill the bird feeder (2026-10-17 09:52).",
+      "output": "{\"reasoning\":\"This is a formatReminder retry: my prior answer's promises declaration was refused because it must quote an exact sentence of the reply verbatim, with 'when' copied from that same sentence. My intended reply sentence is 'Got it — I'll remind you at 9:52 am today to call the plumber.' The promise quote must be this exact sentence, and 'when' must be copied verbatim from within that sentence (not a converted/separate date phrase) — so 'when' should be '9:52 am today', which appears verbatim in the sentence. I'll fix the promises field accordingly. Everything else (dated resolution, reminders, memory) stays the same as before — new reminder for 'call the plumber' at 9:52 am today, distinct from the existing bird feeder reminder, no cancellation language present.\",\"reply\":\"Got it — I'll remind you at 9:52 am today to call the plumber.\",\"dated\":[{\"quote\":\"remind me today at 9:52 am to call the plumber\",\"when\":\"today at 9:52 am\",\"remind\":true,\"resolution\":{\"instant\":\"2026-10-17T16:52:00.000Z\",\"at\":1792255045000,\"zone\":\"America/Los_Angeles\"}}],\"memory\":[],\"cancelReminders\":[],\"promises\":[{\"quote\":\"Got it — I'll remind you at 9:52 am today to call the plumber.\",\"when\":\"9:52 am today\"}],\"lastNamedPerson\":null,\"personAttributes\":[]}"
+    },
+    {
+      "update": 6234241,
+      "id": "telegram:8989505249:update:6234241",
+      "at": 1792255098090,
+      "text": "Actually, cancel the bird feeder one.",
+      "reply": "Done — cancelled the 9:52 am reminder to refill the bird feeder. Your 9:52 am reminder to call the plumber is still active. Upcoming: remind me today at 9:52 am to call the plumber (2026-10-17 09:52).",
+      "output": "{\"reasoning\":\"The operator said \\\"Actually, cancel the bird feeder one.\\\" This refers to the reminder set in turn #6234239: \\\"Remind me today at 9:52 am to refill the bird feeder\\\" (reminder-1f91820188, due 2026-10-17 09:52 PDT). This is a withdrawal of that specific listed commitment/reminder — the operator's own words \\\"cancel the bird feeder one\\\" clearly identify and withdraw it, distinguishing it from the other pending reminder (call the plumber, reminder-e28cf75698), which remains active. Per the obligationDecision guidance, I return cancelDeliveries for the withdrawn commitment. The reminders list shows two reminders due at the same time (9:52 PDT today): one for the bird feeder and one for the plumber. The operator's message clearly withdraws only the bird feeder one, not the plumber one. No tool calls needed — this is a reply/withdrawal decision based on context already provided, not a lookup or external fact question.\\n\\nI should write a short reply confirming the cancellation of the bird feeder reminder, and note the plumber reminder remains active. I'll return cancelDeliveries referencing the commitment/reminder for the bird feeder, quoting the operator's exact withdrawal words.\\n\\nThe commitments list shows id 1 tied to the plumber reminder (waitsOn next-relevant-reply) — but actually looking more carefully, the 'commitments' entry is about the plumber promise reply, not the bird feeder. The 'reminders' list has two ids: reminder-1f91820188 (bird feeder) and reminder-e28cf75698 (plumber). cancelDeliveries should reference the listed commitment id for the bird feeder reminder. Since the dated/reminders items use their own ids like 'reminder-1f91820188', I'll use that as the id per the cancelDeliveries format {id, quote}.\\n\\nQuote: exact operator withdrawal words from this message: \\\"Actually, cancel the bird feeder one.\\\"\",\"reply\":\"Done — cancelled the 9:52 am reminder to refill the bird feeder. Your 9:52 am reminder to call the plumber is still active.\",\"cancelDeliveries\":[{\"id\":\"reminder-1f91820188\",\"quote\":\"Actually, cancel the bird feeder one.\"}]}"
+    }
+  ]
+}
