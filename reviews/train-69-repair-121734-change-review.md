@@ -24,6 +24,8 @@ Prompt finding: 4106b49fff07 | protocol-literal | Existing protocol or fixed out
 Prompt finding: 849db3a6296a | protocol-literal | Existing protocol or fixed output wording imported unchanged; no semantic classifier copied from a fixture — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
 Prompt finding: e8708c7fea24 | protocol-literal | Existing protocol or fixed output wording imported unchanged; no semantic classifier copied from a fixture — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 
+Verification: Typecheck, build and architecture passed; captured cancellation replay passed all 16 cases. Generated publication replayed from 5b18a21156b81e1cb2d09c4b5a7e5b7d86aac80d. Delegated desk repin tools report zero changed pins. Final cheap-check and pinned-test results are in the repair report.
+
 Subject (3 paths): tests/preview/cancel-deliveries-live.test.ts, tests/preview/fixtures/cancel-deliveries-live-2026-10-17.json, tests/preview/journal.ts
 
 ## Closing block
