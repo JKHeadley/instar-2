@@ -181,7 +181,7 @@ it('replays walk update 715676899 with protected readable bytes on the continuin
   try {
     const custody = createSecretCustody(tmp, new Uint8Array(32).fill(7), () => 1000);
     const second = `${capture.updateId}:format-retry`;
-    const opened = openConversationMedia({ tmp, scope: 'topic-4', operations: [capture.updateId, second, 'summary:unrelated'],
+    const opened = await openConversationMedia({ tmp, scope: 'topic-4', operations: [capture.updateId, second, 'summary:unrelated'],
       lookup: (id: string) => id === capture.updateId ? { media: { kind: 'photo', name: 'screenshot.png' }, saved: { bytes: fixture('shapes.png') } } : null,
       protect: (bytes: Buffer, source: string) => protectMediaBytes(bytes, source, custody, () => ({ values: [], unavailable: null })) });
     expect(opened.notices['summary:unrelated']).toBeUndefined();
@@ -200,26 +200,26 @@ it('replays walk update 715676899 with protected readable bytes on the continuin
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
 
-it('keeps the conversation alive with an honest notice when attachment custody fails', () => {
+it('keeps the conversation alive with an honest notice when attachment custody fails', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'conversation-media-refused-'));
   try {
     for (const lookup of [() => { throw Error('custody unavailable'); }, () => ({ media: { kind: 'photo' }, saved: { bytes: Buffer.from('x') } })]) {
-      const opened = openConversationMedia({ tmp, scope: 'topic-4', operations: ['photo'], lookup, protect: () => { throw Error('held secrets unavailable'); } });
+      const opened = await openConversationMedia({ tmp, scope: 'topic-4', operations: ['photo'], lookup, protect: () => { throw Error('held secrets unavailable'); } });
       expect(opened.notices.photo).toContain('could not be read');
       opened.close(); expect(readdirSync(tmp)).toEqual([]);
     }
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
 
-it('sweeps only a finished topic’s crash residue and preserves a concurrent topic’s attachment', () => {
+it('sweeps only a finished topic’s crash residue and preserves a concurrent topic’s attachment', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'conversation-media-topics-'));
   const lookup = () => ({ media: { kind: 'photo' }, saved: { bytes: fixture('shapes.png') } });
   const protect = (bytes: Buffer) => bytes;
   const pathOf = (opened: { notices: Record<string, string> }) => JSON.parse(opened.notices.photo!.match(/: ("[^"]+")\./u)![1]!);
   try {
-    const a = openConversationMedia({ tmp, scope: 'a', operations: ['photo'], lookup, protect });
-    const b = openConversationMedia({ tmp, scope: 'b', operations: ['photo'], lookup, protect });
-    const replacement = openConversationMedia({ tmp, scope: 'a', operations: ['photo'], lookup, protect });
+    const a = await openConversationMedia({ tmp, scope: 'a', operations: ['photo'], lookup, protect });
+    const b = await openConversationMedia({ tmp, scope: 'b', operations: ['photo'], lookup, protect });
+    const replacement = await openConversationMedia({ tmp, scope: 'a', operations: ['photo'], lookup, protect });
     expect(existsSync(pathOf(a))).toBe(false);
     expect(readFileSync(pathOf(b))).toEqual(fixture('shapes.png'));
     expect(readFileSync(pathOf(replacement))).toEqual(fixture('shapes.png'));
@@ -227,17 +227,17 @@ it('sweeps only a finished topic’s crash residue and preserves a concurrent to
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
 
-it('runs the shipped host callback and admits its protected image through the real file hook', () => {
+it('runs the shipped host callback and admits its protected image through the real file hook', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'host-session-media-'));
   try {
     mkdirSync(join(tmp, '.tmp')); mkdirSync(join(tmp, 'state'));
     const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
     const expression = host.split('prepareInputFiles: ')[1]!.split(',\n          currentActionFacts:')[0]!;
     const custody = createSecretCustody(tmp, new Uint8Array(32).fill(5), () => 1000);
-    const prepare = Function('join', 'openConversationMedia', 'project', 'topic', 'currentMedia', 'protectMediaBytes', 'custody', 'heldSecrets',
+    const prepare = Function('join', 'openConversationMedia', 'project', 'topic', 'currentMedia', 'protectMediaBytes', 'custody', 'heldSecrets', 'stoppedNow',
       `return (${expression});`)(join, openConversationMedia, tmp, '4', () => ({ media: { kind: 'photo' }, saved: { bytes: fixture('shapes.png') } }),
-      protectMediaBytes, custody, () => ({ values: [], unavailable: null }));
-    const opened = prepare(['telegram:8994258214:update:715676899']);
+      protectMediaBytes, custody, () => ({ values: [], unavailable: null }), () => false);
+    const opened = await prepare(['telegram:8994258214:update:715676899']);
     const notice = opened.notices['telegram:8994258214:update:715676899'];
     const path = JSON.parse(notice.match(/: ("[^"]+")\./u)[1]);
     writeFileSync(join(tmp, 'state/config.json'), JSON.stringify({ workspace: tmp, tmp: join(tmp, '.tmp'), maxCalls: 5, maxWriteBytes: 1048576, operations: [] }));

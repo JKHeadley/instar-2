@@ -1,6 +1,6 @@
 # Change review — extend the dark step-check graduation deadline
 
-Subject base: 26034a856befbfcfec800b59a248edd595dd3308
+Subject base: 70e262c9fcd15535cb126d1e65775d043ffaa944
 Review state: open
 Reviewed content: none
 Outcome: SECOND 72-hour extension of the dark step-check graduation deadline, from 2026-10-18T00:00:00Z to 2026-10-21T00:00:00Z. Graduation itself is the outstanding work; the desk owns opening a graduation item and recording ordered stage evidence or retiring the feature.
@@ -23,11 +23,9 @@ Decision: stepcheck-deadline-second-extension | step-check graduation not yet pr
 
 Decision: stepcheck-review-coverage | Apply reviewed PR 167 metadata to assigned live base 70e262c9 (origin/train-67 is absent), preserve live subscription expiry and both earlier branch promotion decisions, and include generated publication. Merge ordinarily into assigned trains and regenerate their publications. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stepcheck-live-1018-PROGRESS.md
 
+Verification: Typecheck and build passed; 21 targeted files / 222 tests passed. Register regenerated from 4b8954656b4fc935e1a59d92d732338e5558a9a4. Final gate and per-train outcomes are recorded in the stepcheck-live-1018 PROGRESS report.
 
 ## Closing block
-
-Verification: Targeted checks and per-train outcomes are recorded in the stepcheck-live-1018 PROGRESS report.
-Source repair: Reused unchanged source hunks from desk-owned 4b8954656b4fc935e1a59d92d732338e5558a9a4; this review subject base names its actual cherry-pick parent. No new extension decision.
 
 simplestRobustRoute: This is the simplest robust route: change the source deadline and append its owned decision using existing mechanisms, update consuming assertions and documentation, then regenerate dependent pins and publication with the project tools. No new machinery. The existing stage-evidence requirement guards graduation; the existing strict deadline check guards the new end date. No autonomous completion or live protection is claimed.
 80/20: Verify the linked step-check tests, promotion and inventory consumers, register/rulegraph tests, typecheck, architecture, lint, register replay and the desk's pinned ready tests; leave the actual graduation procedure with its recorded desk owner.
