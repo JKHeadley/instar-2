@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { PDFDocument, PDFName } from 'pdf-lib';
-import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { getDocument, OPS } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { tmpdir } from 'node:os';
 import { createTelegramMediaCustody, telegramInboundMedia } from './telegram-media.js';
 import { createMediaAdmission, DEFAULT_EFFECT_POLICY } from './media-admission.js';
@@ -65,7 +65,39 @@ async function decodedPdf(bytes: Buffer): Promise<string> {
   finally { await task.destroy(); }
 }
 
+// Review gap-pdf-1018: page text extraction omits Stamp appearances. The
+// renderer joins these hex fragments into visible glyphs, including held values.
+async function annotationPdf(value: string, printOnly = false, separateRuns = false): Promise<Buffer> {
+  const document = await PDFDocument.load(compressedPdf('Public content'));
+  const font = document.context.register(document.context.obj({ Type: 'Font', Subtype: 'Type1', BaseFont: 'Helvetica' }));
+  const appearance = document.context.register(document.context.flateStream(
+    `BT /F1 12 Tf 10 20 Td [<${Buffer.from(value.slice(0, 12)).toString('hex')}>${separateRuns ? '] TJ [' : ' 0 '}<${Buffer.from(value.slice(12)).toString('hex')}>] TJ ET`,
+    { Type: 'XObject', Subtype: 'Form', BBox: [0, 0, 500, 50], Resources: { Font: { F1: font } } }));
+  const annotation = document.context.register(document.context.obj({ Type: 'Annot', Subtype: 'Stamp',
+    Rect: [50, 600, 550, 650], AP: { N: appearance }, F: printOnly ? 36 : 4 }));
+  document.getPage(0).node.set(PDFName.of('Annots'), document.context.obj([annotation]));
+  return Buffer.from(await document.save({ useObjectStreams: false }));
+}
+
+async function annotationGlyphs(bytes: Buffer): Promise<string> {
+  const task = getDocument({ data: Uint8Array.from(bytes), verbosity: 0,
+    standardFontDataUrl: join(process.cwd(), 'node_modules/pdfjs-dist/standard_fonts/') });
+  const document = await task.promise;
+  try {
+    const operators = await (await document.getPage(1)).getOperatorList({ intent: 'any' });
+    let inAnnotation = false, text = '';
+    for (const [index, operation] of operators.fnArray.entries()) {
+      if (operation === OPS.beginAnnotation) inAnnotation = true;
+      if (operation === OPS.endAnnotation) inAnnotation = false;
+      if (inAnnotation && operation === OPS.showText)
+        text += operators.argsArray[index][0].map((glyph: { unicode?: string } | number) => typeof glyph === 'number' ? '' : glyph.unicode ?? '').join('');
+    }
+    return text;
+  } finally { await task.destroy(); }
+}
+
 it.each(['readable', 'clean-compressed', 'held-compressed', 'held-hex-split', 'credential-compressed', 'credential-hex-split', 'clean-hex-split',
+  'annotation-clean', 'annotation-held', 'annotation-clean-print', 'annotation-held-print', 'annotation-clean-runs', 'annotation-held-runs',
   'metadata-held', 'incremental-held', 'opaque-held', 'opaque-clean', 'opaque-unsupported', 'comment-held', 'wrong-source', 'protection-unavailable', 'custody-unavailable', 'malformed', 'encrypted'])('replays PDF update 6234449 through the shipped custody-to-session callback: %s', async mode => {
   const secret = mode.startsWith('held-') ? held : mode.startsWith('credential-') ? credential : ['metadata-held', 'incremental-held'].includes(mode) ? held : null;
   let pdf = mode === 'malformed' ? Buffer.from('%PDF-1.4\ncorrupt') : secret || ['clean-compressed', 'clean-hex-split'].includes(mode)
@@ -81,6 +113,14 @@ it.each(['readable', 'clean-compressed', 'held-compressed', 'held-hex-split', 'c
     pdf = Buffer.from(await document.save({ useObjectStreams: false }));
   }
   if (mode === 'incremental-held') pdf = incrementalPdf();
+  if (mode.startsWith('annotation-')) {
+    const value = mode.startsWith('annotation-held') ? held : 'Public annotation text';
+    pdf = await annotationPdf(value, mode.endsWith('-print'), mode.endsWith('-runs'));
+    expect(pdf.includes(Buffer.from(value))).toBe(false);
+    expect(pdf.includes(Buffer.from(Buffer.from(value).toString('hex')))).toBe(false);
+    expect(await decodedPdf(pdf)).not.toContain(value);
+    expect(await annotationGlyphs(pdf)).toBe(value);
+  }
   if (mode === 'comment-held') pdf = Buffer.concat([cleanPdf, Buffer.from(`\n% ${held}\n`)]);
   const root = mkdtempSync(join(tmpdir(), 'pdf-session-'));
   try {
@@ -118,7 +158,7 @@ it.each(['readable', 'clean-compressed', 'held-compressed', 'held-hex-split', 'c
     } finally { diagnostics.mockRestore(); }
     try {
       const notice = opened.notices[source];
-      if (['readable', 'clean-compressed', 'clean-hex-split', 'opaque-clean'].includes(mode)) {
+      if (['readable', 'clean-compressed', 'clean-hex-split', 'opaque-clean'].includes(mode) || mode.startsWith('annotation-clean')) {
         const path = JSON.parse(notice.match(/: ("[^"]+")\./u)[1]);
         expect(path.endsWith('.pdf')).toBe(true);
         expect(vi.mocked(hostResources.execute).mock.calls[0]![0].cwd).toBe(dirname(path));
@@ -132,6 +172,7 @@ it.each(['readable', 'clean-compressed', 'held-compressed', 'held-hex-split', 'c
         expect(admitted.decision).toBe('allow');
         const derivative = readFileSync(path);
         expect(derivative).toEqual(pdf);
+        if (mode.startsWith('annotation-clean')) expect(await annotationGlyphs(derivative)).toBe('Public annotation text');
         expect(await decodedPdf(derivative)).toContain(mode === 'readable' ? 'Synthetic PDF fixture' : 'Public meeting Tuesday');
         opened.close(); expect(existsSync(path)).toBe(false);
       } else {
@@ -164,6 +205,25 @@ it('withholds bounded-decoder overflow without exposing parser diagnostics or so
     }
     expect(diagnostics.mock.calls).toEqual([]);
   } finally { diagnostics.mockRestore(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('replays recorded summary, Jev, review and delivered shapes alongside clean and held PDF appearances', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
+    otherShapes: { kind: string; id: string; raw: string }[] };
+  const root = mkdtempSync(join(tmpdir(), 'pdf-recorded-'));
+  try {
+    const custody = createSecretCustody(root, new Uint8Array(32).fill(8), () => 1000);
+    for (const row of recorded.otherShapes) for (const value of ['Public annotation text', held]) {
+      const document = await PDFDocument.load(await annotationPdf(value));
+      // Preserve the captured output exactly, including Unicode and empty replies,
+      // as a decoded PDF string. This is a publication replay, not a model verdict.
+      document.setSubject(row.raw);
+      const bytes = Buffer.from(await document.save({ useObjectStreams: false }));
+      const result = protectMediaBytes(bytes, row.id, custody, () => ({ values: [held], unavailable: null }), { cwd: root });
+      if (value === held) await expect(result, row.kind).rejects.toThrow('PDF protection unresolved');
+      else expect(await result, row.kind).toEqual(bytes);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 it.each(['capacity', 'stopped', 'timeout'])('withholds the derivative when the existing resource owner refuses: %s', async reason => {

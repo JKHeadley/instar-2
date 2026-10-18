@@ -7,7 +7,7 @@ import { PDFDocument, PDFArray, PDFDict, PDFRawStream, PDFString, PDFHexString, 
 
 console.log = console.warn = console.error = () => {};
 try {
-  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const { getDocument, OPS, AnnotationMode } = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const bytes = readFileSync(0);
   if (bytes.length > 20 * 1024 * 1024) throw Error();
   // Older incremental revisions can hold secrets absent from the current xref.
@@ -53,6 +53,19 @@ try {
       // held value by inserting layout whitespace between its encoded fragments.
       append(text.items.map(item => item.str ?? '').join(''));
       append(text.items.map(item => (item.str ?? '') + (item.hasEOL ? '\n' : '')).join(''));
+      // getTextContent omits annotation appearances. Interpret all rendering
+      // intents, including print-only annotations, with the same library that
+      // displays them. PDF.js normalizes Tj/TJ/'/" to showText glyph runs.
+      const operators = await page.getOperatorList({ intent: 'any', annotationMode: AnnotationMode.ENABLE });
+      const runs = [];
+      for (const [offset, operation] of operators.fnArray.entries()) if (operation === OPS.showText) {
+        const run = operators.argsArray[offset][0].map(glyph => typeof glyph === 'number' ? '' : glyph.unicode).join('');
+        append(run);
+        runs.push(run);
+      }
+      // Adjacent text operators may also split a held value; layout spacing is
+      // not a boundary for credential matching.
+      append(runs.join(''));
       page.cleanup();
     }
   } finally { await task.destroy(); }
