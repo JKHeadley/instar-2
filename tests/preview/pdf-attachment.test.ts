@@ -16,9 +16,9 @@ import { openConversationMedia, protectMediaBytes } from './media-understanding.
 // The production runner uses hostResources. This portable host-port fixture runs
 // the actual decoder bytes; Darwin resource enforcement has its own contract suite.
 vi.mock('../../scripts/resource-owner.mjs', () => ({ hostResources: { execute: vi.fn(async (input: {
-  executable: string; args: string[]; stdin: Buffer; timeout: number; maxBytes: number;
+  executable: string; args: string[]; stdin: Buffer; timeout: number; maxBytes: number; cwd: string;
 }) => {
-  const result = spawnSync(input.executable, input.args, { input: input.stdin,
+  const result = spawnSync(input.executable, input.args, { input: input.stdin, cwd: input.cwd,
     timeout: input.timeout, maxBuffer: input.maxBytes, killSignal: 'SIGKILL', env: {} });
   return { code: result.status, limited: !!result.error, stdoutBytes: result.stdout };
 }) } }));
@@ -174,6 +174,9 @@ it.each(['capacity', 'stopped', 'timeout'])('withholds the derivative when the e
       () => ({ values: [], unavailable: null }), { cwd: root })).rejects.toThrow('PDF protection');
     expect(hostResources.execute).toHaveBeenCalledTimes(1);
     expect(vi.mocked(hostResources.execute).mock.calls[0]![1]).toBe('maintenance');
+    const area = vi.mocked(hostResources.execute).mock.calls[0]![0].cwd;
+    expect(area.startsWith(join(root, 'pdf-decode-'))).toBe(true);
+    expect(existsSync(area)).toBe(false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
