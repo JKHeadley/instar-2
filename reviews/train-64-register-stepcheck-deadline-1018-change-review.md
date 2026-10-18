@@ -60,3 +60,7 @@ Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:351 | not-a-d
 Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:355 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
 Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:359 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
 Deferral: tests/preview/requested-report-live.test.ts:17 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+
+simplestRobustRoute: This is the simplest robust route: change the source deadline and append its owned decision using existing mechanisms, update consuming assertions and documentation, then regenerate dependent pins and publication with the project tools. No new machinery. The existing stage-evidence requirement guards graduation; the existing strict deadline check guards the new end date. No autonomous completion or live protection is claimed.
+80/20: Verify the linked step-check tests, promotion and inventory consumers, register/rulegraph tests, typecheck, architecture, lint, register replay and the desk's pinned ready tests; leave the actual graduation procedure with its recorded desk owner.
+VERDICT: author submission; no independent convergence claim — the review desk records its judgment
