@@ -135,7 +135,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/media-understanding.test.ts",
-        "hash": "sha256:b622d360f30989c17e9d7c550019ade5ad35f111c82028870789f1195d330c13"
+        "hash": "sha256:d03329168bdf9bcc06c5a17d95efcefa3e5c3201f3a3af1651e1121f14993bf5"
       }
     },
     {

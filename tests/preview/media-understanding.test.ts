@@ -6,7 +6,7 @@ import { createHostResourceAllocation } from './six-host-resources.js';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 // @ts-expect-error Host-only JavaScript.
-import { withMediaFile, voiceNotice, protectMediaBytes, invokeMediaTurn } from './media-understanding.mjs';
+import { withMediaFile, voiceNotice, protectMediaBytes, invokeMediaTurn, openConversationMedia } from './media-understanding.mjs';
 // @ts-expect-error Host-only JavaScript.
 import { createLocalTranscriber, localMediaCommand } from '../../scripts/local-transcriber.mjs';
 // @ts-expect-error Host resource owner.
@@ -172,4 +172,79 @@ it('replays captured summary, uncertain/undecided Jev, review and delivered/empt
     }
     expect(kinds).toEqual(['summary-writer', 'summary-uncertain', 'jev-undecided', 'jev-unsure', 'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+it('replays walk update 715676899 with protected readable bytes on the continuing-session bridge', async () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/gap-image-1017.json', import.meta.url), 'utf8'));
+  const tmp = mkdtempSync(join(tmpdir(), 'conversation-media-replay-'));
+  try {
+    const custody = createSecretCustody(tmp, new Uint8Array(32).fill(7), () => 1000);
+    const second = `${capture.updateId}:format-retry`;
+    const opened = await openConversationMedia({ tmp, scope: 'topic-4', operations: [capture.updateId, second, 'summary:unrelated'],
+      lookup: (id: string) => id === capture.updateId ? { media: { kind: 'photo', name: 'screenshot.png' }, saved: { bytes: fixture('shapes.png') } } : null,
+      protect: (bytes: Buffer, source: string) => protectMediaBytes(bytes, source, custody, () => ({ values: [], unavailable: null })) });
+    expect(opened.notices['summary:unrelated']).toBeUndefined();
+    const paths = [capture.updateId, second].map(id => JSON.parse(opened.notices[id].match(/: ("[^"]+")\./u)[1]));
+    expect(paths[0]).not.toBe(paths[1]);
+    for (const path of paths) expect(readFileSync(path)).toEqual(fixture('shapes.png'));
+    const { conversationSessionAnswer } = await import('./conversation-session-answer.js');
+    const old = conversationSessionAnswer({ state: 'complete', text: capture.native.input.content, detail: 'recorded', edge: 'recorded', child: 'recorded' }, capture.updateId, () => {});
+    expect(old).toMatchObject({ state: 'complete' });
+    expect(JSON.stringify(old)).toContain('no image-reading capability');
+    expect(opened.notices[capture.updateId]).toContain('Read this file');
+    opened.close();
+    for (const path of paths) expect(existsSync(path)).toBe(false);
+    // Real historical refusal is retained as a refusal to claim vision, never rewritten into a successful proof.
+    expect(capture.delivered).toContain("contents haven't actually been read");
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
+});
+
+it('keeps the conversation alive with an honest notice when attachment custody fails', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'conversation-media-refused-'));
+  try {
+    for (const lookup of [() => { throw Error('custody unavailable'); }, () => ({ media: { kind: 'photo' }, saved: { bytes: Buffer.from('x') } })]) {
+      const opened = await openConversationMedia({ tmp, scope: 'topic-4', operations: ['photo'], lookup, protect: () => { throw Error('held secrets unavailable'); } });
+      expect(opened.notices.photo).toContain('could not be read');
+      opened.close(); expect(readdirSync(tmp)).toEqual([]);
+    }
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
+});
+
+it('sweeps only a finished topic’s crash residue and preserves a concurrent topic’s attachment', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'conversation-media-topics-'));
+  const lookup = () => ({ media: { kind: 'photo' }, saved: { bytes: fixture('shapes.png') } });
+  const protect = (bytes: Buffer) => bytes;
+  const pathOf = (opened: { notices: Record<string, string> }) => JSON.parse(opened.notices.photo!.match(/: ("[^"]+")\./u)![1]!);
+  try {
+    const a = await openConversationMedia({ tmp, scope: 'a', operations: ['photo'], lookup, protect });
+    const b = await openConversationMedia({ tmp, scope: 'b', operations: ['photo'], lookup, protect });
+    const replacement = await openConversationMedia({ tmp, scope: 'a', operations: ['photo'], lookup, protect });
+    expect(existsSync(pathOf(a))).toBe(false);
+    expect(readFileSync(pathOf(b))).toEqual(fixture('shapes.png'));
+    expect(readFileSync(pathOf(replacement))).toEqual(fixture('shapes.png'));
+    a.close(); b.close(); replacement.close(); expect(readdirSync(tmp)).toEqual([]);
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
+});
+
+it('runs the shipped host callback and admits its protected image through the real file hook', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'host-session-media-'));
+  try {
+    mkdirSync(join(tmp, '.tmp')); mkdirSync(join(tmp, 'state'));
+    const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
+    const expression = host.split('prepareInputFiles: ')[1]!.split(',\n          currentActionFacts:')[0]!;
+    const custody = createSecretCustody(tmp, new Uint8Array(32).fill(5), () => 1000);
+    const prepare = Function('join', 'openConversationMedia', 'project', 'topic', 'currentMedia', 'protectMediaBytes', 'custody', 'heldSecrets', 'stoppedNow',
+      `return (${expression});`)(join, openConversationMedia, tmp, '4', () => ({ media: { kind: 'photo' }, saved: { bytes: fixture('shapes.png') } }),
+      protectMediaBytes, custody, () => ({ values: [], unavailable: null }), () => false);
+    const opened = await prepare(['telegram:8994258214:update:715676899']);
+    const notice = opened.notices['telegram:8994258214:update:715676899'];
+    const path = JSON.parse(notice.match(/: ("[^"]+")\./u)[1]);
+    writeFileSync(join(tmp, 'state/config.json'), JSON.stringify({ workspace: tmp, tmp: join(tmp, '.tmp'), maxCalls: 5, maxWriteBytes: 1048576, operations: [] }));
+    const pre = spawnSync(process.execPath, [join(process.cwd(), 'tests/preview/tool-admission-hook.mjs'), 'pre', join(tmp, 'state')], {
+      input: JSON.stringify({ tool_name: 'Read', tool_input: { file_path: path }, tool_use_id: 'read-attached-photo' }), encoding: 'utf8' });
+    expect(pre.status, pre.stderr).toBe(0);
+    expect(readFileSync(path)).toEqual(fixture('shapes.png'));
+    opened.close(); expect(existsSync(path)).toBe(false);
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
