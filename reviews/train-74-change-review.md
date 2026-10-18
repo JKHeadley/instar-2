@@ -26,6 +26,8 @@ Decision: train-74-C | No product conflict and no omitted head. Verify exact liv
 Decision: train-74-D | Run targeted consumers and named journal/pinned checks on WSL in bounded foreground groups; disclose host-dependent checks for Studio verification without modifying their tests or the native declaration. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-74-PROGRESS.md
 Decision: train-74-desk | Use downloaded repin/build/rehash/replay chain and unchanged fixed-context guard. Publish generated artifacts from committed composed sources. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-74-PROGRESS.md
 
+Verification: Composed publication abde19714636dd449980524d2f0fb1d2a0f3ea10 is generated from 5b60f8eae86bc28cf3653e30469696a71acb2c12 (generation sha256:aa78acbcc9657d67152830dc856a1b882eda76d2744f1b6e299c6170f1de8872). Build/typecheck, architecture, wiring and register checks pass. PDF 30/30 and all seven changed-source consumer files pass (413 tests). Default context floor 6/6; plain always-sent answer 22,641 bytes within unchanged 22,959 guard, tool answer 26,123. Unchanged WSL subscription-provider and local-media host cases remain explicitly classified in the report. Journal and final pinned outputs are retained there. No fresh live acceptance claim.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: one ordinary merge of the reviewed head, existing artifact regeneration and targeted consumer/recorded replay tests. No new machinery. Exact base and membership hold start/end guards; existing credential, admission, stop, resource and delivery checks hold the floors. This is an author submission, not an unattended deployed acceptance claim.
