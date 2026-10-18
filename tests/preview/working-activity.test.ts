@@ -21,7 +21,7 @@ it('a current admission and fresh live observation are both required, scoped to 
   bytes += pre('current'); reader.observe('one', 'claim', 'working'); expect(reader.current('one')?.text).toBe('Status: Run the build');
   expect(reader.current('two')).toBeNull();
   now = 10002; expect(reader.current('one')).toBeNull();
-  reader.observe('one', 'claim', 'working'); expect(reader.current('one')).toBeNull();
+  reader.observe('one', 'claim', 'working'); expect(reader.current('one')?.running).toBe(true);
   bytes += post('current'); reader.observe('one', 'claim', 'working'); expect(reader.current('one')).toBeNull();
   bytes += pre('next'); reader.observe('one', null, 'end'); expect(reader.current('one')).toBeNull();
 });
@@ -58,14 +58,15 @@ it('a background launch ending says nothing about its still-running child', () =
   expect(admissionActivity(bytes([launch, ended, child]) + pre('next'), 0, 'async-neighbor')?.text)
     .toBe('Status: Run the build');
 });
-it('fresh polls cannot renew unchanged tool evidence; only advancing admitted work renews liveness', () => {
+it('fresh session observations support an open occurrence, but cannot renew completed work', () => {
   let bytes = '', now = 1;
   const reader = createWorkingActivities({ read: () => bytes, now: () => now });
   reader.observe('one', 'claim', 'start');
   bytes = pre('a'); reader.observe('one', 'claim', 'working');
   expect(reader.current('one')?.text).toBe('Status: Run the build');
   now = 120001; reader.observe('one', 'claim', 'working');
-  expect(reader.current('one')).toBeNull();
+  expect(reader.current('one')).toMatchObject({ running: true, observedAt: now });
+  bytes += post('a'); expect(reader.current('one')).toBeNull();
   bytes += pre('b'); reader.observe('one', 'claim', 'working');
   expect(reader.current('one')?.text).toBe('Status: Run the build');
 });
@@ -82,9 +83,9 @@ it('a failed observation and recovery do not freshen the same stale step', () =>
   let bytes: string | null = '', now = 1;
   const reader = createWorkingActivities({ read: () => bytes, now: () => now });
   reader.observe('one', 'claim', 'start');
-  bytes = pre('old'); reader.observe('one', 'claim', 'working');
+  bytes = pre('old') + post('old'); reader.observe('one', 'claim', 'working');
   now = 20000; bytes = null; reader.observe('one', 'claim', 'working');
-  bytes = pre('old'); reader.observe('one', 'claim', 'working');
+  bytes = pre('old') + post('old'); reader.observe('one', 'claim', 'working');
   expect(reader.current('one')).toBeNull();
 });
 
