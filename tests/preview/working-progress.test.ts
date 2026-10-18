@@ -160,16 +160,31 @@ it('reserves the last reply slot for the answer', async () => {
 });
 
 
-it('final answer waits for an already dispatched progress line, so transport delay cannot invert their order', async () => {
-  const f = fixture(), finishSend = f.holdProgress();
+it.each([
+  { kind: 'long answer', receipt: 10 }, { kind: 'tool count', receipt: 10 },
+  { kind: 'long answer', receipt: null }, { kind: 'tool count', receipt: null },
+])('final $kind never waits for a slow progress transport (receipt=$receipt)', async ({ kind, receipt }) => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/gap-progress-final-2026-10-18.json', import.meta.url), 'utf8'));
+  const answer = capture.turns[kind === 'long answer' ? 1 : 2].answer.split('\n\nFollow-up on "')[0];
+  const f = fixture({ receipt }), finishSend = f.holdProgress();
   try {
     await f.enteredPromise; await vi.advanceTimersByTimeAsync(127000);
     expect(f.sendEntered()).toBe(true); expect(f.progress()).toHaveLength(0);
-    f.release('Done.'); await vi.advanceTimersByTimeAsync(1);
-    expect(f.sent.some(row => row.text === 'Done.')).toBe(false);
-    finishSend(); await f.drain;
-    expect(f.sent.slice(-2).map(row => row.text)).toEqual([WORKING_LIVENESS, 'Done.']);
+    f.release(answer); await vi.advanceTimersByTimeAsync(1);
+    const replies = f.sent.filter(row => row.target?.startsWith('reply:') || row.target?.startsWith('reply-part:'));
+    expect(replies.length).toBeGreaterThan(0);
+    expect(replies.map(row => row.text).join('\n')).toContain(kind === 'long answer' ? '**December**' : 'Byte count: 25 bytes');
+    // Drain itself must finish while the already admitted progress transport is unresolved.
+    let drained = false; void f.drain.then(() => { drained = true; });
+    await vi.advanceTimersByTimeAsync(1); expect(drained).toBe(true);
+    finishSend(); await vi.advanceTimersByTimeAsync(1); await f.drain;
     await vi.advanceTimersByTimeAsync(1200000); expect(f.progress()).toHaveLength(1);
+    expect(f.journal.view.order[0]?.workingProgress?.[0]?.sent).toBe(receipt ?? undefined);
+    // Both accepted and UNKNOWN late progress retain their consumed identity after restart.
+    f.journal.compact(); f.journal.close();
+    const reopened = openPreviewJournal(f.path, f.key);
+    try { await createJournalWorker(reopened, f.ports).drain(); expect(f.progress()).toHaveLength(1); }
+    finally { reopened.close(); }
   } finally { finishSend(); f.release('Done.'); await f.drain; f.journal.close(); }
 });
 
