@@ -1,6 +1,6 @@
 # Change review — extend the dark step-check graduation deadline
 
-Subject base: 70e262c9fcd15535cb126d1e65775d043ffaa944
+Subject base: ea6f5549226ce364740c5b1fb4632c4bb7d26fbb
 Review state: open
 Reviewed content: none
 Outcome: SECOND 72-hour extension of the dark step-check graduation deadline, from 2026-10-18T00:00:00Z to 2026-10-21T00:00:00Z. Graduation itself is the outstanding work; the desk owns opening a graduation item and recording ordered stage evidence or retiring the feature.
@@ -24,6 +24,8 @@ Decision: stepcheck-deadline-second-extension | step-check graduation not yet pr
 Decision: stepcheck-review-coverage | Apply reviewed PR 167 metadata to assigned live base 70e262c9 (origin/train-67 is absent), preserve live subscription expiry and both earlier branch promotion decisions, and include generated publication. Merge ordinarily into assigned trains and regenerate their publications. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stepcheck-live-1018-PROGRESS.md
 
 Verification: Typecheck and build passed; 21 targeted files / 222 tests passed. Register regenerated from 4b8954656b4fc935e1a59d92d732338e5558a9a4. Train-62 integration: ordinary merge of the deadline branch, with publication regenerated from merged source. Final gate and per-train outcomes are recorded in the stepcheck-live-1018 PROGRESS report.
+
+Train-62 publication: rebuilt with the project generator after the ordinary merge; build-register --check, typecheck and the targeted suite passed.
 
 ## Closing block
 
