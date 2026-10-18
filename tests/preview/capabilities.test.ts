@@ -94,13 +94,13 @@ describe('the preview inventory is register input', () => {
     expect(capabilityFindings(inventory, classify, Date.now()).join("|")).toBe("");
     // The moved deadline is the promotion record's, and the README states it.
     expect(promotionOf(PROMOTION_RECORD, 'preview.step-check').deadline?.deadline).toBe(STEP_DEADLINE);
-    expect(new Date(STEP_DEADLINE).toISOString()).toBe('2026-10-18T00:00:00.000Z');
-    expect(readFileSync('tests/preview/README.md', 'utf8')).toContain('its graduation deadline is now 2026-10-18');
+    expect(new Date(STEP_DEADLINE).toISOString()).toBe('2026-10-21T00:00:00.000Z');
+    expect(readFileSync('tests/preview/README.md', 'utf8')).toContain('its graduation deadline is now 2026-10-21');
   });
   it('binds the declared deadline to the promotion record, on both sides (Rule 72)', () => {
     const moved: PromotionEntry = { ...PROMOTION_RECORD[0]!, deadline: STEP_DEADLINE + 86_400_000 } as PromotionEntry;
     expect(capabilityFindings(inventory, classify, NOW, [moved]).join('\n'))
-      .toMatch(/preview\.step-check: Rule 72 — the declared graduation deadline differs from the promotion record's latest \(2026-10-19\)/u);
+      .toMatch(/preview\.step-check: Rule 72 — the declared graduation deadline differs from the promotion record's latest \(2026-10-22\)/u);
     expect(capabilityFindings(inventory, classify, NOW, PROMOTION_RECORD)).toEqual([]);
     // With no record entry the declared deadline stands alone; a record for an ungated capability is a finding.
     expect(capabilityFindings(inventory, classify, NOW, [])).toEqual([]);
@@ -211,7 +211,7 @@ describe('capability rows count only enabled, currently proven protection', () =
     const lines = proofStatusLines(healthy, [...degraded.values()]);
     expect(lines[1]).toMatch(/confirmed, \d+ unconfirmed, 1 dark \(preview\.step-check\)/u);
     expect(lines[1]).not.toMatch(/graduation overdue/u);
-    expect(lines[2]).toBe('Graduation: preview.step-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-10-18 (recorded 2026-10-15).');
+    expect(lines[2]).toBe('Graduation: preview.step-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-10-21 (recorded 2026-10-18).');
   });
   it('graduation stages come from the promotion record; a passed runtime proof without an entry is observed, not recorded', () => {
     const stepProof = { ...posture('step-check-reached', 'healthy'), capability: 'preview.step-check' };
@@ -229,7 +229,7 @@ describe('capability rows count only enabled, currently proven protection', () =
     expect(late.graduation).toMatchObject({ overdue: true, deadlineRecorded: null });
     const lines = proofStatusLines([], [late]);
     expect(lines[1]).toMatch(/graduation overdue: preview\.step-check/u);
-    expect(lines[2]).toMatch(/deadline 2026-10-18, overdue\.$/u);
+    expect(lines[2]).toMatch(/deadline 2026-10-21, overdue\.$/u);
     // No gated row, no graduation line.
     expect(proofStatusLines([], capabilityRows(inventory, base).filter(r => r.graduation === null))).toHaveLength(2);
   });
