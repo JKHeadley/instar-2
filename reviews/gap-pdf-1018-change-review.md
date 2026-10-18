@@ -23,7 +23,7 @@ Decision: gap-pdf-bounded-child | Await attachment preparation and reuse localMe
 Decision: gap-pdf-owning-merge | Merge origin/stepcheck-live-1018 unchanged in policy, resolving only generated publication and the duplicate owning review; no independent deadline repair. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/gap-pdf-1018-PROGRESS.md
 Prompt review: No prompt, model judgment, reply parsing or route-selection changes. Existing recorded PDF refusal and shared-media journal shapes are replayed; synthetic compressed/hex/split and stream fixtures supplement them. A protected file becoming unreadable is reported honestly, never relabeled as model success.
 
-Verification: Typecheck and build pass. Targeted async attachment/media suite: 166 passed with two explicitly excluded host-dependent transcription/confinement tests (their failing initial run is retained). Five direct session importers: 253 passed. Architecture reports only the permitted R105 stale Darwin native self-host certificate; no declaration was changed to conceal it. Source pins and final READY checks are recorded in the local report.
+Verification: Typecheck and build pass. Targeted async attachment/media suite: 166 passed with two explicitly excluded host-dependent transcription/confinement tests (their failing initial run is retained). Five direct session importers: 253 passed. Architecture reports only the permitted R105 stale Darwin native self-host certificate; no declaration was changed to conceal it. Generated register publication pins source commit 732dd71ee05da6c6b91584a3fa27393d036163bc. Source pins and final READY checks are recorded in the local report.
 
 ## Closing block
 
