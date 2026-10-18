@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { agentState, importStorePass } from './channel-source.mjs';
-import { createJournalWorker, openPreviewJournal } from './journal.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, openPreviewJournal } from './journal.js';
 import { memoryHealthLine } from './self-state.js';
 
 const key = new Uint8Array(32).fill(19);
@@ -30,7 +30,8 @@ function world(maxBytes = genesis.maxBytes) {
 }
 
 it('imports only agent-participating Telegram user rows with the stored authenticated sender ID', () => {
-  const w = world(6100); // int12: room for the memory self-description, recall-honesty and person-attribute reply instructions (measured fit 5500); cbuild-2: the always-offered summary and promise decisions and memory search (measured fit 6100)
+  // w3-floorduty (Rules 3, 93): plus the obligation guide's floor form, which now outranks optional evidence under pressure.
+  const w = world(6100 + OBLIGATION_FLOOR_PACKET_BYTES); // int12: room for the memory self-description, recall-honesty and person-attribute reply instructions (measured fit 5500); cbuild-2: the always-offered summary and promise decisions and memory search (measured fit 6100)
   try {
     const path = join(w.statePath, 'telegram-messages.jsonl');
     const original = lines([

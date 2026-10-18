@@ -160,7 +160,7 @@
       "reach": "user",
       "surface": "chat",
       "repeats": {
-        "kind": "no"
+        "kind": "unbounded"
       }
     },
     "standards": [
@@ -221,7 +221,7 @@
       "holdsAgentMemory": "yes",
       "machineScope": {
         "kind": "machine-local",
-        "reason": "Single-machine supported installation (P-08): the preview trial runs on one machine with no enrolled peer, so no replica exists; cross-machine sharing of this store is not built. Compaction writes a verified replacement that retains every original record."
+        "reason": "Single-machine supported installation (P-08): with one machine and no enrolled peer no replica exists. When a second machine is enrolled (the runner's multi-machine posture) this file stays the lease holder's working journal and its sealed bytes are replicated to the other machine and acknowledged before any send (tests/preview/journal-replication.ts). Compaction writes a verified replacement that retains every original record."
       },
       "agreesWith": []
     },
@@ -240,11 +240,23 @@
     "status": "live",
     "requiredFacts": {
       "authority": "block",
-      "decidesAlone": "ruled-three",
-      "criticality": "The operator's stop, and the trial expiry the operator granted in advance, end all model calls and sends; nothing is dispatched after either.",
-      "failDirection": "closed",
-      "preservesInput": "encrypted preview journal: admitted turns stay recorded and pending",
-      "inspectedBy": "PREVIEW-TRIAL-GATES"
+      "inspectedBy": "PREVIEW-TRIAL-GATES",
+      "rungs": [
+        {
+          "decidesAlone": "ruled-three",
+          "decidesAloneBasis": "operator-emergency-stop",
+          "criticality": "The operator's stop ends model calls and sends; the stop port and journal latch are checked before dispatch.",
+          "failDirection": "closed",
+          "preservesInput": "encrypted preview journal: admitted turns stay recorded and pending"
+        },
+        {
+          "decidesAlone": "ruled-three",
+          "decidesAloneBasis": "recorded-governed-state",
+          "criticality": "The expiry replayed from genesis and admitted renewal records ends model calls and sends at now >= expires and latches trial expired durably. A previously recorded expiry stop remains closed. Ordinary capacity never ends polling; admitted input remains recorded.",
+          "failDirection": "closed",
+          "preservesInput": "encrypted preview journal: admitted turns stay recorded and pending"
+        }
+      ]
     },
     "profile": {
       "type": "Profile",
@@ -272,11 +284,23 @@
     "status": "live",
     "requiredFacts": {
       "authority": "block",
-      "decidesAlone": "ruled-three",
-      "criticality": "The operator's stop and the trial expiry the operator granted in advance end polling. A resource ceiling never stops reading: past the turn bound, updates wait in the finite waiting store or at Telegram, so stop and approval presses stay reachable (Rules 14, 15).",
-      "failDirection": "closed",
-      "preservesInput": "Telegram retains unpolled updates; the journal keeps every admitted turn",
-      "inspectedBy": "PREVIEW-TRIAL-GATES"
+      "inspectedBy": "PREVIEW-TRIAL-GATES",
+      "rungs": [
+        {
+          "decidesAlone": "ruled-three",
+          "decidesAloneBasis": "operator-emergency-stop",
+          "criticality": "The operator's stop ends polling; the stop port and journal latch are checked before dispatch.",
+          "failDirection": "closed",
+          "preservesInput": "Telegram retains unpolled updates; the journal keeps every admitted turn"
+        },
+        {
+          "decidesAlone": "ruled-three",
+          "decidesAloneBasis": "recorded-governed-state",
+          "criticality": "The expiry replayed from genesis and admitted renewal records ends polling at now >= expires and latches trial expired durably. A previously recorded expiry stop remains closed. Ordinary capacity never ends polling; admitted input remains recorded.",
+          "failDirection": "closed",
+          "preservesInput": "Telegram retains unpolled updates; the journal keeps every admitted turn"
+        }
+      ]
     },
     "profile": {
       "type": "Profile",
@@ -392,5 +416,51 @@
       82
     ],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.journal.capacityRefused",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "inspectedBy": "PREVIEW-TRIAL-GATES",
+      "rungs": [
+        {
+          "decidesAlone": "ruled-three",
+          "decidesAloneBasis": "spend-past-a-cap",
+          "criticality": "Model-call reservations refuse at maxCalls; paid Jev reservations refuse at maxReplies, before the durable reservation can authorize the call.",
+          "failDirection": "closed",
+          "preservesInput": "encrypted preview journal: the unspent turn stays recorded and pending, so a raise of the allowance resumes it; nothing is discarded"
+        },
+        {
+          "decidesAlone": "ruled-three",
+          "decidesAloneBasis": "recorded-governed-state",
+          "criticality": "The replayed genesis and cap raises set maxTurns and maxReplies. Ordinary turn intake and reply intents refuse at those bounds; reserve admission and limited replies enforce the fixed MINIMAL_RESERVE policy against journaled use. These are non-spend capacity decisions, not monetary spend.",
+          "failDirection": "closed",
+          "preservesInput": "encrypted preview journal: the unspent turn stays recorded and pending, so a raise of the allowance resumes it; nothing is discarded"
+        }
+      ]
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "money",
+      "reversibility": "irreversible",
+      "reach": "operator",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      66,
+      95
+    ],
+    "holds": [
+      { "rule": 4, "class": "partial", "evidence": { "kind": "fixture", "id": "PREVIEW-TRIAL-GATES", "stage": "build" }, "portion": "Rule 4's spend and recorded-state admissions are separately enumerated at capacityRefused: durable append refuses model-call reservations at the spend allowance, and intake or send intents at the recorded turn/reply and minimal-reserve bounds; launch binds both rungs", "remainder": "the worker's earlier holds (a turn held as 'call cap' or 'reply cap' before it asks), the tool-turn and session-work reservation checks, and cap reporting (reachedJournalCap, reportJournalCap) are separate comparisons not funnelled through this predicate; each holds or refuses sooner, never later" }
+    ]
   }
 ]

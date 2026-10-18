@@ -11,7 +11,9 @@ export type DoorwayOutcome = 'complete' | 'refused' | 'timeout' | 'over-cap';
 export const DOORWAY_CONFORMANCE = Object.freeze({
   'claude-code-subscription': {
     profile: offlineProfile, provider: 'anthropic',
-    io(state: { outcome: DoorwayOutcome; calls: number; stdin: string[]; answer?: (stdin: string) => string }) {
+    io(state: { outcome: DoorwayOutcome; calls: number; stdin: string[]; answer?: (stdin: string) => string;
+      /** The model's raw result text, unwrapped (a recorded live answer); `answer` is wrapped in a legacy Decision. */
+      result?: (stdin: string) => string }) {
       return { realpath: path => path, executableBytes: () => Buffer.from('offline executable bytes'),
         inspectSubscriptionProfile: profile => ({ loginProfileIdentity: profile.loginProfileIdentity,
           managedConfigurationDigest: profile.managedConfigurationDigest }),
@@ -30,7 +32,7 @@ export const DOORWAY_CONFORMANCE = Object.freeze({
             stdout = JSON.stringify(state.outcome === 'refused'
               ? { type: 'result', subtype: 'success', is_error: true, result: 'provider refusal', session_id: 'conformance-refused',
                 usage: { input_tokens: 8, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 } }
-              : { type: 'result', subtype: 'success', is_error: false, result: JSON.stringify(decision), session_id: 'conformance-call',
+              : { type: 'result', subtype: 'success', is_error: false, result: state.result ? state.result(String(command.stdin)) : JSON.stringify(decision), session_id: 'conformance-call',
                 usage: { input_tokens: 8, cache_creation_input_tokens: 0, cache_read_input_tokens: 0,
                   output_tokens: state.outcome === 'over-cap' ? 1_000_000 : 3 } });
           }

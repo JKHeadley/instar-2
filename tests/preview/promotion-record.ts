@@ -25,6 +25,13 @@ export const PROMOTION_RECORD: readonly PromotionEntry[] = Object.freeze([
       + 'and graduation cannot be claimed. The observer stays dark and is reported as dark, never as a guard.',
     owner: 'the desk: run the live procedure with --step-check true, then record development-agent reached with the trace, or retire it',
     rollback: 'relaunch the same reviewed command without --step-check true; no step-check frames are written while off' },
+  { capability: 'preview.step-check', decision: 'new-deadline', recordedAt: 1792023460035, by: 'agent (train-35 integration)',
+    deadline: 1792108800000, // 2026-10-16 00:00 UTC
+    reason: 'The October 15 deadline elapsed with no stage evidence in the committed promotion record. '
+      + 'Keep the observer dark and give the desk one day to run the existing live procedure or retire it; '
+      + 'this records neither graduation nor protection and does not bypass the overdue check.',
+    owner: 'the desk: run tests/preview/jev-step-supervisor-live-test.md and record the supported stages, or retire step-check by this deadline',
+    rollback: 'leave --step-check off; retain this append-only decision and all earlier promotion history' },
   { capability: 'preview.step-check', decision: 'new-deadline', recordedAt: 1792024088000, by: 'agent (register-stepcheck-deadline-1014)',
     deadline: 1792281600000, // 2026-10-18 00:00 UTC
     reason: 'step-check graduation not yet proven; deadline extended 72 h so dated gates do not block unrelated builds; graduation work tracked by the desk',

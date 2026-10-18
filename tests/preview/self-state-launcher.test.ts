@@ -25,8 +25,9 @@ globalThis.fetch = async (url, init) => {
   return new Response(JSON.stringify({ model: 'jev-1.13.0', answers: Object.fromEntries(
     Object.keys(JSON.parse(init.body).questions).map(id => [id, { type: 'noul', noul: 0.01 }])) }));
 };
-export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
-  validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
+export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
+  validateSubscriptionActivation, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
+  subscriptionToolsPolicy } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
   appendFileSync(${JSON.stringify(prompts)}, JSON.stringify(prepared) + '\\n');
@@ -61,7 +62,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       const result = agent('run', '--root', root, '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
         '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
         '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
-        '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
+        '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
         '--bot-username', world.configuration.botUsername, '--max-cycles', String(cycles), '--max-poll-seconds', '1',
         '--max-calls', '3', '--max-replies', '2', '--max-turns', '4', '--time-zone', 'America/Los_Angeles',
         ...(stepCheck ? ['--step-check', 'true'] : []));
@@ -72,7 +73,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     const packetOf = line => JSON.parse(JSON.parse(JSON.parse(line)).messages.find(m => m.role === 'context').content).packet;
     const selfOf = line => packetOf(line).sources.find(source => source.id === 'self-state').text;
     // Run 1: two messages fill the reply cap; one call slot stays available for review.
-    writeFileSync(updates, JSON.stringify([message(1, 'first'), message(2, 'second')]));
+    writeFileSync(updates, JSON.stringify([message(1, 'which activation are you running under, and until when?'), message(2, 'second')]));
     const firstLaunch = run(4);
     let s = status();
     expect(s.self).toContain(s.memoryHealth);
@@ -86,10 +87,18 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(s.launches[0].reason).toBe('cycle limit reached');
     let prompt = readFileSync(prompts, 'utf8').trim().split('\n').map(selfOf);
     expect(prompt[0]).toContain('That is the first recorded launch');
+    expect(prompt[0]).toContain('Activation: your activation; ends');
+    const record = JSON.parse(readFileSync(join(root, 'credentials.json'), 'utf8')).records
+      .find(item => item.kind === 'activation');
+    expect(record.name).toBe('preview-activation');
+    expect(record.identity).toBe(world.activation().reference);
+    expect(record.expiresAt).toBe(trial.expiresAt);
+    expect(prompt[0]).not.toContain(record.name);
+    expect(prompt[0]).not.toContain(record.identity);
     expect(prompt[0]).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
     // The burst intake admits every waiting update before reply work, so both are already received.
-    expect(prompt[0]).toContain('Operator messages received: 2 today, 2 in this trial');
-    expect(prompt[1]).toContain('My replies Telegram accepted: 1 today, 1 in this trial');
+    expect(prompt[0]).toContain('Operator messages received: 2 today, 2 so far');
+    expect(prompt[1]).toContain('My replies Telegram accepted: 1 today, 1 so far');
     expect(prompt[1]).toContain('Model attempts: 1 of 3 used, 2 left');
     expect(readFileSync(prompts, 'utf8').trim().split('\n').every(line =>
       !packetOf(line).sources.some(source => source.id === 'restart-handoff'))).toBe(true);
@@ -97,7 +106,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     const raised = agent('raise-caps', '--root', root, '--max-calls', '6', '--max-replies', '5', '--max-turns', '6',
       '--authority', 'Justin, offline test');
     expect(raised.status, raised.stderr).toBe(0);
-    writeFileSync(updates, JSON.stringify([message(1, 'first'), message(2, 'second'),
+    writeFileSync(updates, JSON.stringify([message(1, 'which activation are you running under, and until when?'), message(2, 'second'),
       message(3, 'how many messages have we exchanged today and when did you last restart?'),
       message(4, 'one more question')]));
     const secondLaunch = run(4);
@@ -110,8 +119,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       .toContain('pending turns 0; held items 0; UNKNOWN model outcomes 0; UNKNOWN sends 0; lost-answer notices due 0');
     expect(packetOf(lines[3]).sources.some(source => source.id === 'restart-handoff')).toBe(false);
     const now = prompt[2];
-    expect(now).toContain('Operator messages received: 4 today, 4 in this trial (including the one being answered now)');
-    expect(now).toContain('My replies Telegram accepted: 2 today, 2 in this trial');
+    expect(now).toContain('Operator messages received: 4 today, 4 so far (including the one being answered now)');
+    expect(now).toContain('My replies Telegram accepted: 2 today, 2 so far');
     expect(now).toContain('Messages exchanged today: 6');
     expect(now).toContain('Model attempts: 2 of 6 used, 4 left');
     expect(now).toContain('on the authority "Justin, offline test"');
@@ -121,8 +130,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(s.launches).toHaveLength(2);
     expect(s.launches[1].reason).toBe('cycle limit reached');
     // Status, read afterwards, agrees on the same restart and includes the fourth reply.
-    expect(s.self).toContain('Operator messages received: 4 today, 4 in this trial');
-    expect(s.self).toContain('My replies Telegram accepted: 4 today, 4 in this trial');
+    expect(s.self).toContain('Operator messages received: 4 today, 4 so far');
+    expect(s.self).toContain('My replies Telegram accepted: 4 today, 4 so far');
     expect(s.self).toContain('Messages exchanged today: 8');
     expect(s.self).toContain(now.match(/Last restart: [^.]*\./u)[0]);
     expect(s.self).toContain('ended'); // the latest launch has recorded its end

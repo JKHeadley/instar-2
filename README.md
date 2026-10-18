@@ -89,3 +89,21 @@ publication (sealed Telegram identity captures), the session journal, and the na
 full-flush journal with its refusal path (macOS). This shows those paths work on a real
 device (and, for production storage, recover after SIGKILL and reopen); it does not prove
 survival of physical power loss.
+
+### Honest liveness during a slow answer
+
+The existing journal worker may send a short liveness-only line while answering an admitted
+operator message. It never quotes tool commands or describes activity as accomplished progress.
+The fixed line carries infrastructure provenance. A fresh worker observation and newly advancing admitted tool evidence are both required;
+repeated polls of an unchanged tool do not renew that evidence. The existing answer cadence
+backs off from two to five to ten minutes, with at most four lines per overlapping answer
+episode. Every outbound intent or receipt in that conversation resets the two-minute silence
+window, including uncertain sends. The journal retains the silence clock and consumed allowance
+through compaction and restart. Stop, ownership, audience and reply budgets still apply, and
+one reply slot stays reserved for the answer. The final answer ends the liveness path.
+
+This implements Rule 87's qualification for an answer still being worked on; unrelated routine
+status remains pull-only despite the older blanket rejection in D18 sections 10 and 14.
+Offline evidence: `tests/preview/working-progress.test.ts` and `working-activity.test.ts` replay
+recorded native admission bytes and recorded summary/review/reply shapes. Live acceptance still
+requires a desk proof-room slow answer, observed silence reset and capped delivery receipts.

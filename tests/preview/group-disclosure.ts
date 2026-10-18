@@ -1,0 +1,139 @@
+/** Private-to-forum lineage permission. Nothing here creates an operator approval. */
+import { authorityDigest, authorityRecordIsSealed, PREVIEW_DESK, resolveOperatorMessage,
+  type OperatorMessageRecords, type OperatorMessageRef } from './activation-authority.js';
+
+export interface GroupCarryScope {
+  sourceRoot: string; destinationRoot: string; chat: string; operator: string; bot: string;
+}
+export interface GroupDisclosureGrant {
+  id: string; grantor: string; grantee: string; words: string; source: OperatorMessageRef;
+  issuedAt: number; expiresAt?: number; action: 'carry-private-journal'; scope: GroupCarryScope;
+  audience: 'operator-and-agent-bot-only'; surface: 'telegram-forum';
+  custodian: string; recovery: 'stop-use-on-revocation-or-audience-change';
+}
+export type DisclosureVerdict = { kind: 'resolved'; grant: string; digest: string; scope: GroupCarryScope; expiresAt?: number }
+  | { kind: 'refused'; reason: string };
+const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === 'object'
+  && !Array.isArray(value) ? value as Record<string, unknown> : {};
+const time = (value: unknown): value is number => Number.isSafeInteger(value) && Number(value) > 0;
+const text = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+
+/** Reads the same sealed disposition and messaging-owner provenance as activation grants. */
+export function resolveGroupDisclosure(scope: GroupCarryScope, record: unknown, now: number,
+  records: OperatorMessageRecords | null, sealKey: Uint8Array | null): DisclosureVerdict {
+  const refuse = (reason: string): DisclosureVerdict => ({ kind: 'refused', reason });
+  const r = object(record);
+  if (r.type !== 'PreviewActivationAuthority' || r.schemaVersion !== 1 || !Array.isArray(r.revocations)
+    || !authorityRecordIsSealed(record, sealKey)) return refuse('group disclosure authority is absent or unsealed');
+  if (!time(now) || !Object.values(scope).every(text) || scope.sourceRoot === scope.destinationRoot)
+    return refuse('group disclosure scope is invalid');
+  const grants = Array.isArray(r.groupDisclosureGrants) ? r.groupDisclosureGrants : [];
+  for (const raw of grants) {
+    const g = object(raw), named = object(g.scope);
+    if (!text(g.id) || g.grantor !== scope.operator || g.grantee !== PREVIEW_DESK
+      || g.action !== 'carry-private-journal' || g.audience !== 'operator-and-agent-bot-only'
+      || g.surface !== 'telegram-forum' || g.custodian !== scope.operator
+      || g.recovery !== 'stop-use-on-revocation-or-audience-change'
+      || !Object.entries(scope).every(([key, value]) => named[key] === value)
+      || !time(g.issuedAt) || g.issuedAt > now || g.expiresAt !== undefined && (!time(g.expiresAt) || g.expiresAt <= now)) continue;
+    const message = resolveOperatorMessage(g.source, scope.operator, records);
+    if (!message || message.text !== g.words || message.at !== g.issuedAt) continue;
+    if (r.revocations.some(raw => { const v = object(raw); return v.grantId === g.id && time(v.at)
+      && v.at <= now && v.by === scope.operator && text(v.source); })) continue;
+    return { kind: 'resolved', grant: g.id, digest: authorityDigest(record), scope: { ...scope },
+      ...(g.expiresAt === undefined ? {} : { expiresAt: g.expiresAt as number }) };
+  }
+  return refuse('no current, sourced operator grant covers this exact private-to-group lineage');
+}
+
+export type MembershipRead = (method: 'getChat' | 'getChatMemberCount' | 'getChatMember' | 'getMe',
+  body: Record<string, string>) => Promise<unknown>;
+const result = (value: unknown) => { const r = object(value); if (r.ok !== true) throw Error('membership unavailable'); return r.result; };
+/** Two members, both identified: a count alone or an administrator list cannot establish the audience.
+ * Read count at both ends to reject an observed join during the probe. Unknown/restricted/left refuses.
+ * Telegram offers no atomic membership-and-send transaction; the runner rechecks bounded evidence at each dispatch. */
+export async function verifyGroupAudience(scope: GroupCarryScope, read: MembershipRead): Promise<boolean> {
+  try {
+    if (!/^[1-9][0-9]*$/u.test(scope.operator) || !/^[1-9][0-9]*$/u.test(scope.bot)
+      || scope.operator === scope.bot || !/^-[1-9][0-9]*$/u.test(scope.chat)) return false;
+    if (result(await read('getChatMemberCount', { chat_id: scope.chat })) !== 2) return false;
+    // Four independent read-only observations share one round, bounded by both count reads.
+    // Settle every request before returning even on failure: no orphan reads at the next dispatch.
+    const evidence = await Promise.allSettled([
+      async () => read('getChat', { chat_id: scope.chat }),
+      async () => read('getMe', {}),
+      async () => read('getChatMember', { chat_id: scope.chat, user_id: scope.operator }),
+      async () => read('getChatMember', { chat_id: scope.chat, user_id: scope.bot }),
+    ].map(probe => probe()));
+    if (evidence.some(item => item.status === 'rejected')) return false;
+    const [chatResult, meResult, operatorResult, botResult] = evidence.map(item =>
+      item.status === 'fulfilled' ? result(item.value) : undefined);
+    const chat = object(chatResult);
+    if (String(chat.id) !== scope.chat || chat.type !== 'supergroup' || chat.is_forum !== true) return false;
+    // Two joined members is not a private audience when non-members can browse a public or linked chat.
+    if (chat.username !== undefined || chat.linked_chat_id !== undefined
+      || chat.active_usernames !== undefined && (!Array.isArray(chat.active_usernames) || chat.active_usernames.length > 0)) return false;
+    const me = object(meResult);
+    if (String(me.id) !== scope.bot || me.is_bot !== true) return false;
+    for (const [id, bot, observed] of [[scope.operator, false, operatorResult], [scope.bot, true, botResult]] as const) {
+      const member = object(observed);
+      const user = object(member.user);
+      if (String(user.id) !== id || user.is_bot !== bot || !['creator', 'administrator', 'member'].includes(String(member.status))) return false;
+    }
+    return result(await read('getChatMemberCount', { chat_id: scope.chat })) === 2;
+  } catch { return false; }
+}
+
+/** Runner-local observation, never a grant. One scope and at most ten seconds from probe START;
+ * no sliding expiry, persisted evidence or stale-on-error fallback (Rules 28, 32, 60, 95).
+ * In-flight invalidation refuses its waiter as well as preventing a later cache hit. */
+export function createGroupAudienceCache(now: () => number, readFor: (scope: GroupCarryScope) => MembershipRead) {
+  type Entry = { key: string; started: number; result: Promise<boolean> };
+  let entry: Entry | undefined;
+  const invalidate = () => { entry = undefined; };
+  const current = (item: Entry) => {
+    const age = now() - item.started;
+    return entry === item && Number.isFinite(age) && age >= 0 && age < 10_000;
+  };
+  return {
+    invalidate,
+    /** Process the complete polled batch before filtering duplicates or waking the worker.
+     * Service messages can change membership or exposure; unknown service shapes invalidate too. */
+    observe(updates: readonly unknown[]) {
+      for (const raw of updates) {
+        const update = object(raw);
+        if (update.chat_member !== undefined || update.my_chat_member !== undefined) { invalidate(); return; }
+        for (const field of ['message', 'edited_message']) {
+          const message = object(update[field]);
+          if (update[field] !== undefined && (typeof message.text !== 'string'
+            || message.new_chat_members !== undefined || message.left_chat_member !== undefined
+            || message.migrate_to_chat_id !== undefined || message.migrate_from_chat_id !== undefined)) {
+            invalidate(); return;
+          }
+        }
+      }
+    },
+    async verify(scope: GroupCarryScope, observe?: (cacheHit: boolean) => void): Promise<boolean> {
+      const key = JSON.stringify([scope.sourceRoot, scope.destinationRoot, scope.chat, scope.operator, scope.bot]);
+      if (entry?.key === key && current(entry)) {
+        try { observe?.(true); } catch { /* diagnostics only */ }
+        const hit = entry;
+        return await hit.result && current(hit);
+      }
+      try { observe?.(false); } catch { /* diagnostics only */ }
+      const snapshot = { ...scope };
+      const item: Entry = { key, started: now(), result: Promise.resolve(false) };
+      entry = item;
+      item.result = (async () => {
+        // Defer so the entry is installed before an injected reader can invalidate it.
+        await Promise.resolve();
+        let verified = false;
+        try { verified = await verifyGroupAudience(snapshot, readFor(snapshot)); } catch { /* unknown refuses */ }
+        const accepted = verified && current(item);
+        if (!accepted && entry === item) invalidate();
+        return accepted;
+      })();
+      return item.result;
+    },
+  };
+}

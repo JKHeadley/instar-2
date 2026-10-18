@@ -1,14 +1,26 @@
+// @ts-expect-error The runner side stays plain JavaScript.
+import { admitEffect, DEFAULT_EFFECT_POLICY, refusedEffectNotices } from './effect-doorway.mjs';
+import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 // Build 4: every accepted obligation stays owned until deliberately settled (Rules 6, 8, 20-23, 46, 55, 64, 68, 83, 93, 99, 103).
 import { expect, it } from 'vitest';
-import { chmodSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, declaredObligations, dueObligationWork, obligationSchedule,
-  LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE } from './journal-test-worker.js';
-import { loopHealth, loopStatusLines, BACKLOG_AGE_LIMIT_MS } from './obligations.js';
+import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, settledConstraintWording, currentBlockers, declaredObligations, dueObligationWork, obligationSchedule,
+  LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE, OBLIGATION_WORK_QUESTION, OBLIGATION_WORK_QUESTION_TOOLS, previewCapabilities,
+  TOOL_ATTEMPTS_MEANING, TOOL_ATTEMPTS_PARTIAL_MEANING, TOOL_ATTEMPTS_REVIEWED, governingConstraints, OBLIGATION_DECISION,
+  OBLIGATION_FLOOR_PACKET_BYTES, OBLIGATION_DECISION_TOOLS, REPLY_ACKNOWLEDGEMENT } from './journal-test-worker.js';
+// @ts-expect-error The runner side stays plain JavaScript.
+import { runToolTurn, toolPacketFits, toolTurnFits } from './tool-turn.mjs';
+import { SUBSCRIPTION_TOOL_LIMITS } from '../../src/assembly/production-provider.js';
+// @ts-expect-error Plain JavaScript.
+import { toolTrace } from './tool-admission.mjs';
+import { loopHealth, loopStatusLines, BACKLOG_AGE_LIMIT_MS, PROGRESS_STALL_MS } from './obligations.js';
+import { SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
+import type { SessionWorkOutcome } from '../../src/assembly/production-session-work.js';
 import { statusReply } from './status-command.js';
-import { DECLARED_OBLIGATIONS_GUIDE, HOLDING_REPLY, REPLY_RULES, replyReviewContext, replyReviewQuestion, type ObjectionDisposition, type ReplyRule } from './reply-check.js';
+import { DECLARED_OBLIGATIONS_GUIDE, HOLDING_REPLY, REPLY_RULES, replySegments, replyReviewContext, replyReviewQuestion, type ObjectionDisposition, type ReplyRule } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { redact } from '../../src/recall/redact.js';
 import { appendRun, readRuns } from './self-state.js';
@@ -33,32 +45,42 @@ type Review = { jev?: (text: string) => Partial<Record<ReplyRule, number>>;
     dispositions?: ObjectionDisposition[]; blocker?: unknown }> };
 function world(root: string, options: { maxBytes?: number; maxCalls?: number; answer?: (question: string, context: string) => Answer;
   waitsOn?: boolean; work?: (context: Record<string, unknown>) => Answer | Promise<Answer>; review?: Review; stopped?: () => boolean;
-  receipt?: (text: string) => boolean; nextUpdate?: number } = {}) {
+  receipt?: (text: string) => boolean; nextUpdate?: number; toolRoute?: (id: string) => boolean; sources?: readonly unknown[];
+  recoverSessionWork?: (id: string) => SessionWorkOutcome | null } = {}) {
   const path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, key, genesis(options.maxBytes, options.maxCalls));
   const clock = { now: T0 };
   const contexts = new Map<string, string>(), reviews: Record<string, unknown>[] = [], work: string[] = [], sent: string[] = [];
+  const workQuestions: string[] = [];
   const review = options.review;
   const worker = createJournalWorker(journal, { now: () => clock.now, stopped: options.stopped ?? (() => false), timeZone: 'UTC',
-    prepareModel: input => input.context,
+    // The remainder review edits the same envelope the launcher retains, not a bare packet.
+    prepareModel: input => review ? JSON.stringify({ messages: [{ role: 'user', content: input.question },
+      { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }) : input.context,
+    replyNotices: (turn) => refusedEffectNotices(journal.view.effectDoorway?.recent ?? [], turn),
+    ...(options.toolRoute ? { toolRoute: options.toolRoute } : {}),
+    ...(options.sources ? { sources: options.sources } : {}),
+    ...(options.recoverSessionWork ? { recoverSessionWork: options.recoverSessionWork } : {}),
     ...(review ? { replyCheck: { elapsedMs: () => 0,
       jev: async (text: string, questions?: Record<string, unknown>) => ({ latencyMs: 0, value: { model: 'jev-1.13.0',
         answers: Object.fromEntries(Object.keys(questions ?? REPLY_RULES).map(rule => [rule,
           { type: 'noul', noul: review.jev?.(text)[rule as ReplyRule] ?? 0.01 }])) } }),
       escalate: async (text: string, id: string, originalPrompt?: string, rules?: readonly ReplyRule[]) => {
-        // The same context the live runner builds: the answer's packet plus its declared record. This world's
-        // prepared prompt is the bare packet, so it is wrapped the way the live envelope carries it.
-        const envelope = JSON.stringify({ messages: [{ role: 'user', content: journal.view.turns.get(id)!.text },
-          { role: 'context', content: JSON.stringify({ packet: JSON.parse(originalPrompt!) }) }] });
-        const context = JSON.parse(replyReviewContext(envelope, text, rules, declaredObligations(journal.view, id))) as Record<string, unknown>;
+        // The same context the live runner builds: the retained envelope plus its current declared record.
+        const context = JSON.parse(replyReviewContext(originalPrompt!, text, rules, declaredObligations(journal.view, id, clock.now))) as Record<string, unknown>;
         reviews.push(context);
         const verdict = review.verdict?.(context) ?? 'pass';
-        return { verdict, ruleIds: verdict === 'pass' ? [] : [rules?.includes('defers_work') ? 'defers_work' : rules?.[0] ?? 'defers_work'],
-          confidence: null, latencyMs: 0 };
+        const named: ReplyRule[] = verdict === 'pass' ? [] : [rules?.includes('defers_work') ? 'defers_work' : rules?.[0] ?? 'defers_work'];
+        // As live: a violation names its rule AND quotes the claim it objects to (the review question requires
+        // it, and the claim-scoped floor reads that quote). The first sentence is what the live reviewer quoted.
+        const claim = (replySegments(text)[0]?.text ?? text).replace(/^PREVIEW — /u, '');
+        return { verdict, ruleIds: named, confidence: null, latencyMs: 0,
+          findings: named.map(rule => ({ rule, verdict: 'violation' as const,
+            reason: `The reply states "${claim}" and declaredObligations records no ${rule === 'defers_work' ? 'loop' : 'blocker'} for it.` })) };
       }, ...(review.revise ? { revise: review.revise } : {}) } } : {}),
     model: async input => {
       if (input.id.startsWith('obligation:')) {
-        work.push(input.id);
+        work.push(input.id); workQuestions.push(input.question);
         const answer = await options.work?.(JSON.parse(input.context) as Record<string, unknown>) ?? { outcome: 'continue', note: 'Still working.' };
         return typeof answer === 'string' ? answer : JSON.stringify(answer);
       }
@@ -68,6 +90,14 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
           .map(turn => ({ in: 'message', quote: turn.user, ...(options.waitsOn === false ? {} : { waitsOn: 'nothing' }) }));
         return JSON.stringify({ summary: 'Earlier turns covered a locker code and plans.', people: [], commitments, closed: [] });
       }
+      // A turn whose own tool call the effect doorway refused, as the live tool turn records it (Part Twelve §3).
+      if (input.question.startsWith(DOORWAY)) {
+        const verdict = admitEffect({ effect: 'tool:unsandboxed' }, DEFAULT_EFFECT_POLICY, SINGLE_MACHINE_PROFILE.operations);
+        journal.append({ kind: 'tool-turn', phase: 'reserved', id: input.id, attempt: 0, calls: 1, at: clock.now });
+        journal.append({ kind: 'tool-turn', phase: 'trace', id: input.id, attempt: 0, consistent: true, workspaceBytes: 0, at: clock.now,
+          calls: [{ n: 1, tool: 'Bash', input: '{"dangerouslyDisableSandbox":true}', decision: 'deny', reason: verdict.reason, kind: 'unsandboxed',
+            doorway: { effect: verdict.effect, tests: verdict.tests, disposition: verdict.disposition, admits: verdict.admits }, result: null }] });
+      }
       contexts.set(input.question, input.context);
       const answer = options.answer?.(input.question, input.context) ?? 'Noted.';
       return typeof answer === 'string' ? answer : JSON.stringify({ memory: [], ...answer });
@@ -75,14 +105,15 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
     send: async input => { if (options.receipt && !options.receipt(input.text)) return null; sent.push(input.text); return sent.length; },
     checkOutbound: () => {} });
   let next = options.nextUpdate ?? 1;
-  /** One operator message dated at the current clock, answered and summarized. */
-  const say = async (text: string) => {
+  /** One operator message dated at the current clock, answered and summarized. `queued` runs between intake and drain. */
+  const say = async (text: string, queued?: () => void) => {
     const id = next++;
     worker.intake([{ update_id: id, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
       date: Math.floor(clock.now / 1000) } }]);
+    queued?.();
     await worker.drain(); await worker.summarizeIfNeeded();
   };
-  return { journal, worker, clock, say, contexts, path, reviews, work, sent };
+  return { journal, worker, clock, say, contexts, path, reviews, work, sent, workQuestions };
 }
 const status = (root: string) => {
   const result = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
@@ -90,7 +121,7 @@ const status = (root: string) => {
   { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
     encoding: 'utf8', timeout: 20000 });
   expect(result.status, result.stderr).toBe(0);
-  return JSON.parse(result.stdout) as { directives: { quote: string }[]; obligations: { byKind: Record<string, number> } };
+  return JSON.parse(result.stdout) as { directives: { quote: string; since: number }[]; obligations: { byKind: Record<string, number> } };
 };
 const quotes = (context: string) => ((JSON.parse(context) as { commitments?: { items: { quote: string }[] }[] }).commitments ?? [])
   .flatMap(entry => entry.items.map(item => item.quote));
@@ -122,7 +153,9 @@ it('refuses a summary commitment without a declared dependency, counts it, and c
 it('resurfaces an unrelated open loop once its cadence passes, then waits a cadence again (Rule 8)', async () => {
   const root = origin();
   try {
-    const w = world(root);
+    // w3-floorduty: at this limit the obligation guide is under pressure, and it now yields to its floor form rather
+    // than vanishing; the limit carries those bytes so the loop item keeps the room it had (Rules 3, 8, 93).
+    const w = world(root, { maxBytes: 8000 + OBLIGATION_FLOOR_PACKET_BYTES });
     await w.say(LOCKER);
     for (let i = 0; !w.journal.view.summaries.length && i < 60; i++) { w.clock.now += 60_000; await w.say(filler(i)); }
     const locker = w.journal.view.commitments.findIndex(note => note.quote === LOCKER);
@@ -148,6 +181,46 @@ it('resurfaces an unrelated open loop once its cadence passes, then waits a cade
 });
 
 const AISLE = 'Please keep every grocery list you make for me sorted by aisle.';
+// Recorded proof-room 4 evidence: preswitch-train-56-b55334d3-20261017-011741,
+// inspect-d5b.json last.preferences (update 46040189) carries this exact quote from
+// update 46040188. D5c reads status.directives, a different projection.
+const D5 = 'From now on, end every shopping list you write for me with "— K".';
+it.each(['directive', 'preference'] as const)('D5 %s retains its source across a summary and journal reopen', async mode => {
+  const root = origin();
+  try {
+    const w = world(root, { maxBytes: 16000, answer: question => question === D5
+      ? { reply: 'Understood.', ...(mode === 'directive' ? { directives: [{ quote: D5 }] }
+        : { memory: [{ mode: 'prefer', source: 'telegram:12345678:update:1', quote: D5 }] }) }
+      : 'Noted.' });
+    await w.say(D5);
+    const source = w.journal.view.order[0]!.id;
+    const original = status(root).directives;
+    if (mode === 'directive') expect(original).toMatchObject([{ quote: D5, since: T0 }]);
+    else {
+      expect(original).toEqual([]);
+      expect(w.journal.view.memory).toMatchObject([{ mode: 'prefer', source, quote: D5 }]);
+    }
+    for (let i = 0; !w.journal.view.summaries.length && i < 100; i++) {
+      w.clock.now += 60_000; await w.say(filler(i));
+    }
+    expect(w.journal.view.summaries.length).toBeGreaterThan(0);
+    expect(w.journal.view.summaries.at(-1)!.through).toBeGreaterThanOrEqual(1);
+    w.journal.close();
+    const again = world(root, { maxBytes: 16000 });
+    again.clock.now = T0 + 30 * DAY;
+    const probe = again.worker.probe('Make me a shopping list for pancakes.');
+    if ('reason' in probe) throw Error(probe.reason);
+    const packet = JSON.parse(probe.context);
+    if (mode === 'directive') expect(packet.directives).toMatchObject([{ quote: D5 }]);
+    else {
+      expect(packet.preferences).toEqual([{ source, text: D5 }]);
+      expect(packet.directives ?? []).toEqual([]);
+    }
+    expect(status(root).directives).toEqual(original);
+    again.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it('admits an operator directive, carries it into every later packet with no expiry, and closes it only by completion (Rule 93)', async () => {
   const root = origin();
   try {
@@ -206,7 +279,7 @@ it('settles a cannot-do claim only with a finite, governed investigation record,
     ['no avenues', blocker({ avenues: [] }), false],
     ['attempt asserted without a runner-owned record', blocker({ avenues: [{ avenue: 'clinic website', disposition: 'tried', evidence: 'externalTools' }] }), false],
     ['authored evidence text', blocker({ avenues: [{ avenue: 'clinic website', disposition: 'outside-standing', evidence: 'the site was down' }] }), false],
-    ['constraint its evidence does not support', blocker({ constraint: 'reply-only-grant' }), false],
+    ['unique constraint/evidence repair', blocker({ constraint: 'reply-only-grant' }), true],
     ['runtime inhibition as a wall', blocker({ constraint: 'spend-allowance' }), false],
     ['recheck too far', blocker({ recheck: day(T0 + 120 * DAY) }), false],
     ['claim not said', blocker({ claim: 'I cannot do anything at all here.' }), false],
@@ -234,6 +307,116 @@ it('settles a cannot-do claim only with a finite, governed investigation record,
       w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
+});
+
+it('offers a settled wall to the answer only while the constraint wording it rests on still holds (Rules 20, 99, 103)', async () => {
+  // Live 2026-10-04 (cint-L49, K11a, update 6232231): walls settled under an earlier capability read ("no account writes",
+  // "live secrets stay in custody") were restated as standing limits after the read widened. A wall rests on the wording
+  // of its constraint when it was settled; when that wording changes the wall is not offered as settled, and it stays
+  // recorded, open, counted and due on its own recheck day.
+  for (const [settledOn, askedOn, offered] of [[false, false, true], [false, true, false], [true, true, true]] as const) {
+    const root = origin();
+    try {
+      const route = { tools: settledOn };
+      // maxBytes is the live preview's, because the capability read and constraint wording this case reads are optional
+      // items that yield under byte pressure: at the default 8000 the neighbour's packet crosses the limit and cuts the
+      // very fields under test, which would prove nothing either way.
+      const w = world(root, { maxBytes: 32000, toolRoute: () => route.tools,
+        answer: question => question.startsWith('Can you book') ? { reply: CLAIM, blocker: blocker() }
+          : question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Noted.' });
+      await w.say('Can you book the dentist appointment online?');
+      // Review round 2, must-fix 2 (Rules 78, 84): the open-commitment neighbour, because the commitments guidance only
+      // rides when one is open, and that is where a second voice used to deny the tools the same packet's note lists.
+      await w.say(INVOICE);
+      expect(openBlockers(w.journal.view), `${settledOn}`).toHaveLength(1);
+      expect(settledConstraintWording(w.journal.view, w.journal.view.blockers[0]!)).toBe(governingConstraints(settledOn)['no-tools']);
+      route.tools = askedOn;
+      const probe = w.worker.probe('What can you do here, and what can you not do?');
+      if ('reason' in probe) throw Error(probe.reason);
+      const shown = (JSON.parse(probe.context) as { blockers?: { claim: string }[] }).blockers ?? [];
+      expect(shown.map(item => item.claim), `settled ${settledOn}, asked ${askedOn}`).toEqual(offered ? [CLAIM] : []);
+      // On the tool route the self-description is held to the note's items and limits; the text-only note already closes
+      // with "Nothing unlisted is available", so its guidance is unchanged.
+      expect((JSON.parse(probe.context) as { capability: string }).capability.startsWith(askedOn
+        ? 'Your capabilities are the capability-note source; describing yourself, give only its items and limits. Summary'
+        : 'Your capabilities are the capability-note source. Summary')).toBe(true);
+      // Must-fix 2's two sides, on the one packet that carries both the commitments guidance and the route's capability
+      // read. The commitment is open, so its guidance is in this packet; what the packet says about tools is said once,
+      // by the route-specific read, and no second sentence contradicts it. On the tool route the read is 'listed'; on the
+      // text-only route the limit is still stated, by that same read and its constraint wording, so nothing is widened.
+      const answerPacket = JSON.parse(probe.context) as { commitments?: { items: unknown[] }[];
+        capabilities?: Record<string, string>; governingConstraints?: Record<string, string> };
+      expect(answerPacket.commitments?.length, `settled ${settledOn}, asked ${askedOn}`).toBe(1);
+      expect(answerPacket.capabilities, `asked ${askedOn}`).toEqual(previewCapabilities(askedOn));
+      expect(answerPacket.governingConstraints, `asked ${askedOn}`).toEqual(governingConstraints(askedOn));
+      // Counted against the wording itself, never a restated copy of it, so a reword cannot leave this passing on a
+      // stale literal: the tool route's packet carries no no-tools wording at all, and the text-only route's carries it
+      // exactly once — its own constraint wording. One voice either way.
+      const denial = governingConstraints(false)['no-tools'];
+      expect(probe.context.split(denial).length - 1, `asked ${askedOn}`).toBe(askedOn ? 0 : 1);
+      // Withheld from the answer is not dropped: still open, still counted, its recheck still scheduled.
+      expect(openBlockers(w.journal.view)).toHaveLength(1);
+      expect(obligationSchedule(w.journal.view).filter(item => item.kind === 'blocker')).toHaveLength(1);
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('the answer and its reply review read the same current walls, and a renewal under the current wording restores one (Rules 20, 45, 99, 103; review round 1, finding 3)', async () => {
+  // The reviewer's two reproductions, turned around: a wall settled under the text-only wording is withheld from BOTH the
+  // answer packet and the review's settled evidence of a tool-routed turn; a still-blocked recheck under the tool wording
+  // makes it current again for both; a later change of wording withholds it again. Throughout it stays open and scheduled.
+  const root = origin();
+  try {
+    const route = { tools: false };
+    const w = world(root, { toolRoute: () => route.tools,
+      answer: question => question.startsWith('Can you book') ? { reply: CLAIM, blocker: blocker() } : 'Noted.',
+      work: () => ({ outcome: 'still-blocked', recheck: day(T0 + 61 * DAY), ...REASSESSMENT }) });
+    await w.say('Can you book the dentist appointment online?');
+    const shown = () => {
+      const probe = w.worker.probe('What is blocked?');
+      if ('reason' in probe) throw Error(probe.reason);
+      return ((JSON.parse(probe.context) as { blockers?: { claim: string }[] }).blockers ?? []).map(item => item.claim);
+    };
+    // The review consumer of a later turn on the given route (its route is the turn's latest tool-turn record).
+    const reviewed = async (tools: boolean) => {
+      await w.say(`Anything else? ${String(w.clock.now)}`);
+      const id = w.journal.view.order.at(-1)!.id;
+      if (tools) w.journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 0, calls: 1, at: w.clock.now });
+      return declaredObligations(w.journal.view, id, w.clock.now).settled.map(item => item.claim);
+    };
+    // Unchanged wording: offered to both.
+    expect(shown()).toEqual([CLAIM]);
+    expect(await reviewed(false)).toEqual([CLAIM]);
+    expect(currentBlockers(w.journal.view, false)).toHaveLength(1);
+    // The route widened: withheld from both, still open and scheduled.
+    route.tools = true;
+    expect(shown()).toEqual([]);
+    expect(await reviewed(true)).toEqual([]);
+    expect(openBlockers(w.journal.view)).toHaveLength(1);
+    expect(obligationSchedule(w.journal.view).filter(item => item.kind === 'blocker')).toHaveLength(1);
+    // Its recheck falls due and is reassessed on the tool route: the renewal records the wording it was shown.
+    w.clock.now = T0 + 31 * DAY;
+    expect(await w.worker.workObligations()).toBe(true);
+    const renewal = w.journal.view.blockers[0]!.rechecks.at(-1)!;
+    expect(renewal.outcome).toBe('still-blocked');
+    expect(renewal.assessment?.wording).toBe(governingConstraints(true)['no-tools']);
+    expect(settledConstraintWording(w.journal.view, w.journal.view.blockers[0]!)).toBe(governingConstraints(true)['no-tools']);
+    expect(shown()).toEqual([CLAIM]);
+    expect(await reviewed(true)).toEqual([CLAIM]);
+    // The wording changes again (the text-only route): the renewal no longer rests on it, so it is withheld again.
+    route.tools = false;
+    expect(shown()).toEqual([]);
+    expect(await reviewed(false)).toEqual([]);
+    expect(openBlockers(w.journal.view)).toHaveLength(1);
+    w.journal.close();
+    // A renewal recorded before this repair carries no wording: read as current, as an unknown settlement always was.
+    const reopened = openPreviewJournal(w.path, key, genesis());
+    expect(reopened.view.blockers[0]!.rechecks.at(-1)?.assessment?.wording).toBe(governingConstraints(true)['no-tools']);
+    const legacy = { ...reopened.view.blockers[0]!, rechecks: [{ ...renewal, assessment: { ...REASSESSMENT } as never }] };
+    expect(settledConstraintWording(reopened.view, legacy)).toBeUndefined();
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 it('records a deferral the reply itself declares, in the same intent, and nothing the reply does not say (Rules 6, 22)', async () => {
@@ -285,11 +468,20 @@ it('gives the contextual reviewer the attached investigation record and the gove
   expect(JSON.parse(replyReviewContext(prompt, CLAIM, ['claims_blocked'])).declaredObligations).toBeUndefined();
   expect(replyReviewQuestion(['claims_blocked'])).toContain(DECLARED_OBLIGATIONS_GUIDE);
   expect(replyReviewQuestion(['credential'])).not.toContain(DECLARED_OBLIGATIONS_GUIDE);
+  // Plan #111: the settled records count, and the verdict word carries the conclusion. Live L9 (update 969389755) the
+  // reviewer wrote "unrecorded_blocker: VIOLATION | none — declaredObligations.blocker matches this exact claim".
+  expect(REPLY_RULES.unrecorded_blocker).toContain('packet.declaredObligations.settled');
+  // w3-selfdesc (plan #370) shortened both clauses to the wording its recorded real reviews ran on; the meaning holds.
+  expect(DECLARED_OBLIGATIONS_GUIDE).toContain('restating a recorded, still-open limit needs no duplicate record');
+  expect(DECLARED_OBLIGATIONS_GUIDE).toContain('VIOLATION only when one such final claim is not recorded this way, with a reason quoting that claim');
+  for (const rules of [[], ['unrecorded_blocker'], ['credential']] as ReplyRule[][])
+    expect(replyReviewQuestion(rules)).toContain('A reason that finds no breach belongs on a PASS verdict.');
 });
 
 
 const LATER = 'I’ll look into the invoice question later today.';
 const INVOICE = 'Can you check the invoice question?';
+const DOORWAY = 'Run echo outside-sandbox without the sandbox.';
 it('works a due deferral with no further inbound, keeps its result for the next reply, and settles it on delivery (Rules 8, 22, 46, 64, 92)', async () => {
   const root = origin();
   try {
@@ -478,6 +670,235 @@ it('starts scheduled work only inside the stop, allowance and capacity fences, a
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('reconciles a closed child checkpoint on the existing tick once, with no new operator input or model call', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  const root = origin();
+  try {
+    const w = world(root, { answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }) });
+    await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+    const slot = dueObligationWork(w.journal.view, w.clock.now)[0]!.slot;
+    w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, session: true, at: w.clock.now });
+    const calls = w.journal.view.calls; w.journal.close();
+    const collected: string[] = [];
+    const again = world(root, { recoverSessionWork: id => {
+      collected.push(id); return { state: 'complete', text: recorded.workOutput,
+        edge: 'checkpoint', child: 'closed-child', detail: 'closed and digest checked by session work port' };
+    } });
+    again.clock.now = w.clock.now;
+    await again.worker.workObligations(); await again.worker.workObligations();
+    expect(collected).toEqual([`obligation:commitment:0:${slot}`]);
+    expect(again.journal.view.obligationWork['commitment:0']).toMatchObject({ attempts: 1, outcome: 'report',
+      report: { text: recorded.workResult.report } });
+    expect(again.work).toEqual([]); expect(again.sent).toEqual([]);
+    expect(again.journal.view.calls).toBe(calls);
+    expect(loopHealth(again.journal.view, again.clock.now)).toMatchObject({ awaitingDelivery: 1, recoveryUnknown: 0 });
+    // Delivery remains the existing owner path: recovery creates no unsolicited-send authority.
+    again.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('replays the real c1 tool-worker checkpoint through startup/tick recovery, including closure and unknown neighbors', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  for (const variant of ['complete', 'worker-live', 'model-unknown', 'trace-missing', 'budget-exhausted'] as const) {
+    const root = origin();
+    try {
+      const w = world(root, { answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }) });
+      await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+      const slot = dueObligationWork(w.journal.view, w.clock.now)[0]!.slot, id = `obligation:commitment:0:${slot}`;
+      w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, at: w.clock.now });
+      for (const captured of recorded.checkpointRows) {
+        const row = structuredClone(captured); row.id = id;
+        if (row.kind === 'phase-timing') continue;
+        if (variant === 'worker-live' && row.kind === 'call-outcome') row.outcome.resources.allocation.state = 'reserved';
+        if (variant === 'model-unknown' && row.kind === 'model-call') row.outcome = 'uncertain';
+        if (variant === 'trace-missing' && row.kind === 'tool-turn' && row.phase === 'trace') continue;
+        w.journal.append(row);
+      }
+      w.journal.compact(); w.journal.close();
+      const again = world(root); again.clock.now = w.clock.now;
+      if (variant === 'budget-exhausted') again.journal.view.calls = again.journal.view.limits.maxCalls;
+      const calls = again.journal.view.calls;
+      if (variant === 'budget-exhausted') {
+        expect(await again.worker.workObligations()).toBe(false);
+        expect(loopHealth(again.journal.view, again.clock.now)).toMatchObject({ awaitingDelivery: 1, inhibition: 'model-call allowance used' });
+      } else {
+        await again.worker.workObligations(); again.clock.now += 2 * LOOP_REVISIT_MS;
+        await again.worker.workObligations();
+        expect(again.journal.view.obligationWork['commitment:0']).toMatchObject(variant === 'complete'
+          ? { outcome: 'report', attempts: 1, report: { text: recorded.workResult.report } }
+          : { outcome: 'uncertain', recoveryHeld: true, attempts: 1 });
+      }
+      expect(again.work).toEqual([]); expect(again.sent).toEqual([]); expect(again.journal.view.calls).toBe(calls);
+      again.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('reconciles held recorded c1 evidence on the cadence after a transient reader failure and restart', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  const root = origin();
+  try {
+    const w = world(root, { answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }) });
+    await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+    const slot = dueObligationWork(w.journal.view, w.clock.now)[0]!.slot, id = `obligation:commitment:0:${slot}`;
+    w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, at: w.clock.now });
+    for (const captured of recorded.checkpointRows) {
+      if (captured.kind !== 'phase-timing') w.journal.append({ ...structuredClone(captured), id });
+    }
+    w.clock.now = Math.max(w.clock.now, ...recorded.checkpointRows.map((row: { at: number }) => row.at)) + 1;
+    const calls = w.journal.view.calls; w.journal.close();
+    let reads = 0;
+    const again = world(root, { recoverSessionWork: () => { reads++; throw Error('transient read failure'); } });
+    again.clock.now = w.clock.now;
+    await again.worker.workObligations(); await again.worker.workObligations();
+    expect(reads).toBe(1);
+    expect(again.journal.view.obligationWork['commitment:0']).toMatchObject({ recoveryHeld: true, lastSlot: slot, attempts: 1 });
+    expect(loopHealth(again.journal.view, again.clock.now)).toMatchObject({ ownedWork: 1, inhibition: null,
+      nextWorkAt: again.clock.now + LOOP_REVISIT_MS });
+    again.journal.compact(); again.journal.close();
+    const resumed = world(root); resumed.clock.now = w.clock.now + LOOP_REVISIT_MS;
+    await resumed.worker.workObligations(); await resumed.worker.workObligations();
+    expect(resumed.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'report', attempts: 1,
+      report: { text: recorded.workResult.report } });
+    expect(resumed.journal.view.obligationWork['commitment:0']!.recoveryHeld).toBeUndefined();
+    expect(resumed.journal.view.calls).toBe(calls);
+    expect(resumed.work).toEqual([]); expect(resumed.sent).toEqual([]);
+    resumed.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('resumes the same obligation after a closed progress checkpoint and produces one result without new intake', async () => {
+  const root = origin();
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  try {
+    const w = world(root, { answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }),
+      work: () => recorded.workOutput,
+      // Injected progress checkpoint; the result of the resumed step is the recorded c1 output.
+      recoverSessionWork: () => ({ state: 'complete', text: '{"outcome":"continue","note":"The checkpoint is saved; finish the remaining step."}',
+        edge: 'exact-closed-child', child: 'retired-child', detail: 'verified closed checkpoint' }) });
+    await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+    const slot = dueObligationWork(w.journal.view, w.clock.now)[0]!.slot;
+    w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, session: true, at: w.clock.now });
+    await w.worker.workObligations(); expect(w.work).toEqual([]);
+    w.clock.now += LOOP_REVISIT_MS + 1;
+    await w.worker.workObligations(); await w.worker.workObligations();
+    expect(w.work).toHaveLength(1); expect(w.work[0]).not.toBe(`obligation:commitment:0:${slot}`);
+    expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ attempts: 2, outcome: 'report', report: { text: recorded.workResult.report } });
+    expect(w.journal.view.order).toHaveLength(1);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps an uncertain tool-worker outcome halted on a healthy host instead of replaying it on the next cadence', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { toolRoute: id => id.startsWith('obligation:'), work: () => { throw Error('worker lost'); },
+      answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }) });
+    await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+    await w.worker.workObligations(); w.clock.now += 2 * LOOP_REVISIT_MS;
+    await w.worker.workObligations();
+    expect(w.work).toHaveLength(1);
+    expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ recoveryHeld: true, outcome: 'uncertain' });
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps an existing hold when a later read has no checkpoint evidence', async () => {
+  const root = origin();
+  let reads = 0;
+  try {
+    const w = world(root, { recoverSessionWork: () => { if (++reads === 1) throw Error('unavailable'); return null; },
+      answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }) });
+    await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+    const slot = dueObligationWork(w.journal.view, w.clock.now)[0]!.slot;
+    w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, at: w.clock.now });
+    for (let tick = 0; tick < 3; tick++) {
+      await w.worker.workObligations(); w.clock.now += LOOP_REVISIT_MS;
+      expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ recoveryHeld: true, attempts: 1, lastSlot: slot });
+    }
+    expect(reads).toBe(3); expect(w.work).toEqual([]);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('reconciles a held step on its original host and permits new work only after proven non-launch', async () => {
+  const root = origin();
+  let proven = false, reads = 0;
+  try {
+    const w = world(root, { toolRoute: id => id.startsWith('obligation:'),
+      work: () => { if (!proven) throw Error('launch outcome unavailable'); return { outcome: 'report', report: 'Finished the work.' }; },
+      recoverSessionWork: () => { reads++; return proven
+        ? { state: 'failed', edge: 'exact-edge', child: null, detail: 'verified no-child closure' }
+        : { state: 'uncertain', edge: 'exact-edge', child: null, detail: 'closure unavailable' }; },
+      answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }) });
+    await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+    await w.worker.workObligations();
+    const slot = w.journal.view.obligationWork['commitment:0']!.lastSlot;
+    await w.worker.workObligations(); expect(reads).toBe(0);
+    w.clock.now += LOOP_REVISIT_MS; await w.worker.workObligations();
+    expect(reads).toBe(1); expect(w.work).toHaveLength(1);
+    proven = true; w.clock.now += LOOP_REVISIT_MS;
+    await w.worker.workObligations();
+    expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'failed', attempts: 1, lastSlot: slot });
+    expect(w.journal.view.obligationWork['commitment:0']!.recoveryHeld).toBeUndefined();
+    expect(w.work).toHaveLength(1);
+    w.clock.now += LOOP_REVISIT_MS; await w.worker.workObligations(); await w.worker.workObligations();
+    expect(w.work).toHaveLength(2);
+    expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ outcome: 'report', attempts: 2 });
+    expect(w.sent).toHaveLength(1); // Only the original reply; no unsolicited recovery send.
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('does not accept recorded summary, uncertain review, Jev undecided or empty reply shapes as a work result', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  for (const sample of recorded.negativeOutputs) {
+    const root = origin();
+    try {
+      const w = world(root, { answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }),
+        recoverSessionWork: () => sample.output === null
+          ? { state: 'uncertain', edge: sample.id, child: null, detail: sample.shape }
+          : { state: 'complete', text: sample.output, edge: sample.id, child: 'closed', detail: sample.shape } });
+      await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+      const slot = dueObligationWork(w.journal.view, w.clock.now)[0]!.slot;
+      w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, session: true, at: w.clock.now });
+      await w.worker.workObligations();
+      expect(w.journal.view.obligationWork['commitment:0']?.report, sample.shape).toBeUndefined();
+      expect(w.work, sample.shape).toEqual([]);
+      expect(loopHealth(w.journal.view, w.clock.now).ownedWork, sample.shape).toBeGreaterThan(0);
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('holds a live or unknown child without duplicate work, retains the halt across restart, and obeys stop', async () => {
+  for (const state of ['uncertain', 'missing'] as const) {
+    const root = origin();
+    try {
+      let stopped = false;
+      const w = world(root, { stopped: () => stopped,
+        recoverSessionWork: () => state === 'missing' ? null : { state: 'uncertain', edge: 'open-child', child: 'still-live', detail: 'no exact close' },
+        answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }) });
+      await w.say(INVOICE); w.clock.now += LOOP_REVISIT_MS + 1;
+      const slot = dueObligationWork(w.journal.view, w.clock.now)[0]!.slot;
+      w.journal.append({ kind: 'obligation-start', obligation: 'commitment:0', slot, session: true, at: w.clock.now });
+      stopped = true;
+      await expect(w.worker.workObligations()).rejects.toThrow('preview stopped');
+      expect(w.journal.view.obligationWork['commitment:0']!.inFlight).toBe(slot);
+      stopped = false; await w.worker.workObligations();
+      w.clock.now += 3 * LOOP_REVISIT_MS; await w.worker.workObligations();
+      expect(w.work).toEqual([]);
+      expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ ownedWork: 1, recoveryUnknown: 1, state: 'stalled', inhibition: null });
+      expect(loopStatusLines(w.journal.view, w.clock.now).join(' ')).toContain('automatic replay halted');
+      w.journal.close();
+      const again = world(root); again.clock.now = w.clock.now;
+      await again.worker.workObligations(); expect(again.work).toEqual([]);
+      expect(again.journal.view.obligationWork['commitment:0']).toMatchObject({ recoveryHeld: true, outcome: 'uncertain' });
+      again.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
 const REASSESSMENT = { avenues: [{ avenue: 'booking tool', disposition: 'outside-standing', evidence: 'externalTools' },
   { avenue: 'email the clinic', disposition: 'outside-standing', evidence: 'sends' }], constraint: 'no-tools',
 reason: 'Rechecked: this runner still has no browser or accounts, and it can only reply to you.' };
@@ -580,7 +1001,7 @@ it('gives a held deferral one bounded correction: a revalidated correction is se
       // An identical draft is the agent's answer, not a new candidate: no second review of the same text.
       expect(w.reviews, label).toHaveLength(label === 'agent keeps the draft unchanged' || !correction ? 1 : 2);
       if (outcome === 'sent') {
-        expect(w.sent, label).toEqual([`PREVIEW — ${DONE}`]);
+        expect(w.sent, label).toEqual([`${DONE}`]);
         expect(turn.release, label).toMatchObject({ review: 'violation', objections: ['defers_work'], revised: true,
           dispositions: [{ objection: 'defers_work', decision: 'accept', reason: 'I can do it now.' }] });
         expect(turn.heldReview, label).toBeUndefined();
@@ -590,8 +1011,12 @@ it('gives a held deferral one bounded correction: a revalidated correction is se
         expect(w.sent.join('\n'), label).not.toContain('later today');
         expect(turn.release, label).toBeUndefined();
         // The agent's answer is recorded as given; an unavailable response is no decision, never a rejection.
+        // A rejected rewrite used the sole revision-review slot, so no different remainder is reviewed or removed.
+        // With no rewrite, the whole answer is the named deferral: removal leaves nothing to send.
         expect(turn.heldReview, label).toEqual({ objections: ['defers_work'],
-          dispositions: correction ? correction.dispositions : [{ objection: 'defers_work', decision: 'no-decision' }] });
+          dispositions: correction ? correction.dispositions : [{ objection: 'defers_work', decision: 'no-decision' }],
+          ...(label === 'correction still defers' ? {} : { withheld: { rules: ['defers_work'], removed: [LATER], unlocated: [] } }) });
+        expect(turn.revisionReview?.verdict, label).toBe(label === 'correction still defers' ? 'violation' : undefined);
       }
       expect(w.journal.view.commitments.filter(note => note.loop), label).toHaveLength(0);
       w.journal.close();
@@ -651,7 +1076,7 @@ it('sends a true can\'t-do answer once its correction declares the investigation
       expect(revisions[0]!.objections, label).toEqual(['unrecorded_blocker']);
       expect(w.sent, label).toHaveLength(1);
       if (sends) {
-        expect(w.sent[0], label).toBe(`PREVIEW — ${CLAIM}`);
+        expect(w.sent[0], label).toBe(`${CLAIM}`);
         // The same words with a newly declared record are a new candidate: judged once more, with that record.
         expect(w.reviews, label).toHaveLength(2);
         expect((w.reviews[1]!.declaredObligations as { blocker: { claim: string } }).blocker.claim, label).toBe(CLAIM);
@@ -662,13 +1087,100 @@ it('sends a true can\'t-do answer once its correction declares the investigation
         expect(w.sent[0], label).toContain(HOLDING_REPLY.replace(/^PREVIEW — /u, ''));
         expect(turn.revision?.blocker, label).toBeUndefined();
         expect(openBlockers(w.journal.view), label).toEqual([]);
-        expect(turn.heldReview, label).toEqual({ objections: ['unrecorded_blocker'], dispositions: accept });
+        // Plan #215: the claim was the whole answer, so the notice stands in for nothing surviving.
+        expect(turn.heldReview, label).toEqual({ objections: ['unrecorded_blocker'], dispositions: accept,
+          withheld: { rules: ['unrecorded_blocker'], removed: [CLAIM], unlocated: [] } });
       }
       w.journal.close();
       // Replay: the admitted record survives a reopen exactly as it was sent.
       const again = openPreviewJournal(w.path, key);
       expect(openBlockers(again.view).length, label).toBe(sends ? 1 : 0);
       again.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+// Plan #111 (live, L6 00:05 and L7 02:07, updates 969389707 and 969389730): a repeated "Can you <task> on the website
+// for me?" drew the real model's true can't-do answer restating a limit it had already settled (open blocker 4, then 8),
+// declaring no new record because the answer packet says never to renew one. The reviewer was shown only this reply's
+// own record, judged the restatement unrecorded, and the reply was held behind the notice. The settled record is now
+// part of what the reviewer judges against; a limit no open, current record covers is still held.
+const DMV_ASK = 'Can you renew my car registration on the website for me?';
+const DMV_CLAIM = 'I have no tools in this preview, so I can\'t browse or fill out forms on the DMV or state website.';
+const DMV_FIRST = `I can't do that. ${DMV_CLAIM} You'd need to renew your car registration yourself on the relevant government website, by phone, or in person.`;
+const DMV_AGAIN = 'No, I still can\'t — I have no tools in this preview, so I can\'t browse or fill out forms on the DMV or state website. You\'d need to renew your car registration yourself on the relevant government website, by phone, or in person.';
+const LIBRARY_CLAIM = 'I have no tools in this preview, so I can\'t browse or fill out forms on the library website.';
+it('judges a restated can\'t-do answer against the limit it already settled, and still holds one no current record covers (plan #111; Rules 20-23, 97, 99)', async () => {
+  // Stands in for the reviewer reading the guide: a final claim is recorded when this reply's blocker, or one settled
+  // entry, records the same limit (here: the same no-tools matter).
+  const matter = (text: string) => ['DMV', 'library'].find(word => text.includes(word));
+  const reviewer = { jev: (text: string) => (text.includes('can\'t browse') ? { unrecorded_blocker: 0.98 } : {}),
+    verdict: (context: Record<string, unknown>) => {
+      // The remainder carries the practical answer but no cannot-do claim; judge this new candidate separately.
+      if (Array.isArray(context.withheldClaims)) {
+        expect(context.withheldClaims).toEqual([DMV_AGAIN.split('. ')[0] + '.']);
+        expect(context.candidateReply).not.toContain('I still can\'t');
+        expect(context.candidateReply).toContain('You\'d need to renew your car registration yourself');
+        return 'pass' as const;
+      }
+      const declared = context.declaredObligations as { blocker: { claim: string; constraint: string } | null;
+        settled?: { claim: string; constraint: string }[] };
+      const records = [declared.blocker, ...(declared.settled ?? [])];
+      return (records.some(record => record?.constraint === 'no-tools' && matter(record.claim) === matter(String(context.candidateReply)))
+        ? 'pass' : 'violation') as 'pass' | 'violation';
+    } };
+  for (const [label, first, between, sends] of [
+    ['restated settled limit', { reply: DMV_FIRST, claim: DMV_CLAIM }, 'none', true],
+    ['settled limit on another matter', { reply: LIBRARY_CLAIM, claim: LIBRARY_CLAIM }, 'none', false],
+    ['settled limit since cleared', { reply: DMV_FIRST, claim: DMV_CLAIM }, 'cleared', false],
+    ['settled limit due for recheck', { reply: DMV_FIRST, claim: DMV_CLAIM }, 'due', false],
+    // Rule 99: queued a minute before the recheck date; reviewed a minute before it (fresh) or a minute after (due).
+    ['queued and reviewed before recheck', { reply: DMV_FIRST, claim: DMV_CLAIM }, 'queued-fresh', true],
+    ['queued before recheck, reviewed after it', { reply: DMV_FIRST, claim: DMV_CLAIM }, 'queued-due', false],
+  ] as const) {
+    const root = origin();
+    try {
+      const w = world(root, { maxBytes: 16000, review: reviewer, answer: question => question === 'First'
+        ? { reply: first.reply, blocker: blocker({ claim: first.claim, avenues: [{ avenue: 'browse the website', disposition: 'outside-standing',
+          evidence: 'externalTools' }], outsideAction: 'Do it yourself on the website.' }) }
+        : question === 'Bookings reopened, try again.' ? { reply: 'It is now possible.', blockerRechecks: [{ id: 0, outcome: 'cleared' }] }
+          // The real model's second answer: the settled limit restated, no new record declared.
+          : question === DMV_ASK ? DMV_AGAIN : 'Noted.' });
+      await w.say('First');
+      expect(openBlockers(w.journal.view), label).toHaveLength(1);
+      if (between === 'cleared') await w.say('Bookings reopened, try again.');
+      if (between === 'due') w.clock.now += 31 * DAY;
+      const due = w.journal.view.blockers[0]!.recheckAt;
+      if (between === 'queued-fresh' || between === 'queued-due') w.clock.now = due - 60_000;
+      const before = w.reviews.length;
+      await w.say(DMV_ASK, () => { if (between === 'queued-due') w.clock.now = due + 60_000; });
+      const turn = w.journal.view.order.find(item => item.text === DMV_ASK)!;
+      const newReviews = w.reviews.slice(before);
+      const acknowledgements = newReviews.filter(review => review.candidateReply === REPLY_ACKNOWLEDGEMENT);
+      expect(acknowledgements.length, label).toBe(0); // fixed acknowledgement never consumes a model review
+      expect(newReviews.length - acknowledgements.length, label).toBe(sends ? 1 : 2);
+      expect(turn.answerBlocker, label).toBeUndefined();
+      // Live 969389730: the writer relied on a settled record of a different action (looking up a bill, not paying it).
+      if (between === 'none' || between === 'queued-fresh') expect(w.contexts.get(DMV_ASK), label).toContain('A settled blocker covers only its own claim');
+      if (between.startsWith('queued')) expect(turn.at, label).toBeLessThan(due);
+      if (sends) {
+        expect(w.sent.at(-1), label).toBe(`${DMV_AGAIN}`);
+        expect(turn.heldReview, label).toBeUndefined();
+      } else {
+        // Plan #215: an unevidenced restatement no longer silences the whole answer. The sentence carrying the
+        // claim the review named is removed and the rest — what the operator can actually do — is sent.
+        expect(w.sent.at(-1), label).not.toContain(HOLDING_REPLY.replace(/^PREVIEW — /u, ''));
+        expect(w.sent.at(-1), label).not.toContain('I still can\'t');
+        expect(w.sent.at(-1), label).toContain('You\'d need to renew your car registration yourself');
+        expect(turn.heldReview, label).toBeUndefined();
+        expect(turn.release?.objections, label).toEqual(['unrecorded_blocker']);
+        expect(turn.release?.withheld?.rules, label).toEqual(['unrecorded_blocker']);
+        expect(turn.release?.withheld?.removed, label).toEqual([DMV_AGAIN.split('. ')[0] + '.']);
+        expect(turn.release?.withheld?.unlocated, label).toEqual([]);
+      }
+      const settled = (w.reviews.at(-1)!.declaredObligations as { settled: { claim: string }[] }).settled;
+      expect(settled.map(item => item.claim), label).toEqual(between === 'none' || between === 'queued-fresh' ? [first.claim] : []);
+      w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
 });
@@ -759,19 +1271,685 @@ it('revives a queued runner, stops on inhibited or none, and bounds relaunches a
       if (revival) appendRun(path, { v: 1, launch: at, exit: at + 1, reason: 'cycle limit reached', unfinished: 1, revival });
       return { code, signal: null };
     };
-    const supervise = () => superviseJournal(config, { launch: async () => script[launch]!(++launch * 10),
-      wait: async (_root: string, ms: number) => { waits.push(ms); } });
+    let now = 1000;
+    const supervise = () => superviseJournal(config, { now: () => now, launch: async () => script[launch]!(++launch * 10),
+      wait: async (_root: string, ms: number) => { waits.push(ms); now += ms; } });
     // Queued work after a clean exit is relaunched; an inhibited exit ends supervision.
     script.push(run('queued'), run('queued'), run('inhibited'));
     expect(await supervise()).toBe(0);
     expect(launch).toBe(3);
     expect(lastJournalRun(root)).toEqual({ launch: 30, revival: 'inhibited' });
-    // Crashes (no exit record) are relaunched with backoff, at most maxRestarts times in a row.
+    // The two rapid queued exits already consumed the shared window. The next crash pauses durably.
     launch = 0; script.length = 0; waits.length = 0;
     for (let i = 0; i < 10; i++) script.push(run(undefined, 1));
     expect(await supervise()).toBe(0);
-    expect(launch).toBe(4);
-    expect(waits).toEqual([1, 2, 4]);
+    expect(launch).toBe(1);
+    expect(waits).toEqual([]);
     await expect(() => superviseJournal({ ...config, agent: [process.execPath, agent, 'run', '--root', '/elsewhere'] })).rejects.toThrow('invalid journal launch configuration');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('a tool-bearing work step carries the capability note its pointers name: the supplied tool note, else its tools item and limits (Rules 45, 78, 84; review round 1, finding 2)', async () => {
+  const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
+  const noteOf = (tools: boolean) => sourcePacket(read, SOURCE_PINS, { providerAttempts: 400, expiresAt: 9999999999999, tools,
+    ...(tools ? { mcp: 0 } : {}) }).sources.find(source => source.id === 'capability-note')!;
+  // The tool note the runner supplies (as journal-agent builds it for a root without MCP), the text-only note (the activation
+  // off while a delegated session still has tools), and none.
+  for (const [label, supplied, expected] of [
+    ['tool note', noteOf(true), noteOf(true).text],
+    ['text-only note', noteOf(false), `You have ${TOOLS_BRIEFING} ${TOOLS_LIMITS}`],
+  ] as const) {
+    const root = origin();
+    try {
+      const contexts: Record<string, unknown>[] = [];
+      const route = { tools: false };
+      const w = world(root, { toolRoute: () => route.tools, sources: [supplied],
+        answer: question => question.startsWith('Can you book') ? { reply: CLAIM, blocker: blocker() } : 'Noted.',
+        work: context => { contexts.push(context); return { outcome: 'still-blocked', recheck: day(T0 + 61 * DAY), ...REASSESSMENT }; } });
+      await w.say('Can you book the dentist appointment online?');
+      route.tools = true;
+      w.clock.now = T0 + 31 * DAY;
+      expect(await w.worker.workObligations()).toBe(true);
+      // The blocker recheck the reviewer reproduced: its pointers now resolve inside the packet it receives.
+      const packet = contexts[0]! as { capabilities: Record<string, unknown>; governingConstraints: Record<string, string>;
+        sources: { id: string; text: string }[]; obligation: { kind: string } };
+      expect(packet.obligation.kind, label).toBe('blocker-recheck');
+      expect(packet.capabilities, label).toMatchObject({ accounts: 'listed', secretCustody: 'see Limits' });
+      expect(packet.governingConstraints['secret-custody'], label).toBe('see Limits');
+      expect(packet.sources.map(source => source.text), label).toEqual([expected]);
+      expect(packet.sources[0]!.text, label).toContain(TOOLS_LIMITS);
+      // Supplied notes use the rendered paragraph; the unsupplied tool-note fallback keeps the legacy tools item.
+      expect(packet.sources[0]!.text, label).toContain('files, shell, web reads, nested subagents');
+      expect(packet.sources[0]!.text.toLowerCase(), label).toContain('standing grants need no new approval');
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('tells scheduled work and the reply review what the call actually had: no tools on the text-only route, the recorded tool calls on the tool route (Part Thirteen §9; review round 1, finding 5)', async () => {
+  for (const tools of [false, true]) {
+    const root = origin();
+    try {
+      const contexts: Record<string, unknown>[] = [];
+      const w = world(root, { toolRoute: id => tools && id.startsWith('obligation:'),
+        answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Fine.',
+        work: context => { contexts.push(context); return { outcome: 'report', report: 'The invoice is for 120 dollars.' }; } });
+      await w.say(INVOICE);
+      w.clock.now += LOOP_REVISIT_MS + 60_000;
+      expect(await w.worker.workObligations()).toBe(true);
+      expect(w.workQuestions).toEqual([tools ? OBLIGATION_WORK_QUESTION_TOOLS : OBLIGATION_WORK_QUESTION]);
+      expect(contexts[0]!.capabilities).toEqual(previewCapabilities(tools));
+      expect((contexts[0]!.governingConstraints as Record<string, string>)['no-tools'])
+        .toBe(tools ? 'listed tools only' : 'no external tools or accounts');
+      // Review round 1, finding 2: the tool route's entries point at the note ("listed", "see Limits"), so the tool step
+      // carries it; with no note supplied, the note's own tools item and limits, the MCP count unknown, never guessed.
+      if (tools) expect(contexts[0]!.sources).toEqual([{ id: 'capability-note', text: `You have ${TOOLS_BRIEFING} ${TOOLS_LIMITS}` }]);
+      else expect(contexts[0]).not.toHaveProperty('sources');
+      if (tools) {
+        expect(w.workQuestions[0]).not.toContain('you have no external tools');
+        expect(w.workQuestions[0]).not.toContain('You have attempted nothing outside this step');
+      } else expect(w.workQuestions[0]).toContain('you have no external tools');
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+  // The review of a reply whose answer ran on the tool route: the REAL calls of the live task turn (Write, Read, Bash wc -c,
+  // fixtures/tool-turn/live-2026-10-03/task.json, recorded under the pinned harness) are journaled as that turn's trace,
+  // and the review context carries them beside the tool capability read. The neighbour turn answered text-only (no trace,
+  // or a tool turn refused to the text-only route) keeps the no-tools read and carries no attempts.
+  const root = origin();
+  try {
+    const w = world(root);
+    await w.say('Make a note and count its bytes.'); await w.say('And the tomatoes?'); await w.say('One more.');
+    const [toolTurn, plainTurn, refusedTurn] = w.journal.view.order.map(turn => turn.id);
+    const recorded = JSON.parse(readFileSync(join(__dirname, 'fixtures/tool-turn/live-2026-10-03/task.json'), 'utf8')) as { admission: string; answer: string };
+    const trace = toolTrace(recorded.admission.trim().split('\n'));
+    expect(trace).toMatchObject({ consistent: true, admitted: 3 });
+    w.journal.append({ kind: 'tool-turn', phase: 'reserved', id: toolTurn!, attempt: 0, calls: 7, at: w.clock.now });
+    w.journal.append({ kind: 'tool-turn', phase: 'trace', id: toolTurn!, attempt: 0, consistent: true, workspaceBytes: 11, at: w.clock.now,
+      calls: trace.calls });
+    w.journal.append({ kind: 'tool-turn', phase: 'refused', id: refusedTurn!, reason: 'call cap', at: w.clock.now });
+    const declared = declaredObligations(w.journal.view, toolTurn!, w.clock.now);
+    expect(declared.capabilities).toEqual(previewCapabilities(true));
+    const attempts = declared.toolAttempts!;
+    expect(attempts.meaning).toBe(TOOL_ATTEMPTS_MEANING);
+    expect(attempts.calls.map(call => [call.n, call.tool, call.decision])).toEqual([[1, 'Write', 'allow'], [2, 'Read', 'allow'], [3, 'Bash', 'allow']]);
+    // The recorded wc -c result (11 bytes) is what the reviewer can check the reply's "11" against.
+    expect(attempts.calls[2]!.result).toMatch(/\b11\b/u);
+    for (const id of [plainTurn!, refusedTurn!]) {
+      const none = declaredObligations(w.journal.view, id, w.clock.now);
+      expect(none.capabilities).toEqual(previewCapabilities(false));
+      expect(none.toolAttempts).toBeUndefined();
+    }
+    // Through the real review-context builder: the attempts arrive redacted and intact.
+    const envelope = JSON.stringify({ messages: [{ role: 'user', content: 'Make a note and count its bytes.' },
+      { role: 'context', content: JSON.stringify({ packet: { audience: 'operator', history: [] } }) }] });
+    const context = JSON.parse(replyReviewContext(envelope, recorded.answer, [], declared)) as
+      { declaredObligations: { capabilities: { externalTools: string }; toolAttempts: { calls: { result: string | null }[] } } };
+    expect(context.declaredObligations.capabilities.externalTools).toBe('listed');
+    expect(context.declaredObligations.toolAttempts.calls[2]!.result).toMatch(/\b11\b/u);
+    // Replay keeps the same read.
+    w.journal.close();
+    const reopened = openPreviewJournal(w.path, key);
+    expect(declaredObligations(reopened.view, toolTurn!, w.clock.now).toolAttempts?.calls).toHaveLength(3);
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('names tools in the packet exactly when its dispatch, after the base call is reserved, runs them: answers and scheduled work at seven and eight remaining calls (review round 2, finding 1)', async () => {
+  const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
+  type Seen = { packet: string; dispatch: boolean };
+  const tools = (context: string | Record<string, unknown>) =>
+    ((typeof context === 'string' ? JSON.parse(context) : context) as { capabilities: { externalTools: string } }).capabilities.externalTools;
+  // Answers: the packet is prepared before `reserve`, the tool turn's own check runs after it.
+  for (const remaining of [extra, extra + 1]) {
+    const root = origin();
+    try {
+      const seen: Seen[] = [];
+      const holder: { view?: Parameters<typeof toolTurnFits>[0] } = {};
+      const w = world(root, { maxCalls: remaining, toolRoute: () => toolPacketFits(holder.view),
+        answer: (_question, context) => { seen.push({ packet: tools(context), dispatch: toolTurnFits(holder.view) }); return 'Fine.'; } });
+      holder.view = w.journal.view;
+      expect(w.journal.view.calls).toBe(0);
+      await w.say(INVOICE);
+      const expected = remaining > extra;
+      expect(seen).toEqual([{ packet: expected ? 'listed' : 'none', dispatch: expected }]);
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+  // Scheduled work: the packet is prepared before `obligation-start` counts its call. The calls an earlier answer used
+  // are measured first, so the cap leaves exactly seven or eight at the moment the work's packet is prepared.
+  const probe = origin();
+  let used: number;
+  try {
+    const w = world(probe, { answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Fine.' });
+    await w.say(INVOICE); used = w.journal.view.calls; w.journal.close();
+  } finally { rmSync(probe, { recursive: true, force: true }); }
+  for (const remaining of [extra, extra + 1]) {
+    const root = origin();
+    try {
+      const seen: Seen[] = [];
+      const holder: { view?: Parameters<typeof toolTurnFits>[0] } = {};
+      const w = world(root, { maxCalls: used + remaining, toolRoute: id => id.startsWith('obligation:') && toolPacketFits(holder.view),
+        answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Fine.',
+        work: context => { seen.push({ packet: tools(context), dispatch: toolTurnFits(holder.view) }); return { outcome: 'continue', note: 'Still working.' }; } });
+      holder.view = w.journal.view;
+      await w.say(INVOICE);
+      expect(w.journal.view.calls).toBe(used);
+      w.clock.now += LOOP_REVISIT_MS + 60_000;
+      expect(await w.worker.workObligations()).toBe(true);
+      const expected = remaining > extra;
+      expect(seen).toEqual([{ packet: expected ? 'listed' : 'none', dispatch: expected }]);
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('re-reads the tool route for a format re-ask or timeout replacement after a tool turn, so its packet, the review and the revision read the route its call actually took (review rounds 3, 4)', async () => {
+  // Through the real worker, the shipped envelope, the real tool turn and the contextual reviewer's input: the first call
+  // runs with tools and returns a malformed Decision (or times out); the second call has room for tools at the larger
+  // cap and not at the smaller, where it answers text-only. The packet the review and revision read is that second one.
+  const timedOut = (JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/lostanswer-live-2026-10-02.json'), 'utf8')) as
+    { lostFirstCall: { callOutcomes: Record<string, unknown>[] } }).lostFirstCall.callOutcomes[0]!;
+  for (const mode of ['format-retry', 'answer-replace'] as const) for (const cap of [12, 18]) {
+    const root = mkdtempSync(join(tmpdir(), 'selfdesc-retry-'));
+    const now = 1790000000000;
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(23), {
+      kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
+      configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: cap,
+      maxReplies: 10, maxTurns: 10, maxBytes: 32768, cursor: 0 });
+    const seen: { packet: string; actual: string }[] = [];
+    const reviews: Record<string, any>[] = [];
+    type Packet = { capabilities: object; governingConstraints: object; obligationDecision: string };
+    const packetOf = (prompt: string) => (JSON.parse(JSON.parse(prompt).messages
+      .find((m: { role: string }) => m.role === 'context').content) as { packet: Packet }).packet;
+    try {
+      const worker = createJournalWorker(journal, {
+        now: () => now, stopped: () => false, timeZone: 'UTC',
+        prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', now, 32768),
+        replyCheck: { elapsedMs: () => 0, jev: async () => { throw Error('offline: exercise the contextual review'); },
+          escalate: async (text, id, originalPrompt, rules) => {
+            reviews.push(JSON.parse(replyReviewContext(originalPrompt!, text, rules, declaredObligations(journal.view, id, now))));
+            return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0 };
+          } },
+        toolRoute: () => toolPacketFits(journal.view),
+        model: async input => {
+          let actual = '';
+          const first = seen.length === 0;
+          const result = await runToolTurn({ journal, root, id: input.id, prepared: input.prepared,
+            promptLimit: 32768, deniedRoots: [root], operations: [], now: () => now, redactText: (s: string) => s,
+            scratch: (turn: string) => { const vol = join(turn, 'vol'); mkdirSync(vol, { recursive: true }); return vol; }, detach: () => true, unmount: () => true,
+            fallback: async () => { actual = 'none'; return { result: 'A short answer.' }; },
+            invoke: async () => { actual = 'listed'; return first && mode === 'format-retry' ? { state: 'complete', failureClass: 'malformed' } : 'A short answer.'; } });
+          seen.push({ packet: (JSON.parse(input.context) as Packet & { capabilities: { externalTools: string } }).capabilities.externalTools, actual });
+          if (first && mode === 'answer-replace') {
+            const { id: _id, role, at: _at, ...outcome } = timedOut;
+            journal.append({ kind: 'call-outcome', id: input.id, role, outcome, at: now } as never);
+            return { state: 'uncertain' };
+          }
+          return result.result;
+        }, send: async () => 1, checkOutbound: () => {} });
+      worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
+        date: Math.floor(now / 1000), text: 'What tools can you use now?' } }]);
+      await worker.drain();
+      const tools = cap === 18, final = tools ? 'listed' : 'none';
+      expect(seen).toEqual([{ packet: 'listed', actual: 'listed' }, { packet: final, actual: final }]);
+      const id = journal.view.order[0]!.id;
+      expect(declaredObligations(journal.view, id, now).capabilities.externalTools).toBe(final);
+      // The contextual review reads the final attempt's packet: capabilities, constraints and instructions agree with
+      // the declaration on both routes; no earlier-route entry survives beside it.
+      expect(reviews).toHaveLength(1);
+      expect(reviews[0]!.capabilities).toEqual(previewCapabilities(tools));
+      expect(reviews[0]!.governingConstraints).toEqual(governingConstraints(tools));
+      expect(reviews[0]!.obligationDecision).toBe(tools ? OBLIGATION_DECISION_TOOLS : OBLIGATION_DECISION);
+      expect(reviews[0]!.declaredObligations.capabilities.externalTools).toBe(final);
+      // Revision and inspect read the turn's prompt: the final attempt's packet, also after the journal reopens.
+      expect(packetOf(journal.view.turns.get(id)!.prompt!).capabilities).toEqual(previewCapabilities(tools));
+      journal.close();
+      const reopened = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(23));
+      expect(declaredObligations(reopened.view, id, now).capabilities.externalTools).toBe(final);
+      expect(packetOf(reopened.view.turns.get(id)!.prompt!).capabilities).toEqual(previewCapabilities(tools));
+      reopened.close();
+    } finally { try { journal.close(); } catch { /* closed */ } rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('keeps an earlier tool attempt\'s calls when a later attempt traces, so the review never reads a retry as the whole turn (cint-L39 review, must-fix 1)', async () => {
+  // [first attempt calls, second attempt calls] -> shown, omitted. The reviewer's shape: three admitted calls, then a
+  // format re-ask on tools that made none. Its neighbour overflows the bound across the two attempts.
+  for (const [first, second] of [[3, 0], [6, 6]] as const) {
+    const root = origin();
+    try {
+      const w = world(root);
+      await w.say('Run the check and tell me what you tried.');
+      const id = w.journal.view.order[0]!.id;
+      const calls = (attempt: number, count: number) => Array.from({ length: count }, (_, i) => ({ n: i + 1, tool: 'Bash',
+        input: `echo ${attempt}-${i + 1}`, decision: 'allow', reason: 'sandboxed', result: `R${attempt}-${i + 1}` }));
+      for (const [attempt, count] of [[0, first], [1, second]] as const) {
+        w.journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt, calls: 1, at: w.clock.now });
+        w.journal.append({ kind: 'tool-turn', phase: 'trace', id, attempt, consistent: true, workspaceBytes: 0, at: w.clock.now, calls: calls(attempt, count) });
+      }
+      const check = (view: typeof w.journal.view) => {
+        const attempts = declaredObligations(view, id, w.clock.now).toolAttempts as { meaning: string; calls: { result: string | null }[]; omitted?: number };
+        const total = first + second, shown = Math.min(total, TOOL_ATTEMPTS_REVIEWED);
+        expect(attempts.calls.map(call => call.result)).toEqual([...calls(0, first), ...calls(1, second)].slice(0, shown).map(call => call.result));
+        if (total <= TOOL_ATTEMPTS_REVIEWED) {
+          expect(attempts).toMatchObject({ meaning: TOOL_ATTEMPTS_MEANING });
+          expect(attempts.omitted).toBeUndefined();
+        } else {
+          expect(attempts).toMatchObject({ meaning: TOOL_ATTEMPTS_PARTIAL_MEANING, omitted: total - shown });
+        }
+      };
+      check(w.journal.view);
+      w.journal.close();
+      const reopened = openPreviewJournal(w.path, key);
+      check(reopened.view);
+      reopened.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('tells the reply review when its tool-call excerpt is incomplete, so a result from an omitted call is not read as unsupported (review round 2, finding 2)', async () => {
+  for (const count of [TOOL_ATTEMPTS_REVIEWED, TOOL_ATTEMPTS_REVIEWED + 1]) {
+    const root = origin();
+    try {
+      const w = world(root);
+      await w.say('Run the steps and report the last result.');
+      const id = w.journal.view.order[0]!.id;
+      const calls = Array.from({ length: count }, (_, i) => ({ n: i + 1, tool: 'Bash', input: `echo ${i + 1}`, decision: 'allow',
+        reason: 'sandboxed', result: i === count - 1 ? 'FINAL_RESULT' : String(i + 1) }));
+      w.journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 0, calls: SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1, at: w.clock.now });
+      w.journal.append({ kind: 'tool-turn', phase: 'trace', id, attempt: 0, consistent: true, workspaceBytes: 0, at: w.clock.now, calls });
+      const read = (view: typeof w.journal.view) => declaredObligations(view, id, w.clock.now).toolAttempts as
+        { meaning: string; calls: { result: string | null }[]; omitted?: number };
+      const check = (attempts: ReturnType<typeof read>) => {
+        expect(attempts.calls).toHaveLength(TOOL_ATTEMPTS_REVIEWED);
+        if (count === TOOL_ATTEMPTS_REVIEWED) {
+          // Complete: the exhaustive reading holds, and the reported result is in it.
+          expect(attempts).toMatchObject({ meaning: TOOL_ATTEMPTS_MEANING });
+          expect(attempts.omitted).toBeUndefined();
+          expect(JSON.stringify(attempts.calls)).toContain('FINAL_RESULT');
+        } else {
+          // Incomplete: the review is told how many calls it cannot see and that absence proves nothing.
+          expect(attempts).toMatchObject({ meaning: TOOL_ATTEMPTS_PARTIAL_MEANING, omitted: 1 });
+          expect(JSON.stringify(attempts.calls)).not.toContain('FINAL_RESULT');
+          expect(attempts.meaning).not.toContain('The only tool calls');
+        }
+      };
+      check(read(w.journal.view));
+      w.journal.close();
+      const reopened = openPreviewJournal(w.path, key);
+      check(read(reopened.view));
+      reopened.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('a long answer keeps its own effect refusal whole, and a waiting follow-up report still rides it, after the refusal (Rules 8, 42, 92; Part Twelve §3; plan #492)', async () => {
+  const root = origin();
+  const REPORT = `The invoice is ready. ${'r'.repeat(430)}`;
+  try {
+    const w = world(root, { maxBytes: 16000, answer: question => question === INVOICE
+      ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }
+      : question === DOORWAY ? { reply: `Here is the answer. ${'x'.repeat(2780)}` } : 'The tomatoes look fine.',
+    work: () => ({ outcome: 'report', report: REPORT }) });
+    await w.say(INVOICE);
+    w.clock.now += LOOP_REVISIT_MS + 60_000;
+    expect(await w.worker.workObligations()).toBe(true);
+    expect(w.journal.view.obligationWork['commitment:0']?.report?.text).toBe(REPORT);
+    // The refusal keeps its reserved room in the first message; the report no longer waits on a one-message bound
+    // (live cint-L49 D1c: that bound, with a cap of two, kept a finished result back). It follows the refusal, and
+    // the reply is split into ordered messages at send when it outgrows one (here it still fits one).
+    await w.say(DOORWAY);
+    expect(w.sent).toHaveLength(2);
+    expect(w.sent[1]).toMatch(/Here is the answer\. x+\n\nEffect doorway: a tool:unsandboxed step was refused/u);
+    const reply = w.sent.slice(1).join('\n');
+    expect(reply).toContain('The invoice is ready');
+    expect(reply.indexOf('Effect doorway')).toBeLessThan(reply.indexOf('The invoice is ready'));
+    expect(w.journal.view.obligationWork['commitment:0']!.report!.delivered).toBeDefined();
+    // Delivered once: the next answer does not repeat it.
+    const before = w.sent.length;
+    await w.say('How are the tomatoes?');
+    expect(w.sent).toHaveLength(before + 1);
+    expect(w.sent.at(-1)).not.toContain('The invoice is ready');
+    expect(w.sent.at(-1)).not.toContain('Effect doorway');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('reserving room for an effect refusal shortens only the model body, never a runner refusal after it (Rule 42; Part Twelve §3)', async () => {
+  // Astra cint-L42 MUST-FIX 1: a rejected standing instruction's correction must survive beside the effect refusal.
+  for (const effect of [false, true]) {
+    const root = origin();
+    try {
+      const w = world(root, { answer: () => ({ reply: `I saved your standing instruction. ${'x'.repeat(3200)}`,
+        directives: [{ quote: 'Always call me Alexander.' }] }) });
+      await w.say(effect ? `${DOORWAY} Always call me Alex.` : 'Always call me Alex.');
+      expect(openDirectives(w.journal.view)).toHaveLength(0);
+      expect(w.sent).toHaveLength(1);
+      expect(w.sent[0]).toContain('I could not record that standing instruction exactly, so I have not saved it.');
+      expect(Buffer.byteLength(w.sent[0]!)).toBeLessThanOrEqual(3600);
+      if (effect) {
+        expect(w.sent[0]).toMatch(/x…  ?I could not record that standing instruction exactly/u);
+        expect(w.sent[0]).toMatch(/Please restate it\.\n\nEffect doorway: a tool:unsandboxed step was refused/u);
+      } else expect(w.sent[0]).not.toContain('Effect doorway');
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('bounded runner outcome lists leave room for every refusal beside the effect refusal (Rule 42; Part Twelve §3)', async () => {
+  // Astra cint-L42 round 2: seven long cancellations used to push the directive refusal out of a clipped answer.
+  for (const effect of [false, true]) {
+    const root = origin();
+    const requests = Array.from({ length: 7 }, (_, i) => `Remind me Friday at 9 am to handle item ${i} ${'a'.repeat(405)}`);
+    const cancel = 'Cancel all seven reminders. Always call me Alex.';
+    const w = world(root, { maxBytes: 32000, answer: (question, context) => question.includes(cancel)
+      ? { reply: 'I saved your standing instruction.', dated: [], directives: [{ quote: 'Always call me Alexander.' }],
+        cancelReminders: (JSON.parse(context) as { reminders: { id: string }[] }).reminders
+          .map(item => ({ id: item.id, quote: 'Cancel all seven reminders.' })) }
+      : { reply: 'Okay.', dated: [{ quote: question, when: 'Friday at 9 am', remind: true }] } });
+    try {
+      for (const request of requests) await w.say(request);
+      expect(w.journal.view.dated.filter(item => item.remind)).toHaveLength(7);
+      await w.say(effect ? `${DOORWAY} ${cancel}` : cancel);
+      expect(w.journal.view.reminderCancels).toHaveLength(7);
+      expect(openDirectives(w.journal.view)).toHaveLength(0);
+      expect(w.sent).toHaveLength(8);
+      const sent = w.sent.at(-1)!;
+      expect(Buffer.byteLength(sent)).toBeLessThanOrEqual(3600);
+      expect(sent).toMatch(/Cancelled requests: "[^"]+"; "[^"]+"; "[^"]+" and 4 more\./u);
+      expect(sent).toContain('I could not record that standing instruction exactly, so I have not saved it.');
+      if (effect) expect(sent).toMatch(/Please restate it\.\n\nEffect doorway: a tool:unsandboxed step was refused/u);
+      else expect(sent).not.toContain('Effect doorway');
+    } finally { w.journal.close(); rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('gives scheduled work the operator\'s own earlier words, and drops them only when the packet would not fit (plan #510, #538)', async () => {
+  // Live cint-L50/L49: the deferral "which three of the things I have told you matter most" got a work packet with none of
+  // them, and the replayed step answered "continue: this turn's context does not include the broader history".
+  // Astra cint-L50 MUST-FIX 1 (plan #538): the two summarized cases. Once a turn is behind the summary frontier its words
+  // are no longer in operatorMessages, and the summary writer is told to keep each exact fact in memoryItems by source and
+  // NOT to repeat it in prose -- so a packet carrying prose alone carried a summary with its facts deliberately removed.
+  // Her reproducer's fact was stored, active and 1180 of 32768 bytes clear of the bound, and the step still could not see
+  // it. 'summarized' is that case; 'items-dropped-first' pins the drop order, so adding the facts cannot cost a packet the
+  // prose and messages it already carried today.
+  const DENTIST = 'My dentist is Dr. Ortiz on Elm Street, and the cleaning is on Thursday.';
+  // Astra sb-w4-d1b round 2 (plan #547): the same fact once the summary frontier passes it, beside a forgotten clause
+  // that must stay out, so the packet carries the ACTIVE facts, not every kept one.
+  const PLUMBER = 'My plumber is Ray at Dockside Plumbing, and he bills monthly.';
+  const FORGET = 'Forget what I told you about the plumber.';
+  // Review round 2, must-fix 1 (Rule 96): once a summary covers the fact-bearing message, the fact is no longer in
+  // operatorMessages AND the summary writer is told to keep it out of its prose (journal.ts, the summary question:
+  // "Existing summary.memoryItems are already retained by source; do not repeat or paraphrase them in summary prose"),
+  // so the retained items are the only place it still lives. 'retained-facts' is that exact shape: the prose says an
+  // appointment was discussed and names nothing, and the clause rides in memoryItems. 'forgotten-fact' is the other
+  // side of the same filter — the operator's forgetting removes it from the packet, as it does from an ordinary answer.
+  const SUMMARY_PROSE = 'Earlier turns covered a dental appointment and the invoice question.';
+  const PROSE = 'The operator shared a scheduling fact, kept in memoryItems.';
+  /** The fact behind the summary frontier: prose that does not restate it, memoryItems that keep it by source. */
+  const summarize = (w: ReturnType<typeof world>) => {
+    const source = w.journal.view.order[0]!.id;
+    w.journal.append({ kind: 'summary-reserve', through: 1, maxInputTokens: 32768, maxOutputTokens: 2048, at: w.clock.now });
+    w.journal.append({ kind: 'summary', through: 1, text: PROSE, memoryItems: [{ source, quote: DENTIST }],
+      faithfulness: { path: 'exact', verdict: 'pass', score: null }, state: 'complete', at: w.clock.now });
+    return source;
+  };
+  for (const size of ['fits', 'summarized', 'retained-facts', 'forgotten-fact', 'too-large', 'items-dropped-first'] as const) {
+    const root = origin();
+    try {
+      const contexts: Record<string, unknown>[] = [];
+      const w = world(root, { answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Noted.',
+        work: context => { contexts.push(context); return { outcome: 'report', report: 'The invoice is for 120 dollars.' }; } });
+      await w.say(DENTIST);
+      if (size === 'summarized') await w.say(PLUMBER);
+      const dentist = w.journal.view.order.at(-1)!.id;
+      const retained = size === 'retained-facts' || size === 'forgotten-fact';
+      if (retained) {
+        // A rolling summary as the writer records one: prose that names no appointment, and the exact clause kept by
+        // source. The record is appended directly, so the projection is put in the state a real pass leaves it in; for
+        // 'forgotten-fact' the operator's forgetting of that same clause is in the state too. The live write paths for
+        // both (the summary model, and a forget through the answer) are held by journal-correction-stall.test.ts and
+        // journal-memory-correction.test.ts; what is under test here is which of them reaches a work packet.
+        w.journal.append({ kind: 'summary-reserve', through: w.journal.view.order.at(-1)!.update,
+          maxInputTokens: w.journal.view.limits.maxBytes, maxOutputTokens: 2048, at: w.clock.now });
+        w.journal.append({ kind: 'summary', through: w.journal.view.order.at(-1)!.update, text: SUMMARY_PROSE,
+          memoryItems: [{ source: dentist, quote: DENTIST }],
+          ...(size === 'forgotten-fact' ? { memory: [{ mode: 'forget' as const, source: dentist, quote: DENTIST, trigger: dentist }] } : {}),
+          faithfulness: { path: 'exact', verdict: 'pass', score: null }, state: 'complete', at: w.clock.now });
+        expect(w.journal.view.summaries).toHaveLength(1);
+        expect(w.journal.view.memory).toHaveLength(size === 'forgotten-fact' ? 1 : 0);
+      }
+      const source = size === 'items-dropped-first' ? summarize(w) : undefined;
+      await w.say(INVOICE);
+      if (size === 'summarized') {
+        await w.say(FORGET);
+        const [dentist, plumber, , forget] = w.journal.view.order;
+        // The summary this build writes over the first two messages: its prose names neither fact, because each
+        // exact clause is kept in memoryItems instead, and the later forget request supersedes one of them.
+        w.journal.append({ kind: 'summary-reserve', through: plumber!.update, maxInputTokens: 8000, maxOutputTokens: 2048, at: w.clock.now });
+        w.journal.append({ kind: 'summary', through: plumber!.update, text: 'Earlier turns covered two household contacts.',
+          memoryItems: [{ source: dentist!.id, quote: DENTIST }, { source: plumber!.id, quote: PLUMBER }],
+          memory: [{ mode: 'forget', source: plumber!.id, quote: PLUMBER, trigger: forget!.id }],
+          faithfulness: { path: 'exact', verdict: 'pass', score: null }, state: 'complete', at: w.clock.now });
+        expect(w.journal.view.summaries).toHaveLength(1);
+      }
+      const sizes: number[] = [];
+      if (size === 'too-large' || size === 'items-dropped-first') {
+        // The limit the packet is checked against: just under the packet with the rung being dropped, at or above the
+        // next rung down. Measured on a probe journal of the same shape rather than guessed.
+        const probeRoot = origin();
+        const probe = world(probeRoot, { answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Noted.',
+          work: context => { const memory = context.memory as Record<string, unknown>;
+            sizes.push(Buffer.byteLength(JSON.stringify(context)),
+              Buffer.byteLength(JSON.stringify({ ...context, memory: { ...memory, facts: undefined } })),
+              Buffer.byteLength(JSON.stringify({ ...context, memory: undefined })));
+            return { outcome: 'report', report: 'x' }; } });
+        await probe.say(DENTIST);
+        if (size === 'items-dropped-first') summarize(probe);
+        await probe.say(INVOICE);
+        probe.clock.now += LOOP_REVISIT_MS + 60_000;
+        expect(await probe.worker.workObligations()).toBe(true);
+        probe.journal.close(); rmSync(probeRoot, { recursive: true, force: true });
+        (w.journal.view.limits as { maxBytes: number }).maxBytes = sizes[0]! - 1;
+      }
+      w.clock.now += LOOP_REVISIT_MS + 60_000;
+      expect(await w.worker.workObligations()).toBe(true);
+      expect(w.workQuestions[0]).toContain('packet.memory holds what the operator told you');
+      expect(w.workQuestions[0]).toContain('packet.memory.facts, which are the exact clauses that summary keeps by source');
+      const memory = contexts[0]!.memory as { summary?: string;
+        facts?: { source: string; sourceKind: string; sourceLabel: string; quote: string }[];
+        operatorMessages: { text: string }[] } | undefined;
+      if (size === 'fits')
+        expect(memory).toEqual({ operatorMessages: [expect.objectContaining({ text: DENTIST }), expect.objectContaining({ text: INVOICE })] });
+      else if (size === 'summarized') {
+        // Only the messages after the frontier remain verbatim, and the prose carries neither fact.
+        expect(memory!.operatorMessages.map(item => item.text)).toEqual([INVOICE, FORGET]);
+        expect(memory!.summary).not.toContain('Ortiz');
+        // Rule 96: the retained fact survives, named by the operator turn it came from; the forgotten one does not.
+        expect(memory!.facts).toEqual([{ source: w.journal.view.order[0]!.id, sourceKind: 'operator-stated',
+          sourceLabel: expect.stringContaining('conversation:operator/'), quote: DENTIST }]);
+        expect(JSON.stringify(contexts[0])).not.toContain('Dockside');
+      } else if (retained) {
+        // The summarized message is gone from operatorMessages, and the prose that replaced it names no appointment:
+        // without facts the step is told a dental appointment exists and nothing about it. This is the live shape, with
+        // the packet far inside its bound, so a missing fact is missing grounding and never resource pressure.
+        expect(memory!.summary).toBe(SUMMARY_PROSE);
+        expect(memory!.operatorMessages.map(item => item.text)).toEqual([INVOICE]);
+        expect(memory!.summary).not.toContain('Ortiz');
+        expect(JSON.stringify(memory!.operatorMessages)).not.toContain('Ortiz');
+        expect(Buffer.byteLength(JSON.stringify(contexts[0]))).toBeLessThan(w.journal.view.limits.maxBytes);
+        // The source link, the kind and the label are the ordinary answer's own projection of these items (one shared
+        // function, so the two packets cannot drift); recall-from-summary-only.test.ts holds the answer side of it.
+        if (size === 'retained-facts')
+          expect(memory!.facts).toEqual([{ source: w.journal.view.order[0]!.id, sourceKind: 'operator-stated',
+            sourceLabel: expect.stringContaining('conversation:operator/'), quote: DENTIST }]);
+        // The other side of the one filter: the operator's forgetting removes the fact from the work packet too, so a
+        // forgotten clause is never handed to a work step that the answer would already refuse to repeat.
+        else expect(memory!.facts).toBeUndefined();
+      } else if (size === 'too-large') {
+        expect(sizes[0]!).toBeGreaterThan(sizes[2]!);
+        expect(memory).toBeUndefined();
+        expect(contexts[0]!.obligation).toBeDefined();
+      } else {
+        // The middle rung: the facts yield first, and what the packet carried before them survives.
+        expect(source).toBeDefined();
+        expect(sizes[0]!).toBeGreaterThan(sizes[1]!);
+        expect(sizes[1]!).toBeGreaterThan(sizes[2]!);
+        expect(memory!.facts).toBeUndefined();
+        expect(memory!.summary).toBe(PROSE);
+        expect(memory!.operatorMessages.map(item => item.text)).toEqual([INVOICE]);
+      }
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('projects a real recorded summary\'s retained facts into scheduled work, and leaves a forgotten one out (plan #547)', async () => {
+  // Observer #106: the recorded shapes, not a stub. Proof room one, group A, 2026-10-03 (cancel3-live fixture, the
+  // file cancel-not-forget.test.ts reads): the summary writer's OWN output over updates 715673209-715673211 — its
+  // prose, the exact clause it kept in memoryItems, and the forget it recorded in that same output. The recorded
+  // writer kept no item for the request it forgot in the same breath, so the superseded half of the rule is given
+  // that recorded forget's own source and quote: the item the writer would have kept had the forget come later.
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/cancel3-live-2026-10-03.json', import.meta.url), 'utf8')) as {
+    turns: { label: string; update: number; message: string }[]; summaryOutputAtRa3: { reply: string };
+    summaryRowMemoryAtRa3: { mode: 'forget'; source: string; quote: string; trigger: string }[] };
+  const written = JSON.parse(fixture.summaryOutputAtRa3.reply) as { summary: string; memoryItems: { source: string; quote: string }[] };
+  const turn = (label: string) => fixture.turns.find(item => item.label === label)!;
+  const forgotten = fixture.summaryRowMemoryAtRa3[0]!;
+  expect(written.memoryItems).toEqual([{ source: `telegram:8994258214:update:${String(turn('ra2').update)}`, quote: turn('ra2').message }]);
+  expect(forgotten).toMatchObject({ mode: 'forget', source: `telegram:8994258214:update:${String(turn('ra1').update)}`, quote: turn('ra1').message });
+  const root = origin();
+  try {
+    const clock = { now: Date.UTC(2026, 9, 3, 17, 25) };
+    const contexts: Record<string, unknown>[] = [];
+    const sent: string[] = [];
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+      { ...genesis(32000), bot: '8994258214', chat: '7812716706', operator: '7812716706' });
+    const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false, timeZone: 'America/Los_Angeles',
+      prepareModel: input => input.context,
+      model: async input => {
+        if (input.id.startsWith('obligation:')) { contexts.push(JSON.parse(input.context) as Record<string, unknown>);
+          return JSON.stringify({ outcome: 'report', report: 'The plumber is booked for 10:40.' }); }
+        return JSON.stringify(input.question === INVOICE
+          ? { reply: LATER, memory: [], openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }
+          : { reply: 'Noted.', memory: [] });
+      },
+      send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
+    const say = async (update: number, text: string) => {
+      worker.intake([{ update_id: update, message: { chat: { id: 7812716706, type: 'private' }, from: { id: 7812716706 },
+        text, date: Math.floor(clock.now / 1000) } }]);
+      await worker.drain();
+      clock.now += 60_000;
+    };
+    for (const label of ['ra1', 'ra2', 'ra3'] as const) await say(turn(label).update, turn(label).message);
+    // This turn is the test's own, not a recorded one: it opens the deferral whose scheduled work reads the packet.
+    await say(turn('ra3').update + 1, INVOICE);
+    const through = turn('ra2').update;
+    journal.append({ kind: 'summary-reserve', through, maxInputTokens: 32000, maxOutputTokens: 2048, at: clock.now });
+    journal.append({ kind: 'summary', through, text: written.summary,
+      memoryItems: [...written.memoryItems, { source: forgotten.source, quote: forgotten.quote }],
+      memory: [forgotten], faithfulness: { path: 'exact', verdict: 'pass', score: null }, state: 'complete', at: clock.now });
+    clock.now += LOOP_REVISIT_MS + 60_000;
+    expect(await worker.workObligations()).toBe(true);
+    const memory = contexts[0]!.memory as { summary: string; facts?: { source: string; quote: string }[]; operatorMessages: { text: string }[] };
+    // The recorded prose is carried, and the one active recorded clause rides beside it with its own source.
+    expect(memory.summary).toContain('operator asked whether stored memory/code or judgment wins');
+    expect(memory.facts).toEqual([{ source: written.memoryItems[0]!.source, sourceKind: 'operator-stated',
+      sourceLabel: expect.stringContaining('conversation:operator/'), quote: turn('ra2').message }]);
+    // The clause the recorded forget superseded is in no field of the packet.
+    expect(JSON.stringify(contexts[0])).not.toContain(forgotten.quote);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('names the operator in the packet by their own Telegram first name, and names no one without it (plan #510)', async () => {
+  // Live cint-L50: with no name in the packet, tool-turn answers called the operator "Luna", the subscription login's
+  // account email that the harness itself injects. The packet now carries the verified operator's own name.
+  const root = origin();
+  try {
+    const w = world(root);
+    await w.say('What should I plant first?');
+    expect((JSON.parse(w.contexts.get('What should I plant first?')!) as { audience: Record<string, unknown> }).audience.operatorName).toBeUndefined();
+    w.worker.intake([{ update_id: 99, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321, first_name: 'Justin' },
+      text: 'And what after that?', date: Math.floor(w.clock.now / 1000) } }]);
+    await w.worker.drain();
+    expect((JSON.parse(w.contexts.get('And what after that?')!) as { audience: Record<string, unknown> }).audience.operatorName).toBe('Justin');
+    // Another sender's name is never the operator's: only a verified operator message names them.
+    w.worker.intake([{ update_id: 100, message: { chat: { id: 7654321, type: 'private' }, from: { id: 5550001, first_name: 'Luna' },
+      text: 'Hello?', date: Math.floor(w.clock.now / 1000) } }]);
+    await w.worker.drain();
+    await w.say('One more question?');
+    expect((JSON.parse(w.contexts.get('One more question?')!) as { audience: Record<string, unknown> }).audience.operatorName).toBe('Justin');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+it('ages active blocker rechecks from their durable start, not the future retry slot, and exposes the stalled item', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { answer: () => ({ reply: CLAIM, blocker: blocker() }) });
+    await w.say('Can you book the dentist appointment online?');
+    const item = obligationSchedule(w.journal.view).find(item => item.key === 'blocker:0')!;
+    expect(item).toBeDefined();
+    w.clock.now = item.slot;
+    w.journal.append({ kind: 'obligation-start', obligation: item.key, slot: item.slot, at: w.clock.now });
+    const at = w.clock.now + PROGRESS_STALL_MS + 1;
+    // A future retry timestamp is not evidence that a currently running step is making progress.
+    expect(obligationSchedule(w.journal.view)[0]!.slot).toBeGreaterThan(at);
+    expect(loopHealth(w.journal.view, at)).toMatchObject({ state: 'stalled', workInFlight: 1,
+      stalledWork: [{ key: item.key, since: w.clock.now, ageMs: PROGRESS_STALL_MS + 1 }] });
+    expect(statusReply(w.journal.view, at, 'UTC')).toContain('Active work: 1; 1 stalled without a recorded result for over 30 min (blocker:0).');
+    expect(loopHealth(w.journal.view, w.clock.now + PROGRESS_STALL_MS)).toMatchObject({ state: 'progressing', stalledWork: [] });
+    w.journal.compact(); w.journal.close();
+    const reopened = openPreviewJournal(w.path, key);
+    expect(loopHealth(reopened.view, at)).toMatchObject({ state: 'stalled', stalledWork: [{ key: item.key }] });
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('replays the recorded c1 start/result: a delayed start is fresh, unrelated replies cannot refresh it, and a result clears the signal', async () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  const root = origin();
+  try {
+    const w = world(root, { answer: question => question === INVOICE
+      ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Noted.' });
+    await w.say(INVOICE);
+    // Preserve the recorded slot and start shape; inject a slow dispatch so due age and active age differ.
+    const start = { ...recorded.workStart, at: recorded.workStart.at + 2 * HOUR };
+    w.journal.append(start); w.clock.now = start.at;
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ state: 'progressing', stalledWork: [] });
+    w.clock.now += PROGRESS_STALL_MS + 1;
+    await w.say('Unrelated weather question.');
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ state: 'stalled', progressAgeMs: 0,
+      stalledWork: [{ key: 'commitment:0', since: start.at }] });
+    // Captured worker/model records alone are not an obligation result; no pane or model-output inference.
+    for (const captured of recorded.checkpointRows) if (captured.kind !== 'phase-timing') w.journal.append(captured);
+    expect(loopHealth(w.journal.view, w.clock.now).state).toBe('stalled');
+    w.journal.append({ ...recorded.workResult, at: w.clock.now });
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ state: 'idle', stalledWork: [], awaitingDelivery: 1 });
+    expect(statusReply(w.journal.view, w.clock.now, 'UTC')).not.toContain('stalled without a recorded result');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+it.each(['continue', 'waiting', 'report'] as const)('does not call an accounted %s result an active stalled worker', async outcome => {
+  const root = origin();
+  try {
+    const w = world(root, { answer: () => ({ reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }),
+      work: () => outcome === 'report' ? { outcome, report: 'The requested check is complete.' }
+        : outcome === 'waiting' ? { outcome, waitsOn: 'operator', note: 'The operator must supply the invoice.' }
+          : { outcome, note: 'The first checkpoint is complete.' } });
+    await w.say(INVOICE);
+    // Future work is not an active stalled worker, even when the last ordinary reply is old.
+    w.clock.now += LOOP_REVISIT_MS - 1;
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ state: 'idle', stalledWork: [], workInFlight: 0 });
+    w.clock.now += 1;
+    await w.worker.workObligations();
+    expect(loopHealth(w.journal.view, w.clock.now + PROGRESS_STALL_MS + 1)).toMatchObject({
+      state: 'idle', stalledWork: [], workInFlight: 0 });
+    w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

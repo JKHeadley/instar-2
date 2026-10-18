@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createProgram } from '../../scripts/check-architecture.mjs';
 import { inspectSource, checkWiring } from '../../scripts/check-register-wiring.mjs';
 import { decodeShape, checkGovernedState, generateRegister, verifyGenerated } from '../../src/register/index.js';
-import { setup, detail, value, shapeInput, hash, wiringSources } from './fixtures.js';
+import { setup, detail, value, shapeInput, hash, wiringSources, withoutBasis } from './fixtures.js';
 
 describe('source and shape wiring', () => {
   it('P3-NF-04 real source sweep follows import aliases and finds undeclared ports', () => {
@@ -30,7 +30,7 @@ describe('source and shape wiring', () => {
     expect(detail(generateRegister(s.input(), context))).toContain('undeclared field');
   });
   it('P3-NF-26 a governed-state site must invoke the named decoder and read the approved record', () => {
-    const s = setup(); const declaration = s.holder([]); const guarded = { ...declaration, requiredFacts: { ...declaration.requiredFacts,
+    const s = setup(); const declaration = s.holder([]); const guarded = { ...declaration, requiredFacts: { ...withoutBasis(declaration.requiredFacts),
       decidesAlone: 'governed-state', enforces: { record: 'store', decoder: 'decode:Profile' } } };
     const row = { id: 'store', version: 'v1', status: 'live', since: 'commit:old', supersedes: [], approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: 'approval:1' },
       landedIn: 'commit:old', base: 'base:old', contentHash: hash(s.declaration()) };

@@ -1,0 +1,30 @@
+{
+  "source": "preswitch-train-11-12688b89-20261011-180254/FIRST-proofroom3-ps",
+  "update": 840342414,
+  "question": "What can you do in this chat, and what can't you do?",
+  "limits": {
+    "providerAttempts": 1000,
+    "expiresAt": 1794519600000,
+    "tools": true,
+    "mcp": 0
+  },
+  "recordedCapabilityNote": {
+    "text": "You are an Instar 2.0 agent with lasting memory and values.\nWhat you can do for the operator here:\n- preview-conversation: answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.\n- preview-durable-memory: an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.\n- preview-owned-obligations: keeps standing instructions and works the promises its replies leave open, holding results for the next message.\n- preview-requested-actions: an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.\n- preview-status-command: \"status\" and \"how are you doing\" are answered from the journal without a model call.\n- preview-upcoming-date-mention: a saved date within 48 hours can get one short mention in the next reply.\nTools/outbound sentence (quote verbatim): I can use files, shell, web reads, nested subagents; no MCP server, so no logged-in account access. Network writes and outside sends go through the effect doorway's four checks (reversibility, resource limits, granted scope, sensitivity) and durability requirements. Standing grants need no new approval; checks can still refuse, and outside-role work needs the matching grant. Fresh sign-off is required only when it may commit money or a resource above the level the person named; it cannot be undone and falls outside the recorded role; it speaks publicly in the person's name; it widens the agent's own role or authority; it touches a matter the person marked sensitive.\nInternal machinery running under you:\n- fetch-inbound-media: saves inbound Telegram files with bounded effect admission; refused downloads retain the original message.\n- harness-doorway-parity: binds each supported harness and model doorway to certified code; the rest are marked unproven.\n- intake-slice: captures and receipts or holds every inbound message before any work; an uncertain arrival is kept.\n- preview.coherence-check: checks each reply against remembered earlier turns without a model call.\n- preview.rolling-summary: keeps a faithfulness-checked rolling summary of earlier turns.\n- preview.step-check: off unless launched with it; independently checks each business step and changes nothing.\n- register-tooling: generates the register, rule book, glossary and this briefing from the declarations in code.\nIn the code but switched off here, so not available: rungraph-core, slack-conversation-adapter, slack-ordinary-reply, telegram-conversation-adapter.\nLimits: a sent credential is vaulted on arrival (you see its SecretRef), not tool-readable.\nThis installation allows at most 1000 model attempts, ending at epoch ms 1794519600000. Charges, and unconfirmed calls or deliveries, are recorded unknown. Production safeguards are incomplete.",
+    "provenance": {
+      "commit": "5ad4d5577dd423eeaf8219edbd6c60bf6047aa3c",
+      "excerptSha256": "sha256:0b5159079474e249e66c5f2d91161188e0b1c5b76feace13a76f491512860b0e",
+      "generation": "sha256:0f0105298ae15fcf9bc0d6e83621ba16d80dc32dd8aa745784d2dd2ecfed4b25",
+      "launcher": "tests/preview/journal-agent.mjs",
+      "path": "generated/capabilities.json",
+      "renderedCapabilitySha256": "sha256:2c5aaf568a810b40400cfcc01b6adbdde5f3bcc02babaa650ec62cdc56bae219"
+    }
+  },
+  "telegramAnswers": {
+    "source": "capnote-telegram-1012-brief.txt, three live-test runs 2026-10-12; update ids not supplied in brief",
+    "quotes": [
+      "we're talking over Telegram right now",
+      "this chat itself runs on the Telegram bot adapter that is active",
+      "I'm replying to you on Telegram right now"
+    ]
+  }
+}

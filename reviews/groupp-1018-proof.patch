@@ -1,0 +1,24 @@
+--- a/pipeline/live-proof/P-probe.mjs
++++ b/pipeline/live-proof/P-probe.mjs
+@@ -41 +41 @@
+-  const crash = await attemptAsync(() => superviseJournal({ root: hw, agent: agent(hw), maxRestarts: 3, backoffMs: 100, maxBackoffMs: 250 },
++  const crash = await attemptAsync(() => superviseJournal({ root: hw, agent: agent(hw), maxRestarts: 4, backoffMs: 100, maxBackoffMs: 250 },
+@@ -45,2 +45,3 @@
+-  const badAsync = await attemptAsync(() => superviseJournal({ root: hw, agent: agent(hw), maxRestarts: 0 }, { launch: async () => ({ code: 0, signal: null }) }));
+-  out.supervisorRefusesUnbounded = { ok: badAsync.ok, error: badAsync.error };
++  let refusedLaunches = 0;
++  const badAsync = await attemptAsync(() => superviseJournal({ root: hw, agent: agent(hw), maxRestarts: 0 }, { launch: async () => { refusedLaunches++; return { code: 0, signal: null }; } }));
++  out.supervisorRefusesUnbounded = { ok: badAsync.ok, error: badAsync.error, launches: refusedLaunches };
+--- a/pipeline/live-proof/P.sh
++++ b/pipeline/live-proof/P.sh
+@@ -106,2 +106,2 @@
+-chk P68e "68,55" "offline (W's superviseJournal): queued work is relaunched (clean: 3 launches until the stop; crash: bounded to maxRestarts+1 = 5), inhibited and none end after 1 launch, and a launch with no exit row reads 'unrecorded' (a crash), not done" \
+-  "$PR('revival.queuedClean.launches') == 3 and $PR('revival.queuedCrash.launches') == 5 and $PR('revival.inhibited.launches') == 1 and $PR('revival.none.launches') == 1 and $PR('lastRun.open.revival') == 'unrecorded' and $PR('lastRun.closed.revival') == 'queued' and all($PR('revival.'+k+'.error') is None for k in ('queuedClean', 'queuedCrash', 'inhibited', 'none'))"
++chk P68e "68,55" "offline (W's superviseJournal): queued work is relaunched (clean: 3 launches until the stop; crash: bounded to the durable threshold maxRestarts = 4), inhibited and none end after 1 launch, and a launch with no exit row reads 'unrecorded' (a crash), not done" \
++  "$PR('revival.queuedClean.launches') == 3 and $PR('revival.queuedCrash.launches') == 4 and $PR('revival.inhibited.launches') == 1 and $PR('revival.none.launches') == 1 and $PR('lastRun.open.revival') == 'unrecorded' and $PR('lastRun.closed.revival') == 'queued' and all($PR('revival.'+k+'.error') is None for k in ('queuedClean', 'queuedCrash', 'inhibited', 'none'))"
+@@ -114 +114 @@
+-chk P55c "55" "offline: the relaunch loop backs off exponentially under its cap (100, 200, 250 ms) and its breaker stops after maxRestarts + 1 = 4 failed launches" \
++chk P55c "55" "offline: the relaunch loop backs off exponentially under its cap (100, 200, 250 ms) and its breaker stops after the durable threshold maxRestarts = 4 failed launches" \
+@@ -117 +117 @@
+-  "$PR('supervisorRefusesUnbounded.ok') is False and 'restart bounds' in ($PR('supervisorRefusesUnbounded.error') or '')"
++  "$PR('supervisorRefusesUnbounded.ok') is False and bool($PR('supervisorRefusesUnbounded.error')) and $PR('supervisorRefusesUnbounded.launches') == 0"

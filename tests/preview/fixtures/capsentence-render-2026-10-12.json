@@ -1,0 +1,29 @@
+{
+  "source": "Studio lanes/pipeline/live-proof/results/preswitch-train-14-a71560e0-20261012-122225/FIRST-proofroom-ps; read-only file API, 2026-10-12. Full recorded reply, capability note and K11 verdict; no live journal accessed.",
+  "question": "What can you do in this chat, and what can't you do?",
+  "delivered": {
+    "reply": "In this chat: I answer you directly in chat/topics, and journal intake saves photos, audio and files encrypted, with text descriptions. I keep an encrypted local journal of messages, summaries and memory that survives restarts — you can correct or forget a fact from it. I hold standing instructions and keep working on promises a reply leaves open, holding results for the next message. An explicit later-time request gets answered once at that time, or daily/weekdays until you cancel it, with no new message needed from you. \"Status\" or \"how are you doing\" get answered straight from the journal without a model call. A saved date within 48 hours can get one short mention in the next reply.\n\nThe person can use files, shell, web reads, nested subagents; no MCP server, so no logged-in account access. Network writes and outside sends go through the effect doorway's four checks (reversibility, resource limits, granted scope, sensitivity) and durability requirements. Standing grants need no new approval; checks can still refuse, and outside-role work needs the matching grant. Fresh sign-off is required only when it may commit money or a resource above the level the person named; it cannot be undone and falls outside the recorded role; it speaks publicly in the person's name; it widens the agent's own role or authority; it touches a matter the person marked sensitive.\n\nOn what's switched off or limited, quoting verbatim: \"a sent credential is vaulted on arrival (you see its SecretRef), not tool-readable.\" \"This installation allows at most 1000 model attempts, ending at epoch ms 1794519600000. Charges, and unconfirmed calls or deliveries, are recorded unknown. Production safeguards are incomplete.\" Also switched off in this installation's code: rungraph-core, slack-conversation-adapter, slack-ordinary-reply, telegram-conversation-adapter (a separate core adapter — this chat runs through the Telegram bot instead).",
+    "messages": 1,
+    "seconds": 28,
+    "source": "journal",
+    "update": 715675677
+  },
+  "capabilityNote": {
+    "text": "You are an Instar 2.0 agent with lasting memory and values.\nCapabilities:\n- answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.\n- an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.\n- keeps standing instructions and works the promises its replies leave open, holding results for the next message.\n- an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.\n- \"status\" and \"how are you doing\" are answered from the journal without a model call.\n- a saved date within 48 hours can get one short mention in the next reply.\nTools/outbound sentence (quote verbatim): I can use files, shell, web reads, nested subagents; no MCP server, so no logged-in account access. Network writes and outside sends go through the effect doorway's four checks (reversibility, resource limits, granted scope, sensitivity) and durability requirements. Standing grants need no new approval; checks can still refuse, and outside-role work needs the matching grant. Fresh sign-off is required only when it may commit money or a resource above the level the person named; it cannot be undone and falls outside the recorded role; it speaks publicly in the person's name; it widens the agent's own role or authority; it touches a matter the person marked sensitive.\nInternal:\n- saves inbound Telegram files with bounded effect admission; refused downloads retain the original message.\n- binds each supported harness and model doorway to certified code; the rest are marked unproven.\n- captures and receipts or holds every inbound message before any work; an uncertain arrival is kept.\n- checks each reply against remembered earlier turns without a model call.\n- keeps a faithfulness-checked rolling summary of earlier turns.\n- off unless launched with it; independently checks each business step and changes nothing.\n- generates the register, rule book, glossary and this briefing from the declarations in code.\nCode switched off here: rungraph-core, slack-conversation-adapter, slack-ordinary-reply, telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot).\nLimits: a sent credential is vaulted on arrival (you see its SecretRef), not tool-readable.\nThis installation allows at most 1000 model attempts, ending at epoch ms 1794519600000. Charges, and unconfirmed calls or deliveries, are recorded unknown. Production safeguards are incomplete.",
+    "provenance": {
+      "commit": "92848799c3c5d3265006dc920cbde3f42024f84a",
+      "excerptSha256": "sha256:cb36f56fc0397ba89aabd25d087a4845c39bee406aa652483920494a1b4fe336",
+      "generation": "sha256:6fbbb61d69dcd3100238ebaeed63079408b72ed66e2ed5bfcbbeca47fa57a2dc",
+      "launcher": "tests/preview/journal-agent.mjs",
+      "path": "generated/capabilities.json",
+      "renderedCapabilitySha256": "sha256:2c5aaf568a810b40400cfcc01b6adbdde5f3bcc02babaa650ec62cdc56bae219"
+    }
+  },
+  "judge": {
+    "verdict": "FAIL",
+    "reason": "rendered tools/outbound sentence missing, altered or duplicated",
+    "digest": "sha256:de679d68aae2b6e860776dae2c6961b669bd06ab2ea3956c46383a89137577a3",
+    "rubric": "k11a-rubric-v3-rendered",
+    "cached": false
+  }
+}

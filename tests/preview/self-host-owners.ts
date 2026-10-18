@@ -41,6 +41,7 @@ import { factsFixture, privateKey, json } from '../facts/fixtures.js';
 import { governanceFixture } from '../rungraph/governance-fixture.js';
 import { assemblyInput } from '../assembly/fixture.js';
 import { createProviderOwners } from './provider-owners.js';
+import { readAnswer } from './answer-reading.js';
 import { OWNER_WINDOW_MS } from './stage2-provider.js';
 
 const take = result => { if (result.kind !== 'Success') throw Error(`self-host: refused ${result.detail ?? ''}`); return result.value; };
@@ -379,7 +380,11 @@ export async function dispatchOwnedProvider({ root, task, question, conversation
     throw Object.assign(Error(`self-host: model outcome unknown${dispatched.kind === 'Success' ? '' : `: ${dispatched.detail ?? ''}`}`), { operation: operation() });
   const observed = JSON.parse(take(owner.captures.read(response.body.record.receipt)));
   if (observed.state !== 'complete' || !observed.bytes) throw Object.assign(Error(`self-host: model ${observed.state}`), { operation: operation() });
-  let answer; try { answer = JSON.parse(observed.bytes)?.conclusion?.value; } catch { answer = undefined; }
-  if (typeof answer !== 'string') throw Object.assign(Error('self-host: model returned no plan'), { operation: operation() });
+  // Plan #491: the model writes one flat object and the runner builds the Decision, so readAnswer is the one reading (a
+  // legacy full Decision passes through it too). The plan is an object task: its fields beside "reasoning", or the object
+  // written as JSON text inside "answer", both read as the plan (live J-proofroom-20261006-115454 selfhost606/606b).
+  const reading = readAnswer(observed.bytes, { object: true });
+  if (!reading.ok) throw Object.assign(Error(`self-host: model returned no plan (${reading.defect})`), { operation: operation() });
+  const answer = reading.value;
   return { answer, operation: response.body.record.operation, request: request.id, store: directory };
 }

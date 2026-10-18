@@ -50,7 +50,7 @@ it('keeps a cap-held question open across an UNKNOWN resumed send and replay', a
     const resumed = createJournalWorker(journal, { now: () => 1002, stopped: () => false,
       model: async () => 'The project code is 71.', send: async () => null, checkOutbound: () => {} });
     await resumed.drain();
-    expect(journal.view.order[1]?.intent).toBe('PREVIEW — The project code is 71.');
+    expect(journal.view.order[1]?.intent).toBe('The project code is 71.');
     expect(journal.view.order[1]?.sent).toBeUndefined();
     expect(openQuestionCandidates(journal.view)).toHaveLength(1);
     journal.close();
@@ -72,7 +72,7 @@ it('keeps a lost answer open and closes it only when a listed model decision is 
         return JSON.stringify({ reply: 'The launch plan is in the shared folder.', memory: [], closedQuestions: [listed] }); },
       send: async () => contexts.length, checkOutbound: () => {} });
     worker.intake([update(1, 'Where is the launch plan?')]); await worker.drain();
-    expect(journal.view.order[0]?.intent).toBe(`PREVIEW — ${UNKNOWN_ANSWER_NOTICE}`);
+    expect(journal.view.order[0]?.intent).toBe(`${UNKNOWN_ANSWER_NOTICE}`);
     expect(openQuestionCandidates(journal.view)).toHaveLength(1);
     worker.intake([update(2, 'I found a folder; can you answer the launch-plan question now?')]);
     await worker.drain();
@@ -178,7 +178,7 @@ it('does not close a lost question when the later answering send is UNKNOWN', as
       send: async input => input.update === 1 ? 1 : null, checkOutbound: () => {} });
     worker.intake([update(1, 'Where is the plan?'), update(2, 'Tell me where the plan is now.')]);
     await worker.drain();
-    expect(journal.view.order[1]?.intent).toBe('PREVIEW — The plan is in the folder.');
+    expect(journal.view.order[1]?.intent).toBe('The plan is in the folder.');
     expect(journal.view.order[1]?.sent).toBeUndefined();
     expect(openQuestionCandidates(journal.view)).toHaveLength(1);
     journal.close();

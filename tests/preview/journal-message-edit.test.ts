@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // Fixtures substitute the model and Jev (int11's faithfulness check runs before a summary commits).
-import { createJournalWorker, openPreviewJournal, UNLINKED_EDIT_FLAG } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, UNLINKED_EDIT_FLAG, withoutCorrectedHistory } from './journal-test-worker.js';
 import { selfState } from './self-state.js';
 
 const key = new Uint8Array(32).fill(29);
@@ -48,7 +48,7 @@ it('records a fact edit against the original turn, corrects memory, and never re
     expect(journal.view.memory).toMatchObject([{ source: journal.view.order[0]!.id,
       trigger: journal.view.order[1]!.id, replacement: 'The launch is on Thursday.' }]);
     const state = selfState(journal.view, { launches: [], unreadable: 0 }, 1790002000000, 'UTC');
-    expect(state).toContain('1 in this trial');
+    expect(state).toContain('1 so far');
     expect(state).toContain('Telegram edits recorded: 1');
     journal.close();
     journal = openPreviewJournal(path, key);
@@ -60,7 +60,7 @@ it('records a fact edit against the original turn, corrects memory, and never re
     expect('reason' in probe).toBe(false);
     if ('reason' in probe) throw Error(probe.reason);
     expect(probe.context).toContain('Thursday');
-    expect(probe.context).not.toContain('Tuesday');
+    expect(withoutCorrectedHistory(probe.context)).not.toContain('Tuesday');
     expect(readFileSync(path, 'utf8')).not.toContain('Thursday');
     journal.close();
   } finally { rmSync(directory, { recursive: true, force: true }); }
@@ -134,7 +134,7 @@ it('keeps successive revisions attached to one original and treats a wording edi
     expect('reason' in probe).toBe(false);
     if ('reason' in probe) throw Error(probe.reason);
     expect(probe.context).toContain('The launch is Thursday.');
-    expect(probe.context).not.toContain('Tuesday');
+    expect(withoutCorrectedHistory(probe.context)).not.toContain('Tuesday');
     expect(journal.view.order[2]?.memoryUndecided).toBeUndefined();
     worker.intake([message(4, 'When is the launch?', 43)]); await worker.drain();
     expect(sends).toBe(2);
@@ -172,7 +172,7 @@ it('allows a later edit to restore an earlier fact, including after replay', asy
     expect('reason' in probe).toBe(false);
     if ('reason' in probe) throw Error(probe.reason);
     expect(probe.context).toContain('The launch is on Tuesday.');
-    expect(probe.context).not.toContain('The launch is on Thursday.');
+    expect(withoutCorrectedHistory(probe.context)).not.toContain('The launch is on Thursday.');
     worker.intake([message(4, 'When is the launch?', 43)]); await worker.drain();
     expect(sends).toEqual([1, 4]);
     journal.close();

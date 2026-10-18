@@ -1,0 +1,106 @@
+{
+  "provenance": {
+    "source": "proof room 1 root proofroom1-ps-20261012-174650, train-16 0ed77d16 (behaviour reproduces on older builds per desk reading); long strings truncated by the desk",
+    "deskFixture": ".instar/lanes/fixtures-duework-1012/recall-held-frames-88-185.json",
+    "frames": [
+      90,
+      95,
+      97,
+      106,
+      111,
+      114,
+      146,
+      155,
+      161,
+      163,
+      168,
+      171,
+      176,
+      181
+    ],
+    "note": "Exact selected recorded fields. Frame 90 is a second remember request, not an explicit change-it request. Frame 155 proposes update at recall; tests relocating that output to the save turn say so explicitly. No fresh model response is claimed."
+  },
+  "intake": {
+    "update_id": 715675724,
+    "message": {
+      "message_id": 6253,
+      "from": {
+        "id": 7812716706,
+        "is_bot": false,
+        "first_name": "Justin",
+        "last_name": "Headley",
+        "language_code": "en"
+      },
+      "chat": {
+        "id": 7812716706,
+        "first_name": "Justin",
+        "last_name": "Headley",
+        "type": "private"
+      },
+      "date": 1791852640,
+      "text": "Please remember that the desk test word is orchid-88c935deed4a."
+    }
+  },
+  "at": 1791852641520,
+  "savedAnswer": "{\"reasoning\":\"Direct operator request to save a fact: the desk test word is orchid-88c935deed4a. This is a fact-save (memory mode: remember), analogous to the prior turn's save of a similar-looking word (orchid-4138891c5620). This is a new/different value, not identical to the prior one, so I save it as the current fact under mode \\\"remember\\\" with the exact current clause and source as preferenceSource (this turn). No clarifying question needed since this is a direct instruction to remember, not a query about which value is current. I should acknowledge the save in my reply without asserting it's delivered already (the runner reports saves). No web/file reads needed here \u2014 this is a pure memory-save instruction. No promises, no dated event, no directive beyond the save itself.\",\"reply\":\"Saved the requested fact: the desk test word is orchid-88c935deed4a.\",\"memory\":[{\"mode\":\"remember\",\"source\":\"telegram:8994258214:update:715675724\",\"quote\":\"the desk test word is orchid-88c935deed4a\"}],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+  "updateAnswer": "Looking at the memory records: there are two \"remembered\" entries for the desk test word, both from direct operator statements \u2014 \"orchid-4138891c5620\" (turn 715675723, 00:49Z) and \"orchid-88c935deed4a\" (turn 715675724, 00:50Z) \u2014 a later value with no correction language, so per protocol this is an update superseding the earlier one, not a conflict to ask about. The current value is the later one.\n\n{\"reasoning\":\"Two memoryCandidates/memory items both set 'the desk test word' with different values: orchid-4138891c5620 (turn 715675723, 2026-10-13T00:49Z) and orchid-88c935deed4a (turn 715675724, 2026-10-13T00:50Z). Both are mode:'remembered' operator-stated saves of the same fact (desk test word), not two different people/things, so this isn't the 'two active items disagree, ask' case \u2014 it's a direct restatement where the later save supersedes the earlier one (per memoryDecision: a newer fact without correction words uses mode:'update', keeping the old value retrievable as history). The current value is orchid-88c935deed4a. I'll answer directly with the current value, repeating the exact word as asked, and record memory as an update from the old clause to the new clause for the record (old value stays retrievable per protocol). No tool calls needed since this is answerable from packet memory/history.\",\"reply\":\"The desk test word is: orchid-88c935deed4a\",\"memory\":[{\"mode\":\"update\",\"source\":\"telegram:8994258214:update:715675723\",\"quote\":\"the desk test word is orchid-4138891c5620\",\"replacement\":\"the desk test word is orchid-88c935deed4a\"}]}",
+  "recallIntake": {
+    "update_id": 715675726,
+    "message": {
+      "message_id": 6259,
+      "from": {
+        "id": 7812716706,
+        "is_bot": false,
+        "first_name": "Justin",
+        "last_name": "Headley",
+        "language_code": "en"
+      },
+      "chat": {
+        "id": 7812716706,
+        "first_name": "Justin",
+        "last_name": "Headley",
+        "type": "private"
+      },
+      "date": 1791852730,
+      "text": "What is the desk test word? Please repeat the exact word."
+    }
+  },
+  "badRepair": "The formatReminder tells me my previous memory declaration was rejected: it must use \"remember\" with preferenceSource and the current fact clause, not an \"update\" citing an unoffered old source. Let me correct that.\n\n{\"reasoning\":\"Prior turn's memory field used mode:'update' citing telegram:8994258214:update:715675723 as the old source, but formatReminder explicitly rejects this: for a direct fact-save, I must use mode:'remember' with source:preferenceSource (this turn's id) and the current fact clause, never citing an unoffered old source. The desk test word has two operator-stated saves: orchid-4138891c5620 (00:49Z) then orchid-88c935deed4a (00:50Z), both direct restatements with no correction language, so the later one is current. The answer itself is unchanged and correct: orchid-88c935deed4a. I'll fix the memory field per the reminder's exact instruction \u2014 mode:'remember', source:preferenceSource (telegram:8994258214:update:715675726), quote the current fact clause.\",\"reply\":\"The desk test word is: orchid-88c935deed4a\",\"memory\":[{\"mode\":\"remember\",\"source\":\"telegram:8994258214:update:715675726\",\"quote\":\"the desk test word is orchid-88c935deed4a\"}]}",
+  "delivered": [
+    {
+      "id": "telegram:8994258214:update:715675724",
+      "text": "Saved the requested fact."
+    },
+    {
+      "id": "telegram:8994258214:update:715675726",
+      "text": "Your message is retained, but I could not validate and save the requested memory change."
+    }
+  ],
+  "otherShapes": [
+    {
+      "frame": 106,
+      "id": "jev-reply-check:400622dba0b2875c",
+      "output": null
+    },
+    {
+      "frame": 111,
+      "id": "jev-reply-check:400622dba0b2875c",
+      "output": "{\"model\":\"jev-1.13.0\",\"answers\":{\"raw_path\":{\"type\":\"noul\",\"noul\":0.02},\"cli_command\":{\"type\":\"noul\",\"noul\":0.11},\"config_key\":{\"type\":\"noul\",\"noul\":0.07},\"credential\":{\"type\":\"noul\",\"noul\":0.04},\"api_endpoint\":{\"type\":\"noul\",\"noul\":0.04},\"quits_on_self\":{\"type\":\"noul\",\"noul\":0.08},\"claims_blocked\":{\"type\":\"noul\",\"noul\":0.09},\"parks_on_user\":{\"type\":\"noul\",\"noul\":0.18},\"defers_work\":{\"type\":\"noul\",\"noul\":0.12},\"unrecorded_blocker\":{\"type\":\"noul\",\"noul\":0.07}},\"usage\":{\"input_tokens\":693,\"output_tokens\":184}}"
+    },
+    {
+      "frame": 168,
+      "id": "summary:715675724",
+      "output": "{\"reasoning\":\"Second remember request replaces first desk test word (same slot). Correction: old clause from #715675723, new from memoryRequest. Replies id 715675723 restates old fact.\",\"summary\":\"2026-10-13, main chat: Operator asked who the agent is and what Instar is (#715675721), and what it can/can't do (#715675722); agent answered both from capability-note and purpose sources. Operator then asked the agent to remember a desk test word, first as orchid-4138891c5620 (#715675723), then corrected it to orchid-88c935deed4a (#715675724).\",\"memory\":[{\"mode\":\"correct\",\"source\":\"telegram:8994258214:update:715675723\",\"quote\":\"the desk test word is orchid-4138891c5620\",\"replacement\":\"the desk test word is orchid-88c935deed4a\"}],\"people\":[],\"personAttributes\":[],\"commitments\":[],\"closed\":[],\"memoryDisposition\":\"resolved\",\"replies\":[\"telegram:8994258214:update:715675723\"],\"summaryPassages\":[],\"questions\":[],\"memoryItems\":[{\"source\":\"telegram:8994258214:update:715675724\",\"quote\":\"the desk test word is orchid-88c935deed4a\"}],\"concepts\":[{\"source\":\"telegram:8994258214:update:715675721\",\"terms\":[\"instar identity\",\"agent capabilities overview\",\"coherence purpose\"]},{\"source\":\"telegram:8994258214:update:715675722\",\"terms\":[\"tools available\",\"limits\",\"chat abilities\"]},{\"source\":\"telegram:8994258214:update:715675723\",\"terms\":[\"desk test word\",\"remember fact\",\"orchid code\"]},{\"source\":\"telegram:8994258214:update:715675724\",\"terms\":[\"desk test word correction\",\"updated code\",\"orchid code\"]}]}"
+    },
+    {
+      "frame": 171,
+      "id": "jev-summary-faithfulness:4f2c3ac2a33b5e43",
+      "output": "{\"model\":\"jev-1.13.0\",\"answers\":{\"lost_memory\":{\"type\":\"noul\",\"noul\":0.16}},\"usage\":{\"input_tokens\":2566,\"output_tokens\":21}}"
+    },
+    {
+      "frame": 176,
+      "id": "summary:715675724:review",
+      "output": null
+    }
+  ]
+}

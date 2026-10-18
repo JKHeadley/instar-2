@@ -5,7 +5,7 @@ import { runRealisticRecall } from './realistic-recall.ts';
 const output = process.argv[2];
 if (!output || !isAbsolute(output)) throw Error('usage: realistic-recall.mjs /ABSOLUTE/OFFLINE_RESULT.json');
 const result = await runRealisticRecall();
-const byScenarioCategory = Object.fromEntries(['named question', 'reworded follow-up', 'correction chain', 'pronoun', 'date']
+const byScenarioCategory = Object.fromEntries(['named question', 'reworded follow-up', 'correction chain', 'pronoun', 'date', 'recorded paraphrase']
   .map(category => [category, result.misses.filter(item => item.scenarioCategory === category).map(item => item.id)]));
 const byObservation = Object.fromEntries(['needed clause absent', 'stale clause present']
   .map(observation => [observation, result.misses.filter(item => item.observedMiss === observation).map(item => item.id)]));

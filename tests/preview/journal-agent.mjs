@@ -1,40 +1,66 @@
 #!/usr/bin/env node
+import { createWorkingActivities, readWorkingAdmission } from './working-activity.mjs';
+import { AgentPathRefused, assertAgentPaths } from '../../scripts/agent-paths.mjs';
+import { prepareSessionConnectors, conversationAccountActions, admitSessionConnector } from './session-connectors.mjs';
+import { recordPhaseTiming } from './phase-timing.js';
+import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice } from './reply-check.js';
+import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin, observeInstalledSessionLogin } from './installed-harness-logins.mjs';
+import { loadHarnessLogins, harnessLoginPoolStatus, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
+import { groupMembershipReader } from './group-membership-io.mjs';
+import { appendGroupCarry } from './group-carry.js';
+import { resolveGroupDisclosure, verifyGroupAudience, createGroupAudienceCache } from './group-disclosure.js';
+import { journalConversation, journalWorkConversation, validateChatBinding } from './forum-routing.js';
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
+import { snapshotState } from '../../scripts/operator-dashboard.mjs';
+import { checkListen, createReadOnlyDashboard, pinCheckAt, serveReadOnly } from '../../scripts/operator-dashboard-readonly.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
-import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, SUBSCRIPTION_CONVERSATION_FRAMING,
-  subscriptionConversationPolicy, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
+import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, createSubscriptionVersionCheck,
+  SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { attachEgress, attachSessionVolume, networkToolReads, readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
+  TOOLS_DEFAULT_ACTIVATION, createHeldSecrets, custodyHeldSources, heldSpan, heldVerdict } from './tool-turn.mjs';
+import { prepareSessionAdmission, sessionAdmissionCommand, SESSION_ADMISSION_KEPT } from './session-admission.mjs';
+import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
+import { admitToolCallEffect } from './tool-admission.mjs';
+import { grantVolume, HARNESS_OFF_REASON, HARNESS_SESSION_BRIDGE, harnessCredentialValues, harnessGate, harnessHookPath, harnessRefusedNotice, harnessSessionAdmission,
+  harnessSessionLayout, harnessStatusLine, readHarnessLogin } from './harness-user.mjs';
+import { encoded } from '../../src/assembly/boundary.js';
+import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
-import { prepareJournalEnvelope } from './journal-envelope.js';
-import { operatorEchoSent } from './status-command.js';
+import { prepareJournalEnvelope, toolPreparation, withWorkspaceNotice } from './journal-envelope.js';
+import { operatorEchoSent, statusAnswer } from './status-command.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMindRules, ANSWER_INSTRUCTIONS } from './briefing.js';
 import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
-import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
-  updatePacketItem } from './installation.js';
-import { projectionDigest } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate, withFormatReminder, concurrentWorkItem, latestOwnedLaunch } from './journal.js';
+import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom,
+  staleAgainst, updateDelivery, updatePacketItem } from './installation.js';
+import { currentActionFacts, bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused, ModelNotStarted, createModelLaunchBoundary, capacityAlerts } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
-import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
+import { guidanceReport } from './guidance.js';
+import { memoryLearningLine, memoryLearningReport } from './memory-learning.js';
+import { JEV_MODEL, jevQuestions, publicCredentialRegister, concealSecretMaterial, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
-import { assertLiveJudgment, decisionWithinFloor, modelCallRecord, sha256 } from './model-call-boundary.js';
-import { conclusionText, failureShapeOf, parseModelJson } from './model-json.js';
+import { assertLiveJudgment, modelCallRecord, sha256 } from './model-call-boundary.js';
+import { conversationSessionAnswer } from './conversation-session-answer.js';
+import { readAnswer, taskFields } from './answer-reading.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 
 
 import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
-import { exhaustedPollReason } from './poll-failure-reason.mjs';
+import { exhaustedPollReason, pollBackoffMs, pollEndsRun, temporaryPollStatus } from './poll-failure-reason.mjs';
 import { loopHealth } from './obligations.js';
+import { createReplyTyping, reactionAcknowledgement } from './telegram-acknowledgement.mjs';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
-import { authoritySealKey, resolveActivationAuthority, sealAuthorityRecord } from './activation-authority.js';
+import { authoritySealKey, resolveActivationAuthority, resolveInstallationPolicy, sealAuthorityRecord, singleMachineProfileDigest, SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { deriveProfile } from '../../src/index.js';
 import { PREVIEW_PROOF_PLANS, executeProof, nextDuePlan, probeId, proofPosture, stepCoverage } from './proofs.js';
 import { capabilityRows, previewInventory, proofStatusLines, resolveLiveProof } from './capabilities.js';
@@ -42,16 +68,32 @@ import { appendProof, readProofs } from './proof-log.js';
 import { hostname, homedir } from 'node:os';
 import { assessStranded, claimConversation, observeConversationOwner, recordRefusal, refusedLaunches, SUPPORTED_POSTURE } from './conversation-owner.js';
 import { agreementLine, agreementStatus, runDueAgreements } from './store-agreements.js';
+import { connectConversationAuthority } from './conversation-authority.js';
+import { createLeaseHolder } from './two-machine-serving.js';
+import { adoptReceivedCopy, connectReplicaPeer, createJournalShipper, createReplicatedDispatch, openReplicaStore, serveReplicaStore,
+  backupStatusLine, sharedHistoryStatus, takeoverEligibility } from './journal-replication.js';
 import { createApprovalSurfaceClient } from './approval-surface-client.mjs';
+import { dashboardSnapshot } from './operator-dashboard.js';
+import { parseExplicitYesInstallation } from './explicit-yes-installation.js';
+import { createGitHubReviewClient } from './github-review-client.js';
+import { createReviewYesSource } from './review-yes-source.js';
+import { explicitYesStatus, operatorActionSurface, validRetractUpdates, OPERATOR_REQUEST_MS, OPERATOR_REQUEST_MAX_MS } from './operator-yes.js';
 import { hostResources, HOST_IDENTITY, RESOURCE_CEILINGS } from '../../scripts/resource-owner.mjs';
 import { createHostResourceAllocation } from './six-host-resources.js';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 import { reconcileProcessIncarnation } from '../../src/measurement/index.js';
 import { liveMeasurement, measuredTimings, renderMeasured, resourceCompare, resourcePointClaims } from './measured.js';
 import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, standingDoorwayCheck, subscriptionExchange, usageReconciliation, writeDoorwayMap } from './doorway-map.js';
+import { credentialDisplayLabel } from './credential-display.js';
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
-import { credentialNotices, doorwayNotices, dueWithDelivery } from './credential-reminders.js';
+import { createTelegramMediaCustody, journalMediaSource, telegramInboundMedia } from './telegram-media.js';
+import { createLocalTranscriber } from '../../scripts/local-transcriber.mjs';
+import { prepareMediaInput, invokeMediaTurn, protectMediaBytes } from './media-understanding.mjs';
+import { createMediaAdmission } from './media-admission.js';
+import { credentialNotices, doorwayNotices, dueWithDelivery, sessionLoginNotices, sessionLoginStatus } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
+import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, untilStopped, waitWorking } from './live-sentinels.js';
+import { SENTINEL_FAMILIES } from './sentinel-record.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -80,11 +122,31 @@ import { auditJournal } from './journal-audit.mjs';
 
 import { memoryReport } from './memory-export.js';
 
+import { createProductionSessionDriver, createProductionConversationAdapter } from '../../src/assembly/production-session-driver.js';
+import { createSessionProtocolIO } from '../../scripts/session-protocol-io.mjs';
+import { lifecycleHookPath, installLifecycleHook } from '../../scripts/conversation-lifecycle-io.mjs';
+import { createConversationHostStore } from '../../scripts/conversation-host-store.mjs';
+import { CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
+import { createTopicWorkerCapacity } from '../../scripts/topic-worker-capacity.mjs';
+import { createTopicLoginHandoff } from '../../scripts/topic-login-pool.mjs';
+import { createConversationTopicsPort } from '../../src/assembly/conversation-topics.js';
+import { createSessionWorkPort, SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
+// @ts-expect-error physical JS host is intentionally outside the pure core
+import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 import { stepQuestions } from './step-check.js';
-import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, rerunsDue, standingGrantCandidates } from './retrospective.js';
+import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, rerunsDue, retroAnswerBudget, standingGrantCandidates } from './retrospective.js';
 
 
 
+/** `--sentinels`: `none`, or a comma list of context, presence and promise; absent means all three. */
+const sentinelFamiliesOf = value => {
+  if (value === undefined) return new Set(SENTINEL_FAMILIES);
+  if (value === 'none') return new Set();
+  const named = value.split(',');
+  if (!named.length || named.some(name => !SENTINEL_FAMILIES.includes(name)) || new Set(named).size !== named.length)
+    throw Error('preview: --sentinels must be none or a comma list of context, presence, promise');
+  return new Set(named);
+};
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
   for (let i = 1; i < values.length; i += 2) {
@@ -106,7 +168,93 @@ const approvalSurfaceOf = options => {
   return createApprovalSurfaceClient({ store: options['approval-store'], outbox: options['approval-outbox'],
     operatorUid: number(options['approval-operator-uid'], 'approval-operator-uid', 0), now: wallNow });
 };
+// Rules 79, 81 (plan #502): the operator dashboard served READ-ONLY by this runner, with no approval port. Installed only when
+// both are given: where it listens (loopback or this machine's Tailscale address) and the loopback endpoint that checks the
+// operator's existing dashboard PIN (an Instar 1.x host's `POST /dashboard/unlock`). Approvals stay where they are answered.
+const readOnlyDashboardOf = options => {
+  const given = ['dashboard-listen', 'dashboard-pin-check'].filter(name => options[name] !== undefined);
+  if (!given.length) return null;
+  if (given.length !== 2) throw Error('preview: --dashboard-listen and --dashboard-pin-check go together');
+  return { listen: checkListen(options['dashboard-listen']), checkPin: pinCheckAt(options['dashboard-pin-check']) };
+};
+// Plan #91; Purpose, the approval-account exception: the desk-written explicit-yes installation record. A malformed
+// record refuses the launch; afterwards it is read afresh on every use, so a withdrawal the desk records on the
+// operator's word stops consumption from the next poll (an unreadable record admits nothing).
+const explicitYesInstallationOf = options => {
+  const path = options['explicit-yes-installation'];
+  if (path === undefined) return null;
+  if (!path.startsWith('/')) throw Error('preview: --explicit-yes-installation must be an absolute path');
+  parseExplicitYesInstallation(readFileSync(path, 'utf8'));
+  return () => { try { return parseExplicitYesInstallation(readFileSync(path, 'utf8')); } catch { return undefined; } };
+};
+/** The agent's OWN GitHub token for opening request pull requests; never the operator's. Host-bound, never an argument. */
+const githubToken = () => {
+  const value = process.env.INSTAR_SECRET_PREVIEW_GITHUB_TOKEN;
+  if (!value || /\s/u.test(value)) throw Error('preview: GitHub SecretRef unavailable'); return value;
+};
+/** The GitHub review source (P-05 route), connected only with the installation record and a request repository. */
+const reviewSourceOf = (options, installation) => {
+  const repository = options['review-repository'];
+  if (repository === undefined) return null;
+  if (!installation) throw Error('preview: --review-repository needs --explicit-yes-installation');
+  return createReviewYesSource({ installation, repository, context, now: wallNow,
+    client: createGitHubReviewClient({ token: githubToken(), http: globalThis.fetch.bind(globalThis), signal: ms => AbortSignal.timeout(ms) }) });
+};
+/** The reviewed activation a renewal may name (`--renewal-activation`), validated exactly as `renew-expiry` validates it;
+ * its digest when it is valid now and ends at `expires`, else null. */
+const renewalActivationOf = (options, view) => expires => {
+  const path = options['renewal-activation'];
+  if (path === undefined) return null;
+  const bytes = readFileSync(path, 'utf8'), activation = JSON.parse(bytes), now = wallNow();
+  const profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
+  const renewalDoorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY);
+  renewalDoorway.validateActivation(activation, profile, required(options, 'model'), now, renewalDoorway.conversationFraming);
+  requireAuthority(options, activation, path, view(), now);
+  if (activation.expiresAt !== expires || !activationMatchesJournal(view(), activation, expires)) return null;
+  return `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}`;
+};
 const required = (options, name) => { if (!options[name]) throw Error(`preview: missing --${name}`); return options[name]; };
+/** Desk unit harness-user: `--harness-user NAME` runs every Claude Code launch of the login profile as that macOS user, so
+ * the kernel checks each file the harness opens as an identity with no access to the operator account's private files.
+ * Decided at launch from live state (harness-user.mjs harnessGate), never from the switch alone. Unavailable, every
+ * harness launch is HELD (never run as the runner's own account) and the identity is decided again on a later launch;
+ * the runner's journal, messaging and stop keep working, and the status line says why. Absent: null (and plan #473: a
+ * Claude Code tool route then refuses every tool turn, `identityRefusalOf`). */
+const harnessOf = (options, root, doorway) => {
+  const user = options['harness-user'];
+  if (user === undefined) return null;
+  return harnessGate({ user, profile: JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')),
+    migrateLegacy: options['login-pool'] === undefined,
+    denied: [realpathSync(root), homedir(), process.cwd()], clock: () => performance.now(),
+    unavailable: doorway.toolTurn?.harness ? 'the selected doorway is not the Claude Code harness' : null,
+    adopt: uid => hostResources.adoptHarnessUid(uid), log: line => process.stderr.write(`preview: ${line}\n`) });
+};
+/** Plan #473: why a Claude Code tool turn is refused for its identity: no `--harness-user` at all on a Claude Code tool
+ * route (never the operator's account), said at launch. A configured user that is not ready holds every launch instead
+ * (harnessGate); a checkpointed harness runs under its own sandbox and is not gated by it. */
+const identityRefusalOf = (options, doorway) => {
+  if (options['harness-user'] !== undefined || doorway.toolTurn?.harness) return null;
+  process.stderr.write(`preview: ${harnessStatusLine({ ready: false, reason: HARNESS_OFF_REASON })}\n`);
+  return HARNESS_OFF_REASON;
+};
+/** The `runAs` a launch passes: the ready identity's command fields (throws while the identity is held). */
+const runAsOf = harness => { if (!harness) return null; const { user, launcher, login, plan } = harness.current(); return { user, launcher, login, plan }; };
+/** Rules 60, 114 (Part fifteen §5): the delegated-session path for long and scheduled work exists
+ * only under its own reviewed grant: an activation record for the doorway's session framing, bound
+ * to that exact session policy (launch flags, model, limits, task wording), resolved from the same
+ * sealed authority and accepting the admitted-session residual. With no grant, work stays on the one-call
+ * route exactly as before. Everything else — harness, executable, homes, ceilings — comes from the
+ * doorway, the login profile and the policy, never from a separate option. */
+const conversationSessionOf = options => {
+  const mode = options['conversation-session'];
+  if (mode !== undefined && mode !== 'on' && mode !== 'off') throw Error('preview: --conversation-session must be on or off');
+  if (mode === 'on' && options['session-work-activation'] === undefined)
+    throw Error('preview: conversation session requires its reviewed session activation');
+  return mode === 'on';
+};
+const sessionWorkOf = options => options['session-work-activation'] === undefined ? null
+  : { activation: options['session-work-activation'], tmux: options['session-work-tmux'] ?? '/opt/homebrew/bin/tmux' };
+
 const number = (value, name, minimum = 1, maximum = Number.MAX_SAFE_INTEGER) => {
   const n = Number(value); if (!Number.isSafeInteger(n) || n < minimum || n > maximum) throw Error(`preview: invalid ${name}`); return n;
 };
@@ -123,6 +271,12 @@ const key = () => {
 const token = () => {
   const value = process.env.INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN;
   if (!value || !/^[0-9]+:[A-Za-z0-9_-]{20,}$/.test(value)) throw Error('preview: Telegram SecretRef unavailable');
+  return value;
+};
+/** The two machines' shared secret (authority face and journal acknowledgements). Host-bound, never an argument, never logged. */
+const authoritySecret = () => {
+  const value = process.env.INSTAR_SECRET_PREVIEW_AUTHORITY_SECRET;
+  if (!value || value.length < 16) throw Error('preview: authority SecretRef unavailable');
   return value;
 };
 const typesafeKey = () => {
@@ -157,30 +311,96 @@ const context = { site: 'preview.journal', preserved: 'preview:host', register: 
 /** Rules 28/82: the messaging owner's records (its state directory: the sender-authenticated message
  * log, the provenance ledger and the topic-operator bindings). Absent, unreadable or malformed →
  * null, which resolves no grant. */
+// One process-local parsed snapshot, never an authority verdict. Each lookup checks every
+// owner's file; the resolver still rereads the sealed grant and checks the current clock.
+let operatorRecordsCache = null;
 const operatorRecords = directory => {
-  if (!directory) return null;
+  if (!directory) { operatorRecordsCache = null; return null; }
+  const paths = ['telegram-messages.jsonl', 'asp-classifications.jsonl', 'state/topic-operators.json']
+    .map(name => join(directory, name));
+  const identity = () => paths.map(path => {
+    const s = statSync(path, { bigint: true });
+    return [s.dev, s.ino, s.size, s.mtimeNs, s.ctimeNs, s.mode].join(':');
+  }).join('|');
   // Every complete line must parse (a skipped line could hide a second row for the same message);
   // only a trailing fragment still being appended is left out.
   const lines = name => readFileSync(join(directory, name), 'utf8').split('\n').slice(0, -1).filter(Boolean).map(line => JSON.parse(line));
-  try { return { messages: lines('telegram-messages.jsonl'), provenance: lines('asp-classifications.jsonl'),
-    bindings: JSON.parse(readFileSync(join(directory, 'state', 'topic-operators.json'), 'utf8')) }; } catch { return null; }
+  try {
+    const before = identity();
+    if (operatorRecordsCache?.directory === directory && operatorRecordsCache.identity === before)
+      return operatorRecordsCache.records;
+    operatorRecordsCache = null;
+    const records = { messages: lines('telegram-messages.jsonl'), provenance: lines('asp-classifications.jsonl'),
+      bindings: JSON.parse(readFileSync(join(directory, 'state', 'topic-operators.json'), 'utf8')) };
+    // A concurrent append/replacement must not leave a mixed snapshot cached as current.
+    if (identity() !== before) return null;
+    operatorRecordsCache = { directory, identity: before, records };
+    return records;
+  } catch { operatorRecordsCache = null; return null; }
 };
 /** Rules 94/98/103/104: the activation is exercised only under a recorded operator authority that
  * covers this exact act: the original activation, or a bounded renewal inside the standing grant.
  * The record defaults to `activation-authority.json` beside the activation record. Rule 82: it
  * resolves only as the desk's disposition sealed under this trial's storage SecretRef
- * (`seal-authority`); a copy with any field changed resolves nothing. */
-const requireAuthority = (options, activation, activationPath, view, now) => {
+ * (`seal-authority`); a copy with any field changed resolves nothing. `policy` is the build's own
+ * invocation policy the activation names: a grant recorded for a policy class covers it only then. */
+const requireAuthority = (options, activation, activationPath, view, now, policy = undefined) => {
   const path = options['authority-record'] ?? join(dirname(resolve(activationPath)), 'activation-authority.json');
   let record = null;
   try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { record = null; }
   const resolution = resolveActivationAuthority(activation, record, view.genesis.operator, view.genesis.expires, now,
-    operatorRecords(options['operator-records']), authoritySealKey(key()));
+    operatorRecords(options['operator-records']), authoritySealKey(key()), policy);
   if (resolution.kind !== 'resolved') throw Error(`preview: ${resolution.reason}`);
   return resolution;
 };
+/** Part Thirteen §9: writes the tools activation a root's launch derived under the operator's recorded grant, whole (write
+ * then rename), owner-only. It is the live withdrawal handle; the sealed authority it resolves from records the grant. */
+const writeToolsDefaultActivation = (path, bytes) => {
+  writeFileSync(`${path}.tmp`, bytes, { mode: 0o600 });
+  renameSync(`${path}.tmp`, path);
+};
+/** P-08 (Purpose; Eleven §5): this trial's single-machine acceptance, resolved from the same sealed
+ * authority record as the activation. Its absence never refuses a launch; it only leaves the minimal
+ * path's peer question unsettled, so limited answers stay inhibited and the outage names it. */
+const installationPolicyOf = (options, activation, activationPath, view, now) => {
+  const path = options['authority-record'] ?? join(dirname(resolve(activationPath)), 'activation-authority.json');
+  let record = null;
+  try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { record = null; }
+  try { return resolveInstallationPolicy(activation.trial, record, view.genesis.operator, now,
+    operatorRecords(options['operator-records']), authoritySealKey(key())); }
+  catch { return { kind: 'refused', reason: 'the authority record could not be resolved' }; }
+};
+/** The installed register generation, read from the checkout now. Ten's rule for the `register`
+ * dependency (src/assembly/production.ts): the generation the live process holds equals the current one. */
+const registerGeneration = () => {
+  try { const generation = JSON.parse(readFileSync(resolve(process.cwd(), 'generated/source.json'), 'utf8')).generation;
+    return typeof generation === 'string' && generation ? generation : null; } catch { return null; }
+};
+/** What clears each missing minimal dependency, for the operator's pull surface (Rules 15, 82). */
+const MINIMAL_REPAIR = Object.freeze({
+  [MISSING_INSTALLATION_POLICY]: 'the operator accepts the single-machine profile once (P-08); the desk records that message in the sealed authority record and restarts the runner (README: single-machine acceptance)',
+  register: 'restart the runner: the installed register generation is unreadable or changed since this launch',
+  lease: 'this runner does not hold the conversation; the owning runner answers, or the next launch claims it',
+  fence: 'this runner lost the conversation fence; the next launch reclaims it',
+  route: 'the Telegram route is failing; it recovers when a poll succeeds' });
+const minimalRepair = missing => missing.map(item => MINIMAL_REPAIR[item] ?? `restore ${item}`).join('; ');
+/** The launch's recorded minimal-path posture: the latest launch row that carries one. */
+const minimalPathOf = runsText => {
+  let found = null;
+  for (const line of runsText.split('\n')) {
+    if (!line.includes('"minimalPath"')) continue;
+    try { const row = JSON.parse(line); if (row?.v === 1 && row.minimalPath && typeof row.minimalPath === 'object') found = { launch: row.launch, ...row.minimalPath }; }
+    catch { /* a fragment still being appended */ }
+  }
+  return found;
+};
 const take = result => { if (result.kind !== 'Success') throw Error(`preview: adapter refused ${result.detail ?? ''}`); return result.value; };
 const secretRef = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name });
+// The launcher captures stderr; mirror the durable end reason once, even if cleanup fails.
+let exitReported = false;
+const reportExit = reason => {
+  if (!exitReported) { exitReported = true; process.stderr.write(`runner exiting: ${reason}\n`); }
+};
 const delay = ms => new Promise(done => setTimeout(done, ms));
 /** Rules 34/62/76 classify capabilities through the committed register shape: one definition, read, never restated. */
 const shapeTerms = () => ({ owner: 'part-three',
@@ -225,18 +445,30 @@ const capabilityReport = (joined, reading, log, status, now) => capabilityRows(j
 /** The exact sources every live turn carries; shared by run and the read-only inspect probe.
  * The self-state is recomputed at each turn from the journal and the run log; the desk's
  * report (optional) covers only other work. */
-const turnSources = (root, options, view, runs, current = () => undefined, handoff = () => null) => {
+const turnSources = (root, options, view, runs, current = () => undefined, handoff = () => null,
+  toolsOn = () => options['tools-activation'] !== undefined) => {
   // The standing mind-held instructions ride every prepared envelope; a changed rule book refuses launch.
   verifyMindRules(path => readFileSync(resolve(process.cwd(), path), 'utf8'));
-  const ordinarySources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
-    { providerAttempts: view.limits.maxCalls, expiresAt: view.expires }).sources;
+  // Each turn carries the briefing that matches whether its tools are on now (default on, withdrawn when the record is
+  // removed or its grant no longer resolves) and how many MCP servers the root configures now (read at each turn, as the
+  // tool turn reads them; unknown when the configuration is unreadable). Each distinct briefing is built once.
+  const packets = new Map();
+  const packetFor = (tools, mcp) => {
+    const key = `${String(tools)}:${String(mcp)}`;
+    if (!packets.has(key)) packets.set(key, sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
+      { providerAttempts: view.limits.maxCalls, expiresAt: view.expires, tools, ...(tools && mcp !== undefined ? { mcp } : {}) }).sources);
+    return packets.get(key);
+  };
+  const mcpCount = () => { try { return Object.keys(readRootMcp(root)?.servers ?? {}).length; } catch { return undefined; } };
+  // Built now, so a changed source document still refuses launch rather than a later turn.
+  packetFor(true, mcpCount()); packetFor(false, undefined);
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
   return turn => {
     const now = wallNow(), log = runs();
-    const sources = ordinarySources;
+    const tools = Boolean(toolsOn()), sources = packetFor(tools, tools ? mcpCount() : undefined);
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const note = handoff();
-    return [...sources, disciplineSource(view), selfStateSource(selfStateBrief(view, log, now, timeZoneOf(options), current())), desk, ...(note ? [note] : [])];
+    return [...sources, disciplineSource(view), selfStateSource(selfStateBrief(view, log, now, timeZoneOf(options), current())), ...(desk ? [desk] : []), ...(note ? [note] : [])];
   };
 };
 /** The installed runner, read from this checkout: repository paths only, never outside it. */
@@ -257,16 +489,19 @@ const installedCode = () => {
  * owned preview runners. Each is read from its own run log only; a bounded number of roots and bytes. */
 const OWNED_ROOT_LIMIT = 256, OWNED_RUN_LOG_BYTES = 1024 * 1024;
 /** The conversation a runner polls, recorded on its launch row so a sibling can see a shared conversation. */
-const conversationOf = genesis => `telegram/bot-${genesis.bot}/chat-${genesis.chat}`;
+const conversationOf = journalConversation;
+/** Whether a possible root another runner's flattened command line could name exists now; only a path proven
+ * missing (ENOENT, ENOTDIR, or a name too long to exist) is ruled out, so an unreadable one keeps it unknown. */
+const PATH_MISSING = new Set(['ENOENT', 'ENOTDIR', 'ENAMETOOLONG']);
+const pathExists = path => { try { lstatSync(path); return true; } catch (error) { return !PATH_MISSING.has(error?.code); } };
 /** A launch with no exit row is running only while its recorded pid is still that root's runner. */
 const ownedProcess = (pid, root) => {
   if (!Number.isSafeInteger(pid) || pid <= 0) return 'unknown';
   try {
-    const command = execFileSync('ps', ['-ww', '-p', String(pid), '-o', 'command='], { encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 });
-    // A runner started with another spelling of the root cannot be matched: unknown, never guessed either way.
-    return !command.includes('journal-agent.mjs') ? 'absent' : command.includes(`--root ${root}`) ? 'present' : 'unknown';
-  } catch (error) { return error?.status === 1 ? 'absent' : 'unknown'; }
+    // The exact --root argument decides (ownedProcessOf); another spelling of the root is unknown, never guessed.
+    return ownedProcessOf(execFileSync('ps', ['-ww', '-p', String(pid), '-o', 'command='], { encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 }), root, pathExists);
+  } catch (error) { return error?.status === 1 ? ownedProcessOf(null, root, pathExists) : 'unknown'; }
 };
 const ownedActivity = root => {
   const parent = dirname(root);
@@ -286,12 +521,22 @@ const ownedActivity = root => {
   return { others, scanned, truncated: names.length > OWNED_ROOT_LIMIT, unreadable };
 };
 /** What the agent is told about itself, independent of the trial's changing limits. */
-const briefingDigest = () => briefingDigestOf([...sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
-  SOURCE_PINS, { providerAttempts: 0, expiresAt: 0 }).sources.map(source => source.text), ANSWER_INSTRUCTIONS]);
+const briefingDigest = (tools = false) => briefingDigestOf([...sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
+  SOURCE_PINS, { providerAttempts: 0, expiresAt: 0, tools }).sources.map(source => source.text), ANSWER_INSTRUCTIONS]);
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
+/** Plan #389: the desk's current retraction proposal on this root, or none. A malformed file proposes nothing. */
+const readRetractProposal = path => {
+  try {
+    if (!existsSync(path)) return undefined;
+    const saved = JSON.parse(readFileSync(path, 'utf8'));
+    return saved?.version === 1 && validRetractUpdates(saved.updates) && typeof saved.reason === 'string' && Number.isSafeInteger(saved.proposedAt)
+      ? { updates: saved.updates, reason: saved.reason, proposedAt: saved.proposedAt } : undefined;
+  } catch { return undefined; }
+};
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'America/Los_Angeles'; zoneFormatter(zone); return zone; };
 /** Recall metadata and labels, never static sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null, summarySourceKind: packet.summary?.sourceKind ?? null,
+  historySetAside: packet.historySetAside ? { count: packet.historySetAside.count, through: packet.historySetAside.through } : null,
   replyTo: packet.replyTo ?? null,
   people: packet.people ?? [], personAttributes: packet.personAttributes ?? [], personMergeCandidates: packet.personMergeCandidates ?? [], personMerges: packet.personMerges ?? [], commitments: packet.commitments ?? [], openQuestions: packet.openQuestions ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
   lastNamedPerson: packet.lastNamedPerson ?? null,
@@ -301,6 +546,8 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   openConflicts: packet.openConflicts ?? [],
   inventory: packet.inventory ?? null,
   memorySearch: packet.memorySearch ?? { items: [], forgotten: 0 },
+  // Rule 11: the one lookup's offer ("offered") or, on its second packet, what was searched and how many were found.
+  memoryLookup: packet.memoryLookup ?? null,
   meaningIndexCoverage: packet.meaningIndexCoverage ?? null,
   continuity: packet.continuity ?? null,
 
@@ -327,7 +574,7 @@ const withheldView = view => {
     else if (change.mode === 'correct' && preferenceKeys.has(JSON.stringify([change.source, change.quote])))
       preferenceKeys.add(JSON.stringify([change.trigger, change.replacement]));
   }
-  return view.memory.filter(change => change.mode !== 'prefer').map(change => ({
+  return view.memory.filter(change => (change.mode === 'correct' || change.mode === 'forget')).map(change => ({
     ...(change.source.startsWith('channel:')
       ? { channelSource: view.channelItems.get(change.source.slice('channel:'.length))?.source,
         channelSourceId: redact(view.channelItems.get(change.source.slice('channel:'.length))?.id ?? '').text }
@@ -357,15 +604,33 @@ const recordShape = (path, role, layer, outcome, shape) => {
     durablePreviewWrite(path, saved);
   } catch { /* a diagnostics write never changes a model outcome */ }
 };
-const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
-  : /^retrospective:\d+$/u.test(id) ? 'retrospective' : 'answer';
+const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
+  : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
+/** Rule 95, the fail direction of this consumer: may text around one complete Decision object be
+ * discarded? The answer side says yes — the answer, a reply revision and the summary writer, which
+ * `roleOf` folds into `answer`. Their output is reviewed again (the reply review, the faithfulness
+ * cascade) before any of it can reach the operator, so dropping a wrapper skips no gate, while
+ * refusing it costs the operator the answer the model did produce (Rules 15 and 77: the live 2026-10-01
+ * k6 turn was answered "I couldn't produce an answer" twice for this reason alone). Every other role
+ * here IS a gate — a reply or summary review verdict, or the internal retrospective — and keeps the
+ * narrow reading, because prose beside a verdict may be a written rejection that must not be dropped
+ * and no later review would catch it. Nothing branches on what the text means, only on which consumer asked.
+ */
+const wrappedPolicyOf = role => role === 'answer' ? 'accept' : 'refuse';
+/** Plan #507, the same declaration one layer deeper: is this task's ANSWER itself a JSON object? The three summary-side
+ * calls are -- the rolling summary (`summary:<through>`, whose object carries the memory decision and the reminder
+ * withdrawal), its review (`summary:<through>:review`, {verdict, reason}) and the meaning index
+ * (`summary:index:<n>`, {concepts}) -- and each of their consumers parses the answer as JSON. For them the runner
+ * serializes the object, never the model (answer-reading.ts). Every other call's answer is prose or the conversation
+ * protocol's own flat fields. Nothing branches on what the text means, only on which consumer asked. */
+const objectAnswerOf = id => /^summary:/u.test(id);
 /** The registered live judgment a subscription call serves (model-call-boundary.ts). A revised
  * reply's held-class review is a reply review; the revision is the agent's own response to the
- * objections, with its own floor. A retrospective pass is its own judgment; its benchmark reruns
- * (`retrospective:N:rerun:I`) replay an answer. */
-const judgmentOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review'
+ * objections, with its own floor. A retrospective pass is its own judgment, and so is its duty follow-up
+ * (`retrospective:N:duties`); its benchmark reruns (`retrospective:N:rerun:I`) replay an answer. */
+const judgmentOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review'
   : id.endsWith(':reply-revision') ? 'reply-revision' : /^summary:.*:review$/u.test(id) ? 'summary-review'
-  : /^summary:/u.test(id) ? 'summary' : /^retrospective:\d+$/u.test(id) ? 'retrospective' : 'answer';
+  : /^summary:/u.test(id) ? 'summary' : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 /** Rules 3, 17 and 47: which standing instructions the prepared prompt carried, by digest and rule number. */
@@ -418,7 +683,9 @@ const retrospectiveView = (view, now) => { const digest = replyContextDigest(vie
   const grades = [...latestGrades(view).values()];
   return { passes: view.retroPasses.map(pass => ({ pass: pass.pass, at: pass.at,
     state: pass.state ?? 'in-flight-or-unknown', reason: pass.reason ?? null, eligible: pass.eligible,
-    supplied: pass.cases.length, deferredByBound: pass.omitted.length,
+    supplied: pass.cases.length, deferredByBound: Math.max(0, pass.eligible - pass.cases.length),
+    namedDeferrals: pass.omitted.length,
+    estimatedAnswerBytes: pass.estimatedAnswerBytes ?? null, outputTokens: pass.outputTokens ?? null,
     inspected: pass.result ? pass.result.inspected.length : null, omittedByReview: pass.result ? pass.result.omitted.length : null,
     accounting: passAccounting(pass), efficiency: pass.result?.efficiency.summary ?? null,
     duties: pass.result?.duties.map(item => ({ duty: item.duty, disposition: item.disposition, note: item.note })) ?? [],
@@ -426,7 +693,9 @@ const retrospectiveView = (view, now) => { const digest = replyContextDigest(vie
     findings: pass.result?.findings.map(item => ({ id: item.id, duty: item.duty, refs: item.refs, summary: item.summary, recurs: item.recurs ?? [],
       rootCause: item.rootCause ?? null, structuralRemedy: item.structuralRemedy ?? null,
       disposition: 'owner' in item.disposition ? `owned by ${item.disposition.owner}` : 'declined with reason' })) ?? [],
-    reruns: (pass.reruns ?? []).map(run => ({ index: run.index, case: run.case, state: run.state ?? 'in-flight-or-unknown' })) })),
+    reruns: (pass.reruns ?? []).map(run => ({ index: run.index, case: run.case, state: run.state ?? 'in-flight-or-unknown' })),
+    dutyFollowUp: pass.dutyFollowUp ? { duties: pass.dutyFollowUp.duties, state: pass.dutyFollowUp.state ?? 'in-flight-or-unknown',
+      reason: pass.dutyFollowUp.reason ?? null } : null })),
   grades: grades.map(({ grade, pass }) => ({ case: grade.case, pass, conclusion: grade.conclusion.assessment, reason: grade.reason.assessment,
     outcome: grade.outcome.assessment, outcomeReason: grade.outcome.reason, rederivation: grade.rederivation ?? null, reassessment: grade.reassessment === true })),
   pendingGrades: pendingGrades(view).length,
@@ -443,7 +712,17 @@ const retrospectiveView = (view, now) => { const digest = replyContextDigest(vie
       .map(category => [category, owed.filter(row => row.item.category === category).length])),
       oldestSince: owed.reduce((min, row) => Math.min(min, row.since), Number.MAX_SAFE_INTEGER) === Number.MAX_SAFE_INTEGER ? null
         : owed.reduce((min, row) => Math.min(min, row.since), Number.MAX_SAFE_INTEGER) }; })(),
-  contextDigest: digest, routeSelection: 'unmeasured' }; };
+  contextDigest: digest, answerBudget: retroAnswerBudget(view.retroPasses),
+  // The DOORWAY/MODEL routing label (docs/01 lesson 5: a routing choice no benchmark backs is labelled
+  // unmeasured). One route, no benchmark behind it, so it stays 'unmeasured' — this field is NOT about the
+  // answer budget, and overloading it would make a reader checking that arm read a measured routing choice
+  // where there is none.
+  routeSelection: 'unmeasured',
+  // The answer BUDGET's route, under its own name: 'measured' once a completed pass recorded both its estimate
+  // and what its answer really cost, 'start' while this root has measured nothing and asks at the small start.
+  answerBudgetRoute: view.retroPasses.some(pass => pass.state === 'complete'
+    && typeof pass.estimatedAnswerBytes === 'number' && typeof pass.outputTokens === 'number')
+    ? 'measured' : 'start' }; };
 const stepCheckView = view => ({ total: view.stepChecks.size,
   unchecked: [...view.stepChecks.values()].filter(item => !item.reserved).length,
   verdicts: [...view.stepChecks].map(([step, item]) => ({ step,
@@ -457,7 +736,9 @@ async function main() {
   if (options.retrospective !== undefined && !['true', 'false'].includes(options.retrospective)) throw Error('preview: --retrospective must be true or false');
   // On by default: one bounded pass at most hourly, inside the model-attempt cap with a reply reserve.
   const retrospectiveEnabled = options.retrospective !== 'false';
-  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements'].includes(command)) throw Error('preview: unknown command');
+  // Part 18 (plan #402): the live sentinels, all on by default; `--sentinels none` (or a subset) is the off-switch.
+  const sentinelFamilies = sentinelFamiliesOf(options.sentinels);
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'carry-group', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract', 'install-login', 'prepare-logins'].includes(command)) throw Error('preview: unknown command');
   if (command === 'seal-authority') {
     // The desk's recording step: seals the authority record it decided, under the trial's storage
     // SecretRef, into a new file (never replacing one). Nothing else is read or written.
@@ -466,12 +747,35 @@ async function main() {
     return;
   }
   // Rules 30, 59: an unregistered doorway or an incomplete silent-stop table refuses the launch.
-  if (command === 'run') { admitHarness(); subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY); }
+  // Plan #502: a half-given or public read-only dashboard refuses the launch before anything else starts.
+  if (command === 'run') { admitHarness(); subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY); readOnlyDashboardOf(options); }
+  // Rule 30: every activation check, policy bound and route construction below goes through the
+  // selected doorway, so a root configured for another registered doorway runs on that doorway's
+  // CLI, model shape and parser instead of the first one that happened to be written here.
+  const doorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY);
 
   const root = resolve(required(options, 'root'));
-  if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
+  if (['run', 'install-login', 'prepare-logins'].includes(command)) assertAgentPaths({ root });
+  if (['run', 'install-login', 'prepare-logins'].includes(command)) mkdirSync(root, { recursive: true, mode: 0o700 });
   if (realpathSync(root) !== root || lstatSync(root).isSymbolicLink()) throw Error('preview: substituted root');
+  const verifyInstalledLogin = view => (row, profile, activation = JSON.parse(readFileSync(row.activation, 'utf8')), tools = undefined) => {
+    const memberOptions = { ...options, 'login-pool': 'installed', 'login-profile': row.profile,
+      'activation-record': row.activation, 'authority-record': row.authority };
+    const check = (record, framing, path) => {
+      doorway.validateActivation(record, profile, options.model, wallNow(), framing, view.expires ?? view.genesis.expires);
+      requireAuthority(memberOptions, record, path, view, wallNow(), doorway.policyFor(options.model, framing));
+      if (!activationMatchesJournal(view, record)) throw Error('preview: installed login differs from installation');
+    };
+    check(activation, doorway.conversationFraming, row.activation);
+    if (tools) check(tools, doorway.toolsFraming, row.toolsActivation ?? row.activation);
+    const memberHarness = harnessOf(memberOptions, root, doorway);
+    if (!memberHarness) throw Error('preview: installed login requires harness custody');
+    memberHarness.current();
+  };
+  const prepareLogins = (selected, view) => prepareInstalledHarnessLogins({ root, options: selected, doorway,
+    build: installedCode().codeDigest, now: wallNow(), verify: verifyInstalledLogin(view) });
   const stopPath = join(root, 'preview-stop.json');
+  const retractPath = join(root, 'preview-retract-proposal.json');
   const journalPath = join(root, 'journal.encrypted');
   const importPath = join(root, 'preview-import.json');
   const runsPath = join(root, 'runs.jsonl');
@@ -483,12 +787,14 @@ async function main() {
   const ownersDirectory = () => {
     const directory = resolve(options['conversation-owners'] ?? process.env.INSTAR_CONVERSATION_OWNERS
       ?? join(homedir(), '.instar', 'conversation-owners'));
+    assertAgentPaths({ state: directory });
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     return realpathSync(directory);
   };
   const ownerMachine = options['owner-machine'] ?? hostname();
   // Rule 33: the one input every declared store agreement is checked against (the loop's cadence and the offline check).
   const agreementInput = (view, now) => ({ view, runs: readRuns(runsPath), root, now,
+    verifyMedia: createTelegramMediaCustody(root, key(), { token: () => '', stopped: () => true }).verify,
     ownership: observeConversationOwner({ directory: ownersDirectory(), bot: view.genesis.bot, chat: view.genesis.chat, machine: ownerMachine,
       probePid: pid => process.kill(pid, 0), now }),
     replay: () => { const replayed = openPreviewJournal(journalPath, key(), undefined, undefined, true);
@@ -496,7 +802,15 @@ async function main() {
   // Rule 113: the declared multi-machine posture. Only single-machine has a conversation authority today.
   const posture = options['machine-posture'] ?? process.env.INSTAR_MACHINE_POSTURE ?? 'single-machine';
   if (posture !== 'single-machine' && posture !== 'multi-machine') throw Error('preview: machine-posture must be single-machine or multi-machine');
-  const topology = { posture, supported: posture === SUPPORTED_POSTURE, authority: 'host-local conversation lease (this machine only)',
+  // A multi-machine posture is served only with a shared conversation authority; without one it stays inhibited.
+  const authorityUrl = options['conversation-authority'] ?? null;
+  if (authorityUrl !== null && posture !== 'multi-machine') throw Error('preview: --conversation-authority needs --machine-posture multi-machine');
+  const multi = posture === 'multi-machine' && authorityUrl !== null;
+  if (options['journal-lineage'] !== undefined && (options['journal-lineage'] !== 'seed' || !multi))
+    throw Error('preview: --journal-lineage is only seed, and only with a shared conversation authority');
+  const topology = multi ? { posture, supported: true,
+    authority: 'shared conversation authority (one voter); the journal is replicated to the other machine and every send waits for its acknowledgement' }
+    : { posture, supported: posture === SUPPORTED_POSTURE, authority: 'host-local conversation lease (this machine only)',
     ...(posture === SUPPORTED_POSTURE ? {} : { reason: 'no shared conversation authority exists for a multi-machine posture; this runner does not serve it' }) };
   const resourcesPath = join(root, 'resources.json');
   const launchesPath = join(root, 'owned-launches.json');
@@ -508,6 +822,34 @@ async function main() {
   if (command === 'stop') {
     if (!existsSync(journalPath)) throw Error('preview: journal absent');
     if (!existsSync(stopPath)) durablePreviewWrite(stopPath, { latchedAt: wallNow(), reason: 'operator' });
+    return;
+  }
+  if (command === 'propose-retract') {
+    // Plan #389, Rule 35: the desk proposes the exact test-origin turns; nothing is applied here and nothing is sent from
+    // here. It leaves one proposal on the root for the running runner, which renders it and opens the operator's approval
+    // exactly as a raise is opened, during operator hours only. Only the operator's yes applies it (never chat text).
+    // A refusal names its fixed reason on stdout (never a secret or message text), so the desk sees why nothing was proposed.
+    const refuse = reason => { process.stdout.write(`${JSON.stringify({ refused: reason })}\n`); process.exitCode = 1; };
+    const now = wallNow(), zone = timeZoneOf(options);
+    if (!withinOperatorHours(now, zone))
+      return refuse(`propose-retract runs only during operator hours (${OPERATOR_HOURS.start}:00 to ${OPERATOR_HOURS.end}:00 ${zone})`);
+    if (existsSync(stopPath)) return refuse('stop latched');
+    const lines = readFileSync(required(options, 'updates-file'), 'utf8').split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('#'));
+    if (lines.some(line => !/^\d+(?:\.\d+)?$/u.test(line))) return refuse('--updates-file holds one Telegram update id per line');
+    const updates = lines.map(Number).sort((left, right) => left - right);
+    if (!validRetractUpdates(updates)) return refuse('the update list must be 1 to 1000 distinct ids');
+    const reason = options.reason ?? 'desk and test traffic sent through your account (residue audit, plan #387)';
+    const peek = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+    try {
+      const refusal = retractRefusal(peek.view, updates);
+      if (refusal !== null) return refuse(refusal);
+      const proposal = { updates, reason, proposedAt: now };
+      const rendering = retractRendering(peek.view, { action: 'retract-turns', updates });
+      durablePreviewWrite(retractPath, { version: 1, ...proposal });
+      process.stdout.write(`${JSON.stringify({ proposed: updates.length, first: rendering.first, last: rendering.last, reason,
+        carrier: retractCarrier(proposal), sendBy: new Date(now + OPERATOR_REQUEST_MS).toISOString(),
+        next: 'the running runner renders this exact request and opens the operator approval; nothing changes without their yes' })}\n`);
+    } finally { peek.close(); }
     return;
   }
   if (command === 'audit') {
@@ -557,7 +899,22 @@ async function main() {
       // Stranded (signal only): every current ownership record is assessed, with or without waiting input.
       const waiting = view.view.order.filter(turn => turn.accepted && turn.intent === undefined && turn.sent === undefined).length;
       const refusals = log.launches.filter(run => run.refused), lastRefusal = refusals.at(-1);
-      const report = { cursor: view.view.cursor, turns: view.view.order.length,
+      const poolReport = (() => {
+        try {
+          const launch = readFileSync(runsPath, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line))
+            .findLast(row => row.exit === undefined && row.harnessLoginSelection);
+          if (!launch?.harnessLoginManifest) return null;
+          const manifest = JSON.parse(readFileSync(launch.harnessLoginManifest, 'utf8')), primary = manifest.logins[0];
+          const configuration = loadHarnessLogins({ 'login-pool': launch.harnessLoginManifest, 'harness-user': 'status-only',
+            'login-profile': primary.profile, 'activation-record': primary.activation });
+          const state = JSON.parse(readFileSync(join(root, 'harness-login-pool.json'), 'utf8'));
+          return { members: configuration.entries.map(entry => entry.profile.reference), active: state.active,
+            holds: state.holds, lastSwitch: state.switches.at(-1) ?? null,
+            status: harnessLoginPoolStatus(configuration, state, new Map(launch.harnessLoginUnavailable ?? []),
+              () => configuration.usageFile ? JSON.parse(readFileSync(configuration.usageFile, 'utf8')) : null, wallNow) };
+        } catch { return { status: 'Model login pool: recorded configuration unavailable.' }; }
+      })();
+      const report = { harnessLoginPool: poolReport, cursor: view.view.cursor, turns: view.view.order.length,
       ownership: { ...ownership, holder: ownership.holder && { machine: ownership.holder.machine, since: ownership.holder.since,
         thisRoot: ownership.holder.root === root }, topology },
       stranded: assessStranded(ownership, waiting),
@@ -568,6 +925,8 @@ async function main() {
       inhibitedLaunches: log.launches.filter(run => run.inhibited).length,
       startupRefusals: { count: refusals.length, last: lastRefusal ? { at: lastRefusal.at, reason: lastRefusal.refused } : null },
       storeAgreements: agreementStatus(agreementsPath, now),
+      // Two machines (Rules 2, 32): this root's place in the shared history; absent on a root that never had one.
+      ...(sharedView => sharedView ? { sharedHistory: sharedView } : {})(sharedHistoryStatus(root, journalPath)),
       channelItems: view.view.channelItems.size,
       channelSources: Object.fromEntries(['telegram', 'slack'].map(source => [source, {
         ...(view.view.channelSources.get(source) ?? { offset: 0, scanned: 0, imported: 0, skipped: 0 }),
@@ -585,14 +944,23 @@ async function main() {
       importComplete: importMarker
         ? view.view.genesis.importSource === importMarker.source && view.view.imported
         : view.view.genesis.importSource === undefined || view.view.imported,
-      summaryThrough: view.view.summaries.at(-1)?.through ?? null,
+      summaryThrough: liveSummaries(view.view).at(-1)?.through ?? null,
       lastSummaryFaithfulness: view.view.lastSummaryFailure?.faithfulness
-        && view.view.lastSummaryFailure.at >= (view.view.summaries.at(-1)?.at ?? -1)
+        && view.view.lastSummaryFailure.at >= (liveSummaries(view.view).at(-1)?.at ?? -1)
         ? { through: view.view.lastSummaryFailure.through, ...view.view.lastSummaryFailure.faithfulness,
           reason: view.view.lastSummaryFailure.reason }
-        : view.view.summaries.at(-1)?.faithfulness
-          ? { through: view.view.summaries.at(-1).through, ...view.view.summaries.at(-1).faithfulness }
+        : liveSummaries(view.view).at(-1)?.faithfulness
+          ? { through: liveSummaries(view.view).at(-1).through, ...liveSummaries(view.view).at(-1).faithfulness }
           : null,
+      // The recorded reason of a summary failure newer than the last accepted summary (a fixed phrase, never content),
+      // so a room that is not compacting says why: e.g. "summary output over the cap".
+      lastSummaryFailure: view.view.lastSummaryFailure
+        && view.view.lastSummaryFailure.at >= (liveSummaries(view.view).at(-1)?.at ?? -1)
+        ? { through: view.view.lastSummaryFailure.through,
+          reason: view.view.lastSummaryFailure.reason ?? view.view.lastSummaryFailure.failureClass ?? 'failed' }
+        : null,
+      // Rule 2: a frontier the over-cap brake stopped (no summary tried from this base at or past it) is said, not silent.
+      summaryStoppedAt: summaryStoppedAt(view.view),
       packet: packetStatus(view.view),
       installation: (() => {
         const rows = installationRows(existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''), last = rows.filter(row => row.codeDigest !== UNRECORDED).at(-1);
@@ -600,7 +968,7 @@ async function main() {
         let installed = null; try { installed = installedCode(); } catch { installed = null; }
         const update = installedUpdateFrom(rows, last, last.launch + 1);
         return { lastLaunch: { revision: last.revision, codeDigest: last.codeDigest, files: last.files, launch: last.launch },
-          installed, stale: installed === null ? null : installed.codeDigest !== last.codeDigest,
+          installed, stale: installed === null ? null : staleAgainst(last, installed),
           harness: last.harness, doorway: last.doorway, stallClasses: last.stallClasses, briefingDigest: last.briefingDigest,
           update, updateDelivered: update ? updateDelivery(update, view.view.order) : null };
       })(),
@@ -608,6 +976,13 @@ async function main() {
       resources: resourceStatus(resourcesPath, view.view),
       doorways: (() => { const map = readDoorwayMap(doorwaysPath);
         return map ? { map, ...doorwayFreshness(map, statusNow), standing: map.check ?? null } : { map: null, fresh: false, models: [], prices: [], standing: null }; })(),
+      media: (() => {
+        const turns = view.view.order.filter(turn => turn.media);
+        const custody = createTelegramMediaCustody(root, key(), { token: () => '', stopped: () => true });
+        return { stored: turns.filter(turn => turn.media.state === 'stored').length,
+          unavailable: turns.filter(turn => turn.media.state !== 'stored').map(turn => ({ update: turn.update, state: turn.media.state })),
+          missing: turns.filter(turn => turn.media.state === 'stored' && !custody.verify(turn.media)).map(turn => turn.update) };
+      })(),
       credentials: (() => {
         // Rule 100 + purpose Rule 2: custody dispositions are durable on the intake rows, and every
         // referenced vault object (original capture, stored secret, vaulted registry row) is
@@ -618,7 +993,10 @@ async function main() {
         try { const vault = createSecretCustody(root, key(), wallNow), records = vault.records();
           custody.missing = vault.missing([...turns.flatMap(t => t.custody.state === 'stored' ? [t.custody.capture, ...t.custody.secrets] : []),
             ...records.filter(r => r.custody === 'preview-vault').map(r => r.name)]);
-          return { records, due: dueWithDelivery(dueCredentialReminders(records, statusNow), view.view.order), custody,
+          const labels = new Map(records.map(record => [record.name, credentialDisplayLabel(record)]));
+          return { records: records.map(record => ({ ...record, name: labels.get(record.name), identity: labels.get(record.name) })),
+            due: dueWithDelivery(dueCredentialReminders(records, statusNow), view.view.order)
+              .map(item => ({ ...item, name: labels.get(item.name), identity: labels.get(item.name) })), custody,
             intact: custody.failed.length === 0 && custody.missing.length === 0,
             referencedIn: view.view.order.filter(turn => turn.text.includes('[credential stored before use: SecretRef ')).map(turn => turn.update) };
         } catch { return { records: null, due: null, custody, intact: false, error: 'registry unreadable' }; } })(),
@@ -658,7 +1036,36 @@ async function main() {
               ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}) }; })() })),
         // An owned outage: the message is preserved and the named required dependency was missing.
         outages: view.view.order.filter(t => t.minimalOutage && t.limited === undefined).map(t => ({ update: t.update,
-          missing: t.minimalOutage.missing, since: t.minimalOutage.at })) },
+          missing: t.minimalOutage.missing, since: t.minimalOutage.at, repair: minimalRepair(t.minimalOutage.missing) })),
+        // The installed shape the last launch recorded: whether the single-machine profile (P-08) is accepted,
+        // and whether the register generation it launched with is still the installed one.
+        installation: (() => {
+          let recorded = null;
+          try { recorded = minimalPathOf(existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''); } catch { recorded = null; }
+          return recorded === null ? null : { ...recorded, registerInstalledNow: registerGeneration(),
+            registerCurrent: recorded.register !== null && recorded.register === registerGeneration() };
+        })() },
+      // Plan #91: where an explicit yes can come from on this root (chat, or the operator's GitHub review), whether an
+      // operator acceptance of shared account access is current, the two operator actions' live surface, and the recent
+      // requests, each approval admitted under an acceptance carrying the shared-access disclosure.
+      ...(() => {
+        let explicitYes;
+        try {
+          const install = explicitYesInstallationOf(options)?.();
+          explicitYes = explicitYesStatus(install, { chat: g.chat, operator: g.operator, trial: g.grant },
+            { connected: options['review-repository'] !== undefined && Boolean(process.env.INSTAR_SECRET_PREVIEW_GITHUB_TOKEN) });
+          if (options['explicit-yes-installation'] !== undefined && install === undefined) explicitYes = { ...explicitYes, reason: 'the installation record is unreadable' };
+        } catch (error) { explicitYes = { connected: false, error: error instanceof Error ? error.message : 'invalid' }; }
+        // Rule 79: renewal is a phone action only while the installed renewal record validates now exactly as `run`
+        // validates it (same function), for a trial end later than this journal's. Any refusal keeps the host wording.
+        let renewalInstalled = false;
+        try {
+          renewalInstalled = SUBSCRIPTION_PREVIEW_EXPIRY > view.view.expires
+            && renewalActivationOf(options, () => view.view)(SUBSCRIPTION_PREVIEW_EXPIRY) !== null;
+        } catch { renewalInstalled = false; }
+        return { explicitYes, operatorActionSurface: operatorActionSurface(explicitYes, renewalInstalled),
+          operatorRequests: operatorRequestsReport(view.view, now) };
+      })(),
       // The independent approval page: whether it is installed and can approve now (a passkey is enrolled).
       approvalSurface: (() => { try { return approvalSurfaceOf(options)?.status() ?? { installed: false }; }
         catch (error) { return { installed: false, reason: error instanceof Error ? error.message : 'invalid' }; } })(),
@@ -677,10 +1084,12 @@ async function main() {
       capReports: [...view.view.capReports],
 
       modelFailureClasses: Object.fromEntries(view.view.failureClasses),
+      capacityAlerts: capacityAlerts(view.view),
       modelJsonShapes: readShapes(shapesPath),
       modelResultStates: Object.fromEntries(view.view.providerStates),
+      phaseTimings: view.view.phaseTimings ?? [],
       callOutcomeCounts: Object.fromEntries(view.view.callOutcomeCounts),
-      lastCallOutcomes: view.view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, ...outcome, at })),
+      lastCallOutcomes: view.view.callOutcomes.map(({ id, role, outcome: { diagnostic: _privateDiagnostic, ...outcome }, at }) => ({ id, role, ...outcome, at })),
       unknownSends: sendOutcomeCounts(view.view).unknown,
       sendOutcomes: sendOutcomeCounts(view.view),
       modelCalls: view.view.modelCalls,
@@ -693,18 +1102,22 @@ async function main() {
       replyGrounding: { recorded: view.view.order.filter(t => t.intent && t.grounding).length,
         unavailableLegacy: view.view.order.filter(t => t.intent && !t.grounding).length },
       answerProvenance: { unlabeledRecallReplies: view.view.order.filter(t => t.unlabeledRecall
-        && t.answer !== undefined && t.intent === `PREVIEW — ${t.answer}`).length },
+        && t.answer !== undefined && t.intent?.replace(/^PREVIEW — /u, '') === t.answer).length },
 
-      summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null,
+      summaries: view.view.summaries.map((s, index) => ({ through: s.through, people: s.people ? s.people.length : null,
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0,
-        memory: s.memory ? s.memory.length : null })),
-      commitments: { total: view.view.commitments.length, open: view.view.commitments.length - view.view.closed.size },
+        memory: s.memory ? s.memory.length : null, ...(view.view.retiredSummaries?.includes(index) ? { retired: true } : {}) })),
+      commitments: { total: view.view.commitments.length, open: view.view.commitments.filter((note, id) => !view.view.closed.has(id)
+        && !retractedTurn(view.view, note.source)).length },
+      // Plan #389, Rule 35: how many turns an approved retraction says were never the operator's, and the summaries it retired.
+      ...(view.view.retracted ? { retracted: { turns: view.view.retracted.length, retiredSummaries: view.view.retiredSummaries?.length ?? 0 } } : {}),
       mentionedDates: view.view.mentionedDates.size,
       // The one general capability: what the operator asked for at a later time, answered once when due. An older
       // journal's fixed-text reminder batches count as earlier sends of it.
       requestedActions: (() => {
         const dueTurns = view.view.order.filter(t => t.requestedAction && !t.requestedAction.legacy);
-        const kinds = [...dueTurns.filter(t => t.intent !== undefined).map(t => sendOutcomeOf(view.view, replyTarget(t), t.sent).kind),
+        const kinds = [...dueTurns.filter(t => t.intent !== undefined).map(t => replyOutcomeOf(view.view, t))
+            .map(whole => whole.started ? whole.outcome.kind : 'sending'),
           ...[...view.view.reminders.entries()].map(([key, item]) => reminderOutcome(view.view, key, item).kind)];
         return { requested: view.view.dated.filter(item => item.remind).length, cancelled: view.view.reminderCancels.length,
           accepted: kinds.filter(kind => kind === 'accepted').length, refused: kinds.filter(kind => kind === 'refused').length,
@@ -712,16 +1125,16 @@ async function main() {
           open: openRequests(view.view).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
             quote: redact(item.quote).text, due: `${reminderDue(item)} ${item.zone}` })),
           dueTurns: dueTurns.map(t => ({ update: t.update, requests: t.requestedAction.items.length + (t.requestedAction.overflow?.length ?? 0),
-            state: t.sent !== undefined ? 'accepted' : t.intent !== undefined ? unsentLabel(sendOutcomeOf(view.view, replyTarget(t), t.sent))
+            state: t.intent !== undefined ? (whole => whole.outcome.kind === 'accepted' ? 'accepted' : partialReplyLabel(whole))(replyOutcomeOf(view.view, t))
               : actionWithdrawn(view.view, t) ? 'withdrawn, not sent'
               : t.held ? `held (${t.held})` : t.reserved && t.answer === undefined && t.modelState === undefined ? 'model UNKNOWN' : 'pending' })) };
       })(),
-      dated: view.view.dated.filter(item => !view.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.source
+      dated: view.view.dated.filter(item => !view.view.memory.some(change => (change.mode === 'correct' || change.mode === 'forget') && change.in !== 'reply' && change.source === item.source
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
 
         quote: redact(item.quote).text, when: redact(item.when).text, zone: item.zone, day: item.day ?? null,
         time: item.time ?? null, repeat: item.repeat ?? null, ambiguity: item.ambiguity ?? null, state: dueState(item, wallNow()) })),
-      datedPending: view.view.order.filter(item => item.datedPending && !view.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.id))
+      datedPending: view.view.order.filter(item => item.datedPending && !probeTurn(view.view, item) && !view.view.memory.some(change => (change.mode === 'correct' || change.mode === 'forget') && change.in !== 'reply' && change.source === item.id))
         .map(item => ({ update: item.update, message: redact(item.text).text.slice(0, 500) })),
       summaryPending: view.view.summaryReservations.size,
 
@@ -739,7 +1152,8 @@ async function main() {
         failed: view.view.order.filter(t => t.checkFailed).length,
         pendingCorrections: view.view.corrections.length,
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
-      jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths, operatorEchoSent: operatorEchoSent(view.view), reviewUnavailableReleases: reviewUnavailableReleases(view.view),
+      jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths, operatorEchoSent: operatorEchoSent(view.view), reviewUnavailableReleases: reviewUnavailableReleases(view.view), claimScopedWithholds: claimScopedWithholds(view.view), guidance: guidanceReport(view.view),
+        memoryLearning: memoryLearningReport(view.view, turn => operatorWriter(view.view, turn, true)),
       // Absolute times only: the ages are derivable and would make two reads of one journal differ.
       obligations: (({ oldestUnfinishedAgeMs: _age, progressAgeMs: _progress, ...health }) => health)(loopHealth(view.view, wallNow())),
       directives: openDirectives(view.view).map(({ id, note }) => ({ id, update: view.view.turns.get(note.source)?.update,
@@ -755,7 +1169,9 @@ async function main() {
         checkMs: Math.round((lastSent.replyChecks ?? []).reduce((total, result) => total + result.latencyMs, 0)) } : null,
       ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}),
       retrospective: retrospectiveView(view.view, wallNow()),
-      people: [...new Set([...view.view.people.filter(note => !view.view.memory.some(change =>
+      // Part 18: what each live sentinel last decided, read back from the journal (the families this command names).
+      liveSentinels: sentinelReport(view.view, sentinelFamilies),
+      people: [...new Set([...view.view.people.filter(note => !retractedTurn(view.view, note.source) && !view.view.memory.some(change =>
         change.in !== 'reply' && note.source === change.source && note.quote.includes(change.quote))).map(note => note.name),
         ...[...view.view.channelItems.values()].map(item => item.from.split('<')[0].trim().split('@')[0].replace(/[._-]+/gu, ' ')).filter(Boolean)])],
       personMerges: activePersonMerges(view.view).map(link => ({ left: view.view.people[link.left]?.name,
@@ -824,28 +1240,45 @@ async function main() {
           model: refuse, send: refuse, checkOutbound: refuse }).probe(options.text);
         next = 'reason' in probe ? { held: probe.reason } : recallView(JSON.parse(probe.context));
       }
-      process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
+      process.stdout.write(`${redact(JSON.stringify({ operatorRequests: operatorRequestsReport(view.view, wallNow()),
+        last: last ? { update: last.update, answered: last.answer !== undefined,
         instructions: instructionsOf(last.prompt), writer: writerOf(last.prompt), ...recallView(contextOf(last.prompt)) } : null,
         reply: reply?.intent ? { update: reply.update, text: reply.intent, telegramMessageId: reply.sent ?? null,
-          ...(() => { const settled = sendOutcomeOf(view.view, replyTarget(reply), reply.sent);
-            return { outcome: settled.kind === 'accepted' ? 'api-accepted' : settled.kind === 'refused' ? 'send-refused' : 'send-unknown',
-              ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}) }; })(),
+          // Rule 42: the WHOLE reply's outcome; a split reply is api-accepted only when every message carrying it was.
+          ...(() => { const whole = replyOutcomeOf(view.view, reply), settled = whole.outcome;
+            return { outcome: settled.kind === 'accepted' ? 'api-accepted' : !whole.started ? 'sending' : settled.kind === 'refused' ? 'send-refused' : 'send-unknown',
+              ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}),
+              ...(whole.of > 1 ? { parts: { of: whole.of, ...(settled.kind === 'accepted' ? {} : { stoppedAt: whole.part }) } } : {}) }; })(),
           grounding: reply.grounding ?? null,
           answerReason: reply.answerReason ?? null,
           retrospectiveGrade: (() => { const row = latestGrades(view.view).get(`answer:${reply.id}`);
             return row ? { pass: row.pass, conclusion: row.grade.conclusion, reason: row.grade.reason, outcome: row.grade.outcome,
               rederivation: row.grade.rederivation ?? null } : null; })(),
-          ...(reply.continuity ? { continuity: reply.continuity } : {}) } : null,
+          // Rule 110 (live check A7c): the frontier THIS reply was composed from, read back from its own recorded
+          // grounding. `summaryFrontier` below is read now, so a summary pass that advanced the frontier after the
+          // reply made a truthful account look stale; the disclosure is about this reply's context, which never moves.
+          ...(reply.continuity ? { continuity: reply.continuity,
+            frontierAtCompose: continuityFrontier(reply.grounding)?.through ?? null } : {}) } : null,
         // Rules 11 and 110: the latest summary frontier and which operator updates the meaning index covers.
-        summaryFrontier: view.view.summaries.at(-1)?.through ?? null,
-        meaningIndexed: [...new Set(view.view.summaries.flatMap(item => item.concepts ?? [])
-          .map(item => view.view.turns.get(item.source)?.update))].filter(update => update !== undefined).slice(-100),
+        // Both write sides count: terms a summary recorded, and terms the index-only pass recorded beside it.
+        // Reading the summaries alone under-reported the index by exactly the backlog it had just repaired.
+        summaryFrontier: liveSummaries(view.view).at(-1)?.through ?? null,
+        meaningIndexed: [...new Set([...view.view.summaries.flatMap(item => item.concepts ?? []), ...view.view.indexConcepts]
+          .map(item => view.view.turns.get(item.source)?.update))].filter(update => update !== undefined)
+          .sort((left, right) => left - right).slice(-100),
+        // Part 21 §6: the pending indexing work, measured rather than inferred. An answer's packet carries only
+        // the coverage counts; this is where "which messages are still unreachable by meaning, and is anything
+        // still owed an attempt" is answerable (live 2026-10-01: 93 of 100 with no surface naming the seven).
+        meaningIndexPending: (status => ({ count: status.pendingUpdates.length, owed: status.owed,
+          oldestUpdate: status.pendingUpdates[0] ?? null, updates: status.pendingUpdates.slice(0, 100) }))(
+          meaningIndexStatus(view.view, liveSummaries(view.view).at(-1)?.through ?? -1)),
         agentPromises: view.view.commitments.flatMap((note, id) => note.agentPromise ? [{ id, quote: note.quote,
           action: note.agentPromise.action, closed: view.view.closed.has(id) }] : []).slice(-10),
         ...(next ? { next } : {}), withheld: withheldView(view.view),
         undos: view.view.undos.map(item => ({ operatorUpdate: view.view.turns.get(item.trigger)?.update,
           change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
-        jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths, operatorEchoSent: operatorEchoSent(view.view), reviewUnavailableReleases: reviewUnavailableReleases(view.view),
+        jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths, operatorEchoSent: operatorEchoSent(view.view), reviewUnavailableReleases: reviewUnavailableReleases(view.view), claimScopedWithholds: claimScopedWithholds(view.view), guidance: guidanceReport(view.view),
+        memoryLearning: memoryLearningReport(view.view, turn => operatorWriter(view.view, turn, true)),
         lastReplyCheck: view.view.lastReplyCheck, lastReplyReview: lastReplyReview(view.view),
         ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}) })).text}\n`);
 
@@ -860,7 +1293,7 @@ async function main() {
     } finally { check.close(); }
   }
   // Rule 35: a test composition never takes the writer lease of a production root (or the reverse).
-  if (command === 'run' && existsSync(journalPath)) {
+  if (['run', 'carry-group', 'install-login', 'prepare-logins'].includes(command) && existsSync(journalPath)) {
     const composed = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT ? 'test' : 'production';
     const peek = openPreviewJournal(journalPath, key(), undefined, undefined, true);
     try { if ((peek.view.genesis.origin ?? 'production') !== composed) throw Error('preview: composition origin differs from journal'); }
@@ -869,6 +1302,103 @@ async function main() {
   const machine = options.machine ?? 'preview-local-machine';
   const storage = take(openProductionStorage({ root: join(root, '.writer'), machine,
     key: key(), policy: 'preview-journal', store: 'preview-journal', context, io: productionStorageIO }));
+  let membershipPhysical;
+  const membershipReadFor = scope => {
+    if (!membershipPhysical) {
+      const captures = new Map();
+      membershipPhysical = createProductionTelegramIO(join(root, '.writer'), {
+        preserve(ref, bytes) { captures.set(ref, bytes); return true; }, read: ref => captures.get(ref) ?? null,
+      }, process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT);
+    }
+    return groupMembershipReader(membershipPhysical, token, secretRef('telegram-bot-token'), {
+      id: Number(scope.bot),
+      username: required(options, 'bot-username').replace(/^@/, ''),
+    });
+  };
+  const groupAudience = createGroupAudienceCache(clock.elapsed, membershipReadFor);
+  const groupPermission = scope => {
+    try {
+      // Bind the initial carry to its physical destination. Serving authenticates the immutable
+      // journal lineage instead: a move/canary copy keeps that scope, grant and conversation.
+      // Journal replay checks bot/chat/operator; ownership and current audience still gate effects.
+      if (command === 'carry-group' && scope.destinationRoot !== root)
+        return { kind: 'refused', reason: 'destination root differs' };
+      const path = options['authority-record'] ?? join(dirname(resolve(required(options, 'activation-record'))), 'activation-authority.json');
+      return resolveGroupDisclosure(scope, JSON.parse(readFileSync(path, 'utf8')), wallNow(),
+        operatorRecords(options['operator-records']), authoritySealKey(key()));
+    } catch { return { kind: 'refused', reason: 'group disclosure authority unavailable' }; }
+  };
+  const observeAudience = async check => {
+    const started = clock.elapsed(); let cacheHit, accepted = false;
+    try { accepted = await check(hit => { cacheHit = hit; }); return accepted; }
+    finally { if (journal) recordPhaseTiming(row => journal.append(row), 'group-disclosure', 'audience',
+      { ...(cacheHit === undefined ? {} : { cacheHit }), accepted, elapsedMs: Math.max(0, Math.round(clock.elapsed() - started)) }, wallNow()); }
+  };
+  const requireGroupDisclosure = async view => {
+    if (!view.groupCarry) return;
+    const scope = view.groupCarry.scope;
+    if (!await observeAudience(async observe => groupPermission(scope).kind === 'resolved'
+      && await groupAudience.verify(scope, observe) && groupPermission(scope).kind === 'resolved')) throw Error('group carry: disclosure grant or operator-only audience refused');
+  };
+  const verifiedActionAudience = async () => {
+    if (journal.view.groupCarry) { await requireGroupDisclosure(journal.view); return true; }
+    const scope = { sourceRoot: root, destinationRoot: root, chat: journal.view.genesis.chat,
+      operator: journal.view.genesis.operator, bot: journal.view.genesis.bot };
+    return observeAudience(observe => groupAudience.verify(scope, observe));
+  };
+  if (command === 'carry-group') {
+    let destination, source, sourceStorage;
+    try {
+      if (posture !== 'single-machine') throw Error('group carry: carry requires the local exclusive writer');
+      destination = openPreviewJournal(journalPath, key());
+      if ((destination.view.genesis.origin ?? 'production') !== (process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT ? 'test' : 'production'))
+        throw Error('group carry: transport origin differs');
+      const sourceRoot = realpathSync(required(options, 'source-root'));
+      if (sourceRoot !== resolve(required(options, 'source-root')) || sourceRoot === root) throw Error('group carry: source root differs');
+      const scope = { sourceRoot, destinationRoot: root, chat: destination.view.genesis.chat,
+        operator: destination.view.genesis.operator, bot: destination.view.genesis.bot };
+      let permission = groupPermission(scope);
+      if (permission.kind !== 'resolved') throw Error(`group carry: ${permission.reason}`);
+      const audience = await verifyGroupAudience(scope, membershipReadFor(scope));
+      if (!audience) throw Error('group carry: operator-only audience refused');
+      permission = groupPermission(scope);
+      // The predecessor uses this installation's storage custody; no key is copied into the new root. It records the
+      // transfer of its open requests, so it is opened under its own writer lease: a live private runner refuses this
+      // carry (Rules 52, 63). Rule 35: its origin is read before that lease is taken.
+      const sourcePath = join(sourceRoot, 'journal.encrypted');
+      const peek = openPreviewJournal(sourcePath, key(), undefined, undefined, true);
+      try { if ((peek.view.genesis.origin ?? 'production') !== (destination.view.genesis.origin ?? 'production')) throw Error('group carry: predecessor origin differs'); }
+      finally { peek.close(); }
+      sourceStorage = take(openProductionStorage({ root: join(sourceRoot, '.writer'), machine,
+        key: key(), policy: 'preview-journal', store: 'preview-journal', context, io: productionStorageIO }));
+      source = openPreviewJournal(sourcePath, key());
+      const result = appendGroupCarry(destination, source, scope, permission, audience, wallNow(), () => existsSync(stopPath));
+      // Rule 2: what moved and what stayed are both named; a kept request is never silently dropped.
+      const carried = destination.view.groupCarry;
+      process.stdout.write(`${JSON.stringify({ result, predecessor: sourceRoot, digest: carried.digest,
+        transferredRequests: carried.requests.length, keptByPredecessor: carried.entries.filter(e => e.kind === 'reminder').length })}\n`);
+    } catch (error) {
+      const reason = error instanceof Error && error.message.startsWith('group carry:') ? error.message : 'group carry: preparation failed';
+      process.stderr.write(`${reason}\n`); process.exitCode = 1;
+    } finally { source?.close(); sourceStorage?.close(); destination?.close(); storage.close(); }
+    return;
+  }
+  if (command === 'install-login' || command === 'prepare-logins') {
+    let installedJournal;
+    try {
+      let view;
+      if (existsSync(journalPath)) { installedJournal = openPreviewJournal(journalPath, key(), undefined, undefined, true); view = installedJournal.view; }
+      else {
+        const activation = JSON.parse(readFileSync(required(options, 'activation-record'), 'utf8'));
+        view = { genesis: { operator: required(options, 'operator-sender-id'), expires: expiry(required(options, 'expires-at')),
+          grant: required(options, 'grant-reference'), configurationDigest: required(options, 'configuration-digest') }, expires: activation.expiresAt };
+      }
+      if (command === 'install-login') installHarnessLogin({ root, options, verify: verifyInstalledLogin(view) });
+      const manifest = prepareLogins(options, view);
+      process.stdout.write(`${JSON.stringify({ installedLogins: manifest })}\n`);
+    } finally { installedJournal?.close(); storage.close(); }
+    return;
+  }
   if (command === 'import-store') {
     let storeJournal;
     try {
@@ -890,7 +1420,7 @@ async function main() {
       const bytes = readFileSync(required(options, 'activation-record'), 'utf8');
       const activation = JSON.parse(bytes);
       const profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
-      validateSubscriptionActivation(activation, profile, required(options, 'model'), now, SUBSCRIPTION_CONVERSATION_FRAMING);
+      doorway.validateActivation(activation, profile, required(options, 'model'), now, doorway.conversationFraming);
       const granted = requireAuthority(options, activation, required(options, 'activation-record'), renewJournal.view, now);
       if (!activationMatchesJournal(renewJournal.view, activation, expiry(required(options, 'expires-at'))))
         throw Error('preview: activation differs from journal');
@@ -912,16 +1442,25 @@ async function main() {
         throw Error('preview: --write-off-unknown must be true');
       const writeOff = options['write-off-unknown'] === 'true' ? pendingUnknownCalls(capJournal.view) : [];
       if (options['write-off-unknown'] === 'true' && !writeOff.length) throw Error('preview: no pending UNKNOWN call to write off');
+      const raisedBytes = number(options['max-context-bytes'] ?? String(capJournal.view.limits.maxBytes), 'max-context-bytes');
+      // A re-declared limit below the measured floor leaves a root that cannot serve its own next turn.
+      // Raising the other caps on such a root does not make it answer, so this doorway refuses and names
+      // the flag and value that would: the operator can raise bytes in this same command.
+      const raiseRefusal = unservableContextReason(raisedBytes);
+      if (raiseRefusal) throw Error(`preview: ${raiseRefusal}`);
       raiseJournalCaps(capJournal, { ...(writeOff.length ? { writeOff } : {}), maxCalls: number(options['max-calls'] ?? String(capJournal.view.limits.maxCalls), 'max-calls'),
         maxReplies: number(options['max-replies'] ?? String(capJournal.view.limits.maxReplies), 'max-replies'),
         maxTurns: number(options['max-turns'] ?? String(capJournal.view.limits.maxTurns), 'max-turns'),
-        maxBytes: number(options['max-context-bytes'] ?? String(capJournal.view.limits.maxBytes), 'max-context-bytes'),
+        maxBytes: raisedBytes,
         authority: required(options, 'authority'), at: wallNow() });
     } finally { capJournal?.close(); storage.close(); }
     return;
   }
+  const versionCheck = createSubscriptionVersionCheck();
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false, startupFailure = null;
   let handoff = null, reservedAtLaunch = new Set(), ownerClaim = null, installation = null, installUpdate = null;
+  // Rule 15 / Eleven §5: the installed shape's evidence, set once the activation is validated at launch.
+  let installationPolicy = { kind: 'refused', reason: 'the activation is not validated yet' }, registerAtLaunch = null;
   // Rules 9/43: the durable proof log and the executor's in-memory copy of it for this launch.
   let proofRecords = [], proofLaunch = null, proofBackoffUntil = 0, proofPorts = null, proofStoreFailed = false;
   // Rule 63: the conversation fence. Losing it stops new work; an effect never dispatches without it.
@@ -934,8 +1473,10 @@ async function main() {
     return agreementStatus(agreementsPath, wallNow()).map(row => ({ id: row.id, at: row.lastCheckedAt, agree: row.agree }));
   };
   let retiredReason = null;
+  // Rules 31, 63: on two machines the conversation is also fenced by the shared authority's lease (null on one machine).
+  let shared = null;
   const ownerHeld = () => {
-    if (ownerClaim?.owner && ownerClaim.verify()) return true;
+    if (ownerClaim?.owner && ownerClaim.verify() && (shared === null || shared.lease.fence() !== null)) return true;
     if (ownerClaim?.owner) { endReason ??= 'conversation ownership lost'; retiredReason ??= 'conversation ownership lost'; workerStop.value = true; }
     return false;
   };
@@ -954,18 +1495,190 @@ async function main() {
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
-  let identityVerified = false, routeHealthy = true, active = null;
+  let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsResolution = null, toolsOff = null,
+    sessionWork = null, gate = null;
+  const workActivity = new Map();
+  const conversationSession = conversationSessionOf(options);
+  const accountActions = conversationAccountActions(options);
+  const sessionLimits = conversationSession ? { ...CONVERSATION_SESSION_LIMITS,
+    maxSessions: options['topic-worker-ceiling'] === undefined ? CONVERSATION_SESSION_LIMITS.maxSessions
+      : number(options['topic-worker-ceiling'], 'topic-worker-ceiling', 1, CONVERSATION_SESSION_LIMITS.maxSessions) } : SESSION_WORK_LIMITS;
+  const sessionAdapter = conversationSession ? doorway.session.conversation : doorway.session;
+  if (!sessionAdapter) throw Error('preview: this doorway has no installed conversation worker');
+  /** Each delegated session step's shell network checkpoint, by claim: closed with the step's claim and at shutdown. */
+  const stepEgress = new Map();
+  const sessionConnectors = new Map();
+  let sessionMcpDigest;
+  const sessionAccountsChanged = () => {
+    if (!conversationSession || sessionMcpDigest === undefined) return false;
+    try { return (readRootMcp(root)?.digest ?? null) !== sessionMcpDigest; } catch { return true; }
+  };
+  // Part Twelve: the effect doorway's operator policy, re-read at every tool turn so a withdrawn or broken file grants
+  // nothing (nothing outward by default); launch refuses a policy that does not decode.
+  let effectPolicyOf = () => DEFAULT_EFFECT_POLICY;
+  /** The admission config every route's effect doorway decides with: the accepted closed operation set, the effect
+   * policy as it reads now, and the register's irreversible term. */
+  const admissionConfig = () => ({ operations: SINGLE_MACHINE_PROFILE.operations, effectPolicy: effectPolicyOf(),
+    irreversibleTerm: shapeTerms().derivedFrom.irreversible });
   const workerStop = { value: false };
   const signal = name => { signalled = true; signalName ??= name; workerStop.value = true; };
   process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
+  // Rules 31, 63, 113 and the purpose's replicated(1) default: the two-machine conversation. This runner first
+  // stands by (it receives the owner's journal bytes and neither polls nor sends). It serves only once the one
+  // shared authority grants it the lease AND it holds the newest history; then every send waits until the other
+  // machine acknowledged the journal through that send's intent. Returns null when this launch ended without serving.
+  const PEER_FRESH_MS = 20_000;
+  const enterShared = async genesis => {
+    const secret = authoritySecret(), conversation = conversationOf(genesis);
+    const listen = required(options, 'replica-listen'), colon = listen.lastIndexOf(':');
+    if (colon <= 0) throw Error('preview: --replica-listen is host:port');
+    const peer = connectReplicaPeer({ url: required(options, 'replica-peer'), token: secret, conversation, timeoutMs: 5000 });
+    const authority = connectConversationAuthority({ url: authorityUrl, token: secret, conversation, timeoutMs: 5000 });
+    const lease = createLeaseHolder({ authority, machine: ownerMachine,
+      incarnation: `${ownerMachine}:${process.pid}:${randomBytes(8).toString('hex')}`, monotonic: () => performance.now() });
+    const store = openReplicaStore({ directory: join(root, 'replica'), conversation, machine: ownerMachine, secret });
+    const server = await serveReplicaStore({ store, token: secret, host: listen.slice(0, colon), port: number(listen.slice(colon + 1), 'replica-listen', 0, 65535) });
+    const closeServer = () => new Promise(done => { server.close(() => done()); server.closeAllConnections?.(); });
+    // The lease is renewed on its own timer from the moment it is granted, so a slow startup does not let it lapse.
+    const renewTimer = setInterval(() => { lease.renew().catch(() => {}); }, 1000);
+    renewTimer.unref?.();
+    const limit = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000), standbyAt = wallNow();
+    let said = null, waited = false, role = { role: 'standby', reason: 'starting' }, fence = null, takeover = null, view = null, fatal = false;
+    const say = line => { if (line !== said) { said = line; process.stderr.write(`preview: ${line}\n`); } };
+    for (let tick = 0; tick < limit && !signalled && !existsSync(stopPath); tick++) {
+      hostBeat();
+      const able = takeoverEligibility({ root, store });
+      let may = able.eligible;
+      if (!may && able.seedable && options['journal-lineage'] === 'seed') {
+        // Seeding is for the first lease ever: only while the authority has never issued one.
+        const read = await authority.request({ op: 'read' });
+        may = read.ok && read.view?.epoch === 0;
+      }
+      role = may ? await lease.hold() : { role: 'standby', reason: able.reason };
+      let pause = Math.min(2000, Math.max(200, role.retryMs ?? 2000));
+      if (role.role === 'owner') {
+        fence = lease.fence();
+        // The owner accepts no more of the other machine's bytes: what it holds now is what it takes over from.
+        store.seal();
+        takeover = !fence ? { ok: false, reason: 'the lease lapsed before takeover' } : adoptReceivedCopy({ root, journalPath, store,
+          epoch: fence.epoch, seed: options['journal-lineage'] === 'seed', verify: path => {
+            // The full replay is the check: a copy that does not replay, or belongs to another conversation, is refused.
+            const copy = openJournal(path, key(), undefined, undefined, true);
+            try { const g = copy.view.genesis;
+              if (g.bot !== genesis.bot || g.chat !== genesis.chat || g.operator !== genesis.operator) throw Error('another conversation'); }
+            finally { copy.close(); }
+          } });
+        if (!takeover.ok) {
+          // History that cannot be established needs a person: this launch ends now instead of taking the lease again and again.
+          await lease.release();
+          role = { role: 'inhibited', reason: takeover.reason }; fence = null; fatal = true;
+          break;
+        }
+        // The history is in place; the settled cursor is read while the lease lasts. Without it this launch ends and the next continues.
+        while (!view && lease.fence() && !signalled && !existsSync(stopPath)) {
+          const read = await authority.request({ op: 'read' });
+          if (read.ok && read.view) view = read.view; else await delay(500);
+        }
+        if (!view) { await lease.release(); role = { role: 'inhibited', reason: 'the settled cursor could not be read' }; fence = null; }
+        break;
+      }
+      if (!waited) { waited = true; appendRun(runsPath, { v: 1, launch: standbyAt, pid: process.pid }); }
+      say(role.role === 'standby' ? `standby: ${role.reason}; not polling, not sending`
+        : `inhibited: ${role.reason}; nothing is polled or sent`);
+      for (const until = clock.elapsed() + pause; !signalled && !existsSync(stopPath) && clock.elapsed() < until;)
+        await delay(Math.min(100, Math.max(1, until - clock.elapsed())));
+    }
+    // From here this machine is the owner or is leaving: either way it accepts no more of the other machine's bytes.
+    store.seal(); await closeServer();
+    if (!fence || !view) {
+      clearInterval(renewTimer);
+      const paused = signalName !== null || existsSync(stopPath);
+      if (!waited) appendRun(runsPath, { v: 1, launch: standbyAt, pid: process.pid });
+      // A standby that reached its cycle limit is still wanted (it holds the copy and is the failover): the host
+      // supervisor relaunches it (`queued`). A stop, a signal pause or unestablishable history is not relaunched.
+      const reason = signalName ? `paused by signal ${signalName}`
+        : existsSync(stopPath) ? 'operator stop latched' : fatal ? `inhibited: ${role.reason}` : `standby: ${role.reason}`;
+      reportExit(reason);
+      appendRun(runsPath, { v: 1, launch: standbyAt, exit: wallNow(), reason,
+        revival: paused || fatal ? 'inhibited' : 'queued',
+        ...(fatal ? { inhibited: role.reason } : { nonowner: { machine: null, since: null } }) });
+      if (fatal && !signalled) {
+        process.stderr.write(`preview: inhibited: ${role.reason}; nothing was polled or sent\n`);
+        process.exitCode = 4;
+      }
+      return null;
+    }
+    if (waited) appendRun(runsPath, { v: 1, launch: standbyAt, exit: wallNow(),
+      reason: `standby ended: this runner acquired the conversation (epoch ${fence.epoch}; history ${takeover.how})`, revival: 'queued',
+      nonowner: { machine: null, since: null } });
+    say(`owner: epoch ${fence.epoch}; history ${takeover.how}${takeover.setAside ? ` (this machine's older journal set aside as ${takeover.setAside})` : ''}`);
+    const replicationPath = join(root, 'replication.json');
+    let shipper = null, dispatch = null, sharedJournal = null, settle = null, peerCurrent = null;
+    const report = () => {
+      const status = shipper.status(PEER_FRESH_MS);
+      if (status.current === peerCurrent) return status.current;
+      peerCurrent = status.current;
+      // Rule 15 (say plainly why it waits): the wait is never a fallback to local durability, and it is visible on the pull surfaces.
+      say(status.current ? 'the other machine acknowledged the journal; replies are sent'
+        : `replies wait for the other machine to acknowledge the journal (${status.reason}); nothing is sent on local durability`);
+      try { durablePreviewWrite(replicationPath, { v: 1, at: wallNow(), epoch: fence.epoch, peerCurrent, reason: status.reason,
+        acknowledgedBytes: status.acknowledgedBytes, journalBytes: status.journalBytes, settledCursor: dispatch.cursor, waitingSends: dispatch.waiting }); }
+      catch { /* evidence only; the gate itself never depends on this file */ }
+      return status.current;
+    };
+    return { lease, epoch: fence.epoch, takeover,
+      get cursor() { return dispatch ? dispatch.cursor : view.cursor; },
+      start(journal) {
+        sharedJournal = journal;
+        shipper = createJournalShipper({ path: journalPath, size: () => journal.size, peer, conversation, machine: ownerMachine, secret,
+          epoch: () => lease.fence()?.epoch ?? null, monotonic: () => performance.now() });
+        dispatch = createReplicatedDispatch({ authority, lease, shipper, cursor: view.cursor, sleep: delay, elapsed: () => performance.now(), waiting: report });
+      },
+      /** One bounded step per cycle: unrecorded outcomes, the journal's new bytes, then the settled cursor. */
+      async sync() {
+        await dispatch.flush();
+        await shipper.pump();
+        if (settle) await dispatch.settle(settle.token, settle.cursor);
+        report();
+      },
+      noteIntake() { if (sharedJournal.view.cursor > dispatch.cursor) settle = { token: shipper.token(), cursor: sharedJournal.view.cursor }; },
+      peerCurrent: () => report(),
+      backupLine: () => backupStatusLine(posture, shipper.status(PEER_FRESH_MS)),
+      line: () => { const status = shipper.status(PEER_FRESH_MS);
+        return `Two machines: this runner holds the conversation (lease epoch ${fence.epoch}); every reply waits until the other machine has acknowledged its record. ${status.current
+          ? 'The other machine holds the whole journal.' : `Waiting for it now (${status.reason}).`}`; },
+      // The minimal path is awaited by the poll loop: its wait is bounded so reading and stop stay reachable (Rule 15).
+      admit: (target, refusal) => dispatch.admit(target, refusal, target.startsWith('limited:') ? 10_000 : undefined),
+      replicated: refusal => dispatch.replicated(refusal),
+      outcome: (target, kind) => dispatch.outcome(target, kind),
+      /** A clean end: the last journal bytes go to the other machine, then the lease is handed back so it can take over at once. */
+      async stop() {
+        clearInterval(renewTimer);
+        try { if (shipper && lease.fence()) await shipper.drain(); } catch { /* the successor continues from the acknowledged copy */ }
+        try { await lease.release(); } catch { /* the term ends it */ }
+      } };
+  };
   try {
     const maxCalls = number(options['max-calls'] ?? '16', 'max-calls');
     const maxReplies = number(options['max-replies'] ?? '16', 'max-replies');
     const maxTurns = number(options['max-turns'] ?? '20', 'max-turns');
-    const maxBytes = number(options['max-context-bytes'] ?? '32768', 'max-context-bytes');
+    // The default is the approved live bound itself, not a second number beside it: the measured fixed
+    // parts already take most of it, so a lower default cannot serve a fresh root's first turn.
+    const maxBytes = number(options['max-context-bytes'] ?? String(PREVIEW_LIVE_LIMITS.contextBytes), 'max-context-bytes');
     if (!existsSync(journalPath) && (maxCalls > PREVIEW_LIVE_LIMITS.calls || maxReplies > PREVIEW_LIVE_LIMITS.replies
       || maxTurns > PREVIEW_LIVE_LIMITS.turns || maxBytes > PREVIEW_LIVE_LIMITS.contextBytes))
       throw Error('preview: live allowance outside approved bound');
+    // Rule 15's declared bound has to be one the build can serve. A root created below the measured floor
+    // answers at most its first turn and then holds every reply for size, with no summary or set-aside able
+    // to recover it, so genesis refuses the limit here rather than discovering it mid-conversation.
+    const genesisRefusal = !existsSync(journalPath) ? unservableContextReason(maxBytes) : null;
+    if (genesisRefusal) throw Error(`preview: ${genesisRefusal}`);
+    // Rules 8, 92: a root may carry its own open-loop resurfacing cadence, settled at genesis and fixed for its
+    // life (no command moves it). Omitted keeps the 24-hour default, so every existing root is untouched. The
+    // bounds are the journal's own; a non-integer or out-of-range value refuses the launch here, before any write.
+    const revisitMinutes = options['loop-revisit-minutes'] === undefined ? undefined
+      : number(options['loop-revisit-minutes'], 'loop-revisit-minutes',
+        LOOP_REVISIT_MIN_MS / 60_000, LOOP_REVISIT_MAX_MS / 60_000);
     // Rule 35: the trusted composition origin. Only the fixed offline test token on a loopback
     // endpoint is a test composition; it may write only a test-origin store, and a production
     // store refuses it (and any test-origin identity) at the journal's write boundary.
@@ -973,12 +1686,20 @@ async function main() {
     if (offlineEndpoint && (token() !== '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
       || !/^http:\/\/127\.0\.0\.1:[0-9]+$/u.test(offlineEndpoint))) throw Error('preview: offline endpoint refused');
     const origin = offlineEndpoint ? 'test' : 'production';
+    if (options.forum !== undefined && !['true', 'false'].includes(options.forum))
+      throw Error('preview: invalid forum mode');
     const initial = command !== 'run' ? undefined : {
       kind: 'genesis', bot: required(options, 'bot-id'), chat: required(options, 'chat-id'), ...(origin === 'test' ? { origin } : {}),
-      operator: required(options, 'operator-sender-id'), grant: required(options, 'grant-reference'),
+      operator: required(options, 'operator-sender-id'), ...(options.forum === 'true' ? { forum: true } : {}), grant: required(options, 'grant-reference'),
       configurationDigest: required(options, 'configuration-digest'), expires: expiry(required(options, 'expires-at')),
-      maxCalls, maxReplies, maxTurns, maxBytes, cursor: 0 };
+      maxCalls, maxReplies, maxTurns, maxBytes, cursor: 0,
+      ...(revisitMinutes === undefined ? {} : { loopRevisitMs: revisitMinutes * 60_000 }) };
+    if (multi) {
+      shared = await enterShared(initial);
+      if (shared === null) return;
+    }
     journal = openPreviewJournal(journalPath, key(), initial, undefined, false, undefined, false, origin);
+    shared?.start(journal);
     const g = journal.view.genesis;
     // Rules 60 and 61: this process's one resource owner, with the constitutional
     // measurement, priority-brake and incarnation owners as its decision ports.
@@ -992,7 +1713,23 @@ async function main() {
     const allocation = createHostResourceAllocation({ root, machine: HOST_IDENTITY.machine, ceilings: allocationCeilings,
       incarnation: `launcher:${process.pid}:${createHash('sha256').update(`${process.pid}:${wallNow()}:${performance.now()}`).digest('hex').slice(0, 16)}`,
       now: wallNow, monotonic: () => performance.now() });
+    const installedLoginSelection = installedHarnessLaunch({ root, options,
+      prepare: selected => prepareLogins(selected, journal.view) });
+    Object.assign(options, installedLoginSelection.options);
+    let loginConfiguration = options['login-pool'] !== undefined || options['harness-user'] !== undefined
+      ? loadHarnessLogins(options) : null;
+    if (options['login-pool'] !== undefined && doorway.toolTurn?.harness)
+      throw Error('preview: this doorway does not use harness login custody');
+    const harness = harnessOf(options, root, doorway);
+    const loginRuntimes = new Map();
+    const sessionLoginObservations = new Map();
+    let loginPool = null;
+    const selectLogin = tools => loginPool ? loginPool.select(tools) : loginConfiguration.entries[0];
+    // Plan #473: why a Claude Code tool turn is refused for its identity (null: a harness user is configured, or the
+    // doorway's checkpointed harness is not gated by it). The packet then names no tools, and runToolTurn refuses the turn.
+    const identityRefusal = identityRefusalOf(options, doorway);
     await hostResources.attach({ ledgerPath: launchesPath, statePath: resourcesPath, now: wallNow, allocation,
+      ...(harness?.uid != null ? { harnessUid: harness.uid } : {}),
       ...(aggregateMemoryMib === undefined ? {} : { aggregateMemoryBytes: aggregateMemoryMib * 1024 * 1024 }),
       compare: resourceCompare, priorityGate: shouldRunScheduledPriority,
       reconcile: (row, current) => current === null ? 'missing' : take(reconcileProcessIncarnation(
@@ -1001,6 +1738,48 @@ async function main() {
         context)) });
     // Rule 100: credentials handed over in chat are stored before anything consumes them.
     const custody = createSecretCustody(root, key(), wallNow);
+    const mediaStopped = () => signalled || workerStop.value || existsSync(stopPath) || journal.view.stop !== null
+      || wallNow() >= journal.view.expires || !ownerHeld();
+    const mediaAdmission = createMediaAdmission({ root, incarnation: `media:${process.pid}:${launchedAt}`,
+      now: wallNow, monotonic: () => performance.now(), stopped: mediaStopped, policy: () => effectPolicyOf(),
+      source: (source, media) => journalMediaSource(journal.view, source, media),
+      claimed: id => journal.view.turns.get(id)?.mediaClaim !== undefined,
+      retainClaim: (id, digest) => journal.append({ kind: 'media-claim', id, digest, at: wallNow() }) });
+    const voiceTemporary = join(root, 'media-work');
+    const localTranscribe = createLocalTranscriber({ stopped: mediaStopped, temporary: voiceTemporary });
+    const mediaCustody = createTelegramMediaCustody(root, key(), { token, stopped: mediaStopped, admission: mediaAdmission,
+      transcribe: async (bytes, source) => {
+        const text = await localTranscribe(bytes);
+        const protectedText = custody.custody({ text, raw: JSON.stringify({ text }), source });
+        if (protectedText.custody?.state === 'failed') throw Error('voice credential custody unavailable');
+        return protectedText.text;
+      } });
+    const currentMedia = id => {
+      const turn = journal.view.turns.get(id);
+      if (!turn?.accepted || !turn.media) return null;
+      const raw = JSON.parse(turn.raw), media = telegramInboundMedia(raw.edited_message ?? raw.message);
+      return media ? { media, saved: mediaCustody.open(id, media, turn.media), attached: turn.media.transcript !== undefined } : null;
+    };
+    // Plan #442 (Rules 4, 86, 100): the secret values this runner holds, for the exact floor on every reply and send and
+    // (plan #507) every outward tool request: host custody, the preview vault, the root's MCP credentials (served to a
+    // turn's servers) and, with a harness user, its login from the runner's custody and any login Claude Code wrote into
+    // the harness profile. Read in memory at each use; never recorded, logged or given to a model. A value once read stays
+    // held for the runner's life, so a source that later changes or becomes unreadable cannot drop a value an active
+    // context may already hold; a source that cannot be read now is reported unavailable (createHeldSecrets).
+    const harnessLoginProfiles = options['harness-user'] === undefined ? [] : loginConfiguration.entries.map(entry => entry.profile);
+    const heldSecrets = createHeldSecrets({
+      environment: () => Object.entries(process.env).flatMap(([name, value]) => name.startsWith('INSTAR_SECRET_') && value ? [value] : []),
+      ...custodyHeldSources(custody, () => readRootMcp(root)?.secrets ?? {}),
+      // Each member is a separate source: missing secondary custody cannot discard a readable primary value.
+      ...Object.fromEntries(harnessLoginProfiles.flatMap((profile, index) => [
+        [`harness login ${index}`, () => [readHarnessLogin(profile)]],
+        [`harness profile login ${index}`, () => harnessCredentialValues(profile.configDirectory)],
+      ])),
+    });
+    const heldSecretValues = () => heldSecrets().values;
+    // Plans #446, #451: the register's public entries (names, labels, custody, expiry, renewal standing and step), given
+    // to the full-context review as quoted recorded facts. An unreadable register gives none; the review then holds as before.
+    const credentialRegister = () => { try { return publicCredentialRegister(custody.records(), heldSecretValues(), wallNow()); } catch { return []; } };
     for (const [name, supplied, original, current] of [
       ['max-calls', maxCalls, g.maxCalls, journal.view.limits.maxCalls],
       ['max-replies', maxReplies, g.maxReplies, journal.view.limits.maxReplies],
@@ -1008,9 +1787,16 @@ async function main() {
       ['max-context-bytes', maxBytes, g.maxBytes, journal.view.limits.maxBytes]])
       if (options[name] && supplied !== original && supplied !== current)
         throw Error(`preview: ${name} differs from journal`);
+    // The cadence belongs to the root, not to the launch: a later launch may repeat the root's own value and
+    // nothing else. This is what makes it unchangeable after genesis — there is no other writer for it.
+    if (revisitMinutes !== undefined && revisitMinutes * 60_000 !== loopRevisitMs(journal.view))
+      throw Error('preview: loop-revisit-minutes differs from journal');
     if (g.importSource !== undefined && !journal.view.imported) throw Error('preview: migration incomplete');
-    if (String(number(g.bot, 'bot-id')) !== g.bot || String(number(g.chat, 'chat-id')) !== g.chat
-      || g.chat !== g.operator) throw Error('preview: private operator binding differs');
+    validateChatBinding(g);
+    if (g.forum === true && options['agent-state-dir'])
+      throw Error('preview: external history has no group disclosure grant');
+    if (options.forum !== undefined && options.forum !== String(g.forum === true))
+      throw Error('preview: forum mode differs from journal');
     for (const [name, value] of [['bot-id', g.bot], ['chat-id', g.chat], ['operator-sender-id', g.operator],
       ['grant-reference', g.grant], ['configuration-digest', g.configurationDigest]])
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
@@ -1020,6 +1806,7 @@ async function main() {
       appendRun(runsPath, { v: 1, launch: at, pid: process.pid });
       appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: `inhibited: ${topology.reason}`, revival: 'inhibited',
         inhibited: `unsupported topology: ${posture}` });
+      reportExit(`inhibited: ${topology.reason}`);
       process.stderr.write('preview: the declared multi-machine posture has no shared conversation authority; nothing was polled or sent\n');
       process.exitCode = 4;
       return;
@@ -1033,6 +1820,7 @@ async function main() {
         // The authority could not be read or written: not evidence that anyone serves. Inhibited, work preserved.
         appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: `inhibited: ${ownerClaim.reason}`, revival: 'inhibited',
           inhibited: ownerClaim.reason });
+        reportExit(`inhibited: ${ownerClaim.reason}`);
         process.stderr.write('preview: conversation ownership could not be established; nothing was polled or sent\n');
         process.exitCode = 4;
         return;
@@ -1042,23 +1830,51 @@ async function main() {
       catch { /* the root's own run log still records the refusal */ }
       appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: `not the conversation owner: ${ownerClaim.reason}`,
         revival: 'none', nonowner: { machine: holder?.machine ?? null, since: holder?.since ?? null } });
+      reportExit(`not the conversation owner: ${ownerClaim.reason}`);
       process.stderr.write(`preview: this conversation is held by another runner (${ownerClaim.reason}); this launch retired without polling or sending\n`);
       process.exitCode = 3;
       return;
     }
+    // Only the conversation owner cleans plaintext left by an interrupted local decoder.
+    rmSync(voiceTemporary, { recursive: true, force: true });
     serviceBeat(true, 'claimed');
-    const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
+    // Part Thirteen §9 (docs/17-harness-adapters): the tool route's room is the larger of the packet limit and its policy's prompt bound.
+    const toolPromptLimit = () => Math.max(journal.view.limits.maxBytes,
+      doorway.policyFor(required(options, 'model'), doorway.toolsFraming ?? doorway.conversationFraming).maxPromptBytes);
+    const preparation = toolPreparation(() => toolsActive());
+    const modelEnvelope = input => {
+      // Local transcripts pass the same held-secret/redaction boundary as text intake.
+      // Only the exact accepted source gets this attachment, never a summary/reviewer id.
+      input = prepareMediaInput(input, currentMedia, text => redact(concealSecretMaterial(text, heldSecretValues())).text);
+      const bytes = prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
+      // A tool turn's longer system prompt must fit that room too; an overflow here makes the packet ladder yield, as
+      // for the text-only prompt, instead of leaving the turn to fall back to a text-only answer.
+      if (preparation.active() && identityRefusal === null && toolTurnEligible(input.id)
+        && Buffer.byteLength(bytes) + Buffer.byteLength(doorway.toolTurn?.system ?? SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) + TOOL_NOTICE_MAX_BYTES > toolPromptLimit())
+        throw Error('preview: complete prompt overflow');
+      return bytes;
+    };
     const recordedUsage = usage => ({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
       charge: null, ...(usage.inputComplete ? { inputComplete: true } : {}) });
     // model-call-boundary:start
     // Rules 41, 57 and 75: the ONLY two places this launcher reaches a model. Each call's exact
     // input, output, actual route, outcome, latency and usage (or its written exception) is
     // durably journaled before any caller reads the result; an unregistered judgment refuses.
+    const modelLaunch = createModelLaunchBoundary();
     const recordModelCall = entry => journal.append(modelCallRecord({ ...entry, at: wallNow() }));
-    const callSubscription = async (judgment, prepared, id, invocation) => {
+    // replicated(1): a provider call is an irreversible act too. On two machines its reservation row (already in the
+    // journal) is acknowledged by the other machine before the call launches; until then the call waits. It ends
+    // only in the states that already end a call: a stop, the expiry, or a lost conversation.
+    const peerHolds = async () => await shared.replicated(() => workerStop.value || existsSync(stopPath)
+      || wallNow() >= journal.view.expires || journal.view.stop || !ownerHeld() ? 'stopped' : null) === null;
+    const callSubscription = async (judgment, prepared, id, invocation, toolTurn, selectedLogin) => {
+      try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
       assertLiveJudgment(judgment, 'preview-subscription');
-      const route = modelRoute(id), start = performance.now();
-      const inputRef = judgment === 'answer' && journal.view.turns.get(id)?.prompt === prepared ? `reserve:${id}` : undefined;
+      if (shared !== null && !await peerHolds()) throw Error('preview: activation stopped');
+      const selected = selectedLogin ?? selectLogin(Boolean(toolTurn));
+      const route = modelRoute(id, toolTurn, selected), start = performance.now();
+      const inputRef = judgment === 'answer' && journal.view.turns.get(id)?.prompt === prepared
+        ? `${journal.view.turns.get(id)?.promptKind ?? 'reserve'}:${id}` : undefined;
       // Rule 58: the journal occurrence is the operation id itself (turn, operation or summary).
       const base = { id, judgment, route: 'preview-subscription', model: required(options, 'model'), input: prepared, occurrence: id,
         ...(inputRef === undefined ? {} : { inputRef }) };
@@ -1072,67 +1888,147 @@ async function main() {
         outcome: ['complete', 'rejected', 'uncertain'].includes(result.state) ? result.state : 'failed',
         latencyMs: performance.now() - start, usage: result.usage ? { inputTokens: result.usage.inputTokens ?? null,
           outputTokens: result.usage.outputTokens ?? null, charge: null } : null });
+      loginPool?.observe(selected, result);
       return result;
     };
-    const callJev = async (judgment, state, questions, timeoutMs = 2000, occurrence) => {
-      assertLiveJudgment(judgment, 'typesafe-jev');
-      const start = performance.now(), body = JSON.stringify({ state, model: JEV_MODEL, questions });
-      // The id is content-derived and repeats for identical requests; the occurrence names the turn it served.
-      const base = { id: `${judgment}:${sha256(body).slice(0, 16)}`, judgment, route: 'typesafe-jev', model: JEV_MODEL, input: body,
-        ...(typeof occurrence === 'string' && occurrence ? { occurrence } : {}) };
-      let response, text;
-      try {
-        response = await fetch('https://api.typesafe.ai/v1/systemone', {
-          method: 'POST', signal: AbortSignal.timeout(Math.min(2000, timeoutMs)),
-          headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' }, body });
-        text = await response.text();
-      } catch (error) {
-        recordModelCall({ ...base, output: null, outcome: 'failed', latencyMs: performance.now() - start, usage: null });
-        observeJev(judgment, null);
-        throw error;
+    const callJev = async (judgment, state, questions, timeoutMs = 2000, occurrence, admission) => {
+      const admit = async () => {
+        await requireGroupDisclosure(journal.view);
+        assertLiveJudgment(judgment, 'typesafe-jev');
+        if (shared !== null && !await peerHolds()) throw Error('preview: Jev unavailable');
+      };
+      const replyCheck = judgment === 'jev-reply-check';
+      // Admission is separately bounded across the worker and host checkpoints.
+      if (!replyCheck) await admit();
+      else {
+        const began = performance.now(); let accepted = false;
+        try {
+          await admitJev(admit, admission ?? { admissionMs: JEV_ADMISSION_MS }, () => performance.now(), wallNow);
+          accepted = true;
+        } finally {
+          recordPhaseTiming(row => journal.append(row), occurrence ?? judgment, 'jev-admission',
+            { accepted, elapsedMs: Math.max(0, Math.round(performance.now() - began)) }, wallNow());
+        }
+        if (admission?.deadlineAt !== undefined) timeoutMs = Math.min(timeoutMs, admission.deadlineAt - wallNow());
+        if (timeoutMs <= 0) throw Object.assign(Error('preview: Jev unavailable'), { jevCause: 'timeout' });
       }
-      let value = null;
-      try { if (response.ok) value = parseJevResponse(text); } catch { value = null; }
-      const usage = value?.usage && (typeof value.usage.input_tokens === 'number' || typeof value.usage.output_tokens === 'number')
-        ? { inputTokens: typeof value.usage.input_tokens === 'number' ? value.usage.input_tokens : null,
-          outputTokens: typeof value.usage.output_tokens === 'number' ? value.usage.output_tokens : null, charge: null } : null;
-      const latencyMs = Math.round(performance.now() - start);
-      recordModelCall({ ...base, output: text, outcome: !response.ok ? 'rejected' : value === null ? 'failed' : 'complete', latencyMs, usage });
-      // Rule 56: the doorway map observes the exchange; a failed map write never changes the outcome.
-      observeJev(judgment, response.ok ? value : null);
-      if (!response.ok || value === null) throw Error('preview: Jev unavailable');
-      return { value, latencyMs };
+      const start = performance.now();
+      const signal = AbortSignal.timeout(Math.max(1, Math.min(replyCheck ? 2500 : 2000, Math.floor(timeoutMs))));
+      const failure = cause => Object.assign(Error('preview: Jev unavailable'), { jevCause: cause });
+      let onAbort;
+      const timeout = new Promise((_, reject) => {
+        onAbort = () => reject(failure('timeout'));
+        signal.addEventListener('abort', onAbort, { once: true });
+      });
+      const exchange = async () => {
+        // Admission may complete after our caller timed out. It must never dispatch a late request.
+        if (signal.aborted) throw failure('timeout');
+        const body = JSON.stringify({ state, model: JEV_MODEL, questions });
+        // Same content id, distinct durable call rows; occurrence binds both attempts to their turn.
+        const base = { id: `${judgment}:${sha256(body).slice(0, 16)}`, judgment, route: 'typesafe-jev', model: JEV_MODEL, input: body,
+          ...(typeof occurrence === 'string' && occurrence ? { occurrence } : {}) };
+        let response, text;
+        try {
+          response = await fetch('https://api.typesafe.ai/v1/systemone', {
+            method: 'POST', signal,
+            headers: { Authorization: `Bearer ${typesafeKey()}`, 'Content-Type': 'application/json' }, body });
+          text = await response.text();
+        } catch (error) {
+          recordModelCall({ ...base, output: null, outcome: 'failed', latencyMs: performance.now() - start, usage: null });
+          observeJev(judgment, null);
+          throw failure(signal.aborted ? 'timeout' : error?.name === 'TypeError' ? 'network' : 'other');
+        }
+        let value = null;
+        try { if (response.ok) value = parseJevResponse(text); } catch { value = null; }
+        const usage = value?.usage && (typeof value.usage.input_tokens === 'number' || typeof value.usage.output_tokens === 'number')
+          ? { inputTokens: typeof value.usage.input_tokens === 'number' ? value.usage.input_tokens : null,
+            outputTokens: typeof value.usage.output_tokens === 'number' ? value.usage.output_tokens : null, charge: null } : null;
+        const latencyMs = Math.round(performance.now() - start);
+        recordModelCall({ ...base, output: text, outcome: !response.ok ? 'rejected' : value === null ? 'failed' : 'complete', latencyMs, usage });
+        // Rule 56: the doorway map observes the exchange; a failed map write never changes the outcome.
+        observeJev(judgment, response.ok ? value : null);
+        if (!response.ok) throw failure(`http-${response.status}`);
+        if (value === null) throw failure('parse');
+        return { value, latencyMs };
+      };
+      try { return await Promise.race([exchange(), timeout]); }
+      finally {
+        signal.removeEventListener('abort', onAbort);
+        if (replyCheck) recordPhaseTiming(row => journal.append(row), occurrence ?? judgment, 'jev',
+          { elapsedMs: Math.max(0, Math.round(performance.now() - start)) }, wallNow());
+      }
     };
     // model-call-boundary:end
-    const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt) => {
-      const policy = subscriptionConversationPolicy(required(options, 'model'));
-      const deadline = Math.min(journal.view.expires, deadlineAt ?? wallNow() + 180000);
+    /** A refused review verdict's defect, kept only until that review's one format re-ask reads it (content-free protocol text). */
+    const reviewDefects = new Map();
+    const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt, toolTurn, selectedLogin) => {
+      const policy = doorway.policyFor(required(options, 'model'),
+        toolTurn ? doorway.toolsFraming ?? doorway.conversationFraming : doorway.conversationFraming);
+      const deadline = Math.min(journal.view.expires, deadlineAt ?? wallNow() + policy.timeout + 60000);
       if (deadline - wallNow() <= 100) throw Error('preview: reply check budget exceeded');
       const result = await callSubscription(judgmentOf(id), prepared, id, { operation: id, deadline,
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
-        maxCharge: 0, automaticRetries: 0 });
+        maxCharge: 0, automaticRetries: 0 }, toolTurn, selectedLogin);
       if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state,
         diagnostics: replyReviewDiagnostics(result.usage),
         ...(result.usage ? { usage: recordedUsage(result.usage) } : {}), at: wallNow() });
 
       if (result.state === 'uncertain') return { state: 'uncertain', usage: result.usage };
-      if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage };
+      if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage,
+        ...(result.failure?.failureClass === 'limit' && result.usage?.inputTokens === 0 && result.usage.inputComplete === true
+          && result.usage.outputTokens === 0 && result.usage.charge === null
+          ? { capacity: { resetHint: result.failure.resetHint, resetAt: result.failure.resetAt } } : {}) };
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
       if (!result.bytes) return { state: 'complete', failureClass: 'empty', usage: result.usage };
-      const extracted = parseModelJson(result.bytes), decision = extracted.ok ? extracted.value : null;
+      const role = roleOf(id);
+      // Plan #491 (answer-reading.ts): the model returns one flat object and the runner builds the Decision from its own
+      // values; a wrapped object passes exactly the checks an unwrapped one does, and only the wrapper is dropped.
       // Rule 57: a returned floor may only echo the envelope's own; it never defines or widens it.
-      const value = decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
-        && decisionWithinFloor(decision) ? conclusionText(decision.conclusion.value) : null;
-      if (value === null) {
-        recordShape(shapesPath, roleOf(id), 'decision', 'malformed', failureShapeOf(extracted));
-        return { state: 'complete', failureClass: 'malformed', usage: result.usage };
+      const reading = readAnswer(result.bytes, { wrapped: wrappedPolicyOf(role), evidence: [id],
+        ...(objectAnswerOf(id) ? { object: true } : {}) });
+      if (!reading.ok) {
+        recordShape(shapesPath, role, 'decision', 'malformed', reading.shape);
+        // The defect is content-free protocol text; the format re-ask names it so the model can correct exactly that.
+        return { state: 'complete', failureClass: 'malformed', defect: reading.defect,
+          ...(/^(obligation|work-repair):/u.test(id) ? { rawOutput: result.bytes } : {}), usage: result.usage };
       }
-      if (extracted.shape !== 'bare') recordShape(shapesPath, roleOf(id), 'decision', 'tolerated', extracted.shape);
+      if (reading.shape !== 'bare') recordShape(shapesPath, role, 'decision', 'tolerated', reading.shape);
+      // Rule 2: an object task's answer the runner had to read out of JSON text is a visible deviation, not a silent one.
+      if (reading.objectAsText) recordShape(shapesPath, role, 'decision', 'tolerated', 'object-as-text');
+      const value = reading.value;
       if (!value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       // Rule 108: the stated reason is recorded beside the conclusion (build 8).
-      const reasonValue = decision.reason?.value;
-      const reason = typeof reasonValue === 'string' ? reasonValue : reasonValue === undefined || reasonValue === null ? '' : JSON.stringify(reasonValue);
+      const reason = reading.reason;
       return { state: 'complete', value, ...(reason.trim() ? { reason } : {}), usage: result.usage };
+    };
+    // Part Thirteen §9 (docs/17-harness-adapters): an eligible answer or work step runs as one scoped-tool turn (tool-turn.mjs runToolTurn).
+    const invokeTools = async (prepared, id) => {
+      const selected = selectLogin(true), profile = selected.profile;
+      const runtime = loginRuntimes.get(selected.index);
+      const turnHarness = runtime?.harness ?? harness;
+      const turnActivation = runtime?.toolsRecord ?? toolsRecord;
+      return (await runToolTurn({ journal, root, id, prepared,
+      promptLimit: toolPromptLimit(), mcp: readRootMcp(root),
+      // Rule 100: an MCP server's SecretRef is opened from this root's custody vault and handed to that server alone.
+      resolveSecret: name => createSecretCustody(root, key(), wallNow).resolve(secretRef(name)),
+      authority: `${turnActivation.reference} ${turnActivation.invocationPolicyDigest}`,
+      // MF5: the conversation's workspace persists across turns, and its kept harness session (in the login profile's
+      // projects directory) is a cache bound to this authority, harness and model and to the journal's current facts.
+      conversation: journalWorkConversation(journal.view, id),
+      // The kept session is Claude Code's (its projects directory); a checkpointed harness keeps none.
+      session: doorway.toolTurn?.harness || journal.view.turns.get(id)?.media ? null : { store: join(profile.configDirectory, 'projects'), harness: `${profile.version} ${required(options, 'model')}` },
+      stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive(),
+      deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
+      ...admissionConfig(), now: wallNow, redactText: text => redact(concealSecretMaterial(text, heldSecretValues())).text, gate, owner: ownerMachine,
+      harness: identityRefusal !== null ? { ready: false, refused: true, reason: identityRefusal } : turnHarness ? turnHarness.current() : null, heldSecrets,
+      ...(doorway.toolTurn ? { system: doorway.toolTurn.system, admission: doorway.toolTurn } : {}),
+      fallback: async () => ({ result: await invokeSubscription(prepared, id, undefined, undefined, undefined, selected) }),
+      // Rules 33, 84: the workspace notice (files that may still disagree with memory, or a lost workspace) rides the packet.
+      invoke: async (toolTurn, notice) => {
+        const answer = mediaNotice => invokeSubscription(withWorkspaceNotice(prepared, [notice, mediaNotice].filter(Boolean).join('\n')), id, undefined, undefined, toolTurn, selected);
+        return invokeMediaTurn(id, toolTurn, currentMedia, answer,
+          (bytes, source) => protectMediaBytes(bytes, source, custody, heldSecrets));
+      } })).result;
     };
     const proofLines = () => {
       if (!proofLaunch) return [];
@@ -1146,33 +2042,181 @@ async function main() {
     const ownerLines = () => {
       const refused = refusedLaunches(ownersDirectory(), g.bot, g.chat);
       return [`Serving: this runner on ${ownerMachine} owns this conversation (claimed ${Math.max(0, Math.round((wallNow() - ownerClaim.holder.since) / 60000))} min ago); ${refused} duplicate launch(es) refused on this machine.`,
-        agreementLine(agreementsPath, wallNow())];
+        agreementLine(agreementsPath, wallNow()), ...(shared ? [shared.line(), shared.backupLine()] : [backupStatusLine(posture, null)])];
     };
-    const approvalSurface = approvalSurfaceOf(options);
-    worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
+    // Rule 15, pull surface: whether a message past an ordinary cap would get its limited answer, and what clears it if not.
+    const minimalLines = () => {
+      let missing = ['minimal-path-owner'];
+      try { missing = worker.minimalMissing(); } catch { /* reported as unavailable below */ }
+      return [missing.length ? `Past a cap: limited answers are not available (missing: ${missing.join(', ')}). Messages are kept. To clear: ${minimalRepair(missing)}.`
+        : 'Past a cap: each kept message gets one limited answer from the reserve.'];
+    };
+    // The chat "status" answer's host lines; the operator dashboard reads the very same ones (statusAnswer).
+    const statusPullLines = () => [...installation ? installationStatusLines(installation, launchedAt, (() => { try { return installedCode(); } catch { return null; } })(),
+      installUpdate, installUpdate && updateDelivery(installUpdate, journal.view.order), timeZoneOf(options)) : [],
+      ...toolStatusLines(journal.view, toolsActive(), toolsOff ?? (toolsRecord
+        ? 'withdrawn since launch: the activation record changed or its grant no longer resolves' : null), Boolean(doorway.toolTurn?.harness)),
+      ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : []),
+      ...(loginPool ? [loginPool.status()] : []),
+      ...(sessionLoginObservations.size ? [sessionLoginStatus([...sessionLoginObservations.values()], wallNow())] : []),
+      ...(sessionWork?.port.idleCleanupStatus?.() ?? []),
+      ...(harness ? [harnessStatusLine(harness.state)] : identityRefusal !== null ? [harnessStatusLine({ ready: false, reason: identityRefusal })] : [])];
+    const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
+    const approvalSurface = approvalSurfaceOf(options), readOnly = readOnlyDashboardOf(options);
+    // Rules 79, 81: the operator dashboard's snapshot, built at most every 15 seconds (and once at the end) while a page
+    // shows it: published into this runner's own outbox for the operator's approval page, and kept for the read-only page
+    // this runner serves. A failed build is never fatal: each page shows how old its copy is.
+    let dashboardAt = -Infinity, dashboardText = null;
+    const publishDashboard = (force = false) => {
+      const now = wallNow(), zone = timeZoneOf(options);
+      if (!approvalSurface && !readOnly || !force && now - dashboardAt < 15_000) return;
+      dashboardAt = now;
+      try {
+        const snapshot = dashboardSnapshot(journal.view, { now, zone, bot: options['bot-username'] ?? null,
+          stopped: existsSync(stopPath), statusText: statusAnswer(journal.view, now, zone,
+            // The memory-learning line the chat answer adds after the host's extra lines (journal.ts), so both read the same.
+            [...statusExtraLines(), memoryLearningLine(journal.view, turn => operatorWriter(journal.view, turn, true))], statusPullLines()) });
+        dashboardText = JSON.stringify(snapshot);
+        approvalSurface?.publish(snapshot);
+      } catch { /* the page reads its copy's age */ }
+    };
+    const readOnlyServer = readOnly && serveReadOnly(createReadOnlyDashboard({ checkPin: readOnly.checkPin,
+      state: () => dashboardText === null ? { kind: 'missing' } : snapshotState(dashboardText, wallNow()) }),
+    `${readOnly.listen.host}:${String(readOnly.listen.port)}`);
+    if (readOnlyServer) {
+      // Never keeps the runner alive, and a failed listen (a taken port) is reported, never fatal to serving the chat.
+      readOnlyServer.unref();
+      readOnlyServer.on('error', error => process.stderr.write(`preview: read-only dashboard not served: ${error instanceof Error ? error.message : 'listen failed'}\n`));
+      readOnlyServer.on('listening', () => { const where = readOnlyServer.address();
+        process.stderr.write(`preview: read-only operator dashboard at http://${where.address}:${String(where.port)}/dashboard\n`); });
+    }
+    const yesInstallation = explicitYesInstallationOf(options), reviewSource = reviewSourceOf(options, yesInstallation);
+    // Plan #373: how long an operator request stays answerable (default 18 hours), never past the trial's current end.
+    const requestHours = options['operator-request-hours'] === undefined ? undefined
+      : number(options['operator-request-hours'], 'operator-request-hours', 1, OPERATOR_REQUEST_MAX_MS / 3_600_000);
+    const explicitYes = yesInstallation ? { context, installation: yesInstallation, ...(reviewSource ? { review: reviewSource } : {}),
+      ...(requestHours === undefined ? {} : { requestWindowMs: requestHours * 3_600_000 }),
+      renewalActivation: renewalActivationOf(options, () => journal.view), retractProposal: () => readRetractProposal(retractPath) } : null;
+    // Rule 4 / P3-NF-19: every blocking site this runner enforces is bound to its committed declaration before the
+    // worker exists; a declaration that no longer matches its checkpoint refuses the launch.
+    bindPreviewBlockingSites({ journal: declarationsOf('journal.declarations'), replyCheck: declarationsOf('reply-check.declarations'),
+      redact: JSON.parse(readFileSync(resolve(process.cwd(), 'src/recall/redact.declarations.json'), 'utf8')),
+      resourceOwner: JSON.parse(readFileSync(resolve(process.cwd(), 'scripts/resource-owner.declarations.json'), 'utf8')) });
+    const noticeInvoke = (method, body, timeoutMs) => physical.invoke({ token: secretRef('telegram-bot-token'),
+      method, body, timeoutMs }, token());
+    const noticeAllowed = () => !workerStop.value && !existsSync(stopPath) && ownerHeld()
+      && !journal.view.stop && wallNow() < journal.view.expires;
+    const typing = createReplyTyping({ invoke: noticeInvoke, now: wallNow,
+      allowed: async () => {
+        if (!noticeAllowed()) return false;
+        try { await requireGroupDisclosure(journal.view); } catch { return false; }
+        return noticeAllowed();
+      }, after: (ms, run) => { const timer = setTimeout(run, ms); timer.unref(); return () => clearTimeout(timer); } });
+    const workingActivities = createWorkingActivities({ now: wallNow, read: claim => readWorkingAdmission(
+      harness ? harnessSessionLayout(root).admission : join(root, 'session-work-state', 'admission'), claim) });
+    worker = createJournalWorker(journal, { ...(conversationSession ? { topicConcurrency: sessionLimits.maxSessions } : {}), ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, ...(conversationSession ? { workingActivity: id => workingActivities.current(id) } : {}), elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
+      groupDisclosure: verifiedActionAudience,
+      presenceNotes: sentinelFamilies.has('presence'),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
-        () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
+        () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff, preparation.active),
       prepareModel: modelEnvelope,
+      preparePacket: preparation.run,
+      // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
+      // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
+      replyReviewTiming: conversationSession ? 'after-send' : 'before-send',
+      toolRoute: id => conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id) ? true : preparation.active() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
+      // Scheduled obligations keep their existing route; continuing operator conversation is selected below.
+      // The session route is taken only while its grant holds and the call allowance can hold the
+      // step's whole reserved liability on top of the obligation's own start.
+      ...(sessionWorkOf(options) === null ? {} : {
+        sessionRoute: id => !conversationSession && sessionWork !== null && id.startsWith('obligation:') && sessionWork.port.available()
+          && journal.view.calls + 1 + SESSION_WORK_LIMITS.maxCallsPerStep <= journal.view.limits.maxCalls,
+        recoverSessionWork: id => conversationSession ? null : sessionWork?.port.collect(id.replaceAll(':', '-')) ?? null,
+        sessionWork: async ({ question, context: packet, id }) => {
+          await requireGroupDisclosure(journal.view);
+          sessionWork.select?.();
+          const outcome = await sessionWork.port.run({ operation: id.replaceAll(':', '-'), question, context: packet,
+            authority: sessionWork.authority });
+          if (outcome.state === 'complete') return { state: 'complete', text: outcome.text, usage: { inputTokens: null, outputTokens: null, charge: null } };
+          if (outcome.state === 'failed') return { state: 'complete', failureClass: 'rejected' };
+          return { state: 'uncertain' };
+        } }),
       // Rule 44: an installed update rides operator packets until a sent answer's recorded prompt carried it.
       installedUpdate: () => installUpdate && !updateDelivery(installUpdate, journal.view.order) ? updatePacketItem(installUpdate) : null,
       // Rules 8, 56, 100: due credential reminder stages and a failing doorway check ride the next answer as one line.
       // An unreadable registry or map offers nothing here; status reports it (credentials.error, doorways.fresh).
-      replyNotices: () => {
+      replyNotices: turn => {
         const now = wallNow(), notices = [];
+        // Part Twelve: this answer's own refused effects ride first, so a refusal is reported even if the answer omits it.
+        if (turn !== undefined) notices.push(...refusedEffectNotices(journal.view.effectDoorway?.recent ?? [], turn));
+        // Plan #473: an answer whose tool turn was refused for the harness identity says so under it.
+        if (turn !== undefined && identityRefusal !== null && (journal.view.toolTurns?.identityRefused ?? []).includes(turn))
+          notices.push({ key: `harness:${turn}`, line: harnessRefusedNotice(identityRefusal) });
+        notices.push(...(loginPool?.notices() ?? []));
+        notices.push(...sessionLoginNotices([...sessionLoginObservations.values()], now));
         try { notices.push(...credentialNotices(dueCredentialReminders(createSecretCustody(root, key(), wallNow).records(), now), now)); } catch { /* status shows it */ }
         try { notices.push(...doorwayNotices(readDoorwayMap(doorwaysPath), now)); } catch { /* status shows it */ }
         return notices;
       },
       // Rules 9, 96, 114: this runner's current work and the other owned runners beside it, read at each operator turn.
-      concurrentWork: () => launchedAt === null ? null : concurrentWorkItem({ now: wallNow(),
+      concurrentWork: () => launchedAt === null ? null : concurrentWorkItem({ now: wallNow(), zone: timeZoneOf(options),
         current: { owner: root.split('/').at(-1), launch: launchedAt, conversation: conversationOf(journal.view.genesis) }, ...ownedActivity(root) }),
-      statusLines: () => installation ? installationStatusLines(installation, launchedAt, (() => { try { return installedCode(); } catch { return null; } })(),
-        installUpdate, installUpdate && updateDelivery(installUpdate, journal.view.order), timeZoneOf(options)) : [],
-      checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
+      statusLines: statusPullLines,
+      checkOutbound: text => { if (redact(text).count || secretMaterialIn(text, heldSecretValues())) throw Error('preview: outbound secret refused'); },
+      heldSecrets: heldSecretValues,
       secrets: custody,
-      model: async ({ id, prepared }) => {
+      media: mediaCustody,
+      ...(conversationSession ? { modelBatch: async inputs => {
+        await requireGroupDisclosure(journal.view);
+        sessionWork?.select?.();
+        if (!sessionWork?.port.available()) throw new ModelNotStarted();
+        const outcomes = await sessionWork.port.runBatch(inputs.map(input => ({ operation: input.id,
+          question: input.prepared, context: input.context, authority: sessionWork.authority })));
+        return outcomes.map((outcome, index) => conversationSessionAnswer(outcome, inputs[index].id,
+          shape => recordShape(shapesPath, 'answer', 'decision', 'malformed', shape)));
+      } } : {}),
+      collectModel: async id => {
+        if (!conversationSession || !sessionWork || !/^telegram:[0-9]+:update:[0-9]+$/u.test(id)) return null;
+        const turn = journal.view.turns.get(id);
+        const operation = turn?.promptKind === 'format-retry' ? `${id}:format-retry` : id;
+        const saved = await sessionWork.port.collect(operation);
+        if (!saved) return null;
+        return { context: saved.request.context, prepared: saved.request.question,
+          answer: conversationSessionAnswer(saved.outcome, id, shape => recordShape(shapesPath, 'answer', 'decision', 'malformed', shape)) };
+      },
+      model: async ({ id, prepared, question, context: packet }) => {
+        try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
-        const result = await invokeSubscription(prepared, id);
+        if (conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id)) {
+          // The journal reserves the one format repair before this call. Its exact packet gets
+          // a durable child identity; replaying the original bytes still names the original turn.
+          // Never relax the host's same-identity request-digest check.
+          const turn = journal.view.turns.get(id);
+          const operation = turn?.promptKind === 'format-retry' && turn.prompt === prepared
+            ? `${id}:format-retry` : id;
+          let outcome;
+          try {
+            sessionWork?.select?.();
+            if (!sessionWork?.port.available()) throw new ModelNotStarted();
+            outcome = await sessionWork.port.run({ operation, question: prepared, context: packet,
+              authority: sessionWork.authority });
+          } catch (error) {
+            if (operation === id && error instanceof ModelNotStarted) throw error;
+            // A refused/unknown repair is not permission to replay tools. Let the journal's
+            // existing unknown-answer notice settle this intake through its unique send path.
+            return { state: 'uncertain' };
+          }
+          return conversationSessionAnswer(outcome, id, shape => recordShape(shapesPath, 'answer', 'decision', 'malformed', shape));
+        }
+        const callsBefore = journal.view.modelCalls.total;
+        let result;
+        try { result = await modelLaunch.run(() => toolsActive() && toolTurnEligible(id) ? invokeTools(prepared, id) : invokeSubscription(prepared, id)); }
+        catch (error) {
+          // A resumed tool turn may already have invoked a provider before a later disclosure refusal.
+          if (error instanceof ModelDisclosureRefused && journal.view.modelCalls.total !== callsBefore)
+            throw Error('preview: disclosure refused after a provider attempt');
+          throw error;
+        }
         if (result.state !== 'complete' || result.failureClass) return { ...result,
           ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
         return { state: 'complete', text: result.value, ...(result.reason ? { reason: result.reason } : {}),
@@ -1181,8 +2225,8 @@ async function main() {
       summaryCheck: async evidence => (await callJev('jev-summary-faithfulness', evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
       replyCheck: {
         elapsedMs: () => performance.now(),
-        jev: (text, questions = jevQuestions, timeoutMs, occurrence) => callJev(questions === SUMMARY_QUESTION ? 'jev-summary-integrity' : 'jev-reply-check',
-          text, questions, timeoutMs, occurrence),
+        jev: (text, questions = jevQuestions, timeoutMs, occurrence, admission) => callJev(questions === SUMMARY_QUESTION ? 'jev-summary-integrity' : 'jev-reply-check',
+          text, questions, timeoutMs, occurrence, admission),
         escalate: async (text, id, originalPrompt, reviewRules, deadlineAt, operation, formatRetry) => {
 
           const start = performance.now();
@@ -1190,30 +2234,35 @@ async function main() {
           const selectedRules = replyReviewRules(reviewRules ?? []);
           const question = replyReviewQuestion(reviewRules ?? []);
 
-          const reviewContext = replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id));
-          const context = formatRetry ? withFormatReminder(reviewContext, REVIEW_FORMAT_REMINDER) : reviewContext;
-          const operationId = operation === 'revision' ? `${id}:revision-review` : `${id}:reply-review`;
+          const reviewContext = replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id, wallNow()),
+            credentialRegister());
+          const operationId = operation === 'acknowledgement' ? `${id}:held-notice-review`
+            : operation === 'revision' ? `${id}:revision-review` : `${id}:reply-review`;
+          // Plan #491: the one format re-ask names the exact defect the reader found in this review's refused verdict.
+          const defect = reviewDefects.get(operationId);
+          const context = formatRetry ? withFormatReminder(reviewContext, defect ? `${REVIEW_FORMAT_REMINDER} The defect: ${defect}.`
+            : REVIEW_FORMAT_REMINDER) : reviewContext;
+          reviewDefects.delete(operationId);
           // Rule 29: the review input is written by the runner, a verified system principal.
           const writer = envelopeWriter(journal.systemWriter('reply-review', `${operationId}\n${context}`, wallNow()));
           const prepared = modelEnvelope({ question, context, id: operationId, ...(writer ? { writer } : {}) });
           // A revised candidate's held-class review is its own operation; the worker journals its result row.
           // The revised text's review shares the loop's one deadline (ruling 2 budget).
-          const result = operation === 'revision' ? await invokeSubscription(prepared, operationId, undefined, deadlineAt)
+          const result = operation === 'revision' || operation === 'acknowledgement' ? await invokeSubscription(prepared, operationId, undefined, deadlineAt)
             : await invokeSubscription(prepared, operationId, id, deadlineAt);
           // A Decision-shape miss is a format miss like a malformed verdict line: the worker may re-ask it once.
-          if (result.state === 'complete' && result.failureClass === 'malformed') throw Error(REVIEW_MALFORMED);
+          if (result.state === 'complete' && result.failureClass === 'malformed') {
+            if (result.defect) reviewDefects.set(operationId, result.defect);
+            throw Error(REVIEW_MALFORMED);
+          }
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
           // The reply verdict is one exact line per selected rule (rule_id: PASS | reason); the whole-line
           // pattern admits no surrounding text, so a written rejection can never be discarded around it.
           let parsed;
-          // Each selected rule gets its own line, conclusion and reason; a missing or added rule, or the legacy
-          // combined line (one shared reason for every rule), is a format miss.
+          // Every selected rule must be answered. The parser also retains extra known findings, including
+          // violations; missing/unknown/malformed findings and legacy combined verdicts still refuse.
           try { parsed = parseReplyReviewVerdict(result.value, Object.keys(selectedRules)); }
           catch (error) { recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', 'not-json'); throw error; }
-          if (parsed.ruleIds.some(rule => !Object.hasOwn(selectedRules, rule))) {
-            recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', 'not-json');
-            throw Error(REVIEW_MALFORMED);
-          }
           return { verdict: parsed.verdict, ruleIds: parsed.ruleIds, confidence: null,
             latencyMs: Math.round(performance.now() - start), reason: parsed.reason,
             ...(parsed.findings ? { findings: parsed.findings } : {}), usage: recordedUsage(result.usage) };
@@ -1221,7 +2270,7 @@ async function main() {
         // The mind's one response to the objections on its draft: same envelope and grounding packet as review,
         // one disposition per objection, inside the loop's shared deadline.
         revise: async ({ text, id, originalPrompt, ruleIds, reason, objections = ruleIds, findings, deadlineAt }) => {
-          const context = replyReviewContext(originalPrompt, text, ruleIds);
+          const context = replyReviewContext(originalPrompt, text, ruleIds, undefined, credentialRegister());
           // Rule 29: the revision input (the objected draft in its review context) is written by the runner.
           const writer = envelopeWriter(journal.systemWriter('reply-review', `${id}:reply-revision\n${context}`, wallNow()));
           const prepared = modelEnvelope({ question: replyRevisionQuestion(objections, reason, findings), context, id: `${id}:reply-revision`,
@@ -1232,12 +2281,15 @@ async function main() {
           if (result.state !== 'complete' || result.failureClass) return { state: 'rejected', ...usage };
           const answered = parseReplyRevision(result.value, objections);
           return { state: 'complete', text: answered.text, dispositions: answered.dispositions,
+            ...(answered.promises === undefined ? {} : { promises: answered.promises }),
+            ...(answered.fulfills === undefined ? {} : { fulfills: answered.fulfills }),
             ...(answered.blocker === undefined ? {} : { blocker: answered.blocker }), ...usage };
         },
         summaryReview: async (state, through) => {
           const start = performance.now();
           // Also the faithfulness cascade's stronger tier (observer #102): it decides what Jev left unsure.
-          const question = 'Review this rolling summary against its full supplied conversation packet. Check every commitment, person, correction and dated item, and reject invented facts. It also violates if it loses or contradicts a still-active fact, preference or person detail, or keeps a claim the operator corrected or asked to forget. Active memory records and open commitments are carried separately, so their absence from the prose alone is not loss, and greetings or repeated wording need not be kept. Return only JSON {"verdict":"pass"|"violation","reason":string}. Pass only when coverage is faithful; uncertainty is a violation. Give a brief evidence-based reason.';
+          const question = 'Review this rolling summary against its full supplied conversation packet. Check every commitment, person, correction and dated item, and reject invented facts. It also violates if it loses or contradicts a still-active fact, preference or person detail, or keeps a claim the operator corrected or asked to forget. Active memory records and open commitments are carried separately, so their absence from the prose alone is not loss, and greetings or repeated wording need not be kept. Pass only when coverage is faithful; uncertainty is a violation. Give a brief evidence-based reason. '
+            + taskFields('{"verdict":"pass"|"violation","reason":string}', SUMMARY_REASON_CHARS);
           const id = `summary:${through}:review`;
           let prepared;
           try {
@@ -1251,22 +2303,31 @@ async function main() {
         }
       },
       ...(stepCheckEnabled ? { stepCheck: { jev: (text, questions) => callJev('jev-step-check', text, questions ?? stepQuestions) } } : {}),
-      ...(retrospectiveEnabled ? { retrospect: async (state, id) => {
-        const result = await invokeSubscription(modelEnvelope({ question: RETROSPECTIVE_QUESTION, context: state, id }), id);
+      ...(retrospectiveEnabled ? { retrospect: async (state, id, question = RETROSPECTIVE_QUESTION) => {
+        const result = await invokeSubscription(modelEnvelope({ question, context: state, id }), id);
         return { ...result, ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
       } } : {}),
       // Status pull lines: proof posture (Rule 43), then conversation ownership and store checks (Rules 63, 33).
-      statusExtra: () => [...proofLines(), ...ownerLines()],
+      statusExtra: statusExtraLines,
       // Part Eleven's minimal-path owner decides (src/operator/live.ts); the host reports only what it
-      // actually observes (Rule 26). The register generation, the exclusive lease/fence and the P-08
-      // installation policy that settles `replication-peer` for the single-machine shape are not
-      // installed in this preview (N1), and the activation record is not that evidence, so they are
-      // reported missing: the minimal path stays inhibited with preserved input and an owned outage,
-      // and an exact /stop still latches at once. Nothing here is a caller flag.
-      minimal: { context, dependencies: () => ({ 'local-facts': !journal.readOnly && !journal.view.stop, register: false,
-        'identity-keys': identityVerified, clock: Number.isSafeInteger(wallNow()), lease: false, fence: false,
+      // actually observes (Rule 26), never the activation record standing in for it.
+      //   register: the register generation this launch read is still the installed one (Ten's rule).
+      //   lease, fence: this runner's exclusive conversation claim (Rule 63), re-verified against its
+      //     durable owner record now; the send seam consumes the same fence again before dispatch.
+      //   replication-peer: never observed here. This is the single-machine shape, so Eleven omits the
+      //     peer only under the operator's accepted P-08 policy (`shape`), resolved at launch from the
+      //     sealed authority record; without it the peer stays required and the outage names the policy.
+      minimal: { context, dependencies: () => ({ 'local-facts': !journal.readOnly && !journal.view.stop,
+        register: registerAtLaunch !== null && registerGeneration() === registerAtLaunch,
+        'identity-keys': identityVerified, clock: Number.isSafeInteger(wallNow()),
+        lease: ownerClaim?.owner === true, fence: ownerClaim?.owner === true && ownerClaim.verify(),
         'replication-peer': false, 'conversation-binding': Boolean(journal.view.genesis.chat && journal.view.genesis.operator),
-        route: identityVerified && routeHealthy, 'delivery-evidence': identityVerified }) },
+        route: identityVerified && routeHealthy, 'delivery-evidence': identityVerified }),
+      shape: () => ({ kind: 'single-machine', installation: journal.view.genesis.grant, profile: SINGLE_MACHINE_PROFILE.id,
+        lossModel: singleMachineProfileDigest(), operation: LIMITED_ANSWER_OPERATION,
+        policy: installationPolicy.kind !== 'resolved' ? null : { policy: 'P-08', installation: installationPolicy.trial,
+          profile: installationPolicy.profile, operations: SINGLE_MACHINE_PROFILE.operations, causalPrefix: SINGLE_MACHINE_PROFILE.causalPrefix,
+          lossModel: installationPolicy.profileDigest, acceptance: installationPolicy.acceptance } }) },
       // The operator's phone: a pressed Approve/Decline button is cleared with a short toast.
       acknowledge: (callbackId, text) => {
         physical.invoke({ token: secretRef('telegram-bot-token'), method: 'answerCallbackQuery',
@@ -1274,7 +2335,8 @@ async function main() {
       },
       // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
       // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
-      send: async ({ text, expectedText, chat, thread, replyMarkup, target, provenance }) => {
+      sendAdmits: true,
+      send: async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit, current, observeSendPhase }) => {
         if (!journal.verifyOutbound(provenance, { target, chat, ...(thread === undefined ? {} : { thread }), body: text }))
           return { kind: 'refused', reason: 'outbound provenance unsigned' };
         if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop)
@@ -1282,20 +2344,458 @@ async function main() {
         // Rule 63: the fence is consumed immediately before dispatch. Without it nothing is sent: a definite
         // refusal (Rule 42), never repeated.
         if (!ownerHeld()) return { kind: 'refused', reason: 'conversation ownership lost before dispatch' };
-        const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
-          body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }),
-            ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }) },
-          timeoutMs: 30000 }, token());
-        return classifyTelegramSend(reply, { chat, expectedText, ...(thread === undefined ? {} : { thread }) });
+        // The fixed content-free hold notice is the one send a refused disclosure admits (journal GROUP_DISCLOSURE_HOLD_NOTICE).
+        if (!isGroupReviewFinalNotice(text, expectedText)
+          && !(target?.startsWith('held-notice:') && text === GROUP_DISCLOSURE_HOLD_NOTICE && expectedText === GROUP_DISCLOSURE_HOLD_NOTICE))
+          try { await requireGroupDisclosure(journal.view); }
+          catch { return { kind: 'refused', reason: 'group disclosure grant or audience refused before dispatch' }; }
+        if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
+          return { kind: 'refused', reason: 'stopped during audience check' };
+        if (current && !current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
+        observeSendPhase?.('audienceAdmittedAt');
+        admit?.(); // Durable intent only after disclosure; replication below includes it.
+        if (shared) {
+          // replicated(1): the journal through this send's signed intent is on the other machine, and the one
+          // dispatch-claim for this target is taken, immediately before the physical send. Until then it waits.
+          const refused = await shared.admit(target, () => workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop
+            ? 'stopped before dispatch' : !ownerHeld() ? 'conversation ownership lost before dispatch'
+              : current && !current() ? 'acknowledgement cancelled' : null);
+          if (refused !== null) return refused;
+        }
+        if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
+          return { kind: 'refused', reason: 'stopped before physical dispatch' };
+        if (current && !current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
+        const noticeTurn = target?.startsWith('held-notice:') ? journal.view.turns.get(target.slice('held-notice:'.length)) : null;
+        const reaction = noticeTurn?.acknowledgementMode === 'reaction-or-text'
+          && noticeTurn.heldNoticeIntent === expectedText && text === expectedText && Number.isSafeInteger(replyTo);
+        if (!reaction) typing.stop(chat, thread); // answers and progress lines end the indicator
+        let outcome = { kind: 'unknown', reason: 'send port failed' };
+        try {
+          observeSendPhase?.('transportBegunAt');
+          if (reaction) {
+            const reactionOutcome = reactionAcknowledgement(noticeInvoke, chat, replyTo);
+            if (reactionOutcome !== null) {
+              outcome = reactionOutcome;
+              observeSendPhase?.('transportReturnedAt');
+              if (outcome.kind === 'accepted') typing.start(chat, thread, current ?? (() => false),
+                () => workingActivities.current(noticeTurn.id)?.running === true);
+              return outcome;
+            }
+            // Only a proved rejection reaches text fallback; recheck stop/ownership after the call.
+            if (!noticeAllowed() || current && !current()) {
+              outcome = { kind: 'refused', reason: 'acknowledgement cancelled after reaction rejection' }; return outcome;
+            }
+          }
+          outcome = { kind: 'unknown', reason: 'send port failed' };
+          let reply;
+          try { reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
+            body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }),
+              ...(replyTo === undefined ? {} : { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } }),
+              ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }) },
+            timeoutMs: 30000 }, token()); }
+          finally { observeSendPhase?.('transportReturnedAt'); }
+          outcome = classifyTelegramSend(reply, { chat, expectedText, forum: g.forum === true, ...(thread === undefined ? {} : { thread }) });
+          if (reaction && outcome.kind === 'accepted') {
+            outcome = { ...outcome, acknowledgementPath: 'text' };
+            typing.start(chat, thread, current ?? (() => false),
+                () => workingActivities.current(noticeTurn.id)?.running === true);
+          }
+          return outcome;
+        } finally { if (shared) await shared.outcome(target, outcome.kind); }
       } });
     if (existsSync(stopPath)) throw Error('preview: stop latched');
     const activationPath = required(options, 'activation-record');
     const activationBytes = readFileSync(activationPath, 'utf8');
     const activation = JSON.parse(activationBytes), profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
+    loginConfiguration ??= loadHarnessLogins(options);
     active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
-    validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING);
+    doorway.validateActivation(activation, profile, required(options, 'model'), wallNow(), doorway.conversationFraming, journal.view.expires);
     requireAuthority(options, activation, activationPath, journal.view, wallNow());
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
+    // Part Thirteen §9 (docs/17-harness-adapters): tools are on by default. The tool route runs under its own activation
+    // record, bound to the tools policy digest and resolved from the same sealed authority (the operator's recorded grant).
+    // `--tools-activation PATH` names a record the desk wrote; without it the runner derives one from this conversation
+    // activation (every field the same, the tools policy digest in place of the conversation one) and keeps it only when
+    // the sealed authority resolves it, writing it to the root as the live withdrawal handle. `--tools off` refuses tools.
+    // Changing or removing the file withdraws them: no new tool turn starts, and a live one ends. Revoking the grant
+    // withdraws them durably. Plan #449: the build's own tools policy is presented to the resolver, so the operator's standing
+    // full-tools grant recorded for a policy class (tools-policy-class.ts) covers every build whose policy keeps the class's
+    // checkpoints. With no covering grant the runner REFUSES to start and names why; it never starts silently text only
+    // (only an explicit `--tools off` runs text only).
+    const toolsMode = options.tools ?? 'default';
+    if (toolsMode !== 'default' && toolsMode !== 'off') throw Error('preview: --tools must be default or off');
+    if (options['tools-activation'] !== undefined && toolsMode === 'off') throw Error('preview: --tools off contradicts --tools-activation');
+    const adoptTools = (toolsActivationPath, toolsBytes) => {
+      // A doorway that serves no scoped-tool framing has no tool route: refused rather than validated against another
+      // doorway's reviewed policy (w4-sessiondriver); each doorway checks its own tools activation.
+      if (doorway.toolsFraming === null) throw Error(`preview: doorway ${doorway.id} serves no scoped-tool answer framing`);
+      const toolsActivation = JSON.parse(toolsBytes);
+      doorway.validateActivation(toolsActivation, profile, required(options, 'model'), wallNow(), doorway.toolsFraming, journal.view.expires);
+      toolsResolution = requireAuthority(options, toolsActivation, toolsActivationPath, journal.view, wallNow(),
+        doorway.policyFor(required(options, 'model'), doorway.toolsFraming));
+      if (!activationMatchesJournal(journal.view, toolsActivation)) throw Error('preview: tool activation differs from journal');
+      return toolsActivation;
+    };
+    // A revoked, changed, expired or unreadable grant withdraws tools live: every check resolves the sealed authority again
+    // at the current time (a grant's liveness depends on the clock, not only on the record's bytes), and a refusal ends
+    // tools (no new tool turn, and a live one stops) until a later launch resolves them.
+    const stillGranted = (toolsActivationPath, toolsBytes) => () => {
+      try { adoptTools(toolsActivationPath, toolsBytes); return true; } catch { return false; }
+    };
+    if (options['tools-activation'] !== undefined) {
+      const toolsActivationPath = options['tools-activation'];
+      const toolsBytes = readFileSync(toolsActivationPath, 'utf8');
+      toolsRecord = adoptTools(toolsActivationPath, toolsBytes);
+      const granted = stillGranted(toolsActivationPath, toolsBytes);
+      toolsActive = () => { try { return readFileSync(toolsActivationPath, 'utf8') === toolsBytes && granted(); } catch { return false; } };
+    } else if (toolsMode === 'off') toolsOff = 'refused at launch with --tools off';
+    else {
+      const toolsActivationPath = join(root, TOOLS_DEFAULT_ACTIVATION);
+      const toolsBytes = `${JSON.stringify({ ...activation, invocationPolicyDigest: doorway.toolsFraming === null ? 'none'
+        : encoded(doorway.policyFor(required(options, 'model'), doorway.toolsFraming)).hash }, null, 2)}\n`;
+      try {
+        // The authority is resolved against the record's would-be path, so the sealed record beside the activation governs it.
+        toolsRecord = adoptTools(activationPath, toolsBytes);
+        let current = null;
+        try { current = readFileSync(toolsActivationPath, 'utf8'); } catch { current = null; }
+        if (current !== toolsBytes) writeToolsDefaultActivation(toolsActivationPath, toolsBytes);
+        const granted = stillGranted(activationPath, toolsBytes);
+        toolsActive = () => { try { return readFileSync(toolsActivationPath, 'utf8') === toolsBytes && granted(); } catch { return false; } };
+      } catch (error) {
+        // Never a silent text-only start: the operator granted the full tool set, so a launch nothing covers is refused, loudly.
+        // The reason is the resolver's fixed text with digests and class names (no secret), so it goes to stderr whole, as the
+        // tools-off line it replaces did; the launch log records it too ('refused before launch').
+        const refusal = `preview: refused to start: no recorded operator grant covers this build's tools policy (${JSON.parse(toolsBytes).invocationPolicyDigest}): `
+          + `${String(error?.message ?? error).replace(/^preview: /u, '')}. Record the standing full-tools grant for this policy (or its class), `
+          + 'or pass --tools off to run text only';
+        process.stderr.write(`${refusal}\n`);
+        throw Error(refusal);
+      }
+    }
+    // The resolved tools authority, recorded at launch: the grant, and the class and policy digest it was verified for.
+    if (toolsRecord && toolsResolution) process.stderr.write(`preview: tools on: grant ${toolsResolution.grant}`
+      + (toolsResolution.policyClass ? ` (class ${toolsResolution.policyClass.name})` : ' (exact policy)')
+      + ` covers tools policy ${toolsRecord.invocationPolicyDigest}\n`);
+    // Each pool member has independent activation/authority withdrawal handles. No grant is
+    // inherited from another account; default tool records still resolve the member's own grant.
+    if (options['login-pool'] !== undefined) {
+      const unavailable = new Map();
+      for (const entry of loginConfiguration.entries) {
+        try {
+          verifyPreparedHarnessLogin(entry);
+          const bytes = readFileSync(entry.activation, 'utf8'), record = JSON.parse(bytes);
+          const profileBytes = readFileSync(entry.profilePath, 'utf8');
+          const toolPath = entry.toolsActivation;
+          const toolBytes = toolsMode === 'off' ? null : toolPath ? readFileSync(toolPath, 'utf8')
+            : JSON.stringify({ ...record, invocationPolicyDigest: encoded(doorway.policyFor(options.model, doorway.toolsFraming)).hash });
+          const toolRecord = toolBytes === null ? null : JSON.parse(toolBytes);
+          const sessionPath = entry.sessionActivation;
+          const sessionBytes = sessionPath ? readFileSync(sessionPath, 'utf8') : null;
+          const sessionRecord = sessionBytes === null ? null : JSON.parse(sessionBytes);
+          const memberHarness = entry.index === 0 ? harness : harnessOf(entry.options, root, doorway);
+          const check = mode => {
+            const tools = mode === true, session = mode === 'session';
+            verifyPreparedHarnessLogin(entry);
+            if (!loginConfiguration.current() || readFileSync(entry.activation, 'utf8') !== bytes
+              || readFileSync(entry.profilePath, 'utf8') !== profileBytes
+              || (tools && toolPath && readFileSync(toolPath, 'utf8') !== toolBytes)
+              || (session && sessionPath && readFileSync(sessionPath, 'utf8') !== sessionBytes))
+              throw Error('preview: harness login activation or profile withdrawn');
+            const target = session ? sessionRecord : tools ? toolRecord : record;
+            if (!target) throw Error('preview: harness login has no activation for this route');
+            const framing = tools ? doorway.toolsFraming : doorway.conversationFraming;
+            if (session) sessionAdapter.validateActivation(target, entry.profile, options.model, wallNow(), journal.view.expires);
+            else doorway.validateActivation(target, entry.profile, options.model, wallNow(), framing, journal.view.expires);
+            requireAuthority(entry.options, target, session ? sessionPath : tools && toolPath ? toolPath : entry.activation,
+              journal.view, wallNow(), session && conversationSession ? sessionAdapter.policy(options.model)
+                : tools ? doorway.policyFor(options.model, framing) : undefined);
+            if (!activationMatchesJournal(journal.view, target)) throw Error('preview: pool activation differs from journal');
+          };
+          const live = tools => { try { check(tools); return true; } catch { return false; } };
+          check(false); if (toolRecord) check(true);
+          if (entry.index !== 0) memberHarness.current();
+          if (options['session-work-activation'] !== undefined) check('session');
+          loginRuntimes.set(entry.index, { activation: record, toolsRecord: toolRecord, sessionRecord, harness: memberHarness, check, live });
+        } catch (error) {
+          if (entry.index === 0) throw error;
+          unavailable.set(entry.index, 'activation, authority or authentication unavailable');
+        }
+      }
+      loginPool = createHarnessLoginPool({ configuration: loginConfiguration, unavailable,
+        statePath: join(root, 'harness-login-pool.json'), now: wallNow,
+        previouslyLaunched: () => harnessPoolPreviouslyLaunched(runsPath, [loginConfiguration.identity, ...loginConfiguration.legacyIdentities]),
+        validate: (entry, tools) => { const runtime = loginRuntimes.get(entry.index); runtime.check(tools); runtime.harness.current(); } });
+    }
+    const effectPolicyPath = options['effect-policy'];
+    if (effectPolicyPath !== undefined) {
+      decodeEffectPolicy(JSON.parse(readFileSync(effectPolicyPath, 'utf8')));
+      // A configured policy that cannot be reread is unavailable, never the empty default: the hook refuses every proposal
+      // that could reach the doorway until it reads again (its restrictions must not lapse while it is being rewritten).
+      effectPolicyOf = () => currentEffectPolicy(() => readFileSync(effectPolicyPath, 'utf8'));
+    }
+    // Rule 114: a tool turn a crash interrupted has its hook record journaled now, before any new turn (and its retention
+    // pass) can run; until it is, retention keeps that directory. No tool turn of this runner is live yet.
+    try { reconcileToolTurns({ journal, root, redactText: text => redact(text).text, now: wallNow }); }
+    catch (error) { process.stderr.write(`preview: interrupted tool turns not yet journaled (kept): ${String(error?.message ?? error)}\n`); }
+    // Part fifteen §5 (docs/19-scheduled-work): long and scheduled work runs as a full delegated
+    // session only under its own reviewed grant, re-checked before every step together with the
+    // login home's live subscription sign-in. Changing or removing the grant file withdraws it: no
+    // new step starts, and an open step's child is stopped. Each step is admitted and held by this
+    // process's one resource owner and reserves its call liability in the journal before it exists.
+    const sessionSetup = sessionWorkOf(options);
+    // The host's one admission checkpoint for every harness it delegates to (admission-gate.mjs): each model call of a
+    // delegated session or a Codex tool turn takes its claim's reserved allowance here before dispatch, each delegation
+    // becomes a durable child edge first, and each consequential tool passes the effect owner, which decides it by the
+    // effect doorway's four tests under the installation's current effect policy (read at each decision, so a policy
+    // withdrawn or unreadable mid-step refuses), exactly as an unchecked tool turn's hook does.
+    if (sessionSetup !== null || doorway.toolTurn?.harness) {
+      const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
+        || wallNow() >= journal.view.expires || !active() || sessionAccountsChanged();
+      const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
+      gate = await createAdmissionGate({ append: appendWork, stopped: gateStopped, now: wallNow, held: heldVerdict(heldSecrets),
+        effects: createToolEffectOwner({ decide: (tool, input, parent) => conversationSession && sessionConnectors.has(parent.child)
+          ? admitSessionConnector({ tool, input, config: admissionConfig(), mcp: readRootMcp(root), enabled: accountActions,
+            now: wallNow(), decide: admitToolCallEffect })
+          : admitToolCallEffect(tool, input, admissionConfig(), wallNow()),
+          append: appendWork, stopped: gateStopped, now: wallNow, prepared: identity => (journal.view.toolEffects ?? []).includes(identity) }) });
+    }
+    if (sessionSetup !== null) {
+      let selectedSession = loginConfiguration.entries[0], profile = selectedSession.profile;
+      let sessionHarness = harness;
+      let sessionBytes = readFileSync(sessionSetup.activation, 'utf8'), sessionActivation = JSON.parse(sessionBytes);
+      sessionAdapter.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
+      requireAuthority(options, sessionActivation, sessionSetup.activation, journal.view, wallNow(),
+        conversationSession ? sessionAdapter.policy(options.model) : undefined);
+      if (!activationMatchesJournal(journal.view, sessionActivation)) throw Error('preview: session work activation differs from journal');
+      const sessionActive = () => { try { return loginPool && !conversationSession ? loginRuntimes.get(selectedSession.index).live('session') : readFileSync(sessionSetup.activation, 'utf8') === sessionBytes; } catch { return false; } };
+      // Rule 60: the session's working scope is a persistent fixed-size volume (tool-turn.mjs attachSessionVolume), mounted
+      // before the first step, so every file a step writes, however many, is bounded together. Run as the harness user
+      // (--harness-user), the same volume mounts where that user can reach it (harness-user.mjs harnessSessionLayout),
+      // both identities granted on it, and each step's admission state lives in the harness area, as a tool turn's does.
+      const layout = harness ? harnessSessionLayout(root) : null;
+      const scope = layout ? layout.mount : join(realpathSync(root), 'session-work');
+      mkdirSync(scope, { recursive: true, mode: 0o700 });
+      chmodSync(scope, 0o700);
+      const project = realpathSync(scope), framework = doorway.session.framework;
+      const mountVolume = identity => {
+        if (attachSessionVolume(root, layout ? { at: layout.mount } : {}) !== project) throw Error('preview: the session volume is not the working scope');
+        if (identity) grantVolume(project, identity.user, identity.runner);
+      };
+      const physicalFor = () => createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
+        home: profile.home, configHome: profile.configDirectory, cwd: project,
+        ...(conversationSession && layout ? { lifecycleDirectory: join(layout.admission, 'lifecycle') } : {}) });
+      let physical = physicalFor();
+      const hostStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
+        || wallNow() >= journal.view.expires || !active();
+      const stoppedNow = () => hostStopped() || !sessionActive() || sessionAccountsChanged();
+      // The step's preflights run as the identity its session will (harness-user: held, never the runner's, while unready).
+      const admissionIO = () => createSubscriptionProviderIO({ repository: process.cwd(), stopped: stoppedNow, work: 'maintenance',
+        runAs: runAsOf(sessionHarness) });
+      // Every tool call of the child (its subagents' too) passes the admission hook before dispatch: its slots are
+      // the step's reserved call liability, MCP and other consequential tools go to the effect doorway, and every
+      // shell command runs confined. The state lives beside the working scope, never inside it.
+      const admissionBase = layout ? layout.admission : join(root, 'session-work-state', 'admission');
+      const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
+      const configurationFor = (topic, binding, handoff = null) => {
+        const contextGrounding = () => join(binding.physical().inboxDirectory, `context-${topic ?? 'main'}.txt`);
+        const driverConfiguration = resolveIntake => ({ operatorOwnUse: true, confinement: 'admitted',
+          toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
+            // A hook invocation is bounded independently of the four-hour conversation lifetime.
+            timeoutSeconds: Math.min(3600, Math.ceil(sessionLimits.deadlineMs / 1000)) }, modelGate: claim => gate.base(claim),
+          ...(conversationSession ? { connectors: claim => sessionConnectors.get(claim)?.launch() } : {}),
+          framework, executable: binding.entry().profile.executable, cwd: project, home: binding.entry().profile.home, configHome: binding.entry().profile.configDirectory,
+          model: required(options, 'model'), context, io: { ...binding.physical(), transcriptExists: (...args) => (!handoff || handoff.resumeAllowed) && binding.physical().transcriptExists(...args) }, now: wallNow, stopped: binding.stopped, resolveIntake,
+          observeActivity: observation => {
+            workActivity.set(observation.subject, observation);
+            // This callback follows exact live process verification. A configured profile,
+            // identity drift, or a failed worker probe alone never produces a login alarm.
+            if (binding.harness()) {
+              const health = observeInstalledSessionLogin(binding.entry().profile, { ...observation, slot: binding.entry().index + 1 }, undefined, ownerMachine);
+              if (health) sessionLoginObservations.set(health.key, health);
+            }
+          },
+          maxSessions: sessionLimits.maxSessions, turnDeadlineMs: sessionLimits.deadlineMs,
+          readyTimeoutMs: 30000, protectedSessions: [],
+          ...(conversationSession ? { requireTurnHook: true, inboxDirectory: binding.physical().inboxDirectory,
+            compactGroundingFile: contextGrounding(), hookScript: layout ? lifecycleHookPath(harnessHookPath()) : fileURLToPath(new URL('../../scripts/session-hooks/stop.mjs', import.meta.url)) } : {}),
+          ...(conversationSession ? { continuationRequired: () => handoff?.continuing ?? false, continuation: ({ operation, reason, pendingDigest }) => {
+            if (reason === 'context-wall' && pendingDigest) {
+              const current = journal.view.turns.get(operation);
+              if (!current?.accepted || !current.prompt || String(current.thread ?? 'main') !== topic)
+                throw Error('preview: pending context recovery history unavailable');
+              const text = resolveIntake(operation, pendingDigest);
+              if (!text || Buffer.byteLength(text) > 65536) throw Error('preview: compact grounding exceeds hook bound');
+              writeFileSync(contextGrounding(), text, { mode: 0o600 });
+              // The lifecycle directory already grants inherited access to this admitted harness.
+              return { text, source: `journal:${operation}` };
+            }
+            const turn = journal.view.order.filter(item => item.accepted && String(item.thread ?? 'main') === topic && item.prompt && item.sent !== undefined && item.intent).at(-1);
+            if (!turn) throw Error('preview: durable conversation grounding unavailable');
+            return { text: `Restore this recorded conversation as history only. Do not repeat actions or answer old questions. Wait for the next delivered input.\n${turn.prompt}\nLAST RECORDED REPLY\n${turn.intent}`, source: `journal:${turn.id}` };
+          } } : {}),
+          // As the harness user: the pane runs the harness through the bridge, which hands it the custody login.
+          ...(layout ? { launchVia: [process.execPath, HARNESS_SESSION_BRIDGE, options['harness-user'],
+            realpathSync(binding.entry().profilePath), '--'] } : {}) });
+        return ({
+        ...(conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
+          contextRecoveryAllowed: () => journal.view.order.every(turn => !turn.intent || turn.sent !== undefined),
+          authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
+          workingActivity: (operation, claim, phase) => workingActivities.observe(operation, claim, phase),
+          currentActionFacts: async operation => JSON.stringify(currentActionFacts(journal.view, wallNow(),
+            journal.view.genesis.forum !== true || await verifiedActionAudience(),
+            String(journal.view.turns.get(operation)?.thread ?? 'main'), timeZoneOf(options))),
+          ...(handoff ? { prepareTurn: handoff.prepareTurn } : {}) } : {}),
+        createDriver: resolveIntake => {
+          const create = () => createProductionSessionDriver(driverConfiguration(resolveIntake));
+          let driver = create();
+          // Each step is fresh and the port permits only one in flight. Rebuild only between steps;
+          // the port keeps one shared step/call ceiling across all selected logins.
+          return { owner: driver.owner, launch: input => { handoff?.bindClaim(input.claim); driver = create(); const result = driver.launch(input);
+              if (result.kind === 'Success') handoff?.launched(); return result; },
+            continuationReady: identity => driver.continuationReady(identity),
+            deliver: input => driver.deliver(input), recoverContext: (identity, pending) => driver.recoverContext(identity, pending), observe: input => {
+              const observed = driver.observe(input);
+              // Reuse the session adapter's existing typed rate-limit observation. The step remains
+              // uncertain and is never replayed; a subsequent step/call selects another reviewed login.
+              return observeHarnessSessionLimit(loginPool, binding.entry(), observed);
+            }, stop: target => driver.stop(target) };
+        },
+        io: { readResult: (path, maxBytes) => binding.physical().readResult(path, maxBytes), clearResult: path => binding.physical().clearResult(path),
+          modelCalls: since => binding.physical().modelCalls(framework, project, binding.entry().profile.configDirectory, since), wait: delay,
+          prepareAdmission: async (claim, edge) => {
+            const identity = binding.harness() ? binding.harness().current() : null;
+            mountVolume(identity);
+            await closeStepEgress(claim);
+            if (identity) {
+              harnessSessionAdmission(root, identity.user);
+              if (conversationSession) { installLifecycleHook(harnessHookPath()); grantVolume(binding.physical().inboxDirectory, identity.user, identity.runner); }
+            }
+            const mcp = conversationSession ? readRootMcp(root) : null;
+            if (conversationSession) sessionMcpDigest = mcp?.digest ?? null;
+            const state = prepareSessionAdmission({ mcpReads: mcp?.reads ?? [], base: admissionBase, claim, workspace: project, maxCalls: edge.budget.calls,
+              gate: gate.base(claim), ...admissionConfig(), ...(identity ? { harness: { user: identity.user, runner: identity.runner } } : {}) });
+            // The step's shell network checkpoint (egress-proxy.mjs): the confined shell's one network path, deciding every
+            // request by the same effect doorway, under its request and byte bounds; stopped when the step's claim closes.
+            // As the harness user its private state stays the runner's alone, outside the harness-readable step state.
+            const tmp = join(project, '.tmp');
+            let privateDirectory;
+            if (identity) {
+              const egressBase = join(root, 'session-work-state', 'egress');
+              privateDirectory = join(egressBase, claim);
+              rmSync(privateDirectory, { recursive: true, force: true });
+              mkdirSync(privateDirectory, { recursive: true, mode: 0o700 });
+              // Kept like the admission directories: the newest SESSION_ADMISSION_KEPT steps.
+              readdirSync(egressBase).filter(name => name !== claim).map(name => ({ name, at: lstatSync(join(egressBase, name)).mtimeMs }))
+                .sort((a, b) => b.at - a.at).slice(SESSION_ADMISSION_KEPT - 1)
+                .forEach(({ name }) => rmSync(join(egressBase, name), { recursive: true, force: true }));
+            }
+            stepEgress.set(claim, (await attachEgress({ stateDirectory: state, ...(privateDirectory ? { privateDirectory } : {}), scratch: tmp,
+              home: join(tmp, 'home') }, undefined, networkToolReads(), { check: heldVerdict(heldSecrets), span: () => heldSpan(heldSecrets) })).proxy);
+            if (conversationSession) {
+              const previous = sessionConnectors.get(claim);
+              if (previous) await previous.close();
+              sessionConnectors.set(claim, await prepareSessionConnectors({ mcp,
+                privateDirectory: privateDirectory ?? state, identity,
+                resolveSecret: name => createSecretCustody(root, key(), wallNow).resolve(secretRef(name)),
+                check: heldVerdict(heldSecrets) }));
+            }
+            gate.open(claim, { framework, allowance: edge.budget.calls, edge,
+              ...(conversationSession ? { reserveCall: ordinal => sessionWork.port.reserveCall(claim, ordinal) } : {}) }); },
+          admissionState: claim => gate.state(claim),
+          closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {});
+            const connectors = sessionConnectors.get(claim); sessionConnectors.delete(claim);
+            connectors?.close().catch(() => {}); } },
+        resources: { admit: async () => {
+          if (loginPool) loginRuntimes.get(binding.entry().index).check('session');
+          else sessionAdapter.validateActivation(sessionActivation, binding.entry().profile, required(options, 'model'), wallNow(), journal.view.expires);
+          await doorway.session.admit({ profile: binding.entry().profile, io: binding.admissionIO(), deadline: wallNow() + 15000, now: wallNow });
+          const held = await hostResources.hold('maintenance', { timeout: 30000, stopped: binding.stopped });
+          return held === null ? null : { attach: child => held.attach({ pid: Number(child.split(':')[1]), cwd: project }),
+            release: async () => (await held.release()).verified };
+        } },
+        context, now: wallNow, stopped: conversationSession ? hostStopped : binding.stopped,
+        ...(!conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords() } : {}),
+        append: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
+        parent: `launch:${conversationOf(g)}`, owner: ownerMachine, placement: `machine:${ownerMachine}`,
+        transport: sessionAdapter.transport ?? 'tmux session on this machine', workingScope: project, resultDirectory: project,
+        artifact: `doorway:${doorway.id}`, incarnation: String(launchedAt ?? wallNow()),
+        deadlineMs: sessionLimits.deadlineMs, pollMs: sessionLimits.pollMs,
+        maxResultBytes: sessionLimits.maxResultBytes, maxSteps: sessionLimits.maxStepsPerLaunch,
+        maxCalls: sessionLimits.maxCallsPerStep,
+        sessionConfiguration: () => driverConfiguration(() => { throw Error('protocol uses durable delivery'); }),
+      }); };
+      const defaultBinding = { entry: () => selectedSession, physical: () => physical, harness: () => sessionHarness,
+        stopped: stoppedNow, authorized: sessionActive, admissionIO };
+      const topicConfigurations = new Map();
+      const topicConfiguration = topic => {
+        if (topicConfigurations.has(topic)) return topicConfigurations.get(topic);
+        const physicalEntry = entry => createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
+          home: entry.profile.home, configHome: entry.profile.configDirectory, cwd: project,
+          ...(layout ? { lifecycleDirectory: join(layout.admission, 'lifecycle') } : {}) });
+        let handoff = null;
+        const entry = () => handoff?.current() ?? loginConfiguration.entries[0];
+        const runtime = () => loginRuntimes.get(entry().index);
+        const binding = { entry, physical: () => physicalEntry(entry()), harness: () => runtime()?.harness ?? harness,
+          authorized: () => sessionActive() && (!loginPool || runtime().live('session')),
+          authority: () => `${sessionWork.authority}; topic ${topic} account grant ${(runtime()?.sessionRecord ?? sessionActivation).reference}`,
+          stopped: stoppedNow,
+          admissionIO: () => createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => binding.stopped(),
+            work: 'maintenance', runAs: runAsOf(binding.harness()) }) };
+        if (loginPool) handoff = createTopicLoginHandoff({ topic, pool: loginPool, entries: loginConfiguration.entries,
+          store: createConversationHostStore(join(root, 'session-work-state', `topic-login-${topic}.json`), key()),
+          physical: physicalEntry, project, framework,
+          admit: async next => {
+            const runtime = loginRuntimes.get(next.index); runtime.check('session');
+            await doorway.session.admit({ profile: next.profile,
+              io: createSubscriptionProviderIO({ repository: process.cwd(), stopped: hostStopped, work: 'maintenance', runAs: runAsOf(runtime.harness) }),
+              deadline: wallNow() + 15000, now: wallNow });
+          } });
+        const config = configurationFor(topic, binding, handoff);
+        config.createAdapter = resolveDelivery => createProductionConversationAdapter({ createDriver: config.createDriver, io: config.io,
+          resolveDelivery, configuration: config.sessionConfiguration,
+          transport: () => createSessionProtocolIO(join(root, 'session-work-state', 'protocol'), binding.stopped),
+          resumeKey: `topic:${topic}`, beforeLaunch: claim => handoff?.bindClaim(claim), afterLaunch: () => handoff?.launched() });
+        topicConfigurations.set(topic, config); return config;
+      };
+      sessionWork = { select() {
+        if (conversationSession) {
+          // A changed signed grant is revalidated at the turn boundary. Never keep dispatching
+          // under the old bytes; stoppedNow closes an active turn on withdrawal.
+          const current = readFileSync(sessionSetup.activation, 'utf8');
+          if (current !== sessionBytes) {
+            const record = JSON.parse(current);
+            sessionAdapter.validateActivation(record, profile, required(options, 'model'), wallNow(), journal.view.expires);
+            requireAuthority(options, record, sessionSetup.activation, journal.view, wallNow(),
+              conversationSession ? sessionAdapter.policy(options.model) : undefined);
+            if (!activationMatchesJournal(journal.view, record)) throw Error('preview: refreshed session grant differs from journal');
+            sessionBytes = current; sessionActivation = record;
+          }
+          return;
+        }
+        selectedSession = selectLogin('session'); profile = selectedSession.profile;
+        sessionHarness = loginRuntimes.get(selectedSession.index)?.harness ?? harness;
+        physical = physicalFor();
+      }, get authority() { return `${conversationSession ? 'continuing conversation' : 'session work'} grant ${(conversationSession ? sessionActivation : loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}${conversationSession ? ` bytes ${sha256(sessionBytes)}` : ''}: ${conversationSession ? 'one bounded conversation' : 'one scheduled work step'} for the verified operator, `
+        + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take((conversationSession ? config => createConversationTopicsPort({ ...config,
+          maxSessions: sessionLimits.maxSessions, idleMs: sessionLimits.idleMs, topicConfig: topicConfiguration,
+          capacity: createTopicWorkerCapacity(sessionLimits),
+          topicOf: operation => {
+            // A repair inherits only its admitted parent's topic, never its execution identity.
+            // The durable one-repair reservation is required; a suffix alone grants nothing.
+            const parent = /^telegram:[0-9]+:update:[0-9]+:format-retry$/u.test(operation)
+              ? journal.view.turns.get(operation.slice(0, -':format-retry'.length)) : undefined;
+            const turn = journal.view.turns.get(operation)
+              ?? (parent?.reserved && parent.answerRetried && parent.promptKind === 'format-retry' ? parent : undefined);
+            if (!turn?.accepted) throw Error('preview: topic input is not durably admitted');
+            return String(turn.thread ?? 'main');
+          },
+          store: createConversationHostStore(join(root, 'session-work-state', 'conversation.json'), key()),
+          createAdapter: (topic, resolveDelivery) => topicConfiguration(topic).createAdapter(resolveDelivery)
+        }) : createSessionWorkPort)(configurationFor(undefined, defaultBinding))) };
+    }
+    installationPolicy = installationPolicyOf(options, activation, activationPath, journal.view, wallNow());
+    registerAtLaunch = registerGeneration();
+    if (installationPolicy.kind !== 'resolved') process.stderr.write(`preview: limited answers past a cap are inhibited: ${installationPolicy.reason}\n`);
     // Rule 56: the installed routes' exact model ids, merged into the durable map.
     doorwayMapPath = doorwaysPath;
     writeDoorwayMap(doorwaysPath, standingDoorwayCheck(installDoorways(readDoorwayMap(doorwaysPath), [
@@ -1308,18 +2808,21 @@ async function main() {
         expiresAt: null, expirySource: 'none', smallestHumanAction: 'rotate the bot token with BotFather and rebind the host secret' },
       { name: 'typesafe-key', kind: 'api-key', custody: 'host-environment', identity: 'TypeSafe Jev route',
         expiresAt: null, expirySource: 'unknown', smallestHumanAction: 'replace the TypeSafe key in host custody' },
-      { name: profile.reference, kind: 'subscription-login', custody: 'cli-custody', identity: profile.expectedAccount,
-        expiresAt: null, expirySource: 'unknown', smallestHumanAction: 'sign the subscription login back in' },
+      ...loginConfiguration.entries.map(({ profile }) => ({ name: profile.reference, kind: 'subscription-login', custody: 'cli-custody', identity: profile.expectedAccount,
+        expiresAt: null, expirySource: 'unknown', smallestHumanAction: 'sign the subscription login back in' })),
       { name: 'preview-activation', kind: 'activation', custody: 'activation-record', identity: activation.reference,
         expiresAt: journal.view.expires, expirySource: 'activation-record', smallestHumanAction: 'approve a renewed activation record' }])
-      custody.register({ name: record.name, kind: record.kind, custody: record.custody, identity: record.identity, recordedAt,
+      custody.register({ displayLabel: credentialDisplayLabel(record), name: record.name, kind: record.kind, custody: record.custody, identity: record.identity, recordedAt,
         expiresAt: record.expiresAt, expirySource: record.expirySource, reminders: reminderSchedule(record.expiresAt),
         renewal: { standing: 'none', smallestHumanAction: record.smallestHumanAction } });
     const captures = new Map();
     const physical = createProductionTelegramIO(join(root, '.writer'), { preserve(ref, bytes) {
       if (captures.has(ref) && captures.get(ref) !== bytes) return false; captures.set(ref, bytes); return true;
     }, read: ref => captures.get(ref) ?? null }, offlineEndpoint);
-    if (signalled || existsSync(stopPath)) return;
+    if (signalled || existsSync(stopPath)) {
+      reportExit(signalName ? `paused by signal ${signalName}` : 'operator stop latched');
+      return;
+    }
     const identity = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'getMe', body: {}, timeoutMs: 30000,
       identityBinding: { id: number(g.bot, 'bot-id'), username: required(options, 'bot-username').replace(/^@/, '') } }, token());
     if (identity.kind !== 'identity' || identity.identity.id !== Number(g.bot)) throw Error('preview: bot identity refused');
@@ -1360,13 +2863,22 @@ async function main() {
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
     // The run log is durable before the first poll; the self-state reads it from memory each turn.
     launchedAt = wallNow();
-    installation = { ...installedCode(), briefingDigest: briefingDigest(), harness: PREVIEW_JOURNAL_HARNESS,
+    installation = { ...installedCode(), briefingDigest: briefingDigest(toolsActive()), harness: PREVIEW_JOURNAL_HARNESS,
       stallClasses: PREVIEW_JOURNAL_STALL_COVERAGE.rows.length, doorway: options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY };
     // An unreadable run log is refused by the Rule 55 check below, after this launch's row is appended.
     let priorRuns = null;
     try { priorRuns = existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''; } catch { /* readRuns reports readFailed */ }
     if (priorRuns !== null) installUpdate = installedUpdateFrom(installationRows(priorRuns), installation, launchedAt);
-    appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid, install: installation, work: { conversation: conversationOf(g) } });
+    appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid, ...(loginPool ? { harnessLoginPool: loginConfiguration.identity, harnessLoginManifest: options['login-pool'],
+        harnessLoginUnavailable: loginConfiguration.entries.filter(entry => !loginRuntimes.has(entry.index))
+          .map(entry => [entry.index, 'activation, authority or authentication unavailable']) } : {}), harnessLoginSelection: installedLoginSelection.mode, install: installation, work: { conversation: conversationOf(g) },
+      // Plan #449: the tools authority this launch resolved (grant, class, policy digest), or why tools are off (only --tools off).
+      tools: toolsRecord && toolsResolution ? { state: 'on', grant: toolsResolution.grant, policyClass: toolsResolution.policyClass?.name ?? null,
+        policyDigest: toolsRecord.invocationPolicyDigest } : { state: 'off', reason: toolsOff ?? 'no tool route' },
+      minimalPath: { shape: 'single-machine', register: registerAtLaunch, policy: installationPolicy.kind === 'resolved'
+        ? { state: 'accepted', id: installationPolicy.id, acceptance: installationPolicy.acceptance, acceptedAt: installationPolicy.acceptedAt,
+          profile: installationPolicy.profile, standing: 'account-authenticated operator message under the desk\'s seal; not device-signed' }
+        : { state: 'not-accepted', reason: installationPolicy.reason } } });
     runs = readRuns(runsPath);
     // Rule 55: unrecoverable poll pressure fails the launcher closed; unavailable history never becomes a fresh episode.
     if (runs.readFailed) { endReason = 'run log unreadable'; pressureUnknown = true; throw Error('preview: run log unreadable'); }
@@ -1375,21 +2887,26 @@ async function main() {
     // The run log and ownership exist now: the launch's store comparisons execute as a recorded proof.
     recordProof(executeProof(PREVIEW_PROOF_PLANS.find(plan => plan.id === 'store-agreements'), proofPorts, generation, clock.elapsed));
     ({ failed: failedPolls, conflicted: conflictedPolls } = runs.pollPressure);
-    const pollFailure = async conflict => {
+    // Plan #548: `unreachable` is a poll that got no answer at all (the connection is down) or a temporary server
+    // failure (temporaryPollStatus: 5xx, 429), as opposed to a definite answer Telegram gave that is not a usable
+    // result. A sustained conflict or refusal ends the run; a sustained outage keeps the poll breaker open at the capped
+    // trial cadence while due work goes on (waitWorking).
+    const pollFailure = async (conflict, unreachable = false) => {
       failedPolls++; routeHealthy = false;
       conflictedPolls = conflict ? conflictedPolls + 1 : 0;
       try { appendRun(runsPath, { v: 1, launch: launchedAt, poll: conflict ? 'conflicted' : 'failed', at: wallNow() }); }
       catch { endReason = 'run log unavailable'; process.exitCode = 1; return false; }
-      const reason = exhaustedPollReason(failedPolls, conflictedPolls);
+      const reason = pollEndsRun(failedPolls, conflictedPolls, unreachable);
       if (reason) {
         endReason = reason;
         process.exitCode = 1;
         return false;
       }
-      const until = clock.elapsed() + Math.min(conflict ? 2000 : 30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
-      serviceBeat(false, conflict ? 'Telegram reports another poller' : 'polling Telegram is failing');
-      while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
-        await delay(Math.min(100, until - clock.elapsed()));
+      serviceBeat(false, conflict ? 'Telegram reports another poller' : exhaustedPollReason(failedPolls, conflictedPolls)
+        ? 'poll breaker open after sustained failures' : 'polling Telegram is failing');
+      // The backoff never pauses the work schedule: the cycle's work job is offered to the lane throughout.
+      await waitWorking({ elapsed: clock.elapsed, delay, stopped: () => signalled || workerStop.value || existsSync(stopPath), work: workCycle },
+        pollBackoffMs(failedPolls, conflict));
       return true;
     };
     // An exhausted carried episode is an open breaker: one delayed trial poll per launch, never an immediate retry storm.
@@ -1399,7 +2916,7 @@ async function main() {
       while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
         await delay(Math.min(100, until - clock.elapsed()));
     }
-        let summaryJob = null, stepJob = null, retroJob = null;
+        let summaryJob = null, stepJob = null, retroJob = null, replyReviewJob = null;
     const checkStepsLater = () => {
       if (!stepCheckEnabled || stepJob) return;
       stepJob = worker.checkSteps().catch(() => {}).finally(() => { stepJob = null; });
@@ -1412,6 +2929,9 @@ async function main() {
 
     const sourceState = options['agent-state-dir'] ? agentState(options['agent-state-dir']) : null;
     const summarizeLater = () => {
+      // Reviews advise after delivery and never occupy the ordinary send lane. The worker
+      // owns one serial pass and rebuilds pending work from durable intents after restart.
+      if (!replyReviewJob) replyReviewJob = worker.reviewReplies().catch(() => {}).finally(() => { replyReviewJob = null; });
       // After the reply: the deterministic coherence check records its findings for the next
       // packet. It makes no call and cannot hold the reply already attempted;
       // its synchronous journal write can slightly delay the next poll.
@@ -1428,20 +2948,72 @@ async function main() {
     // ordinary pass no longer ends the process: the minimal path keeps reading and answering (reason
     // `worker`) while the ordinary pass is retried with backoff; eight consecutive failures open the
     // breaker and end the run for the host supervisor (Rules 15, 55; Eleven §5's ordinary-worker cut).
-    let drainJob = null, drainError = null, drainFailures = 0, drainRetryAt = 0;
-    const background = run => {
-      if (drainJob || clock.elapsed() < drainRetryAt) return;
-      drainJob = run().then(() => { drainFailures = 0; }, error => {
-        drainFailures++;
-        drainRetryAt = clock.elapsed() + Math.min(300_000, 1000 * 2 ** Math.min(drainFailures - 1, 9));
-        if (drainFailures >= 8) drainError ??= error;
-      }).then(summarizeLater).finally(() => { drainJob = null; });
-    };
+    // Two machines: ordinary work (model calls, replies, reminders) starts only while the other machine holds the
+    // whole journal, so nothing is spent or prepared on local durability while the peer is away. Input is still read.
+    const lane = createOrdinaryLane({ elapsed: clock.elapsed,
+      peerCurrent: () => !signalled && !workerStop.value && !existsSync(stopPath) && !journal.view.stop
+        && ownerHeld() && activationMatchesJournal(journal.view, activation) && (shared === null || shared.peerCurrent()),
+      after: summarizeLater });
     // A message past every bound waits at Telegram; later presses behind it are re-read after this pause.
     const waitHeld = async () => {
       const until = clock.elapsed() + 3000;
       while (!signalled && !workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
         await delay(Math.min(250, until - clock.elapsed()));
+    };
+    // A renewal applied this launch (a chat yes at intake, a review approval in the minimal step) moves the journal's end
+    // past this record, and no model call accepts it after that. The cycle ends before any further model step, so the
+    // waiting turns (the yes included) are answered by the next launch on the renewed record, not refused under this one.
+    const renewedAway = () => {
+      if (activationMatchesJournal(journal.view, activation)) return false;
+      endReason = 'activation renewed: restart on the renewed record'; return true;
+    };
+    // Part 18 (plan #402): the live sentinels run on this loop's own cycle and request only the runner's own bounded
+    // steps. A requested step is queued and run inside the cycle's admitted ordinary job (sentinelCycle), never
+    // resubmitted to the busy lane, where it would be silently declined.
+    const sentinelSteps = [];
+    const sentinels = createLiveSentinels(journal, { now: wallNow, startedAt: launchedAt, families: sentinelFamilies,
+      stopped: () => signalled || workerStop.value || existsSync(stopPath) || !ownerHeld(),
+      workActivity: () => {
+        const active = new Set(Object.values(journal.view.activeSessionWork ?? {}).map(edge => edge.child));
+        for (const subject of workActivity.keys()) if (!active.has(subject)) workActivity.delete(subject);
+        return [...workActivity.values()];
+      },
+      reground: () => sentinelSteps.push(() => worker.drain()),
+      recoverContext: () => sentinelSteps.push(() => worker.summarizeIfNeeded(true)),
+      selfHeal: () => sentinelSteps.push(() => worker.drain()),
+      // A due reminder is never sent from this pre-poll job: the post-poll job below already sends every requested
+      // reminder, and only after a successful empty poll, so a waiting withdrawal is read and settled first (Rule 93).
+      actOnPromise: id => { if (!id.startsWith('request:')) sentinelSteps.push(() => worker.workObligations()); } });
+    const sentinelTick = () => { if (sentinelFamilies.size && !journal.readOnly) sentinels.tick(); };
+    // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick,
+    // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
+    // The sentinels tick only when that job is admitted, and their requested steps run inside it after the drain.
+    // Plan #548: it is offered once per cycle AND throughout every poll backoff (pollFailure), so it never waits on
+    // the Telegram connection or on an inbound message. Requested result delivery uses the post-poll pass below.
+    const workCycle = (requested = false, wake = false) => {
+      if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
+      // Work observation shares this cycle but must run while the ordinary work lane is busy.
+      if (!journal.readOnly) sentinels.observeWork();
+      sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: async () => {
+        if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
+        if (conversationSession) {
+          try { sessionWork?.select?.(); } catch { /* unchanged grant bytes keep authorization closed; custody remains */ }
+          await sessionWork?.port.maintain();
+        }
+        await worker.drain();
+        // Finished, explicitly requested results share this withdrawal-aware due point with dated requests.
+        if (requested) await worker.sendRequested();
+      },
+        after: async () => {
+          try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
+        } }, wake);
+    };
+    // Plan #548, the desk's live check only: with --telegram-cut-file, while that file holds a future epoch-ms every
+    // poll fails as an unreachable connection without a network call. Never passed to the operator's runner.
+    const cutFile = options['telegram-cut-file'] ?? null;
+    const telegramCut = () => {
+      if (cutFile === null) return false;
+      try { return Number(readFileSync(cutFile, 'utf8').trim()) > wallNow(); } catch { return false; }
     };
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
@@ -1451,6 +3023,12 @@ async function main() {
       const unrestored = failedPolls > 0 || conflictedPolls > 0;
       serviceBeat(!journal.view.stop && wallNow() < journal.view.expires && !unrestored, journal.view.stop ? 'stop latched'
         : unrestored ? (conflictedPolls ? 'Telegram reports another poller' : 'polling Telegram is failing') : 'serving');
+      if (shared) {
+        await shared.sync();
+        // The same checks as the top of the cycle: a stop or a lost lease during the exchange ends it here, cleanly.
+        if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
+        if (!shared.peerCurrent()) serviceBeat(false, 'waiting for the other machine to acknowledge the journal');
+      }
       if (sourceState) for (const source of ['telegram', 'slack']) {
         try {
           importSource(journal, sourceState, source, () => workerStop.value || existsSync(stopPath));
@@ -1458,20 +3036,21 @@ async function main() {
           if (workerStop.value || existsSync(stopPath)) break;
         }
       }
-      if (drainError) throw drainError;
-      worker.gate(); await worker.minimal();
+      if (lane.error()) throw lane.error();
+      // A stop that latches during a worker step ends the loop here, cleanly, like every check above.
+      const ended = () => signalled || workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !ownerHeld();
+      if (!await untilStopped(async () => { worker.gate(); await worker.minimal(); }, ended)) break;
       // A stop given on the independent surface latches here, before any poll or ordinary pass.
       if (journal.view.stop) break;
-      // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick,
-      // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
-      background(async () => {
-        await worker.drain();
-        try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
-      });
-      worker.gate();
+      if (renewedAway()) break;
+      // The scheduled work job (workCycle, above). A holding note the presence sentinel marks due goes out at the
+      // minimal path's next step after the poll.
+      workCycle();
+      if (!await untilStopped(() => worker.gate(), ended)) break;
       reportCap();
       runDueProof();
       checkDoorways();
+      publishDashboard();
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
       let pollLimit;
       try { pollLimit = worker.pollLimit(); } catch { break; }
@@ -1480,69 +3059,106 @@ async function main() {
       // The long poll is awaited asynchronously: a synchronous wait froze every concurrent launch's
       // timers and exit events for up to its whole long-poll timeout (live 2026-09-29).
       const poll = physical.poll ? (input, credential) => physical.poll(input, credential) : (input, credential) => physical.invoke(input, credential);
-      try { result = await poll({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
-        body: { offset: journal.view.cursor, limit: pollLimit,
+      try { if (telegramCut()) throw Error('preview: Telegram connection cut by the live check');
+        result = await poll({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
+        // Two machines: Telegram is asked from the SHARED settled cursor, so it keeps every update the other machine lacks.
+        body: { offset: shared ? shared.cursor : journal.view.cursor, limit: pollLimit,
           timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5),
-          allowed_updates: ['message', 'edited_message', 'callback_query'] },
+          allowed_updates: ['message', 'edited_message', 'callback_query', 'chat_member', 'my_chat_member'] },
         timeoutMs: 12000 }, token()); }
-      catch { if (!await pollFailure(false)) break; continue; }
+      catch { if (!await pollFailure(false, true)) break; continue; }
       await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath)) break;
       if (result.kind !== 'response' || result.status !== 200) {
-        if (!await pollFailure(result.kind === 'response' && result.status === 409)) break;
+        // A temporary server failure (5xx, 429) is an outage like no answer at all: due work goes on (MUST-FIX 1).
+        if (!await pollFailure(result.kind === 'response' && result.status === 409,
+          result.kind !== 'response' || temporaryPollStatus(result.status))) break;
         continue;
       }
       let updates;
       try { updates = JSON.parse(result.bytes); } catch { if (!await pollFailure(false)) break; continue; }
       if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure(false)) break; continue; }
+      groupAudience.observe(updates.result);
       // A successful poll is the restoration evidence that closes the episode, recorded before it is relied on.
       if (failedPolls || conflictedPolls) appendRun(runsPath, { v: 1, launch: launchedAt, poll: 'restored', at: wallNow() });
       if (failedPolls || conflictedPolls) serviceBeat(!journal.view.stop && wallNow() < journal.view.expires, 'poll restored');
       failedPolls = 0; conflictedPolls = 0; routeHealthy = true;
-      worker.intake(updates.result);
+      // Updates this journal already recorded come back until the shared cursor passes them; only the new ones are taken.
+      const batch = shared ? updates.result.filter(update => !(update?.update_id < journal.view.cursor)) : updates.result;
+      worker.intake(batch);
       // An approved phone stop latches in the journal; the loop ends without another effect.
       if (journal.view.stop) break;
+      if (shared) {
+        shared.noteIntake(); await shared.sync();
+        if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
+      }
+      // A chat yes applies a renewal at intake: end before any further step (see renewedAway).
+      if (renewedAway()) break;
       // A full held page was preserved and passed: read the rest of the backlog now, so an exact /stop
       // behind it latches before any further processing (Rule 4; bounded by the waiting store).
-      if (worker.readAhead() && updates.result.length >= pollLimit) continue;
-      await worker.minimal();
+      if (worker.readAhead() && batch.length >= pollLimit) continue;
+      // Start the minimal path's synchronous stop handling before ordinary work can claim a stop turn.
+      // Do not await its longer work before offering the durable intake: a busy lane retains one wake
+      // and drains it as soon as the current job finishes, without a poll tick.
+      const minimalStep = untilStopped(() => worker.minimal(), ended);
+      if (batch.length > 0) workCycle(false, true);
+      if (!await minimalStep) break;
       if (journal.view.stop) break;
+      if (renewedAway()) break;
       // Reminders go out only after a successful poll returned nothing new and no ordinary drain is
       // running: every operator message already waiting (a cancellation included) has been read and
       // settled first. A failed poll, a backlog or a cap leaves them pending.
-      background(() => updates.result.length === 0 ? worker.sendRequested() : worker.drain());
+      // Every admitted job drains ordinary intake first. A pre-poll job may finish during
+      // the poll: admitting only reminders here could win every cycle and starve both
+      // accepted operator turns and due obligations indefinitely (including session work).
+      workCycle(batch.length === 0);
       reportCap();
-      if (worker.intakeHeld()) await waitHeld();
+      // Rule 55: while the other machine is away the unsettled updates return at once; re-read after the same pause.
+      if (worker.intakeHeld() || shared && batch.length === 0 && updates.result.length > 0) await waitHeld();
 
     }
     // The bounded shutdown awaits (provider timeouts) are progress, not a hang.
     const tailBeat = setInterval(hostBeat, 5000);
     try {
-      await drainJob;
-      if (drainError && !signalled) throw drainError;
+      await lane.settle();
+      if (lane.error() && !signalled) throw lane.error();
+      await replyReviewJob;
       await summaryJob;
       await stepJob;
       await retroJob;
       if (stepCheckEnabled) await worker.checkSteps();
     } finally { clearInterval(tailBeat); }
     reportCap();
+    publishDashboard(true);
+    readOnlyServer?.close();
     endReason ??= 'cycle limit reached';
-    function modelRoute(operation) {
-      if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');
-      const policy = subscriptionConversationPolicy(options.model);
-      // Rule 30: the doorway is selected by its registered id; its parser and terminal contract stay in the adapter.
-      const doorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY);
-      const contract = { reference: activation.reference, version: activation.profileDigest,
+    function modelRoute(operation, toolTurn, selected) {
+      const profile = selected.profile, runtime = loginRuntimes.get(selected.index);
+      const selectedActivation = runtime?.activation ?? activation;
+      const selectedTools = runtime?.toolsRecord ?? toolsRecord;
+      const selectedActive = () => active() && (!runtime || runtime.live(Boolean(toolTurn)));
+      const selectedHarness = runtime?.harness ?? harness;
+      if (!selectedActive() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');
+      if (toolTurn && !toolsActive()) throw Error('preview: tool activation withdrawn');
+      // Rule 30: the doorway was selected by its registered id above; its parser, terminal contract,
+      // framings and invocation policy stay in the adapter that owns them.
+      const framing = toolTurn ? doorway.toolsFraming ?? doorway.conversationFraming : doorway.conversationFraming;
+      const policy = doorway.policyFor(options.model, framing);
+      const contract = { reference: selectedActivation.reference, version: selectedActivation.profileDigest,
         ...doorway.contract, successfulFinalReplyReasons: [...doorway.contract.successfulFinalReplyReasons],
         endpoint: profile.loginProfileIdentity,
         account: profile.expectedAccount, credentialReference: profile.reference, controller: 'preview-journal',
-        sourceEvidence: [activation.reference], terminalEvidence: activation.reference,
+        sourceEvidence: [selectedActivation.reference], terminalEvidence: selectedActivation.reference,
         strength: 'attestation', maxMetadataBytes: policy.maxMetadataBytes,
         maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
-      const work = operation.startsWith('summary:') ? 'maintenance' : operation.endsWith(':reply-review') ? 'review' : 'answer';
-      const launchIO = createSubscriptionProviderIO({ repository: process.cwd(),
-        stopped: () => workerStop.value || existsSync(stopPath) || !active(), work });
+      const work = operation.startsWith('summary:') ? 'maintenance' : operation.endsWith(':reply-review') || operation.endsWith(':held-notice-review') ? 'review' : 'answer';
+      // A tool turn also ends on the journal's latched /stop and on tool-activation withdrawal: the resource
+      // owner polls this every 25 ms and SIGKILLs the launch's own process group by its exact pid.
+      const launchIO = createSubscriptionProviderIO({ repository: process.cwd(), runAs: runAsOf(selectedHarness),
+        stopped: () => workerStop.value || existsSync(stopPath) || !selectedActive()
+          || (toolTurn !== undefined && (journal.view.stop !== null || !toolsActive())), work });
       const physicalIO = { ...launchIO, execute: async input => {
+        if (typeof input.stdin === 'string' && input.stdin.length > 0) modelLaunch.started();
         const result = await launchIO.execute(input);
         // Only the model command is the exchange: it alone carries the prepared prompt on stdin; the
         // version and auth preflights send none and print no result frame.
@@ -1551,23 +3167,29 @@ async function main() {
         return result;
       } };
       const io = observedSubscriptionIO(physicalIO, policy, operation, row => journal.append(row),
-        { elapsed: () => performance.now(), at: wallNow });
+        { elapsed: () => performance.now(), at: wallNow },
+        text => redact(concealSecretMaterial(text, heldSecretValues())).text);
       return take(doorway.create({ context, credential: secretRef(profile.reference), profile,
-        resolveProfile: () => profile, provider: 'anthropic', model: options.model, route: 'preview-subscription',
-        disclosure: 'Subscription preview; charge UNKNOWN', activation, framing: SUBSCRIPTION_CONVERSATION_FRAMING,
-        io,
-        now: wallNow, active: () => !workerStop.value && !existsSync(stopPath) && active() && !journal.view.stop,
+        resolveProfile: () => profile, provider: doorway.provider, model: options.model, route: 'preview-subscription',
+        disclosure: 'Subscription preview; charge UNKNOWN', activation: toolTurn ? selectedTools : selectedActivation,
+        framing, ...(toolTurn ? { toolTurn } : {}),
+        journalEnd: () => journal.view.expires, io, versionCheck,
+        now: wallNow, active: () => !workerStop.value && !existsSync(stopPath) && selectedActive() && !journal.view.stop,
         adapterEvidenceContract: contract,
-        ...(journal.view.limits.maxBytes > subscriptionConversationPolicy(options.model).maxPromptBytes
+        ...(journal.view.limits.maxBytes > doorway.policyFor(options.model, doorway.conversationFraming).maxPromptBytes
           ? { raisedPromptBytes: journal.view.limits.maxBytes, promptAuthority: journal.view.capAuthority } : {}) }));
     }
-  } catch (error) { if (!signalled) { startupFailure = error; throw error; } }
+  } catch (error) {
+    if (!signalled) { startupFailure = error; throw error; }
+    reportExit(`paused by signal ${signalName}`);
+  }
   finally {
     try {
       // Rules 2, 42: a launch refused before it launched is still a launch with a recorded end. The
       // scrubbed reason is written while this process holds the root's writer lease (a composition or
       // lease refusal never reaches here, so it writes nothing); stderr and the fixed `reason` stay terse.
       if (launchedAt === null && startupFailure !== null) try {
+        reportExit('refused before launch');
         const at = wallNow(), detail = redact(String(startupFailure?.message ?? startupFailure)).text.split('\n')[0].slice(0, 240);
         appendRun(runsPath, { v: 1, launch: at, pid: process.pid });
         appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: 'refused before launch', refused: detail || 'unknown' });
@@ -1577,6 +3199,7 @@ async function main() {
       if (launchedAt !== null) {
         const reason = signalName ? `paused by signal ${signalName}` : journal?.view.stop === 'trial expired' ? 'trial expired'
           : existsSync(stopPath) || journal?.view.stop ? 'operator stop latched' : endReason ?? 'error (details suppressed)';
+        reportExit(reason);
         // Rule 68: eligible accepted work left behind is queued for the next launch unless a stop, expiry,
         // allowance or signal pause inhibits it; either way it stays visible, never counted as done.
         // Scheduled obligation work not yet due also needs a live runner when its time comes.
@@ -1588,7 +3211,8 @@ async function main() {
           // Every still-owned item counts: a result waiting for the next message and a dependency awaiting the
           // operator need a live runner as much as due or scheduled work does.
           const remaining = health ? health.ownedWork : 0;
-          if (health) end = { unfinished: health.unfinished, revival: remaining === 0 ? 'none' : inhibited ? 'inhibited' : 'queued',
+          // Two machines: an owner that ends (its cycle limit, a lost lease) is wanted back as the standby and the peer copy.
+          if (health) end = { unfinished: health.unfinished, revival: remaining === 0 && !multi ? 'none' : inhibited ? 'inhibited' : 'queued',
             ...(health.nextWorkAt === null ? {} : { nextWorkAt: health.nextWorkAt }),
             // Rule 33: the exact journal frontier this claim describes.
             frontier: projectionDigest(journal.view) };
@@ -1597,9 +3221,19 @@ async function main() {
         try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason, ...end }); } catch { /* the next launch reports an unrecorded end */ }
       }
     } finally {
+      // A delegated session never outlives the launch that owns it.
+      try { if (conversationSession) await sessionWork?.port.close(); else sessionWork?.port.stop(); } catch { /* the driver's next boot sweep and stop authority find it */ }
+      if (gate) { gate.closeAll(); await gate.stop(); }
+      for (const proxy of stepEgress.values()) await proxy.close();
+      stepEgress.clear();
+      if (shared) await shared.stop();
       journal?.close(); storage.close(); if (ownerClaim?.owner) ownerClaim.release(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal);
     }
   }
 }
 
-try { await main(); } catch { process.stderr.write('preview refused to start or continue; details suppressed\n'); process.exitCode = 1; }
+try { await main(); } catch (error) {
+  reportExit('error (details suppressed)');
+  process.stderr.write(error instanceof AgentPathRefused ? `${error.message}\n` : 'preview refused to start or continue; details suppressed\n');
+  process.exitCode = 1;
+}

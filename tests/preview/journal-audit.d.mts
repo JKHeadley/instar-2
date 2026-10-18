@@ -8,7 +8,7 @@ export interface AuditReport {
 }
 
 export function auditPacket(view: JournalView, turn: Turn, packet: unknown, memoryCount?: number,
-  summaryCount?: number, closedCount?: number): AuditReport;
+  summaryCount?: number, closedCount?: number, callKind?: 'answer' | 'summary'): AuditReport;
 export function auditJournal(view: JournalView): AuditReport;
 export function auditActiveMemory(view: JournalView): Pick<AuditReport, 'items' | 'findings'>;
 export function requestedActionSources(view: JournalView, turn: Turn): Turn[] | null;

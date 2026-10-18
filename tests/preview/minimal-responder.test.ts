@@ -3,8 +3,9 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MINIMAL_RESERVE, MINIMAL_POLL_LIMIT, UNLINKED_EDIT_FLAG,
-  UNREADABLE_OPERATOR_MESSAGE, limitedAnswerText, PREVIEW_LIVE_GATES, admittedDependencies, MINIMAL_WORKER_WAIT_MS,
-  independentSurface, STOP_PAGE_BUTTON, STOP_CHALLENGE_MS, MINIMAL_WAITING_UPDATES } from './journal-test-worker.js';
+  UNREADABLE_OPERATOR_MESSAGE, limitedAnswerText, PREVIEW_LIVE_GATES, admittedDependencies, MINIMAL_WORKER_WAIT_MS, REPLY_ACKNOWLEDGEMENT, REPLY_ACKNOWLEDGEMENT_AFTER_MS,
+  independentSurface, STOP_PAGE_BUTTON, STOP_CHALLENGE_MS, MINIMAL_WAITING_UPDATES, LIMITED_ANSWER_OPERATION,
+  MISSING_INSTALLATION_POLICY } from './journal-test-worker.js';
 import { STOP_CONFIRM_TEXT } from './status-command.js';
 
 const key = new Uint8Array(32).fill(71);
@@ -51,7 +52,7 @@ it('keeps reading past the turn allowance and gives a burst one limited answer, 
   raiseJournalCaps(replay, { maxCalls: 8, maxReplies: 8, maxTurns: 4, authority: 'test raise', at: clock });
   await resumed.drain();
   expect(calls).toHaveLength(4);
-  expect(sends.slice(3).map(item => item.text)).toEqual(['PREVIEW — ordinary answer', 'PREVIEW — ordinary answer']);
+  expect(sends.slice(3).map(item => item.text)).toEqual(['ordinary answer', 'ordinary answer']);
   replay.close();
 }));
 
@@ -137,10 +138,13 @@ it('delivers an operator photo and an unlinked edit to the mind with flags; serv
     { update_id: 5, edited_message: { message_id: 78, chat: { id: 7654321, type: 'private' }, from: { id: 999 }, text: 'stranger edit' } },
   ] as never);
   expect(journal.view.order.filter(turn => turn.accepted).map(turn => turn.text)).toEqual([
-    `my desk\n${UNREADABLE_OPERATOR_MESSAGE}`, UNREADABLE_OPERATOR_MESSAGE, `${UNLINKED_EDIT_FLAG}\nfixed typo`]);
+    '[Received photo: name "photo.jpg", size unknown. Contents are not yet read; use the current turn media access notice and report an unreadable file honestly.]\nCaption: my desk',
+    '[Received voice note: name "voice.ogg", size unknown. Contents are not yet read; use the current turn media access notice and report an unreadable file honestly.]',
+    `${UNLINKED_EDIT_FLAG}\nfixed typo`]);
   expect(journal.view.order.filter(turn => !turn.accepted)).toHaveLength(2);
   await worker.drain();
-  expect(questions.some(question => question.includes(UNREADABLE_OPERATOR_MESSAGE))).toBe(true);
+  expect(questions.some(question => question.includes('current turn media access notice'))).toBe(true);
+  expect(questions.some(question => question.includes('current turn media access notice'))).toBe(true);
   expect(sends).toHaveLength(3);
   journal.close();
 }));
@@ -161,7 +165,8 @@ it('exposes no conversation-creating method at the one Telegram boundary (Rule 5
   const bridge = readFileSync(join(process.cwd(), 'src/assembly/telegram-bot-api-bridge.mjs'), 'utf8');
   const line = /const validMethod = ([^;]+);/u.exec(bridge)?.[1] ?? '';
   expect([...line.matchAll(/request\?\.method === '([A-Za-z]+)'/gu)].map(match => match[1]).sort())
-    .toEqual(['answerCallbackQuery', 'getMe', 'getUpdates', 'sendMessage']);
+    .toEqual(['answerCallbackQuery', 'getChat', 'getChatMember', 'getChatMemberCount', 'getMe', 'getUpdates',
+      'sendChatAction', 'sendMessage', 'setMessageReaction']);
   expect(bridge).not.toMatch(/createForumTopic|createChatInviteLink|sendMessage.*chat_id:\s*['"]@/u);
 });
 
@@ -186,7 +191,7 @@ it('past 60 ordinary and every reserve message, a stop press and a /stop behind 
   worker.intake([...Array.from({ length: MINIMAL_RESERVE.turns - 1 }, (_, index) => message(61 + index, `r${index}`)), message(last, '/stop')]);
   await worker.minimal();
   const confirm = sends.at(-1)!;
-  expect(confirm.text).toBe(`PREVIEW — ${STOP_CONFIRM_TEXT}`);
+  expect(confirm.text).toBe(`${STOP_CONFIRM_TEXT}`);
   expect(journal.view.order).toHaveLength(last);
   const cursor = journal.view.cursor;
   expect(worker.pollLimit()).toBe(MINIMAL_POLL_LIMIT);
@@ -227,7 +232,7 @@ it('an ordinary worker blocked on its model does not silence the minimal path: l
   expect(sends[0]!.text.startsWith(limitedAnswerText(journal.view, 'turns', 2))).toBe(true);
   worker.intake([message(4, '/stop')]);
   await worker.minimal();
-  expect(sends.at(-1)?.text).toBe(`PREVIEW — ${STOP_CONFIRM_TEXT}`);
+  expect(sends.at(-1)?.text).toBe(`${STOP_CONFIRM_TEXT}`);
   worker.intake([press(5, sends.at(-1)!.markup!.inline_keyboard[0]![0]!.callback_data!)]);
   expect(journal.view.stop).toBe('operator');
   // Receipt-to-response and stop-to-halt, measured on this host while the model is still blocked.
@@ -268,6 +273,44 @@ it('a missing required dependency leaves the message preserved with an owned out
   replay.close();
 }));
 
+it('single-machine shape (Eleven §5): the kept message waits on the accepted P-08 policy, is answered once when it is recorded, and each other dependency still inhibits', () => withRoot(async path => {
+  const sends: Marked[] = [], calls: string[] = [];
+  const context = (await import('./journal-test-worker.js')).previewTestContext;
+  // The live host's observation: no peer exists on one machine; the policy is what the join resolved.
+  const observed: Record<string, boolean> = { ...admittedDependencies(), 'replication-peer': false };
+  const accepted = { policy: 'P-08' as const, installation: 'grant:preview', profile: 'single-machine-v1', operations: ['provider-call', LIMITED_ANSWER_OPERATION],
+    causalPrefix: 'full' as const, lossModel: 'sha256:profile', acceptance: 'telegram:topic:1:message:3' };
+  let policy: typeof accepted | null = null;
+  const minimal = { context, dependencies: () => ({ ...observed }) as ReturnType<typeof admittedDependencies>,
+    shape: () => ({ kind: 'single-machine' as const, installation: 'grant:preview', profile: 'single-machine-v1', lossModel: 'sha256:profile',
+      operation: LIMITED_ANSWER_OPERATION, policy }) };
+  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 1 }));
+  const worker = createJournalWorker(journal, { ...ports(() => 1000, sends, calls), send: marked(sends), minimal });
+  worker.intake([message(1, 'one')]); await worker.drain();
+  worker.intake([message(2, 'Are you there?')]);
+  await worker.minimal(); await worker.minimal();
+  // No accepted policy: nothing is sent, the message is kept, and the outage names the policy (not a peer nobody can supply).
+  expect(sends).toHaveLength(1);
+  expect(journal.view.order[1]?.text).toBe('Are you there?');
+  expect(journal.view.order[1]?.minimalOutage?.missing).toEqual([MISSING_INSTALLATION_POLICY]);
+  expect(worker.minimalMissing()).toEqual([MISSING_INSTALLATION_POLICY]);
+  // A policy accepted for another installation, or without this operation in its set, settles nothing.
+  policy = { ...accepted, installation: 'grant:another' }; await worker.minimal();
+  policy = { ...accepted, operations: ['provider-call'] }; await worker.minimal();
+  expect(sends).toHaveLength(1);
+  // The accepted policy alone never covers another missing dependency: the lease still inhibits.
+  policy = accepted; observed.lease = false; await worker.minimal();
+  expect(sends).toHaveLength(1);
+  expect(journal.view.order[1]?.minimalOutage?.missing).toEqual(['lease']);
+  // Everything required is observed and the policy is accepted: one limited answer, never a second.
+  observed.lease = true; await worker.minimal(); await worker.minimal();
+  expect(sends).toHaveLength(2);
+  expect(sends[1]!.text.startsWith(limitedAnswerText(journal.view, 'turns', 1))).toBe(true);
+  expect(calls).toHaveLength(1);
+  expect(worker.minimalMissing()).toEqual([]);
+  journal.close();
+}));
+
 it('with no minimal-path owner installed nothing is admitted: the real worker never speaks from the reserve', () => withRoot(async path => {
   const { createJournalWorker: realWorker } = await import('./journal.js');
   const sends: Marked[] = [];
@@ -292,7 +335,7 @@ it('a blocked ordinary model below every cap cannot strand a stop: the minimal p
   await new Promise(done => setImmediate(done));
   worker.intake([message(2, '/stop')]);
   await worker.minimal(); await worker.minimal();
-  expect(sends.map(item => item.text)).toEqual([`PREVIEW — ${STOP_CONFIRM_TEXT}`]);
+  expect(sends.map(item => item.text)).toEqual([`${STOP_CONFIRM_TEXT}`]);
   expect(journal.view.order[1]?.limited?.reason).toBe('worker');
   worker.intake([press(3, sends[0]!.markup!.inline_keyboard[0]![0]!.callback_data!)]);
   expect(journal.view.stop).toBe('operator');
@@ -312,23 +355,28 @@ it('a blocked ordinary model below every cap cannot strand a stop: the minimal p
   second.close();
 }));
 
-it('a below-cap message waiting on a blocked worker gets one limited answer after the wait bound, never before', () => withRoot(async path => {
+it.each([1, 60])('a blocked worker acknowledges once per message or uses the limited reserve when only %s replies remain', maxReplies => withRoot(async path => {
   let clock = 1000;
   const sends: Marked[] = [];
-  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 60, maxCalls: 60, maxReplies: 60 }));
+  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 60, maxCalls: 60, maxReplies }));
   const worker = createJournalWorker(journal, { now: () => clock, stopped: () => false, checkOutbound: () => {},
     model: () => new Promise<string>(() => {}), send: marked(sends) });
   worker.intake([message(1, 'hello')]);
   void worker.drain();
   await new Promise(done => setImmediate(done));
   worker.intake([message(2, 'are you there?')]);
-  clock += MINIMAL_WORKER_WAIT_MS - 1;
+  clock += REPLY_ACKNOWLEDGEMENT_AFTER_MS - 1;
+  await worker.minimal(); expect(sends).toHaveLength(0);
+  clock += 1; await worker.minimal(); await worker.minimal();
+  const acknowledgements = maxReplies === 1 ? [] : [REPLY_ACKNOWLEDGEMENT, REPLY_ACKNOWLEDGEMENT];
+  expect(sends.map(item => item.text)).toEqual(acknowledgements);
+  clock += MINIMAL_WORKER_WAIT_MS - REPLY_ACKNOWLEDGEMENT_AFTER_MS - 1;
   await worker.minimal();
-  expect(sends).toHaveLength(0);
+  expect(sends.map(item => item.text)).toEqual(acknowledgements);
   clock += 1;
   await worker.minimal(); await worker.minimal();
-  expect(sends).toHaveLength(1);
-  expect(sends[0]!.text).toBe(limitedAnswerText(journal.view, 'worker', 2));
+  expect(sends.map(item => item.text)).toEqual(maxReplies === 1
+    ? [limitedAnswerText(journal.view, 'worker', 2)] : acknowledgements);
   // No raise is offered: the ordinary worker, not an allowance, is what is missing.
   expect(sends[0]!.markup).toBeUndefined();
   expect(journal.view.order.some(turn => turn.approval)).toBe(false);
@@ -366,7 +414,7 @@ it('when the blocked model recovers, the ordinary answer goes and the stop is ne
   await worker.minimal();
   release('ordinary answer');
   await pass; await worker.drain(); await worker.minimal();
-  expect(sends.map(item => item.text)).toEqual([`PREVIEW — ${STOP_CONFIRM_TEXT}`, 'PREVIEW — ordinary answer']);
+  expect(sends.map(item => item.text)).toEqual([`${STOP_CONFIRM_TEXT}`, 'ordinary answer']);
   expect(journal.view.stop).toBeNull();
   journal.close();
 }));
@@ -460,12 +508,12 @@ it('a failed ordinary worker leaves the minimal path answering at once, and a la
   // The ordinary answer still follows once the ordinary worker recovers; the limited answer is not repeated.
   lost = false;
   await worker.drain(); await worker.minimal();
-  expect(sends.map(item => item.text)).toEqual([limitedAnswerText(journal.view, 'worker', 1), 'PREVIEW — ordinary answer']);
+  expect(sends.map(item => item.text)).toEqual([limitedAnswerText(journal.view, 'worker', 1), 'ordinary answer']);
   lost = true;
   worker.intake([message(2, 'still there?'), message(3, '/stop')]);
   await expect(worker.drain()).rejects.toThrow('ordinary worker lost');
   await worker.minimal();
-  expect(sends.slice(2).map(item => item.text)).toEqual([limitedAnswerText(journal.view, 'worker', 1), `PREVIEW — ${STOP_CONFIRM_TEXT}`]);
+  expect(sends.slice(2).map(item => item.text)).toEqual([limitedAnswerText(journal.view, 'worker', 1), `${STOP_CONFIRM_TEXT}`]);
   worker.intake([press(4, sends.at(-1)!.markup!.inline_keyboard[0]![0]!.callback_data!)]);
   expect(journal.view.stop).toBe('operator');
   journal.close();

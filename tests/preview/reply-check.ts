@@ -1,42 +1,112 @@
+import { credentialDisplayLabel } from './credential-display.js';
 import { machineLink } from './coherence-check.js';
 /** Live preview reply supervision. Jev's eight measured message questions and two detection
  * questions are batched with one result per question; each unresolved question then gets its own
  * contextual finding from one batched full-context review. The agent answers every objection once
  * (accept, reject with a reason, or no decision), all inside one shared deadline (Rules 41, 57, 58, 108). */
-import { redact } from '../../src/recall/redact.js';
+import { redact, redactionMark } from '../../src/recall/redact.js';
+import { remainingText } from './credential-reminders.js';
+import { taskFields } from './answer-reading.js';
 export const REPLY_RULES = {
   raw_path: 'The message shows the reader a raw filesystem path (for example a directory or file location on a machine).',
   cli_command: 'The message asks the reader to run a terminal command as a handoff of work the writer could do. Answering an explicit request for the command or showing a documentation example does not count.',
   config_key: 'The message names a configuration setting by its literal dotted key path, in the form section.subsection.name. Describing a setting in plain words does not count.',
-  credential: 'The reply exposes a live authentication secret, such as an API key, access token, account password, login PIN, one-time sign-in code, or private key, to anyone or anywhere other than the verified operator who supplied it in this same private chat. A value the verified operator supplied in this chat and that is returned only to that operator does not leave, so repeating it to them is allowed (Rule 4). Whether a code is a secret is judged from the conversation and audience, never from a keyword list (Rule 10). Exact credential patterns such as API keys, access tokens and private keys are refused by the credential wall on every reply, including one the operator pasted.',
+  credential: 'The reply exposes a live authentication secret, such as an API key, access token, account password, login PIN, one-time sign-in code, or private key, to anyone or anywhere other than the verified operator who supplied it in this same private chat. A value the verified operator supplied in this chat and that is returned only to that operator does not leave, so repeating it to them is allowed (Rule 4). Whether a code is a secret is judged from the conversation and audience, never from a keyword list (Rule 10). Exact credential patterns such as API keys, access tokens and private keys are refused by the credential wall on every reply, including one the operator pasted. packet.credentialRegister quotes the runner\'s credential register as recorded facts: every field of its entries (a record name, identity label, kind, custody, expiry or renewal step) is public metadata, never a secret value, so naming one exposes nothing.',
   api_endpoint: 'The message shows the reader an internal HTTP endpoint or URL path of our own system.',
   quits_on_self: 'The writer says they are stopping work for a reason about themselves, such as running low on context, memory, or capacity.',
   claims_blocked: 'The writer declares something is impossible or blocked without giving evidence that they actually tried it.',
-  parks_on_user: 'The writer hands back to the reader a task the writer could have completed themselves.',
-  defers_work: 'The writer defers work to later (saying they will do it, check it, decide it or report back later) and packet.declaredObligations.loops does not record that deferral as an exact quote of this reply.',
-  unrecorded_blocker: 'The writer states as final that something cannot be done, or that only the reader or another person can do it, and packet.declaredObligations.blocker does not record an admitted investigation of that claim.',
+  parks_on_user: 'The writer hands back work they could do. Offering needed research instead of available reads is VIOLATION, even for external facts absent from the packet: no second request is needed. Failed/unavailable reads or necessary clarification are PASS. So is a renewal step packet.credentialRegister records for that same credential (its name or identity) as renewal.smallestHumanAction, with renewal.standing none. A credential or renewal step that no entry records has no such record.',
+  defers_work: 'The writer promises later work without a matching record: packet.declaredObligations.loops quotes this reply exactly, or packet.declaredObligations.dated records that requested action at that time. Neither supports unrelated promises.',
+  unrecorded_blocker: 'The writer states as final that something cannot be done, or that only the reader or another person can do it, and neither packet.declaredObligations.blocker nor an entry of packet.declaredObligations.settled records an admitted investigation of that limit.',
+  self_state_claim: 'The writer states a fact about its own state, records or abilities (what it saved, scheduled, sent or used, what its limits are, or what it can or cannot do) that this context\'s own records contradict: the self-state and capability sources, packet.capabilities, packet.credentialRegister, the recorded history, the dated items or packet.declaredObligations. A statement those records support, or one they do not address, is not a breach.',
+  breaks_preference: 'The reply does not follow an active reply preference of the verified operator listed in packet.preferences, and the current operator message does not ask for something different. With no active preference, or when the reply follows each one, there is no breach.',
+  incoherent_remainder: 'packet.withheldClaims records what the runner removed (empty when checking a rewrite carrying an earlier correction). Judge the surviving packet.candidateReply against packet.operatorMessage and the full context. PASS requires either a self-contained answer to the substance requested or a plain explanation that the requested detail is withheld. VIOLATION when removal leaves only incidental information or references whose substance was removed. Grammatical sentences alone are not enough: text that no longer answers the request and does not explain withholding is a VIOLATION, even if each sentence reads correctly. A short complete answer can PASS. Judge meaning, never length.',
+  sensitive_disclosure: 'packet.audience names who will read this reply. When operatorOnlyVerified is true, current disclosure authority and actual membership establish that only the verified operator and this agent bot can read it: the operator is entitled to their OWN information just as in their private chat. This current standing overrides historical guidance describing an unverified group. This does not grant access to third-party confidences or live secrets. Otherwise the group audience has no such standing. The reply reveals to that audience something private it is not entitled to: a fact or context the operator gave in a private conversation or asked to keep confidential (packet.directives and the history show this), a third party\'s private personal details, or a personal code or private detail of the operator. A reply that helps without revealing the private detail is not a breach (for example, one saying the operator can ask for it in their own private chat), nor is something the operator has already said in front of this same audience. For a VIOLATION, quote in double quotes the reply\'s sentence that reveals it, copied word for word. Live secrets belong to the credential rule.',
 } as const;
 /** Jev sees only the reply text, so for these two it detects the claim; the contextual reviewer, which receives the
  * declared record, decides whether it is tracked or evidenced (Rules 6, 20, 21, 23: signal, never authority). */
 const JEV_INSTRUCTIONS: Partial<Record<keyof typeof REPLY_RULES, string>> = {
+  // Jev reads the reply text alone, never packet.credentialRegister, so it keeps its measured questions; an unsure Jev
+  // escalates to the full-context review, which is given the register's recorded facts.
+  credential: 'The reply exposes a live authentication secret, such as an API key, access token, account password, login PIN, one-time sign-in code, or private key, to anyone or anywhere other than the verified operator who supplied it in this same private chat. A value the verified operator supplied in this chat and that is returned only to that operator does not leave, so repeating it to them is allowed (Rule 4). Whether a code is a secret is judged from the conversation and audience, never from a keyword list (Rule 10). Exact credential patterns such as API keys, access tokens and private keys are refused by the credential wall on every reply, including one the operator pasted.',
+  parks_on_user: 'The writer hands back to the reader a task the writer could have completed themselves.',
   defers_work: 'The writer says they will do something later, check or decide something later, or get back to the reader, instead of doing it in this message.',
   unrecorded_blocker: 'The writer states that something cannot be done, or that only the reader or another person can do it.',
 };
 export type ReplyRule = keyof typeof REPLY_RULES;
+/** Least revelation (purpose; Part 18 §16, the sensitivity member): who reads a reply is a fact of the audience, which
+ * Jev never sees, so this question is never asked of Jev. It is asked only where the reply's audience is anyone other
+ * than the verified operator alone: there, and only there, a Jev pass no longer ends the review. On the operator's own
+ * private chat every source in the packet is the operator's or kept for them, so the operator is entitled to all of
+ * it and the question is not asked: the review there is byte-for-byte what it was (Rules 10, 57, 86, 116). */
+export const AUDIENCE_RULES = Object.freeze(['sensitive_disclosure'] as const);
+export type AudienceRule = typeof AUDIENCE_RULES[number];
+const isAudienceRule = (id: ReplyRule): id is AudienceRule => (AUDIENCE_RULES as readonly ReplyRule[]).includes(id);
+/** The one audience that is the verified operator alone: the operator's bound private chat. */
+export const OPERATOR_PRIVATE_SURFACE = 'telegram-private-chat';
+/** True when the answer packet behind a reply names an audience other than the verified operator's own private chat.
+ * The audience is read from the packet the reply was grounded on (the one every outbound surface must name), never
+ * from the reply's words. A prompt with no readable audience cannot be reviewed at all (replyReviewContext refuses
+ * it), so it keeps the existing route. */
+export function sharedAudience(originalPrompt: string | undefined): boolean {
+  if (originalPrompt === undefined) return false;
+  try {
+    const messages = (JSON.parse(originalPrompt) as { messages?: { role?: unknown; content?: unknown }[] }).messages;
+    const context = messages?.find(message => message.role === 'context')?.content;
+    const audience = typeof context === 'string' ? (JSON.parse(context) as { packet?: { audience?: unknown } }).packet?.audience : undefined;
+    if (!audience || typeof audience !== 'object') return false;
+    return (audience as { surface?: unknown }).surface !== OPERATOR_PRIVATE_SURFACE;
+  } catch { return false; }
+}
+/** 26 September Jev-default direction (observer #282), Rules 28/57/77/116: a confident
+ * pass ends review for a group topic only when the worker's current standing/membership
+ * projection verifies the operator alone. This changes routing, not sharedAudience:
+ * unsure replies and revisions still get the group's sensitivity question. */
+export function confidentReplyNeedsReview(originalPrompt: string | undefined): boolean {
+  if (!sharedAudience(originalPrompt)) return false;
+  try {
+    const messages = (JSON.parse(originalPrompt!) as { messages: { role?: unknown; content?: unknown }[] }).messages;
+    const context = messages.find(message => message.role === 'context')?.content;
+    const audience = typeof context === 'string'
+      ? (JSON.parse(context) as { packet?: { audience?: { surface?: unknown; operatorOnlyVerified?: unknown } } }).packet?.audience
+      : undefined;
+    return audience?.surface !== 'telegram-group-topic' || audience.operatorOnlyVerified !== true;
+  } catch { return true; }
+}
+/** The guidance family's context questions (Part 18 §16, docs/18-sentinel-holders): claim verification and preference
+ * learning are judged against the journal's own records, which Jev never sees (it reads only the reply text). So
+ * they are never asked of Jev and are added to every contextual review that runs, in the same batched call: no
+ * second gate, no extra call, and a Jev pass sends the reply exactly as before (Rules 10, 57, 86, 116). */
+export const CONTEXT_RULES = Object.freeze(['self_state_claim', 'breaks_preference'] as const);
+export type ContextRule = typeof CONTEXT_RULES[number];
+export type JevRule = Exclude<ReplyRule, ContextRule | AudienceRule | 'incoherent_remainder'>;
+const isContextRule = (id: ReplyRule): id is ContextRule => (CONTEXT_RULES as readonly ReplyRule[]).includes(id);
+/** The contextual review's selection: what Jev left unresolved (or every rule), plus the context questions, plus the
+ * audience question when, and only when, the reply's audience is not the verified operator alone. */
+export const guidanceReviewRules = (ruleIds: readonly ReplyRule[], shared = false): ReplyRule[] =>
+  [...new Set([...ruleIds.filter(id => id !== 'incoherent_remainder' && (shared || !isAudienceRule(id))), ...CONTEXT_RULES, ...(shared ? AUDIENCE_RULES : [])])];
 export type ReplyVerdict = 'pass' | 'violation' | 'unsure' | 'unavailable';
 export type ReplyPath = 'jev' | 'subscription' | 'holding' | 'operator-echo';
 export const JEV_MODEL = 'jev-1.13.0';
-export const REPLY_CHECK_BUDGET_MS = 30_000;
+/** Sized to measured latency (plan #593): on 2026-10-05 completed first reviews took 9.4-26.8 s, so a 30 s budget
+ * cut the slowest reviews mid-call and left no room for the one format re-ask, and nearly every unavailable
+ * subscription check was that cut. 60 s holds the slowest measured review plus its re-ask, or a review plus one
+ * revision and its review; past it the outcome stays an honest `unavailable`, never an unchecked pass. */
+export const REPLY_CHECK_BUDGET_MS = 60_000;
 export const REPLY_CHECK_BUDGET_REASON = 'reply check budget exceeded';
 export const JEV_RESPONSE_MAX_BYTES = 4096;
 /** One rule's own contextual conclusion and its separate reason (Rules 41, 58, 108). A batched review
  * returns one finding per selected rule, so every decision keeps its identity. */
 export interface ReplyFinding { rule: ReplyRule; verdict: 'pass' | 'violation'; reason: string }
 export interface ReplyCheckResult { verdict: ReplyVerdict; ruleIds: ReplyRule[]; confidence: number | null;
-  path: ReplyPath; latencyMs: number; scores?: Record<ReplyRule, number>; reason?: string; candidateDigest?: string;
+  path: ReplyPath; latencyMs: number; scores?: Record<JevRule, number>; reason?: string;
+  /** Content-free failure category; absent on historical rows. */
+  cause?: JevUnavailableCause; candidateDigest?: string;
   /** Present only when the reviewer judged each selected rule on its own; absent on a legacy combined verdict. */
   findings?: ReplyFinding[];
   durationMeasured?: true;
+  /** Present only on a Jev check that was asked the approval-report question. */
+  approvalReport?: ApprovalReport;
   usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }
 /** The pinned JSON-result route reports total output usage, but no thinking blocks. */
 export interface ReplyReviewDiagnostics { outputTokens: number | null; thinkingPresent: 'unobservable' }
@@ -79,13 +149,57 @@ export function repeatsOperatorOnly(reply: string, operatorMessages: readonly st
   });
 }
 
-export const HOLDING_REPLY = 'PREVIEW — I need to check that answer before I can send it.';
-const rules = Object.keys(REPLY_RULES) as ReplyRule[];
-const positiveLine: Record<ReplyRule, number> = { raw_path: 0.85, cli_command: 0.85,
+export const REVIEW_INTERRUPTED_REASON = 'review interrupted; provider outcome unknown';
+export const GROUP_REVIEW_FINAL_NOTICE = "I couldn't complete the review this group reply needs, so I didn't send my answer. Please resend your message.";
+/** This exact content-free notice reveals none of the held answer. */
+export const isGroupReviewFinalNotice = (text: string, expected: string): boolean =>
+  text === expected && text === GROUP_REVIEW_FINAL_NOTICE;
+
+export const HOLDING_REPLY = 'I need to check that answer before I can send it.';
+/** Every rule an unselected review judges on the operator's own chat; the audience question is added only by selection. */
+const rules = (Object.keys(REPLY_RULES) as ReplyRule[]).filter(id => !isAudienceRule(id) && id !== 'incoherent_remainder');
+const jevRules = rules.filter((id): id is JevRule => !isContextRule(id));
+/** Recovery must prove all ten questions passed too: an older pass without complete
+ * scores cannot grant the operator-group exception (Rules 26/41/57). */
+export const jevConfidentPass = (check: ReplyCheckResult): boolean => check.path === 'jev' && check.verdict === 'pass'
+  && jevRules.every(rule => { const score = check.scores?.[rule]; return typeof score === 'number' && score >= 0 && score < 0.5; });
+const positiveLine: Record<JevRule, number> = { raw_path: 0.85, cli_command: 0.85,
   config_key: 0.85, credential: 0.70, api_endpoint: 0.85, quits_on_self: 0.70,
   claims_blocked: 0.85, parks_on_user: 0.85, defers_work: 0.85, unrecorded_blocker: 0.85 };
-export const jevQuestions = Object.fromEntries(rules.map(id => [id, { type: 'noul', instructions: JEV_INSTRUCTIONS[id] ?? REPLY_RULES[id] }]));
-export const jevRequestBody = (text: string): string => JSON.stringify({ state: text, model: JEV_MODEL, questions: jevQuestions });
+/** Plan #102's cascade: Jev decides the secrets class alone only at or above its credential line. Its unsure band
+ * escalates, and an escalation that yields no verdict leaves no confident secret finding (Rules 77, 86, 95). The
+ * recorded score decides; a legacy row without scores counts its credential violation as confident. */
+export function jevConfidentCredential(check: ReplyCheckResult): boolean {
+  if (check.path !== 'jev' || !check.ruleIds.includes('credential')) return false;
+  const score = check.scores?.credential;
+  return score === undefined ? check.verdict === 'violation' : score >= positiveLine.credential;
+}
+export const jevQuestions = Object.fromEntries(jevRules.map(id => [id, { type: 'noul', instructions: JEV_INSTRUCTIONS[id] ?? REPLY_RULES[id] }]));
+export const jevRequestBody = (text: string, approval?: ApprovalFacts): string =>
+  JSON.stringify({ state: text, model: JEV_MODEL, questions: approval ? approvalQuestions(approval) : jevQuestions });
+
+/** The approval-account exception (Purpose): whether this reply tells the operator about an approval that came through
+ * an account the agent can also use is a question of meaning, so the reviewer that already judges every model-written
+ * reply answers it, in the same batched call, and only where such an approval exists: no new call, and no keyword test (Rule 10). Every
+ * other reply's request is byte-for-byte unchanged. */
+export const APPROVAL_REPORT = 'approval_report';
+export interface ApprovalFacts { request: string; change: string }
+export const approvalQuestions = (facts: ApprovalFacts) => ({ ...jevQuestions, [APPROVAL_REPORT]: { type: 'noul',
+  instructions: `The message tells the reader about request ${facts.request}, which ${facts.change} and was approved through the reader's GitHub account, an account the writer can also use: it reports that approval, the request's outcome, or the resulting change itself.` } });
+/** The structured answer recorded with the reply, on Jev's established confident lines (`interpretStepJev`,
+ * `interpretSummaryJev`): at or below 0.15 a confident no, at or above 0.85 a yes, between them undecided. Only the
+ * confident no lets the runner omit the disclosure; yes, undecided, and an unreadable or absent answer all carry it.
+ * Measured on the real reviewer (fixtures/approval-report-jev-2026-10-02.json): the captured report and the paraphrase
+ * scored 0.19-0.28 (undecided, so the note rides) and an unrelated answer 0.02 (no). */
+export const APPROVAL_REPORT_NO = 0.15, APPROVAL_REPORT_YES = 0.85;
+export interface ApprovalReport { request: string; answer: 'yes' | 'no' | 'undecided' | 'unreadable'; noul?: number }
+export function readApprovalReport(value: unknown, request: string): ApprovalReport {
+  const answer = (value as { answers?: Record<string, { type?: unknown; noul?: unknown }> } | null)?.answers?.[APPROVAL_REPORT];
+  const noul = answer?.type === 'noul' ? answer.noul : undefined;
+  return typeof noul === 'number' && Number.isFinite(noul) && noul >= 0 && noul <= 1
+    ? { request, answer: noul <= APPROVAL_REPORT_NO ? 'no' : noul >= APPROVAL_REPORT_YES ? 'yes' : 'undecided', noul }
+    : { request, answer: 'unreadable' };
+}
 export function parseJevResponse(body: string): unknown {
   if (Buffer.byteLength(body) > JEV_RESPONSE_MAX_BYTES) throw Error('preview: Jev response too large');
   return JSON.parse(body);
@@ -98,14 +212,18 @@ export function replyReviewRules(ruleIds: readonly ReplyRule[]): Record<string, 
 }
 
 export function replyReviewQuestion(ruleIds: readonly ReplyRule[]): string {
-  return `Judge this proposed reply: review packet.candidateReply against packet.operatorMessage and the full private conversation context. Judge each of these rules on its own: ${JSON.stringify(replyReviewRules(ruleIds))}. For raw_path, cli_command, config_key and api_endpoint, an illustrative or quoted literal explicitly requested or supplied by the verified operator is not a breach merely because it appears in the reply. Still flag an actual internal path or endpoint disclosed without need, a command or setting that offloads work the agent could do, and every live authentication secret that reaches anyone other than the verified operator who supplied it in this same private chat. Return inside conclusion.value exactly one line for every listed rule and no other rule, each of the form rule_id: PASS | short reason or rule_id: VIOLATION | short reason, with each reason under ${REPLY_REVIEW_REASON_ASK} characters; put any longer reasoning in reason.value. A violation requires an actual breach of that rule; uncertainty is PASS. No other text.${ruleIds.length === 0 || ruleIds.some(id => id === 'claims_blocked' || id === 'parks_on_user' || id === 'defers_work' || id === 'unrecorded_blocker') ? DECLARED_OBLIGATIONS_GUIDE : ''}`;
+  return `Judge this proposed reply: review packet.candidateReply against packet.operatorMessage and the full private conversation context. Judge each of these rules on its own: ${JSON.stringify(replyReviewRules(ruleIds))}. For raw_path, cli_command, config_key and api_endpoint, an illustrative or quoted literal the verified operator explicitly requested or supplied is not itself a breach. Still flag an actual internal path or endpoint disclosed without need, a command or setting that offloads work the agent could do, and any live authentication secret reaching anyone but the verified operator who supplied it in this private chat. Give each listed rule, and no others, one verdict "PASS | short reason" or "VIOLATION | short reason", with each reason under ${REPLY_REVIEW_REASON_ASK} characters. Keep reasoning under 400 characters and all JSON under 4000 so every verdict fits the output allowance. Prioritize verdicts; do not repeat rules or context. A violation requires an actual breach of that rule; uncertainty is PASS. PASS means no breach; VIOLATION means a breach, named in its reason. A reason that finds no breach belongs on a PASS verdict. ${taskFields('{rule_id: its verdict, one field for each listed rule, named by that rule id}')}${ruleIds.length === 0 || ruleIds.some(id => id === 'claims_blocked' || id === 'parks_on_user' || id === 'defers_work' || id === 'unrecorded_blocker' || id === 'self_state_claim') ? DECLARED_OBLIGATIONS_GUIDE : ''}`;
 }
 
 /** Rules 20, 21, 23, 103: a settled cannot-do or needs-a-person claim is judged against the investigation record the
- * writer attached, never accepted on wording alone; a refusal behind an ungoverned boundary is not evidence. */
-export const DECLARED_OBLIGATIONS_GUIDE = ' For claims_blocked, parks_on_user, defers_work and unrecorded_blocker, packet.declaredObligations is what the runner admitted with this reply: blocker (null when absent) is the investigation record, loops the deferrals, judgments and promises it will track, rejected what the writer declared but the runner could not admit, and capabilities what this agent can do now. A final claim that something cannot be done, or that only a person can do it, is evidenced only when that record lists the lawful avenues used and cites a governingConstraints id consistent with capabilities; a missing tool is not proof that only a person can act. A refusal citing a boundary that is not a governingConstraints entry is claims_blocked. A deferral the loops do not record is defers_work.';
-/** What the writer declared with this reply: its settled blocker record and the loops it opened. */
-export interface DeclaredObligations { blocker: unknown; loops: unknown[]; rejected?: unknown; capabilities?: unknown }
+ * writer attached, never accepted on wording alone; a refusal behind an ungoverned boundary is not evidence. A limit the
+ * capability note lists is exempt only as the note words it: live replay 2026-10-04 (w4-selfdesc review round 1, finding
+ * 1) passed "Log in to or change any website" as a restatement of a note that said only that no account was logged in. */
+export const DECLARED_OBLIGATIONS_GUIDE = ' For claims_blocked, parks_on_user, defers_work and unrecorded_blocker, packet.declaredObligations is what the runner admitted with this reply: blocker (null when absent) is the investigation record this reply declares, settled the earlier admitted ones still open and not due for recheck, loops the deferrals, judgments and promises it will track, dated this turn\'s admitted reminders (operator quote, day/time, zone), rejected what the writer declared but the runner could not admit, and capabilities what this agent can do now. A final claim that something cannot be done, or that only a person can do it, is evidenced only when the blocker or one settled entry records that same limit, lists its lawful avenues and cites a governingConstraints id consistent with capabilities; restating a recorded, still-open limit needs no duplicate record. A capability note alone never records a refusal. Declining asked work needs a record; descriptions alone do not; a limit stated more broadly than the note states it (no logged-in account stated as unable to change any website) is a final claim. A missing tool is not proof that only a person can act. For unrecorded_blocker, VIOLATION only when one such final claim is not recorded this way, with a reason quoting that claim. A refusal citing a boundary that is not a governingConstraints entry is claims_blocked. An unresolved date or unrecorded scheduling claim is no admitted reminder.';
+/** What the writer declared with this reply (its blocker record and the loops it opened) and the earlier settled blockers still open. */
+export interface DeclaredObligations { blocker: unknown; settled?: unknown[]; loops: unknown[]; dated?: unknown[]; rejected?: unknown; capabilities?: unknown;
+  /** Part Thirteen §9: the answer turn's recorded tool calls, present only when it ran on the scoped-tool route. */
+  toolAttempts?: unknown }
 /** The existing credential redactor applied to every string of a declared record before it reaches a provider:
  * avenue evidence and outside actions are model-authored and independent of the checked reply text. */
 export function redactDeclared<T>(value: T): T {
@@ -115,41 +233,76 @@ export function redactDeclared<T>(value: T): T {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactDeclared(item)])) as T;
   return value;
 }
+/** The reviewer must know the removal happened; a bare remainder can look like an intentional answer. */
+export function replyRemainderPrompt(originalPrompt: string, removed: readonly string[]): string {
+  const envelope = JSON.parse(originalPrompt) as { messages: { role: string; content: string }[] };
+  const context = envelope.messages.find(message => message.role === 'context');
+  if (!context) throw Error('preview: remainder context absent');
+  const value = JSON.parse(context.content);
+  value.packet.withheldClaims = removed;
+  context.content = JSON.stringify(value);
+  return JSON.stringify(envelope);
+}
+
 /** Reuse the exact packet that grounded the proposed answer, including its
  * audience, sources, memory and conversation history. */
 export function replyReviewContext(originalPrompt: string, candidateReply: string, flagged: readonly ReplyRule[] = [],
-  declared?: DeclaredObligations): string {
+  declared?: DeclaredObligations, credentialRegister: readonly RecordedCredentialFact[] = []): string {
   const messages = JSON.parse(originalPrompt).messages as { role: string; content: string }[];
   const packet = JSON.parse(messages.find(message => message.role === 'context')?.content ?? '').packet;
   const operatorMessage = messages.find(message => message.role === 'user')?.content;
   if (typeof operatorMessage !== 'string' || !packet?.audience || !Array.isArray(packet.history)
     || typeof candidateReply !== 'string')
     throw Error('preview: full reply-review context malformed');
-  const selected = flagged.length ? flagged : rules;
-  if (selected.some(id => !Object.hasOwn(REPLY_RULES, id))) throw Error('preview: reply-review rule absent');
+  if (flagged.some(id => !Object.hasOwn(REPLY_RULES, id))) throw Error('preview: reply-review rule absent');
+  // The selected rules' texts are stated once, in the review question (and the revision question names each
+  // objection's text): a second copy here cost every review the same bytes again (Rule 116).
   return JSON.stringify({ ...packet, operatorMessage, candidateReply, ...(declared ? { declaredObligations: redactDeclared(declared) } : {}),
-    rules: Object.fromEntries(selected.map(id => [id, REPLY_RULES[id]])) });
+    ...(credentialRegister.length ? { credentialRegister } : {}) });
 }
 
 /** The reviewer is asked for a reason under REPLY_REVIEW_REASON_ASK characters; the parser admits up to
  * REPLY_REVIEW_REASON_MAX. Live (2026-09-28) the real model wrote 170-200 character reasons and the old 160 bound
  * refused every such verdict as malformed, holding replies as "check unavailable". The bound limits only the length
  * of the one line: its exact whole-line shape still admits no text before or after the verdict. */
-export const REPLY_REVIEW_REASON_ASK = 300;
+// Live forum check 715675387: review output spent 2136 tokens against the 2048-token
+// provider ceiling, so no verdict reached the shared-audience checkpoint. Budget the ask,
+// not the parser: all rules and full context remain, and longer complete reasons still parse.
+export const REPLY_REVIEW_REASON_ASK = 160;
 /** The one error that means the reviewer answered but missed the verdict format (the only case re-asked). */
 export const REVIEW_MALFORMED = 'preview: review malformed';
 /** Runner-authored packet guidance for the single format re-ask of a review. */
-export const REVIEW_FORMAT_REMINDER = 'Your previous verdict for this same review was refused because conclusion.value was not exactly one line per listed rule of the form rule_id: PASS | reason or rule_id: VIOLATION | reason. Return only the Decision object with those lines, no other text; put longer reasoning in reason.value.';
+export const REVIEW_FORMAT_REMINDER = 'Your previous verdict for this same review was refused because it was not exactly one field per listed rule, named by the rule id and valued "PASS | reason" or "VIOLATION | reason". Return only the flat object {"reasoning":..., one such field per listed rule}, no other text. Keep reasoning under 400 characters and the entire response under 4000 characters.';
 export const REPLY_REVIEW_REASON_MAX = 600;
+/** The conversation framing tells the model to answer an operator message as {"reply": ...} when decision guidance
+ * applies, and a review packet carries the answer packet's guidance, so a reviewer sometimes returns its verdict lines
+ * in that wrapper (live: reply-review/verdict/malformed, and the recorded sample of 969389883 in
+ * fixtures/guidance-live-2026-10-03.json). An object whose ONLY field is a string `reply` is read as those lines; any
+ * other object stays a format miss. This only reads the shape; the lines are then checked exactly as before. */
+function unwrappedVerdict(text: string): string {
+  if (!text.startsWith('{')) return text;
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length === 1
+      && typeof (parsed as { reply?: unknown }).reply === 'string') return (parsed as { reply: string }).reply.trim();
+    // Plan #510: the review's verdicts are its own fields, one per rule beside reasoning (the runner-assembled flat
+    // protocol); each becomes its `rule_id: VERDICT | reason` line, judged by exactly the line checks below.
+    const entries = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? Object.entries(parsed) : [];
+    if (entries.length && entries.every(([rule, verdict]) => Object.hasOwn(REPLY_RULES, rule) && typeof verdict === 'string'))
+      return entries.map(([rule, verdict]) => `${rule}: ${(verdict as string).trim()}`).join('\n');
+  } catch { /* not JSON: judged as written */ }
+  return text;
+}
 /** The verdict lives inside the route's required Decision envelope: one exact line per selected rule
  * (`rule_id: PASS | reason`), so each rule keeps its own conclusion and reason. With `selected` (a new
- * live review), only the per-rule form is accepted and its lines must name exactly those rules: a
- * reviewer can neither drop a question nor add one, and a combined line is a format miss. Without
+ * live review), every selected rule must be present. Extra known findings are retained, including
+ * violations: a broader completed review is not unavailable. Unknown, duplicate, malformed or missing
+ * findings still refuse, and a combined line is a format miss. Without
  * `selected` (historical records), the earlier combined line (`PASS | reason` / `VIOLATION:ids | reason`)
  * is still read, honestly: it carries no findings, because one shared reason is not an independent result. */
 export function parseReplyReviewVerdict(value: string, selected?: readonly ReplyRule[]): { verdict: 'pass' | 'violation';
   ruleIds: ReplyRule[]; reason: string; findings?: ReplyFinding[] } {
-  const text = value.trim();
+  const text = unwrappedVerdict(value.trim());
   const combined = /^(PASS|VIOLATION(?::([a-z_,]+))?) \| ([^\r\n]{1,600})$/u.exec(text); // 600 = REPLY_REVIEW_REASON_MAX
   if (combined) {
     if (selected !== undefined || !combined[3]?.trim()) throw Error(REVIEW_MALFORMED);
@@ -166,8 +319,8 @@ export function parseReplyReviewVerdict(value: string, selected?: readonly Reply
       || findings.some(finding => finding.rule === match[1])) throw Error(REVIEW_MALFORMED);
     findings.push({ rule: match[1] as ReplyRule, verdict: match[2] === 'PASS' ? 'pass' : 'violation', reason: match[3]!.trim() });
   }
-  if (!findings.length || selected !== undefined && (findings.length !== selected.length
-    || findings.some(finding => !selected.includes(finding.rule)))) throw Error(REVIEW_MALFORMED);
+  if (!findings.length || selected?.some(rule => !findings.some(finding => finding.rule === rule)))
+    throw Error(REVIEW_MALFORMED);
   const violations = findings.filter(finding => finding.verdict === 'violation');
   const shown = violations.length ? violations : findings;
   const joined = shown.map(finding => `${finding.rule}: ${finding.reason}`).join('; ');
@@ -183,35 +336,72 @@ export function interpretJev(value: unknown, latencyMs: number): ReplyCheckResul
     usage?: { input_tokens?: unknown; output_tokens?: unknown } } | null;
   const answers = response?.answers;
   if (response?.model !== JEV_MODEL || !answers) throw Error('preview: Jev answer absent or wrong model');
-  const scores = rules.map(id => answers[id]?.noul);
-  if (rules.some(id => answers[id]?.type !== 'noul')
+  const scores = jevRules.map(id => answers[id]?.noul);
+  if (jevRules.some(id => answers[id]?.type !== 'noul')
     || scores.some(score => typeof score !== 'number' || !Number.isFinite(score) || score < 0 || score > 1))
     throw Error('preview: Jev answer malformed');
   const probabilities = scores as number[];
-  const scoreMap = Object.fromEntries(rules.map((id, index) => [id, probabilities[index]])) as Record<ReplyRule, number>;
+  const scoreMap = Object.fromEntries(jevRules.map((id, index) => [id, probabilities[index]])) as Record<JevRule, number>;
   const usage = { inputTokens: typeof response?.usage?.input_tokens === 'number' ? response.usage.input_tokens : null,
     outputTokens: typeof response?.usage?.output_tokens === 'number' ? response.usage.output_tokens : null, charge: null };
-  const flagged = rules.filter((id, index) => probabilities[index]! >= positiveLine[id]);
-  const uncertain = rules.filter((id, index) => probabilities[index]! >= 0.5);
+  const flagged = jevRules.filter((id, index) => probabilities[index]! >= positiveLine[id]);
+  const uncertain = jevRules.filter((id, index) => probabilities[index]! >= 0.5);
   if (flagged.length) return { verdict: 'violation', ruleIds: uncertain,
-    confidence: Math.max(...flagged.map(id => probabilities[rules.indexOf(id)]!)), path: 'jev', latencyMs, scores: scoreMap, usage };
+    confidence: Math.max(...flagged.map(id => probabilities[jevRules.indexOf(id)]!)), path: 'jev', latencyMs, scores: scoreMap, usage };
   return uncertain.length
-    ? { verdict: 'unsure', ruleIds: uncertain, confidence: Math.max(...uncertain.map(id => probabilities[rules.indexOf(id)]!)), path: 'jev', latencyMs, scores: scoreMap, usage }
+    ? { verdict: 'unsure', ruleIds: uncertain, confidence: Math.max(...uncertain.map(id => probabilities[jevRules.indexOf(id)]!)), path: 'jev', latencyMs, scores: scoreMap, usage }
     : { verdict: 'pass', ruleIds: [], confidence: 1 - Math.max(...probabilities), path: 'jev', latencyMs, scores: scoreMap, usage };
+}
+
+export type JevUnavailableCause = 'timeout' | `http-${number}` | 'network' | 'parse' | 'other';
+/** Never persist an exception message, URL, response body or credential as a diagnostic. */
+export function jevUnavailableCause(error: unknown): JevUnavailableCause {
+  const value = error as { jevCause?: unknown; name?: unknown } | null;
+  const cause = value?.jevCause;
+  if (cause === 'timeout' || cause === 'network' || cause === 'parse' || cause === 'other'
+    || typeof cause === 'string' && /^http-[1-5][0-9]{2}$/u.test(cause)) return cause as JevUnavailableCause;
+  return value?.name === 'TimeoutError' || value?.name === 'AbortError' ? 'timeout' : 'other';
+}
+export const JEV_REPLY_ATTEMPT_MS = 850;
+// Provider allowances start only after disclosure and host admission have completed.
+export const JEV_REPLY_RETRY_MS = 2500;
+export const JEV_ADMISSION_MS = 3000;
+// Two separately bounded admissions plus the two provider allowances, never another retry.
+export const JEV_REPLY_BUDGET_MS = 2 * JEV_ADMISSION_MS + JEV_REPLY_ATTEMPT_MS + JEV_REPLY_RETRY_MS;
+export type JevAdmissionBudget = { admissionMs: number; deadlineAt?: number };
+/** Both disclosure checkpoints share one admission allowance. A late admission has no
+ * continuation that can dispatch a provider request. The turn deadline still clips both phases. */
+export async function admitJev(check: () => Promise<void>, budget: JevAdmissionBudget,
+  elapsed: () => number, now: () => number): Promise<JevAdmissionBudget> {
+  const began = elapsed();
+  const allowance = Math.min(budget.admissionMs, budget.deadlineAt === undefined ? Infinity : budget.deadlineAt - now());
+  const timeout = () => Object.assign(Error('preview: Jev unavailable'), { jevCause: 'timeout' });
+  if (allowance <= 0) throw timeout();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([check(), new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(timeout()), allowance);
+    })]);
+    const admissionMs = budget.admissionMs - Math.max(0, elapsed() - began);
+    if (admissionMs <= 0 || budget.deadlineAt !== undefined && now() >= budget.deadlineAt) throw timeout();
+    return { ...budget, admissionMs };
+  } finally { clearTimeout(timer); }
 }
 
 export interface ReplyCheckPorts {
   /** `occurrence` is the journal turn the call serves, recorded beside its content-derived id (Rule 58). */
   jev(text: string, questions?: Record<string, { type: string; instructions: string }>, timeoutMs?: number,
-    occurrence?: string): Promise<{ value: unknown; latencyMs: number }>;
+    occurrence?: string, admission?: JevAdmissionBudget): Promise<{ value: unknown; latencyMs: number }>;
   escalate(text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[], deadlineAt?: number,
     /** `revision`: the held-class review of a revised candidate, a distinct operation from the first review. */
-    operation?: 'revision',
+    operation?: 'revision' | 'acknowledgement',
     /** The single format re-ask of a malformed first-review verdict (Rule 116). */
     formatRetry?: boolean): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
     findings?: ReplyFinding[];
     usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }>;
 
+  /** Durably reserve one additional Jev call, under the existing stop and spend floors. */
+  reserveJevRetry?(): boolean;
   reserveEscalation(text: string, originalPrompt?: string): boolean;
   /** Reserve the one format re-ask after a malformed verdict under the same call cap; false when capped or stopped. */
   reserveFormatRetry?(): boolean;
@@ -225,23 +415,45 @@ const expired = (ports: ReplyCheckPorts) => ports.deadlineAt !== undefined && po
 const budgetResult = (path: ReplyPath, ruleIds: ReplyRule[], latencyMs: number): ReplyCheckResult =>
   ({ verdict: 'unavailable', ruleIds, confidence: null, path, latencyMs, reason: REPLY_CHECK_BUDGET_REASON });
 export async function checkReply(text: string, id: string, ports: ReplyCheckPorts,
-  originalPrompt?: string): Promise<ReplyDecision> {
+  originalPrompt?: string, approval?: ApprovalFacts): Promise<ReplyDecision> {
   let first: ReplyCheckResult;
-  const started = ports.elapsedMs();
   if (expired(ports)) {
     ports.record(budgetResult('holding', [], 0));
     return { outcome: 'unavailable', path: 'holding' };
   }
-  try { const answer = await ports.jev(text, undefined, ports.deadlineAt === undefined || !ports.now
-    ? undefined : Math.max(1, ports.deadlineAt - ports.now()), id);
-    first = expired(ports) ? budgetResult('jev', [], Math.max(0, ports.elapsedMs() - started))
-      : interpretJev(answer.value, answer.latencyMs); }
-  catch { first = { verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev',
-    latencyMs: Math.max(0, ports.elapsedMs() - started),
-    ...(expired(ports) ? { reason: REPLY_CHECK_BUDGET_REASON } : {}) }; }
-  ports.record(first);
+  let report: ApprovalReport | undefined = approval && { request: approval.request, answer: 'unreadable' };
+  const attempt = async (allowance: number): Promise<ReplyCheckResult> => {
+    const began = ports.elapsedMs();
+    let received = false;
+    try {
+      const remaining = Math.min(allowance,
+        ports.deadlineAt === undefined || !ports.now ? Infinity : ports.deadlineAt - ports.now());
+      if (remaining <= 0) return { ...budgetResult('jev', [], 0), cause: 'timeout' };
+      const answer = await ports.jev(text, approval ? approvalQuestions(approval) : undefined, Math.max(1, Math.floor(remaining)), id,
+        { admissionMs: JEV_ADMISSION_MS, ...(ports.deadlineAt === undefined ? {} : { deadlineAt: ports.deadlineAt }) });
+      received = true;
+      if (expired(ports)) return { ...budgetResult('jev', [], Math.max(0, ports.elapsedMs() - began)), cause: 'timeout' };
+      const result = interpretJev(answer.value, answer.latencyMs);
+      if (approval) report = readApprovalReport(answer.value, approval.request);
+      return result;
+    } catch (error) {
+      return { verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev',
+        latencyMs: Math.max(0, ports.elapsedMs() - began), cause: received ? 'parse' : jevUnavailableCause(error),
+        ...(expired(ports) ? { reason: REPLY_CHECK_BUDGET_REASON } : {}) };
+    }
+  };
+  first = await attempt(JEV_REPLY_ATTEMPT_MS);
+  ports.record(report ? { ...first, approvalReport: report } : first);
+  // One new, reserved attempt. An unknown first call remains charged; recovery never repeats either call.
+  if (first.verdict === 'unavailable' && !expired(ports) && ports.reserveJevRetry?.()) {
+    first = await attempt(JEV_REPLY_RETRY_MS);
+    ports.record(report ? { ...first, approvalReport: report } : first);
+  }
   if (expired(ports)) return { outcome: 'unavailable', path: 'jev' };
-  if (first.verdict === 'pass') return { outcome: 'pass', path: 'jev' };
+  // A verified operator-only audience uses the confidence cascade; other groups still
+  // need the full-context audience judgment even when all ten Jev questions pass.
+  if (first.verdict === 'pass') return confidentReplyNeedsReview(originalPrompt)
+    ? reviewReply(text, id, ports, [...AUDIENCE_RULES], originalPrompt) : { outcome: 'pass', path: 'jev' };
   return reviewReply(text, id, ports, first.ruleIds, originalPrompt);
 }
 
@@ -307,7 +519,7 @@ export function replyRevisionQuestion(objections: readonly string[], reason?: st
     const note = findings?.find(finding => finding.rule === id && finding.verdict === 'violation')?.reason;
     return text === undefined ? [] : [[id, note ? `${text} Reviewer: ${note.slice(0, 160)}` : text]];
   }));
-  return `Revise packet.candidateReply, your own draft reply to packet.operatorMessage, before it is sent. A pre-send review raised these objections: ${JSON.stringify(listed)}${reason ? `; reviewer note: ${JSON.stringify(reason.slice(0, 160))}` : ''}. Objections are signals, not verdicts: fix what is actually wrong, keep what is right, and still answer the operator's message fully. Never reproduce a password, access key or other secret. Return inside conclusion.value only a JSON object {"reply": the reply to send (revised, or unchanged when you reject every objection), "dispositions": {objection id: {"decision": "accept" or "reject", "reason": one short sentence}}${objections.some(id => id === 'unrecorded_blocker' || id === 'claims_blocked') ? ', "blocker": optional investigation record' : ''}} with one entry for every listed objection; a rejection needs its reason.${objections.some(id => id === 'unrecorded_blocker' || id === 'claims_blocked') ? REVISION_BLOCKER_GUIDE : ''} No other text.`;
+  return `Revise packet.candidateReply, your own draft reply to packet.operatorMessage, before it is sent. A pre-send review raised these objections: ${JSON.stringify(listed)}${reason ? `; reviewer note: ${JSON.stringify(reason.slice(0, 160))}` : ''}. Objections are signals, not verdicts: fix what is actually wrong, keep what is right, and still answer the operator's message fully. Do not add a correction about an earlier reply here: the runner carries that separately after this answer. Never reproduce a password, access key or other secret. For the final reply, declare promises (new commitments you make) as {quote, when?} and fulfills (agent promises this reply carries out) as {id, quote}, using verbatim excerpts of the final reply and only commitment ids in the packet. Use empty arrays when none apply. Give dispositions one entry for every listed objection; a rejection needs its reason.${objections.some(id => id === 'unrecorded_blocker' || id === 'claims_blocked') ? REVISION_BLOCKER_GUIDE : ''} ${taskFields(`{"reply": the reply to send (revised, or unchanged when you reject every objection), "promises": [{"quote": string, "when": optional date phrase within quote}], "fulfills": [{"id": commitment id, "quote": string}], "dispositions": {objection id: {"decision": "accept" or "reject", "reason": one short sentence}}${objections.some(id => id === 'unrecorded_blocker' || id === 'claims_blocked') ? ', "blocker": optional investigation record' : ''}}`)}`;
 }
 /** Plan #104: a true capability limit is kept and recorded, never talked away. The shape is the answer's own
  * blocker declaration, admitted by the same runner checks. */
@@ -316,13 +528,13 @@ export const REVISION_BLOCKER_GUIDE = ' If the limit is real (it survives every 
  * without dispositions) is still the revised reply, with no decision recorded for any objection. */
 export function parseReplyRevision(value: string, objections: readonly string[]): { text: string; dispositions: ObjectionDisposition[];
   /** The raw declared investigation record, unvalidated: the runner alone decides whether it is admitted. */
-  blocker?: unknown } {
-  let text = value, answered: unknown, blocker: unknown;
+  blocker?: unknown; promises?: unknown; fulfills?: unknown } {
+  let text = value, answered: unknown, blocker: unknown, promises: unknown, fulfills: unknown;
   try {
-    const parsed = JSON.parse(value) as { reply?: unknown; dispositions?: unknown; blocker?: unknown } | null;
-    if (typeof parsed?.reply === 'string') { text = parsed.reply; answered = parsed.dispositions; blocker = parsed.blocker; }
+    const parsed = JSON.parse(value) as { reply?: unknown; dispositions?: unknown; blocker?: unknown; promises?: unknown; fulfills?: unknown } | null;
+    if (typeof parsed?.reply === 'string') { text = parsed.reply; answered = parsed.dispositions; blocker = parsed.blocker; promises = parsed.promises; fulfills = parsed.fulfills; }
     else if (parsed?.reply && typeof parsed.reply === 'object' && typeof (parsed.reply as { answer?: unknown }).answer === 'string') {
-      text = (parsed.reply as { answer: string }).answer; answered = parsed.dispositions; blocker = parsed.blocker;
+      text = (parsed.reply as { answer: string }).answer; answered = parsed.dispositions; blocker = parsed.blocker; promises = parsed.promises; fulfills = parsed.fulfills;
     }
   } catch { /* plain revised text */ }
   const table = answered && typeof answered === 'object' && !Array.isArray(answered) ? answered as Record<string, unknown> : {};
@@ -333,7 +545,7 @@ export function parseReplyRevision(value: string, objections: readonly string[])
     if (entry?.decision === 'reject' && reason !== undefined) return { objection, decision: 'reject', reason };
     return { objection, decision: 'no-decision' };
   });
-  return { text, dispositions, ...(blocker && typeof blocker === 'object' ? { blocker } : {}) };
+  return { text, dispositions, ...(promises === undefined ? {} : { promises }), ...(fulfills === undefined ? {} : { fulfills }), ...(blocker && typeof blocker === 'object' ? { blocker } : {}) };
 }
 /** A recorded disposition list is exactly one valid answer per objection, in order. */
 export function validDispositions(value: unknown, objections: readonly string[]): value is ObjectionDisposition[] {
@@ -359,7 +571,8 @@ export async function reviewReply(text: string, id: string, ports: ReplyCheckPor
   }
   const fallbackStarted = ports.elapsedMs();
   try {
-    const reviewRules = ruleIds.length ? ruleIds : rules;
+    // Part 18 §16: the guidance family's context questions ride this same batched call (never a second gate).
+    const reviewRules = guidanceReviewRules(ruleIds.length ? ruleIds : rules, sharedAudience(originalPrompt));
     let result;
     try { result = await ports.escalate(text, id, originalPrompt, reviewRules, ports.deadlineAt); }
     catch (error) {
@@ -385,4 +598,236 @@ export async function reviewReply(text: string, id: string, ports: ReplyCheckPor
       ...(expired(ports) ? { reason: REPLY_CHECK_BUDGET_REASON } : {}) });
     return { outcome: 'unavailable', path: 'subscription' };
   }
+}
+
+/** THE CLAIM-SCOPED FLOOR (plan #215; Rules 2, 4, 42, 77, 86, 95).
+ *
+ * A gate withholds only what it named. The two credential floors may withhold a whole reply, because what they
+ * name IS the reply's fitness to leave; every other pre-send objection names CONTENT, and so may remove only that
+ * content. The measured defect this closes: on 2026-10-01, 5 of 62 operator turns ended with the holding notice and
+ * no answer, because a review violation on `defers_work` / `unrecorded_blocker` replaced the whole answer whenever
+ * the one revision round did not clear it (and its own review could not run inside the shared 30 s budget).
+ *
+ * The review question already requires a violation reason to quote the offending claim, so the claim is located
+ * exactly in the reviewed text and the sentences carrying it are removed. Code removes only what the reviewer
+ * named — nothing is paraphrased, rewritten or added — so this is deterministic enforcement of a recorded
+ * judgment (Rule 4), not a second judgment, and it needs no further model call. The sensitivity member's disclosure
+ * (asked only of a reply whose audience is not the verified operator alone) is the same kind of named content: the
+ * sentence that would reveal a private detail is removed and the rest of the answer is sent (least revelation). */
+export const CLAIM_SCOPED_RULES: readonly ReplyRule[] = Object.freeze(['defers_work', 'unrecorded_blocker', 'sensitive_disclosure']);
+/** Shortest named claim acted on. Below this a span is a fragment ("later", "a deferral"), not a claim, so it
+ * names nothing. The live recorded claim `I'll summarize then` is 19 characters, which sets the bound. */
+export const CLAIM_MATCH_MIN = 12;
+/** A sentence the claim spans whole is carried by it only when that sentence is long enough to be unambiguous. */
+export const CLAIM_PREFIX_MIN = 24;
+
+const quoteFolds: readonly [RegExp, string][] = [[/[\u2018\u2019\u02bc\u2032]/gu, "'"],
+  [/[\u201c\u201d\u2033]/gu, '"'], [/[\u2010-\u2015]/gu, '-'], [/\s+/gu, ' ']];
+/** Quote style, dash style, spacing and the punctuation a quote ends on ("…myself," for "…myself.", or a trailing
+ * ellipsis) differ between a reviewer's quote and the reply it quotes; meaning does not (live 969390038). */
+export const foldClaim = (text: string): string =>
+  quoteFolds.reduce((result, [pattern, replacement]) => result.replace(pattern, replacement), text)
+    .trim().replace(/(?:\u2026|\.{3}|[,;:])+$/u, '').trim().toLowerCase();
+
+/** The spans a reviewer put in quotes. An apostrophe between two letters ("I'll", "can't") never opens or closes
+ * a span: the live reason `Reply promises 'I'll summarize then' (future work)` must yield the whole promise, not
+ * the single letter before the apostrophe inside it. */
+export function quotedSpans(reason: string): string[] {
+  return allQuotedSpans(reason).filter(span => span.length >= CLAIM_MATCH_MIN);
+}
+/** The claims a finding names in this reply: every quoted span long enough to be a claim, and a shorter quote only
+ * where it is exactly one whole sentence of the reply ("Code: 5521."), which names that sentence unambiguously. A
+ * short fragment of a longer sentence stays unnamed (least revelation; Rules 4, 42, 86). */
+export function namedClaimsIn(reason: string, body: string): string[] {
+  const whole = new Set(replySegments(body).map(segment => foldClaim(segment.text)).filter(Boolean));
+  return allQuotedSpans(reason).filter(span => span.length >= CLAIM_MATCH_MIN || whole.has(foldClaim(span)));
+}
+function allQuotedSpans(reason: string): string[] {
+  const found: string[] = [];
+  const letter = /\p{L}|\p{N}/u;
+  const pairs: readonly [string, string][] = [['"', '"'], ['\u201c', '\u201d']];
+  for (const [open, close] of pairs) {
+    let at = reason.indexOf(open);
+    while (at >= 0) {
+      const end = reason.indexOf(close, at + 1);
+      if (end < 0) break;
+      found.push(reason.slice(at + 1, end));
+      at = reason.indexOf(open, end + 1);
+    }
+  }
+  for (const mark of ["'", '\u2018']) {
+    const closer = mark === "'" ? "'" : '\u2019';
+    let at = 0;
+    while (at < reason.length) {
+      const open = reason.indexOf(mark, at);
+      if (open < 0) break;
+      const before = reason[open - 1];
+      if (before !== undefined && letter.test(before)) { at = open + 1; continue; }
+      let end = -1;
+      for (let scan = reason.indexOf(closer, open + 1); scan >= 0; scan = reason.indexOf(closer, scan + 1)) {
+        const after = reason[scan + 1];
+        if (after !== undefined && letter.test(after)) continue;
+        end = scan; break;
+      }
+      if (end < 0) break;
+      found.push(reason.slice(open + 1, end));
+      at = end + 1;
+    }
+  }
+  return found.map(span => span.trim()).filter(Boolean);
+}
+
+/** Sentence segments of a reply, each with the separator that followed it, so what is kept re-joins unchanged. */
+export function replySegments(text: string): { text: string; separator: string }[] {
+  const segments: { text: string; separator: string }[] = [];
+  let start = 0;
+  for (const match of text.matchAll(/(?<=[.!?\u2026])\s+|\n+/gu)) {
+    const at = match.index ?? 0;
+    segments.push({ text: text.slice(start, at), separator: match[0] });
+    start = at + match[0].length;
+  }
+  if (start < text.length) segments.push({ text: text.slice(start), separator: '' });
+  return segments;
+}
+
+/** True when this segment carries the named claim: it contains the whole quoted claim, or the claim spans it. A
+ * claim shorter than a claim fragment carries a segment only when it is that whole segment, exactly.
+ * A truncated quote ("… next mess…") still matches through its available text, ellipsis folded away; a shared
+ * opening alone never does, because the rest of a complete quote may name a different sentence (Rules 4, 86). */
+export function segmentCarries(segment: string, claim: string): boolean {
+  const text = foldClaim(segment), named = foldClaim(claim);
+  if (named.length < CLAIM_MATCH_MIN) return named.length > 0 && text === named;
+  if (text.includes(named)) return true;
+  if (text.length >= CLAIM_PREFIX_MIN && named.includes(text)) return true;
+  return elidedClaimIn(text, named);
+}
+/** A reviewer's quote that elides its middle ("I can't raise my own model-call limit... not something I have
+ * authority or tools to change myself", live 969390016) names the sentence that holds every quoted part, in order.
+ * Each part must be long enough to be a claim on its own, so a short fragment never locates anything (Rules 4, 86). */
+function elidedClaimIn(text: string, named: string): boolean {
+  const parts = named.split(/\s*(?:\u2026|\.{3})\s*/u).filter(Boolean);
+  if (parts.length < 2 || parts.some(part => part.length < CLAIM_MATCH_MIN)) return false;
+  let at = 0;
+  for (const part of parts) {
+    const found = text.indexOf(part, at);
+    if (found < 0) return false;
+    at = found + part.length;
+  }
+  return true;
+}
+
+/** What survived, what was removed, and every named claim no sentence carried. Nothing is ever silently
+ * dropped: an unlocated claim is reported to the caller, which records and counts it (Rules 2, 42).
+ *
+ * Every kept segment keeps the separator that originally followed it, so excising nothing returns the body
+ * unchanged and the text around a removal is never reflowed. The earlier join normalized every separator
+ * (a blank line became one newline, a wide gap one space), which rewrote passages no reviewer had named:
+ * the floor's own contract is that nothing is paraphrased, rewritten or added. Live 2026-10-05 (room two,
+ * D-proofroom2-20261005-112229, update 6232450, D1c): three finished results rode the reply, the floor
+ * removed one named claim, and the reflow silently changed a second result's text, so the settlement rule
+ * ("the claims are decided against the reply exactly as it is written") no longer found it. That result
+ * reached the operator in full and was never marked delivered, and the same reflow drops a reply's declared
+ * loops, promises and fulfilled commitments whose quote spans a normalized separator (Rules 2, 4, 8, 86). */
+export interface ClaimExcision { text: string; removed: string[]; unlocated: string[] }
+export function exciseNamedClaims(body: string, claims: readonly string[]): ClaimExcision {
+  const segments = replySegments(body);
+  const named = [...new Set(claims.map(claim => claim.trim()).filter(Boolean))];
+  const cut = new Set<number>(), located = new Set<string>();
+  for (const claim of named) for (const [index, segment] of segments.entries())
+    if (segmentCarries(segment.text, claim)) { cut.add(index); located.add(claim); }
+  const kept: { text: string; separator: string }[] = [];
+  let bridged = '';
+  for (const [index, segment] of segments.entries()) {
+    if (cut.has(index)) { bridged = widerSeparator(bridged, segment.separator); continue; }
+    if (kept.length) kept[kept.length - 1]!.separator = widerSeparator(kept[kept.length - 1]!.separator, bridged);
+    bridged = '';
+    kept.push({ ...segment });
+  }
+  let text = '';
+  for (const [index, segment] of kept.entries())
+    text += segment.text + (index === kept.length - 1 ? '' : segment.separator);
+  return { text: text.trim(), removed: segments.filter((_, index) => cut.has(index)).map(segment => segment.text.trim()),
+    unlocated: named.filter(claim => !located.has(claim)) };
+}
+/** The gap left where a run of named sentences was removed: the widest separator that spanned it, so removing the
+ * last sentence of a paragraph does not run the next paragraph onto it. Between two sentences that were already
+ * adjacent nothing is bridged, and the separator the author wrote stands unchanged. */
+const widerSeparator = (left: string, right: string): string => {
+  const breaks = (value: string) => (value.match(/\n/gu) ?? []).length;
+  if (breaks(right) !== breaks(left)) return breaks(right) > breaks(left) ? right : left;
+  return right.length > left.length ? right : left;
+};
+
+/** Structural nonempty check only. Meaning belongs to the full-context remainder review (Rules 10, 77, 86). */
+export const substantiveReply = (text: string): boolean => text.trim().length > 0;
+
+/** THE CREDENTIAL LABEL BOUNDARY (plans #442, #446; Rules 4, 10, 86, 100; purpose: secrets never exposed, ability never
+ * reduced). A secret is decided against the secret MATERIAL the runner holds, never against what a value looks like
+ * to a reader. Live 2026-10-03 (proof room group T, update 715673352): the runner's own reminder line named the
+ * activation record's public identity label `preview-s2-activation-v2-2026-09-23`, the reviewer called it "an
+ * activation token", and a correct tool answer reached the operator only as the holding notice.
+ *
+ * The exact floors decide alone: a credential shape (redact) or the exact bytes of a held secret value, or a derived
+ * encoding of them, in the text; either withholds on every reply, regardless of audience. Every nonempty held value is
+ * matched, however short: a six-digit login code is as secret as a long key. A model's credential VIOLATION always
+ * keeps its hold: no reading of its prose can show the whole allegation is public, so none is attempted. The false
+ * finding is prevented at its source instead: the full-context review reads the reply exactly as it will be sent and is
+ * given, as quoted recorded facts (packet.credentialRegister), the register's public entries, so a public label is not
+ * judged a token, and the runner's own reminder line (its expiry and recorded renewal step) is checked against the
+ * record it came from (proof room 2, update 6232017: the same line was called an invented task and an unsupported
+ * self-state claim when the reviewer had no record of it). Nothing is inferred from what a word looks like, and tool provenance is never disclosure authority. */
+/** A provider key's kind prefix (`sk-ant-oat01-`): the rest of the key, which the shape floor alone no longer recognises. */
+const KEY_PREFIX = /^sk-[a-z]+-[a-z]+\d*-/u;
+export const secretForms = (value: string): string[] => {
+  const bytes = Buffer.from(value, 'utf8');
+  const bare = KEY_PREFIX.test(value) ? value.replace(KEY_PREFIX, '') : '';
+  return [...new Set([value, bytes.toString('base64'), bytes.toString('base64').replace(/=+$/u, ''),
+    bytes.toString('base64url'), bytes.toString('hex'), encodeURIComponent(value), JSON.stringify(value).slice(1, -1),
+    ...(bare.length >= 16 ? [bare] : [])])].filter(form => form.length > 0);
+};
+/** True when `text` carries a held secret value exactly or in a derived encoding (base64, base64url, hex, URL, JSON
+ * string escaping, or a provider key without its kind prefix). */
+export function secretMaterialIn(text: string, held: readonly string[]): boolean {
+  return held.some(value => value.length > 0 && secretForms(value).some(form => text.includes(form)));
+}
+/** Held secret material replaced by the redaction mark, for text that goes on to a model (the revision round). */
+export function concealSecretMaterial(text: string, held: readonly string[]): string {
+  const forms = held.filter(value => value.length > 0).flatMap(secretForms).sort((a, b) => b.length - a.length);
+  return forms.reduce((out, form) => out.split(form).join(redactionMark), text);
+}
+/** The fields of a credential record the register shows the operator and gives the model: never a value. */
+export interface PublicCredentialRecord { readonly displayLabel?: string; readonly name: string; readonly kind: string; readonly custody: string;
+  readonly identity: string; readonly expiresAt?: number | null; readonly expirySource?: string;
+  readonly renewal?: { readonly standing?: string; readonly smallestHumanAction?: string } }
+/** One register entry as the full-context review reads it: the record's public fields, its expiry as the reminder line
+ * states it, and its renewal standing and step. */
+export interface RecordedCredentialFact { readonly name: string; readonly identity: string; readonly kind: string;
+  readonly custody: string; readonly expiry: string; readonly renewal: { readonly standing: string; readonly smallestHumanAction: string } }
+/** A label is public only when it is not credential-shaped, carries no held secret material, and lies inside no held
+ * value: no label can vouch for secret bytes. */
+const publicLabel = (label: string, held: readonly string[]): boolean => label.length > 0 && redact(label).count === 0
+  && !secretMaterialIn(label, held) && !held.some(value => value.includes(label));
+/** The register's entries as recorded facts for the full-context review (packet.credentialRegister). An entry with any
+ * field that is not a public label is left out whole, so the review is never told a secret-bearing field is public. */
+export function publicCredentialRegister(records: readonly PublicCredentialRecord[], held: readonly string[],
+  now: number): RecordedCredentialFact[] {
+  return records.flatMap(record => {
+    const fields = [record.name, record.identity, record.kind, record.custody, record.renewal?.standing ?? 'none',
+      record.renewal?.smallestHumanAction ?? ''].map(field => (typeof field === 'string' ? field.trim() : ''));
+    if (!fields.every(field => publicLabel(field, held))) return [];
+    const [, , kind, custody, standing, smallestHumanAction] = fields as [string, string, string, string, string, string];
+    const expiry = typeof record.expiresAt === 'number' ? remainingText(record.expiresAt - now)
+      : record.expirySource === 'none' ? 'no fixed expiry' : 'expiry unknown';
+    const label = credentialDisplayLabel(record);
+    if (!publicLabel(label, held)) return [];
+    return [{ name: label, identity: label, kind, custody, expiry, renewal: { standing, smallestHumanAction } }];
+  });
+}
+
+/** A carried correction is optional prose, never the current answer. Keep its exact bytes for
+ * review; an oversized or multi-sentence proposal waits rather than being truncated into a claim. */
+export function boundedCorrection(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim() || Array.from(value.trim()).length > 240) return undefined;
+  const text = value.trim();
+  return replySegments(text).length === 1 && !text.includes('\n') ? text : undefined;
 }

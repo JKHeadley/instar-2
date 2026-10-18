@@ -1,13 +1,36 @@
 import { expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { currentRuntime } from '../../scripts/composition-digest.mjs';
+import { compositionClosure, compositionDigest, currentRuntime } from '../../scripts/composition-digest.mjs';
 import { buildCoreIfAbsent, currentPlatform, lintClientImports, lintHarnessNames, lintParityRegister, lintReplacedStores,
   NATIVE_HARNESS, parityMatrix, registerDeclarationSources, shippedClientFiles } from '../../scripts/check-architecture.mjs';
 // @ts-expect-error The self-hosting harness is JavaScript.
 import { selfHostCompositionEvidence } from '../preview/self-host-harness.mjs';
 
 const read = (path: string) => { try { return readFileSync(path, 'utf8'); } catch { return null; } };
+
+type DeclarationSources = Record<string, { id: string; requiredFacts: { metrics: string[] } }[]>;
+// A test-only supported declaration exercises certification independently of the shipped posture.
+// Hash actual composition bytes, but never write this claim to the register or call it contract evidence.
+const certifiedSources = (): DeclarationSources => {
+  const sources = structuredClone(registerDeclarationSources()) as DeclarationSources;
+  const path = 'src/assembly/harness.declarations.json';
+  const prefix = 'harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.';
+  const entries = ['tests/preview/self-host.mjs', 'scripts/slice-ts-loader.mjs', 'deploy/macos/fixed-worker/worker.sb'];
+  const closure = compositionClosure(entries, read, path);
+  expect(closure.complete).toBe(true);
+  const runtime = currentRuntime(), digest = compositionDigest(runtime, closure.files, read);
+  expect(digest).toMatch(/^sha256:[a-f0-9]{64}$/u);
+  const declaration = sources[path]![0]!;
+  declaration.requiredFacts.metrics = declaration.requiredFacts.metrics.filter(metric => !metric.startsWith(prefix));
+  declaration.requiredFacts.metrics.push(...[
+    'supported', 'artifact=createSelfHostHarness@tests/preview/self-host-harness.mjs',
+    'route=claude-code-subscription@src/assembly/production-provider.ts',
+    `runtime=${runtime}`, `conformance=${digest}`, `entries=${entries.join(',')}`,
+    'evidence=tests/preview/native-harness-contract.test.ts#native composition honours the harness contract through doorway claude-code-subscription',
+  ].map(fact => prefix + fact));
+  return sources;
+};
 
 it('R30 flags a harness-name branch or a harness-specific adapter outside its adapter, and passes the shipped runner', () => {
   const flagged = lintHarnessNames({
@@ -50,7 +73,19 @@ it('R45 refuses a live consumer of a replaced store and an undeclared reader, an
 });
 
 it('R105 derives the parity matrix from the register declarations and refuses a cell without its evidence', () => {
-  const sources = registerDeclarationSources();
+  const shipped = registerDeclarationSources();
+  const shippedNative = parityMatrix(shipped).harnessTuples.find(tuple => tuple.harness === NATIVE_HARNESS
+    && tuple.doorway === 'claude-code-subscription' && tuple.mode === 'self-hosting');
+  expect(shippedNative).toBeDefined();
+  expect(['supported', 'unproven']).toContain(shippedNative!.status);
+  if (shippedNative!.status === 'unproven') {
+    expect(shippedNative!.reason?.length).toBeGreaterThanOrEqual(10);
+    expect(shippedNative!.evidence).toBeUndefined();
+  }
+  expect(selfHostCompositionEvidence(shipped['src/assembly/harness.declarations.json'], read).supported)
+    .toBe(shippedNative!.status === 'supported');
+  expect(lintParityRegister(shipped, read, ['claude-code-subscription'])).toEqual([]);
+  const sources = certifiedSources();
   expect(existsSync('src/conversation/parity.register.json')).toBe(false);
   const matrix = parityMatrix(sources);
   expect(matrix.channels).toEqual(['slack', 'telegram']);
@@ -64,19 +99,29 @@ it('R105 derives the parity matrix from the register declarations and refuses a 
   // exact composition (the static import closure of its declared entry points), the resolved runtime and the conformance digest. The journal runner's conversation case is not the shared
   // full-port contract, so its tuple is unproven (with its reason), as are the cells no captured case covers.
   expect(NATIVE_HARNESS).toBe('preview-self-host-native');
-  expect(matrix.harnessTuples.find(tuple => tuple.harness === NATIVE_HARNESS)).toMatchObject({ mode: 'self-hosting', status: 'supported',
+  const native = (doorway: string) => matrix.harnessTuples.find(tuple => tuple.harness === NATIVE_HARNESS && tuple.doorway === doorway);
+  expect(native('claude-code-subscription')).toMatchObject({ mode: 'self-hosting', status: 'supported',
     doorway: 'claude-code-subscription', platform: 'darwin',
     artifact: ['createSelfHostHarness@tests/preview/self-host-harness.mjs'], route: ['claude-code-subscription@src/assembly/production-provider.ts'],
     runtime: [currentRuntime()], conformance: [expect.stringMatching(/^sha256:[a-f0-9]{64}$/u)],
     entries: ['tests/preview/self-host.mjs,scripts/slice-ts-loader.mjs,deploy/macos/fixed-worker/worker.sb'],
     evidence: [{ file: 'tests/preview/native-harness-contract.test.ts', title: 'native composition honours the harness contract through doorway claude-code-subscription' }] });
+  // The registered Codex doorway carries its own native tuple, and it is honestly unproven: the
+  // doorway answers and drives session work, but the full harness contract has not been run against
+  // it. A `supported` claim there would be the one thing Rule 115's check exists to refuse.
+  expect(native('codex-cli-subscription')).toMatchObject({ mode: 'self-hosting', status: 'unproven',
+    platform: 'darwin', reason: expect.stringContaining('has not been run against it') });
+  expect(native('codex-cli-subscription')!.evidence).toBeUndefined();
+  // The session harness's own Codex tuple names the registered route it now has.
+  expect(matrix.harnessTuples.find(tuple => tuple.harness === 'session-harness:codex-cli'))
+    .toMatchObject({ doorway: 'codex-cli-subscription', status: 'unproven' });
   const journal = matrix.harnessTuples.filter(tuple => tuple.harness === 'preview-journal-native');
   expect(journal.find(tuple => tuple.mode === 'conversation')).toMatchObject({ status: 'unproven', reason: expect.stringContaining('not the shared full-port contract') });
   expect(journal.find(tuple => tuple.mode === 'ordinary-exhaustion-recovery')).toMatchObject({ status: 'unproven' });
   expect(journal.find(tuple => tuple.mode === 'preventive-compaction')).toMatchObject({ status: 'unsupported' });
 
   const doorways = ['claude-code-subscription'];
-  // Every issue below is an R105 finding about the committed declarations themselves.
+  // Every issue below mutates the test-only supported declaration or an existing channel cell.
   const clean = lintParityRegister(sources, read, doorways).map(issue => issue.detail);
   const details = (value: Record<string, unknown>, registered = doorways) =>
     lintParityRegister(value, read, registered).map(issue => issue.detail).filter(detail => !clean.includes(detail));
@@ -129,15 +174,18 @@ it('R105 derives the parity matrix from the register declarations and refuses a 
     expect(evidence.supported, path).toBe(false);
   }
   expect(selfHostCompositionEvidence(declarations, read).supported).toBe(true);
-  expect(details(with_(harness, entries => { const metrics = entries[0]!.requiredFacts.metrics;
+  const runtimeDrift = details(with_(harness, entries => { const metrics = entries[0]!.requiredFacts.metrics;
     metrics[metrics.findIndex(metric => metric.includes('.self-hosting.runtime='))] = 'harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.runtime=node-24';
-  }))).toContain(`preview-self-host-native × claude-code-subscription × darwin × self-hosting: certified on node-24, running ${currentRuntime()}`);
+  }));
+  const runtimeFinding = `preview-self-host-native × claude-code-subscription × darwin × self-hosting: certified on node-24, running ${currentRuntime()}`;
+  if (currentPlatform() === 'darwin') expect(runtimeDrift).toContain(runtimeFinding);
+  else expect(runtimeDrift).not.toContain(runtimeFinding);
   expect(details(with_(harness, entries => { const metrics = entries[0]!.requiredFacts.metrics;
     metrics.splice(metrics.findIndex(metric => metric.includes('.self-hosting.entries=')), 1);
   }))).toContain('preview-self-host-native × claude-code-subscription × darwin × self-hosting: supported without complete composition entry points (closure reaching its artifact and route) and runtime');
   // A newly registered doorway lands without a native harness tuple.
   expect(details(sources, [...doorways, 'new-doorway'])).toContain('registered doorway new-doorway has no native harness tuple');
-  // The committed declarations carry no other finding.
+  // The test-only supported declaration carries no finding before mutation.
   expect(clean).toEqual([]);
 // Bounded but heavy: each of the nine drift cases re-hashes the whole composition closure (typescript.js included), about 8 s
 // alone; under a loaded full suite it passed the 10 s default, so it gets its own ceiling.
@@ -145,7 +193,7 @@ it('R105 derives the parity matrix from the register declarations and refuses a 
 
 it('R105 decides a certified composition on the host that can decide it: the build it needs, and the platform it names', () => {
   const harness = 'src/assembly/harness.declarations.json';
-  const sources = registerDeclarationSources() as Record<string, { id: string; requiredFacts: { metrics: string[] } }[]>;
+  const sources = certifiedSources();
   const where = 'preview-self-host-native × claude-code-subscription';
   const elsewhere = currentPlatform() === 'darwin' ? 'linux' : 'darwin';
   const onPlatform = (platform: string, edit: (metrics: string[]) => void = () => {}) => {

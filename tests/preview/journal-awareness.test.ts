@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { SEARCH_GUIDANCE } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { DESK_STATUS_MAX_AGE_MS, DESK_STATUS_MAX_BYTES, DESK_STATUS_YIELD_BYTES, SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
@@ -29,7 +30,7 @@ async function turns(texts: string[], between: (index: number, status: string) =
     sources: () => {
       const report = deskStatusSource(readDeskStatus(status), NOW, status);
       const runs = { launches: [], unreadable: 0 };
-      return [...purpose, selfStateSource(selfStateBrief(journal.view, runs, NOW, 'UTC')), report];
+      return [...purpose, selfStateSource(selfStateBrief(journal.view, runs, NOW, 'UTC')), ...(report ? [report] : [])];
     },
     prepareModel: input => prepareJournalEnvelope(input, model, genesis.grant, NOW),
     model: async input => { seen.push(input); return 'ok'; }, send: async () => 1, checkOutbound: () => {} });
@@ -58,24 +59,24 @@ it('puts a current, labelled desk report into every turn packet within the conte
       expect(Buffer.byteLength(input.context)).toBeLessThanOrEqual(genesis.maxBytes);
       expect(typeof input.prepared).toBe('string'); // prepareJournalEnvelope throws past the prompt bound
       expect(desk(input.context).provenance.status).toBe('current');
-      expect(desk(input.context).text).toContain('Preview clock now: 2026-09-21T');
+      expect(desk(input.context).text).toContain('Agent clock now: 2026-09-21T');
       // The capability list itself is the generated capability-note source (Rules 78, 84); the packet field points at it.
       expect(JSON.parse(input.context).capability).toContain('capability-note source');
       const note = (JSON.parse(input.context).sources as { id: string; text: string }[]).find(s => s.id === 'capability-note')!.text;
       expect(note).toContain('no tools');
-      expect(note).toContain('- preview-durable-memory: an encrypted local journal');
+      expect(note).toContain('- an encrypted local journal');
       expect(note).toContain('survives restarts');
       expect(note).toContain('correct or forget');
       // Hold guidance rides only while a held item is visible; held-reply-notice.test.ts proves the held side.
       expect(JSON.parse(input.context).capability).not.toContain('runner sends any due held notice on its fixed path');
       expect(JSON.parse(input.context).sources.map((s: { id: string }) => s.id)).toContain('purpose:purpose');
       expect(JSON.parse(input.context).sources.find((s: { id: string }) => s.id === 'capability-note').text)
-        .toContain('- preview-status-command: "status" and "how are you doing" are answered from the journal');
+        .toContain('- "status" and "how are you doing" are answered from the journal');
       const sources = JSON.parse(input.context).sources as { id: string; text: string }[];
       expect(sources.find(source => source.id === 'capability-note')?.text).toContain('correct or forget a fact');
       // The per-turn self-state is the brief; memory's standing description rides the capability note above.
       expect(sources.find(source => source.id === 'self-state')?.text).toContain('Operator messages received:');
-      expect(sources.find(source => source.id === 'self-state')?.text).toContain('original audit record remains');
+      expect(sources.find(source => source.id === 'self-state')?.text).toContain('both keep their original audit record');
       expect(sources.find(source => source.id === 'self-state')?.text).not.toContain('Memory health:');
     }
     expect(desk(world.seen[0]!.context).text).toContain('building.');
@@ -83,25 +84,24 @@ it('puts a current, labelled desk report into every turn packet within the conte
   } finally { rmSync(world.root, { recursive: true, force: true }); }
 });
 
-it('labels a missing, stale or oversize report plainly and never invents status', async () => {
+it('omits a missing report and preserves stale and oversize labels', async () => {
   const base = { now: NOW, path: '/desk/desk-status.md' };
   const missing = deskStatusSource(readDeskStatus('/nonexistent/desk-status.md'), base.now, base.path);
-  expect(missing.provenance.status).toBe('missing');
-  expect(missing.text).toContain('No desk report is available. The status of other Instar 2.0 work is unknown');
+  expect(missing).toBeNull();
   const stale = deskStatusSource({ text: 'Lane A: building.', modifiedAt: NOW - DESK_STATUS_MAX_AGE_MS - 3_600_000 }, base.now, base.path);
-  expect(stale.provenance.status).toBe('stale');
-  expect(stale.text).toContain('STALE: last updated');
-  expect(stale.text).toContain('25 hours ago');
+  expect(stale!.provenance.status).toBe('stale');
+  expect(stale!.text).toContain('STALE: last updated');
+  expect(stale!.text).toContain('25 hours ago');
   const fresh = deskStatusSource({ text: 'Lane A: building.', modifiedAt: NOW - DESK_STATUS_MAX_AGE_MS + 60_000 }, base.now, base.path);
-  expect(fresh.provenance.status).toBe('current');
-  expect(fresh.text).not.toContain('STALE');
+  expect(fresh!.provenance.status).toBe('current');
+  expect(fresh!.text).not.toContain('STALE');
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-awareness-')));
   try {
     const big = join(root, 'desk-status.md');
     writeFileSync(big, 'x'.repeat(DESK_STATUS_MAX_BYTES + 1));
     const oversize = deskStatusSource(readDeskStatus(big), NOW, big);
-    expect(oversize.provenance.status).toBe('oversize');
-    expect(oversize.text).not.toContain('xxxx');
+    expect(oversize!.provenance.status).toBe('oversize');
+    expect(oversize!.text).not.toContain('xxxx');
     expect(readDeskStatus(root)).toBeNull(); // a directory is not a report
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -119,7 +119,7 @@ it('keeps briefing text as quoted data: it never becomes the operator message, a
     const worker = createJournalWorker(journal, { now: () => NOW, stopped: () => false,
       sources: () => {
         const report = deskStatusSource(readDeskStatus(status), NOW, status);
-        return [...purpose, report];
+        return [...purpose, ...(report ? [report] : [])];
       },
       prepareModel: input => prepareJournalEnvelope(input, model, genesis.grant, NOW),
       model: async input => { seen.push(input); return 'ok'; }, send: async () => 1, checkOutbound: () => {} });
@@ -162,7 +162,10 @@ it('cuts a long desk report under byte pressure before any history yields, and k
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxBytes });
     const seen: { context: string }[] = [];
     const worker = createJournalWorker(journal, { now: () => NOW, stopped: () => false,
-      sources: () => [...purpose, deskStatusSource(readDeskStatus(status), NOW, status)],
+      sources: () => {
+        const report = deskStatusSource(readDeskStatus(status), NOW, status);
+        return [...purpose, ...(report ? [report] : [])];
+      },
       model: async input => { seen.push(input); return 'ok'; }, send: async () => 1, checkOutbound: () => {} });
     try {
       for (const [index, text] of ['first question', 'second question', 'third question'].entries()) {
@@ -177,9 +180,13 @@ it('cuts a long desk report under byte pressure before any history yields, and k
   expect(desk(whole).text).toContain(report.trim().split('\n').at(-1));
   expect(desk(whole).text).not.toContain('cut for space');
   expect(JSON.parse(whole).history).toHaveLength(2);
-  // Pressure: the whole report no longer fits beside the history (memory search, the lowest-priority evidence,
-  // has already yielded). The report is cut to its bound and the history stays verbatim.
-  const tight = await run(Buffer.byteLength(whole) - 1024);
+  // Pressure: the whole report no longer fits beside the history even once everything ranked below it has yielded
+  // (memory search with its capability guidance, and the memory-failure offer, Part 21 §16). The report is cut to
+  // its bound and the history stays verbatim.
+  const { memorySearch: _search, memoryFailureDecision: _offer, searchedTurn: _turn, ...higher } = JSON.parse(whole) as Record<string, unknown>;
+  const lowerOnly = Buffer.byteLength(whole) - Buffer.byteLength(JSON.stringify({ ...higher,
+    capability: String(higher.capability).split(SEARCH_GUIDANCE)[0] }));
+  const tight = await run(Buffer.byteLength(whole) - lowerOnly - 1024);
   expect(tight.held).toBeUndefined();
   const cut = tight.seen.at(-1)!.context;
   expect(JSON.parse(cut).history.map((item: { user: string }) => item.user)).toEqual(['first question', 'second question']);

@@ -59,6 +59,12 @@ export type { InstallationReplayInput, InstallationReplayMode, InstallationRepla
 export { replayInstallationProjections } from './production-installation-replay.js';
 export type { InstallationImportPlan, InstallationImportStep } from './production-installation-import.js';
 export { importPreparedInstallationPackage, isIssuedInstallationImportPlan, planInstallationImport } from './production-installation-import.js';
-export { decodeProcessInventory, joinWorkingArea, launchMembership, startSeconds } from './process-inventory.js';
+export { decodeProcessInventory, joinSandbox, joinWorkingArea, launchMembership, startSeconds } from './process-inventory.js';
+export { abandonedWorktrees } from './worktree-inventory.js';
+export type { WorktreeObservation, WorktreeInventory, WorktreeFinding } from './worktree-inventory.js';
+export { createWorktreeRecovery } from './worktree-recovery.js';
 export type { InventoryProcess, InventoryResource, InventoryStatus, LaunchRoot, Membership, MembershipReason, ProcessInventorySnapshot,
-  ResourceObservationState, WorkingDirectory } from './process-inventory.js';
+  ResourceObservationState, SandboxReading, WorkingDirectory } from './process-inventory.js';
+export { admissionArgs, modelGateLaunch, sessionConnectorArgs } from './production-session-driver.js';
+export type { ProductionSessionConfig } from './production-session-driver.js';
+export type { SessionWorkIO } from './production-session-work.js';

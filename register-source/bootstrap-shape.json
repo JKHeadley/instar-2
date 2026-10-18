@@ -135,6 +135,19 @@
           "terms": []
         },
         {
+          "name": "decidesAloneBasis",
+          "format": "text",
+          "required": false,
+          "values": [
+            "live-secret-leaving",
+            "spend-past-a-cap",
+            "operator-emergency-stop",
+            "recorded-governed-state"
+          ],
+          "reference": false,
+          "terms": []
+        },
+        {
           "name": "criticality",
           "format": "text",
           "required": true,
@@ -221,6 +234,16 @@
                     "governed-state"
                   ]
                 },
+                "decidesAloneBasis": {
+                  "type": "string",
+                  "values": [
+                    "live-secret-leaving",
+                    "spend-past-a-cap",
+                    "operator-emergency-stop",
+                    "recorded-governed-state"
+                  ],
+                  "optional": true
+                },
                 "criticality": {
                   "type": "string"
                 },
@@ -288,6 +311,8 @@
         26,
         28,
         42,
+        60,
+        61,
         66,
         82,
         86,

@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { conclusionText, parseModelJson } from './model-json.js';
+
 /** A fixed, fictional operator diary. Each scene supplies ten accepted turns. */
 export interface RecallScene {
   id: string;
@@ -70,4 +74,19 @@ export function conversation(): string[] {
     turns.push(`Okay, ${scene.aside[2]}`);
   }
   return turns;
+}
+
+/** The recall miss proof room two recorded on 2026-10-02 (unit w3-recallrank): a stated fact, and a question about
+ * it that shares no word with it. A stub writer whose terms repeat the question's words would hide this miss, so
+ * the fact gets no generated terms here and the search words are the real answer model's own, verbatim, from
+ * fixtures/proofroom2-recallrank-2026-10-02.json (lookupSamples P4), decoded the way the runner decodes an answer. */
+export function recordedParaphrase(): { fact: string; question: string; lookupAnswer: string; after: readonly string[] } {
+  const fixture = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/proofroom2-recallrank-2026-10-02.json'), 'utf8')) as {
+    recorded: { fact: { message: string }; question: { message: string } };
+    lookupSamples: { samples: { label: string; calls: { raw: string }[] }[] } };
+  const parsed = parseModelJson(fixture.lookupSamples.samples.find(item => item.label === 'P4')!.calls[0]!.raw);
+  const lookupAnswer = parsed.ok ? conclusionText((parsed.value.conclusion as { value?: unknown }).value) : null;
+  if (lookupAnswer === null) throw Error('realistic recall: recorded lookup answer is not a Decision');
+  return { fact: fixture.recorded.fact.message, question: fixture.recorded.question.message, lookupAnswer,
+    after: ['The hose reel finally stopped leaking.', 'I moved the seed trays off the windowsill.', 'Nothing else from the yard today.'] };
 }

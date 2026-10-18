@@ -7,7 +7,7 @@ import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } from './successi
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 
 // The request was due an hour ago; the cancellation (if any) is already waiting in Telegram when the launcher
-// starts. No provider runs: the model-failure route answers every model call UNKNOWN, so the cancellation stays
+// starts. No provider runs: the offline executor records a timed-out launch and the route answers UNKNOWN, so the cancellation stays
 // unsettled and a due turn can only send its truthful loss line under the reason header.
 it.each([
   ['a queued cancellation', ['cancel']],
@@ -54,7 +54,7 @@ it.each([
       '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
-      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
+      '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
       '--bot-username', world.configuration.botUsername, '--max-cycles', String(queued.length + 2), '--max-poll-seconds', '1'],
       { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env: { ...process.env,
         INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
@@ -65,16 +65,19 @@ it.each([
     const sends = existsSync(`${log}.sends`) ? readFileSync(`${log}.sends`, 'utf8') : '';
     journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY);
     const due = journal.view.order.filter(turn => turn.requestedAction);
+    // UNKNOWN requires executor entry. A stub returning uncertain without it is correctly held as not started.
+    expect(journal.view.callOutcomes.some(row => row.role === 'model' && row.outcome.localLimit === 'timeout')).toBe(true);
     if (queued.includes('cancel')) {
       // The queued cancellation was read first; its UNKNOWN answer leaves it unsettled, so no due turn was created.
       expect(sends).not.toContain('PREVIEW — You asked on');
       expect(journal.view.order.find(turn => turn.text === 'cancel the Priya reminder')?.modelState).toBe('uncertain');
       expect(due).toEqual([]);
     } else {
-      expect(sends.match(/PREVIEW — You asked on/gu)).toHaveLength(1);
+      expect(sends.match(/You asked on/gu)).toHaveLength(1);
       expect(sends).toContain('call Priya');
       expect(sends).toContain("I lost my answer to this: the model call's outcome is unknown");
       expect(due).toHaveLength(1);
+      expect(due[0].modelState).toBe('uncertain');
     }
     journal.close();
   } finally { endpoint.kill('SIGTERM'); }

@@ -1,0 +1,39 @@
+[
+  {
+    "source": "lanes/step1-rewalk3-1014-records/walk/comparison.json",
+    "update": 840342802,
+    "request": "I did not get a clear confirmation for the bread reminder. Could you set it for today at 4:40 pm, Portland time, instead?",
+    "sentAt": 1792002977755,
+    "intakeAt": 1792002978037,
+    "answerAt": 1792003127226,
+    "delivered": "Got it \u2014 no worries about the earlier one. I'll swap that out and remind you here today at 4:40 pm Portland time instead, to take the bread out of the freezer. Date 1: unresolved (date resolution needs the original clock, zone and a valid UTC instant). Please give an absolute date. I did not schedule what you asked for: its day or time is not settled; restate it with a day and time such as Friday at 9 am. Cancelled request: \"Later today, in about 12 minutes, please remind me here to take the bread out of the freezer.\".",
+    "outputs": [
+      "{\n  \"reply\": {\n    \"answer\": \"Got it \u2014 no worries about the earlier one. I'll swap that out and remind you here today at 4:40 pm Portland time instead, to take the bread out of the freezer.\"\n  },\n  \"memory\": [],\n  \"dated\": [\n    {\n      \"quote\": \"I did not get a clear confirmation for the bread reminder. Could you set it for today at 4:40 pm, Portland time, instead?\",\n      \"when\": \"today at 4:40 pm, Portland time\",\n      \"remind\": true,\n      \"resolution\": {\n        \"instant\": \"2026-10-14T23:40:00.000Z\",\n        \"at\": 1792021200000,\n        \"zone\": \"America/Los_Angeles\"\n      }\n    }\n  ],\n  \"lastNamedPerson\": null,\n  \"personAttributes\": [],\n  \"promises\": [\n    {\n      \"quote\": \"I'll swap that out and remind you here today at 4:40 pm Portland time instead, to take the bread out of the freezer.\",\n      \"when\": \"today at 4:40 pm Portland time\"\n    }\n  ],\n  \"cancelReminders\": [\n    {\n      \"id\": \"reminder-c7a7ce95ba\",\n      \"quote\": \"Could you set it for today at 4:40 pm, Portland time, instead?\"\n    }\n  ]\n}\n"
+    ]
+  },
+  {
+    "source": "lanes/step1-rewalk3-1014-records/walk/comparison.json",
+    "update": 840342823,
+    "request": "I found one more library book under the car seat. I will return that one tomorrow. Please remind me in one minute to put it by the door.",
+    "sentAt": 1792005157394,
+    "intakeAt": 1792005157767,
+    "answerAt": 1792005472511,
+    "delivered": "Got it \u2014 noting the extra library book you found under the car seat, to return tomorrow. I'll remind you here in one minute to put it by the door. Date 1: 2026-10-14 12:13 pm (America/Los_Angeles). I will act on this once at 2026-10-14 12:13 pm (America/Los_Angeles) and send you the result here. Date 1: 2026-10-14 12:13 (America/Los_Angeles). I did not schedule what you asked for: that time has already passed. Date 2: 2026-10-15 (America/Los_Angeles). I recorded this date; I act on a date only when you ask me to.",
+    "outputs": [
+      "{\n  \"reply\": {\n    \"answer\": \"Got it \u2014 noting the extra library book you found under the car seat, to return tomorrow. I'll remind you here in one minute to put it by the door. Date 1: 2026-10-14 12:13 pm (America/Los_Angeles). I will act on this once at 2026-10-14 12:13 pm (America/Los_Angeles) and send you the result here.\"\n  },\n  \"memory\": [],\n  \"dated\": [\n    {\n      \"quote\": \"Please remind me in one minute to put it by the door.\",\n      \"when\": \"in one minute\",\n      \"remind\": true,\n      \"resolution\": {\n        \"instant\": \"2026-10-14T19:13:37.000Z\",\n        \"at\": 1792005157000,\n        \"zone\": \"America/Los_Angeles\"\n      }\n    },\n    {\n      \"quote\": \"I will return that one tomorrow.\",\n      \"when\": \"tomorrow\",\n      \"resolution\": {\n        \"ambiguity\": \"What time tomorrow do you plan to return the book?\"\n      }\n    }\n  ],\n  \"lastNamedPerson\": null,\n  \"personAttributes\": [],\n  \"directives\": [],\n  \"closeDirectives\": [],\n  \"openLoops\": [\n    {\n      \"kind\": \"promise\",\n      \"quote\": \"I'll remind you here in one minute to put it by the door.\",\n      \"waitsOn\": \"date\"\n    }\n  ],\n  \"promises\": [\n    {\n      \"quote\": \"I'll remind you here in one minute to put it by the door.\",\n      \"when\": \"in one minute\"\n    }\n  ],\n  \"fulfilled\": []\n}\n"
+    ]
+  },
+  {
+    "source": "lanes/step1-rewalk3-1014-records/noise/comparison.json",
+    "update": 840342792,
+    "request": "I did not get a clear confirmation for the bread reminder. Could you set it for today at 4:40 pm, Portland time, instead?",
+    "sentAt": 1792002285671,
+    "intakeAt": 1792002285993,
+    "answerAt": 1792002417458,
+    "delivered": "For the record, I did send a clear confirmation earlier \u2014 \"Will do \u2014 I'll remind you here in about 12 minutes to take the bread out of the freezer. Date 1: 2026-10-14 11:32 (America/Los_Angeles).\" No worries either way \u2014 I've moved it. I'll remind you here today at 4:40 PM, Portland time (America/Los_Angeles), instead of 11:32 AM. Date 1: 2026-10-14 16:40 (America/Los_Angeles). I will act on this once at 2026-10-14 16:40 (America/Los_Angeles) and send you the result here. Cancelled request: \"Later today, in about 12 minutes, please remind me here to take the bread out of the freezer.\".",
+    "outputs": [
+      "{\"reply\":{\"answer\":\"For the record, I did send a clear confirmation earlier \u2014 \\\"Will do \u2014 I'll remind you here in about 12 minutes to take the bread out of the freezer. Date 1: 2026-10-14 11:32 (America/Los_Angeles).\\\" No worries either way \u2014 I've moved it. I'll remind you here today at 4:40 PM, Portland time (America/Los_Angeles), instead of 11:32 AM.\"},\"memory\":[],\"dated\":[{\"quote\":\"Could you set it for today at 4:40 pm, Portland time, instead?\",\"when\":\"today at 4:40 pm, Portland time\",\"remind\":true,\"resolution\":{\"instant\":\"2026-10-14T23:40:00.000Z\",\"at\":1792002285000,\"zone\":\"America/Los_Angeles\"}}],\"lastNamedPerson\":null,\"personAttributes\":[],\"cancelReminders\":[{\"id\":\"reminder-1f0ddbd064\",\"quote\":\"I did not get a clear confirmation for the bread reminder. Could you set it for today at 4:40 pm, Portland time, instead?\"}],\"promises\":[{\"quote\":\"I'll remind you here today at 4:40 PM, Portland time (America/Los_Angeles), instead of 11:32 AM.\",\"when\":\"today at 4:40 pm, Portland time\"}]}",
+      "{\"reply\":{\"answer\":\"For the record, I did send a clear confirmation earlier \u2014 \\\"Will do \u2014 I'll remind you here in about 12 minutes to take the bread out of the freezer. Date 1: 2026-10-14 11:32 (America/Los_Angeles).\\\" No worries either way \u2014 I've moved it. I'll remind you here today at 4:40 PM, Portland time (America/Los_Angeles), instead of 11:32 AM.\"},\"memory\":[],\"dated\":[{\"quote\":\"Could you set it for today at 4:40 pm, Portland time, instead?\",\"when\":\"today at 4:40 pm, Portland time\",\"remind\":true,\"resolution\":{\"instant\":\"2026-10-14T23:40:00.000Z\",\"at\":1792002285000,\"zone\":\"America/Los_Angeles\"}}],\"lastNamedPerson\":null,\"personAttributes\":[],\"cancelReminders\":[{\"id\":\"reminder-1f0ddbd064\",\"quote\":\"I did not get a clear confirmation for the bread reminder. Could you set it for today at 4:40 pm, Portland time, instead?\"}],\"promises\":[{\"quote\":\"I'll remind you here today at 4:40 PM, Portland time (America/Los_Angeles), instead of 11:32 AM.\",\"when\":\"today at 4:40 PM, Portland time (America/Los_Angeles)\"}]}"
+    ]
+  }
+]

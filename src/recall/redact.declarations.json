@@ -1,0 +1,36 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "recall.redact",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "live-secret-leaving",
+      "criticality": "A live credential never leaves: every pattern match and every assignment of an obviously secret-named key is replaced by the redaction mark on write and again on render, and output the part-two envelope would still refuse as secret-shaped is replaced whole rather than passed on.",
+      "failDirection": "closed",
+      "preservesInput": "the message is still captured with the credential replaced by its mark, and the credential itself is held by name in sealed custody (Rule 100); nothing is discarded",
+      "inspectedBy": "PREVIEW-SECRET-WALL"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "security",
+      "reversibility": "irreversible",
+      "reach": "world",
+      "surface": "chat",
+      "repeats": { "kind": "no" }
+    },
+    "standards": [
+      4,
+      66,
+      95,
+      100
+    ],
+    "holds": [
+      { "rule": 4, "class": "partial", "evidence": { "kind": "fixture", "id": "PREVIEW-SECRET-WALL", "stage": "build" }, "portion": "rule 4's first irreversible-miss case is enumerated: the one text wall that decides alone, on an exact pattern test, and preserves its input", "remainder": "the part-two envelope's own secret-shaped refusal (src/facts/envelope.ts) and every caller's application of this wall are not themselves declared sites; the preview runner binds this declaration to the wall it hands its outbound check at launch (bindPreviewBlockingSites), and no other composition binds it yet" }
+    ]
+  }
+]

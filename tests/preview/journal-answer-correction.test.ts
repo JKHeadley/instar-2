@@ -53,7 +53,7 @@ it('learns a corrected answer from the actual sent reply while preserving the qu
     expect(packet.memory).toMatchObject([{ mode: 'corrected', replacement: 'it was Tuesday.' }]);
     expect(next.context).not.toContain('The review was Monday.');
     worker.intake([update(3, 'When was the review again?')]); await worker.drain();
-    expect(sends.at(-1)).toBe('PREVIEW — The review was Tuesday.');
+    expect(sends.at(-1)).toBe('The review was Tuesday.');
     expect(sends).toHaveLength(3);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -97,7 +97,7 @@ it.each(['Monday.', 'Wednesday.'])('learns the complete short answer %s and drai
       user: 'When was the review?', answer: '[withheld: operator correction or forgetting]' });
     worker.intake([update(3, 'When was the review again?')]); await worker.drain();
     expect(journal.view.order[2]?.held).toBeUndefined();
-    expect(sends).toEqual([`PREVIEW — ${answer}`, 'PREVIEW — Thanks, I will use Tuesday.', 'PREVIEW — Tuesday.']);
+    expect(sends).toEqual([`${answer}`, 'Thanks, I will use Tuesday.', 'Tuesday.']);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 10000);

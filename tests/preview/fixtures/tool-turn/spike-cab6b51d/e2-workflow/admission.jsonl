@@ -1,0 +1,1 @@
+{"n":1,"tool":"Workflow","input":{"script":"export const meta = { name: 'probe', description: 'probe' }; return 1"},"decision":"deny","effective":"deny","reason":"unregistered tool Workflow: refused by default"}

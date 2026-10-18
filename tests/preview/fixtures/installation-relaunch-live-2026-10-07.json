@@ -1,0 +1,241 @@
+{
+ "note": "Real bytes captured from the live proof room, not hand-typed (Rule 36). runLog rows are the launch, exit and first poll rows of the proof room root's runs.jsonl, reduced to the fields installationRows() reads (v, launch, exit, poll, install) plus pid; work/tools/minimalPath are dropped because no reader here touches them. turns are the sent turns the live J run itself recorded in turns-j-delivery.json, reduced to the fields J.sh's J1e reads (update, sentAt, prompted, textSha256) plus the reply's first 20 characters, which is all its status-template filter looks at.",
+ "source": {
+  "root": "proofroom2-dshort15-20261007-011818",
+  "runLog": "runs.jsonl at 2026-10-07 10:54Z",
+  "turns": ".instar/lanes/pipeline/live-proof/results/J-proofroom2-20261007-035344/turns-j-delivery.json",
+  "failingCheck": "J1e on live build d4d33e16 (rule 44); it passed on bc10e616 in J-proofroom-20261006-234350"
+ },
+ "observed": {
+  "update": {
+   "at": 1791361117404,
+   "from": {
+    "revision": null,
+    "codeDigest": "unrecorded"
+   },
+   "to": {
+    "revision": "d4d33e16e2c381a74216c339196f0ab71e4ef658",
+    "codeDigest": "sha256:bc68f7d0dd15412dfd9daaa372dd6a88f46874c928b993b1fda33787d4dffe5c"
+   },
+   "briefingChanged": null
+  },
+  "updateDelivered": {
+   "deliveredInReplyTo": 6232620
+  }
+ },
+ "runLog": [
+  {
+   "v": 1,
+   "launch": 1791361101808,
+   "pid": 36114
+  },
+  {
+   "v": 1,
+   "launch": 1791361101808,
+   "exit": 1791361101812,
+   "reason": "refused before launch"
+  },
+  {
+   "v": 1,
+   "launch": 1791361117404,
+   "pid": 37120,
+   "install": {
+    "revision": "bc10e61632fbc9bba0b559218ae81b6eac7b2b35",
+    "files": 306,
+    "codeDigest": "sha256:bc68f7d0dd15412dfd9daaa372dd6a88f46874c928b993b1fda33787d4dffe5c",
+    "briefingDigest": "sha256:85bc745965e675944b9f486bb8c419db0d6bdee579a370fe9806c689af158d5e",
+    "harness": "preview-journal-native",
+    "stallClasses": 9,
+    "doorway": "claude-code-subscription"
+   }
+  },
+  {
+   "v": 1,
+   "launch": 1791361117404,
+   "poll": "failed",
+   "at": 1791361289550
+  },
+  {
+   "v": 1,
+   "launch": 1791361117404,
+   "exit": 1791367192929,
+   "reason": "cycle limit reached"
+  },
+  {
+   "v": 1,
+   "launch": 1791367196308,
+   "pid": 56372,
+   "install": {
+    "revision": "bc10e61632fbc9bba0b559218ae81b6eac7b2b35",
+    "files": 306,
+    "codeDigest": "sha256:bc68f7d0dd15412dfd9daaa372dd6a88f46874c928b993b1fda33787d4dffe5c",
+    "briefingDigest": "sha256:85bc745965e675944b9f486bb8c419db0d6bdee579a370fe9806c689af158d5e",
+    "harness": "preview-journal-native",
+    "stallClasses": 9,
+    "doorway": "claude-code-subscription"
+   }
+  },
+  {
+   "v": 1,
+   "launch": 1791367196308,
+   "exit": 1791370064864,
+   "reason": "paused by signal SIGHUP"
+  },
+  {
+   "v": 1,
+   "launch": 1791370088851,
+   "pid": 39569,
+   "install": {
+    "revision": "d4d33e16e2c381a74216c339196f0ab71e4ef658",
+    "files": 306,
+    "codeDigest": "sha256:bc68f7d0dd15412dfd9daaa372dd6a88f46874c928b993b1fda33787d4dffe5c",
+    "briefingDigest": "sha256:85bc745965e675944b9f486bb8c419db0d6bdee579a370fe9806c689af158d5e",
+    "harness": "preview-journal-native",
+    "stallClasses": 9,
+    "doorway": "claude-code-subscription"
+   }
+  }
+ ],
+ "turns": [
+  {
+   "update": 6232603,
+   "sentAt": 1791361279783,
+   "prompted": true,
+   "textSha256": "sha256:97fe5c676aed7c3278797a7a3930d195a1f06e7965cdbd56743971c05c38a6f3",
+   "replyPrefix": "PREVIEW \u2014 I can't do"
+  },
+  {
+   "update": 6232604,
+   "sentAt": 1791361365924,
+   "prompted": true,
+   "textSha256": "sha256:4d8bd4a7e7460e249d8b081a755b4ca81e5100851f43e30ae1cda880e6360a0b",
+   "replyPrefix": "PREVIEW \u2014 Got it \u2014 e"
+  },
+  {
+   "update": 6232605,
+   "sentAt": 1791361400518,
+   "prompted": true,
+   "textSha256": "sha256:4fa6dfe195aca8dd8a263fb8302ed022bef8df55a1fc9639d07c9fd1d192369b",
+   "replyPrefix": "PREVIEW \u2014 Logged \u2014 R"
+  },
+  {
+   "update": 6232606,
+   "sentAt": 1791361428582,
+   "prompted": true,
+   "textSha256": "sha256:4954e2e4ea46601641c9bf5d30eaf94feaea5bf2fcf1715d2c7707e5b6c6c151",
+   "replyPrefix": "PREVIEW \u2014 Logged \u2014 R"
+  },
+  {
+   "update": 6232607,
+   "sentAt": 1791361463918,
+   "prompted": true,
+   "textSha256": "sha256:fccb16dfc6a5a934f5a11fab30abf7755b3834fda3d3827884a977194acf21dc",
+   "replyPrefix": "PREVIEW \u2014 Logged \u2014 R"
+  },
+  {
+   "update": 6232608,
+   "sentAt": 1791361504766,
+   "prompted": true,
+   "textSha256": "sha256:8ef56aefa3f16b44aef0a613cc5369ea09b2c588f34f563f1cbf6b48067cbe1a",
+   "replyPrefix": "PREVIEW \u2014 Logged \u2014 R"
+  },
+  {
+   "update": 6232609,
+   "sentAt": 1791361537527,
+   "prompted": true,
+   "textSha256": "sha256:b443682607cf6bbaaabb3345ee342bbffdd121c03aec6c82d05651dae789d12d",
+   "replyPrefix": "PREVIEW \u2014 Logged \u2014 R"
+  },
+  {
+   "update": 6232610,
+   "sentAt": 1791361571225,
+   "prompted": true,
+   "textSha256": "sha256:77fa726a69506edf9f27f589e625548b1a9e9074f876555009cc42d189c398c7",
+   "replyPrefix": "PREVIEW \u2014 Logged \u2014 R"
+  },
+  {
+   "update": 6232611,
+   "sentAt": 1791361637642,
+   "prompted": true,
+   "textSha256": "sha256:3af9df1bca986247c2e1c428bf76ca1e9cf69c3b33c7128157864fdc4883880d",
+   "replyPrefix": "PREVIEW \u2014 Logged \u2014 R"
+  },
+  {
+   "update": 6232612,
+   "sentAt": 1791361674991,
+   "prompted": true,
+   "textSha256": "sha256:2eb408da3a1cedc25fe93f78c28b6ecf76d45fad80a2481dabc280f2ca52d737",
+   "replyPrefix": "PREVIEW \u2014 Logged \u2014 R"
+  },
+  {
+   "update": 6232613,
+   "sentAt": 1791361731603,
+   "prompted": true,
+   "textSha256": "sha256:19a6e193131398e2dfb2f75a7844d02cec566e656aee2929632657ca2a603c2d",
+   "replyPrefix": "PREVIEW \u2014 Logged \u2014 R"
+  },
+  {
+   "update": 6232614,
+   "sentAt": 1791361834719,
+   "prompted": true,
+   "textSha256": "sha256:fdd81321abbb2e2723d6dc34556c24edb17dd6f0015c9dc97832e50e49ae2bce",
+   "replyPrefix": "PREVIEW \u2014 Logged \u2014 R"
+  },
+  {
+   "update": 6232615,
+   "sentAt": null,
+   "prompted": true,
+   "textSha256": "sha256:ee63239d7e7c49c1a9e0801abf3a6b429b05aab1e6141da478b011f5fb589f76",
+   "replyPrefix": "PREVIEW \u2014 Shopping l"
+  },
+  {
+   "update": 6232616,
+   "sentAt": 1791362864021,
+   "prompted": true,
+   "textSha256": "sha256:073c1634c496cdb649d1afe0a312bbb4b7e1741b271542e4a436c3b8824b1761",
+   "replyPrefix": "PREVIEW \u2014 Status (20"
+  },
+  {
+   "update": 6232617,
+   "sentAt": 1791362961898,
+   "prompted": true,
+   "textSha256": "sha256:9e39b7ac6aa75e53524bb9e0f97db61960b403e9479b7e09a401d34d4dfe8d03",
+   "replyPrefix": "PREVIEW \u2014 I couldn't"
+  },
+  {
+   "update": 6232618,
+   "sentAt": 1791363014676,
+   "prompted": true,
+   "textSha256": "sha256:f2a795a5449153101fa8af570ddcdd23b62189994b46e9c0272d927e8abdf0b2",
+   "replyPrefix": "PREVIEW \u2014 Got it \u2014 a"
+  },
+  {
+   "update": 6232619,
+   "sentAt": 1791364635504,
+   "prompted": true,
+   "textSha256": "sha256:8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4",
+   "replyPrefix": "PREVIEW \u2014 Hi Justin!"
+  },
+  {
+   "update": 6232620,
+   "sentAt": 1791370123981,
+   "prompted": true,
+   "textSha256": "sha256:2587540c49e60c3677c9fa565f6270dcacaba9ec7be3700d8ff2f40c5d12e992",
+   "replyPrefix": "PREVIEW \u2014 5"
+  },
+  {
+   "update": 6232621,
+   "sentAt": 1791370230865,
+   "prompted": true,
+   "textSha256": "sha256:073c1634c496cdb649d1afe0a312bbb4b7e1741b271542e4a436c3b8824b1761",
+   "replyPrefix": "PREVIEW \u2014 Status (20"
+  },
+  {
+   "update": 6232622,
+   "sentAt": 1791370452799,
+   "prompted": true,
+   "textSha256": "sha256:073c1634c496cdb649d1afe0a312bbb4b7e1741b271542e4a436c3b8824b1761",
+   "replyPrefix": "PREVIEW \u2014 Status (20"
+  }
+ ]
+}

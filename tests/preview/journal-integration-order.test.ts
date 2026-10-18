@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, MEMORY_UNDECIDED_REPLY, openPreviewJournal, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
 
 // Astra int6 MUST-FIX 1: a pending memory correction held on an EARLIER ordinary turn
@@ -22,7 +22,7 @@ it('sends a later loss notice while an earlier ordinary turn is held for a pendi
     journal = openPreviewJournal(path, key, genesis, stage => {
       if (crash && stage === 'after:model-uncertain') { crash = false; throw Error('interrupted after durable ended-UNKNOWN'); }
     });
-    const sends: { text: string }[] = [];
+    const sends: { text: string; update?: number }[] = [];
     const ports = { now: () => 1790000000000, stopped: () => false,
       model: async (input: { id: string; question: string; context: string }) => {
         if (input.id.startsWith('summary:')) {
@@ -46,11 +46,15 @@ it('sends a later loss notice while an earlier ordinary turn is held for a pendi
     worker = createJournalWorker(journal, ports as never);
     worker.intake([update(3, 'Actually, the cedar trail starts at West Pier.')]);
     for (let i = 0; i < 4; i++) await worker.drain();
-    expect(sends.filter(item => item.text.includes(UNKNOWN_ANSWER_NOTICE))).toHaveLength(1);
+    expect(sends.filter(item => item.update === 2 && item.text.includes(UNKNOWN_ANSWER_NOTICE))).toHaveLength(1);
+    expect(sends.filter(item => item.update === 1)).toHaveLength(0);
     expect(journal.view.order[1]?.noticeClass).toBe('unknown-answer');
     // The correction's own summary judgment came back unresolved on both bounded attempts, so it settles as
-    // undecided and is answered with the not-recorded notice instead of holding forever (the 2026-09-29 wedge fix).
+    // undecided. Its answer also ended uncertain, so the fixed incomplete-answer notice takes
+    // precedence over a memory acknowledgement; the unresolved memory state remains durable.
     expect(journal.view.order[2]).toMatchObject({ memoryPending: true, memoryUndecided: true });
-    expect(journal.view.order[2]?.intentBody).toBe(MEMORY_UNDECIDED_REPLY);
+    expect(journal.view.order[2]?.intentBody).toBe(UNKNOWN_ANSWER_NOTICE);
+    expect(sends.filter(item => item.update === 3 && item.text.includes(UNKNOWN_ANSWER_NOTICE))).toHaveLength(1);
+    expect(sends.filter(item => item.text.includes(UNKNOWN_ANSWER_NOTICE))).toHaveLength(2);
   } finally { journal?.close(); rmSync(root, { recursive: true, force: true }); }
 }, 30000);

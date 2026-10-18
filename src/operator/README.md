@@ -16,6 +16,11 @@ Replay admission uses complete cold/warm deployment samples, includes failures, 
 digest equality, and compares the observed maximum plus explicit margins to a finite budget.
 The live-path evaluator distinguishes ordinary outages from loss of a required minimal dependency;
 it never promises a response while replication, lease/fence, identity, route, or witness is absent.
+The verdict consumes the installed shape (section 5): a single-machine installation carries no peer
+dependency only under its exact current P-08 policy, which must bind the installation, profile and
+loss model, demand the full causal prefix and hold the response's operation in its accepted closed
+set. A missing or stale policy leaves `replication-peer` required; the shape alone omits nothing,
+and with no shape supplied the installation is peer-backed.
 
 Shared seam and failure-trace validators make retry/duplicate/cancellation/stale-authority behavior
 one executable contract. The section-7 executable enters through Part Ten's production coordinator,

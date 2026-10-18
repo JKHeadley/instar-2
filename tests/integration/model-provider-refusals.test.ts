@@ -24,8 +24,10 @@ const pending = (f: Fixture) => {
 it('MODEL-PROVIDER-PATH integration provider timeout captures uncertainty; unknown charge never releases, retries or advances', async () => {
   const http = await localProvider();
   try {
-    http.delay(100);
-    const f = providerFixture({ ...http, timeout: 20 }), { request, prepared } = f.prepare();
+    // The driver timeout stays under the admitted 100ms bound, with enough room that a stalled
+    // shared event loop cannot abort the call before it reaches the provider at all.
+    http.delay(450);
+    const f = providerFixture({ ...http, timeout: 90 }), { request, prepared } = f.prepare();
     const observation = value(await f.api.dispatch(request, f.fence));
     const receipt = JSON.parse(value(f.captures.read(observation.capture as Parameters<typeof f.captures.read>[0])));
     expect(receipt.state).toBe('uncertain'); expect(receipt.usage.charge).toBeNull();

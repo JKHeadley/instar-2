@@ -16,6 +16,14 @@ describe('the promotion record', () => {
     const step = promotionOf(PROMOTION_RECORD, 'preview.step-check');
     expect(step.deadline).toMatchObject({ deadline: Date.UTC(2026, 9, 18), recordedAt: 1792024088000 });
     expect(step.deadline!.deadline).toBe(Date.UTC(2026, 9, 15) + 72 * 60 * 60 * 1000);
+    expect(utcDay(step.deadline!.recordedAt)).toBe('2026-10-15');
+    // Both branch decisions survive, ordered by their actual recording time.
+    expect(PROMOTION_RECORD.slice(-2)).toMatchObject([
+      { recordedAt: 1792023460035, deadline: Date.UTC(2026, 9, 16), by: 'agent (train-35 integration)' },
+      { recordedAt: 1792024088000, deadline: Date.UTC(2026, 9, 18), by: 'agent (register-stepcheck-deadline-1014)' },
+    ]);
+    expect(promotionOf(PROMOTION_RECORD.slice(0, -1), 'preview.step-check').deadline?.deadline)
+      .toBe(Date.UTC(2026, 9, 16));
     expect(PROMOTION_RECORD[0]).toMatchObject({ deadline: Date.UTC(2026, 9, 15), recordedAt: Date.UTC(2026, 8, 28) });
     // No stage is claimed without evidence: the live trace has not been recorded.
     expect(step.stages).toEqual({ 'test-agent': null, 'development-agent': null, fleet: null });

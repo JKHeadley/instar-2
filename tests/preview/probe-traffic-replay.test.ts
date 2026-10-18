@@ -78,7 +78,7 @@ it('answers a probe from its own message and keeps its reply, while dropping its
     const probe = journal.view.order[0]!;
     // Answered from its own message, sent once, kept verbatim for audit.
     expect(contexts[0]!.question).toBe(probeText);
-    expect(probe).toMatchObject({ text: probeText, intent: 'PREVIEW — Your marker is Juniper.', sent: 1 });
+    expect(probe).toMatchObject({ text: probeText, intent: 'Your marker is Juniper.', sent: 1 });
     expect(journal.view.memory).toEqual([]);
     expect(journal.view.dated).toEqual([]);
     expect(probe.datedPending).toBeUndefined();
@@ -86,7 +86,7 @@ it('answers a probe from its own message and keeps its reply, while dropping its
     clock += 60_000;
     worker.intake([message(2, 'Gutters on Friday October 2 please.')]); await worker.drain();
     expect(journal.view.dated.map(item => item.when)).toEqual(['Friday October 2']);
-    expect(journal.view.order[1]!.intent).toMatch(/^PREVIEW — Noted\. Date 1: /u); // the existing date receipt
+    expect(journal.view.order[1]!.intent).toMatch(/^Noted\. Date 1: /u); // the existing date receipt
     // The later packet no longer carries the probe as history.
     expect(probeHits(contexts[1]!.context)).toBe(0);
     expect((JSON.parse(contexts[1]!.context) as { history: unknown[] }).history).toEqual([]);

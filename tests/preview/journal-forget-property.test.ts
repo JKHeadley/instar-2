@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, importChannelItems, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, importChannelItems, openPreviewJournal, withoutCorrectedHistory } from './journal-test-worker.js';
 import { replyReviewContext } from './reply-check.js';
 
 const key = new Uint8Array(32).fill(41);
@@ -39,7 +39,8 @@ it('keeps superseded clauses out of later packets, hints, summary inputs and mod
     };
     const ports = { now: () => 1790000000000, stopped: () => false,
       model: async (input: { id: string; question: string; context: string }) => {
-        check(input.id.startsWith('summary:') ? 'summary input' : 'answer packet', input.context);
+        check(input.id.startsWith('summary:') ? 'summary input' : 'answer packet',
+          input.id.startsWith('summary:') ? input.context : withoutCorrectedHistory(input.context));
         const packet = JSON.parse(input.context);
         const request = input.id.startsWith('summary:') ? packet.memoryRequest?.message : input.question;
         const correcting = typeof request === 'string' && request.includes(newSaved);
@@ -102,7 +103,7 @@ it('keeps superseded clauses out of later packets, hints, summary inputs and mod
           ? 'The archive key is CANDIDATE.' : 'My archive code is CANDIDATE.');
         expect('reason' in probe, `seed ${seed}`).toBe(false);
         if (!('reason' in probe)) {
-          check('probe packet and contradiction hint', probe.context);
+          check('probe packet and contradiction hint', withoutCorrectedHistory(probe.context));
         }
         if (next() < 0.5) await worker.summarizeIfNeeded(true);
         if (next() < 0.5) {
@@ -117,7 +118,7 @@ it('keeps superseded clauses out of later packets, hints, summary inputs and mod
       await worker.summarizeIfNeeded(true);
       const replay = worker.probe('Is the archive code current?');
       expect('reason' in replay, `seed ${seed}, replay`).toBe(false);
-      if (!('reason' in replay)) check('restarted packet', replay.context);
+      if (!('reason' in replay)) check('restarted packet', withoutCorrectedHistory(replay.context));
       if (!('reason' in replay)) expect(replay.context).toContain(newSaved);
       if (!('reason' in replay)) expect(replay.context).toContain(otherImport);
       expect(stale).toEqual(new Set([oldSaved, oldImport]));
@@ -163,7 +164,7 @@ it('projects a committed correction before reply escalation, including after rec
     // The candidate itself is the validated correction acknowledgement (old → new, sent only to
     // the operator); every other part of the review context is projected.
     const { candidateReply, ...context } = JSON.parse(reviewed[0]!) as { candidateReply: string };
-    expect(candidateReply).toBe('PREVIEW — Changed My archive code is ORBIT7319. → My archive code is NOVA4826.');
+    expect(candidateReply).toBe('Changed My archive code is ORBIT7319. → My archive code is NOVA4826.');
     expect(JSON.stringify(context)).not.toContain('ORBIT7319');
     expect(JSON.stringify(context)).toContain('NOVA4826');
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }

@@ -1,0 +1,32 @@
+# Change review — capacity-based topic workers
+
+Subject base: dcf3a5160cb92ede56f70f8b1048f27b2d6e5ef5
+Review state: open
+Reviewed content: none
+Outcome: Admit concurrent topic workers according to sampled CPU idle, free memory and the existing reviewed account pool; retain warm idle context for hours and reclaim the oldest idle worker under pressure.
+Affected rules: Rules 1, 5, 26, 34, 46, 49, 60, 61, 63, 74, 75, 87, 96, 101, 102, 105, 111, 113, 116.
+Affected floors: secrets — existing encrypted custody and outbound filters unchanged; spend cap — the same installation reservation and per-call charge remain; stop — existing host and topic stop fences remain; no duplicate sends — existing intake identities, journal collection and sender remain; durable intake — a denied headroom check returns through the existing queued state before dispatch.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Changes physical concurrency and policy-bound worker lifetime; the operator directed this limits change and the desk owns its class-scope disposition.
+Side effects: The shared physical owner ceiling rises from three to nine launches, with one answer reserve and unchanged per-launch memory/process/CPU bounds. Aggregate reservations become 18 GiB and 288 processes, so eight topic workers can actually fit. Other work families share this larger finite ceiling. Per-topic sampling runs only for queued work that needs a worker; maintenance takes one shared pressure reading rather than sampling every retained inactive topic. Topic admission also measures actual CPU and free memory. Unknown measurements retain new input; active workers are not killed by this observation. The four-hour worker deadline is finite and still bounded by the original parent deadline. Account selection, handoff, transcript continuity and quota interpretation are reused unchanged. A changed activation policy requires the desk's matching grant disposition.
+Undo and recovery: Revert this change and install the corresponding prior policy under the normal desk procedure; retain all encrypted topic custody, journal outcomes and charges. No store schema or destructive migration is introduced. Stop remains available during capacity waits. Unknown dispatch is never automatically replayed.
+Multi-machine posture: Deliberately machine-local CPU/memory observations and process leases under the existing owner fence. No second writer or peer admission is introduced. Durable journal replication and conversation ownership continue unchanged.
+Layer below: Read the per-topic durable host, prepareTurn queued-return path, exact retireIdle protocol, shared allowance accounting, physical driver's deadline validator, host owner's answer reserve and Six allocations, login-pool between-turn quota selection, and journal ModelPending collection plus acknowledgement sender. The host owner's former two maintenance slots would defeat a coordinator-only change, so both ceilings are changed together.
+Bug class: none
+Bug evidence: none
+Hook bypass: none; core.hooksPath is unset and the common hooks directory contains only sample hooks, inspected before commit.
+Convergence: none
+Prompt review: No prompt, semantic output parser, verdict or reply acceptance policy is changed. Existing recorded summary/uncertain, Jev undecided/unsure, review, delivered and empty reply shapes are replayed by production-conversation-session.test.ts. New tests exercise scheduling and physical-capacity decisions with injected observations; the desk owns the live four-topic proof.
+Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory rendering contract, untouched by this scheduling and acknowledgement change.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label/unknown-source provenance guidance, untouched by this change; no meaning gate matches these words.
+Decision: topic-workers-1015-capacity | Inject host observations into the existing topic coordinator; sample CPU deltas rather than load average, retain queued work on unknown or insufficient capacity, and reuse account quota/handoff. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/topic-workers-1015-PROGRESS.md
+Decision: topic-workers-1015-ceilings | Set eight topic slots and nine physical slots including the answer reserve; permit a lower runtime topic ceiling within the policy bound, preserving per-launch and shared-call floors. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/topic-workers-1015-PROGRESS.md
+Decision: topic-workers-1015-retention | Retain workers for up to four hours within their parent lifetime and use one LRU selection for slot or memory pressure; never retire busy workers for pressure. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/topic-workers-1015-PROGRESS.md
+Decision: topic-workers-1015-notice | Re-arm the existing bounded acknowledgement only on explicit ModelPending evidence, including collection and batches, since a returned drain had cancelled its timer; unknown exceptions never establish pending evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/topic-workers-1015-PROGRESS.md
+Decision: topic-workers-1015-policy | Report the changed policy digest for the desk's class-scope grant disposition without changing activation or conformance declarations. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/topic-workers-1015-PROGRESS.md
+
+simplestRobustRoute: This is the simplest robust route: extend the existing coordinator's prepareTurn/retireIdle paths and inject a small host sampler. A CPU delta avoids load-average false pressure, and a memory reserve avoids admitting into physical exhaustion. One LRU selector fixes the existing insertion-order resource fallback. Existing pool selection, queue, acknowledgement, allowance and ownership mechanisms are reused. Start guards are durable intake, host headroom, account admission and signed policy; end-state guards are correlated turn completion and existing verified lease release; hard ceilings and parent lifetime remain. No autonomous live completion is claimed; the desk runs the specified proof-room acceptance.
+80/20: Targeted changed tests and direct importers, typecheck and required static checks only. Injected measurements and fake time prove both sides without load burners or operator account access. No full suite on WSL.
+VERDICT: author submission for desk review; no independent convergence or production acceptance claim

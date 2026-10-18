@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -44,7 +44,7 @@ it('knows in a topic what the operator said in the main chat, labelled with wher
     w.worker.intake([update(2, 'What is my sister called?', 7)]); await w.worker.drain();
     const packet = JSON.parse(w.seen[1]!.context);
     expect(packet.audience).toMatchObject({ surface: 'telegram-private-chat', chat: '7654321', conversation: 'topic 7' });
-    expect(packet.history).toMatchObject([{ id: 'telegram:12345678:update:1', conversation: 'main chat', date: '2026-09-21T14:13Z', user: 'My sister is called Wren.',
+    expect(packet.history).toMatchObject([{ id: 'telegram:12345678:update:1', conversation: 'main chat', date: '2026-09-21 07:13 PDT', user: 'My sister is called Wren.',
       answer: 'noted', outcome: 'Telegram API accepted' }]);
     expect(packet.capability).toContain('another conversation of this private chat');
     expect(w.sent).toEqual([{ chat: '7654321', update: 1 }, { chat: '7654321', thread: 7, update: 2 }]);
@@ -62,7 +62,7 @@ it('carries a topic fact to the main chat across a restart, never repeats a rede
   try {
     const first = world(root, { send: input => input.thread === 7 ? null : 1 });
     first.worker.intake([update(1, 'The boat is moored at berth K4.', 7)]); await first.worker.drain();
-    expect(first.journal.view.turns.get('telegram:12345678:update:1')).toMatchObject({ thread: 7, intent: 'PREVIEW — noted' });
+    expect(first.journal.view.turns.get('telegram:12345678:update:1')).toMatchObject({ thread: 7, intent: 'noted' });
     expect(first.journal.view.turns.get('telegram:12345678:update:1')?.sent).toBeUndefined();
     first.journal.close();
     const second = world(root);
@@ -73,7 +73,8 @@ it('carries a topic fact to the main chat across a restart, never repeats a rede
     expect(JSON.parse(second.seen[0]!.context).history[0]).toMatchObject({ conversation: 'topic 7',
       user: 'The boat is moored at berth K4.', outcome: 'delivery UNKNOWN' });
     expect(second.journal.view.calls).toBe(2);
-    expect(second.journal.view.replies).toBe(2);
+    expect(second.journal.view.replies).toBe(3); // two answers and one separate delivery notice
+    expect(second.journal.view.order[0]?.deliveryNotice).toBeDefined();
     second.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -119,10 +120,17 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
   const root = origin(), samples: number[] = [];
   const fact = 'The spare house key is under the blue heron statue.';
   let asked: string | undefined;
-  const open = () => world(root, { initial: genesis({ maxCalls: 200, maxReplies: 100, maxTurns: 100, maxBytes: 8192 }), model: input => {
+  let replay: string | undefined;
+  let beforeQuestion: Buffer | undefined;
+  // Give this raw-packet fixture room for both retained sibling words and recalled facts.
+  // Explicit delivery/intake labels need another 2 KiB to retain the prior-turn exposure neighbor.
+  // The former 8 KiB forced final-rung omission and exhausted the same 200-call allowance.
+  // Production envelope/floor and cap enforcement stay unchanged; sibling-replay covers final omission.
+  const packetLimit = 14848;
+  const open = (path = root) => world(path, { initial: genesis({ maxCalls: 200, maxReplies: 100, maxTurns: 100, maxBytes: packetLimit }), model: input => {
     if (input.id.startsWith('summary:')) return 'Ordinary talk about weather, errands and plans across two conversations.';
     if (input.question.includes('spare house key')) asked = input.context;
-    return 'noted';
+    return replay ?? 'noted';
   } });
   try {
     let current = open();
@@ -135,16 +143,28 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
       current.worker.intake([update(i, text, i === 4 ? 7 : thread, 1790000000 + i * 60)]);
       await current.worker.drain(); await current.worker.summarizeIfNeeded();
       samples.push(performance.now() - start);
+      if (i === 87) beforeQuestion = readFileSync(join(root, 'journal.encrypted'));
     }
     const view = current.journal.view;
-    expect(view.order.every(turn => turn.sent !== undefined)).toBe(true);
+    expect(view.order.every(turn => turn.sent !== undefined), JSON.stringify({ calls: view.calls,
+      unsent: view.order.filter(turn => turn.sent === undefined).map(turn => ({ update: turn.update, held: turn.held })) })).toBe(true);
     expect(view.summaries.length).toBeGreaterThan(0);
     const packet = JSON.parse(asked!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.audience.conversation).toBe('main chat');
-    expect(packet.recalled).toContainEqual(expect.objectContaining({ id: 'telegram:12345678:update:4', date: '2026-09-21T14:17Z', conversation: 'topic 7', user: fact,
+    expect(packet.actionFacts.siblingWords.items.length).toBeGreaterThan(0);
+    expect(packet.recalled).toContainEqual(expect.objectContaining({ id: 'telegram:12345678:update:4', date: '2026-09-21 07:17 PDT', conversation: 'topic 7', user: fact,
       answer: 'noted', outcome: 'Telegram API accepted' }));
-    expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(8192);
+    // Exposure is only a tie breaker: repeatedly offered filler must yield to a new question.
+    const preceding = view.order.find(turn => turn.update === 87)!.grounding!.recalled;
+    expect(preceding.length).toBeGreaterThan(0);
+    expect(preceding).not.toContain('telegram:12345678:update:4');
+    // Compact guidance retains recent turns; optional candidates still yield to recalled evidence.
+    expect(view.order.find(turn => turn.update === 88)!.packetDropped).toContainEqual(
+      expect.objectContaining({ kind: 'candidate', source: 'telegram:12345678:update:87' }));
+    // The saved grounding must prove the same cross-topic source survived packet fitting.
+    expect(view.turns.get('telegram:12345678:update:88')?.grounding?.recalled).toContain('telegram:12345678:update:4');
+    expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(packetLimit);
     const p95 = (values: number[]) => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]!;
     // Rule 37 repair (docs/defects/full-suite-load-timeouts.md): growth compares the median of the first and last
     // ten turns. A "p95" of ten samples is their maximum, so one scheduler stall under parallel load decided it —
@@ -156,6 +176,23 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
       + `final-ten median=${last.toFixed(1)} ms, growth=${(last - first).toFixed(1)} ms, final-ten max=${Math.max(...samples.slice(80)).toFixed(1)} ms\n`);
     expect(p95(samples)).toBeLessThanOrEqual(5000);
     expect(last - first).toBeLessThanOrEqual(1000);
+    // Captured writer, uncertain, Jev, review and empty output shapes still traverse the
+    // bounded packet route. This replays bytes, not a fresh model judgment of relevance.
+    const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
+      otherShapes: { kind: string; id: string; raw: string }[] };
+    for (const shape of shapes.otherShapes) {
+      const replayRoot = origin();
+      writeFileSync(join(replayRoot, 'journal.encrypted'), beforeQuestion!);
+      const recorded = open(replayRoot);
+      try {
+        replay = shape.raw; asked = undefined;
+        recorded.worker.intake([update(88, 'Where did I say the spare house key is?', undefined, 1790000000 + 88 * 60)]);
+        await recorded.worker.drain();
+        expect(JSON.parse(asked!).recalled, `${shape.kind} ${shape.id}`).toContainEqual(
+          expect.objectContaining({ id: 'telegram:12345678:update:4', user: fact }));
+        expect(Buffer.byteLength(asked!), shape.id).toBeLessThanOrEqual(packetLimit);
+      } finally { recorded.journal.close(); rmSync(replayRoot, { recursive: true, force: true }); }
+    }
     current.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 180_000); // Measured: 90 turns of real journal work took 25.1 s of the old 30 s budget at load 24 — the budget
@@ -174,7 +211,7 @@ it('gives the summarizer every turn\'s conversation and date, including the main
     expect(input).toBeDefined();
     const packet = JSON.parse(input!.context);
     expect(packet.history.length).toBeGreaterThan(0);
-    for (const item of packet.history) expect(item).toMatchObject({ conversation: 'main chat', date: expect.stringMatching(/^2026-09-21T/) });
+    for (const item of packet.history) expect(item).toMatchObject({ conversation: 'main chat', date: expect.stringMatching(/^2026-09-21 .* PDT$/) });
     expect(packet.capability).toContain('Every history item names the conversation');
     // Ordinary reply packets keep their compact single-conversation form.
     const reply = JSON.parse(w.seen.find(item => !item.id.startsWith('summary:'))!.context);

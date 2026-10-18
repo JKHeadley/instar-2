@@ -1,0 +1,173 @@
+import { expect, it, afterEach } from 'vitest';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+// @ts-expect-error Shared installer and runner JavaScript.
+import { configureTrust, setupTrustPolicy, setupMcp } from './trust-setup.mjs';
+// @ts-expect-error Shared runner JavaScript.
+import { admitEffect, TOOL_EFFECT_DEFAULTS } from './effect-doorway.mjs';
+// @ts-expect-error Shared runner JavaScript.
+import { prepareToolTurn, readRootMcp, TOOL_MCP_LAUNCHER } from './tool-turn.mjs';
+import { codexToolHookArgs } from '../../src/assembly/production-codex-provider.js';
+const roots: string[] = [];
+afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
+const root = () => { const r = mkdtempSync(join(tmpdir(), 'trust-')); roots.push(r); return r; };
+const request = () => ({ source: 'operator:setup:123', custodian: 'operator', recovery: 'revoke standing trust', resourceLevelUsd: 2,
+  effects: [{ effect: 'tool:mcp', target: 'mcp__drafts__edit', recovery: 'restore previous draft revision',
+    registration: { consequence: 'data', reversibility: 'reversible', reach: 'world', costUsd: 1 } },
+  { effect: 'tool:mcp', target: 'mcp__mail__send', recovery: 'withdraw future permission',
+    registration: { consequence: 'external', reversibility: 'irreversible', reach: 'world', costUsd: 0 } }],
+  mcp: { mcpServers: { drafts: { command: 'draft-server', env: { TOKEN: { secretRef: 'draft-token' } } } }, reads: ['mcp__drafts__read'] } });
+const load = (r: string) => JSON.parse(readFileSync(join(r, 'effect-policy.json'), 'utf8'));
+it('writes once, reloads through real consumers, admits a declared reversible effect and refuses outward sends', () => {
+  const r = root(), req = request(); configureTrust(r, 'setup', req);
+  const before = readFileSync(join(r, 'effect-policy.json'), 'utf8'); configureTrust(r, 'setup', req);
+  expect(readFileSync(join(r, 'effect-policy.json'), 'utf8')).toBe(before);
+  const p = load(r);
+  expect(p.grants.every((g: object) => !('expiresAt' in g))).toBe(true);
+  expect(admitEffect({ effect: 'tool:mcp', target: 'mcp__drafts__edit' }, p).admitted).toBe(true);
+  expect(admitEffect({ effect: 'tool:mcp', target: 'mcp__mail__send' }, p).admitted).toBe(false);
+  expect(admitEffect({ effect: 'tool:mcp', target: 'mcp__other__edit' }, p).admitted).toBe(false);
+  expect(readRootMcp(r).secrets).toEqual({ drafts: { TOKEN: 'draft-token' } });
+  expect(() => configureTrust(r, 'setup', { ...req, resourceLevelUsd: 3 })).toThrow('different operator choices');
+  expect(TOOL_EFFECT_DEFAULTS['tool:network-write'].reversibility).toBe('irreversible');
+});
+it('tightens cost and scope, rejects widening, and revoke is idempotent', () => {
+  const r = root(), req = request(); configureTrust(r, 'setup', req);
+  expect(() => configureTrust(r, 'tighten', { ...req, resourceLevelUsd: 3 })).toThrow('cannot widen');
+  configureTrust(r, 'tighten', { ...req, resourceLevelUsd: 0.5 });
+  expect(admitEffect({ effect: 'tool:mcp', target: 'mcp__drafts__edit' }, load(r)).admitted).toBe(false);
+  configureTrust(r, 'tighten', { ...req, effects: [], mcp: { mcpServers: {}, reads: [] } });
+  expect(load(r).grants).toEqual([]);
+  configureTrust(r, 'revoke'); configureTrust(r, 'revoke');
+  expect(load(r).registered).toHaveLength(2); expect(readRootMcp(r)).toBeNull();
+});
+it('rejects missing operator provenance, unbounded cost and literal env secrets', () => {
+  expect(() => setupTrustPolicy({ ...request(), source: '' })).toThrow();
+  expect(() => setupTrustPolicy({ ...request(), resourceLevelUsd: Infinity })).toThrow();
+  expect(() => setupMcp({ mcpServers: { x: { command: 'x', env: { TOKEN: 'opaque-secret' } } } })).toThrow('secretRef');
+});
+
+// @ts-expect-error The real network admission path shares the policy decoder.
+import { admitEgress } from './tool-admission.mjs';
+it('limits reversible network registrations to an exact method and route; other writes stay irreversible', () => {
+  const base = request();
+  const scoped = { ...base, effects: [{ effect: 'tool:network-write', target: 'drafts.example',
+    request: { method: 'PATCH', path: '/owned-draft/1' }, recovery: 'restore prior draft',
+    registration: { consequence: 'data', reversibility: 'reversible', reach: 'world', costUsd: 0 } }] };
+  const policy = setupTrustPolicy(scoped), config = { effectPolicy: policy, operations: [] };
+  const input = { host: 'drafts.example', method: 'PATCH', path: '/owned-draft/1' };
+  expect(admitEgress(input, config, 0).decision).toBe('allow');
+  expect(admitEgress({ ...input, path: '/send' }, config, 0).decision).toBe('deny');
+  expect(admitEgress({ ...input, method: 'DELETE' }, config, 0).decision).toBe('deny');
+  expect(admitEgress({ ...input, headers: { 'x-http-method-override': 'POST' } }, config, 0).decision).toBe('deny');
+  expect(() => setupTrustPolicy({ ...scoped, effects: [{ ...scoped.effects[0], request: undefined }] })).toThrow('exact request');
+});
+
+import { spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+it('runs the shipped setup CLI unattended and the runner reads its resulting configuration', () => {
+  const r = root(), input = join(r, 'operator-request.json'); writeFileSync(input, JSON.stringify(request()));
+  const result = spawnSync(process.execPath, ['scripts/setup-standing-trust.mjs', 'setup', r, input], { encoding: 'utf8' });
+  expect(result.stderr).toBe(''); expect(result.status).toBe(0);
+  expect(admitEffect({ effect: 'tool:mcp', target: 'mcp__drafts__edit' }, load(r)).admitted).toBe(true);
+});
+
+it('replays real summary, Jev, reviewer and delivered/empty outputs without turning model text into setup authority', () => {
+  const captured = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
+    otherShapes: { kind: string; id: string; raw: string; source: string }[] };
+  expect(captured.otherShapes.map(row => row.kind)).toEqual(['summary-writer', 'summary-uncertain', 'jev-undecided',
+    'jev-unsure', 'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
+  const r = root(); configureTrust(r, 'setup', request());
+  const before = readFileSync(join(r, 'effect-policy.json'), 'utf8');
+  for (const row of captured.otherShapes) {
+    let output: unknown; try { output = JSON.parse(row.raw); } catch { output = row.raw; }
+    expect(() => configureTrust(r, 'setup', output), `${row.kind}: ${row.id}`).toThrow();
+    expect(() => configureTrust(r, 'revise', output), `${row.kind}: ${row.id}`).toThrow();
+    expect(readFileSync(join(r, 'effect-policy.json'), 'utf8')).toBe(before);
+  }
+});
+
+it('tighten and revoke preserve existing policy-sensitive read restrictions', () => {
+  const r = root(); configureTrust(r, 'setup', request());
+  const p = load(r); p.policySensitive = ['sensitive.example'];
+  writeFileSync(join(r, 'effect-policy.json'), JSON.stringify(p));
+  const input = { method: 'GET', host: 'sensitive.example', path: '/' };
+  configureTrust(r, 'tighten', { ...request(), effects: [] });
+  expect(admitEgress(input, { effectPolicy: load(r), operations: [] }, 0).decision).toBe('deny');
+  configureTrust(r, 'revoke');
+  expect(admitEgress(input, { effectPolicy: load(r), operations: [] }, 0).decision).toBe('deny');
+});
+
+it('setup MCP launches reach the real Codex configuration consumer and revoke removes them', () => {
+  const r = realpathSync(root()), req = request();
+  req.mcp.mcpServers.drafts.command = '/operator-installed/draft-server';
+  configureTrust(r, 'setup', req);
+  // A fresh isolated login home: no model call, network request, or installed server is needed.
+  const home = join(r, 'codex-home'); mkdirSync(home);
+  const scratch = (turn: string) => { const path = join(turn, 'scratch'); mkdirSync(path); return path; };
+  const gate = `http://127.0.0.1:4100/${'a'.repeat(32)}/tool-turn-0123456789abcdef-0`;
+  const prepare = (attempt: number) => prepareToolTurn({ root: r, operation: 'telegram:1:update:9', attempt,
+    operations: [], mcp: readRootMcp(r), scratch, gate });
+  const turn = prepare(0);
+  const args = codexToolHookArgs({ ...turn, deniedRoots: [], gate });
+  const overrides = args.filter(arg => arg.startsWith('mcp_servers.'));
+  expect(overrides).toHaveLength(1);
+  expect(turn.mcp.launch).toEqual(JSON.parse(readFileSync(turn.mcp.config, 'utf8')).mcpServers);
+  const list = (values: string[]) => {
+    const result = spawnSync('codex', ['mcp', 'list', '--json', ...values.flatMap(value => ['-c', value])],
+      { env: { ...process.env, CODEX_HOME: home }, cwd: home, encoding: 'utf8', timeout: 15000 });
+    expect(result.status, result.stderr).toBe(0);
+    return JSON.parse(result.stdout) as { name: string; transport: { command: string; args: string[] } }[];
+  };
+  const servers = list(overrides);
+  expect(servers).toHaveLength(1);
+  expect(servers[0]?.name).toBe('drafts');
+  expect(servers[0]?.transport.command).toBe(process.execPath);
+  expect(servers[0]?.transport.args).toEqual([TOOL_MCP_LAUNCHER, turn.socket.path, 'drafts', turn.mcp.nonces.drafts,
+    '/operator-installed/draft-server']);
+  expect(JSON.stringify(servers)).not.toContain('draft-token');
+  expect(args.some(arg => arg.startsWith('hooks.PreToolUse='))).toBe(true);
+  expect(() => codexToolHookArgs({ ...turn, deniedRoots: [], gate, mcp: { config: turn.mcp.config, servers: ['drafts'] } }))
+    .toThrow('prepared MCP launch configuration required');
+  configureTrust(r, 'revoke');
+  const next = codexToolHookArgs({ ...prepare(1), deniedRoots: [], gate });
+  expect(list(next.filter(arg => arg.startsWith('mcp_servers.')))).toEqual([]);
+});
+
+it('records one onboarding conversation in the existing grant store and accepts a later role conversation', () => {
+  const r = root(), role = { description: 'Manage drafts and private correspondence', accounts: ['mail:team'],
+    channels: ['private-mail'], trust: 'Act inside this role up to two dollars per operation' };
+  configureTrust(r, 'setup', { ...request(), role });
+  expect(load(r).role).toEqual(role);
+  const edit = { effect: 'tool:mcp', target: 'mcp__drafts__edit' };
+  const first = admitEffect(edit, load(r));
+  expect(first).toMatchObject({ admitted: true, signOffRequired: false });
+  expect(load(r).registered.every((entry: { classification: object }) => entry.classification)).toBe(true);
+  const widened = { ...request(), role: { ...role, accounts: [...role.accounts, 'drafts:team'] }, effects: [...request().effects,
+    { ...request().effects[0]!, target: 'mcp__drafts__rename' }] };
+  configureTrust(r, 'revise', widened);
+  expect(admitEffect({ ...edit, target: 'mcp__drafts__rename' }, load(r))).toMatchObject({ admitted: true, signOffRequired: false });
+  configureTrust(r, 'revise', { ...request(), role, effects: [] });
+  const refused = admitEffect(edit, load(r));
+  expect(refused).toMatchObject({ admitted: false, refusedFor: expect.arrayContaining(['role']) });
+  expect(refused.admits).toContain('operator grant placing tool:mcp');
+});
+
+it('registers private email as no sign-off separately from its irreversible durability demand', () => {
+  const p = setupTrustPolicy(request());
+  const mail = p.registered.find((entry: { target: string }) => entry.target === 'mcp__mail__send');
+  expect(mail.classification).toEqual({ signOff: { resources: false, irreversibleOutsideRole: false,
+    publicInPersonName: false, widensAuthority: false, policySensitive: false },
+    durability: { irreversible: true, demand: 'installed-operation', rule: 'an irreversible act follows its durable cause' } });
+  const refused = admitEffect({ effect: 'tool:mcp', target: 'mcp__mail__send' }, p);
+  expect(refused).toMatchObject({ admitted: false, signOffRequired: false, refusedFor: ['durability'] });
+  expect(refused.reason).toContain('a single-machine installation is a supported deployment shape');
+  expect(refused.reason).toContain('a second enrolled machine');
+});
+
+it('onboarding a role does not silently sign off on a matter the person marked sensitive', () => {
+  const p = setupTrustPolicy({ ...request(), policySensitive: ['mcp__drafts__edit'] });
+  expect(admitEffect({ effect: 'tool:mcp', target: 'mcp__drafts__edit' }, p)).toMatchObject({ admitted: false,
+    signOffRequired: true, refusedFor: ['sign-off'] });
+});

@@ -4,12 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawn, spawnSync } from 'node:child_process';
-import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE,
-  SUMMARY_UNKNOWN_RECOVERY_MS, SUMMARY_MAX_PROMPT_BYTES, SUMMARY_MAX_TURNS, SUMMARY_TARGET_OUTPUT_TOKENS } from './journal-test-worker.js';
-import { INDEX_BACKLOG_LIMIT, TOO_LONG_INPUT_NOTICE } from './journal.js';
+import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE, UNKNOWN_SEND_NOTICE,
+  SUMMARY_UNKNOWN_RECOVERY_MS, SUMMARY_MAX_PROMPT_BYTES, SUMMARY_MAX_TURNS, SUMMARY_TARGET_OUTPUT_TOKENS, summaryPromptBytes } from './journal-test-worker.js';
+import { INDEX_ATTEMPT_LIMIT, INDEX_BACKLOG_LIMIT, OBLIGATION_FLOOR_PACKET_BYTES as FLOOR_GUIDE, TOO_LONG_INPUT_NOTICE } from './journal.js';
+// w3-floorduty (Rules 3, 93): under pressure the obligation guide now yields to its floor form instead of vanishing, so a
+// small synthetic limit carries those bytes too; every outcome below is otherwise unchanged.
 
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
+import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 // The physical host is an ESM script; this test checks its runtime contract.
 // @ts-ignore no declaration for the host script
@@ -26,12 +28,14 @@ const update = (id: number, text = `question ${id}`) => ({ update_id: id,
 function world(root: string, options: { boundary?: (stage: string) => void; send?: () => number | null;
   model?: (input: { question: string; context: string }) => string } = {}) {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(), options.boundary);
-  let calls = 0, sends = 0, stopped = false;
+  let calls = 0, sends = 0, notices = 0, stopped = false;
   const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => stopped,
     model: async input => { calls++; return options.model?.(input) ?? `answer ${input.question}`; },
-    send: async () => { sends++; return options.send ? options.send() : sends; },
+    send: async input => {
+      if (input.target?.startsWith('delivery-notice:')) { expect(input.expectedText).toBe(UNKNOWN_SEND_NOTICE); notices++; return 900 + notices; }
+      sends++; return options.send ? options.send() : sends; },
     checkOutbound: text => { if (text.includes('SECRET')) throw Error('secret'); } });
-  return { journal, worker, get calls() { return calls; }, get sends() { return sends; }, stop: () => { stopped = true; } };
+  return { journal, worker, get calls() { return calls; }, get sends() { return sends; }, get notices() { return notices; }, stop: () => { stopped = true; } };
 }
 
 it('retains intake before advancing the cursor, deduplicates redelivery, and fences unknown sends without blocking later work', async () => {
@@ -41,6 +45,7 @@ it('retains intake before advancing the cursor, deduplicates redelivery, and fen
     expect(first.worker.intake([update(10)])).toBe(11);
     await first.worker.drain();
     expect(first.sends).toBe(1);
+    expect(first.notices).toBe(1);
     first.journal.close();
     const second = world(root);
     second.worker.intake([update(10), update(11)]);
@@ -94,8 +99,8 @@ it('fsyncs the exact HTML body and expected visible text before dispatch', async
       model: async () => '<&>', checkOutbound: () => {},
       send: async input => { sent = input; return 5; } });
     worker.intake([update(1)]); await worker.drain();
-    expect(sent?.text).toBe('PREVIEW — &lt;&amp;&gt;');
-    expect(sent?.expectedText).toBe('PREVIEW — <&>');
+    expect(sent?.text).toBe('&lt;&amp;&gt;');
+    expect(sent?.expectedText).toBe('<&>');
     expect(journal.view.order[0]?.intentBody).toBe(sent?.text);
     expect(journal.view.order[0]?.sent).toBe(5);
     journal.close();
@@ -103,12 +108,12 @@ it('fsyncs the exact HTML body and expected visible text before dispatch', async
 });
 
 it.each([
-  ['PREVIEW: answer', 'PREVIEW — answer'],
-  ['PREVIEW — answer', 'PREVIEW — answer'],
-  ['answer', 'PREVIEW — answer'],
-  ['PREVIEW: PREVIEW: answer', 'PREVIEW — PREVIEW: answer'],
-  ['PREVIEWING answer', 'PREVIEW — PREVIEWING answer'],
-])('adds one runner marker to model answer %s', async (answer, expected) => {
+  ['PREVIEW: answer', 'answer'],
+  ['PREVIEW — answer', 'answer'],
+  ['answer', 'answer'],
+  ['PREVIEW: PREVIEW: answer', 'PREVIEW: answer'],
+  ['PREVIEWING answer', 'PREVIEWING answer'],
+])('removes the leading legacy runner marker from model answer %s', async (answer, expected) => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
@@ -199,7 +204,8 @@ it.each(['before:intake', 'after:intake', 'before:reserve', 'after:reserve', 'be
       expect(turn.answer).toBeUndefined();
       expect(turn.intent).toBeUndefined();
     } else if (['after:intent','before:sent'].includes(stage)) {
-      expect(turn.intent).toBe('PREVIEW — first answer');
+      expect(first.notices + next.notices).toBe(1);
+      expect(turn.intent).toBe('first answer');
       expect(turn.sent).toBeUndefined();
     } else expect(turn.sent).toBe(stage === 'after:sent' ? 42 : 43);
     next.journal.close();
@@ -230,7 +236,8 @@ it('survives actual SIGKILL before and after every turn-path durable boundary', 
         expect(turn.answer, stage).toBeUndefined();
         expect(turn.intent, stage).toBeUndefined();
       } else if (stage === 'after:intent' || stage === 'before:sent') {
-        expect(turn.intent, stage).toBe('PREVIEW — answer');
+        expect(resumed.notices, stage).toBe(1);
+        expect(turn.intent, stage).toBe('answer');
         expect(turn.sent, stage).toBeUndefined();
       } else expect(turn.sent, stage).toBeGreaterThan(0);
       resumed.journal.close();
@@ -262,8 +269,8 @@ it('sends one fixed checked reply for a definite failure and counts the spent ca
     let checks = 0, sends = 0;
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async () => ({ state: 'rejected', failureClass: 'rejected' }),
-      checkOutbound: text => { checks++; expect(text).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`); },
-      send: async input => { sends++; expect(input.expectedText).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`); return 7; } });
+      checkOutbound: text => { checks++; expect(text).toBe(`${MODEL_FAILURE_REPLY}`); },
+      send: async input => { sends++; expect(input.expectedText).toBe(`${MODEL_FAILURE_REPLY}`); return 7; } });
     worker.intake([update(1, 'Reply with an exact path')]); await worker.drain(); await worker.drain();
     expect({ checks, sends, calls: journal.view.calls, replies: journal.view.replies }).toEqual({ checks: 1, sends: 1, calls: 1, replies: 1 });
     expect(Object.fromEntries(journal.view.failureClasses)).toEqual({ rejected: 1 });
@@ -337,8 +344,8 @@ it('records an ended UNKNOWN answer, sends one checked notice, and preserves UNK
     let calls = 0, sends = 0, checks = 0;
     const worker = createJournalWorker(first, { now: () => 1000, stopped: () => false,
       model: async () => { calls++; return { state: 'uncertain' }; },
-      checkOutbound: text => { checks++; expect(text).toBe(`PREVIEW — ${UNKNOWN_ANSWER_NOTICE}`); },
-      send: async input => { sends++; expect(input.expectedText).toBe(`PREVIEW — ${UNKNOWN_ANSWER_NOTICE}`); return 7; } });
+      checkOutbound: text => { checks++; expect(text).toBe(`${UNKNOWN_ANSWER_NOTICE}`); },
+      send: async input => { sends++; expect(input.expectedText).toBe(`${UNKNOWN_ANSWER_NOTICE}`); return 7; } });
     worker.intake([update(1)]); await worker.drain(); await worker.drain(); first.close();
     const second = openPreviewJournal(join(root, 'journal.encrypted'), key);
     const resumed = createJournalWorker(second, { now: () => 2000, stopped: () => false,
@@ -351,7 +358,7 @@ it('records an ended UNKNOWN answer, sends one checked notice, and preserves UNK
     expect(Object.fromEntries(second.view.failureClasses)).toEqual({});
     expect(second.view.order[0]?.answer).toBeUndefined();
     expect(second.view.order[0]).toMatchObject({ modelState: 'uncertain', noticeDueAt: 1000,
-      noticeClass: 'unknown-answer', intent: `PREVIEW — ${UNKNOWN_ANSWER_NOTICE}`, sent: 7 });
+      noticeClass: 'unknown-answer', intent: `${UNKNOWN_ANSWER_NOTICE}`, sent: 7 });
     const status = spawnSync(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
       { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, encoding: 'utf8', timeout: 10000 });
@@ -402,7 +409,7 @@ it('never redispatches an UNKNOWN notice send after restart', async () => {
     await resumed.drain();
     expect({ sends, replies: second.view.replies, sent: second.view.order[0]?.sent,
       intent: second.view.order[0]?.intent }).toEqual({ sends: 1, replies: 1, sent: undefined,
-        intent: `PREVIEW — ${UNKNOWN_ANSWER_NOTICE}` });
+        intent: `${UNKNOWN_ANSWER_NOTICE}` });
     second.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -427,11 +434,14 @@ it('does not notify while the model invocation is still in flight', async () => 
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
     let finish!: (value: { state: 'uncertain' }) => void, sends = 0;
+    let started!: () => void;
+    const invoking = new Promise<void>(resolve => { started = resolve; });
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
-      model: () => new Promise(resolve => { finish = resolve; }), checkOutbound: () => {},
+      model: () => new Promise(resolve => { finish = resolve; started(); }), checkOutbound: () => {},
       send: async () => { sends++; return 1; } });
     worker.intake([update(1)]);
     const draining = worker.drain();
+    await invoking;
     expect(journal.view.order[0]?.reserved).toBe(true);
     expect(journal.view.order[0]?.answer).toBeUndefined();
     expect(journal.view.order[0]?.noticeClass).toBeUndefined();
@@ -442,7 +452,7 @@ it('does not notify while the model invocation is still in flight', async () => 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('reviews the UNKNOWN notice and distinguishes it from an answer in later history', async () => {
+it('checks the fixed UNKNOWN notice without model review and distinguishes it from an answer in later history', async () => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
@@ -461,14 +471,14 @@ it('reviews the UNKNOWN notice and distinguishes it from an answer in later hist
     const history = JSON.parse(context).history;
     expect(history[0]).toMatchObject({ user: 'question 1', answer: null,
       notice: UNKNOWN_ANSWER_NOTICE, outcome: 'loss notice delivered; model UNKNOWN' });
-    expect(reviews).toBe(2);
-    expect(journal.view.calls).toBe(4); // two answers, two separately reserved reply reviews
+    expect(reviews).toBe(1);
+    expect(journal.view.calls).toBe(3); // two answers; only the model-written answer needs a model review
     expect(Object.fromEntries(journal.view.providerStates)).toEqual({ uncertain: 1, complete: 1 });
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('sends the loss notice despite a review objection and labels it truthfully in later history', async () => {
+it('uses the fixed notice check and labels the unknown outcome truthfully in later history', async () => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
@@ -479,7 +489,7 @@ it('sends the loss notice despite a review objection and labels it truthfully in
         context = input.context; return 'second answer';
       },
       replyCheck: { jev: async () => { throw Error('Jev unavailable'); },
-        escalate: async input => input.endsWith('Please send it again.')
+        escalate: async input => input === UNKNOWN_ANSWER_NOTICE
           ? { verdict: 'violation', ruleIds: ['parks_on_user'], confidence: 1, latencyMs: 0 }
           : { verdict: 'pass', ruleIds: [], confidence: 1, latencyMs: 0 },
         elapsedMs: () => 0 },
@@ -488,9 +498,10 @@ it('sends the loss notice despite a review objection and labels it truthfully in
     worker.intake([update(2)]); await worker.drain();
     const history = JSON.parse(context).history;
     expect(history[0]).toMatchObject({ user: 'question 1', answer: null,
-      notice: 'I lost my answer to that message. Please send it again.',
+      notice: UNKNOWN_ANSWER_NOTICE,
       outcome: 'loss notice delivered; model UNKNOWN' });
-    expect(journal.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['parks_on_user'] });
+    expect(journal.view.order[0]?.replyChecks?.at(-1)).toMatchObject({ verdict: 'pass', path: 'holding' });
+    expect(journal.view.order[0]?.release).toBeUndefined();
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -535,7 +546,7 @@ it('resumes a durable definite failure after restart and sends exactly once', as
     expect({ calls, sends, spent: second.view.calls, failures: Object.fromEntries(second.view.failureClasses) })
       .toEqual({ calls: 2, sends: 1, spent: 2, failures: { malformed: 2 } }); // the miss, then its one format re-ask, both refused
     expect(second.view.order[0]?.answerRetried).toBe(true);
-    expect(second.view.order[0]?.intent).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`);
+    expect(second.view.order[0]?.intent).toBe(`${MODEL_FAILURE_REPLY}`);
     expect(second.view.order[0]?.sent).toBe(9);
     second.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -612,12 +623,19 @@ it('durably latches observed expiry while refusing non-operator stop requests', 
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
       model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
     expect(() => worker.gate()).not.toThrow();
-    now = 1000;
+    expect(() => worker.pollGate()).not.toThrow();
+    now = 999; // Equality is already expired, not one tick later.
     expect(() => worker.gate()).toThrow('stopped');
+    expect(() => worker.pollGate()).toThrow('stopped');
     expect(journal.view.stop).toBe('trial expired');
+    now = 998; // The durable latch survives a clock moving back.
+    expect(() => worker.gate()).toThrow('stopped');
+    expect(() => worker.pollGate()).toThrow('stopped');
     expect(() => worker.stop('transport-breaker')).toThrow('only operator stop');
     expect(journal.view.stop).toBe('trial expired');
     journal.close();
+    const replay = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    try { expect(replay.view.stop).toBe('trial expired'); } finally { replay.close(); }
   } finally { rmSync(root, {recursive:true,force:true}); }
 });
 
@@ -713,9 +731,10 @@ it('falls back to a current summary when the complete prepared prompt overflows,
       send: async()=>1,checkOutbound:()=>{} });
     worker.intake([update(3,'what was first?')]); await worker.drain();
     expect(full).toBeGreaterThan(0);
-    // cint-2: cbuild-4's obligation guide and cbuild-2's summary decision and search ride this compact packet together (measured 10514).
-    // cint-L2 with the live repair's capabilities key merged: measured 10491 (occam's removals offset the addition).
-    expect(compact).toBeLessThan(10752);
+    // Assert the actual envelope bound and reduction, rather than a historical packet byte count.
+    expect(full + 2870).toBeGreaterThan(34000);
+    expect(compact).toBeLessThan(full);
+    expect(compact + 2870).toBeLessThanOrEqual(34000);
     expect(invoked).toBe(1);
     expect(journal.view.order[2]?.sent).toBe(1);
     journal.append({kind:'hold',id:'telegram:12345678:update:2',reason:'review needed',at:1000});
@@ -759,7 +778,7 @@ it('keeps early-turn recall and constant append cost through 60 bounded turns an
 it('uses rolling summaries only after replies, shares the attempt cap, and retains original text', async () => {
   const root = origin();
   try {
-    const initial = { ...genesis(), maxBytes: 4000 };
+    const initial = { ...genesis(), maxBytes: 4000 + FLOOR_GUIDE };
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, initial);
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async input => input.id.startsWith('summary:') ? 'The first unique memory was ORCHID.'
@@ -786,7 +805,8 @@ it('bounds each rolling chunk by measured prepared prompt bytes and reported out
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
       { ...genesis(64), maxBytes: 131072, maxTurns: 30 });
     for (let n = 1; n <= 20; n++) {
-      const id = `telegram:12345678:update:${n}`, message = `turn ${n}: ${'a'.repeat(1600)}`;
+      // Exceed the complete-history threshold so this exercises automatic rolling, not the short-history path.
+      const id = `telegram:12345678:update:${n}`, message = `turn ${n}: ${'a'.repeat(3600)}`;
       journal.append({ kind: 'intake', id, update: n, text: message, raw: JSON.stringify(update(n, message)),
         accepted: true, cursor: n + 1, at: 1000 });
       journal.append({ kind: 'reserve', id, at: 1000 });
@@ -815,7 +835,10 @@ it('bounds each rolling chunk by measured prepared prompt bytes and reported out
     expect(measurements.length).toBeGreaterThan(1);
     expect(measurements.every(item => item.historyTurns <= SUMMARY_MAX_TURNS
       && item.promptBytes <= SUMMARY_MAX_PROMPT_BYTES && item.outputTokens <= SUMMARY_TARGET_OUTPUT_TOKENS)).toBe(true);
-    expect(Math.max(...measurements.map(item => item.promptBytes))).toBeLessThan(subscriptionConversationPolicy('claude-opus-5-5').maxPromptBytes);
+    // A raised root raises the provider's prompt bound to its own limit (the launcher's raisedPromptBytes); the summary
+    // ceiling is three quarters of it.
+    expect(Math.max(...measurements.map(item => item.promptBytes))).toBeLessThanOrEqual(summaryPromptBytes(journal.view.limits.maxBytes));
+    expect(summaryPromptBytes(journal.view.limits.maxBytes)).toBeLessThan(journal.view.limits.maxBytes);
     expect(journal.view.summaries.map(item => item.usage?.outputTokens)).toEqual(measurements.map(item => item.outputTokens));
     expect(journal.view.order[0]?.text).toContain('turn 1:');
     journal.close();
@@ -1084,7 +1107,7 @@ it('waits again after a second UNKNOWN summary and never spends beyond the call 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('does not fall back behind an UNKNOWN frontier when the later prompt overflows', async () => {
+it('never re-dispatches an UNKNOWN frontier, and past its recovery pause it no longer floors other spans', async () => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
@@ -1104,15 +1127,19 @@ it('does not fall back behind an UNKNOWN frontier when the later prompt overflow
     now += SUMMARY_UNKNOWN_RECOVERY_MS;
     const calls = journal.view.calls;
     await worker.summarizeIfNeeded(true);
+    // The later prompt overflows; the span before the UNKNOWN is summarized instead of waiting for a later frontier,
+    // which a prompt that only grows with its span could never offer (w3-summaryfit). The UNKNOWN keeps its charge.
     expect(prepared).toContain('summary:3');
-    expect(summaries).toEqual([]);
-    expect(journal.view.calls).toBe(calls);
+    expect(prepared).not.toContain('summary:2');
+    expect(summaries).toEqual(['summary:1']);
+    expect(journal.view.calls).toBe(calls + 1);
     expect(journal.view.summaryReservations.has(2)).toBe(true);
     worker.intake([update(4)]); await worker.drain();
     await worker.summarizeIfNeeded(true);
-    expect(summaries).toEqual(['summary:4']);
-    expect(journal.view.summaries.map(item => item.through)).toEqual([4]);
+    expect(summaries).toEqual(['summary:1', 'summary:4']);
+    expect(journal.view.summaries.map(item => item.through)).toEqual([1, 4]);
     expect(journal.view.summaryReservations.has(2)).toBe(true);
+    expect(prepared).not.toContain('summary:2');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -1161,7 +1188,7 @@ it('retries a definitely failed summary and an overflow-held turn automatically'
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('grounds over-budget history before any summary; route=%s', async route => {
+it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('answers over-budget history: with a summary when one can be made, with the oldest set aside when not; route=%s', async route => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
@@ -1195,43 +1222,64 @@ it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('grounds over-
       send: async () => 2, checkOutbound: () => {} });
     worker.intake([update(2, 'What was the name?')]); await worker.drain();
     const turn = journal.view.order[1]!;
-    if (route !== 'summary') {
-      expect(turn.sent).toBeUndefined();
-      expect(turn.held).toBe('summary unavailable: prompt overflow');
-      expect(seen.some(item => item.id === turn.id)).toBe(false);
-      expect(journal.view.summaryReservations.size).toBe(0);
-      if (route === 'last-call') {
-        expect(summaryAttempts).toBe(0);
-        expect(journal.view.calls).toBe(1);
-      } else if (route === 'preflight') {
-        await worker.drain(); await worker.drain();
-        expect(summaryPrepares).toBe(1);
-        expect(summaryAttempts).toBe(0);
-        expect(turn.held).toBe('summary unavailable: prompt overflow');
-      } else {
-        expect(journal.view.summaryFailures.get(1)).toBe(1);
-        const status = spawnSync(process.execPath,
-          ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
-          {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(key).toString('hex')},encoding:'utf8',timeout:10000});
-        expect(status.status).toBe(0);
-        expect(JSON.parse(status.stdout).holds).toContainEqual({ update: 2,
-          notice: 'This reply is held because the conversation is too large to process right now; a summary may let it resume.' });
-        await worker.drain();
-        expect(summaryAttempts).toBe(2);
-      }
-    }
-    if (route === 'summary' || route === 'failed') {
-      expect(turn.sent).toBe(2);
-      expect(turn.held).toBeUndefined();
-      const packet = JSON.parse(seen.find(item => item.id === turn.id)!.context);
+    // Every route answers now. A summary is still preferred and still asked for first; where one cannot be made,
+    // the reachability floor sets the over-budget history aside rather than holding the reply (Rules 15, 95).
+    expect(turn.sent).toBe(2);
+    expect(turn.held).toBeUndefined();
+    expect(journal.view.summaryReservations.size).toBe(0);
+    const packet = JSON.parse(seen.find(item => item.id === turn.id)!.context) as { historyMode: string;
+      summary?: { text: string }; historySetAside?: { count: number; through: number } };
+    if (route === 'summary') {
+      // The summary carries the over-budget message, so no history has to be set aside at all.
       expect(packet.historyMode).toBe('summary-plus-recent');
-      expect(packet.summary.text).toContain('ORCHID');
-      expect(journal.view.calls).toBe(route === 'failed' ? 4 : 3);
+      expect(packet.summary!.text).toContain('ORCHID');
+      expect(packet.historySetAside).toBeUndefined();
+      expect(journal.view.calls).toBe(3);
+    } else {
+      // No summary could be made on this pass: the writer refused it (failed), its prompt could not be prepared
+      // (preflight), or the call allowance left no room to ask (last-call). The answer goes out either way, with
+      // the gap stated in the packet and the message itself untouched in the journal.
+      expect(packet.historyMode).toBe('recent-only');
+      expect(packet.historySetAside).toEqual({ count: 1, through: 1, note: expect.stringContaining('kept and still searchable') });
+      // Rule 110: the sent reply accounts for the set-aside truthfully (kept, unsummarized) and the last inbound's outcome.
+      expect(turn.continuity).toMatchObject({ summarizedThrough: 1, basis: 'set-aside', disposition: 'addressed' });
+      expect(turn.intent).toMatch(/^Earlier conversation up to #1 no longer fits in my view; it is kept and I can search it, but it is not summarized; /u);
+      // The spend floor is unchanged: no extra call is spent to answer with less, and a refused span keeps its
+      // second attempt for a later pass rather than being burned here.
+      expect(journal.view.calls).toBe(route === 'failed' ? 3 : 2);
+      expect(summaryAttempts).toBe(route === 'failed' ? 1 : 0);
+      expect(summaryPrepares).toBe(route === 'last-call' ? 0 : 1);
+      if (route === 'failed') expect(journal.view.summaryFailures.get(1)).toBe(1);
+      // The plain-English held notice is not owed: nothing is held.
+      const status = spawnSync(process.execPath,
+        ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
+        {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(key).toString('hex')},encoding:'utf8',timeout:10000});
+      expect(status.status).toBe(0);
+      expect((JSON.parse(status.stdout) as { holds: unknown[] }).holds).toEqual([]);
     }
     expect(journal.view.order[0]?.text).toContain('ORCHID');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('the documented inspect view states a floor set-aside, never complete history (Rule 26)', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-floor-inspect-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis(), maxBytes: 32768 });
+    const id = 'telegram:12345678:update:1', text = `ORCHID ${'a'.repeat(30000)}`;
+    journal.append({ kind: 'intake', id, update: 1, text, accepted: true, cursor: 2, at: 1000,
+      raw: JSON.stringify({ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: 1790000000 } }) });
+    journal.append({ kind: 'reserve', id, at: 1000 });
+    journal.append({ kind: 'answer', id, text: 'Noted.', state: 'complete', memory: [], at: 1000 });
+    journal.close();
+    const child = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      'tests/preview/journal-agent.mjs', 'inspect', '--root', root, '--text', 'What was the name?', '--model', 'claude-opus-5-5'],
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+    expect(child.status, child.stderr).toBe(0);
+    expect((JSON.parse(child.stdout) as { next: unknown }).next).toMatchObject({ historyMode: 'recent-only', summaryThrough: null,
+      historySetAside: { count: 1, through: 1 } });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 25000);
 
 it('summarizes and answers with pending corrections and a commitment before any summary exists', async () => {
   const root = origin();
@@ -1344,7 +1392,7 @@ it('physical Telegram bridge fences a send accepted by a fake endpoint that drop
     expect(secretAttempt).toMatchObject({kind:'uncertain',stage:'scan-policy'});
     const first = world(root, { send: () => {
       const result = physical.invoke({ token: { type: 'SecretRef', schemaVersion: 1, vault: 'preview', name: 'telegram-bot-token' },
-        method: 'sendMessage', body: { chat_id: '7654321', text: 'PREVIEW — answer question 1', parse_mode: 'HTML' },
+        method: 'sendMessage', body: { chat_id: '7654321', text: 'answer question 1', parse_mode: 'HTML' },
         timeoutMs: 1000 }, token);
       expect(result.kind).toBe('uncertain'); return null;
     } });
@@ -1364,11 +1412,12 @@ it('recalls an original turn far beyond the envelope across a restart in a 200-t
   const root = origin(), samples: number[] = [];
   const fact = 'The locker combination is QUASAR-7731.';
   const initial = { ...genesis(), maxCalls: 400, maxReplies: 200, maxTurns: 200, maxBytes: 8192 };
-  let asked: string | undefined, early: string | undefined;
+  let asked: string | undefined, early: string | undefined, indexCalls = 0;
   const open = () => {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key);
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
       model: async input => {
+        if (input.id.startsWith('summary:index:')) indexCalls++;
         if (input.id.startsWith('summary:')) return 'An ordinary conversation about weather, errands and plans.';
         if (input.question.includes('locker combination')) asked = input.context;
         if (input.id === 'telegram:12345678:update:6') early = input.context;
@@ -1395,10 +1444,12 @@ it('recalls an original turn far beyond the envelope across a restart in a 200-t
     expect(view.order[4]?.text).toBe(fact);
     expect(view.summaries.length).toBeGreaterThan(1);
     expect(view.summaries.every(summary => !summary.text.includes('QUASAR'))).toBe(true);
-    // Rule 11: this model returns no meaning terms, so summarized messages are also offered to the
-    // index-only call, once each and only in full batches (one call per eight messages).
-    expect(view.indexOffered.length % INDEX_BACKLOG_LIMIT).toBe(0);
-    expect(view.calls).toBe(200 + view.summaries.length + view.indexOffered.length / INDEX_BACKLOG_LIMIT);
+    // Rule 11: this model returns no meaning terms, so summarized messages are offered to the index-only
+    // call -- a full batch of eight where one is available, a smaller remainder otherwise, and each source
+    // at most INDEX_ATTEMPT_LIMIT times (w3-longchat: a remainder under eight used to be stranded for good).
+    expect(view.indexOffered.length).toBeLessThanOrEqual(new Set(view.indexOffered).size * INDEX_ATTEMPT_LIMIT);
+    expect(indexCalls).toBeGreaterThan(view.indexOffered.length / INDEX_BACKLOG_LIMIT - 1);
+    expect(view.calls).toBe(200 + view.summaries.length + indexCalls);
     expect(JSON.parse(early!)).toMatchObject({ historyMode: 'complete' });
     expect(JSON.parse(early!).recalled).toBeUndefined();
     expect(early).toContain('QUASAR-7731');
@@ -1407,7 +1458,7 @@ it('recalls an original turn far beyond the envelope across a restart in a 200-t
     expect(packet.summary.through).toBeGreaterThan(5);
     expect(packet.summary.sourceLabel).toMatch(/^summary:all conversations\/.+\/through #\d+$/u);
     expect(packet.history.some((turn: { user: string }) => turn.user.includes('QUASAR'))).toBe(false);
-    expect(packet.recalled).toContainEqual(expect.objectContaining({ id: 'telegram:12345678:update:5', date: '2026-09-21T14:18Z', user: fact, answer: 'noted',
+    expect(packet.recalled).toContainEqual(expect.objectContaining({ id: 'telegram:12345678:update:5', date: '2026-09-21 07:18 PDT', user: fact, answer: 'noted',
       outcome: 'Telegram API accepted' }));
     expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(8192);
     const p95 = (values: number[]) => values.slice().sort((a,b) => a-b)[Math.ceil(values.length * .95)-1]!;
@@ -1425,7 +1476,7 @@ it('recalls imported old-root turns with their original Telegram dates and drops
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
-      { ...genesis(), maxBytes: 5120, importSource: 'old-root', importCursor: 10 });
+      { ...genesis(), maxBytes: 5120 + FLOOR_GUIDE, importSource: 'old-root', importCursor: 10 });
     const imported = (id: number, text: string) => {
       const raw = update(id, text); (raw.message as { date?: number }).date = 1789000000 + id;
       journal.append({ kind: 'intake', id: `telegram:12345678:update:${id}`, update: id, text, raw: JSON.stringify(raw),
@@ -1447,7 +1498,7 @@ it('recalls imported old-root turns with their original Telegram dates and drops
       model: async input => { contexts.push(input.context); return 'ok'; }, send: async () => 1, checkOutbound: () => {} });
     worker.intake([update(10, 'Which pier does the ferry leave from?')]); await worker.drain();
     const packet = JSON.parse(contexts[0]!);
-    expect(packet.recalled).toMatchObject([{ id: 'telegram:12345678:update:1', date: '2026-09-10T00:26Z', user: 'The ferry leaves from pier NINETEEN.',
+    expect(packet.recalled).toMatchObject([{ id: 'telegram:12345678:update:1', date: '2026-09-09 17:26 PDT', user: 'The ferry leaves from pier NINETEEN.',
       answer: 'old answer 1', outcome: 'Telegram API accepted' }]);
     // A narrower provider envelope still fits recall, after optional candidates yield.
     // int12: bound relative to the full first packet (which carries the old quote), so added

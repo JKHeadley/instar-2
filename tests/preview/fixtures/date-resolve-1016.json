@@ -1,0 +1,73 @@
+{
+  "provenance": {
+    "frames": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/srerun2-1016-evidence/S-frames.json",
+    "framesSha256": "43041c02a49c0668bb293fcfe9d404d99a626391ea297690a3a6e038b5736b74",
+    "transcript": "/Users/Shared/instar-harness/profile/preview-harness-profile-sagemind-justin-v1/config/projects/-private-tmp-its-59bd0c806c90/b8c12fbf-5dad-4efa-b3b1-356ac7d2342f.jsonl",
+    "transcriptSha256": "2f1ebb2cf6949a8e734e84ff49c381594da1645d60ca11a5db8f1287b069c93f",
+    "note": "Exact operator intake and native session Write content; clock/now projected from the recorded reserved packet. Repair responses in the test are explicitly counterfactual."
+  },
+  "cases": [
+    {
+      "update": 715676630,
+      "intake": {
+        "kind": "intake",
+        "id": "telegram:8994258214:update:715676630",
+        "update": 715676630,
+        "text": "Echo desk — Please record an approval request asking me whether the test build machine may be restarted today, October 16, at 5 pm Pacific. Ask me here for that approval. This is a test request only; do not restart any machine.",
+        "raw": "{\"update_id\":715676630,\"message\":{\"message_id\":749,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"language_code\":\"en\"},\"chat\":{\"id\":-1004367556355,\"title\":\"Instar 2.0 test\",\"is_forum\":true,\"type\":\"supergroup\"},\"date\":1792179644,\"message_thread_id\":3,\"reply_to_message\":{\"message_id\":3,\"from\":{\"id\":8994258214,\"is_bot\":true,\"first_name\":\"Instar Agent\",\"username\":\"instar_codey_instar_bot\"},\"chat\":{\"id\":-1004367556355,\"title\":\"Instar 2.0 test\",\"is_forum\":true,\"type\":\"supergroup\"},\"date\":1791594527,\"message_thread_id\":3,\"forum_topic_created\":{\"name\":\"Topic A\",\"icon_color\":7322096},\"is_topic_message\":true},\"text\":\"Echo desk — Please record an approval request asking me whether the test build machine may be restarted today, October 16, at 5 pm Pacific. Ask me here for that approval. This is a test request only; do not restart any machine.\",\"is_topic_message\":true}}",
+        "accepted": true,
+        "cursor": 715676631,
+        "at": 1792179644319,
+        "writer": {
+          "id": "7812716706",
+          "kind": "person",
+          "adapter": "telegram-bot-api",
+          "class": "channel-attested",
+          "reference": "capture:telegram-bot-api:e254eead4530ce6f8012ab9988cf2b313b86be62edb506ba28fdbac8817e2f45",
+          "hash": "sha256:b6385ab399ddbd7b46e92bcd344258f27b77c4d8fc52107bbcc5ddcea9684e18"
+        },
+        "thread": 3
+      },
+      "clock": {
+        "at": 1792179644000,
+        "zone": "America/Los_Angeles"
+      },
+      "now": 1792179644690,
+      "output": "{\"reply\":{\"answer\":\"Approval request recorded (test only, no restart performed): may the test build machine be restarted today, October 16, at 5 pm Pacific? Please reply yes or no here to approve or deny.\"},\"memory\":[],\"dated\":[{\"quote\":\"the test build machine may be restarted today, October 16, at 5 pm Pacific\",\"when\":\"today, October 16, at 5 pm Pacific\",\"resolution\":{\"instant\":\"2026-10-17T00:00:00.000Z\",\"at\":1792179644000,\"zone\":\"America/Los_Angeles\"}}],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+      "transcriptLine": 48,
+      "transcriptUuid": "5f957a91-2f80-4172-be4d-2dba8626018a",
+      "delivered": "Approval request recorded (test only, no restart performed): may the test build machine be restarted today, October 16, at 5 pm Pacific? Please reply yes or no here to approve or deny. Date 1: 2026-10-16 17:00 (America/Los_Angeles). I recorded this date; I act on a date only when you ask me to."
+    },
+    {
+      "update": 715676632,
+      "intake": {
+        "kind": "intake",
+        "id": "telegram:8994258214:update:715676632",
+        "update": 715676632,
+        "text": "Echo desk — Tell me you will hold the test build machine restart until 5 pm Pacific today, October 16, and until I explicitly approve it. Please state that commitment in your own words. Do not actually restart any machine.",
+        "raw": "{\"update_id\":715676632,\"message\":{\"message_id\":753,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"language_code\":\"en\"},\"chat\":{\"id\":-1004367556355,\"title\":\"Instar 2.0 test\",\"is_forum\":true,\"type\":\"supergroup\"},\"date\":1792179713,\"message_thread_id\":3,\"reply_to_message\":{\"message_id\":3,\"from\":{\"id\":8994258214,\"is_bot\":true,\"first_name\":\"Instar Agent\",\"username\":\"instar_codey_instar_bot\"},\"chat\":{\"id\":-1004367556355,\"title\":\"Instar 2.0 test\",\"is_forum\":true,\"type\":\"supergroup\"},\"date\":1791594527,\"message_thread_id\":3,\"forum_topic_created\":{\"name\":\"Topic A\",\"icon_color\":7322096},\"is_topic_message\":true},\"text\":\"Echo desk — Tell me you will hold the test build machine restart until 5 pm Pacific today, October 16, and until I explicitly approve it. Please state that commitment in your own words. Do not actually restart any machine.\",\"is_topic_message\":true}}",
+        "accepted": true,
+        "cursor": 715676633,
+        "at": 1792179713298,
+        "writer": {
+          "id": "7812716706",
+          "kind": "person",
+          "adapter": "telegram-bot-api",
+          "class": "channel-attested",
+          "reference": "capture:telegram-bot-api:2e1bfc9cc9f276aebc038984361907938f66721fe16246873fc94b87613bf525",
+          "hash": "sha256:b6385ab399ddbd7b46e92bcd344258f27b77c4d8fc52107bbcc5ddcea9684e18"
+        },
+        "thread": 3
+      },
+      "clock": {
+        "at": 1792179713000,
+        "zone": "America/Los_Angeles"
+      },
+      "now": 1792179714129,
+      "output": "{\"reply\":{\"answer\":\"Commitment: I will hold the test build machine restart until 5 pm Pacific today, October 16, and until you explicitly approve it — both conditions must be met before any restart. No restart has been performed, and none will be, absent that approval.\"},\"promises\":[{\"quote\":\"I will hold the test build machine restart until 5 pm Pacific today, October 16, and until you explicitly approve it — both conditions must be met before any restart.\",\"when\":\"5 pm Pacific today, October 16\"}],\"memory\":[],\"dated\":[{\"quote\":\"hold the test build machine restart until 5 pm Pacific today, October 16, and until I explicitly approve it\",\"when\":\"until 5 pm Pacific today, October 16\",\"resolution\":{\"instant\":\"2026-10-17T00:00:00.000Z\",\"at\":1792179714129,\"zone\":\"America/Los_Angeles\"}}],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+      "transcriptLine": 64,
+      "transcriptUuid": "ca5f811c-8374-4b69-8888-98aa81b56256",
+      "delivered": "Commitment: I will hold the test build machine restart until 5 pm Pacific today, October 16, and until you explicitly approve it — both conditions must be met before any restart. No restart has been performed, and none will be, absent that approval. Date 1: unresolved (date resolution needs the original clock, zone and a valid UTC instant). Please give an absolute date."
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { parseModelJson } from './model-json.js';
+import { readAnswer } from './answer-reading.js';
 import { REPLY_RULES, parseReplyReviewVerdict, replyReviewContext, replyReviewQuestion } from './reply-check.js';
 import { SUBSCRIPTION_THINKING_ENV, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 
@@ -98,7 +99,7 @@ const question = rule => {
   if (variant === 'current') return replyReviewQuestion([rule]);
   const selectedRule = rule === 'cli_command'
     ? 'The message asks the reader to run a command in a terminal.' : REPLY_RULES[rule];
-  return `Judge this proposed reply using the full conversation context. Rules: ${JSON.stringify({ [rule]: selectedRule })}. Jev cleared the other rules. Return one line inside conclusion.value: PASS | short reason, or VIOLATION:rule_id[,rule_id] | short reason. A violation requires an actual breach; uncertainty is PASS. Use only listed rule IDs. No other text.`;
+  return `Judge this proposed reply using the full conversation context. Rules: ${JSON.stringify({ [rule]: selectedRule })}. Jev cleared the other rules. Return one line as "answer": PASS | short reason, or VIOLATION:rule_id[,rule_id] | short reason. A violation requires an actual breach; uncertainty is PASS. Use only listed rule IDs. No other text.`;
 };
 const rows = [];
 for (const [index, row] of selected.entries()) {
@@ -132,14 +133,13 @@ for (const [index, row] of selected.entries()) {
       || typeof terminal.result !== 'string') throw Error('terminal-rejected');
     if (terminal.usage.output_tokens > policy.maxTokens || Buffer.byteLength(terminal.result) > policy.maxOutputBytes)
       throw Error('output-limit');
+    // The runner's own reading (answer-reading.ts): a flat answer object or a legacy Decision, gate-narrow.
     const outer = parseModelJson(terminal.result);
     if (!outer.ok) throw Error(`outer-${outer.shape}`);
-    const decision = outer.value;
-    if (decision.type !== 'Decision' || decision.conclusion?.subject !== 'preview-stage2-answer'
-      || typeof decision.conclusion.value !== 'string' || !decision.conclusion.value.trim())
-      throw Error('decision-invalid');
+    const reading = readAnswer(terminal.result);
+    if (!reading.ok || !reading.value.trim()) throw Error('decision-invalid');
     let value;
-    try { value = parseReplyReviewVerdict(decision.conclusion.value); } catch { throw Error('review-invalid'); }
+    try { value = parseReplyReviewVerdict(reading.value); } catch { throw Error('review-invalid'); }
     if (value.ruleIds.some(id => id !== row.rule)) throw Error('review-invalid');
     verdict = value.verdict; reason = value.reason; shape = `${outer.shape}/line`;
   } catch (error) {

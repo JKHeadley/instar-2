@@ -126,13 +126,17 @@ it('re-asks a malformed review verdict once under the same cap, then releases th
   } finally { r.close(); }
 });
 
-it('holds the reply when the review misses its format twice', async () => {
+// Plan #102: Jev's 0.57 credential score is its unsure band, so a review that misses its format twice leaves no
+// verdict and no confident secret finding: the reply is answered with the flag recorded, never held.
+it('answers with the flag recorded when the review misses its format twice on an unsure credential score', async () => {
   const r = await run({ maxCalls: 4, answers: ['Pack light layers.'], reviews: ['malformed', 'malformed'] });
   try {
     expect(r.retryFlags).toEqual([undefined, true]);
     expect(r.journal.view.calls).toBe(3);
-    expect(r.sent).toEqual([]);
-    expect(r.turn.held).toBe('reply check unavailable');
+    expect(r.sent).toHaveLength(1);
+    expect(r.sent[0]).toContain('Pack light layers.');
+    expect(r.turn.held).toBeUndefined();
+    expect(r.turn.release).toMatchObject({ review: 'unavailable', objections: ['credential'] });
   } finally { r.close(); }
 });
 
@@ -142,7 +146,8 @@ it('makes no review re-ask when the call cap is exhausted', async () => {
     expect(r.retryFlags).toEqual([undefined]);
     expect(r.journal.view.calls).toBe(2);
     expect(r.turn.reviewRetried).toBeUndefined();
-    expect(r.sent).toEqual([]);
+    expect(r.sent).toHaveLength(1);
+    expect(r.turn.release).toMatchObject({ review: 'unavailable', objections: ['credential'] });
   } finally { r.close(); }
 });
 
@@ -174,16 +179,19 @@ it('refuses a format-retry record that no reserved, unanswered turn can carry', 
   } finally { r.close(); }
 });
 
-it('recovers the real residual: the model\'s actual prose answer to the conflict turn, then its real bare answer', async () => {
+it('re-asks a format miss and sends the model\'s real bare answer, while the real prose residual needs no re-ask', async () => {
   const fixture = JSON.parse(readFileSync(new URL('./fixtures/live-declarations-2026-09-28.json', import.meta.url), 'utf8')) as {
     fixed: { answers: string[] }; fixedResidualProse: string };
-  const runnerText = (raw: string): string | null => {
-    const parsed = parseModelJson(raw);
+  const runnerText = (raw: string, wrapped: 'accept' | 'refuse' = 'accept'): string | null => {
+    const parsed = parseModelJson(raw, { wrapped });
     const decision = parsed.ok ? parsed.value as { type?: unknown; conclusion?: { subject?: unknown; value?: unknown } } : null;
     return decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
       ? conclusionText(decision.conclusion.value) : null;
   };
-  expect(runnerText(fixture.fixedResidualProse)).toBeNull();          // the runner refuses it as malformed
+  // This real residual was refused for its leading prose. The answer side now reads it (Rules 15, 77), so this
+  // shape costs no re-ask; a gate still refuses it. The retry below is driven by a shape still malformed either way.
+  expect(runnerText(fixture.fixedResidualProse)).not.toBeNull();
+  expect(runnerText(fixture.fixedResidualProse, 'refuse')).toBeNull();
   const retried = runnerText(fixture.fixed.answers[3]!)!;
   const r = await run({ maxCalls: 4, answers: [malformed, retried] });
   try {

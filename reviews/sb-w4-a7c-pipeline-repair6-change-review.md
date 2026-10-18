@@ -1,0 +1,43 @@
+# Change review — sb-w4-a7c pipeline repair 6: the continuity stand-in survives a transient mirror-write fault instead of vanishing
+
+Subject base: 29062b71565e4209f979c7b149d4c52536bff2a0
+Review state: open
+Reviewed content: none
+Outcome: The gate's full run on head 29062b71 failed exactly one case, `tests/e2e/awareness-continuity.test.ts`, at the COMPACTED step, with `timed out waiting for the answer after COMPACTED:` and NOTHING after the colon. That message interpolates the last pane captured, so the pane was the empty string — and an empty string is not a blank pane: `tmux capture-pane` answers a session it cannot find with exit status 1 and empty stdout (verified here: `can't find session` / `no server running`), while a live but blank pane answers status 0 with newlines. So the stand-in's tmux session had GONE and the case reported it as an unreadable blank. Cause: `tests/e2e/awareness-fake-harness.mjs` mirrored its context and its receipts to disk with bare `writeFileSync`/`renameSync` inside its `for await` input loop, so any write that failed transiently under an 819-file run (descriptors exhausted, the shared scratch volume momentarily gone, the full-RAM-volume ENOSPC class already recorded in docs/defects/full-suite-load-timeouts.md and seen on the cint-L50 gate) threw out of that loop, ended the process, and took the tmux session with it — silently. Repair, test-side only: both mirror writes now retry inside a finite bound (20 attempts, 25 ms apart) after re-creating their directory; a `spawnSync` that never STARTED the SessionStart hook is retried in the same bound; every way the input loop can end prints its reason into the pane (`HARNESS INPUT ENDED` / `HARNESS FAILED: <code> <message>`) and holds the session open on a bounded timer instead of exiting; and `answerAfter` separates a failed capture from an empty pane, keeping the last real pane and failing at once, by name, when `has-session` confirms the stand-in is gone. tsc passes, `npm run lint` exits 0, `register:check` is check:true, and the case passes 15/15 sequentially and 24/24 under eight concurrent copies of itself.
+Affected rules: 74 (this record); 37 (the one red case repaired at its source, not quarantined; the case stays armed and no skip was added); 2 (a stand-in that disappeared left no detector at all — now every end of its input loop is announced in the pane and a gone stand-in is named by the case); 34 (both sides proven with an injected write fault, table below); 110 (this is the compaction-disclosure proof, restored to a state where it can only fail for a reason it states); 101 (plain commits; no hook-bypass flag, no `git stash`); 116 (a finite retry over two mirror writes plus one status check, no new mechanism).
+Affected floors: secrets — untouched; nothing written or printed here carries a credential, and the pane text is the stand-in's own error code and message. spend cap — untouched; no model call is added, the retried `spawnSync` is the local SessionStart hook and only when it never started. stop — untouched. no duplicate sends — preserved: the retry covers only the two MIRROR files, which hold what the stand-in already has in memory, and the hook retry fires only when `spawnSync` reports `error` (the hook never ran, so it wrote no receipt and nothing is duplicated); the case's own `deliveries.size` assertion for exactly one re-ground is unchanged and still passes. durable intake — untouched; no product file is in the subject.
+Operator questions: none
+Suggested tier: ordinary
+Declared tier: ordinary
+Tier rationale: three test-side paths and a defect record. No product file, no effect, no outward surface; the only behaviour that changes is how a test stand-in reacts to its own failed write.
+Side effects: the stand-in no longer exits when its input ends; it holds its tmux session for `HARNESS_HOLD_MS` (default 120 s, finite and enforced) so the case can read the pane. The case kills the session and then the server in its own `finally` on every path, so the hold is normally never reached; a stand-in orphaned by a hard kill of the runner lives at most that bound, where before it would exit on its own. That is the one cost, and it is bounded.
+Undo and recovery: `git revert 4371077f`. Nothing persisted, nothing generated, no register change.
+Multi-machine posture: machine-local test. The external trigger is host-side (macOS `/Volumes` scratch mounts, descriptor exhaustion, or a full RAM volume on the Studio) and cannot be raised under WSL; what is proven on this machine is the fault CLASS and that the stand-in survives it or names it.
+Layer below: node's `writeFileSync`/`renameSync`/`spawnSync`, and `tmux capture-pane`/`has-session` exit statuses — the discriminator this repair rests on, measured rather than assumed.
+Bug class: none
+Bug evidence: none
+Hook bypass: none
+Convergence: none
+Decision: a7c-repair6-empty-pane-is-a-gone-session | read the gate's empty pane as evidence rather than noise: tmux answers a missing session with exit 1 and empty stdout, a live blank pane with status 0, so `seen === ''` proves the stand-in's session was gone and not that the answer was merely late (which is what the 2026-09-29 closure already repaired) | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-a7c-repair-140400-PROGRESS.md
+Decision: a7c-repair6-retry-only-mirrors | retry only the two files that MIRROR in-memory state, and only the hook spawn that never started, so a retry can never invent a fact or duplicate a receipt; a hook that did run is taken exactly as it answered | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-a7c-repair-140400-PROGRESS.md
+Decision: a7c-repair6-hold-not-exit | let the stand-in announce the end of its input loop in the pane and hold the session on a bounded timer instead of exiting, because a stand-in that exits erases the only surface the case can read | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-a7c-repair-140400-PROGRESS.md
+Decision: a7c-repair6-no-load-burner | prove load-independence with an injected write fault (chmod 444 on the context file, cleared from another process inside the retry window) rather than a CPU burner or a parallel full suite, per the standing observer rules #93 and the operator's no-full-suite direction for this machine | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-a7c-repair-140400-PROGRESS.md
+<!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
+
+Both sides, with the injected write fault at the compaction step:
+
+| injected fault | stand-in before the repair | stand-in after the repair |
+|---|---|---|
+| none | passes | passes |
+| cleared inside the retry window | session gone, capture exit 1, empty stdout, no answer — the gate's exact signature | recovers, answers correctly |
+| permanent | session gone, empty capture | session alive, pane reads `HARNESS FAILED: EACCES …` |
+
+And for the case's own guard: killing the stand-in's tmux server as soon as its session exists fails in 216 ms with `the stand-in instar20-… is gone before the answer after BOOTED hook=on (capture: 1; stderr: no server running on …)` instead of spinning five seconds and printing a blank.
+
+Subject (3 paths): docs/defects/awareness-continuity-respawn-flake.md, tests/e2e/awareness-continuity.test.ts, tests/e2e/awareness-fake-harness.mjs
+
+## Closing block
+
+simplestRobustRoute: the required outcome is that this one red case stops failing for a reason it cannot state. The simplest robust route is to stop the stand-in dying on a transient write to a file that only mirrors what it already holds, and to let a failed tmux capture say so — three small test-side edits through mechanisms already present (a bounded loop, the pane the case already reads, the exit status tmux already returns). Nothing new is built: no watcher, no fixture, no product change, and the case's assertions are untouched. The credible failure the retry prevents is the recorded one: a mirror write failing under a full-suite run killed the proof of Rule 110 and reported nothing. A quarantine was considered and rejected — a source fix exists, so Rule 37 forbids it.
+80/20: 0 must-fixes. Residue, stated rather than hidden: the host-side trigger (a /Volumes scratch unmount, descriptor exhaustion, or a full RAM volume on the Studio) is not itself fixed here and cannot be reproduced under WSL; this repair removes the silent death and the unreadable blank, so a recurrence will name its own cause in the pane.
+VERDICT: author submission; the independent verdict is recorded as a pass

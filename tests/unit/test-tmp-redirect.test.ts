@@ -8,7 +8,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import setup, {
-  chooseTestTmpRoot, isRamBacked, LINUX_RAM_ROOT, MAC_RAM_ROOT, parseHdiutilRamMounts, REAL_DISK_ROOT, sweepDeadRuns,
+  chooseTestTmpRoot, isRamBacked, LINUX_RAM_ROOT, MAC_RAM_ROOT, parseHdiutilRamMounts, RAM_MIN_FREE_BYTES, REAL_DISK_ROOT,
+  sweepDeadRuns,
 } from '../setup/test-tmp.js';
 // @ts-expect-error the fingerprint helper is JavaScript, outside pure core compilation.
 import { killScheduleRunDir } from '../../scripts/kill-schedule-fingerprint.mjs';
@@ -47,7 +48,8 @@ describe('test temp redirect', () => {
         return;
       }
       const kind = process.env.INSTAR_TEST_TMP_KIND;
-      if (!process.env.INSTAR_TEST_TMP && verifiedRamRoot !== null) {
+      if (!process.env.INSTAR_TEST_TMP && verifiedRamRoot !== null
+        && kind !== 'ram-full') {
         expect(kind).toBe('ram');
         expect(process.env.INSTAR_TEST_TMP_ROOT).toBe(verifiedRamRoot);
       }
@@ -59,22 +61,30 @@ describe('test temp redirect', () => {
   });
 
   it('real-disk opt-out wins; an override is RAM only when verified; a platform root must be writable and verified', () => {
-    const yes = () => true, no = () => false;
+    const yes = () => true, no = () => false, plenty = () => RAM_MIN_FREE_BYTES;
     expect(chooseTestTmpRoot({ env: { INSTAR_TEST_REAL_DISK: '1', INSTAR_TEST_TMP: '/x', TMPDIR: MAC_RAM_ROOT },
-      platform: 'darwin', writable: yes, ramBacked: yes })).toEqual({ kind: 'real-disk', root: REAL_DISK_ROOT });
-    expect(chooseTestTmpRoot({ env: { INSTAR_TEST_TMP: '/x' }, platform: 'darwin', writable: no, ramBacked: yes }))
+      platform: 'darwin', writable: yes, ramBacked: yes, freeBytes: plenty })).toEqual({ kind: 'real-disk', root: REAL_DISK_ROOT });
+    expect(chooseTestTmpRoot({ env: { INSTAR_TEST_TMP: '/x' }, platform: 'darwin', writable: no, ramBacked: yes, freeBytes: plenty }))
       .toEqual({ kind: 'ram', root: '/x' });
-    expect(chooseTestTmpRoot({ env: { INSTAR_TEST_TMP: '/x' }, platform: 'darwin', writable: yes, ramBacked: no }))
+    expect(chooseTestTmpRoot({ env: { INSTAR_TEST_TMP: '/x' }, platform: 'darwin', writable: yes, ramBacked: no, freeBytes: plenty }))
       .toEqual({ kind: 'unverified', root: '/x' });
-    expect(chooseTestTmpRoot({ env: {}, platform: 'darwin', writable: yes, ramBacked: yes })).toEqual({ kind: 'ram', root: MAC_RAM_ROOT });
-    expect(chooseTestTmpRoot({ env: {}, platform: 'linux', writable: yes, ramBacked: yes })).toEqual({ kind: 'ram', root: LINUX_RAM_ROOT });
+    expect(chooseTestTmpRoot({ env: {}, platform: 'darwin', writable: yes, ramBacked: yes, freeBytes: plenty })).toEqual({ kind: 'ram', root: MAC_RAM_ROOT });
+    expect(chooseTestTmpRoot({ env: {}, platform: 'linux', writable: yes, ramBacked: yes, freeBytes: plenty })).toEqual({ kind: 'ram', root: LINUX_RAM_ROOT });
     for (const [writable, ramBacked] of [[yes, no], [no, yes], [no, no]] as const) {
       for (const platform of ['darwin', 'linux']) {
-        expect(chooseTestTmpRoot({ env: {}, platform, writable, ramBacked })).toEqual({ kind: 'inherited', reason: 'no-ram-root' });
+        expect(chooseTestTmpRoot({ env: {}, platform, writable, ramBacked, freeBytes: plenty })).toEqual({ kind: 'inherited', reason: 'no-ram-root' });
       }
     }
-    expect(chooseTestTmpRoot({ env: {}, platform: 'win32', writable: yes, ramBacked: yes }))
+    expect(chooseTestTmpRoot({ env: {}, platform: 'win32', writable: yes, ramBacked: yes, freeBytes: plenty }))
       .toEqual({ kind: 'inherited', reason: 'no-ram-root' });
+    // A shared RAM root other runs have filled is not used: one byte under the floor falls back.
+    for (const platform of ['darwin', 'linux']) {
+      expect(chooseTestTmpRoot({ env: {}, platform, writable: yes, ramBacked: yes, freeBytes: () => RAM_MIN_FREE_BYTES - 1 }))
+        .toEqual({ kind: 'ram-full', root: REAL_DISK_ROOT });
+    }
+    // An explicit override carries its own bound and is never second-guessed on space.
+    expect(chooseTestTmpRoot({ env: { INSTAR_TEST_TMP: '/x' }, platform: 'darwin', writable: yes, ramBacked: yes,
+      freeBytes: () => 0 })).toEqual({ kind: 'ram', root: '/x' });
   });
 
   it('reads only ram:// images from hdiutil info', () => {

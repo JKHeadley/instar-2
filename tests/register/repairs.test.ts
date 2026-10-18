@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decodeDeclaration, generateRegister, buildRuleGraph, checkGovernedState } from '../../src/register/index.js';
-import { inspectSource, checkWiring } from '../../scripts/check-register-wiring.mjs';
+import { inspectSource, checkWiring, scanSources } from '../../scripts/check-register-wiring.mjs';
 import { setup, value, detail, wiringSources } from './fixtures.js';
 
 describe('desk counterexamples', () => {
@@ -13,14 +13,16 @@ describe('desk counterexamples', () => {
       { authority: 'block', inspectedBy: 'check', rungs: [{}] },
       { authority: 'block', inspectedBy: 'check', rungs: [{ ...d.requiredFacts, decidesAlone: 'invented' }] },
     ]) expect(detail(decodeDeclaration(attempt(facts), s.context))).toMatch(/rung|ambiguous|undeclared/);
-    const rung = { decidesAlone: 'ruled-three', criticality: 'exact test', failDirection: 'closed', preservesInput: 'capture' };
+    const rung = { decidesAlone: 'ruled-three', decidesAloneBasis: 'operator-emergency-stop', criticality: 'exact test', failDirection: 'closed', preservesInput: 'capture' };
     const multi = attempt({ authority: 'block', inspectedBy: 'check', rungs: [rung, { ...rung, failDirection: 'open' }] });
     expect(value(decodeDeclaration(multi, s.context)).id).toBe('holder');
     const register = s.build([multi]);
-    expect(checkWiring(register, {}).issues).toEqual([]);
+    // A live alone-deciding site must also be bound to its checkpoint (P3-NF-19); the binding is supplied here.
+    const bound = { ...scanSources({}), bindings: [{ kind: 'blocking sites', id: 'holder', path: 'tests/example.ts', symbol: 'example' }] };
+    expect(checkWiring(register, {}, bound).issues).toEqual([]);
     expect(value(checkGovernedState([], register, s.context))).toBe(true);
     const forged = { ...register, entries: register.entries.map(e => ({ ...e, declaration: { ...e.declaration, requiredFacts: { ...d.requiredFacts, rungs: [] } } })) };
-    expect(checkWiring(forged, {}).issues.join()).toContain('rung');
+    expect(checkWiring(forged, {}, bound).issues.join()).toContain('rung');
     // @ts-expect-error hostile hand-written register also lacks the nominal brand
     expect(detail(checkGovernedState([], forged, s.context))).toContain('rung');
     expect(detail(generateRegister(s.input([attempt({ ...d.requiredFacts, rungs: [] })]), s.context))).toContain('rung');

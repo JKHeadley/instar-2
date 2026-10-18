@@ -63,13 +63,13 @@ it('answers an uncued pushback with the model reply when its memory target is un
   expect(replay.memoryChanged).toBe(false);
 }, 10000);
 
-it('still holds a cued request whose memory target is unresolved', async () => {
+it('keeps a cued request unresolved without replacing its independent answer', async () => {
   const { first, replay } = await run('Actually, forget the thing I said.', () => standGround);
-  expect(first.sends.some(text => text.includes("It's 51"))).toBe(false);
-  expect(first.turn.memoryPending).toBe(true);
-  expect(first.sends.slice(1).every(text => text.includes(MEMORY_UNDECIDED_REPLY))).toBe(true);
+  expect(first.sends[1]).toContain(JSON.parse(standGround).reply);
+  expect(first.turn).toMatchObject({ memoryPending: true, memoryUndecided: true, memoryUnresolved: true });
+  expect(first.sends[1]).not.toContain(MEMORY_UNDECIDED_REPLY);
   expect(first.memoryChanged).toBe(false);
-  expect(replay.sends.some(text => text.includes("It's 51"))).toBe(false);
+  expect(replay.sends).toEqual(first.sends);
   expect(replay.memoryChanged).toBe(false);
 }, 10000);
 
@@ -79,4 +79,81 @@ it('still rejects an uncued decision carrying an invalid memory proposal', async
   expect(first.sends.some(text => text.includes("It's 51"))).toBe(false);
   expect(first.turn.memoryPending).toBe(true);
   expect(first.memoryChanged).toBe(false);
+}, 10000);
+
+// Live canary-copy e2582787, update 969389782 (Rule 7): with the operator's reply-length preference on file, the real
+// model (claude-sonnet-5) answered a plain marker question and re-stated that preference as a new "prefer" item whose
+// quote is the earlier message's, not this one's. The recorded outputs are replayed below (only the ids are this test's):
+// 1 of 8 replays of 969389782's stored prompt named this turn as the source; replays of 969389758 and 969389759 (the same
+// notice on "What can you do in this chat?") named the earlier preference message itself. Before the fix the whole decision was refused and the operator got the
+// undecided notice instead of the answer.
+const preference = 'Your replies are too long — keep them to two sentences.';
+const marker = 'Canary-copy check e2582787: my test marker is probe-a678998b. What is my test marker? Reply with the marker.';
+const markerReply = 'Your test marker is "probe-a678998b." I don\'t store this independently — I only have it because it\'s in this turn\'s message.';
+const echoRun = async (second: string, proposal: (id: string, first: string) => object[]) => {
+  let first = '';
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-preference-echo-')));
+  const sends: string[] = [];
+  const ports = { now: () => 1790000000000, stopped: () => false,
+    model: async (input: { id: string; question: string }) => {
+      if (input.id.startsWith('summary:')) return { state: 'complete' as const, failureClass: 'malformed' as const };
+      if (input.question === preference) { first = input.id; return JSON.stringify({ reply: 'Understood — two sentences from now on.',
+        memory: [{ mode: 'prefer', source: input.id, quote: preference }] }); }
+      return JSON.stringify({ reply: markerReply, memory: proposal(input.id, first) });
+    }, send: async (input: { text: string }) => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} };
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  const worker = createJournalWorker(journal, ports);
+  worker.intake([update(1, preference)]); await worker.drain();
+  const memoryBefore = JSON.stringify(journal.view.memory);
+  worker.intake([update(2, second)]); await worker.drain(); await worker.drain();
+  const result = { sends: [...sends], turn: { ...journal.view.order[1]! }, memoryBefore,
+    memoryAfter: JSON.stringify(journal.view.memory), preferences: journal.view.memory.filter(item => item.mode === 'prefer').length };
+  journal.close();
+  rmSync(root, { recursive: true, force: true });
+  return result;
+};
+
+it('answers a plain question whose decision re-states the preference under its original source (recorded shape)', async () => {
+  const result = await echoRun(marker, (_id, first) => [{ mode: 'prefer', source: first, quote: preference }]);
+  expect(result.preferences).toBe(1);
+  expect(result.sends).toHaveLength(2);
+  expect(result.sends[1]).toContain('probe-a678998b');
+  expect(result.sends[1]).not.toContain(MEMORY_UNDECIDED_REPLY);
+  expect(result.turn.held).toBeUndefined();
+  expect(result.turn.memoryPending).toBeUndefined();
+  expect(result.memoryAfter).toBe(result.memoryBefore);
+}, 10000);
+
+// The 1-of-8 recorded shape names this turn as the source of a clause it does not contain. That leaves open whether a
+// change was requested, so it stays pending exactly as before (Rule 85): a missing keyword cue never settles it.
+it('keeps pending a plain question whose decision attributes the on-file preference to this turn (recorded shape)', async () => {
+  const result = await echoRun(marker, id => [{ mode: 'prefer', source: id, quote: preference }]);
+  expect(result.sends.some(text => text.includes('probe-a678998b'))).toBe(false);
+  expect(result.turn.memoryPending).toBe(true);
+  expect(result.memoryAfter).toBe(result.memoryBefore);
+}, 10000);
+
+// Review boundary (Rules 10/85): equivalent direct changes, with and without a lexical cue, are never silently sent as
+// a success reply while the memory stays unchanged.
+for (const change of ['Could you give detailed answers from now on?', 'Please give detailed answers from now on.']) {
+  it(`keeps pending a direct preference change whose decision quotes the old preference: ${change}`, async () => {
+    const result = await echoRun(change, id => [{ mode: 'prefer', source: id, quote: preference }]);
+    expect(result.turn.memoryPending).toBe(true);
+    expect(result.sends.slice(1).every(text => text.includes(MEMORY_UNDECIDED_REPLY))).toBe(true);
+    expect(result.memoryAfter).toBe(result.memoryBefore);
+  }, 10000);
+}
+
+it('still refuses a plain question whose prefer item is not on file and not in the message', async () => {
+  const result = await echoRun(marker, id => [{ mode: 'prefer', source: id, quote: 'Always answer me in French, please.' }]);
+  expect(result.sends.some(text => text.includes('probe-a678998b'))).toBe(false);
+  expect(result.turn.memoryPending).toBe(true);
+  expect(result.memoryAfter).toBe(result.memoryBefore);
+}, 10000);
+
+it('still refuses the echo on a direct preference request', async () => {
+  const result = await echoRun('Please keep your replies brief.', id => [{ mode: 'prefer', source: id, quote: preference }]);
+  expect(result.sends.some(text => text.includes('probe-a678998b'))).toBe(false);
+  expect(result.turn.memoryPending).toBe(true);
+  expect(result.memoryAfter).toBe(result.memoryBefore);
 }, 10000);
