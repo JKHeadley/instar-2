@@ -46,6 +46,8 @@ Deferral: tests/preview/requested-report-live.test.ts:17 | not-a-deferral=record
 
 Subject (5 paths): tests/preview/fixtures/requested-report-proofroom4-2026-10-17.json, tests/preview/fixtures/retrospective-cap-2026-10-17.json, tests/preview/requested-report-live.test.ts, tests/preview/retrospective-cap.test.ts, tests/preview/retrospective.ts
 
+Verification: Typecheck and build passed. Delegated owner-manifest and inventory-chain repin scripts made no changes. Publication regenerated from merge c6187bc6f5416bc9222723600b67a85f08601add using build-register --replay. Final targeted tests and cheap gate outcomes are in the repair report.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge, preserve both review histories, and regenerate publication with existing tools. No new mechanism or capability limit. Existing validation, budget, stop and delivery guards remain in place; no new autonomous completion claim.
