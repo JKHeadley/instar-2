@@ -36,7 +36,8 @@
     "register:check": "node scripts/build-register.mjs --check"
   },
   "dependencies": {
-    "mupdf": "1.28.1"
+    "pdf-lib": "1.17.1",
+    "pdfjs-dist": "6.4.299"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

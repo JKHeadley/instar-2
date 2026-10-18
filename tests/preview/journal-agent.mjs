@@ -2027,7 +2027,8 @@ async function main() {
       invoke: async (toolTurn, notice) => {
         const answer = mediaNotice => invokeSubscription(withWorkspaceNotice(prepared, [notice, mediaNotice].filter(Boolean).join('\n')), id, undefined, undefined, toolTurn, selected);
         return invokeMediaTurn(id, toolTurn, currentMedia, answer,
-          (bytes, source) => protectMediaBytes(bytes, source, custody, heldSecrets));
+          (bytes, source) => protectMediaBytes(bytes, source, custody, heldSecrets, { cwd: toolTurn.scratch,
+            stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive() }));
       } })).result;
     };
     const proofLines = () => {
@@ -2642,7 +2643,7 @@ async function main() {
           authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
           workingActivity: (operation, claim, phase) => workingActivities.observe(operation, claim, phase),
           prepareInputFiles: operations => openConversationMedia({ tmp: join(project, '.tmp'), scope: String(topic ?? 'main'), operations,
-            lookup: currentMedia, protect: (bytes, source) => protectMediaBytes(bytes, source, custody, heldSecrets) }),
+            lookup: currentMedia, protect: (bytes, source) => protectMediaBytes(bytes, source, custody, heldSecrets, { cwd: project, stopped: stoppedNow }) }),
           currentActionFacts: async operation => JSON.stringify(currentActionFacts(journal.view, wallNow(),
             journal.view.genesis.forum !== true || await verifiedActionAudience(),
             String(journal.view.turns.get(operation)?.thread ?? 'main'), timeZoneOf(options))),

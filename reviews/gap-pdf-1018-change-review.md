@@ -1,0 +1,30 @@
+# Change review — permissive PDF protection
+
+Subject base: 7182ded16cfb9227512b78245570f0c4971c1f0c
+Review state: open
+Reviewed content: none
+Outcome: Replace the copyleft PDF runtime with permissive decoders while retaining decoded-text credential protection and encrypted original custody.
+Affected rules: 1, 4, 26, 32, 34, 36, 37, 49, 60, 70, 74, 86, 95, 100, 101, 102, 111, 112, 113, 116
+Affected floors: secrets — rendered glyphs, decoded object strings, every decoded stream and raw container pass the existing protection function before a path is published; spend cap — no provider or model calls added; stop — existing admission/stop remains, async decoder receives the live stop predicate and publication rechecks admission; no duplicate sends — existing delivery ownership unchanged; durable intake — authenticated encrypted original remains intact on every outcome
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Changes the PDF credential protection implementation, without changing grants or model decisions.
+Side effects: Adds exactly pinned pdfjs-dist 6.4.299 (Apache-2.0) and pdf-lib 1.17.1 (MIT); their own package license fields and LICENSE files were read. PDF.js decodes glyphs; pdf-lib decodes objects and streams. Clean supported PDFs return the original bytes. Secret-bearing PDFs are withheld rather than rewritten; encrypted, incremental, unsupported-filter, malformed and over-bound inputs also produce the existing unreadable notice. This intentionally trades partial redacted readability for the existing credential floor, as permitted by the brief. The existing localMediaCommand/hostResources funnel admits, allocates, samples, stops and cleans the decoder child; session file preparation now awaits protection before durable delivery, with a 10-second deadline, 256 MiB V8 heap limit, 20 MiB input limit, 8 MiB decoded text budget and 16 MiB pipe cap; the heap limit is not an OS RSS guarantee. No source-bearing argv, plaintext temporary files or forwarded parser diagnostics. The existing resource-owner launch shim is reused without alteration. Merged the desk-owned stepcheck-live-1018 repair; generated merge conflicts were replayed with build-register and the duplicated review keeps the owning branch's version.
+Undo and recovery: Revert this implementation and dependency change only through a reviewed permissive replacement; withhold unsafe PDFs until protection is available. Encrypted originals and ordinary file tools remain available. No source state migration or authority change.
+Multi-machine posture: Machine-local derivative and decoder under the existing admitted conversation owner; each host installs the same lockfile. PDF.js requires Node >=22.13 or >=24. No new distributed state or transport. The existing resource owner holds per-launch and aggregate physical limits and Six allocation; no new resource funnel or allocation authority.
+Layer below: Inspected the shipped prepareInputFiles callback, media protection/custody bridge, PDF library stream decoder and text API, and the native Read admission hook. Tests use the real custody-to-session callback and original update 6234449/message 8687, verify supported clean files at Read and intact encrypted originals on refusal. No claim that a stub proves model comprehension. The existing shared-media replay covers recorded summaries, uncertain/undecided Jev, reply review and delivered/empty replies.
+Bug class: user-facing
+Bug evidence: reproducer=tests/preview/pdf-attachment.test.ts; live=tests/preview/fixtures/gap-pdf-1017.json
+Hook bypass: none
+Convergence: none
+Decision: gap-pdf-permissive-withhold | Use PDF.js for rendered glyphs and pdf-lib for all decoded objects/streams; withhold changed or unresolved content instead of implementing a full redactor. This is the brief's allowed fail-closed fallback. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/gap-pdf-1018-PROGRESS.md
+Decision: gap-pdf-bounded-child | Await attachment preparation and reuse localMediaCommand/hostResources for the decoder child, retaining Six capacity and live stop enforcement. Test async completion, stop and failure before delivery; the portable decoder fixture replaces only host resource admission and runs real library bytes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/gap-pdf-1018-PROGRESS.md
+Decision: gap-pdf-owning-merge | Merge origin/stepcheck-live-1018 unchanged in policy, resolving only generated publication and the duplicate owning review; no independent deadline repair. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/gap-pdf-1018-PROGRESS.md
+Prompt review: No prompt, model judgment, reply parsing or route-selection changes. Existing recorded PDF refusal and shared-media journal shapes are replayed; synthetic compressed/hex/split and stream fixtures supplement them. A protected file becoming unreadable is reported honestly, never relabeled as model success.
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: mature permissive decoders feed the existing protection function, clean bytes pass unchanged and unsafe derivatives are withheld. No full PDF parser or glyph redactor is written here. PDF.js alone cannot enumerate all hidden objects; pdf-lib alone does not interpret font-encoded page text. The async consumer and existing resource-owner child isolate parser failures under explicit resource, stop, time, input and output bounds; using the existing owner avoids a second process-admission mechanism. Existing ownership and custody guard entry, full decoded checks guard publication, and existing derivative cleanup owns lifetime. No unattended live completion claim.
+80/20: Targeted PDF and importing media tests, recorded-shape replay, TypeScript, architecture, register and pinned ready checks. Studio owns host-specific live proof and full-suite gate.
+VERDICT: author submission; no independent convergence or live acceptance claim
