@@ -14,9 +14,12 @@ describe('the promotion record', () => {
   it('the committed record is well formed and moves step-check to a recorded, not overdue, deadline', () => {
     expect(promotionRecordFindings(PROMOTION_RECORD)).toEqual([]);
     const step = promotionOf(PROMOTION_RECORD, 'preview.step-check');
-    expect(step.deadline).toMatchObject({ deadline: Date.UTC(2026, 9, 18), recordedAt: 1792024088000 });
-    expect(step.deadline!.deadline).toBe(Date.UTC(2026, 9, 15) + 72 * 60 * 60 * 1000);
+    expect(step.deadline).toMatchObject({ deadline: Date.UTC(2026, 9, 21), recordedAt: 1792312984000 });
+    expect(step.deadline!.deadline).toBe(Date.UTC(2026, 9, 18) + 72 * 60 * 60 * 1000);
     expect(PROMOTION_RECORD[0]).toMatchObject({ deadline: Date.UTC(2026, 9, 15), recordedAt: Date.UTC(2026, 8, 28) });
+    expect(PROMOTION_RECORD[1]).toMatchObject({ deadline: Date.UTC(2026, 9, 18), recordedAt: 1792024088000 });
+    expect(step.deadline!.reason).toContain('SECOND 72-hour extension');
+    expect(step.deadline!.owner).toContain('the desk: open a graduation item');
     // No stage is claimed without evidence: the live trace has not been recorded.
     expect(step.stages).toEqual({ 'test-agent': null, 'development-agent': null, fleet: null });
     expect(existsSync('tests/preview/jev-step-supervisor-live-test.md')).toBe(true);
