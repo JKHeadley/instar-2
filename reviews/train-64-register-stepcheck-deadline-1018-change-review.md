@@ -32,3 +32,31 @@ Train-64 publication: rebuilt with the project generator after the ordinary merg
 simplestRobustRoute: This is the simplest robust route: change the source deadline and append its owned decision using existing mechanisms, update consuming assertions and documentation, then regenerate dependent pins and publication with the project tools. No new machinery. The existing stage-evidence requirement guards graduation; the existing strict deadline check guards the new end date. No autonomous completion or live protection is claimed.
 80/20: Verify the linked step-check tests, promotion and inventory consumers, register/rulegraph tests, typecheck, architecture, lint, register replay and the desk's pinned ready tests; leave the actual graduation procedure with its recorded desk owner.
 VERDICT: author submission; no independent convergence claim — the review desk records its judgment
+
+## Merge coverage dispositions
+
+The original live review above is preserved in full. These existing fixture dispositions also apply to its expanded merged subject; captured text is evidence, not a new promise.
+
+Deferral: tests/preview/fixtures/requested-report-proofroom4-2026-10-17.json:13 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:30 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:34 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:38 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:42 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:46 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:50 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:54 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:58 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:62 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:66 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:319 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:323 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:327 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:331 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:335 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:339 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:343 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:347 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:351 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:355 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/fixtures/retrospective-cap-2026-10-17.json:359 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
+Deferral: tests/preview/requested-report-live.test.ts:17 | not-a-deferral=recorded live fixture or replay test imported unchanged from a1b3b8fb, not a repair deferral
