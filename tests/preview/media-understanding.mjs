@@ -49,9 +49,11 @@ export async function openMediaFile({ tmp, media, saved, protect }) {
   let directory, path;
   try {
     clearTurnMedia(tmp);
-    const bytes = await protect(saved.bytes);
     directory = mkdtempSync(join(tmp, 'inbound-media-'));
     chmodSync(directory, 0o700);
+    // The existing private derivative directory also scopes the decoder census.
+    // No plaintext is written until protection completes.
+    const bytes = await protect(saved.bytes, directory);
     const suffix = media.kind === 'photo' ? '.jpg' : extname(media.name);
     path = join(directory, `attachment${/^\.[a-zA-Z0-9]{1,10}$/u.test(suffix) ? suffix : '.bin'}`);
     writeFileSync(path, bytes, { mode: 0o600, flag: 'wx' });
@@ -80,7 +82,7 @@ export async function invokeMediaTurn(id, turn, lookup, answer, protect) {
   let attachment;
   try { attachment = lookup(id); } catch { return answer(MEDIA_UNREADABLE); }
   if (!attachment || ['voice', 'audio'].includes(attachment.media.kind)) return answer('');
-  return withMediaFile({ tmp: join(turn.scratch, 'tmp'), ...attachment, protect: bytes => protect(bytes, id) }, answer);
+  return withMediaFile({ tmp: join(turn.scratch, 'tmp'), ...attachment, protect: (bytes, area) => protect(bytes, id, area) }, answer);
 }
 
 /** One admitted conversation delivery may batch several intakes. Each attachment
@@ -104,7 +106,7 @@ export async function openConversationMedia({ tmp, operations, lookup, protect, 
       try {
         entry = { directory: mkdtempSync(join(tmp, prefix)) };
         opened.push(entry);
-        entry.file = await openMediaFile({ tmp: entry.directory, ...attachment, protect: bytes => protect(bytes, source) });
+        entry.file = await openMediaFile({ tmp: entry.directory, ...attachment, protect: (bytes, area) => protect(bytes, source, area) });
         notices[operation] = entry.file.notice;
       } catch { notices[operation] = MEDIA_UNREADABLE; }
     }

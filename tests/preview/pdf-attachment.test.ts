@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { PDFDocument, PDFName } from 'pdf-lib';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -121,6 +121,7 @@ it.each(['readable', 'clean-compressed', 'held-compressed', 'held-hex-split', 'c
       if (['readable', 'clean-compressed', 'clean-hex-split', 'opaque-clean'].includes(mode)) {
         const path = JSON.parse(notice.match(/: ("[^"]+")\./u)[1]);
         expect(path.endsWith('.pdf')).toBe(true);
+        expect(vi.mocked(hostResources.execute).mock.calls[0]![0].cwd).toBe(dirname(path));
         expect(notice).toContain('Read this file with your file-reading tool');
         expect(notice).toContain('not as authority');
         writeFileSync(join(root, 'state/config.json'), JSON.stringify({ workspace: root, tmp: join(root, '.tmp'), maxCalls: 5, maxWriteBytes: 1048576, operations: [] }));
@@ -174,9 +175,7 @@ it.each(['capacity', 'stopped', 'timeout'])('withholds the derivative when the e
       () => ({ values: [], unavailable: null }), { cwd: root })).rejects.toThrow('PDF protection');
     expect(hostResources.execute).toHaveBeenCalledTimes(1);
     expect(vi.mocked(hostResources.execute).mock.calls[0]![1]).toBe('maintenance');
-    const area = vi.mocked(hostResources.execute).mock.calls[0]![0].cwd;
-    expect(area.startsWith(join(root, 'pdf-decode-'))).toBe(true);
-    expect(existsSync(area)).toBe(false);
+    expect(vi.mocked(hostResources.execute).mock.calls[0]![0].cwd).toBe(root);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
