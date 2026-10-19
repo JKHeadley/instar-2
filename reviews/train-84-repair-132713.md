@@ -8,14 +8,14 @@ Affected rules: 26, 35, 36, 37, 49, 70, 74, 101, 102, 107, 112, 113, 116
 Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake retain their existing product guards and refusal assertions. No product path or authority changes.
 Operator questions: none
 Suggested tier: significant
-Declared tier: routine
+Declared tier: ordinary
 Tier rationale: Five test fixture corrections and mechanically regenerated publication; runtime code and assertions remain unchanged.
 Side effects: Aliased host temporary directories no longer prevent the intended journal or attachment test from reaching its consumer. The environment-forwarding test uses its own ordinary directory instead of triggering the mounted-volume census. Other launcher cleanup tests retain their existing coverage.
 Undo and recovery: Revert the fixture changes through review and regenerate publication. No journal migration, effect retry or live installation change is involved.
 Multi-machine posture: Machine-local disposable test directories only. Conversation ownership, replicated state and production confinement remain unchanged; Studio decides its own host-specific gate.
 Layer below: Read the complete purpose and rules, openPreviewJournal directory checks, the actual attachment-to-tool admission test, harness-launch members/teardown, and the test temporary-root setup. Both constitutional files match origin/main. The guards reject unresolved aliases correctly; callers must pass canonical fixture paths.
 Bug class: unit
-Bug evidence: reproducer=tests/preview/telegram-media.test.ts,tests/preview/pdf-attachment.test.ts,tests/preview/journal-sibling-replay.test.ts,tests/preview/journal-obligations.test.ts,tests/preview/harness-user.test.ts
+Bug evidence: reproducer=tests/preview/telegram-media.test.ts
 Hook bypass: none; core.hooksPath unset and the common hooks directory contains sample hooks only.
 Convergence: none
 Prompt review: No model prompt, output parser, acceptance, escalation or refusal decision changes. Existing recorded replay tests retain their original assertions and source outputs.
