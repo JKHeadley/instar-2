@@ -30,7 +30,7 @@ Prompt review: No model-facing text, parser, decision policy or delivered output
 
 Verification: Portable targeted evidence and host-dependent failures are reported separately in the operator report; no full-suite pass or independent convergence claimed.
 
-Register refresh: The supplied desk rehash tool refreshed four preview source pins; the supplied repin chain changed no inventory or checker bytes. Generated publication is reproduced in shape-only replay mode from the repair pin commit; no pin is hand-edited.
+Register refresh: The supplied desk rehash tool refreshed four preview source pins; the supplied repin chain changed no inventory or checker bytes. Generated publication is reproduced in shape-only replay mode from repair pin commit 9564c760a3c2cd23e3cc525b96bf728ae063fc53; no pin is hand-edited.
 Deferral: generated/register.json:1 | not-a-deferral=Existing governed declaration text reproduced by the register generator; no work is deferred.
 
 ## Closing block
