@@ -24,6 +24,18 @@ Decision: existing-work-instruction | clarify the scheduled call and historical 
 Prompt review: explanation of application protocol by meaning, not matching a user's wording. Original operator constraints still govern delivery; the runner continues to enforce grants. Real train-76 frames 268/281 (updates 46040305/46040306) reproduce no finished result; fresh provider replays of both complete envelopes with only the work question changed return substantive reports. One unchanged-envelope rerun also reports, retained as contrary evidence against deterministic regression attribution. These are fresh bounded calls and offline shipped-worker replay, not a new live Telegram acceptance claim.
 Verification: 130 targeted tests pass in eight files, including nine new tests. The instruction test failed before the change. Real failing outputs remain continue; new actual reports yield exact inhibition, a Follow-up on delivery on hi, zero remaining delivery, and no duplicate after reopen. Existing replay includes summary-writer 715672480, summary-uncertain 715672483, Jev undecided 715672482 and unsure 969389570, reply-review 969389923, delivered reply 715672479 and empty reply 715672550. Architecture and typecheck pass. Final pushed-head checks are recorded in PROGRESS.
 
+Deferral: tests/preview/deferral-delivery.test.ts:79 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:18 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:19 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:24 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:27 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:43 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:48 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:51 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged existing protocol text; not a semantic classifier copied from a fixture.
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged existing protocol text; not a semantic classifier copied from a fixture.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged existing protocol text; not a semantic classifier copied from a fixture.
+
 Register publication: existing replay generator consumed source 11d9130153ddeacfa804de9c6ce8a161ec48bf66 and produced generation sha256:fa235b4f6ff47a69d33aadfb58ce48d9a83ce63bbc8f1f74fc2a3a967a533d25. Seven generated files refresh source/generation metadata only. The preparation documentation lives in Details, outside the capability briefing; no unrelated answer-prompt growth. No declarations or certificates changed.
 
 ## Closing block
