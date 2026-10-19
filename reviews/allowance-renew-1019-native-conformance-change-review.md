@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: The supported composition claim requires actual native contract evidence on its declared runtime before renewal, even though executable behavior is unchanged.
-Side effects: One conformance digest changes, with its dependent generated register publication. Supported status, runtime, entry points and evidence reference remain unchanged. Both delegated desk repin scripts ran and changed zero pins.
+Side effects: One conformance digest changes, with its dependent generated register publication. Supported status, runtime, entry points and evidence reference remain unchanged. Both delegated desk repin scripts ran and changed zero pins. Register replay publishes source eb7605ce16427d9c4c795b22d5df335cee7d70d6 as generation sha256:849c70bc1b37592e5c24b743f8e2449323b68d77734a01aa6c44f2acd2fe4b12; this is shape-only publication, not full-run evidence.
 Undo and recovery: Revert the declaration only with its matching executable composition and regenerate publication. For changed composition bytes, rerun the existing native contract before renewing its certificate.
 Multi-machine posture: The certificate binds this Darwin composition to the existing exact Node 24.14.1 runtime. No new platform, doorway, ownership or authority claim is introduced.
 Layer below: Inspected compositionClosure/compositionDigest/currentRuntime, selfHostCompositionEvidence, the native contract and architecture parity check. The same 268-file closure and runtime were measured before and after the passing named contract. Real confined launches build, test, install and probe a capability through the public owners; provider frames are captured fixtures. Stop, refusal, timeout, accounting and journal restart neighbors remain covered.
@@ -19,7 +19,7 @@ Bug evidence: Certificate evidence renewal: /Users/dabombstudio/.instar/agents/e
 Hook bypass: none; core.hooksPath is unset and the inspected common hooks directory contains only sample hooks. Plain commits only.
 Convergence: none
 
-Subject: src/assembly/harness.declarations.json and its generated register publication.
+Subject (8 paths): src/assembly/harness.declarations.json, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json.
 
 ## Closing block
 
