@@ -14,8 +14,8 @@ Side effects: Split runs schedule this entire test file on macOS, including its 
 Undo and recovery: Revert the inventory entry and this review together; the drift assertion will again expose the missing entry. No persistent state or migration is involved.
 Multi-machine posture: Shared repository inventory directs Linux and macOS split runners consistently; macOS ACL evidence remains host-local and must be executed on the Studio.
 Layer below: Read the platform detector, list reader, missing/stale negative controls, and telegram-files.test.ts actual harness-user ACL test. Its existing Darwin guard requires placement in the macOS half; no detector or test exclusion is added.
-Bug class: none
-Bug evidence: The supplied Studio failure names exactly this missing inventory entry; targeted platform tests verify the complete inventory and missing/stale controls after repair.
+Bug class: unit
+Bug evidence: reproducer=tests/platform/macos-only.test.ts
 Hook bypass: none
 Convergence: none
 Decision: train78-repair-macos-inventory | Add the already Darwin-gated telegram-files test to the existing sorted inventory, preserving the detector and ACL proof rather than suppressing the failing assertion. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-78-repair-003405-PROGRESS.md
