@@ -23,6 +23,7 @@ Decision: train-79-A | Preserve member and base bytes with the clean fast-forwar
 Decision: train-79-B | Create branch directly at exact live base 9e6cc240; no main merge or branch move. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-79-PROGRESS.md
 Decision: train-79-D | Disclose unchanged host-bound checks and Studio report-path limitations; native and live acceptance stays with the desk. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-79-PROGRESS.md
 Decision: train-79-desk | Regenerate through downloaded repin/build/rehash/replay chain with Linux sed syntax; preserve the fixed-context guard. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-79-PROGRESS.md
+Deferral: generated/register.json:1 | not-a-deferral=Existing declaration wording reproduced by register replay; no deferred work introduced.
 Prompt review: No new prompt, model-output parser or model accept/escalate/refuse decision. Recorded status and Telegram receipts replay through the member test.
 Verification: Targeted phone-route test, required journal and subscription regressions, default context floor, pinned READY selection and static checks; results recorded in PROGRESS.
 simplestRobustRoute: Ordinary merge of the reviewed head and existing desk regeneration tools. No added machinery or autonomous-completion claim. Existing source, expiry, disclosure and receipt refusals remain enforced.
