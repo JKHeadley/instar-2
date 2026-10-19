@@ -22,7 +22,11 @@ Decision: train-77-repair-poll-boundary | Reproduce the exact missed boundary by
 Decision: train-77-repair-intake-stop | Reuse untilStopped for intake so lost ownership retires cleanly without relaxing worker admission. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-77-repair-205757-PROGRESS.md
 Prompt review: No model-facing text, parser, routing or semantic judgment changes; only the caller of intake changes. Recorded model-shape replay is not needed for this ownership exit adapter.
 
-Subject (4 paths): tests/preview/journal-agent.mjs, tests/preview/journal-cutover-ports.mjs, tests/preview/journal-due-loop.test.ts, tests/preview/two-machine-runner.test.ts
+Verification: Targeted full files passed 11/11; both deterministic stale-owner variants failed before the source repair. Typecheck and build pass. No full suite or native self-host certification claimed.
+Register refresh: Downloaded desk rehash and repin tools changed no owner or inventory pins; regenerated the seven publication artifacts in shape-only replay mode from repair commit 4dd5f4ed03d5c75e4758bca3962bf9e29bc061f7.
+Deferral: generated/register.json:1 | not-a-deferral=Existing governed declaration text reproduced by the register generator; no engineering work deferred.
+
+Subject (4 source paths plus generated publication): tests/preview/journal-agent.mjs, tests/preview/journal-cutover-ports.mjs, tests/preview/journal-due-loop.test.ts, tests/preview/two-machine-runner.test.ts
 
 ## Closing block
 
