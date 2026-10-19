@@ -1,0 +1,27 @@
+# Change review — retained causal history survives a cold stack
+
+Subject base: 9e6cc240a4d1e722d2cf828d522e3afb5d29db7f
+Review state: open
+Reviewed content: none
+Outcome: A cold causal-history lookup uses explicit work lists rather than call-stack depth, so valid retained resource history does not become a poison-fact conflict after an acquisition or restart.
+Affected rules: Rules 1, 4, 5, 26, 31, 32, 34, 35, 36, 42, 49, 60, 70, 74, 101, 102, 108, 111, 112, 113, 116.
+Affected floors: secrets — no credential or conversation content is in the recorded resource fixture; spend cap — exact standing and resource-cap admission remain unchanged; stop — no stop decision or transport gate changes; no duplicate sends — no runner, outbound path or retry authority added; durable intake — all original signed facts remain, with no migration, rotation workaround or deletion.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Causal-history selection supports signed admission and resource projection across owners.
+Side effects: Traversal uses explicit heap frames proportional to reachable history instead of recursive JavaScript frames. Postorder and reference order are preserved, including shared ancestors. The index still returns unavailable on malformed/cyclic/broken-chain inputs so historyOf uses the existing refusing walk. Foreign objects sharing a member id still compute from their own references. The test fixture adds 351669 compressed bytes of recorded preview authority/resource metadata, with its original decompressed SHA256 checked at runtime.
+Undo and recovery: Revert the source change through the normal gate; retained fact bytes require no migration. Reverting restores stack-sensitive traversal and may restore the refusal. Never discard, rotate away or re-sign the resource ledger as recovery. The diagnostic and test roots are disposable local copies, never runner roots.
+Multi-machine posture: History is still shared signed fact data; traversal/index objects are deliberately operation-local and machine-local. Arbitrary machine names, cross-machine frontiers, epoch links, cycles and absent references retain their meaning. No new authority, replication acknowledgement or persistent state is introduced.
+Layer below: Inspected signed envelope read/admission, causal standing, historical body decoding, incremental status derivation, conflict draining, Six lease acquisition and multidomain capacity admission, and the file storage adapter. The missing-appender string is a downstream refusal, not proof of corrupt input. The reproduced inner poison conflict is RangeError from compute/member on recorded lease machine-a:0:1819 under a 768 KiB stack. WSL default-stack replay succeeds; the incident did not retain its inner conflict, so this is a reproduced runtime-sensitive failure mechanism, not a claim that the Studio stack size was measured.
+Bug class: unit
+Bug evidence: reproducer=tests/facts/causal-index-depth.test.ts
+Hook bypass: none; core.hooksPath is unset and the shared hooks directory contains sample hooks only, inspected before commit.
+Convergence: none
+Prompt review: No model-facing prompt, parser or semantic acceptance changes. The recorded resource ledger and incident metadata for update 969390594 are the relevant real shapes; no model or Telegram call is made.
+Decision: six-conflict-appender-1018b-traversal | Replace recursive causal index and walk traversal with explicit dependency frames; retain exact refusals and signed facts rather than add an appender that merely changes the next refusal. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/six-conflict-appender-1018b-PROGRESS.md
+Decision: six-conflict-appender-1018b-evidence | Preserve the complete SHA256-verified resource ledger and replay both projection and actual allocation with a constrained Node stack; explicitly distinguish this reproduced mechanism from unrecorded Studio inner-error evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/six-conflict-appender-1018b-PROGRESS.md
+
+simplestRobustRoute: This is the simplest robust route: use the existing causal-index and history-walk algorithms with explicit traversal frames. The named credible failure is engine-stack exhaustion on a cold lookup of 1820 recorded facts, caught as poison-fact and routed to the missing-appender refusal. Neither a larger process stack nor a conflict appender repairs the history algorithm; resetting resource history violates durability and capacity accounting. Start guards are unchanged signature/chain/standing admission, end guards are the existing conflict-free projection and live lease/capacity checks, and the five safety floors remain enforced. No new service, retry loop or policy is added. Local unattended allocation proof is distinct from the desk-owned live answer acceptance.
+80/20: Targeted changed tests and direct importer incremental-status, plus admission boundary neighbors, typecheck, architecture/lint/register/change-review and the desk's pinned-text list. No full suite or base comparison worktree; native Studio conformance is reported under the explicit builder exception.
+VERDICT: author submission for desk review; no independent convergence or live acceptance claim

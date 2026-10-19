@@ -10,25 +10,30 @@ import { decodeOwnedBody } from './owned.js';
 export function causalCone(fact: FactEnvelope, facts: readonly FactEnvelope[]): readonly FactEnvelope[] {
   const byId = new Map(facts.map(f => [f.id, f]));
   const found = new Map<string, FactEnvelope>(), visiting = new Set<string>();
-  const visit = (f: FactEnvelope) => {
-    requireFact(!visiting.has(f.id) && f.id !== fact.id, 'causal cycle');
-    if (found.has(f.id)) return;
-    visiting.add(f.id);
-    for (const id of [f.predecessors.inSegment, ...f.predecessors.required]) if (id !== null) {
-      const p = byId.get(id); requireFact(p, `dangling causal reference: ${id}`); visit(p);
+  // Preserve the walk's reference order, postorder output and exact refusals without
+  // tying the retained history depth to the JavaScript call stack.
+  const frame = (f: FactEnvelope) => ({ fact: f, next: 0, refs: [
+    ...[f.predecessors.inSegment, ...f.predecessors.required].filter(id => id !== null)
+      .map(id => ({ parent: byId.get(id), missing: `dangling causal reference: ${id}` })),
+    ...Object.entries(f.predecessors.frontier).map(([machine, head]) => ({
+      parent: facts.find(p => p.machine === machine && comparePosition(p.segment, head) === 0),
+      missing: `dangling frontier: ${machine}` })),
+  ] });
+  const pending = [frame(fact)];
+  visiting.add(fact.id);
+  while (pending.length) {
+    const current = pending[pending.length - 1]!;
+    if (current.next < current.refs.length) {
+      const { parent, missing } = current.refs[current.next++]!;
+      requireFact(parent, missing);
+      requireFact(!visiting.has(parent.id) && parent.id !== fact.id, 'causal cycle');
+      if (found.has(parent.id)) continue;
+      visiting.add(parent.id); pending.push(frame(parent));
+    } else {
+      visiting.delete(current.fact.id);
+      if (current.fact !== fact) found.set(current.fact.id, current.fact);
+      pending.pop();
     }
-    for (const [machine, head] of Object.entries(f.predecessors.frontier)) {
-      const p = facts.find(p => p.machine === machine && comparePosition(p.segment, head) === 0);
-      requireFact(p, `dangling frontier: ${machine}`); visit(p);
-    }
-    visiting.delete(f.id); found.set(f.id, f);
-  };
-  for (const id of [fact.predecessors.inSegment, ...fact.predecessors.required]) if (id !== null) {
-    const p = byId.get(id); requireFact(p, `dangling causal reference: ${id}`); visit(p);
-  }
-  for (const [machine, head] of Object.entries(fact.predecessors.frontier)) {
-    const p = facts.find(p => p.machine === machine && comparePosition(p.segment, head) === 0);
-    requireFact(p, `dangling frontier: ${machine}`); visit(p);
   }
   return [...found.values()];
 }
@@ -72,11 +77,13 @@ export function causalIndex(facts: readonly FactEnvelope[]): CausalIndex {
     });
   }
   const vectors = new Map<string, CausalFrontier | null>(), visiting = new Set<string>();
+  const references = (fact: FactEnvelope) => [...[fact.predecessors.inSegment, ...fact.predecessors.required]
+    .map(id => id === null ? null : byId.get(id)),
+  ...Object.entries(fact.predecessors.frontier).map(([m, p]) => at.get(factId({ machine: m, ...p })))];
   // Only list members are remembered (by id); any other object, even one sharing an id, is
   // computed from its own signed references.
   const compute = (fact: FactEnvelope): CausalFrontier | null => {
-    const refs = [...[fact.predecessors.inSegment, ...fact.predecessors.required].map(id => id === null ? null : byId.get(id)),
-      ...Object.entries(fact.predecessors.frontier).map(([m, p]) => at.get(factId({ machine: m, ...p })))];
+    const refs = references(fact);
     // Machine names are arbitrary strings ('constructor', '__proto__', ...): a null-prototype
     // dictionary, as canonical snapshotting uses, so no inherited property reads as a position.
     const vector: Record<string, LineagePosition> = Object.create(null) as Record<string, LineagePosition>;
@@ -94,9 +101,27 @@ export function causalIndex(facts: readonly FactEnvelope[]): CausalIndex {
   };
   const member = (fact: FactEnvelope): CausalFrontier | null => {
     const known = vectors.get(fact.id); if (known !== undefined) return known;
-    if (visiting.has(fact.id)) return null;
-    visiting.add(fact.id); const vector = compute(fact); visiting.delete(fact.id);
-    vectors.set(fact.id, vector); return vector;
+    // A cold tail lookup must not spend one JS call frame per ancestor. In an
+    // incremental projection the new lease is the first lookup in a fresh index;
+    // overflowing here would turn valid retained history into a poison-fact conflict.
+    // Visit dependencies explicitly, then run the same vector checks with every
+    // member already resolved. A back edge still poisons the cycle and its users.
+    const pending = [{ fact, refs: references(fact), next: 0 }];
+    visiting.add(fact.id);
+    while (pending.length) {
+      const frame = pending[pending.length - 1]!;
+      if (frame.next < frame.refs.length) {
+        const ref = frame.refs[frame.next++];
+        if (!ref || vectors.has(ref.id)) continue;
+        if (visiting.has(ref.id)) { vectors.set(ref.id, null); continue; }
+        visiting.add(ref.id);
+        pending.push({ fact: ref, refs: references(ref), next: 0 });
+      } else {
+        if (!vectors.has(frame.fact.id)) vectors.set(frame.fact.id, compute(frame.fact));
+        visiting.delete(frame.fact.id); pending.pop();
+      }
+    }
+    return vectors.get(fact.id)!;
   };
   const frontierOf = (fact: FactEnvelope): CausalFrontier | undefined =>
     (byId.get(fact.id) === fact ? member(fact) : compute(fact)) ?? undefined;
