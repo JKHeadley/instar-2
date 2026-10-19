@@ -637,7 +637,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       }
     };
     const retireIdle = async (reason?: 'pressure' | 'idle') => {
-      if (draining || closing || retiring) { clearCandidate(); return false; }
+      if (draining || retiring) { clearCandidate(); return false; }
+      // Explicit retirement can confirm a completed close without reopening a halted
+      // topic. A close record alone is insufficient: failed cleanup retains its handles.
+      if (closing) return !reason && !!state.close && !state.worker && !state.claim && !lease;
       if (reason) {
         if (!recovered) { clearCandidate(); return false; }
         let retired = false;

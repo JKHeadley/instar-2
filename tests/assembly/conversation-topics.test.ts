@@ -675,6 +675,54 @@ it.each(['stop', 'grant', 'deadline', 'retirement'] as const)('does not renew ac
   expect(f.delivered).toHaveLength(2);
 });
 
+it.each(['confirmed', 'worker-unconfirmed', 'lease-unconfirmed'] as const)(
+  'renewal after maintenance closes a deadline-halted topic: %s retirement', async retirement => {
+    const f = fixture(2, 2);
+    const create = f.config.createAdapter;
+    Object.assign(f.config, { createAdapter: (topic: string, resolve: Parameters<typeof create>[1]) => ({
+      ...create(topic, resolve),
+      ...(topic === 'main' && retirement === 'worker-unconfirmed'
+        ? { control: async () => ({ state: 'refused' as const, evidence: 'closure unconfirmed' }) } : {}),
+    }) });
+    if (retirement === 'lease-unconfirmed') {
+      const admit = f.config.resources.admit;
+      const admitWithoutRelease: typeof admit = async (...args) => {
+        const lease = await admit(...args);
+        return lease && { ...lease, release: async () => false };
+      };
+      Object.assign(f.config.resources, { admit: admitWithoutRelease });
+    }
+    f.held.add('main');
+    const pending = f.port.run(f.request('main:a'));
+    await until(() => f.delivered.length === 1);
+    f.advance(2000);
+    expect(await pending).toMatchObject({ state: 'uncertain' });
+    await f.port.maintain();
+    const halted = structuredClone(f.state().topics.main!);
+    expect(halted.halt?.reason).toBe('deadline');
+    expect(halted.close).not.toBeNull();
+    if (retirement === 'confirmed') {
+      expect(halted.worker).toBeNull(); expect(halted.claim).toBeNull();
+      expect(f.counts().live).toBe(0);
+    }
+    expect(await f.port.run(f.request('3:c'))).toMatchObject({ state: 'complete' });
+    const renewed = await f.port.run(f.request('3:d'));
+    if (retirement === 'confirmed') {
+      expect(renewed).toMatchObject({ state: 'complete' });
+      expect(f.state().allowanceEpoch).toBe(1);
+      expect(f.state().topics.main!.halt).toEqual(halted.halt);
+      expect(f.state().topics.main!.inputs).toEqual(halted.inputs);
+      expect(await f.port.run(f.request('main:a'))).toEqual(halted.inputs[0]!.outcome);
+      expect(f.delivered.map(row => row.input.operation)).toEqual(['main:a', '3:c', '3:d']);
+    } else {
+      expect(renewed).toMatchObject({ state: 'uncertain' });
+      expect(f.state().allowanceEpoch).toBeUndefined();
+      expect(f.edges.some(row => row.id === 'operator:allowance:renew')).toBe(false);
+    }
+    await f.port.close();
+  },
+);
+
 it('an exhausted allowance does not renew while another topic still runs', async () => {
   const f = fixture(2, 1); f.held.add('7');
   const pending = f.port.run(f.request('7:busy')); await until(() => f.delivered.length === 1);
