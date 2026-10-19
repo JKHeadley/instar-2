@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Combine reviewed deferred preparation, unavailable-mailbox response framing, phone-route proof separation and Telegram file paths with restored protected audio transcripts onto live train-82.
 Affected rules: 1, 4, 14, 15, 26, 31, 32, 33, 34, 36, 37, 42, 44, 46, 49, 60, 61, 63, 69, 70, 74, 75, 90, 96, 101, 102, 105, 111, 112, 113, 114, 115, 116
-Affected floors: Existing secret custody, spend cap, stop, unique durable sending and durable intake are preserved; no new authorization or provider call.
+Affected floors: Existing secret custody, spend cap, stop, no duplicate sends and durable intake are preserved; no new authorization or provider call.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
@@ -15,7 +15,7 @@ Undo and recovery: Revert through review and regenerate publication; retain encr
 Multi-machine posture: Existing conversation owner remains authoritative. Temporary harness files and audio decoding are machine-local; durable custody, ownership and journal agreement remain unchanged.
 Layer below: Read constitution, member reports and reviewed records; inspected ordinary merge conflicts, native conformance and desk generation tools. Existing harness file admission, custody, work results and result-file protocol hold the boundaries.
 Bug class: integration
-Bug evidence: reproducer=tests/assembly/conversation-topics.test.ts
+Bug evidence: reproducer=tests/assembly/production-conversation-session.test.ts
 Hook bypass: none; core.hooksPath unset and common hooks directory inspected, containing samples only.
 Convergence: none
 Prompt review: No train-authored prompt/parser change. Replay member fixtures for updates 46040305/46040306 and 715676900, plus recorded summary 715672480, uncertain 715672483, Jev 715672482/969389570, review 969389923 and delivered/empty 715672479/715672550. Member review records distinguish isolated model adoption from live acceptance.
@@ -30,6 +30,17 @@ Decision: train-83-D | Report WSL host-bound checks and permitted R105 native co
 Decision: train-83-desk | Use downloaded repin/build/rehash/replay chain with Linux sed; preserve guard constants and machine-owned generated output. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-83-PROGRESS.md
 
 Deferral: generated/register.json:1 | not-a-deferral=Existing declaration wording reproduced by the generator, no new deferred work.
+Deferral: tests/preview/README.md:33 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
+Deferral: tests/preview/deferral-delivery.test.ts:79 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:18 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:19 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:24 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:27 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:43 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:48 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:51 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
+Deferral: tests/preview/fixtures/email-gap-1017.json:5 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
+Review metadata repair: Full member base id and two existing integration prompt dispositions are corrected without changing runtime or tests.
 Verification: Targeted changed tests and direct importers, requested journal and subscription checks, pinned READY subset, typecheck, architecture, lint, register and change-review checks; exact results in report.
 simplestRobustRoute: This is the simplest robust route: ordinary merges of the four exact reviewed heads and existing desk regeneration, with no new mechanism. Existing ownership, authorization, custody, stop, spend, bounded host execution and durable unique delivery remain start/end/limit guards. Recorded replay is builder evidence; Studio owns live acceptance and native recertification.
 80/20: Run changed tests and direct importers plus explicitly required checks, never full suite or an import closure. Preserve accepted behavior without reimplementing member repairs.
