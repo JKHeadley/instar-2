@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, SELF_DESCRIPTION } from './briefing.js';
+import { CLAIM_EVIDENCE_GUIDANCE } from './answer-provenance.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { readAnswer } from './answer-reading.js';
@@ -26,7 +27,7 @@ it('retains the delivered error and captured copying guidance while replay uses 
   expect(capture.original.answer).not.toContain('probe-7d09d28a');
   expect(capture.original.answerReason).toContain('probe-7d09d38a');
   // These model runs predate train-18's whole-answer capability reference. Keep
-  // the capture intact; only that separately tested instruction differs. This
+  // the capture intact; translate the separately tested self-description and claim guidance. This
   // is recorded-output replay under today's prompt, not a fresh provider trial.
   const historicalSelfDescription = 'You are an Instar 2.0 agent with lasting memory and values. Correct errors; omit preview/harness/model labels. '
     + 'Self-description: put {{capability-tools-outbound}} in its own paragraph for tools/outbound; the runner inserts the capability-note line. '
@@ -34,7 +35,8 @@ it('retains the delivered error and captured copying guidance while replay uses 
     + 'Quote capability-note limits verbatim, timestamps intact.';
   expect(capture.instructions.split('\n')).toContain(historicalSelfDescription);
   expect(capture.instructions).toContain(LITERAL_COPY_INSTRUCTIONS);
-  expect(capture.instructions.replace(historicalSelfDescription, SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
+  expect(capture.instructions.replace(historicalSelfDescription, SELF_DESCRIPTION)
+    .replace(LITERAL_COPY_INSTRUCTIONS, `${LITERAL_COPY_INSTRUCTIONS}\n${CLAIM_EVIDENCE_GUIDANCE}`)).toBe(ANSWER_INSTRUCTIONS);
   expect(capture.system).toBe(historicalToolsSystem);
   expect(LITERAL_COPY_INSTRUCTIONS).not.toContain('probe');
   expect(capture.runs).toHaveLength(3);

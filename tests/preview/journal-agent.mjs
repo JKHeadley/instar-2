@@ -42,7 +42,7 @@ import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installati
 import { currentActionFacts, bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused, ModelNotStarted, createModelLaunchBoundary, capacityAlerts } from './journal.js';
 import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
-import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
+import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, readSelfAccess, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { guidanceReport } from './guidance.js';
 import { memoryLearningLine, memoryLearningReport } from './memory-learning.js';
 import { JEV_MODEL, jevQuestions, publicCredentialRegister, concealSecretMaterial, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
@@ -446,7 +446,7 @@ const capabilityReport = (joined, reading, log, status, now) => capabilityRows(j
  * The self-state is recomputed at each turn from the journal and the run log; the desk's
  * report (optional) covers only other work. */
 const turnSources = (root, options, view, runs, current = () => undefined, handoff = () => null,
-  toolsOn = () => options['tools-activation'] !== undefined) => {
+  toolsOn = () => options['tools-activation'] !== undefined, access = () => undefined) => {
   // The standing mind-held instructions ride every prepared envelope; a changed rule book refuses launch.
   verifyMindRules(path => readFileSync(resolve(process.cwd(), path), 'utf8'));
   // Each turn carries the briefing that matches whether its tools are on now (default on, withdrawn when the record is
@@ -467,8 +467,8 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
     const now = wallNow(), log = runs();
     const tools = Boolean(toolsOn()), sources = packetFor(tools, tools ? mcpCount() : undefined);
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
-    const note = handoff();
-    return [...sources, disciplineSource(view), selfStateSource(selfStateBrief(view, log, now, timeZoneOf(options), current())), ...(desk ? [desk] : []), ...(note ? [note] : [])];
+    const note = handoff(), accessRead = access();
+    return [...sources, disciplineSource(view), selfStateSource(selfStateBrief(view, log, now, timeZoneOf(options), current(), false, accessRead !== undefined), accessRead), ...(desk ? [desk] : []), ...(note ? [note] : [])];
   };
 };
 /** The installed runner, read from this checkout: repository paths only, never outside it. */
@@ -2119,7 +2119,10 @@ async function main() {
       groupDisclosure: verifiedActionAudience,
       presenceNotes: sentinelFamilies.has('presence'),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
-        () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff, preparation.active),
+        () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff, preparation.active,
+        () => readSelfAccess({ credentials: () => custody.records(), missing: names => custody.missing(names), connectors: () => readRootMcp(root),
+          held: () => { const state = heldSecrets(); if (state.unavailable) throw Error('access unknown'); return state.values; },
+          bot: `Telegram bot ${g.bot}`, now: wallNow() })),
       prepareModel: modelEnvelope,
       preparePacket: preparation.run,
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
@@ -2271,7 +2274,8 @@ async function main() {
         // The mind's one response to the objections on its draft: same envelope and grounding packet as review,
         // one disposition per objection, inside the loop's shared deadline.
         revise: async ({ text, id, originalPrompt, ruleIds, reason, objections = ruleIds, findings, deadlineAt }) => {
-          const context = replyReviewContext(originalPrompt, text, ruleIds, undefined, credentialRegister());
+          // Revision needs the same admitted evidence as review: preserve a real limit and use prior tool results.
+          const context = replyReviewContext(originalPrompt, text, ruleIds, declaredObligations(journal.view, id, wallNow()), credentialRegister());
           // Rule 29: the revision input (the objected draft in its review context) is written by the runner.
           const writer = envelopeWriter(journal.systemWriter('reply-review', `${id}:reply-revision\n${context}`, wallNow()));
           const prepared = modelEnvelope({ question: replyRevisionQuestion(objections, reason, findings), context, id: `${id}:reply-revision`,

@@ -37,10 +37,13 @@ async function seed(w: ReturnType<typeof world>) {
   // The old clause/source are quoted verbatim by recorded frame 155; its intake is outside the desk excerpt.
   w.intake(715675723, `Please remember that ${oldQuote}.`); await w.worker.drain();
 }
-function checkGuidance(text: string) {
+function checkGuidance(text: string, surface: 'answer' | 'repair' = 'answer') {
   expect(text).not.toContain('even with an older value');
   expect(text).toContain('same fact');
-  expect(text).toContain('mode:"update"');
+  // The compact answer packet and the declaration repair express the same rule differently.
+  expect(text).toContain(surface === 'answer'
+    ? 'Changed same fact: update with offered old source/quote and exact new clause; keep history. Errors use correct.'
+    : 'Changing the same fact uses mode:"update" with offered old source/quote and exact new clause, never a second remember; correcting an error uses correct.');
   expect(text).toContain('mode:"remember"');
 }
 
@@ -95,7 +98,7 @@ it('keeps the declaration-repair instruction consistent instead of turning an in
     await seed(w); w.worker.intake([capture.intake]); await w.worker.drain();
     // Frame 161 cites the recall turn as a save source: the exact source validator must still reject it here.
     expect(w.packets).toHaveLength(3);
-    checkGuidance(w.packets[2]!.formatReminder!);
+    checkGuidance(w.packets[2]!.formatReminder!, 'repair');
     expect(w.journal.view.memory.filter(item => item.mode === 'remember')).toHaveLength(1);
     expect(w.journal.view.memory.at(-1)).toMatchObject({ historical: true, replacement: newQuote });
   } finally { w.journal.close(); }
@@ -117,7 +120,7 @@ it('replays the original save then recall attempts without treating recall as au
     await seed(w); w.worker.intake([capture.intake]); await w.worker.drain();
     w.worker.intake([capture.recallIntake]); await w.worker.drain();
     const repair = w.packets.find(packet => packet.formatReminder);
-    expect(repair).toBeDefined(); checkGuidance(repair!.formatReminder!);
+    expect(repair).toBeDefined(); checkGuidance(repair!.formatReminder!, 'repair');
     // The recorded update's new clause is absent from the recall request. Keep that exact admission boundary.
     expect(w.journal.view.memory).toHaveLength(2);
     expect(w.journal.view.memory.every(item => item.mode === 'remember')).toBe(true);

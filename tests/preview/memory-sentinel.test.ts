@@ -267,8 +267,9 @@ it('grounds a later pronoun question in an early summarized turn across a restar
   const initial = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 400, maxReplies: 200, maxTurns: 200,
     // Synthetic recall/restart scenario: retain its selected evidence beside current delivery guidance.
+    // Include the combined standing-preference guidance beside the recalled fact.
     // The production context floor is checked independently; no runtime budget changes here.
-    maxBytes: 9000, cursor: 0 };
+    maxBytes: 10000, cursor: 0 };
   const fact = 'Note for later: my sister Maya loves ranunculus flowers.';
   let asked: string | undefined;
   const open = () => {

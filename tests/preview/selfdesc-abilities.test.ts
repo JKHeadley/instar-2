@@ -6,6 +6,7 @@ import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS, READ_BEFORE_ANSWER }
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, CAPABILITY_SENTENCE_LABEL, capabilitySentence, capabilityBriefing, SELF_DESCRIPTION, SELF_IDENTITY, SIGN_OFF, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 import { readAnswer } from './answer-reading.js';
+import { CLAIM_EVIDENCE_GUIDANCE } from './answer-provenance.js';
 import { governingConstraints, previewCapabilities, settledConstraintWording, type BlockerNote, type JournalView } from './journal.js';
 
 /** Why this file exists (plan #495, live-proof K11a, Rules 78, 84, 103): asked "What can you do in this chat, and what can't
@@ -58,8 +59,9 @@ const currentInstructions = (text: string) => {
     expect(text.split(before)).toHaveLength(2);
     text = text.replace(before, after);
   }
-  // Preserve the historical captures; the literal-copy repair adds one shared instruction.
-  return text.replace('For a later-action promise', `${LITERAL_COPY_INSTRUCTIONS}\nFor a later-action promise`);
+  // Preserve captured bytes and historical judgments. Translate the declared literal-copy
+  // and claim-evidence additions only; these old PASSes do not certify the new evidence wording.
+  return text.replace('For a later-action promise', `${LITERAL_COPY_INSTRUCTIONS}\n${CLAIM_EVIDENCE_GUIDANCE}\nFor a later-action promise`);
 };
 
 // Adapt only presentation: captured model outputs, capability descriptions and limits remain exact.

@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { setImmediate as yieldTurn } from 'node:timers/promises';
 import { spawnSync } from 'node:child_process';
 import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -405,7 +406,11 @@ it('refuses a closure for an open item omitted from the summary packet', async (
       },
       send: async () => 1, checkOutbound: () => {} });
     let id = 1;
-    const say = async (text: string) => { worker.intake([update(id++, text)]); await worker.drain(); await worker.summarizeIfNeeded(); };
+    const say = async (text: string) => {
+      worker.intake([update(id++, text)]); await worker.drain(); await worker.summarizeIfNeeded();
+      // The inspect children are synchronous; let Vitest receive task updates between turns.
+      await yieldTurn();
+    };
     await say(`Please remember the dentist request: ${'details '.repeat(100)}`.trim());
     for (; !journal.view.summaries.length && id < 60;) await say(filler(id));
     expect(journal.view.commitments).toHaveLength(1);
@@ -538,7 +543,11 @@ it('the live script reaches compaction and the question carries the open commitm
     const sentence = 'The garden plan has tomatoes, beans, squash and herbs along the south fence. ';
     const LIVE_FILLER = `Filler for the memory test, just reply ok. ${sentence.repeat(50).trim()}`;
     let id = 1;
-    const say = async (text: string) => { worker.intake([update(id++, text)]); await worker.drain(); await worker.summarizeIfNeeded(); };
+    const say = async (text: string) => {
+      worker.intake([update(id++, text)]); await worker.drain(); await worker.summarizeIfNeeded();
+      // The inspect children are synchronous; let Vitest receive task updates between turns.
+      await yieldTurn();
+    };
     await say(LOCKER); await say(DENTIST);
     const question = 'What did I ask you to remember or do?';
     let fillers = 0;
@@ -548,9 +557,9 @@ it('the live script reaches compaction and the question carries the open commitm
       expect(fillers).toBeLessThan(12);
       await say(LIVE_FILLER); fillers++;
     }
-    // int12: near the boundary the real turn can still fit complete history once an optional
-    // candidate yields; one more filler keeps the asked question past compaction.
-    await say(LIVE_FILLER); fillers++;
+    // The inspect probe already established summary-plus-recent with the open commitments.
+    // Do not add another large filler after that boundary: it can evict the optional
+    // commitment block that this fixture is about to verify.
     worker.intake([update(id++, question)]);
     await worker.drain();
     const inspected = run(root, 'inspect'), last = inspected.last;
