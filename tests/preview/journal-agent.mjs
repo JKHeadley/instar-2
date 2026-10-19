@@ -1750,9 +1750,7 @@ async function main() {
     const mediaCustody = createTelegramMediaCustody(root, key(), { token, stopped: mediaStopped, admission: mediaAdmission,
       transcribe: async (bytes, source) => {
         const text = await localTranscribe(bytes);
-        const protectedText = custody.custody({ text, raw: JSON.stringify({ text }), source });
-        if (protectedText.custody?.state === 'failed') throw Error('voice credential custody unavailable');
-        return protectedText.text;
+        return protectMediaBytes(Buffer.from(text), source, custody, heldSecrets).toString('utf8');
       } });
     const currentMedia = id => {
       const turn = journal.view.turns.get(id);

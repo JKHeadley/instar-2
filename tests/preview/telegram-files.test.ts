@@ -39,7 +39,8 @@ it.each(cases)('files sent in Telegram reach the agent: %s / %s', { timeout: 300
     const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
     const transcribeExpression = host.split('transcribe: async (bytes, source) => {')[1]!.split('} });')[0]!;
     const custody = createSecretCustody(root, key, () => 1000);
-    const transcribe = Function('localTranscribe', 'custody', `return async (bytes, source) => {${transcribeExpression}}`)(localTranscribe, custody);
+    const transcribe = Function('localTranscribe', 'custody', 'protectMediaBytes', 'heldSecrets',
+      `return async (bytes, source) => {${transcribeExpression}}`)(localTranscribe, custody, protectMediaBytes, () => ({ values: [], unavailable: null }));
     let requests = 0, transcriptions = 0;
     const original = createTelegramMediaCustody(root, key, { admission, stopped: () => false,
       transcribe: async (input, source) => { transcriptions++; return transcribe(input, source); },
@@ -77,6 +78,22 @@ it.each(cases)('files sent in Telegram reach the agent: %s / %s', { timeout: 300
     await original.receive(source, media!); expect(requests).toBe(2);
     expect(transcriptions).toBe(kind === 'voice' || kind === 'audio' ? 1 : 0);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('the shipped transcription callback protects held secrets before transcript persistence and refuses unknown custody', async () => {
+  const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
+  const expression = host.split('transcribe: async (bytes, source) => {')[1]!.split('} });')[0]!;
+  const held = 'synthetic-held-audio-value';
+  for (const unavailable of [null, 'held source unavailable']) {
+    const transcribe = Function('localTranscribe', 'custody', 'protectMediaBytes', 'heldSecrets',
+      `return async (bytes, source) => {${expression}}`)(async () => `Tuesday ${held}`,
+      { custody: ({ text }: { text: string }) => ({ text }) }, protectMediaBytes, () => ({ values: [held], unavailable }));
+    if (unavailable) await expect(transcribe(Buffer.from('audio'), 'voice')).rejects.toThrow('held credentials unavailable');
+    else {
+      const text = await transcribe(Buffer.from('audio'), 'voice');
+      expect(text).toContain('Tuesday'); expect(text).not.toContain(held);
+    }
+  }
 });
 
 it.runIf(process.platform === 'darwin')('the actual harness macOS user can open the published file, while private originals stay closed', async () => {
