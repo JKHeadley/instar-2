@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Integrate exact reviewed Telegram file/audio delivery and unavailable-account application guidance onto the exact live train-75 base.
 Affected rules: 1, 4, 26, 30, 34, 36, 37, 42, 49, 60, 63, 69, 74, 84, 90, 101, 102, 105, 111, 112, 113, 116
-Affected floors: Existing secret custody, spend admission, stop, unique durable sends and durable intake are preserved by both members; no new authority or live effect.
+Affected floors: Existing secrets custody, spend cap admission, stop, no duplicate sends and durable intake are preserved by both members; no new authority or live effect.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
