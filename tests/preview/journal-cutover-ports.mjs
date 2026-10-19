@@ -22,7 +22,7 @@ export function createProductionTelegramIO() {
   if (!directory) throw Error('cutover fixture world absent');
   const marker = join(directory, 'long-poll-overlap');
   const log = row => appendFileSync(join(directory, 'telegram.jsonl'), `${JSON.stringify(row)}\n`);
-  let polls = 0;
+  let polls = 0, stalled = false;
   const port = { invoke(input) {
     if (input.method === 'getMe') return { kind: 'identity', identity: { id: 12345678 } };
     // This fixture models a chat without reactions: explicit refusal permits the existing
@@ -55,8 +55,19 @@ export function createProductionTelegramIO() {
       const updates = JSON.parse(readFileSync(join(directory, 'updates.json'), 'utf8'))
         .filter(row => row.update_id >= input.body.offset).slice(0, input.body.limit);
       polls++;
-      return { kind: 'response', status: 200, bytes: JSON.stringify({ ok: true,
-        result: polls < Number(process.env.INSTAR_PREVIEW_CUTOVER_UPDATES_AFTER_POLL ?? 0) ? [] : updates }) };
+      const bytes = JSON.stringify({ ok: true,
+        result: polls < Number(process.env.INSTAR_PREVIEW_CUTOVER_UPDATES_AFTER_POLL ?? 0) ? [] : updates });
+      return { kind: 'response', status: 200, get bytes() {
+        // Park this exact child while consuming the returned poll, after the loop's
+        // pre-intake stop check. A real process can stall at this boundary too.
+        const stallFile = process.env.INSTAR_PREVIEW_CUTOVER_STALL_POLL_FILE;
+        if (!stalled && stallFile && existsSync(stallFile)) {
+          stalled = true;
+          log({ kind: 'poll-stalled', role: process.env.INSTAR_PREVIEW_CUTOVER_ROLE });
+          process.kill(process.pid, 'SIGSTOP');
+        }
+        return bytes;
+      } };
     }
     if (input.method === 'sendMessage') {
       log({ kind: 'send', role: process.env.INSTAR_PREVIEW_CUTOVER_ROLE, text: input.body.text,

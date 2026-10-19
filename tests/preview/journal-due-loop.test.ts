@@ -197,6 +197,14 @@ it('a stop that latches during the minimal step ends the loop cleanly; the same 
     stop.file = false;
     // No stop and no refusal: the step ran.
     expect(await untilStopped(() => worker.gate(), () => stop.file)).toBe(true);
+    // Intake uses the same gate. Losing ownership between the poll and intake
+    // stops the loop without converting that expected refusal into a crash.
+    expect(await untilStopped(() => worker.intake([]), () => stop.file)).toBe(true);
+    stop.file = true;
+    expect(() => worker.intake([])).toThrow('preview stopped');
+    expect(await untilStopped(() => worker.intake([]), () => stop.file)).toBe(false);
+    await expect(untilStopped(() => worker.intake([]), () => stop.ended)).rejects.toThrow('preview stopped');
+    stop.file = false;
     // The other side: a refusal while the loop's stop condition does NOT hold is a real failure, rethrown unchanged.
     await expect(untilStopped(step, () => stop.ended)).rejects.toThrow('preview stopped');
     await expect(untilStopped(() => { throw Error('lane failed'); }, () => true)).resolves.toBe(false);

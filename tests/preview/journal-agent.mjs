@@ -3092,7 +3092,9 @@ async function main() {
       failedPolls = 0; conflictedPolls = 0; routeHealthy = true;
       // Updates this journal already recorded come back until the shared cursor passes them; only the new ones are taken.
       const batch = shared ? updates.result.filter(update => !(update?.update_id < journal.view.cursor)) : updates.result;
-      worker.intake(batch);
+      // A process can stall after the post-poll check and resume without ownership.
+      // Intake's gate must still refuse; retire cleanly just as the minimal step does.
+      if (!await untilStopped(() => worker.intake(batch), ended)) break;
       // An approved phone stop latches in the journal; the loop ends without another effect.
       if (journal.view.stop) break;
       if (shared) {
