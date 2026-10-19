@@ -6,7 +6,7 @@ import { createHostResourceAllocation } from './six-host-resources.js';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 // @ts-expect-error Host-only JavaScript.
-import { withMediaFile, voiceNotice, protectMediaBytes, invokeMediaTurn, openConversationMedia } from './media-understanding.mjs';
+import { withMediaFile, protectMediaBytes, invokeMediaTurn, openConversationMedia } from './media-understanding.mjs';
 // @ts-expect-error Host-only JavaScript.
 import { createLocalTranscriber, localMediaCommand } from '../../scripts/local-transcriber.mjs';
 // @ts-expect-error Host resource owner.
@@ -15,7 +15,7 @@ import { createResourceOwner, RESOURCE_CEILINGS } from '../../scripts/resource-o
 import { createHeldSecrets, custodyHeldSources } from './tool-turn.mjs';
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/media-understanding/${name}`, import.meta.url));
 
-it.each(['photo', 'document'])('confines the %s to a generated private path and removes it on success or throw', async kind => {
+it.each(['photo', 'document', 'voice', 'audio', 'video'])('confines the %s to a generated private path and removes it on success or throw', async kind => {
   const tmp = mkdtempSync(join(tmpdir(), 'media-path-'));
   try {
     for (const fail of [false, true]) {
@@ -34,11 +34,6 @@ it.each(['photo', 'document'])('confines the %s to a generated private path and 
       expect(existsSync(path)).toBe(false); expect(readdirSync(tmp)).toEqual([]);
     }
   } finally { rmSync(tmp, { recursive: true, force: true }); }
-});
-
-it('labels local provenance and an unreadable or interrupted recording honestly', () => {
-  expect(voiceNotice({ transcription: { state: 'complete', text: 'Tuesday at nine' } })).toContain('transcribed locally');
-  for (const state of ['pending', 'failed']) expect(voiceNotice({ transcription: { state } })).toContain('do not invent words');
 });
 
 it('enforces output, timeout and stop through the existing resource owner', async () => {

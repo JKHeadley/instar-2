@@ -949,3 +949,26 @@ it('traces carried summary candidates through authenticated, projected lineage b
     check(); journal.compact(); journal.close(); journal = openPreviewJournal(path, key); check();
   } finally { source.close(); journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+it.each(['video', 'video_note', 'animation', 'sticker'])('keeps historical %s intake auditable when file delivery is added', async kind => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'audit-file-migration-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    try {
+      const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+        model: async () => 'Noted.', send: async () => 1, checkOutbound: () => {} });
+      const raw = { update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
+        [kind]: { file_id: 'synthetic-file', file_size: 42 }, caption: 'An older file.' } };
+      worker.intake([raw]);
+      expect(auditJournal(journal.view).findings).toEqual([]);
+      const old = structuredClone(journal.view), turn = old.order[0]!;
+      turn.text = 'An older file.\n[The operator sent something with no text I can read here, for example a photo, voice note or sticker.]';
+      expect(auditJournal(old).findings).toEqual([]);
+      turn.media = { state: 'unavailable' };
+      turn.text += '\n[Media custody: File download is unavailable in this host. The original message is retained.]';
+      expect(auditJournal(old).findings).toEqual([]);
+      turn.text = 'Invented old caption.';
+      expect(auditJournal(old).findings.map((row: { code: string }) => row.code)).toContain('memory-operator-source-absent');
+    } finally { journal.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
