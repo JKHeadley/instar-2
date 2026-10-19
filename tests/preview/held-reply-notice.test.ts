@@ -1,8 +1,8 @@
+import { runChild } from '../e2e/async-child.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { createJournalWorker, HELD_NOTICE_AFTER_MS, HELD_NOTICE_WINDOW_MS, openPreviewJournal, raiseJournalCaps, reportJournalCap, UNKNOWN_SEND_NOTICE } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(7);
@@ -34,10 +34,10 @@ it('never pushes a held status: it stays visible on the pull surface', async () 
     expect({ sends, replies: journal.view.replies }).toEqual({ sends: 0, replies: 0 });
     expect(journal.view.order.every(turn => turn.heldNoticeIntent === undefined)).toBe(true);
     journal.close();
-    const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    const status = (await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
       'tests/preview/journal-agent.mjs', 'status', '--root', dir],
     { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
-      encoding: 'utf8', timeout: 10000 });
+      encoding: 'utf8', timeout: 30000 }));
     expect(status.status, status.stderr).toBe(0);
     const reported = JSON.parse(status.stdout);
     expect(reported.heldNotices).toEqual([]);
@@ -193,10 +193,10 @@ for (const [noticeReceipt, answerReceipt, unknownSends] of [
       expect(sent).toHaveLength(answerReceipt === null ? 3 : 2);
       journal.close();
 
-      const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      const status = (await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
         'tests/preview/journal-agent.mjs', 'status', '--root', dir],
       { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
-        encoding: 'utf8', timeout: 10000 });
+        encoding: 'utf8', timeout: 30000 }));
       expect(status.status, status.stderr).toBe(0);
       const reported = JSON.parse(status.stdout);
       expect(reported.unknownSends).toBe(unknownSends);

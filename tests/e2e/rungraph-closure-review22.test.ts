@@ -1,5 +1,5 @@
+import { runChild } from './async-child.js';
 import { closeSync, fsyncSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
@@ -30,7 +30,7 @@ function durableSpine(path: string) {
 
 type ColdFixture = ReturnType<typeof exhaustionFixture> | ReturnType<typeof closeUnreachable>;
 
-function cold(f: ColdFixture, spine: string, extra: Readonly<Record<string, unknown>>) {
+async function cold(f: ColdFixture, spine: string, extra: Readonly<Record<string, unknown>>) {
   const seed = {
     context: json({ ...f.ctx, ownedBodies: undefined }),
     spine,
@@ -45,10 +45,10 @@ function cold(f: ColdFixture, spine: string, extra: Readonly<Record<string, unkn
     lease: f.lease,
     ...extra,
   };
-  const child = spawnSync(process.execPath, ['tests/e2e/rungraph-closure-cold-reader.mjs'], {
+  const child = (await runChild(process.execPath, ['tests/e2e/rungraph-closure-cold-reader.mjs'], { timeout: 60_000,
     input: JSON.stringify(seed),
     encoding: 'utf8',
-  });
+  }));
   expect(child.status, child.stderr).toBe(0);
   return JSON.parse(child.stdout) as Readonly<{
     view: Readonly<{ kind: string; state?: string }>;
@@ -57,7 +57,7 @@ function cold(f: ColdFixture, spine: string, extra: Readonly<Record<string, unkn
   }>;
 }
 
-it('P5-SEAM-RC-A-PRIME-F1-E2E P5-NF-17 P5-NF-23 rejects invalid proposal and close origins after fsync and fresh-process reconstruction', () => {
+it('P5-SEAM-RC-A-PRIME-F1-E2E P5-NF-17 P5-NF-23 rejects invalid proposal and close origins after fsync and fresh-process reconstruction', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'rungraph-review22-f1-'));
   try {
     const proposalSpine = join(directory, 'proposal.jsonl');
@@ -72,7 +72,7 @@ it('P5-SEAM-RC-A-PRIME-F1-E2E P5-NF-17 P5-NF-23 rejects invalid proposal and clo
       record: closureRecordWire(badProposal as never),
     })).fact;
     proposalFixture.admissions.add(badProposalFact.id);
-    const proposalRestart = cold(proposalFixture, proposalSpine, { unreachable: badProposal });
+    const proposalRestart = (await cold(proposalFixture, proposalSpine, { unreachable: badProposal }));
     expect(proposalRestart.view).toMatchObject({ kind: 'accepted', state: 'ready' });
     expect(proposalRestart.unreachable?.kind).toBe('refused');
 
@@ -97,21 +97,21 @@ it('P5-SEAM-RC-A-PRIME-F1-E2E P5-NF-17 P5-NF-23 rejects invalid proposal and clo
       record: closureRecordWire(badClose as never),
     })).fact;
     closeFixture.admissions.add(badCloseFact.id);
-    const closeRestart = cold(closeFixture, closeSpine, { unreachable: badClose });
+    const closeRestart = (await cold(closeFixture, closeSpine, { unreachable: badClose }));
     expect(closeRestart.view).toMatchObject({ kind: 'accepted', state: 'closing' });
     expect(closeRestart.unreachable?.kind).toBe('refused');
 
     const validSpine = join(directory, 'valid.jsonl');
     const valid = closeUnreachable(durableSpine(validSpine));
-    const validRestart = cold(valid, validSpine, { unreachable: valid.terminalExit });
+    const validRestart = (await cold(valid, validSpine, { unreachable: valid.terminalExit }));
     expect(validRestart.view).toMatchObject({ kind: 'accepted', state: 'unreachable' });
     expect(validRestart.unreachable).toEqual({ kind: 'accepted', id: valid.closeFact.id });
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-}, 20_000);
+}, 90000);
 
-it('P5-SEAM-RC-A-PRIME-F2-E2E P5-NF-23 fresh-process public admission returns the typed refusal for excluded grounding input', () => {
+it('P5-SEAM-RC-A-PRIME-F2-E2E P5-NF-23 fresh-process public admission returns the typed refusal for excluded grounding input', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'rungraph-review22-f2-'));
   try {
     const spine = join(directory, 'facts.jsonl');
@@ -121,7 +121,7 @@ it('P5-SEAM-RC-A-PRIME-F2-E2E P5-NF-23 fresh-process public admission returns th
       id: 'review22:e2e:grounding',
       grounding: ref(f.opening),
     };
-    const restarted = cold(f, spine, { exhaustion: unsupported });
+    const restarted = (await cold(f, spine, { exhaustion: unsupported }));
     expect(restarted.view).toMatchObject({ kind: 'accepted', state: 'ready' });
     expect(restarted.exhaustion).toEqual({
       kind: 'refused',
@@ -130,5 +130,5 @@ it('P5-SEAM-RC-A-PRIME-F2-E2E P5-NF-23 fresh-process public admission returns th
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-}, 20_000);
+}, 90000);
 

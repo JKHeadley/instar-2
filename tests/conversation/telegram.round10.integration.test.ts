@@ -1,3 +1,4 @@
+import { setImmediate as yieldTurn } from 'node:timers/promises';
 import { expect, it } from 'vitest';
 import {
   admitTelegramAdapter, createTelegramIngress, createTelegramIntakeAdapter,
@@ -60,7 +61,7 @@ it('P12-NF-06 P12-NF-07 P12-NF-18 round10 finding 1 requires the exact captured 
   }
 });
 
-it('P12-NF-29 P12-NF-30 round10 finding 2 enforces the declared entity limit on every registered reply', () => {
+it('P12-NF-29 P12-NF-30 round10 finding 2 enforces the declared entity limit on every registered reply', async () => {
   const cases = [
     ['plain-zero', 'Hello', 0, 1],
     ['one-zero', '<b>Hello</b>', 0, 0],
@@ -70,6 +71,7 @@ it('P12-NF-29 P12-NF-30 round10 finding 2 enforces the declared entity limit on 
     ['hundred-one', Array.from({ length: 101 }, (_, index) => index % 2 ? '<i>x</i>' : '<b>x</b>').join(' '), 100, 0],
   ] as const;
   for (const [name, text, limit, expectedCalls] of cases) {
+    await yieldTurn();
     const f = telegramUnpreparedOutbound(false, text, limit);
     const before = value(f.effects.transport.inspect()).filter(row => row.record.type === 'AdmissionReservation');
     const prepared = f.prepare();
@@ -86,4 +88,4 @@ it('P12-NF-29 P12-NF-30 round10 finding 2 enforces the declared entity limit on 
     }
     expect(f.telegram.calls.send, name).toHaveLength(expectedCalls);
   }
-}, 30_000);
+}, 90000);

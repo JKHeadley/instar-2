@@ -14,9 +14,14 @@ let fact: FactEnvelope, context: FactContext, settlement: EffectSettlement;
 let application: SettlementApplication, rows: readonly TransportFact[];
 beforeAll(async () => {
   http = await localProvider();
-  const f = providerFixture(http);
+  // Settlement decoding is not an HTTP latency test. Exercise a response slower than
+  // the old 100 ms fixture budget, with a finite admitted execution budget.
+  http.delay(200);
+  const f = providerFixture({ ...http, executionTimeout: 10_000 });
   const { request } = f.prepare();
   const observation = value(await f.api.dispatch(request, f.fence));
+  const receipt = JSON.parse(value(f.captures.read(observation.capture as Parameters<typeof f.captures.read>[0])));
+  expect(receipt).toMatchObject({ state: 'complete', usage: { charge: 3 } });
   f.evidence(observation.operation, request.digest, 'operation-occurred');
   f.evidence(observation.operation, request.digest, 'charge-settled', 3);
   f.evidence(observation.operation, request.digest, 'old-executor-quiescent');

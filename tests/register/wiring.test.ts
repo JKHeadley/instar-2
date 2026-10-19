@@ -11,7 +11,7 @@ describe('source and shape wiring', () => {
     expect(inspectSource('src/client.ts', code, wiringSources()).constructs[0]?.id).toBe('missing');
     expect(checkWiring(s.build(), { ...wiringSources(), 'src/client.ts': code }).issues[0]).toContain('P3-NF-04');
     expect(checkWiring(s.build(), { ...wiringSources(), 'src/client.ts': code.replace('missing', 'store') }).issues).toEqual([]);
-  }, 30_000);
+  }, 90000);
   it('P3-NF-04 missing declaration argument and open construction fail TypeScript', () => {
     const source = "import { constructGoverned } from './src/register/index.js'; import type { Declaration } from './src/register/index.js'; constructGoverned(); const forged: Declaration = { type: 'Declaration', schemaVersion: 1 };";
     const program = createProgram({ 'register-negative.ts': source });
@@ -19,7 +19,7 @@ describe('source and shape wiring', () => {
     expect(file).toBeDefined();
     const diagnostics = program.getSemanticDiagnostics(file);
     expect(diagnostics.some(d => d.code === 2554)).toBe(true); expect(diagnostics.some(d => d.code === 2322)).toBe(true);
-  }, 30_000); // A real compiler invocation, not a five-second runtime-latency assertion.
+  }, 90000); // A real compiler invocation, not a five-second runtime-latency assertion.
   it('P3-NF-09 kind validation consumes generated shape instead of independent constants', () => {
     const s = setup(); const raw = shapeInput(); const canonicalShape = value(decodeShape(raw, s.context));
     expect(value(verifyGenerated(canonicalShape, s.context.shape, s.context))).toBe(true);
@@ -41,5 +41,5 @@ describe('source and shape wiring', () => {
     expect(checkWiring(register, { ...wiringSources(), 'src/example.ts': missingCall }).issues[0]).toContain('P3-NF-26');
     const wired = missingCall.replace('context); }', "context); decode('Profile', input, context); }");
     expect(checkWiring(register, { ...wiringSources(), 'src/example.ts': wired }).issues).toEqual([]);
-  }, 30_000);
+  }, 90000);
 });

@@ -1,8 +1,8 @@
+import { runChild } from '../e2e/async-child.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
 import { capacityRefused, createJournalWorker, openPreviewJournal, openQuestionCandidates, raiseJournalCaps, reachedJournalCap, reportJournalCap, unknownCallCounts, MINIMAL_RESERVE, MINIMAL_POLL_LIMIT } from './journal-test-worker.js';
 
@@ -55,7 +55,7 @@ it('keeps reading past maxTurns through the minimal reserve without poisoning re
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-it('counts each UNKNOWN answer, summary, review and Jev check once across restart and refuses a cap raise', () => {
+it('counts each UNKNOWN answer, summary, review and Jev check once across restart and refuses a cap raise', async () => {
   const dir = root(), path = join(dir, 'journal.encrypted');
   try {
     let journal = openPreviewJournal(path, key, genesis({ maxCalls: 3 }));
@@ -75,9 +75,9 @@ it('counts each UNKNOWN answer, summary, review and Jev check once across restar
     journal.close();
     journal = openPreviewJournal(path, key);
     expect(unknownCallCounts(journal.view)).toEqual({ answers: 1, summaries: 1, reviews: 0, jev: 1, index: 0, total: 3 });
-    const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    const status = (await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
       'tests/preview/journal-agent.mjs', 'status', '--root', dir], { cwd: process.cwd(), encoding: 'utf8',
-      env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, timeout: 10000 });
+      env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, timeout: 30000 }));
     expect(status.status, status.stderr).toBe(0);
     expect(JSON.parse(status.stdout)).toMatchObject({ calls: 3, unknownCalls: 3,
       unknownCallBreakdown: { answers: 1, summaries: 1, reviews: 0, jev: 1, index: 0, total: 3 },
@@ -90,13 +90,13 @@ it('counts each UNKNOWN answer, summary, review and Jev check once across restar
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-it('lets an authorized raise write off exactly the pending UNKNOWN calls as fully spent, which stay UNKNOWN and count', () => {
+it('lets an authorized raise write off exactly the pending UNKNOWN calls as fully spent, which stay UNKNOWN and count', async () => {
   // docs/09 "a reservation survives uncertain execution": release needs settlement evidence or a conservative
   // write-off counting the maximum as spent; neither enlarges the cap (docs/12: nor proves non-occurrence).
   const dir = root(), path = join(dir, 'journal.encrypted');
-  const agent = (...extra: string[]) => spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+  const agent = async (...extra: string[]) => (await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
     'tests/preview/journal-agent.mjs', ...extra, '--root', dir], { cwd: process.cwd(), encoding: 'utf8',
-    env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, timeout: 10000 });
+    env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, timeout: 30000 }));
   try {
     let journal = openPreviewJournal(path, key, genesis({ maxCalls: 3 }));
     worker(journal, { calls: 0, sends: 0 }).intake([update(1), update(2), update(3)]);
@@ -116,8 +116,8 @@ it('lets an authorized raise write off exactly the pending UNKNOWN calls as full
       writeOff: pending })).toThrow('monotonic');
     // A raise without the explicit flag is still refused by the operator command.
     journal.close();
-    expect(agent('raise-caps', '--max-calls', '5', '--authority', 'Justin recorded raise').status).not.toBe(0);
-    const raised = agent('raise-caps', '--max-calls', '5', '--write-off-unknown', 'true', '--authority', 'Justin recorded raise');
+    expect((await agent('raise-caps', '--max-calls', '5', '--authority', 'Justin recorded raise')).status).not.toBe(0);
+    const raised = (await agent('raise-caps', '--max-calls', '5', '--write-off-unknown', 'true', '--authority', 'Justin recorded raise'));
     expect(raised.status, raised.stderr).toBe(0);
     journal = openPreviewJournal(path, key);
     expect(journal.view.limits.maxCalls).toBe(5);
@@ -126,11 +126,11 @@ it('lets an authorized raise write off exactly the pending UNKNOWN calls as full
     expect(journal.view.calls).toBe(3);
     expect(unknownCallCounts(journal.view)).toMatchObject({ answers: 1, summaries: 1, total: 2 });
     expect(journal.view.turns.get(id(1))!.answer).toBeUndefined();
-    const status = agent('status');
+    const status = (await agent('status'));
     expect(JSON.parse(status.stdout)).toMatchObject({ calls: 3, unknownCalls: 2, unknownWrittenOff: 2 });
     // Nothing is pending now: the flag has nothing to write off, and a plain raise is admitted.
     journal.close();
-    expect(agent('raise-caps', '--max-calls', '6', '--write-off-unknown', 'true', '--authority', 'second').status).not.toBe(0);
+    expect((await agent('raise-caps', '--max-calls', '6', '--write-off-unknown', 'true', '--authority', 'second')).status).not.toBe(0);
     journal = openPreviewJournal(path, key);
     raiseJournalCaps(journal, { maxCalls: 6, maxReplies: 5, maxTurns: 5, authority: 'second', at: 1002 });
     // A later UNKNOWN call needs its own write-off.
@@ -202,7 +202,7 @@ it('counts an UNKNOWN subscription review separately from a completed answer and
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-it('counts an unresolved revised-text review as UNKNOWN in status and the cap-raise refusal, and a conclusive one not', () => {
+it('counts an unresolved revised-text review as UNKNOWN in status and the cap-raise refusal, and a conclusive one not', async () => {
   for (const verdict of [undefined, 'unavailable', 'pass', 'violation'] as const) {
     const dir = root(), path = join(dir, 'journal.encrypted');
     try {
@@ -220,9 +220,9 @@ it('counts an unresolved revised-text review as UNKNOWN in status and the cap-ra
       const unknown = verdict === undefined || verdict === 'unavailable' ? 1 : 0;
       expect(unknownCallCounts(journal.view), String(verdict)).toEqual({ answers: 0, summaries: 0, reviews: unknown, jev: 0, index: 0, total: unknown });
       journal.close();
-      const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      const status = (await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
         'tests/preview/journal-agent.mjs', 'status', '--root', dir], { cwd: process.cwd(), encoding: 'utf8',
-        env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, timeout: 10000 });
+        env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, timeout: 30000 }));
       expect(status.status, status.stderr).toBe(0);
       expect(JSON.parse(status.stdout)).toMatchObject({ unknownCalls: unknown, unknownCallBreakdown: { reviews: unknown, total: unknown } });
       journal = openPreviewJournal(path, key);

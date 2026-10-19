@@ -1,6 +1,7 @@
 // @ts-nocheck -- offline child processes exercise the actual preview launcher.
+import { runChild } from '../e2e/async-child.js';
 import { expect, it } from 'vitest';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
@@ -35,19 +36,19 @@ it('keeps Telegram polling alive through a source error, then clears it after a 
       '--tools', 'off', '--activation-record', activation, '--operator-records', join(trial.directory, 'operator-records'), '--login-profile', profile, '--model', trial.model,
       '--bot-username', trial.configuration.botUsername, '--max-cycles', '2', '--max-poll-seconds', '1',
       '--agent-state-dir', source];
-    const run = () => spawnSync(process.execPath, args, { cwd: process.cwd(), encoding: 'utf8', timeout: 15000, env });
-    const status = () => JSON.parse(spawnSync(process.execPath,
+    const run = async () => (await runChild(process.execPath, args, { cwd: process.cwd(), encoding: 'utf8', timeout: 45000, env }));
+    const status = async () => JSON.parse((await runChild(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs',
-        'status', '--root', root], { cwd: process.cwd(), encoding: 'utf8', timeout: 10000, env }).stdout);
-    const failed = run();
+        'status', '--root', root], { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env })).stdout);
+    const failed = (await run());
     expect(failed.status, failed.stderr).toBe(0);
     expect(readFileSync(pollLog, 'utf8')).toContain('getUpdates');
-    expect(status().channelSources.telegram).toMatchObject({ offset: 0, error: 'import refused' });
-    expect(status().channelItems).toBe(1); // Item append preceded the malformed line and survived.
+    expect((await status()).channelSources.telegram).toMatchObject({ offset: 0, error: 'import refused' });
+    expect((await status()).channelItems).toBe(1); // Item append preceded the malformed line and survived.
     writeFileSync(logPath, valid);
-    const recovered = run();
+    const recovered = (await run());
     expect(recovered.status, recovered.stderr).toBe(0);
-    expect(status().channelSources.telegram).toMatchObject({ imported: 1, scanned: 1, error: null });
-    expect(status().channelItems).toBe(1);
+    expect((await status()).channelSources.telegram).toMatchObject({ imported: 1, scanned: 1, error: null });
+    expect((await status()).channelItems).toBe(1);
   } finally { endpoint.kill('SIGTERM'); }
-}, 30_000);
+}, 90000);

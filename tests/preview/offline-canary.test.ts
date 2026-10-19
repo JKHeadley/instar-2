@@ -1,6 +1,6 @@
 // @ts-nocheck -- the canary exercises the shipped JavaScript CLI and encrypted preview journal.
+import { runChild } from '../e2e/async-child.js';
 import { expect, it } from 'vitest';
-import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -30,11 +30,11 @@ const scores = (rawPath = 0) => ({ model: JEV_MODEL,
 const summarySignal = score => ({ model: JEV_MODEL,
   answers: { summary_integrity: { type: 'noul', noul: score } } });
 const rootOf = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-offline-canary-')));
-const status = root => {
-  const result = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+const status = async root => {
+  const result = (await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
     'tests/preview/journal-agent.mjs', 'status', '--root', root], {
-    cwd: process.cwd(), encoding: 'utf8', timeout: 10000,
-    env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+    cwd: process.cwd(), encoding: 'utf8', timeout: 30000,
+    env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } }));
   expect(result.status, result.stderr).toBe(0);
   return JSON.parse(result.stdout);
 };
@@ -73,7 +73,7 @@ it('answers, reviews a clean reply, and records a contradictory one-line review 
     expect(journal.view.order[2].intent).toBe('The answer is scarlet.');
     expect(journal.view.order[2].held).toBeUndefined();
     expect(journal.view.order[2].release).toMatchObject({ review: 'unavailable' });
-    expect(status(root)).toMatchObject({ turns: 3, calls: 6, replies: 3,
+    expect((await status(root))).toMatchObject({ turns: 3, calls: 6, replies: 3,
       limits: { maxCalls: 12, maxReplies: 8, maxTurns: 8, maxBytes: 32768 },
       replyChecks: { pass: 2, unavailable: 1 }, reviewUnavailableReleases: { total: 1, byRule: { raw_path: 1 } },
       unknownSends: 0, stop: null });
@@ -112,7 +112,7 @@ it.each([['pass', true], ['violation', false]])('runs a rolling summary and its 
     expect(reviews).toBe(1);
     expect(journal.view.summaries.length).toBe(accepted ? 1 : 0);
     expect(journal.view.summaryCandidates.get(1)).toContain('remember the launch');
-    expect(status(root)).toMatchObject({ calls: 3, summaryThrough: accepted ? 1 : null,
+    expect((await status(root))).toMatchObject({ calls: 3, summaryThrough: accepted ? 1 : null,
       summaryChecks: { [verdict]: accepted ? 1 : 2 }, summaryPending: 0,
       lastSummaryCheck: { verdict, path: 'subscription' } });
     journal.close(); journal = openPreviewJournal(path, key);
@@ -203,7 +203,7 @@ it('upgrades the frozen live-format journal in place and preserves an UNKNOWN se
     await resumed.drain(); expect(sends).toBe(3);
     expect(journal.view.order.map(turn => [turn.update, turn.intent, turn.sent])).toEqual([
       [1, 'PREVIEW — violet', undefined], [2, 'amber', 2] ]);
-    expect(status(root)).toMatchObject({ cursor: 3, turns: 2, replies: 3, unknownSends: 1,
+    expect((await status(root))).toMatchObject({ cursor: 3, turns: 2, replies: 3, unknownSends: 1,
       unknownCallBreakdown: { total: 0 }, stop: null });
     expect(readFileSync(path, 'utf8')).not.toContain('What color?');
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }

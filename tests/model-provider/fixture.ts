@@ -29,7 +29,8 @@ import { createJudgmentCaptures } from '../../scripts/judgment-captures.mjs';
 export { value, refused };
 export const enc = (v: unknown) => value(canonical(v));
 export function providerFixture(options: { directory?: string; endpoint?: string; credential?: string;
-  route?: Partial<ConfinedProviderRoute>; afterInvoke?: () => void; timeout?: number } = {}) {
+  route?: Partial<ConfinedProviderRoute>; afterInvoke?: () => void; timeout?: number; executionTimeout?: number } = {}) {
+  const executionTimeout = options.executionTimeout ?? 100;
   const base = setup(); base.grant({ id: 'provider-agent-grant', grantee: base.bob });
   const directory = options.directory ?? mkdtempSync(join(tmpdir(), 'provider-path-'));
   let now = 100, stopped = false, generation = base.run.generation.id;
@@ -88,7 +89,7 @@ export function providerFixture(options: { directory?: string; endpoint?: string
   const definition = { type: 'OperationDefinition', schemaVersion: 1, id: 'provider-definition', feature: 'provider-call', version: 'provider-definition-v1',
     generation, adapter: 'route', account: 'test-provider', conversation: 'local-test', speaker: th.principal.id, scopeDigest: enc(th.scope).hash,
     durability: 'local-durable', replicas: 0, lossModel: 'approved test-only local origin; permanent origin loss retains uncertainty',
-    maxBytes: 4096, maxCharge: 20, timeout: 100, verificationBar: 'provider-bar' };
+    maxBytes: 4096, maxCharge: 20, timeout: executionTimeout, verificationBar: 'provider-bar' };
   const approval = base.authorize({ id: 'provider-definition-approval', artifact: base.capture(enc(definition).bytes), base: 'provider-base' });
   versions = [{ id: definition.version, subject: definition.feature, content: json(definition), contentHash: enc(definition).hash,
     since: base.opening.id, supersedes: [], approvedIn: approval, base: approval.base, landedIn: null }];
@@ -127,7 +128,7 @@ export function providerFixture(options: { directory?: string; endpoint?: string
   const graph = value(createRunGraph(deps));
   const settings = { automaticRetries: 0, maxTokens: 128 }, outputSchema = { type: 'Decision' };
   const question = { id: 'provider-question', run: { owner: 'part-five' as const, name: 'Run' as const, id: base.id }, step: 'step:provider:semantic:1', ordinal: 0,
-    semanticMessage: 'provider:semantic:1', question: 'Should work proceed?', context: 'Recorded task evidence.', evidence: ['e1', 'e2'], deadline: 400 };
+    semanticMessage: 'provider:semantic:1', question: 'Should work proceed?', context: 'Recorded task evidence.', evidence: ['e1', 'e2'], deadline: 100 + 3 * executionTimeout };
   const submitted = enc({ provider: 'test-provider', model: 'model', route: 'route', messages: [{ role: 'user', content: question.question },
     { role: 'context', content: question.context }], attachments: [], tools: [], settings, outputSchema, floor: base.floor,
     evidence: question.evidence, point: 'judgment', generation }).bytes;
@@ -138,7 +139,7 @@ export function providerFixture(options: { directory?: string; endpoint?: string
     running = value(graph.transition({ ...start, step: { ...start.step, operation: { ...start.step.operation, digest: enc(submitted).hash } } }));
   } else running = value(graph.read(base.id));
   const seven = createProviderJudgmentPort({ host: jh, boundary, authority: six, captures, store, context, privateKey, runs: graph,
-    settings, outputSchema, maxTokens: 128, maxCaptureBytes: 65536, timeout: 100, disclosure: 'local-test' });
+    settings, outputSchema, maxTokens: 128, maxCaptureBytes: 65536, timeout: executionTimeout, disclosure: 'local-test' });
   const runtime = createVerificationRuntime(vh, createVerificationSpine(vh, author, store));
   const plan = { ...verificationInput('VerificationPlan'), id: 'provider-plan', subject: { ...verificationInput('VerificationPlan').subject, generation },
     bar: { ...verificationInput('VerificationPlan').bar, version: 'provider-bar', sources: ['probe'] } };

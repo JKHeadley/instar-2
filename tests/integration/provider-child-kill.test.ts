@@ -14,12 +14,14 @@ it('kills the provider and its own hanging grandchild on timeout', async () => {
   const childFile = join(root, 'fork.mjs');
   writeFileSync(childFile, `import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
+// Slow startup must still reach the descendant before the watchdog tests cleanup.
+Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 750);
 const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
 writeFileSync(process.argv[2], JSON.stringify([process.pid, grandchild.pid]));
 setInterval(() => {}, 1000);
 `);
   const result = await productionProviderIO.execute({ executable: process.execPath, args: [childFile, pidFile],
-    cwd: root, env: { PATH: process.env.PATH ?? '/usr/bin:/bin' }, stdin: '', timeout: 500, maxBytes: 1024 });
+    cwd: root, env: { PATH: process.env.PATH ?? '/usr/bin:/bin' }, stdin: '', timeout: 5000, maxBytes: 1024 });
   expect(result.limited).toBe(true);
   expect(existsSync(pidFile)).toBe(true);
   const pids = JSON.parse(readFileSync(pidFile, 'utf8')) as number[];

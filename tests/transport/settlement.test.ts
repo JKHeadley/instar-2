@@ -1,14 +1,14 @@
+import { runChild } from '../e2e/async-child.js';
 import { expect, it } from 'vitest';
-import { spawnSync } from 'node:child_process';
 import { decode } from '../../src/index.js';
 import type { SettlementAccountingInput } from '../../src/transport/index.js';
 import { accounting, checkAccountingReceipt } from '../../src/transport/settlement.js';
 import { transportFixture, value } from './fixture.js';
 
-it('P6-NF-02 P6-NF-35 actual eight-owned settlement type composes with six without a local redefinition', () => {
-  const child = spawnSync(process.execPath, ['tests/transport/settlement-types.mjs'], { encoding: 'utf8', timeout: 20000 });
+it('P6-NF-02 P6-NF-35 actual eight-owned settlement type composes with six without a local redefinition', async () => {
+  const child = (await runChild(process.execPath, ['tests/transport/settlement-types.mjs'], { encoding: 'utf8', timeout: 60000 }));
   expect(child.status, child.stderr).toBe(0);
-}, 25000);
+}, 90000);
 
 it('P6-NF-14 P6-NF-19 P6-NF-39 accounting keeps maximum exposure at every uncertainty boundary', () => {
   const f = transportFixture(), { reservation } = f.prepared();

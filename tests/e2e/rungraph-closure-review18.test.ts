@@ -1,5 +1,5 @@
+import { runChild } from './async-child.js';
 import { closeSync, fsyncSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
@@ -21,13 +21,13 @@ function durableSpine(path: string) {
   });
 }
 
-function cold(f: ReturnType<typeof exhaustionFixture>, spine: string) {
+async function cold(f: ReturnType<typeof exhaustionFixture>, spine: string) {
   const seed = { context: json({ ...f.ctx, ownedBodies: undefined }), spine, id: f.id,
     opening: f.run.opening, generation: f.generation(), policy: f.deps.groundingPolicy,
     admissions: [...f.admissions], control: ref(f.opening),
     execution: value(f.deps.admission.execution(f.id, f.lease)), lease: f.lease };
-  const child = spawnSync(process.execPath, ['tests/e2e/rungraph-closure-cold-reader.mjs'],
-    { input: JSON.stringify(seed), encoding: 'utf8' });
+  const child = (await runChild(process.execPath, ['tests/e2e/rungraph-closure-cold-reader.mjs'],
+    { timeout: 60_000, input: JSON.stringify(seed), encoding: 'utf8' }));
   expect(child.status, child.stderr).toBe(0);
   return JSON.parse(child.stdout) as Readonly<{ view: Readonly<{ kind: string; state?: string }> }>;
 }
@@ -37,7 +37,7 @@ it.each([
   ['P5-SEAM-RC-R18-V66-E2E', 'exhaustion-only', 'completed'],
   ['P5-SEAM-RC-R18-V67-E2E', 'unwitnessed-unreachable', 'completed'],
 ] as const)('%s P5-NF-09 P5-NF-17 rebuilds durable closure history without hiding conflict or over-refusing: %s',
-  (fixtureId, mode, expectedState) => {
+  async (fixtureId, mode, expectedState) => {
     expect(fixtureId).toMatch(/^P5-SEAM-RC-R18-V(?:61|66|67)-E2E$/);
     const directory = mkdtempSync(join(tmpdir(), `rungraph-review18-${mode}-`));
     const spine = join(directory, 'facts.jsonl');
@@ -50,8 +50,8 @@ it.each([
         }
       }
       appendLegacyCompletion(f);
-      expect(cold(f, spine).view).toMatchObject({ kind: 'accepted', state: expectedState });
+      expect((await cold(f, spine)).view).toMatchObject({ kind: 'accepted', state: expectedState });
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  }, 20_000);
+  }, 90000);

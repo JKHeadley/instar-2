@@ -1,8 +1,8 @@
+import { runChild } from '../e2e/async-child.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { createDecipheriv } from 'node:crypto';
 import { brotliDecompressSync } from 'node:zlib';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, UNKNOWN_ANSWER_NOTICE, MODEL_FAILURE_REPLY } from './journal.js';
@@ -242,7 +242,7 @@ it('retains imported cursor, raised spend bounds and the stop latch across repla
   } finally { rmSync(root, {recursive:true,force:true}); }
 });
 
-it('SIGKILL at every compaction boundary leaves the old or new journal readable', () => {
+it('SIGKILL at every compaction boundary leaves the old or new journal readable', async () => {
   const stages = ['compact:before-temp','compact:after-temp','compact:after-genesis','compact:after-snapshot-start',
     'compact:after-chunk','compact:after-write','compact:after-fsync','compact:after-verify','compact:before-rename',
     'compact:after-rename','compact:after-dir-fsync','compact:after-reopen'];
@@ -250,9 +250,9 @@ it('SIGKILL at every compaction boundary leaves the old or new journal readable'
     const root = origin();
     try {
       const path = seed(root), original = readFileSync(path);
-      const child = spawnSync(process.execPath,
+      const child = (await runChild(process.execPath,
         ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-compaction-crash-child.mjs',root,stage],
-        {cwd:process.cwd(),encoding:'utf8',timeout:10000});
+        {cwd:process.cwd(),encoding:'utf8',timeout:30000}));
       expect(child.signal, `${stage}: ${child.stderr}`).toBe('SIGKILL');
       const current = readFileSync(path);
       expect(current.equals(original), stage).toBe(stages.indexOf(stage) < stages.indexOf('compact:after-rename'));
@@ -272,7 +272,7 @@ it('SIGKILL at every compaction boundary leaves the old or new journal readable'
       again.close();
     } finally { rmSync(root, {recursive:true,force:true}); }
   }
-}, 120000);
+}, 360000);
 
 it('rejects a damaged temp before replacing the old journal', () => {
   const root = origin();
@@ -291,22 +291,22 @@ it('rejects a damaged temp before replacing the old journal', () => {
   } finally { rmSync(root, {recursive:true,force:true}); }
 });
 
-it('runs the Justin probe on an isolated copy and refuses an unmarked root', () => {
+it('runs the Justin probe on an isolated copy and refuses an unmarked root', async () => {
   const root = origin();
   try {
     seed(root);
     const args = ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs',
       'tests/preview/journal-compaction-probe.mjs',root];
     const env = {...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(key).toString('hex')};
-    const refused = spawnSync(process.execPath,args,{cwd:process.cwd(),encoding:'utf8',env,timeout:10000});
+    const refused = (await runChild(process.execPath,args,{cwd:process.cwd(),encoding:'utf8',env,timeout:30000}));
     expect(refused.status).not.toBe(0);
     writeFileSync(join(root,'.journal-compaction-clone'),'');
-    const accepted = spawnSync(process.execPath,args,{cwd:process.cwd(),encoding:'utf8',env,timeout:10000});
+    const accepted = (await runChild(process.execPath,args,{cwd:process.cwd(),encoding:'utf8',env,timeout:30000}));
     expect(accepted.status, accepted.stderr).toBe(0);
     expect(JSON.parse(accepted.stdout)).toMatchObject({result:'verified',cursor:5,turns:4,calls:4,replies:2,
       unknownCalls:1,unknownSends:1,holds:1,reservations:1,stopped:false});
   } finally { rmSync(root, {recursive:true,force:true}); }
-}, 30000);
+}, 90000);
 
 it.each([false, true])('keeps an earlier attempt\'s exact input when compaction runs between attempts, then once the answer settles (Rule 58; compact before re-ask = %s)', compactBefore => {
   const root = origin(), path = join(root, 'journal.encrypted');

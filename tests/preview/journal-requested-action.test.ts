@@ -1,5 +1,5 @@
+import { runChild } from '../e2e/async-child.js';
 import { expect, it } from 'vitest';
-import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -79,10 +79,10 @@ const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<
   return { state, open, pushes };
 };
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `preview-requested-${name}-`)));
-const status = (root: string, extra: string[] = []) => spawnSync(process.execPath,
+const status = async (root: string, extra: string[] = []) => (await runChild(process.execPath,
   ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root, ...extra],
-  { cwd: process.cwd(), encoding: 'utf8', timeout: 10000,
-    env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+  { cwd: process.cwd(), encoding: 'utf8', timeout: 30000,
+    env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } }));
 
 it('answers a requested action once at its due time as an ordinary turn, stating the request and when it was made, across restarts', async () => {
   const root = tmp('once');
@@ -113,7 +113,7 @@ it('answers a requested action once at its due time as an ordinary turn, stating
     expect(state.dueCalls).toBe(1);
     expect(journal.view.replies).toBe(2);
     journal.close();
-    const read = status(root);
+    const read = (await status(root));
     expect(read.status, read.stderr).toBe(0);
     const report = JSON.parse(read.stdout);
     expect(report.requestedActions).toEqual({ requested: 1, cancelled: 0, accepted: 1, refused: 0, unknown: 0, open: [],
@@ -176,7 +176,7 @@ it('survives a restart between creating the due turn and answering it, and never
     expect(state.dueCalls).toBe(1);
     expect(pushes()).toEqual([]);
     journal.close();
-    expect(JSON.parse(status(root).stdout).requestedActions.dueTurns).toEqual([{ update: 1 + 1 / 1024, requests: 1, state: 'model UNKNOWN' }]);
+    expect(JSON.parse((await status(root)).stdout).requestedActions.dueTurns).toEqual([{ update: 1 + 1 / 1024, requests: 1, state: 'model UNKNOWN' }]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -215,7 +215,7 @@ it('keeps an UNKNOWN send as the one attempt: never resent after restart', async
     expect(pushes()).toHaveLength(1);
     expect(state.dueCalls).toBe(1);
     journal.close();
-    expect(JSON.parse(status(root).stdout).requestedActions).toMatchObject({ unknown: 1, accepted: 0,
+    expect(JSON.parse((await status(root)).stdout).requestedActions).toMatchObject({ unknown: 1, accepted: 0,
       dueTurns: [{ state: 'delivery UNKNOWN' }] });
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -325,7 +325,7 @@ it('withdraws a queued due turn when one of its requests is cancelled before it 
     expect(pushes()).toEqual([`${header('10:02', 'remind me Friday at 9 am to buy milk')}\nDoing what you asked: remind me Friday at 9 am to buy milk.`]);
     expect(state.dueCalls).toBe(1);
     journal.close();
-    expect(JSON.parse(status(root).stdout).requestedActions.dueTurns.map((turn: { state: string }) => turn.state))
+    expect(JSON.parse((await status(root)).stdout).requestedActions.dueTurns.map((turn: { state: string }) => turn.state))
       .toEqual(['withdrawn, not sent', 'accepted']);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -379,14 +379,14 @@ it('sends nothing while stopped, after an operator stop, after expiry, or at the
   }
 });
 
-it('refuses the retired trial-wide reminder grant option before any work, and accepts a launch without it', () => {
+it('refuses the retired trial-wide reminder grant option before any work, and accepts a launch without it', async () => {
   const root = tmp('retired');
   try {
     openPreviewJournal(join(root, 'journal.encrypted'), key, genesis).close();
-    const plain = status(root);
+    const plain = (await status(root));
     expect(plain.status, plain.stderr).toBe(0);
     expect(JSON.parse(plain.stdout).requestedActions).toMatchObject({ requested: 0, open: [], dueTurns: [] });
-    const retired = status(root, ['--reminder-grant-reference', 'operator:reminders']);
+    const retired = (await status(root, ['--reminder-grant-reference', 'operator:reminders']));
     expect(retired.status).toBe(1);
     expect(retired.stdout).toBe('');
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -558,7 +558,7 @@ it('writes out at most the bounded number of due requests and counts the rest in
     await worker.sendRequested();
     expect(pushes()).toHaveLength(1);
     journal.close();
-    expect(JSON.parse(status(root).stdout).requestedActions).toMatchObject({ open: [], dueTurns: [{ requests: 8, state: 'accepted' }] });
+    expect(JSON.parse((await status(root)).stdout).requestedActions).toMatchObject({ open: [], dueTurns: [{ requests: 8, state: 'accepted' }] });
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

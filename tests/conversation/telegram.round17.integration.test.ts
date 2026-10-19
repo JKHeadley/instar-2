@@ -1,3 +1,4 @@
+import { setImmediate as yieldTurn } from 'node:timers/promises';
 import { expect, it } from 'vitest';
 import { assessTelegramReplyResponse } from '../../src/conversation/index.js';
 import type { EffectAssessmentInput, OperationObservation } from '../../src/effects/index.js';
@@ -28,8 +29,9 @@ it('P12-NF-34 P12-NF-35 round17 exact Telegram response reaches the landed Part 
   refused(fixture.doorway.settle(fixture.observation.operation), 'assessor unavailable');
 });
 
-it('P12-NF-34 P12-NF-35 round17 mismatched, unwitnessed, unsupported-stage and human claims refuse', () => {
+it('P12-NF-34 P12-NF-35 round17 mismatched, unwitnessed, unsupported-stage and human claims refuse', async () => {
   for (const evidence of ['missing', 'wrong-digest'] as const) {
+    await yieldTurn();
     const fixture = telegramResponseAssessmentFixture(evidence);
     refused(assessTelegramReplyResponse({
       effect: fixture.effect, claim: 'provider-accepted', existing: null,
@@ -44,6 +46,7 @@ it('P12-NF-34 P12-NF-35 round17 mismatched, unwitnessed, unsupported-stage and h
     (input: EffectAssessmentInput): EffectAssessmentInput => ({ ...input, observations: input.observations.map(row =>
       row.stage === 'response' ? { ...row, capture: { ...row.capture, hash: `sha256:${'0'.repeat(64)}` } } as OperationObservation : row) }),
   ]) {
+    await yieldTurn();
     const fixture = telegramResponseAssessmentFixture();
     refused(assessTelegramReplyResponse({
       effect: mutate(fixture.effect), claim: 'provider-accepted', existing: null,
@@ -58,8 +61,9 @@ it('P12-NF-34 P12-NF-35 round17 mismatched, unwitnessed, unsupported-stage and h
   }, unsupported.dependencies), 'differs from its exact decoded stored record');
 
   for (const claim of ['human-delivered', 'human-read'] as const) {
+    await yieldTurn();
     const fixture = telegramResponseAssessmentFixture();
     refused(assessTelegramReplyResponse({ effect: fixture.effect, claim, existing: null }, fixture.dependencies),
       'cannot establish human delivery or read');
   }
-}, 30_000);
+}, 90000);

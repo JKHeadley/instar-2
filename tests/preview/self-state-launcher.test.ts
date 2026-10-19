@@ -1,6 +1,7 @@
 // @ts-nocheck -- offline process and HTTP fixtures exercise the real launcher.
+import { runChild } from '../e2e/async-child.js';
 import { expect, it } from 'vitest';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -55,28 +56,28 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'offline-test-key',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` };
-    const agent = (...rest) => spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
-      '--loader', loader, 'tests/preview/journal-agent.mjs', ...rest], { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env });
-    const run = (cycles, stepCheck = false) => {
+    const agent = async (...rest) => (await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      '--loader', loader, 'tests/preview/journal-agent.mjs', ...rest], { cwd: process.cwd(), encoding: 'utf8', timeout: 60000, env }));
+    const run = async (cycles, stepCheck = false) => {
       const start = performance.now();
-      const result = agent('run', '--root', root, '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
+      const result = (await agent('run', '--root', root, '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
         '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
         '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
         '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
         '--bot-username', world.configuration.botUsername, '--max-cycles', String(cycles), '--max-poll-seconds', '1',
         '--max-calls', '3', '--max-replies', '2', '--max-turns', '4', '--time-zone', 'America/Los_Angeles',
-        ...(stepCheck ? ['--step-check', 'true'] : []));
+        ...(stepCheck ? ['--step-check', 'true'] : [])));
       const runsPath = join(root, 'runs.jsonl');
       expect(result.status, result.stderr + (existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : '')).toBe(0);
       return performance.now() - start;
     };
-    const status = () => JSON.parse(agent('status', '--root', root, '--time-zone', 'America/Los_Angeles').stdout);
+    const status = async () => JSON.parse((await agent('status', '--root', root, '--time-zone', 'America/Los_Angeles')).stdout);
     const packetOf = line => JSON.parse(JSON.parse(JSON.parse(line)).messages.find(m => m.role === 'context').content).packet;
     const selfOf = line => packetOf(line).sources.find(source => source.id === 'self-state').text;
     // Run 1: two messages fill the reply cap; one call slot stays available for review.
     writeFileSync(updates, JSON.stringify([message(1, 'which activation are you running under, and until when?'), message(2, 'second')]));
-    const firstLaunch = run(4);
-    let s = status();
+    const firstLaunch = (await run(4));
+    let s = (await status());
     expect(s.self).toContain(s.memoryHealth);
     expect(s.memoryHealth).toContain('Memory health:');
     expect(s, JSON.stringify({ calls: s.calls, replies: s.replies, holds: s.holds,
@@ -113,14 +114,14 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(readFileSync(prompts, 'utf8').trim().split('\n').every(line =>
       !packetOf(line).sources.some(source => source.id === 'restart-handoff'))).toBe(true);
     // The operator raises caps; run 2 answers a third message and knows its own restart and why.
-    const raised = agent('raise-caps', '--root', root, '--max-calls', '6', '--max-replies', '5', '--max-turns', '6',
-      '--authority', 'Justin, offline test');
+    const raised = (await agent('raise-caps', '--root', root, '--max-calls', '6', '--max-replies', '5', '--max-turns', '6',
+      '--authority', 'Justin, offline test'));
     expect(raised.status, raised.stderr).toBe(0);
     writeFileSync(updates, JSON.stringify([message(1, 'which activation are you running under, and until when?'), message(2, 'second'),
       message(3, 'how many messages have we exchanged today and when did you last restart?'),
       message(4, 'one more question')]));
-    const secondLaunch = run(4);
-    s = status();
+    const secondLaunch = (await run(4));
+    s = (await status());
     expect(s.self).toContain(s.memoryHealth);
     const lines = readFileSync(prompts, 'utf8').trim().split('\n');
     prompt = lines.map(selfOf);
@@ -146,4 +147,4 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(s.self).toContain('ended'); // the latest launch has recorded its end
     process.stdout.write(`launcher runs: first=${firstLaunch.toFixed(0)} ms, restarted=${secondLaunch.toFixed(0)} ms\n`);
   } finally { endpoint.kill('SIGTERM'); }
-}, 60000);
+}, 180000);

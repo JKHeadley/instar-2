@@ -1,8 +1,8 @@
+import { runChild } from '../e2e/async-child.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createJournalWorker, importChannelItems, MEMORY_UNDECIDED_REPLY, openPreviewJournal, projectMemoryText, replyBody, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
 import { auditJournal, auditPacket } from './journal-audit.mjs';
@@ -71,15 +71,15 @@ it('withholds a forgotten channel-imported fact after journal replay', async () 
     expect(contradictionPacket.contradictions[0].earlier.id).toMatch(/^channel-ref:[a-f0-9]{64}$/u);
     expect(contexts.at(-1)).not.toContain('silver crane');
     journal.close();
-    const status = spawnSync(process.execPath,
+    const status = (await runChild(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
       { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
-        encoding: 'utf8', timeout: 10000 });
+        encoding: 'utf8', timeout: 30000 }));
     expect(status.status, status.stderr).toBe(0);
     expect(JSON.parse(status.stdout).withheld).toMatchObject([{
       channelSource: 'conversation', channelSourceId: 'archive-1 Silver Crane', reason: 'verified operator requested forgetting' }]);
   } finally { rmSync(root, { recursive: true, force: true }); }
-}, 10000);
+}, 90000);
 
 it('forgets a relevant import despite five unrelated near-term dated imports and drains the next turn', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-dated-imports-')));
@@ -323,7 +323,7 @@ it.each(['3310.', 'Sure, your gym locker code is 3310.'])('withholds the source 
     expect(later).toContain("Riley's gym locker code is 3310.");
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-}, 10000);
+}, 90000);
 
 it('uses the bounded decision to remove an affected summary passage while keeping Riley', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-summary-passage-')));
@@ -385,7 +385,7 @@ it.each([
     expect(journal.view.order[1]?.sent).toBeUndefined();
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-}, 10000);
+}, 90000);
 
 it('keeps an uncued unresolved ordinary summary pending through restart and the next summary', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-ordinary-unresolved-')));
@@ -546,11 +546,11 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     expect(w.journal.view.order[0]?.text).toBe('Sam knows My gym locker code is 3310.');
     expect(w.journal.view.memory.map(change => change.mode)).toEqual(['correct', 'forget']);
     w.journal.close();
-    const command = (mode: string) => spawnSync(process.execPath,
+    const command = async (mode: string) => (await runChild(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', mode, '--root', root],
       { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
-        encoding: 'utf8', timeout: 10000 });
-    const status = command('status'), inspect = command('inspect');
+        encoding: 'utf8', timeout: 30000 }));
+    const status = (await command('status')), inspect = (await command('inspect'));
     expect(status.status).toBe(0);
     expect(inspect.status).toBe(0);
     expect(JSON.parse(status.stdout).withheld.map((item: { reason: string }) => item.reason)).toEqual([
@@ -630,17 +630,17 @@ it('keeps only the tenth correction with longer and shorter quotes through resta
       Array.from({ length: 10 }, (_, index) => [index === 0 ? current(0)
         : index === 1 ? `Actually, ${current(1)}` : current(index).slice(4, -1), current(index + 1)]));
     journal.close();
-    const status = spawnSync(process.execPath,
+    const status = (await runChild(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
       { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
-        encoding: 'utf8', timeout: 10000 });
+        encoding: 'utf8', timeout: 30000 }));
     expect(status.status, status.stderr).toBe(0);
     const audit = JSON.parse(status.stdout).withheld as { sourceUpdate: number; operatorUpdate: number; quote: string }[];
     expect(audit.map(item => [item.sourceUpdate, item.operatorUpdate, item.quote])).toEqual(
       Array.from({ length: 10 }, (_, index) => [index + 1, index + 2,
         index === 0 ? current(0) : index === 1 ? `Actually, ${current(1)}` : current(index).slice(4, -1)]));
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
-}, 20000);
+}, 90000);
 
 it('corrects a relationship without an actually cue', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memory-relative-')));

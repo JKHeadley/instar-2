@@ -1,3 +1,4 @@
+import { runChild } from './async-child.js';
 import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -14,7 +15,7 @@ import { createProductionSessionIO } from '../../scripts/production-session-io.m
 const tmux = '/opt/homebrew/bin/tmux';
 const available = spawnSync(tmux, ['-V'], { encoding: 'utf8' }).status === 0;
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
-it.skipIf(!available)('one boot redelivery after server dies between durable record and tmux injection', () => {
+it.skipIf(!available)('one boot redelivery after server dies between durable record and tmux injection', async () => {
   const root = mkdtempSync(join(tmpdir(), 'instar20-restart-'));
   const socket = `instar20-restart-${randomUUID().slice(0, 8)}`;
   const executable = join(root, 'prompt.sh');
@@ -34,10 +35,10 @@ it.skipIf(!available)('one boot redelivery after server dies between durable rec
       incarnation: 'inc', workingScope: root, handles: [] }));
     const name = identity.split(':')[0]!;
     const worker = fileURLToPath(new URL('./session-restart-delivery-worker.mjs', import.meta.url));
-    const child = spawnSync(process.execPath, [worker, Buffer.from(JSON.stringify({ root, socket, tmux, executable,
+    const child = (await runChild(process.execPath, [worker, Buffer.from(JSON.stringify({ root, socket, tmux, executable,
       identity, digest: hash('restart message'), context: { preserved: f.c.preserved, site: f.c.site,
         register: f.c.register } })).toString('base64url')],
-      { encoding: 'utf8', timeout: 3000 });
+      { encoding: 'utf8', timeout: 30000 }));
     expect(child.signal, child.stderr).toBe('SIGKILL');
     expect(io.load().deliveries[0]?.state).toBe('prepared');
     const restarted = createProductionSessionDriver(config);

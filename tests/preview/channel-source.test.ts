@@ -1,8 +1,8 @@
+import { runChild } from '../e2e/async-child.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { agentState, importStorePass } from './channel-source.mjs';
 import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, openPreviewJournal } from './journal.js';
 import { memoryHealthLine } from './self-state.js';
@@ -210,7 +210,7 @@ it('bounds each pass and resumes after an in-place log rewrite without duplicati
   } finally { rmSync(w.base, { recursive: true, force: true }); }
 });
 
-it('CLI imports the real store format and status exposes durable per-source cursors and counts', () => {
+it('CLI imports the real store format and status exposes durable per-source cursors and counts', async () => {
   const w = world();
   try {
     w.journal.close();
@@ -220,22 +220,22 @@ it('CLI imports the real store format and status exposes durable per-source curs
     const sourcePath = join(w.statePath, 'telegram-messages.jsonl');
     const valid = lines([telegram(80, 99, 'The studio code is JADE-52.')]);
     writeFileSync(sourcePath, valid + '{bad json}\n');
-    const invoke = (command: string, extra: string[] = []) => spawnSync(process.execPath,
+    const invoke = async (command: string, extra: string[] = []) => (await runChild(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', command,
-        '--root', w.base, ...extra], { cwd: process.cwd(), encoding: 'utf8', timeout: 10_000,
-        env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
-    const failed = invoke('import-store', ['--agent-state-dir', w.statePath]);
+        '--root', w.base, ...extra], { cwd: process.cwd(), encoding: 'utf8', timeout: 30000,
+        env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } }));
+    const failed = (await invoke('import-store', ['--agent-state-dir', w.statePath]));
     expect(failed.status, failed.stderr).toBe(1);
-    const failedStatus = invoke('status');
+    const failedStatus = (await invoke('status'));
     expect(failedStatus.status, failedStatus.stderr).toBe(0);
     expect(JSON.parse(failedStatus.stdout).channelSources.telegram).toMatchObject({ offset: 0, error: 'import refused' });
     writeFileSync(sourcePath, valid);
-    const imported = invoke('import-store', ['--agent-state-dir', w.statePath]);
+    const imported = (await invoke('import-store', ['--agent-state-dir', w.statePath]));
     expect(imported.status, imported.stderr).toBe(0);
     expect(JSON.parse(imported.stdout)).toMatchObject({ results: [{ source: 'telegram', scanned: 1, imported: 0 }, { source: 'slack', absent: true }] });
-    const status = invoke('status');
+    const status = (await invoke('status'));
     expect(status.status, status.stderr).toBe(0);
     expect(JSON.parse(status.stdout).channelSources).toMatchObject({ telegram: { scanned: 1, imported: 1, skipped: 0, error: null },
       slack: { scanned: 0, imported: 0, skipped: 0, error: null } });
   } finally { rmSync(w.base, { recursive: true, force: true }); }
-}, 30_000);
+}, 90000);

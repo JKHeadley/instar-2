@@ -19,3 +19,19 @@ Two runs recorded unhandled runner errors `[vitest-worker]: Timeout calling "onT
 **Repair and closure:** the owner (1) identifies the starving file or the host condition from the worker trace, (2) confirms the resolved vitest package is the worktree's intended version, not a sibling's, and (3) repairs the cause, for example by an async yield in a long synchronous file, lower worker count or a per-worktree install. Closure needs a full run with zero runner errors under the original conditions. If a later run shows the error again, this record reopens.
 
 **Multi-machine posture:** runner and host are machine-local. This record travels with the repository.
+
+**Recurrence and bounded repair (train-77, 2026-10-19):** the supplied Studio gate at
+`4f5f1484892e4197cdcff064b22ea86bf7be4862` reported three `onTaskUpdate` errors and 28 failed
+files. Its grounding-checker F9 case ran a nested Vitest synchronously for 89.644 s, beyond
+both its 30 s case watchdog and the runner's 60 s IPC deadline. The scheduled round-nine
+matrix also blocked through repeated child launches for 60.654 s. Those cases and the
+other child-spawning files named in that gate now await the existing `tests/e2e/async-child.ts`
+helper. The Telegram matrices yield between rows. Every behavioral assertion remains.
+The helper now accepts stdin for cold readers; watchdog expiry stays non-success even if
+SIGTERM produces exit zero, with exact-child-PID SIGKILL after a one-second grace period.
+The old helper reproducibly returned status zero for that expired graceful child; the new
+unit test checks normal output, nonzero exit, spawn failure, graceful timeout and ignored TERM.
+
+This repairs identifiable blocking sites, not every possible source of host starvation.
+The full Studio rerun remains the closure test. No full-run success is inferred from the
+portable targeted files or from a source pin refresh.

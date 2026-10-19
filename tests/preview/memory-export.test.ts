@@ -1,8 +1,8 @@
+import { runChild } from '../e2e/async-child.js';
 import { expect, it } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { memoryReport } from './memory-export.js';
 import { openPreviewJournal, type JournalView, type MemoryChange } from './journal.js';
 
@@ -60,7 +60,7 @@ it('shows sourced active categories while withholding forgotten content and cred
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('exports through the read-only CLI without changing journal bytes or making a root', () => {
+it('exports through the read-only CLI without changing journal bytes or making a root', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'memory-export-cli-')));
   try {
     const path = join(root, 'journal.encrypted');
@@ -69,10 +69,10 @@ it('exports through the read-only CLI without changing journal bytes or making a
       raw: JSON.stringify(update(1, 'A harmless note')), accepted: true, cursor: 2, at });
     journal.close();
     const before = readFileSync(path), size = statSync(path).size;
-    const call = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    const call = (await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
       'tests/preview/journal-agent.mjs', 'export-memory', '--root', root], {
-      cwd: process.cwd(), encoding: 'utf8', timeout: 10000,
-      env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+      cwd: process.cwd(), encoding: 'utf8', timeout: 30000,
+      env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } }));
     expect(call.status, call.stderr).toBe(0);
     expect(call.stdout).toContain('# Preview memory review');
     expect(call.stdout).toContain('## Preferences (0)');
@@ -81,17 +81,17 @@ it('exports through the read-only CLI without changing journal bytes or making a
     expect(statSync(path).size).toBe(size);
     expect(readFileSync(path)).toEqual(before);
     const absent = join(root, 'absent');
-    const missing = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    const missing = (await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
       'tests/preview/journal-agent.mjs', 'export-memory', '--root', absent], {
-      cwd: process.cwd(), encoding: 'utf8', timeout: 10000,
-      env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+      cwd: process.cwd(), encoding: 'utf8', timeout: 30000,
+      env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } }));
     expect(missing.status).not.toBe(0);
     expect(missing.stdout).toBe('');
     expect(existsSync(absent)).toBe(false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('replays redaction, restored corrections, and exact forgetting through the CLI', () => {
+it('replays redaction, restored corrections, and exact forgetting through the CLI', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'memory-export-replay-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
@@ -120,10 +120,10 @@ it('replays redaction, restored corrections, and exact forgetting through the CL
         { mode: 'forget', source: 'telegram:11', quote: 'shape is square', trigger: 'telegram:12' },
       ] });
     journal.close();
-    const call = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    const call = (await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
       'tests/preview/journal-agent.mjs', 'export-memory', '--root', root], {
-      cwd: process.cwd(), encoding: 'utf8', timeout: 10000,
-      env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+      cwd: process.cwd(), encoding: 'utf8', timeout: 30000,
+      env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } }));
     expect(call.status, call.stderr).toBe(0);
     expect(call.stdout).toContain('## Corrections (1)');
     expect(call.stdout).toContain('My color is blue.');
@@ -136,7 +136,7 @@ it('replays redaction, restored corrections, and exact forgetting through the CL
     expect(call.stdout).not.toContain('My shape is square.');
     expect(call.stdout).toContain('## Forgotten markers (3)');
   } finally { rmSync(root, { recursive: true, force: true }); }
-}, 20_000);
+}, 90000);
 
 it('bounds a large import and reports omissions', () => {
   const view = { people: [], memory: [], dated: [], turns: new Map(), channelItems: new Map() } as unknown as JournalView;

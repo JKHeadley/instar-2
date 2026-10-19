@@ -1,5 +1,5 @@
+import { runChild } from './async-child.js';
 import { closeSync, fsyncSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
@@ -25,7 +25,7 @@ function durableSpine(path: string) {
 
 type ColdFixture = ReturnType<typeof exhaustionFixture> | ReturnType<typeof closeUnreachable>;
 
-function cold(f: ColdFixture, spine: string, unreachable?: unknown) {
+async function cold(f: ColdFixture, spine: string, unreachable?: unknown) {
   const seed = {
     context: json({ ...f.ctx, ownedBodies: undefined }),
     spine,
@@ -40,10 +40,10 @@ function cold(f: ColdFixture, spine: string, unreachable?: unknown) {
     lease: f.lease,
     ...(unreachable ? { unreachable } : {}),
   };
-  const child = spawnSync(process.execPath, ['tests/e2e/rungraph-closure-cold-reader.mjs'], {
+  const child = (await runChild(process.execPath, ['tests/e2e/rungraph-closure-cold-reader.mjs'], { timeout: 60_000,
     input: JSON.stringify(seed),
     encoding: 'utf8',
-  });
+  }));
   expect(child.status, child.stderr).toBe(0);
   return JSON.parse(child.stdout) as Readonly<{
     view: Readonly<{ kind: string; state?: string }>;
@@ -51,7 +51,7 @@ function cold(f: ColdFixture, spine: string, unreachable?: unknown) {
   }>;
 }
 
-it('P5-SEAM-RC-R21-V53-E2E P5-SEAM-RC-R21-V54-E2E P5-NF-17 P5-NF-23 refuses unsupported signed exhaustion history after fsync and fresh-process replay while preserving the valid neighbor', () => {
+it('P5-SEAM-RC-R21-V53-E2E P5-SEAM-RC-R21-V54-E2E P5-NF-17 P5-NF-23 refuses unsupported signed exhaustion history after fsync and fresh-process replay while preserving the valid neighbor', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'rungraph-review21-'));
   try {
     const badSpine = join(directory, 'bad.jsonl');
@@ -96,16 +96,16 @@ it('P5-SEAM-RC-R21-V53-E2E P5-SEAM-RC-R21-V54-E2E P5-NF-17 P5-NF-23 refuses unsu
     })).fact;
     bad.admissions.add(closeFact.id);
 
-    const restartedBad = cold(bad, badSpine, proposal);
+    const restartedBad = (await cold(bad, badSpine, proposal));
     expect(restartedBad.view).toMatchObject({ kind: 'accepted', state: 'ready' });
     expect(restartedBad.unreachable?.kind).toBe('refused');
 
     const goodSpine = join(directory, 'good.jsonl');
     const good = closeUnreachable(durableSpine(goodSpine));
-    const restartedGood = cold(good, goodSpine, good.terminalExit);
+    const restartedGood = (await cold(good, goodSpine, good.terminalExit));
     expect(restartedGood.view).toMatchObject({ kind: 'accepted', state: 'unreachable' });
     expect(restartedGood.unreachable).toEqual({ kind: 'accepted', id: good.closeFact.id });
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-}, 20_000);
+}, 90000);

@@ -140,3 +140,32 @@ that tree and eleven register builds. The branch did not grow the work: isolated
 `--maxWorkers 1` it took 37.1 s on cb7-r90 and 51.2 s on the main tree it builds on. Earlier full-suite gates took
 41 s to 72 s. The budget is now 300 s, about 2.4 times the worst full-suite duration seen. Its body and assertions
 are unchanged, and no case is skipped.
+
+## train-77 pipeline recurrence, 2026-10-19
+
+The Studio gate at `4f5f1484892e4197cdcff064b22ea86bf7be4862` reported 28 failed files,
+32 failed cases and three worker IPC errors. The supplied report records CLI watchdogs
+expiring around 10–26 s, Telegram matrices at 19–44 s, compiler checks at 20–42 s,
+restart matrices at 21–61 s, and a nested Vitest check at 89.644 s. These are execution
+watchdogs, not assertions about product latency. The affected child watchdogs get three
+times their former budget (at least 30 s); affected explicit whole-case bounds get three
+times their former budget (at least 90 s). New cold-reader bounds are 60 s. F9 gets a
+180 s child / 240 s case budget. This is finite headroom, not evidence that any host load
+can be tolerated. Async child waits and matrix yields address the worker starvation
+mechanism separately; no automatic rerun or quarantine was added.
+
+The provider settlement fixture raced real HTTP against a 100 ms admitted execution
+budget while testing settlement decoding. It now explicitly admits 10 s and injects a
+200 ms response. A new assertion requires a completed captured receipt before the
+settlement evidence is constructed. With the old 100 ms admission the same delayed
+response is uncertain and that assertion fails. Existing timeout-specific fixtures keep
+their 100 ms admission and their tighter driver timeout. The process-tree cleanup test
+now allows 5 s to start its child and injects 750 ms of startup delay; it still requires
+a timed-out result and proof that both recorded PIDs are gone.
+
+The changed fixture paths and host-dependent results are recorded in the train-77 repair
+review and operator report. Linux's `/bin/sh` lacks `ulimit -u`, which the unchanged native
+limit shim requires; launcher/provider assertions exercising that shim need the Studio.
+The media decode also needs its installed ffmpeg/whisper/model, and the tmux restart test
+names the Studio's tmux path. These are not passing evidence here. No CPU burner was run.
+The Studio full gate must confirm this recurrence is closed; the earlier failure remains red.

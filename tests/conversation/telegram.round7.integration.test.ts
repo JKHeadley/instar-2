@@ -1,3 +1,4 @@
+import { setImmediate as yieldTurn } from 'node:timers/promises';
 import { expect, it } from 'vitest';
 import { canonical } from '../../src/index.js';
 import { authorAndAppend } from '../../src/facts/index.js';
@@ -93,8 +94,9 @@ it('P12-NF-04 P12-NF-46 P12-NF-49 P12-NF-50 round7 admission requires the signed
   }
 });
 
-it('P12-NF-28 round7 final concrete invocation refuses after current standing is removed', () => {
+it('P12-NF-28 round7 final concrete invocation refuses after current standing is removed', async () => {
   for (const mode of ['unchanged', 'standing-removed'] as const) {
+    await yieldTurn();
     const f = telegramPreparedOutbound();
     let concreteInput: Parameters<typeof f.adapter.invoke>[0] | undefined;
     let suppress = false;
@@ -111,7 +113,7 @@ it('P12-NF-28 round7 final concrete invocation refuses after current standing is
     expect(f.adapter.invoke(concreteInput!).kind).toBe(mode === 'unchanged' ? 'Success' : 'Refused');
     expect(f.telegram.calls.send).toHaveLength(mode === 'unchanged' ? 1 : 0);
   }
-}, 15_000);
+}, 90000);
 
 it('P12-NF-27 P12-NF-28 P12-NF-33 P12-NF-41 round7 retained unrelated binding cannot refuse a valid next reply', () => {
   const f = telegramPreparedOutbound();
@@ -139,4 +141,4 @@ it('P12-NF-27 P12-NF-28 P12-NF-33 P12-NF-41 round7 retained unrelated binding ca
     obligation: f.effects.obligation, closure: [], fence: f.effects.fence }));
   expect(value(doorway.dispatch(prepared, f.effects.fence)).stage).toBe('response');
   expect(f.telegram.calls.send).toHaveLength(1);
-}, 15_000);
+}, 90000);

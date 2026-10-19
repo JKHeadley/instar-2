@@ -1,8 +1,8 @@
+import { runChild } from '../e2e/async-child.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { openPreviewJournal } from './journal.js';
 import { replyReviewDiagnostics } from './reply-check.js';
 
@@ -11,7 +11,7 @@ const key = new Uint8Array(32).fill(7);
 it.each([
   ['complete near cap', 'complete', 2048],
   ['uncertain without usage', 'uncertain', null],
-] as const)('%s: reviewer diagnostics survive replay and appear in status and inspect', (_name, state, count) => {
+] as const)('%s: reviewer diagnostics survive replay and appear in status and inspect', async (_name, state, count) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-review-diagnostics-')));
   try {
     const id = 'telegram:12345678:update:1';
@@ -34,10 +34,10 @@ it.each([
     replay.close();
 
     for (const command of ['status', 'inspect']) {
-      const result = spawnSync(process.execPath,
+      const result = (await runChild(process.execPath,
         ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs',
-          command, '--root', root], { cwd: process.cwd(), encoding: 'utf8', timeout: 10000,
-          env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+          command, '--root', root], { cwd: process.cwd(), encoding: 'utf8', timeout: 30000,
+          env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } }));
       expect(result.status, result.stderr).toBe(0);
       expect(JSON.parse(result.stdout).lastReplyReview).toEqual({ update: 1, state,
         diagnostics: { outputTokens: count, thinkingPresent: 'unobservable' } });

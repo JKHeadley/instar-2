@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { runChild } from './async-child.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,24 +7,24 @@ import { createScheduledWorkPackagePort } from '../../src/scheduled/index.js';
 import { scheduledFixture, value } from '../scheduled/fixture.js';
 
 describe('Part Fifteen package-resource restart evidence', () => {
-  it('P15-NF-08 re-resolves signed Part Ten package history after a durable fsync and killed-process cut', () => {
+  it('P15-NF-08 re-resolves signed Part Ten package history after a durable fsync and killed-process cut', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'p15-package-cut-'));
     const args = ['--loader', './scripts/slice-ts-loader.mjs', './scripts/slice-scheduled-package.mjs', directory];
     try {
-      const cut = spawnSync(process.execPath, [...args, 'seed-cut'], { encoding: 'utf8', timeout: 30_000 });
+      const cut = (await runChild(process.execPath, [...args, 'seed-cut'], { encoding: 'utf8', timeout: 90000 }));
       expect(cut.signal).toBe('SIGKILL');
-      const recovered = spawnSync(process.execPath, [...args, 'recover'], { encoding: 'utf8', timeout: 30_000 });
+      const recovered = (await runChild(process.execPath, [...args, 'recover'], { encoding: 'utf8', timeout: 90000 }));
       expect(recovered.status, recovered.stderr).toBe(0);
       const result = JSON.parse(recovered.stdout) as { replay: unknown; before: unknown };
       expect(result.replay).toEqual(result.before);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
-  it('P15-NF-16 recovers both intermediate owner-history cuts and refuses altered or truncated history', () => {
+  it('P15-NF-16 recovers both intermediate owner-history cuts and refuses altered or truncated history', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'p15-owner-cuts-'));
     const args = ['--loader', './scripts/slice-ts-loader.mjs', './scripts/slice-scheduled-package.mjs', directory];
     try {
-      const run = spawnSync(process.execPath, [...args, 'owner-cuts'], { encoding: 'utf8', timeout: 30_000 });
+      const run = (await runChild(process.execPath, [...args, 'owner-cuts'], { encoding: 'utf8', timeout: 90000 }));
       expect(run.status, run.stderr).toBe(0);
       const rows = JSON.parse(run.stdout) as Array<Record<string, unknown>>;
       expect(rows).toEqual([
@@ -34,7 +34,7 @@ describe('Part Fifteen package-resource restart evidence', () => {
         expect.objectContaining({ kind: 'missing-prefix', status: 'refused' }),
       ]);
     } finally { rmSync(directory, { recursive: true, force: true }); }
-  }, 30_000);
+  }, 90000);
 
   it('P15-SLICE-A-CRON gives independently decoded recurring declarations the same identity without claiming lifecycle expansion', () => {
     const before = scheduledFixture(); const port = createScheduledWorkPackagePort();
@@ -46,13 +46,13 @@ describe('Part Fifteen package-resource restart evidence', () => {
     expect(rebuilt).toEqual(first);
   });
 
-  it('P15-NF-51 preserves legacy source and conversion across a durable killed-process cut', () => {
+  it('P15-NF-51 preserves legacy source and conversion across a durable killed-process cut', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'p15-legacy-cut-'));
     const args = ['--loader', './scripts/slice-ts-loader.mjs', './scripts/slice-scheduled-package.mjs', directory];
     try {
-      const cut = spawnSync(process.execPath, [...args, 'legacy-seed-cut'], { encoding: 'utf8', timeout: 30_000 });
+      const cut = (await runChild(process.execPath, [...args, 'legacy-seed-cut'], { encoding: 'utf8', timeout: 90000 }));
       expect(cut.signal).toBe('SIGKILL');
-      const recovered = spawnSync(process.execPath, [...args, 'legacy-recover'], { encoding: 'utf8', timeout: 30_000 });
+      const recovered = (await runChild(process.execPath, [...args, 'legacy-recover'], { encoding: 'utf8', timeout: 90000 }));
       expect(recovered.status, recovered.stderr).toBe(0);
       const plan = JSON.parse(recovered.stdout) as { sourceKind: string; model: string; postCompletionLearning: string;
         activation: string; sourceBytes: string; schedule: string };

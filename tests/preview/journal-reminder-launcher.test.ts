@@ -1,6 +1,7 @@
 // @ts-nocheck -- offline process and HTTP fixtures exercise the real launcher.
+import { runChild } from '../e2e/async-child.js';
 import { expect, it } from 'vitest';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
@@ -49,18 +50,18 @@ it.each([
       endpoint.once('error', reject);
       endpoint.once('exit', code => reject(Error(`endpoint exited before listening: ${String(code)}`)));
     });
-    const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    const run = (await runChild(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
       '--loader', './tests/preview/model-failure-loader.mjs', 'tests/preview/journal-agent.mjs', 'run', '--root', root,
       '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
       '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
       '--bot-username', world.configuration.botUsername, '--max-cycles', String(queued.length + 2), '--max-poll-seconds', '1'],
-      { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env: { ...process.env,
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 60000, env: { ...process.env,
         INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
         INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'offline-placeholder',
         INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-        INSTAR_PREVIEW_SIMULATE_UNKNOWN_ANSWER: '1', INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` } });
+        INSTAR_PREVIEW_SIMULATE_UNKNOWN_ANSWER: '1', INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` } }));
     expect(run.status, run.stderr).toBe(0);
     const sends = existsSync(`${log}.sends`) ? readFileSync(`${log}.sends`, 'utf8') : '';
     journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY);
@@ -81,4 +82,4 @@ it.each([
     }
     journal.close();
   } finally { endpoint.kill('SIGTERM'); }
-}, 30000);
+}, 90000);
