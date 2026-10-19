@@ -1,5 +1,5 @@
 // Host custody for the journal launcher. Original intake is already durable;
-// bytes stay encrypted except for a source-bound local transcription or confined turn read.
+// bytes stay encrypted except for a source-bound confined turn read.
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -9,7 +9,7 @@ import { isMediaAdmission, MEDIA_OPERATION, type MediaAdmission, type MediaDispa
 /** Structural metadata only. The intake owner still verifies the sender and captures
  * the original update before a custodian may fetch anything (Rules 28, 46, 100). */
 export interface TelegramInboundMedia {
-  readonly kind: 'photo' | 'voice' | 'audio' | 'document';
+  readonly kind: 'photo' | 'voice' | 'audio' | 'document' | 'video' | 'video_note' | 'animation' | 'sticker';
   readonly fileId: string | null;
   readonly name: string;
   readonly size: number | null;
@@ -17,7 +17,7 @@ export interface TelegramInboundMedia {
 export function telegramInboundMedia(message: unknown): TelegramInboundMedia | null {
   if (message === null || typeof message !== 'object' || Array.isArray(message)) return null;
   const fields = message as Readonly<Record<string, unknown>>;
-  const kind = (['photo', 'voice', 'audio', 'document'] as const).find(key => fields[key] !== undefined);
+  const kind = (['photo', 'voice', 'audio', 'document', 'video', 'video_note', 'animation', 'sticker'] as const).find(key => fields[key] !== undefined);
   if (!kind) return null;
   let value = fields[kind];
   if (kind === 'photo') {
@@ -75,7 +75,6 @@ export function mediaCustodyText(result: MediaCustodyResult): string {
  * streaming and lifetime, no retries. The bot credential stays in the host closure. */
 export function createTelegramMediaCustody(root: string, key: Uint8Array, ports: {
   token(): string; stopped(): boolean; fetch?: typeof fetch; admission?: MediaAdmission;
-  transcribe?(bytes: Buffer, source: string): Promise<string>;
 }) {
   if (key.byteLength !== 32) throw Error('media: key refused');
   const directory = join(root, 'media'), request = ports.fetch ?? fetch;
@@ -184,26 +183,5 @@ export function createTelegramMediaCustody(root: string, key: Uint8Array, ports:
       return { state: 'failed', ...(refused ? { reason: 'admission-refused' as const } : {}) };
     } finally { clearTimeout(timer); clearInterval(stopTimer); }
   };
-  const receive = async (source: string, media: TelegramInboundMedia): Promise<MediaCustodyResult> => {
-    const result = await download(source, media);
-    if (result.state !== 'stored' || !['voice', 'audio'].includes(media.kind)) return result;
-    const saved = open(source, media, result);
-    // Persist the attempt before invoking a process. A crash preserves the original and
-    // an honest incomplete transcript, never another automatic transcription attempt.
-    if (saved.transcription) return saved.transcription.state === 'complete' && saved.transcription.text
-      ? { ...result, transcript: saved.transcription.text } : result;
-    // Atomic replacement briefly holds old and new ciphertext. Keep that overlap
-    // inside the same store ceiling; original audio remains available when full.
-    const used = readdirSync(directory).reduce((sum, name) => sum + statSync(join(directory, name)).size, 0);
-    if (used + statSync(pathFor(result.reference)).size + 65536 > MEDIA_STORE_MAX_BYTES) return result;
-    write(result.reference, { ...saved, transcription: { state: 'pending' } });
-    let transcription: NonNullable<Saved['transcription']> = { state: 'failed' };
-    try {
-      const text = (await ports.transcribe?.(saved.bytes, source))?.trim();
-      if (!ports.stopped() && text && Buffer.byteLength(text) <= 16384) transcription = { state: 'complete', text };
-    } catch { /* original bytes remain readable; no provider diagnostic enters the packet */ }
-    write(result.reference, { ...saved, transcription });
-    return transcription.state === 'complete' && transcription.text ? { ...result, transcript: transcription.text } : result;
-  };
-  return Object.freeze({ receive, verify, open });
+  return Object.freeze({ receive: download, verify, open });
 }

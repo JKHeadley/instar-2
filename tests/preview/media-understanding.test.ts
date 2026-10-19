@@ -6,7 +6,7 @@ import { createHostResourceAllocation } from './six-host-resources.js';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 // @ts-expect-error Host-only JavaScript.
-import { withMediaFile, voiceNotice, protectMediaBytes, invokeMediaTurn, openConversationMedia } from './media-understanding.mjs';
+import { withMediaFile, protectMediaBytes, invokeMediaTurn, openConversationMedia } from './media-understanding.mjs';
 // @ts-expect-error Host-only JavaScript.
 import { createLocalTranscriber, localMediaCommand } from '../../scripts/local-transcriber.mjs';
 // @ts-expect-error Host resource owner.
@@ -34,11 +34,6 @@ it.each(['photo', 'document'])('confines the %s to a generated private path and 
       expect(existsSync(path)).toBe(false); expect(readdirSync(tmp)).toEqual([]);
     }
   } finally { rmSync(tmp, { recursive: true, force: true }); }
-});
-
-it('labels local provenance and an unreadable or interrupted recording honestly', () => {
-  expect(voiceNotice({ transcription: { state: 'complete', text: 'Tuesday at nine' } })).toContain('transcribed locally');
-  for (const state of ['pending', 'failed']) expect(voiceNotice({ transcription: { state } })).toContain('do not invent words');
 });
 
 it('enforces output, timeout and stop through the existing resource owner', async () => {
