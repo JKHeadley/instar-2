@@ -85,7 +85,9 @@ it('an idle intake starts immediately, and an ordinary busy submission still doe
 
 it('the launcher offers intake before its minimal await, after durable peer sync and read-ahead stop protection', () => {
   const source = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
-  const intake = source.slice(source.indexOf('      worker.intake(batch);'));
+  const intakeStart = source.indexOf('if (!await untilStopped(() => worker.intake(batch), ended)) break;');
+  expect(intakeStart).toBeGreaterThanOrEqual(0);
+  const intake = source.slice(intakeStart);
   const wake = intake.indexOf('if (batch.length > 0) workCycle(false, true)');
   expect(wake).toBeGreaterThan(intake.indexOf('await shared.sync()'));
   expect(wake).toBeGreaterThan(intake.indexOf('worker.readAhead()'));
