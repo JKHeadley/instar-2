@@ -27,6 +27,18 @@ Decision: train-85-D | Run targeted WSL checks; report unchanged host-dependent 
 Decision: train-85-desk | Use downloaded desk repin/build/rehash/replay chain, changing only macOS sed syntax for Linux. Guard constants and native certificate remain unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-85-PROGRESS.md
 
 Deferral: generated/register.json:1 | not-a-deferral=Existing declaration wording reproduced by the generator, not unfinished work.
+Deferral: tests/preview/README.md:33 | not-a-deferral=Documentation of the shipped deferred-answer lifecycle, not unfinished builder work.
+Deferral: tests/preview/deferral-delivery.test.ts:79 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:18 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:19 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:24 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:27 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:43 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:48 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:51 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged existing protocol text; not a semantic classifier copied from a fixture.
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged existing protocol text; not a semantic classifier copied from a fixture.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged existing protocol text; not a semantic classifier copied from a fixture.
 Verification: Targeted member and direct importer tests, requested journal/subscription/register checks, final pinned subset, typecheck, lint, architecture, register and change-review checks; exact outcomes in the train report.
 simplestRobustRoute: This is the simplest robust route: one ordinary reviewed-head merge and the existing desk chain. The member clarifies preparation versus delivery using existing scheduled work and retained reports; no new retry, classifier, state or send path. Durable intake starts work; completed substantive reports and receipts finish it; existing dependency, stop, spend and send guards remain. No new unattended live acceptance claim.
 80/20: Targeted changed tests and direct importers plus explicitly required train checks; no full suite or base comparison worktree.
