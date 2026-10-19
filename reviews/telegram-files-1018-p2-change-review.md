@@ -1,6 +1,6 @@
 # Change review — files sent in Telegram reach the agent
 
-Subject base: 0227b381
+Subject base: 0227b3815d1b0a07b225e2a0957f8be394468aae
 Review state: open
 Reviewed content: none
 Outcome: Every supported Telegram file-bearing message downloads into encrypted custody and reaches the admitted harness as a protected local file path, without per-type interpretation in Instar.
