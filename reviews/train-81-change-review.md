@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Integrate four exact reviewed heads: deferred preparation clarity, application response guidance, protected Telegram file paths with restored audio transcripts, and separate available phone actions from ceiling renewal proof.
 Affected rules: 1, 4, 8, 10, 12, 26, 30, 32, 34, 36, 37, 42, 44, 45, 46, 49, 60, 63, 66, 69, 70, 74, 79, 82, 84, 90, 95, 100, 101, 102, 105, 111, 112, 113, 115, 116
-Affected floors: Existing secret protection precedes file and transcript publication; existing spend, stop, ownership, durable intake and unique delivery guards remain. No provider credentials or grants added.
+Affected floors: Existing secret protection precedes file and transcript publication; existing spend, stop, ownership, durable intake and no duplicate sends guards remain. No provider credentials or grants added.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
@@ -30,6 +30,22 @@ Decision: train-81-D | Targeted WSL checks only; host-bound tests and native cer
 Decision: train-81-desk | Run downloaded repin/build/rehash/replay chain with Linux sed syntax; leave guard constants unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-81-PROGRESS.md
 
 Deferral: generated/register.json:1 | not-a-deferral=Existing declaration wording reproduced by the generator; no deferred repair introduced.
+Deferral: tests/preview/README.md:33 | not-a-deferral=Documentation of the shipped deferred-answer lifecycle, not unfinished builder work.
+Deferral: tests/preview/deferral-delivery.test.ts:79 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:18 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:19 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:24 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:27 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:43 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:48 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:51 | not-a-deferral=Recorded deferred-work evidence and expected retained result, not unfinished builder work.
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged existing protocol text; not a semantic classifier copied from a fixture.
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged existing protocol text; not a semantic classifier copied from a fixture.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged existing protocol text; not a semantic classifier copied from a fixture.
+Deferral: tests/preview/fixtures/email-gap-1017.json:5 | not-a-deferral=Captured historical refusal and request, not unfinished integration work.
+Prompt finding: 0725f0150c56 | protocol-literal | Application-role guidance asserted by the recorded replay test; not a classifier matching user words.
+Prompt finding: 27d7720e7977 | protocol-literal | Historical application memory framing retained for exact replay normalization; not a keyword decision.
+Publication: Generated register replay committed in 41d2cd02 from source 64c47cef; this record covers that publication as well as all four merges.
 Verification: Exact commands, targeted replay results, native certificate exception and expected Studio-only report findings are recorded in train-81-PROGRESS.md through the local handoff report.
 simplestRobustRoute: This is the simplest robust route: ordinary merges of the reviewed heads, preservation of both behaviors at overlaps, and existing regeneration tools. No new product machinery, retry or authority is introduced. Existing start admission, output/durability end checks and stop/spend/resource limits remain. Studio owns native recertification and unattended live acceptance; local replay establishes integration behavior only.
 80/20: Changed tests, direct importers and explicitly requested journal/READY checks, in bounded foreground chunks, not the full suite. Preserve accepted member fixes instead of re-deriving them.
