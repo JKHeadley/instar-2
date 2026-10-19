@@ -40,7 +40,7 @@ Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:43 | not-a-de
 Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:48 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
 Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:51 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
 Deferral: tests/preview/fixtures/email-gap-1017.json:5 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
-Review metadata repair: Full member base id is corrected and two integration prompt dispositions are recorded here without changing runtime or tests.
+Review metadata repair: Full member base id, tier and closing fields are corrected; two integration prompt dispositions are recorded here. The earlier integration record carries historical-fixture dispositions because its metadata touch extends its checked subject. No runtime or test change.
 Prompt finding: 0725f0150c56 | protocol-literal | Tests assert delivered granted-role and refusal-preservation instructions, not phrases used to classify user intent.
 Prompt finding: 27d7720e7977 | protocol-literal | Tests assert application integration framing; no keyword branch or expected reviewer verdict is introduced.
 Verification: Targeted changed tests and direct importers, requested journal and subscription checks, pinned READY subset, typecheck, architecture, lint, register and change-review checks; exact results in report.

@@ -46,6 +46,16 @@ Subject (38 paths): generated/capabilities.json, generated/capabilities.md, gene
 
 ## Closing block
 
+Deferral: tests/preview/README.md:33 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not deferred builder work.
+Deferral: tests/preview/deferral-delivery.test.ts:79 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not deferred builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:18 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not deferred builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:19 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not deferred builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:24 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not deferred builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:27 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not deferred builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:43 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not deferred builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:48 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not deferred builder work.
+Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:51 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not deferred builder work.
+Deferral: tests/preview/fixtures/email-gap-1017.json:5 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not deferred builder work.
 simplestRobustRoute: an ordinary merge, conflicts limited to generated output, unioned changelog histories, unchanged or identical live docs bodies and derived pins, then the existing desk chain and register replay re-derive everything the merged bytes determine; real content conflicts go to a builder; tool failures stay desk-owned.
 80/20: mechanical only; cheap checks (lint, register:check, change-review check) run here; the pipeline's full gate runs the test suite and post-test checkers on the merged head.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
