@@ -2,7 +2,7 @@ import { boundary, ensure, freeze, take } from './boundary.js';
 import { createConversationSessionPort } from './production-conversation-session.js';
 import type { ConversationSessionConfig, ConversationSessionPort, ConversationState } from './production-conversation-session.js';
 import type { HarnessAdapterPort, HarnessInputDelivery } from './contracts.js';
-import type { SessionWorkEdge, SessionWorkRequest } from './production-session-work.js';
+import type { SessionWorkEdge, SessionWorkEdgeClose, SessionWorkRequest } from './production-session-work.js';
 import type { Result } from '../index.js';
 
 export interface ConversationTopicsState {
@@ -10,6 +10,9 @@ export interface ConversationTopicsState {
   readonly edge: SessionWorkEdge | null; readonly reserved: boolean;
   readonly topics: Readonly<Record<string, ConversationState>>;
   readonly legacy?: ConversationState; readonly legacyImported?: boolean;
+  readonly allowanceEpoch?: number;
+  readonly allowanceDeadline?: number;
+  readonly renewal?: SessionWorkEdgeClose | null;
 }
 export interface ConversationTopicsConfig extends Omit<ConversationSessionConfig, 'store' | 'createAdapter'> {
   readonly topicConfig?: (topic: string) => Pick<ConversationSessionConfig, 'io' | 'resources' | 'authorized' | 'currentAuthority' | 'createAdapter' | 'prepareTurn'>;
@@ -40,11 +43,20 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     ensure(!state.legacy || state.legacy.version === 1 && Array.isArray(state.legacy.inputs)
       && Number.isSafeInteger(state.legacy.spent) && state.legacy.spent >= 0, 'legacy custody malformed');
     ensure(!state.edge || state.reserved && state.edge.budget.calls === config.maxCalls, 'topic reservation interrupted or allowance changed');
+    ensure(Number.isSafeInteger(state.allowanceEpoch ?? 0) && (state.allowanceEpoch ?? 0) >= 0,
+      'allowance epoch malformed');
+    ensure(state.allowanceDeadline === undefined || Number.isSafeInteger(state.allowanceDeadline) && state.allowanceDeadline > 0,
+      'allowance lifetime malformed');
+    ensure(!state.renewal || state.edge && state.renewal.id === `${state.edge.id}:renew`
+      && state.renewal.edge === state.edge.id && state.renewal.calls === config.maxCalls
+      && state.renewal.reserved === config.maxCalls, 'allowance renewal intent malformed');
     const persist = (patch: Partial<ConversationTopicsState>) => {
       const next = freeze({ ...state, ...patch }); config.store.save(next); state = next;
     };
-    const parentDeadline = () => Math.min(config.allowanceDeadline, state.edge?.budget.deadline ?? config.allowanceDeadline);
-    const spent = () => Object.values(state.topics).reduce((sum, row) => sum + row.spent, state.legacy?.spent ?? 0);
+    const parentDeadline = () => Math.min(config.allowanceDeadline, state.allowanceDeadline ?? config.allowanceDeadline,
+      state.edge?.budget.deadline ?? config.allowanceDeadline);
+    const spent = () => Object.values(state.topics).reduce((sum, row) => sum + row.spent,
+      state.allowanceEpoch ? 0 : state.legacy?.spent ?? 0);
     ensure(spent() <= config.maxCalls, 'shared topic allowance exceeded');
     const hosts = new Map<string, ConversationSessionPort>();
     const active = new Set<string>();
@@ -82,7 +94,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
         append: record => {
           if (record.type === 'SessionWorkEdge' && !record.drawsOn) {
             if (!state.edge) {
-              const edge = { ...record, id: `${config.conversation}:allowance`, child: config.conversation };
+              const edge = { ...record, id: `${config.conversation}:allowance${state.allowanceEpoch ? `:${state.allowanceEpoch}` : ''}`, child: config.conversation };
               persist({ edge }); config.append(edge); persist({ reserved: true });
             }
             ensure(state.reserved, 'shared reservation interrupted; reconciliation required');
@@ -173,9 +185,46 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       }
       recovered = true;
     })();
+    let renewing: Promise<void> | null = null;
+    const renewIfIdle = (): Promise<void> => {
+      if (renewing) return renewing;
+      if (!state.edge || spent() !== config.maxCalls || [...busy.values()].some(count => count > 0)
+        || stopped || config.stopped() || !config.authorized() || config.now() >= parentDeadline()
+        || cleanupInhibited()) return Promise.resolve();
+      renewing = (async () => {
+        // Fence every old admission before clearing its counters. Custody and epoch
+        // identities survive; no dispatched or uncertain input is replayed.
+        for (const host of hosts.values()) if (!await host.retireIdle()) return;
+        if (stopped || config.stopped() || !config.authorized() || config.now() >= parentDeadline()) return;
+        for (const host of hosts.values()) await host.close();
+        if (stopped || config.stopped() || !config.authorized() || config.now() >= parentDeadline()) return;
+        const edge = state.edge!;
+        const pending = state.renewal;
+        if (!pending) persist({ renewal: { type: 'SessionWorkEdgeClose', schemaVersion: 1,
+          id: `${edge.id}:renew`, edge: edge.id, child: null, state: 'complete',
+          detail: 'Exhausted allowance retired; topic custody retained for renewal.', evidence: edge.id,
+          resultBytes: null, closedAt: config.now(), calls: spent(), reserved: config.maxCalls } });
+        // An interrupted append is reconciled against the durable journal, never
+        // inferred from an in-memory flag. Closing does not refund spent calls.
+        if (pending) ensure(config.recoveryEdges, 'allowance renewal needs journal reconciliation');
+        const recorded = pending ? config.recoveryEdges!().find(row => row.id === pending.id) : undefined;
+        if (recorded) ensure(JSON.stringify(recorded) === JSON.stringify(pending), 'allowance renewal evidence differs');
+        else config.append(state.renewal!);
+        const topics = Object.fromEntries(Object.entries(state.topics).map(([topic, row]) => {
+          const { halt, ...retained } = row;
+          return [topic, { ...retained, edge: null, reserved: false, spent: 0, claimCalls: 0, close: null,
+            ...(halt && halt.reason !== 'calls' ? { halt } : {}) }];
+        }));
+        persist({ topics, edge: null, reserved: false, renewal: null, allowanceDeadline: parentDeadline(),
+          allowanceEpoch: (state.allowanceEpoch ?? 0) + 1 });
+        hosts.clear();
+      })().finally(() => { renewing = null; });
+      return renewing;
+    };
     const runBatch = async (requests: readonly SessionWorkRequest[]) => {
       ensure(requests.length > 0 && requests.every(request => config.topicOf(request.operation) === config.topicOf(requests[0]!.operation)), 'batch must name one topic');
       await recover();
+      await renewIfIdle();
       const topic = config.topicOf(requests[0]!.operation), host = hostFor(topic);
       busy.set(topic, (busy.get(topic) ?? 0) + 1);
       try { return await host.runBatch(requests); }
@@ -185,6 +234,8 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     const maintain = async () => {
       await recover();
       if (config.stopped() || config.now() >= parentDeadline()) { await close(); return; }
+      await renewIfIdle();
+      for (const topic of Object.keys(state.topics)) hostFor(topic);
       const pressured = config.capacity && (await config.capacity()).memoryPressure;
       if (pressured) await reclaim();
       // A queued worker needs a slot or resource lease. Its admission below owns
@@ -209,7 +260,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       await Promise.all([...hosts].filter(([topic]) => state.topics[topic]?.inputs.some(input => input.state === 'queued')).map(maintainHost));
     };
     const close = async () => {
-      stopped = true; notify(); await recover();
+      stopped = true; notify(); await renewing; await recover();
       const results = await Promise.all([...hosts.values()].map(host => host.close()));
       return results.find(row => row?.state === 'uncertain') ?? results.find(row => row !== null) ?? null;
     };

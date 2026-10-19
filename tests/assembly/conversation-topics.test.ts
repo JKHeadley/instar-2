@@ -1,6 +1,9 @@
-import { expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { openPreviewJournal } from '../preview/journal.js';
 import { createConversationTopicsPort } from '../../src/assembly/conversation-topics.js';
 import type { ConversationTopicsConfig, ConversationTopicsState } from '../../src/assembly/conversation-topics.js';
 import type { HarnessInputDelivery, HarnessWorkerHandle } from '../../src/assembly/contracts.js';
@@ -10,6 +13,10 @@ import { value } from '../facts/fixtures.js';
 import { nestedSessionWorkEdge, nestedSessionWorkClose } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error the shipped admission checkpoint is JavaScript
 import { createAdmissionGate } from '../preview/admission-gate.mjs';
+// @ts-expect-error the production encrypted custody store is JavaScript
+import { createConversationHostStore } from '../../scripts/conversation-host-store.mjs';
+const renewalRoots: string[] = [];
+afterEach(() => { for (const root of renewalRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const digest = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const tick = () => new Promise<void>(resolve => setTimeout(resolve, 1));
 async function until(test: () => boolean) { for (let i = 0; i < 500 && !test(); i++) await tick(); expect(test()).toBe(true); }
@@ -114,14 +121,15 @@ it('idle maintenance retires a worker without resetting its spent allowance or c
   expect(f.state().topics.main?.inputs[0]?.cursor).toBe(2); await f.port.close();
 });
 
-it('every topic and restart draws from the same allowance; the cap never multiplies', async () => {
+it('every topic shares one allowance, renewed only after exhaustion and idle retirement', async () => {
   const f = fixture(2, 2);
   await Promise.all([f.port.run(f.request('7:a')), f.port.run(f.request('8:b'))]);
   expect(Object.values(f.state().topics).reduce((sum, row) => sum + row.spent, 0)).toBe(2);
   await f.port.close(); f.restart();
-  expect(await f.port.run(f.request('9:c'))).toMatchObject({ state: 'uncertain' });
-  expect(f.delivered).toHaveLength(2);
-  expect(f.edges.filter(row => row.type === 'SessionWorkEdge' && !row.drawsOn)).toHaveLength(1);
+  expect(await f.port.run(f.request('9:c'))).toMatchObject({ state: 'complete' });
+  expect(f.delivered).toHaveLength(3);
+  expect(f.edges.filter(row => row.type === 'SessionWorkEdge' && !row.drawsOn)).toHaveLength(2);
+  expect(f.edges.find(row => row.id === 'operator:allowance:renew')).toMatchObject({ calls: 2, reserved: 2 });
   await f.port.close();
 });
 
@@ -581,5 +589,162 @@ it.each([[1, 16], [2, 1]])('expiry preserves slot/resource pressure confirmation
   expect((await f.port.collect('8:b'))?.outcome).toMatchObject({ state: 'queued' });
   f.advance(30000); await f.port.maintain();
   expect((await f.port.collect('8:b'))?.outcome).toMatchObject({ state: 'complete' });
+  await f.port.close();
+});
+
+// Recorded incident: live-answer-fail-1019-PROGRESS.md, updates 969390599/600.
+// Both roots had main=113, topic 3=15, allowance=128, no attempt on the next input.
+async function exhaustedIncident() {
+  const f = fixture(2, 128);
+  await f.port.run(f.request('main:969390598')); await f.port.run(f.request('3:probe'));
+  await f.port.close();
+  const old = structuredClone(f.state());
+  f.config.store.save({ ...old, topics: { ...old.topics,
+    main: { ...old.topics.main!, spent: 113 }, '3': { ...old.topics['3']!, spent: 15 } } });
+  f.restart(); return f;
+}
+
+it('loads the recorded 128/128 incident and renews without losing custody or replaying old replies', async () => {
+  const f = await exhaustedIncident();
+  const inputs = Object.values(f.state().topics).flatMap(row => row.inputs);
+  expect(await f.port.run(f.request('main:969390600'))).toMatchObject({ state: 'complete' });
+  expect(f.state().edge?.id).toBe('operator:allowance:1');
+  expect(f.state().topics.main!.spent).toBe(1);
+  expect(f.state().topics['3']!.spent).toBe(0);
+  for (const input of inputs) expect(await f.port.collect(input.request.operation)).toEqual({ request: input.request, outcome: input.outcome });
+  await f.port.close(); f.restart();
+  expect(await f.port.run(f.request('main:969390600'))).toMatchObject({ state: 'complete' });
+  expect(f.delivered).toHaveLength(3);
+  expect(await f.port.run(f.request('3:next'))).toMatchObject({ state: 'complete' });
+  expect(f.edges.filter(row => row.type === 'SessionWorkEdge' && !row.drawsOn)).toHaveLength(2);
+  await f.port.close();
+});
+
+it.each(['before-append', 'after-append', 'before-reset'] as const)('renewal reconciles a crash %s against journal evidence', async crash => {
+  const f = await exhaustedIncident();
+  const append = f.config.append, save = f.config.store.save;
+  let injected = false;
+  const crashingAppend: ConversationTopicsConfig['append'] = row => {
+    if (row.id === 'operator:allowance:renew' && !injected && crash !== 'before-reset') {
+      injected = true;
+      if (crash === 'after-append') append(row);
+      throw Error('simulated crash');
+    }
+    append(row);
+  };
+  Object.assign(f.config, { append: crashingAppend });
+  f.config.store.save = next => {
+    if (crash === 'before-reset' && next.allowanceEpoch === 1 && !injected) { injected = true; throw Error('simulated crash'); }
+    save(next);
+  };
+  f.restart();
+  await expect(f.port.run(f.request('main:969390600'))).rejects.toThrow('simulated crash');
+  Object.assign(f.config, { append }); f.config.store.save = save; f.restart();
+  expect(await f.port.run(f.request('main:969390600'))).toMatchObject({ state: 'complete' });
+  expect(f.edges.filter(row => row.id === 'operator:allowance:renew')).toHaveLength(1);
+  expect(f.delivered).toHaveLength(3); await f.port.close();
+});
+
+it('concurrent arrivals renew once and stale claims cannot spend the new allowance', async () => {
+  const f = await exhaustedIncident(); const oldClaim = f.launches[0]!.worker.claim;
+  const results = await Promise.all([f.port.run(f.request('main:new')), f.port.run(f.request('3:new'))]);
+  expect(results.map(row => row.state)).toEqual(['complete', 'complete']);
+  expect(f.edges.filter(row => row.id === 'operator:allowance:renew')).toHaveLength(1);
+  expect(() => f.port.reserveCall(oldClaim, 2)).toThrow(/unknown/);
+  expect(Object.values(f.state().topics).reduce((sum, row) => sum + row.spent, 0)).toBe(2);
+  await f.port.close();
+});
+
+it.each(['stop', 'grant', 'deadline', 'retirement'] as const)('does not renew across the %s floor', async floor => {
+  const f = await exhaustedIncident();
+  if (floor === 'stop') f.stop();
+  if (floor === 'grant') f.revoke();
+  if (floor === 'deadline') f.advance(100000);
+  if (floor === 'retirement') {
+    const create = f.config.createAdapter;
+    const createAdapter: ConversationTopicsConfig['createAdapter'] = (topic, resolve) => ({ ...create(topic, resolve), control: async () => ({ state: 'refused', evidence: 'not closed' }) });
+    Object.assign(f.config, { createAdapter });
+    // Retain a claim to prove failed physical retirement cannot reset accounting.
+    const state = f.state(); f.config.store.save({ ...state, topics: { ...state.topics,
+      main: { ...state.topics.main!, claim: 'old-claim', incarnation: 'old', authority: 'grant' } } });
+    f.restart();
+  }
+  await f.port.run(f.request('main:new')).catch(() => {});
+  expect(f.state().allowanceEpoch).toBeUndefined();
+  expect(f.edges.filter(row => row.id === 'operator:allowance:renew')).toHaveLength(0);
+  expect(f.delivered).toHaveLength(2);
+});
+
+it('an exhausted allowance does not renew while another topic still runs', async () => {
+  const f = fixture(2, 1); f.held.add('7');
+  const pending = f.port.run(f.request('7:busy')); await until(() => f.delivered.length === 1);
+  expect(await f.port.run(f.request('8:new'))).toMatchObject({ state: 'uncertain' });
+  expect(f.state().allowanceEpoch).toBeUndefined();
+  f.held.clear(); await pending;
+  expect(await f.port.run(f.request('8:later'))).toMatchObject({ state: 'complete' });
+  expect(f.state().allowanceEpoch).toBe(1); await f.port.close();
+});
+
+it.each(recordedCapacityShapes.otherShapes)('renewal dispatches preserved recorded $kind ($id)', async sample => {
+  const f = await exhaustedIncident();
+  const request = { ...f.request('main:969390600'), context: sample.raw };
+  await f.port.run(request);
+  expect(f.state().allowanceEpoch).toBe(1);
+  expect(f.delivered.at(-1)!.input.text).toContain(sample.raw);
+  await f.port.close();
+});
+
+it.each([128, 7500])('renewal uses the real journal budget and survives reopen (already reserved=%s)', async reserved => {
+  const f = await exhaustedIncident();
+  const root = mkdtempSync(join(tmpdir(), 'allowance-renew-')); renewalRoots.push(root);
+  const open = () => openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
+    kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
+    configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 7500, maxReplies: 30,
+    maxTurns: 30, maxBytes: 262144, cursor: 0 });
+  let journal = open();
+  const custodyPath = join(root, 'conversation.json'), key = new Uint8Array(32).fill(62);
+  const custody = createConversationHostStore(custodyPath, key);
+  custody.save(f.state());
+  const save = f.config.store.save;
+  Object.assign(f.config, { store: { load: () => custody.load(), save: (next: ConversationTopicsState) => {
+    custody.save(next); save(next);
+  } } });
+  const edge = f.state().edge!;
+  if (reserved > 128) journal.append({ kind: 'session-work', record: { ...edge, id: 'prior-reservations',
+    budget: { ...edge.budget, calls: reserved - 128 } }, at: 1000 });
+  for (const record of f.edges) journal.append({ kind: 'session-work', record, at: 1000 });
+  const append: ConversationTopicsConfig['append'] = record => { journal.append({ kind: 'session-work', record, at: 1000 }); f.edges.push(record); };
+  Object.assign(f.config, { append });
+  Object.assign(f.config, { recoveryEdges: () => journal.sessionWorkRecords() }); f.restart();
+  try {
+    const result = await f.port.run(f.request('main:969390600'));
+    expect(result.state).toBe(reserved === 128 ? 'complete' : 'uncertain');
+    expect(f.delivered).toHaveLength(reserved === 128 ? 3 : 2);
+    expect(journal.view.calls).toBe(reserved === 128 ? 256 : 7500);
+    journal.close(); journal = open();
+    expect(journal.view.calls).toBe(reserved === 128 ? 256 : 7500);
+    expect(journal.sessionWorkRecords().filter(row => row.id === 'operator:allowance:renew')).toHaveLength(1);
+    if (reserved === 128) {
+      await f.port.close();
+      f.config.store.load = () => createConversationHostStore(custodyPath, key).load(); f.restart();
+      expect(await f.port.run(f.request('3:after-restart'))).toMatchObject({ state: 'complete' });
+      expect(journal.view.calls).toBe(256);
+      await f.port.close();
+    } else {
+      expect(result.detail).toContain('call cap');
+      expect(f.state().reserved).toBe(false);
+      expect(createConversationTopicsPort(f.config).kind).toBe('Refused');
+    }
+  } finally { journal.close(); }
+});
+
+it('renewal preserves the original parent deadline even when restarted with a later one', async () => {
+  const f = await exhaustedIncident();
+  f.restart(200000);
+  await f.port.run(f.request('main:new'));
+  expect(f.state().edge!.budget.deadline).toBe(100000);
+  expect(f.state().allowanceDeadline).toBe(100000);
+  await f.port.close(); f.restart(300000); f.advance(100000);
+  expect(f.port.available()).toBe(false);
   await f.port.close();
 });
