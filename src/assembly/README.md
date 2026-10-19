@@ -37,6 +37,8 @@ after compaction. This adds no watcher, store, send authority or cross-machine l
 
 The conversation prompt keeps each prepared grounding packet once, with host clock and unresolved references separate. Ordinary questions retain their separate context; a batch preserves each complete envelope and arrival order.
 
+The prompt explains the application response contract: the host owns memory, scheduling and delivery. Missing account access belongs in the result as an honest limitation with useful available work, such as an unsent draft; it is never evidence of an inbox read or a completed send.
+
 `production-conversation-session.ts` composes the existing Eight-owned session
 driver with the session-work admission, resource lease and durable edge interfaces.
 Unlike scheduled work, successive inputs use the same child. One reserved call
