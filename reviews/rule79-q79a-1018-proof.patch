@@ -1,0 +1,36 @@
+--- a/pipeline/live-proof/Q.sh
++++ b/pipeline/live-proof/Q.sh
+@@ -109,9 +109,11 @@
+   "len(g($DF,'exposure',{})) >= 9 and all(v.get('pass') is True for v in g($DF,'exposure',{}).values())"
+ # Rule 79: "Every action needing the operator can be completed from a phone."
+-# A root at the deployed reviewed end cannot renew on any surface. Leave that proof UNTESTED;
++# Available actions and renewal are separate checks; renewal at the ceiling stays UNTESTED.
+ # missing approval facts or an unavailable phone route for an available action still FAIL.
+-[ "$PHASE" != now ] || tstep q-phone-route.json nice -n 10 node --no-warnings --loader ./scripts/slice-ts-loader.mjs "$P/phone-route-proof.mjs" "$T" "$O/status-q1.json"
+-chk Q79a "79" "available operator actions have unconditional phone routes; renewal at the reviewed ceiling is UNTESTED, never PASS (offline-only is UNTESTED)" \
+-  "None if '$PHASE' != 'now' else json.loads(F('q-phone-route.json') or '{}').get('actions', False)"
++[ "$PHASE" != now ] || tstep q-phone-route.json nice -n 10 node --no-warnings --loader ./scripts/slice-ts-loader.mjs "$T/scripts/phone-route-proof.mjs" "$T" "$O/status-q1.json"
++chk Q79a "79" "available operator actions have unconditional phone routes and this probe received a Telegram API-accepted reply (offline-only is UNTESTED)" \
++  "None if '$PHASE' != 'now' else (json.loads(F('q-phone-route.json') or '{}').get('actions', False) is True and U('q1') is not None and g(I('q1'),'reply.update') == U('q1') and g(I('q1'),'reply.outcome') == 'api-accepted' and isinstance(g(I('q1'),'reply.telegramMessageId'), int) and not isinstance(g(I('q1'),'reply.telegramMessageId'), bool) and bool(g(I('q1'),'reply.text','').strip()))"
++chk Q79c "79" "renewal has an unconditional phone route below the reviewed ceiling; at the ceiling renewal remains UNTESTED" \
++  "None if '$PHASE' != 'now' else json.loads(F('q-phone-route.json') or '{}').get('renewalActions', False)"
+ chk Q79b "79" "the root has a connected admissible phone approval source; any relied-on shared-account acceptance is current and disclosed (offline-only is UNTESTED)" \
+   "None if '$PHASE' != 'now' else json.loads(F('q-phone-route.json') or '{}').get('source') is True"
+--- a/pipeline/live-proof/M.sh
++++ b/pipeline/live-proof/M.sh
+@@ -88,9 +88,11 @@
+   send m1 "status"
+   # Rule 79: "Every action needing the operator can be completed from a phone."
+-  # At the reviewed end no renewal is available on ANY surface: UNTESTED, never a false PASS.
++  # Available-action coverage may pass at the ceiling; the separate renewal check stays UNTESTED.
+   # Read only after m1 is recorded. The deployed ceiling and action declarations are read by the probe.
+-  ostep m-phone-route.json nice -n 10 node --no-warnings --loader ./scripts/slice-ts-loader.mjs "$P/phone-route-proof.mjs" "$T" "$O/status-m1.json"
+-  chk M79a "79" "available operator actions have unconditional phone routes; renewal at the reviewed ceiling is UNTESTED, never PASS" \
+-    "json.loads(F('m-phone-route.json') or '{}').get('actions', False)"
++  ostep m-phone-route.json nice -n 10 node --no-warnings --loader ./scripts/slice-ts-loader.mjs "$T/scripts/phone-route-proof.mjs" "$T" "$O/status-m1.json"
++  chk M79a "79" "available operator actions have unconditional phone routes and this probe received a Telegram API-accepted reply" \
++    "(json.loads(F('m-phone-route.json') or '{}').get('actions', False) is True and U('m1') is not None and g(I('m1'),'reply.update') == U('m1') and g(I('m1'),'reply.outcome') == 'api-accepted' and isinstance(g(I('m1'),'reply.telegramMessageId'), int) and not isinstance(g(I('m1'),'reply.telegramMessageId'), bool) and bool(g(I('m1'),'reply.text','').strip()))"
++  chk M79d "79" "renewal has an unconditional phone route below the reviewed ceiling; at the ceiling renewal remains UNTESTED" \
++    "json.loads(F('m-phone-route.json') or '{}').get('renewalActions', False)"
+   chk M15b "15" "'status' is answered, and the deployed reserve is in effect on the live root (status.minimalReserve.limits = the tree's MINIMAL_RESERVE)" \
+     "answered('m1') and g(S('m1'), 'minimalReserve.limits') == $PB.get('minimalReserve') != None"

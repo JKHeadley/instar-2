@@ -8,8 +8,10 @@ reviewed expiry and operator-action declarations; it performs no network call or
 Missing connection, missing actions, a withdrawn acceptance or an absent shared-access disclosure
 fails. At the reviewed expiry ceiling, renewal is **untested**, never passing: no surface may offer
 a later end on that build. Below the ceiling an unconditional renewal route is still required.
-M/Q must capture status before invoking the probe. Its CLI emits `{source, actions, renewal}`;
-`actions: null` means untested and absent/unreadable input fails.
+M/Q must capture status before invoking the probe. Its CLI emits `{source, actions, renewalActions, renewal}`. `actions` covers every currently
+available action; `renewalActions: null` means renewal is untested at the ceiling. M/Q report
+these separately and require a Telegram API-accepted reply for their own probe update before
+passing route coverage. Absent/unreadable input fails; configuration alone is not delivery.
 
 The GitHub phone route uses the existing `journal-agent.mjs` options `--explicit-yes-installation`
 and `--review-repository`, plus the agent's privately supplied `INSTAR_SECRET_PREVIEW_GITHUB_TOKEN`.

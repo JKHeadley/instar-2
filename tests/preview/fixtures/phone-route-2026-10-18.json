@@ -1,0 +1,65 @@
+{
+  "provenance": "Read-only Studio proof artifacts; route status excerpts and the recorded Telegram API acceptance, no synthetic delivery.",
+  "records": [
+    {
+      "source": "Q-proofroom-20261009-140603/status-q1.json",
+      "update": 715675120,
+      "reviewedExpiry": 1794519600000,
+      "status": {
+        "expires": 1791837600000,
+        "explicitYes": {
+          "connected": true,
+          "chat": {
+            "admissible": false,
+            "reason": "the installation record says the agent can speak as the operator in this chat (P-05), so a chat reply is not the operator's yes"
+          },
+          "review": {
+            "admissible": true,
+            "acceptance": {
+              "account": "JKHeadley",
+              "current": true,
+              "disclosure": "I can also use that account, so the account alone does not show who approved"
+            }
+          }
+        },
+        "operatorActionSurface": {
+          "raiseCaps": "phone: the operator approves the exact request's GitHub pull request at the link sent in chat (note: I can also use that account, so the account alone does not show who approved)",
+          "renewExpiry": "phone: the operator approves the exact request's GitHub pull request at the link sent in chat (note: I can also use that account, so the account alone does not show who approved), once the reviewed activation for the new trial end is installed (--renewal-activation); until then host command line on the trial machine (journal-agent.mjs)"
+        }
+      }
+    },
+    {
+      "source": "Q-proofroom2-20261018-203542/status-q1.json",
+      "update": 6234534,
+      "reviewedExpiry": 1794519600000,
+      "status": {
+        "expires": 1794519600000,
+        "explicitYes": {
+          "connected": true,
+          "chat": {
+            "admissible": false,
+            "reason": "the installation record says the agent can speak as the operator in this chat (P-05), so a chat reply is not the operator's yes"
+          },
+          "review": {
+            "admissible": true,
+            "acceptance": {
+              "account": "JKHeadley",
+              "current": true,
+              "disclosure": "I can also use that account, so the account alone does not show who approved"
+            }
+          }
+        },
+        "operatorActionSurface": {
+          "raiseCaps": "phone: the operator approves the exact request's GitHub pull request at the link sent in chat (note: I can also use that account, so the account alone does not show who approved)",
+          "renewExpiry": "phone: the operator approves the exact request's GitHub pull request at the link sent in chat (note: I can also use that account, so the account alone does not show who approved), once the reviewed activation for the new trial end is installed (--renewal-activation); until then host command line on the trial machine (journal-agent.mjs)"
+        }
+      },
+      "reply": {
+        "update": 6234534,
+        "text": "Yes, I'm here.",
+        "telegramMessageId": 8858,
+        "outcome": "api-accepted"
+      }
+    }
+  ]
+}
