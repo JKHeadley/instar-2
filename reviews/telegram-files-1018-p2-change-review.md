@@ -27,3 +27,5 @@ simplestRobustRoute: This is the simplest robust route: download, encrypted cust
 VERDICT: author submission; no independent convergence or live acceptance claim
 
 Verification: Initial routing reproduction had six failures and three passing neighbors; the focused implementation run passed 59 tests, followed by the separate-user access case. Final affected assembly/audit/replay run passed 175 tests, and audit importers passed 93 with one opt-in soak skipped. The historical audit reproduction failed all four newly supported kinds, then passed all 28 audit cases after repair. The opt-in live-model file is skipped; no fresh model success is claimed. Typecheck, build and architecture pass. Owner-reference hashes are refreshed using the desk's canonical rehash tool; generated publication and final pushed-head gate outputs are recorded in the progress report.
+
+Register publication: replayed from source commit f0c9a73729a1c348fc7fa4327db3c3866cb1a129 after removing the orphan non-shipped transcription store declaration. Only mechanical generated publication files change in the publication commit. The native conformance declaration remains unchanged.
