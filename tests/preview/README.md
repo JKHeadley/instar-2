@@ -4263,8 +4263,8 @@ secret checks before it is included in model facts.
 
 ### Inbound media custody
 
-The journal launcher accepts the bound operator's Telegram photos, voice/audio and
-files as ordinary turns, with kind, name, reported byte size and caption. The
+The journal launcher accepts the bound operator's Telegram photos, documents, voice,
+audio, video, video notes, animations and stickers as ordinary turns, with kind, name, reported byte size and caption. The
 original update is encrypted and flushed before the cursor advances or download
 starts. The existing answer worker downloads after admission, before preparing its
 model packet. A `media-custody` journal row records the outcome on that same turn;
@@ -4294,35 +4294,20 @@ refuse redirects and unsafe returned paths, stream at most 8 MiB, and have a
 it reserves worst-case encrypted space before downloading against a 96 MiB ceiling.
 Capacity refusal retains existing files and the original intake. Nothing is pruned.
 Download, size and storage failures become plain statements in the answer packet.
-The runner holds the key and bot credential. Images and documents are decrypted only
-into a generated owner-only path in the harness turn's confined temporary area.
-The turn packet tells the model to read that file and to report unreadable content
-honestly. The file is removed when the model call returns or throws. Media turns
-use `--no-session-persistence` so the harness cannot retain image contents in a
-kept conversation transcript. Prior interrupted copies are removed on reuse.
+The runner holds the key and bot credential. Every file follows one path from
+source-bound encrypted custody through the existing raw-byte credential check to a
+generated path in the session's harness-readable work area. The inherited volume
+ACL admits the runner and harness identities; Telegram names never select paths.
+The turn packet gives the harness the path and tells it to use its own tools and
+report unreadable content honestly. Instar does not decode PDFs or images, or
+transcribe audio during intake. No additional model or transcription call is made.
+Existing encrypted transcripts remain readable as history.
 
-Voice/audio is transcribed once at intake using local whisper.cpp and ffmpeg;
-no paid transcription provider or extra conversation model call is introduced.
-`npm run install:media` is the idempotent installation/update step for each host:
-it installs missing executables through Homebrew (macOS or Linux) and verifies a
-pinned SHA-256 multilingual base model. Homebrew is required when executables are
-missing. Install this before starting either new or existing roots. The same
-per-user installation serves all roots on that machine. Conversation startup
-never downloads software or models; missing executables/model leave an honest
-transcription-unavailable notice while preserving the original file.
-
-The encrypted media object records the transcription attempt before execution,
-then its result. The local transcript is also attached to the original encrypted
-journal turn, so reply review, summaries and later recall see the same words.
-Restart never repeats an attempted transcription. A failed or
-interrupted attempt retains audio and reports the missing transcript. Local decode
-accepts at most five minutes, one CPU thread, 30 seconds decode and 90 seconds
-inference, and at most 16 KiB transcript output. Stops kill only the exact active
-child PID. Temporary decoded audio is private and removed on completion. Recognized
-credentials enter existing secret custody before any transcript reaches the model;
-transcript text receives the same held-secret/redaction pass as conversation text.
-The answer packet labels its source “voice note, transcribed locally.” Existing
-spend, stop, audience, reply review and reply uniqueness checks still hold.
+A continuing session retains each temporary file until its correlated delivery
+ends, including failure; batches keep separate directories and crash cleanup is
+scoped to the conversation. Per-turn tools use the same bridge and clean up when
+the call returns or throws. Encrypted originals remain authoritative after cleanup.
+The existing download, volume, stop, ownership and delivery-uniqueness bounds hold.
 
 Media bytes are deliberately machine-local encrypted custody, not replicated
 journal payloads. Replicated journal rows retain the original reference and result;
@@ -4344,9 +4329,9 @@ originals remain encrypted in media custody, recognized document credentials ent
 the existing vault before a temporary copy is created, and held secret material is
 redacted from that copy. Clean bytes retain their encoding. Missing custody or held
 credential state yields the ordinary unreadable attachment notice with tools enabled.
-Local ffmpeg and whisper-cli launches use the shared host resource owner as maintenance
-work, including Six allocation, answer reserve, tree census, stop and bounded output/time.
-Both run in the same private per-transcription directory, removed after completion.
+This is a raw-byte checkpoint, not a decoded-content secret scanner. Encoded or
+compressed contents are interpreted by the harness's native abilities. The
+standalone local-media utilities are not part of Telegram intake or delivery.
 
 ## Slow-reply acknowledgement
 
