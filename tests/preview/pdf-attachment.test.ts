@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { deflateSync } from 'node:zlib';
@@ -122,7 +122,7 @@ it.each(['readable', 'clean-compressed', 'held-compressed', 'held-hex-split', 'c
     expect(await annotationGlyphs(pdf)).toBe(value);
   }
   if (mode === 'comment-held') pdf = Buffer.concat([cleanPdf, Buffer.from(`\n% ${held}\n`)]);
-  const root = mkdtempSync(join(tmpdir(), 'pdf-session-'));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'pdf-session-')));
   try {
     mkdirSync(join(root, '.tmp')); mkdirSync(join(root, 'state'));
     const source = capture.intake.id;

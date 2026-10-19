@@ -1451,7 +1451,7 @@ it('re-reads the tool route for a format re-ask or timeout replacement after a t
   const timedOut = (JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/lostanswer-live-2026-10-02.json'), 'utf8')) as
     { lostFirstCall: { callOutcomes: Record<string, unknown>[] } }).lostFirstCall.callOutcomes[0]!;
   for (const mode of ['format-retry', 'answer-replace'] as const) for (const cap of [12, 18]) {
-    const root = mkdtempSync(join(tmpdir(), 'selfdesc-retry-'));
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'selfdesc-retry-')));
     const now = 1790000000000;
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(23), {
       kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
