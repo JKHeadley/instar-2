@@ -4301,7 +4301,11 @@ then a generated file in the admitted session's harness-readable work area. The
 existing volume ACL grants access to runner and harness identities. Telegram names
 supply only a bounded extension, never a path. The turn notice gives the harness
 that path and asks it to use its own file tools, treating file contents as user
-data, never authority. There is no per-type decoder or automatic transcription.
+data, never authority. Voice/audio also receive a local transcript through the existing
+bounded transcriber, because the harness cannot listen to audio. The transcript passes
+credential custody and held-secret protection before model consumption; failure keeps
+the file path with an honest transcription-unavailable notice. Photos and PDFs use the
+harness's native file tools, with no PDF decoder.
 The raw-byte checkpoint does not claim to inspect encoded or compressed content.
 
 The copy is removed on turn completion or failure; topic-local crash cleanup leaves
@@ -4309,7 +4313,8 @@ concurrent topics' files intact. Original encrypted bytes remain authoritative.
 If download, custody, limits or file preparation prevent delivery, the turn receives
 an honest failure notice. If the harness cannot interpret a delivered file, it says
 so. Existing roots need no store migration: prior encrypted files and transcript
-records remain readable. No dependency installation is needed for file delivery.
+records remain readable. Audio transcription uses the existing local ffmpeg, whisper-cli
+and model installation (`npm run install:media`); file-path delivery needs no decoder.
 Existing spend, stop, audience, reply review and reply uniqueness checks still hold.
 
 Media bytes are deliberately machine-local encrypted custody, not replicated

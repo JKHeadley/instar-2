@@ -9,6 +9,11 @@ import { createSecretCustody } from './secret-custody.js';
 // @ts-expect-error Host-only file bridge.
 import { openConversationMedia, protectMediaBytes } from './media-understanding.mjs';
 
+// @ts-expect-error Host-only local audio decoder.
+import { createLocalTranscriber, localMediaCommand } from '../../scripts/local-transcriber.mjs';
+// @ts-expect-error Host resource owner.
+import { createResourceOwner } from '../../scripts/resource-owner.mjs';
+
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/media-understanding/${name}`, import.meta.url));
 const cases = [
   ['photo', 'shapes.jpg'], ['document', 'synthetic-brief.pdf'], ['voice', 'meeting.ogg'],
@@ -16,7 +21,7 @@ const cases = [
   ['animation', 'clip.gif'], ['sticker', 'sticker.webp'], ['document', 'unknown.custom'],
 ];
 
-it.each(cases)('files sent in Telegram reach the agent: %s / %s', async (kind, name) => {
+it.each(cases)('files sent in Telegram reach the agent: %s / %s', { timeout: 30000 }, async (kind, name) => {
   const bytes = ['shapes.jpg', 'synthetic-brief.pdf', 'meeting.ogg'].includes(name!) ? fixture(name!) : Buffer.from('synthetic opaque file');
   const root = mkdtempSync(join(tmpdir(), 'telegram-files-'));
   try {
@@ -28,8 +33,16 @@ it.each(cases)('files sent in Telegram reach the agent: %s / %s', async (kind, n
     const admission = createMediaAdmission({ root, incarnation: 'test:files', now: () => 1000, monotonic: () => 100,
       stopped: () => false, source: () => ({ grant: 'grant:files', account: '123456789', conversation: 'synthetic:3', intakeDigest: 'sha256:synthetic' }),
       claimed: () => false, retainClaim: () => {}, policy: () => DEFAULT_EFFECT_POLICY });
-    let requests = 0;
+    const resources = createResourceOwner(); await resources.attach();
+    const localTranscribe = createLocalTranscriber({ temporary: root,
+      run: (command: string, args: string[], options: object) => localMediaCommand(command, args, { ...options, resources }) });
+    const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
+    const transcribeExpression = host.split('transcribe: async (bytes, source) => {')[1]!.split('} });')[0]!;
+    const custody = createSecretCustody(root, key, () => 1000);
+    const transcribe = Function('localTranscribe', 'custody', `return async (bytes, source) => {${transcribeExpression}}`)(localTranscribe, custody);
+    let requests = 0, transcriptions = 0;
     const original = createTelegramMediaCustody(root, key, { admission, stopped: () => false,
+      transcribe: async (input, source) => { transcriptions++; return transcribe(input, source); },
       token: () => '123456789:synthetic', fetch: async input => {
         requests++;
         return String(input).endsWith('/getFile')
@@ -38,7 +51,6 @@ it.each(cases)('files sent in Telegram reach the agent: %s / %s', async (kind, n
       } });
     const stored = await original.receive(source, media!);
     expect(stored.state).toBe('stored'); expect(requests).toBe(2);
-    const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
     const expression = host.split('prepareInputFiles: ')[1]!.split(',\n          currentActionFacts:')[0]!;
     const prepare = Function('join', 'openConversationMedia', 'project', 'topic', 'currentMedia', 'protectMediaBytes', 'custody', 'heldSecrets', 'stoppedNow',
       `return (${expression});`)(join, openConversationMedia, root, '3', (id: string) => ({ media, saved: original.open(id, media!, stored) }),
@@ -47,6 +59,11 @@ it.each(cases)('files sent in Telegram reach the agent: %s / %s', async (kind, n
     try {
       const notice = opened.notices[source];
       expect(notice).toContain('Read this file');
+      if (kind === 'voice' || kind === 'audio') {
+        expect(notice).toContain('Voice note, transcribed locally');
+        expect(notice).toMatch(/Tuesday.*9|Tuesday.*nine/i);
+        expect(stored).toMatchObject({ transcript: expect.stringMatching(/Tuesday/i) });
+      } else expect(notice).not.toContain('transcribed locally');
       const path = JSON.parse(notice.match(/: ("[^"]+")\./u)[1]);
       expect(readFileSync(path)).toEqual(bytes);
       writeFileSync(join(root, 'state/config.json'), JSON.stringify({ workspace: root, tmp: join(root, '.tmp'), maxCalls: 5, maxWriteBytes: 1048576, operations: [] }));
@@ -58,6 +75,7 @@ it.each(cases)('files sent in Telegram reach the agent: %s / %s', async (kind, n
     } finally { opened.close(); }
     expect(readdirSync(join(root, '.tmp'))).toEqual([]);
     await original.receive(source, media!); expect(requests).toBe(2);
+    expect(transcriptions).toBe(kind === 'voice' || kind === 'audio' ? 1 : 0);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

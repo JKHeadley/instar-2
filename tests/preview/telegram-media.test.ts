@@ -416,17 +416,57 @@ it('the journal admits a source-bound claim once and rejects malformed or orphan
   } finally { journal.close(); }
 }));
 
-it('stores audio once without decoding, binds opening to its source, and preserves its original bytes', () => withRoot(async root => {
+it('transcribes once in encrypted custody, binds opening to its source, and preserves failed audio', () => withRoot(async root => {
   const media = { kind: 'voice' as const, fileId: 'voice-fixture', name: 'voice.ogg', size: 4 };
-  const urls: string[] = [];
+  let calls = 0;
   const ports = { admission: admissionFor(root), token: () => token, stopped: () => false,
-    fetch: transport(media.fileId, Buffer.from('OggS'), urls) };
+    fetch: transport(media.fileId, Buffer.from('OggS')), transcribe: async () => { calls++; return 'Meet on Tuesday at nine.'; } };
   const first = createTelegramMediaCustody(root, key, ports), result = await first.receive('turn:voice', media);
-  expect(first.open('turn:voice', media, result).bytes).toEqual(Buffer.from('OggS'));
-  expect(first.open('turn:voice', media, result).transcription).toBeUndefined();
+  expect(first.open('turn:voice', media, result).transcription).toEqual({ state: 'complete', text: 'Meet on Tuesday at nine.' });
   const restarted = createTelegramMediaCustody(root, key, ports);
-  await restarted.receive('turn:voice', media); expect(urls).toHaveLength(2);
+  await restarted.receive('turn:voice', media); expect(calls).toBe(1);
   expect(() => restarted.open('other-turn', media, result)).toThrow('unavailable');
   expect(() => restarted.open('turn:voice', { ...media, fileId: 'other-file' }, result)).toThrow('source mismatch');
-  expect(restarted.verify(result)).toBe(true);
+  expect(readFileSync(join(root, 'media', `${result.state === 'stored' ? result.reference : ''}.sealed`), 'utf8')).not.toContain('Tuesday');
+  const failed = createTelegramMediaCustody(root, key, { ...ports, transcribe: async () => { throw Error('unreadable audio'); } });
+  const missing = await failed.receive('turn:failed', media);
+  expect(failed.verify(missing)).toBe(true);
+  expect(failed.open('turn:failed', media, missing).transcription).toEqual({ state: 'failed' });
+}));
+
+it('attaches local voice words to the durable turn for answering, review and later recall', () => withRoot(async root => {
+  const update = fixture('voice');
+  update.message.voice = { file_id: 'local-voice', file_size: 4 };
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  const custody = createTelegramMediaCustody(root, key, { admission: admissionFor(root), token: () => token,
+    stopped: () => false, fetch: transport('local-voice', Buffer.from('OggS')), transcribe: async () => 'Meet on Tuesday at nine.' });
+  const worker = createJournalWorker(journal, { origin: 'test', now: () => 1000, stopped: () => false, media: custody, checkOutbound: () => {},
+    model: async input => { expect(input.question).toContain('Voice note, transcribed locally'); expect(input.question).toContain('Tuesday at nine'); return 'Noted.'; },
+    send: async () => 1 });
+  worker.intake([update]); await worker.drain();
+  expect(journal.view.order[0]!.text).toContain('Tuesday at nine');
+  journal.close();
+  const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
+  expect(reopened.view.order[0]!.text).toContain('Tuesday at nine');
+  expect(readFileSync(join(root, 'journal.encrypted'), 'utf8')).not.toContain('Tuesday at nine');
+  reopened.close();
+}));
+
+it('keeps atomic transcript replacement inside the media-store ceiling', () => withRoot(async root => {
+  const media = { kind: 'voice' as const, fileId: 'full-voice', name: 'voice.ogg', size: 4 };
+  let transcriptions = 0;
+  const physical = transport(media.fileId, Buffer.from('OggS'));
+  const custody = createTelegramMediaCustody(root, key, { admission: admissionFor(root), token: () => token, stopped: () => false,
+    fetch: async (url, options) => {
+      const result = await physical(url, options);
+      if (String(url).includes('/file/')) {
+        mkdirSync(join(root, 'media'), { recursive: true, mode: 0o700 });
+        const filler = join(root, 'media', 'sparse-test-capacity'); writeFileSync(filler, '');
+        truncateSync(filler, MEDIA_STORE_MAX_BYTES - 20000);
+      }
+      return result;
+    }, transcribe: async () => { transcriptions++; return 'words'; } });
+  const result = await custody.receive('turn:full', media);
+  expect(result.state).toBe('stored'); expect(custody.verify(result)).toBe(true);
+  expect(custody.open('turn:full', media, result).transcription).toBeUndefined(); expect(transcriptions).toBe(0);
 }));

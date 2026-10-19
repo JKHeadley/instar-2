@@ -6,7 +6,7 @@ import { createHostResourceAllocation } from './six-host-resources.js';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 // @ts-expect-error Host-only JavaScript.
-import { withMediaFile, protectMediaBytes, invokeMediaTurn, openConversationMedia } from './media-understanding.mjs';
+import { withMediaFile, protectMediaBytes, invokeMediaTurn, openConversationMedia, prepareMediaInput } from './media-understanding.mjs';
 // @ts-expect-error Host-only JavaScript.
 import { createLocalTranscriber, localMediaCommand } from '../../scripts/local-transcriber.mjs';
 // @ts-expect-error Host resource owner.
@@ -14,6 +14,36 @@ import { createResourceOwner, RESOURCE_CEILINGS } from '../../scripts/resource-o
 // @ts-expect-error Host credential sources.
 import { createHeldSecrets, custodyHeldSources } from './tool-turn.mjs';
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/media-understanding/${name}`, import.meta.url));
+
+it('prepares only unattached voice/audio transcripts for the source model question', () => {
+  const input = { id: 'voice', question: 'When?' };
+  const saved = { transcription: { state: 'complete', text: 'Tuesday' } };
+  for (const kind of ['voice', 'audio']) {
+    const lookup = (id: string) => id === 'voice' ? { media: { kind }, saved } : null;
+    expect(prepareMediaInput(input, lookup, (text: string) => text.replace('Tuesday', '[protected]')).question)
+      .toContain('[protected]');
+    expect(prepareMediaInput({ ...input, id: 'summary:other' }, lookup, (text: string) => text).question).toBe('When?');
+    expect(prepareMediaInput(input, () => ({ media: { kind }, saved, attached: true }), () => { throw Error('already attached'); })).toBe(input);
+  }
+  expect(prepareMediaInput(input, () => ({ media: { kind: 'photo' }, saved }), () => { throw Error('not audio'); })).toBe(input);
+});
+
+it.each(['missing', 'pending', 'failed', 'complete'])('keeps the audio path with a protected %s transcript notice', async state => {
+  const tmp = mkdtempSync(join(tmpdir(), 'media-transcript-'));
+  const held = 'synthetic-held-audio-value', bytes = fixture('meeting.ogg');
+  try {
+    const saved = { bytes, ...(state === 'missing' ? {} : { transcription: { state, text: `Meet Tuesday ${held}` } }) };
+    await withMediaFile({ tmp, media: { kind: 'voice', name: 'voice.ogg' }, saved,
+      protect: (input: Buffer) => protectMediaBytes(input, 'voice', createSecretCustody(tmp, new Uint8Array(32).fill(7), () => 1000),
+        () => ({ values: [held], unavailable: null })) }, async (notice: string) => {
+      const path = JSON.parse(notice.match(/: ("[^"]+")\./u)![1]!);
+      expect(readFileSync(path)).toEqual(bytes);
+      expect(notice).not.toContain(held);
+      if (state === 'complete') expect(notice).toContain('Meet Tuesday');
+      else { expect(notice).toContain('transcription was unavailable'); expect(notice).not.toContain('Meet Tuesday'); }
+    });
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
+});
 
 it.each(['photo', 'document', 'voice', 'audio', 'video'])('confines the %s to a generated private path and removes it on success or throw', async kind => {
   const tmp = mkdtempSync(join(tmpdir(), 'media-path-'));
@@ -158,10 +188,11 @@ it('replays captured summary, uncertain/undecided Jev, review and delivered/empt
     const custody = createSecretCustody(root, new Uint8Array(32).fill(8), () => 1000);
     const kinds: string[] = [];
     for (const row of capture.otherShapes) {
-      await invokeMediaTurn(row.id, { scratch: root }, () => ({ media: { kind: 'document', name: 'recorded.txt' },
-        saved: { bytes: Buffer.from(row.raw) } }), async (notice: string) => {
+      await invokeMediaTurn(row.id, { scratch: root }, () => ({ media: { kind: 'voice', name: 'recorded.ogg' },
+        saved: { bytes: fixture('meeting.ogg'), transcription: { state: 'complete', text: row.raw } } }), async (notice: string) => {
         const path = JSON.parse(notice.match(/: ("[^"]+")\./u)![1]!);
-        expect(readFileSync(path, 'utf8'), `${row.kind} ${row.id}`).toBe(row.raw);
+        expect(readFileSync(path), `${row.kind} ${row.id}`).toEqual(fixture('meeting.ogg'));
+        expect(notice).toContain(`Voice note, transcribed locally (may contain recognition errors):\n${row.raw}`);
         kinds.push(row.kind);
       }, (bytes: Buffer, source: string) => protectMediaBytes(bytes, source, custody, () => ({ values: [], unavailable: null })));
     }

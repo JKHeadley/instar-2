@@ -87,7 +87,8 @@ import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, sta
 import { credentialDisplayLabel } from './credential-display.js';
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
 import { createTelegramMediaCustody, journalMediaSource, telegramInboundMedia } from './telegram-media.js';
-import { invokeMediaTurn, protectMediaBytes, openConversationMedia } from './media-understanding.mjs';
+import { createLocalTranscriber } from '../../scripts/local-transcriber.mjs';
+import { prepareMediaInput, invokeMediaTurn, protectMediaBytes, openConversationMedia } from './media-understanding.mjs';
 import { createMediaAdmission } from './media-admission.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery, sessionLoginNotices, sessionLoginStatus } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
@@ -1744,12 +1745,20 @@ async function main() {
       source: (source, media) => journalMediaSource(journal.view, source, media),
       claimed: id => journal.view.turns.get(id)?.mediaClaim !== undefined,
       retainClaim: (id, digest) => journal.append({ kind: 'media-claim', id, digest, at: wallNow() }) });
-    const mediaCustody = createTelegramMediaCustody(root, key(), { token, stopped: mediaStopped, admission: mediaAdmission });
+    const voiceTemporary = join(root, 'media-work');
+    const localTranscribe = createLocalTranscriber({ stopped: mediaStopped, temporary: voiceTemporary });
+    const mediaCustody = createTelegramMediaCustody(root, key(), { token, stopped: mediaStopped, admission: mediaAdmission,
+      transcribe: async (bytes, source) => {
+        const text = await localTranscribe(bytes);
+        const protectedText = custody.custody({ text, raw: JSON.stringify({ text }), source });
+        if (protectedText.custody?.state === 'failed') throw Error('voice credential custody unavailable');
+        return protectedText.text;
+      } });
     const currentMedia = id => {
       const turn = journal.view.turns.get(id);
       if (!turn?.accepted || !turn.media) return null;
       const raw = JSON.parse(turn.raw), media = telegramInboundMedia(raw.edited_message ?? raw.message);
-      return media ? { media, saved: mediaCustody.open(id, media, turn.media) } : null;
+      return media ? { media, saved: mediaCustody.open(id, media, turn.media), attached: turn.media.transcript !== undefined } : null;
     };
     // Plan #442 (Rules 4, 86, 100): the secret values this runner holds, for the exact floor on every reply and send and
     // (plan #507) every outward tool request: host custody, the preview vault, the root's MCP credentials (served to a
@@ -1827,13 +1836,15 @@ async function main() {
       return;
     }
     // Only the conversation owner cleans plaintext left by an interrupted local decoder.
-    rmSync(join(root, 'media-work'), { recursive: true, force: true });
+    rmSync(voiceTemporary, { recursive: true, force: true });
     serviceBeat(true, 'claimed');
     // Part Thirteen §9 (docs/17-harness-adapters): the tool route's room is the larger of the packet limit and its policy's prompt bound.
     const toolPromptLimit = () => Math.max(journal.view.limits.maxBytes,
       doorway.policyFor(required(options, 'model'), doorway.toolsFraming ?? doorway.conversationFraming).maxPromptBytes);
     const preparation = toolPreparation(() => toolsActive());
     const modelEnvelope = input => {
+      // Local transcripts use the same source and held-secret boundary as text intake.
+      input = prepareMediaInput(input, currentMedia, text => redact(concealSecretMaterial(text, heldSecretValues())).text);
       const bytes = prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
       // A tool turn's longer system prompt must fit that room too; an overflow here makes the packet ladder yield, as
       // for the text-only prompt, instead of leaving the turn to fall back to a text-only answer.
