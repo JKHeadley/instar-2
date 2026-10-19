@@ -46,8 +46,6 @@ Subject (38 paths): generated/capabilities.json, generated/capabilities.md, gene
 
 ## Closing block
 
-Prompt finding: 0725f0150c56 | not-a-keyword-gate | Tests assert the delivered granted-role and refusal-preservation instruction, not a phrase used to classify user intent.
-Prompt finding: 27d7720e7977 | not-a-keyword-gate | Tests assert application integration framing; no runtime keyword branch or expected review verdict is introduced.
 simplestRobustRoute: an ordinary merge, conflicts limited to generated output, unioned changelog histories, unchanged or identical live docs bodies and derived pins, then the existing desk chain and register replay re-derive everything the merged bytes determine; real content conflicts go to a builder; tool failures stay desk-owned.
 80/20: mechanical only; cheap checks (lint, register:check, change-review check) run here; the pipeline's full gate runs the test suite and post-test checkers on the merged head.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

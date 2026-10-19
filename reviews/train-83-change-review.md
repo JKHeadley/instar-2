@@ -40,7 +40,9 @@ Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:43 | not-a-de
 Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:48 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
 Deferral: tests/preview/fixtures/deferral-delivery-2026-10-18.json:51 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
 Deferral: tests/preview/fixtures/email-gap-1017.json:5 | not-a-deferral=Recorded member behavior or captured historical model output exercised by regression tests; not a promise to defer builder work.
-Review metadata repair: Full member base id and two existing integration prompt dispositions are corrected without changing runtime or tests.
+Review metadata repair: Full member base id is corrected and two integration prompt dispositions are recorded here without changing runtime or tests.
+Prompt finding: 0725f0150c56 | protocol-literal | Tests assert delivered granted-role and refusal-preservation instructions, not phrases used to classify user intent.
+Prompt finding: 27d7720e7977 | protocol-literal | Tests assert application integration framing; no keyword branch or expected reviewer verdict is introduced.
 Verification: Targeted changed tests and direct importers, requested journal and subscription checks, pinned READY subset, typecheck, architecture, lint, register and change-review checks; exact results in report.
 simplestRobustRoute: This is the simplest robust route: ordinary merges of the four exact reviewed heads and existing desk regeneration, with no new mechanism. Existing ownership, authorization, custody, stop, spend, bounded host execution and durable unique delivery remain start/end/limit guards. Recorded replay is builder evidence; Studio owns live acceptance and native recertification.
 80/20: Run changed tests and direct importers plus explicitly required checks, never full suite or an import closure. Preserve accepted behavior without reimplementing member repairs.
