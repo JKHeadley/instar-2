@@ -2,6 +2,7 @@
  * later reply carries a promise out, is the answering model's reading (Rule 10);
  * code only checks exact values: the quoted sentence is in the reply actually
  * sent, the date phrase is inside that quote, and the counts and sizes are bounded. */
+import type { CommitmentNote } from './journal.js';
 import { parseDatedItem, type DatedItem } from './dated-memory.js';
 
 /** `promised` marks a model-proposed promise; the other actions are legacy journal rows. */
@@ -11,8 +12,17 @@ export interface PromiseProposal { quote: string; when?: string }
 export interface FulfillmentProposal { id: number; quote: string }
 export const AGENT_PROMISE_LIMIT = 5;
 
-const exactClause = (value: unknown, within: string) => typeof value === 'string' && value.trim() === value
-  && value.length >= 3 && Buffer.byteLength(value) <= 500 && within.includes(value);
+/** A fulfilment quote is bounded by the reply it must appear in, not by the sentence bound a promise
+ * quote carries: a longer verbatim excerpt is MORE constrained, not less, and a sendable reply is at most
+ * 4096 bytes (the send path's own ceiling). Live 2026-10-03 (room two, A-proofroom2-20261003-022222, check
+ * A5b) a delivered promise stayed open; the live answer row was not readable, so its exact cause is
+ * UNCONFIRMED. Real claude-sonnet-5 calls on the recorded packet showed one answer shape that this bound
+ * decided: the whole reply quoted as the excerpt closed the promise at 413 bytes and was refused at 526, so
+ * the reply's length alone decided whether a fulfilment was recorded (the live reply body was 610 bytes). */
+export const REPLY_EXCERPT_LIMIT = 4096;
+
+const exactClause = (value: unknown, within: string, limit = 500) => typeof value === 'string' && value.trim() === value
+  && value.length >= 3 && Buffer.byteLength(value) <= limit && within.includes(value);
 
 /** Validated promise proposals from one answer, or undefined when the proposal is malformed. */
 export function promiseProposals(value: unknown, reply: string): PromiseProposal[] | undefined {
@@ -22,21 +32,41 @@ export function promiseProposals(value: unknown, reply: string): PromiseProposal
   for (const item of value as { quote?: unknown; when?: unknown }[]) {
     if (!item || typeof item !== 'object' || !exactClause(item.quote, reply)) return undefined;
     const quote = item.quote as string;
-    if (item.when !== undefined && !(typeof item.when === 'string' && item.when.trim() === item.when
+    // An optional `when` written as null asserts no date, so it is read as absent. Plan #491 real-model replay (a5,
+    // claude-sonnet-5, final prompt): `"when":null` refused the whole list, and the promise was silently lost again.
+    if (item.when !== undefined && item.when !== null && !(typeof item.when === 'string' && item.when.trim() === item.when
       && item.when.length > 0 && Buffer.byteLength(item.when) <= 100 && quote.includes(item.when))) return undefined;
     if (!found.some(saved => saved.quote === quote))
       found.push({ quote, ...(typeof item.when === 'string' ? { when: item.when } : {}) });
   }
   return found;
 }
-/** Validated fulfillment proposals against the ids of open agent promises offered to the model. */
-export function fulfillmentProposals(value: unknown, reply: string, offered: ReadonlySet<number>): FulfillmentProposal[] | undefined {
+/** The one rule deciding whether a reply may carry out commitment `id`: the commitment is a promise the
+ * agent itself made. A commitment the operator asked for — a reminder to them — is not the agent's promise,
+ * so a reply delivering it settles that reminder through its own path, never as a fulfillment claim. */
+export const fulfillableCommitment = (commitments: readonly { agentPromise?: unknown }[], id: number): boolean =>
+  commitments[id]?.agentPromise !== undefined;
+
+/** The whole support rule for one fulfillment claim: the reply as written still quotes it, and it names a
+ * commitment this reply may carry out. The writer applies this before it appends an answer row and the
+ * replay applies it when it reads that row back, so the two cannot drift. They did drift once: the writer
+ * offered every agent-OWNED commitment while the replay accepted only agent PROMISES, so one delivered
+ * reminder wrote a row the replay refused and made a whole journal unreadable (build 30bda628, 2026-10-01). */
+export const fulfillmentSupported = (item: FulfillmentProposal, reply: string,
+  commitments: readonly { agentPromise?: unknown }[]): boolean =>
+  reply.includes(item.quote) && fulfillableCommitment(commitments, item.id);
+
+/** Validated fulfillment proposals from one answer, or undefined when the proposal is malformed or claims
+ * anything `supported` refuses. `supported` is the caller's own narrowing of `fulfillmentSupported`. */
+export function fulfillmentProposals(value: unknown, reply: string,
+  supported: (item: FulfillmentProposal) => boolean): FulfillmentProposal[] | undefined {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > AGENT_PROMISE_LIMIT) return undefined;
   const found: FulfillmentProposal[] = [];
   for (const item of value as { id?: unknown; quote?: unknown }[]) {
-    if (!item || typeof item !== 'object' || !Number.isSafeInteger(item.id) || !offered.has(item.id as number)
-      || !exactClause(item.quote, reply)) return undefined;
+    if (!item || typeof item !== 'object' || !Number.isSafeInteger(item.id)
+      || !exactClause(item.quote, reply, REPLY_EXCERPT_LIMIT)
+      || !supported({ id: item.id as number, quote: item.quote as string })) return undefined;
     if (!found.some(saved => saved.id === item.id)) found.push({ id: item.id as number, quote: item.quote as string });
   }
   return found;
@@ -47,6 +77,26 @@ export function recordedPromises(proposals: readonly PromiseProposal[], reply: s
     const due = item.when ? parseDatedItem(source, item.quote, item.when, at, zone) : undefined;
     return { quote: item.quote, action: 'promised' as const, owner: 'agent' as const, waitsOn: 'next-relevant-reply' as const, ...(due ? { due } : {}) };
   });
+}
+
+/** Admit a retrospective's actionable promises into the SAME commitment population. Meaning (including
+ * paraphrased restatements and ownership) belongs to the review; these are exact identity/evidence checks.
+ * Existing dated/scheduled/closed work is never reopened or rescheduled by a restatement. */
+export function reconcilePromises(commitments: CommitmentNote[], closed: ReadonlyMap<number, unknown>,
+  promises: readonly AgentPromise[], reply: string, source: string, sameConversation: (source: string) => boolean): void {
+  for (const promise of promises.filter(item => reply.includes(item.quote))) {
+    const id = commitments.findIndex((note, index) => note.in === 'reply' && sameConversation(note.source)
+      && (note.source === source ? note.quote.includes(promise.quote) || promise.quote.includes(note.quote)
+        : !closed.has(index) && note.quote === promise.quote));
+    if (id >= 0) {
+      const note = commitments[id]!;
+      if (note.source === source && note.agentPromise && !closed.has(id) && note.waitsOn === undefined
+        && !note.agentPromise.due) Object.assign(note, { owner: 'agent', waitsOn: 'nothing' });
+      continue;
+    }
+    commitments.push({ in: 'reply', source, quote: promise.quote, owner: 'agent',
+      waitsOn: promise.due ? 'date' : 'nothing', agentPromise: promise });
+  }
 }
 
 /** Legacy replay only: journal intents recorded before model-proposed fulfillment

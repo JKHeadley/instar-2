@@ -1,9 +1,12 @@
+import { redact } from '../../src/recall/redact.js';
+
+import { recordPhaseTiming } from './phase-timing.js';
 /** Physical limits a launch can end at: its elapsed and output bounds, and the
  * host resource owner's memory/process/CPU/aggregate ceilings and admission. */
 export const RESOURCE_LIMITS = Object.freeze(['timeout', 'size', 'memory', 'processes', 'cpu', 'aggregate', 'capacity']);
 
-/** Content-free physical outcome of one subscription CLI model invocation. */
-export function subscriptionCallOutcome(result, promptBytes, elapsedMs, maxTokens, maxOutputBytes) {
+/** Physical outcome; calls retain a scrubbed UTF-8 excerpt (at most 4096 bytes). */
+export function subscriptionCallOutcome(result, promptBytes, elapsedMs, maxTokens, maxOutputBytes, scrub = text => redact(text).text) {
   let frame = null;
   if (!result.limited) try { frame = JSON.parse(result.stdout); } catch { /* No parseable frame. */ }
   const object = frame && typeof frame === 'object' && !Array.isArray(frame) ? frame : null;
@@ -18,8 +21,31 @@ export function subscriptionCallOutcome(result, promptBytes, elapsedMs, maxToken
     : !result.limited && type === 'result' && outputTokens !== null && outputTokens > maxTokens ? 'output-cap'
     : !result.limited && type === 'result' && typeof object.result === 'string'
       && Buffer.byteLength(object.result) > maxOutputBytes ? 'size' : null;
+  // Capture at the physical boundary, before a downstream parser can reject an otherwise
+  // successful terminal frame. Completed calls already retain their model output; this small
+  // excerpt also covers malformed answers and crashes between physical and logical recording.
+  const diagnostic = {
+    signal: typeof result.signal === 'string' && /^SIG[A-Z0-9]{1,16}$/u.test(result.signal) ? result.signal : null,
+    cancellationReason: ['stopped', 'stdin-error', 'gate-error', 'spawn-error', 'physical-error'].includes(result.cancellationReason)
+      ? result.cancellationReason : null,
+    limited: Boolean(result.limited),
+    rawOutputExcerpt: boundedExcerpt(result.rawOutput ?? result.stdout ?? '', scrub, result.rawError ? 3072 : 4096),
+    ...(result.rawError ? { rawErrorExcerpt: boundedExcerpt(result.rawError, scrub, 1024) } : {}),
+  };
   return { exitCode: code, localLimit, elapsedMs: Math.max(0, Math.round(elapsedMs)), type, subtype, isError,
-    outputTokens, promptBytes, ...(result.resources ? { resources: launchResources(result.resources) } : {}) };
+    outputTokens, promptBytes, diagnostic, ...(result.resources ? { resources: launchResources(result.resources) } : {}) };
+}
+
+function boundedExcerpt(raw, scrub, limit) {
+  // Scrub BEFORE clipping: a credential straddling the excerpt boundary must not leave a prefix.
+  let clean;
+  try { clean = scrub(typeof raw === 'string' ? raw : ''); }
+  catch { clean = '[provider excerpt unavailable: secret scrub failed]'; }
+  let excerpt = Buffer.from(clean).subarray(0, limit).toString('utf8');
+  while (Buffer.byteLength(excerpt) > limit) excerpt = excerpt.slice(0, -1);
+  // Clipping can split a redaction marker into text the journal rejects as a credential.
+  // Omit only that diagnostic excerpt; never let evidence capture discard a completed call.
+  return redact(excerpt).count > 0 ? '[provider excerpt omitted: redaction boundary]' : excerpt;
 }
 
 /** The content-free resource facts of one owned launch: which bounds held hard (and on which subject),
@@ -46,22 +72,32 @@ function launchResources(r) {
 
 /** Append the physical result before the adapter can classify or discard it. */
 export function observedSubscriptionIO(physicalIO, policy, operation, append,
-  clock = { elapsed: () => performance.now(), at: () => Date.now() }) {
+  clock = { elapsed: () => performance.now(), at: () => Date.now() }, scrub = text => redact(text).text) {
   const role = operation.endsWith(':reply-review') || operation.endsWith(':reply-revision')
-    || operation.endsWith(':revision-review') ? 'reply-review'
+    || operation.endsWith(':revision-review') || operation.endsWith(':held-notice-review') ? 'reply-review'
     : operation.startsWith('summary:') ? 'summary' : 'model';
   return { ...physicalIO, execute: async command => {
-    if (JSON.stringify(command.args) !== JSON.stringify(policy.args)) return physicalIO.execute(command);
+    // Preflights carry no input; model commands carry the prepared packet. Tool
+    // settings, MCP and session arguments extend the policy's base arguments.
+    if (typeof command.stdin !== 'string' || command.stdin.length === 0) {
+      const phase = JSON.stringify(command.args) === '["--version"]' ? 'version'
+        : JSON.stringify(command.args) === '["auth","status","--json"]' ? 'auth' : null;
+      const start = clock.elapsed(); let failed = false;
+      try { const result = await physicalIO.execute(command); failed = result.limited || result.code !== 0; return result; }
+      catch (error) { failed = true; throw error; }
+      finally { if (phase) recordPhaseTiming(append, operation, phase,
+        { elapsedMs: Math.max(0, Math.round(clock.elapsed() - start)), failed }, clock.at()); }
+    }
     const start = clock.elapsed();
     let result, failed = false;
     try { result = await physicalIO.execute(command); }
     catch {
       failed = true;
-      result = { code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() };
+      result = { code: null, limited: true, localLimit: null, cancellationReason: 'physical-error', stdout: '', stdoutBytes: new Uint8Array() };
     }
     append({ kind: 'call-outcome', id: operation, role,
       outcome: subscriptionCallOutcome(result, Buffer.byteLength(command.stdin), clock.elapsed() - start,
-        policy.maxTokens, policy.maxOutputBytes), at: clock.at() });
+        policy.maxTokens, policy.maxOutputBytes, scrub), at: clock.at() });
     if (failed) throw Error('preview: subscription physical invocation failed');
     return result;
   } };

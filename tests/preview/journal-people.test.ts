@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, importChannelItems, openPreviewJournal, PREVIEW_RECALL_LIMIT, replyBody } from './journal-test-worker.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, importChannelItems, openPreviewJournal, PREVIEW_RECALL_LIMIT, replyBody } from './journal-test-worker.js';
 import { bm25, terms } from '../../src/recall/lexical.js';
 import { auditPacket } from './journal-audit.mjs';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
@@ -95,10 +95,10 @@ it('recalls every note about a named person after compaction, keeps the operator
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user.includes('Sam'))).toBe(false);
     expect(packet.people).toMatchObject([
-      { source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z',
+      { source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21 07:14 PDT',
         message: 'My cofounder Sam thinks the launch should slip to November.',
         mentions: [{ person: 'Sam', quote: 'My cofounder Sam thinks the launch should slip to November.' }] },
-      { source: 'telegram:12345678:update:2', from: 'the operator (verified sender)', date: '2026-09-21T14:15Z',
+      { source: 'telegram:12345678:update:2', from: 'the operator (verified sender)', date: '2026-09-21 07:15 PDT',
         message: 'Priya said she disagrees with Sam about the launch date.',
         mentions: [{ person: 'Sam', quote: 'Priya said she disagrees with Sam about the launch date.' }] }]);
     expect(auditPacket(w.journal.view, w.journal.view.order.find(turn => turn.text === question)!, packet).findings).toEqual([]);
@@ -130,8 +130,8 @@ it('says who really spoke: a person\'s own authenticated message is theirs, a re
       ['the operator (verified sender)', 'Sam thinks the budget is fine.'],
       ['Telegram user 555 (authenticated sender, not the operator)', 'Sam here: the budget is too small.']]);
     expect(people.map((note: { sourceLabel: string }) => note.sourceLabel)).toEqual([
-      'conversation:operator/main chat/2026-09-21T14:14Z/#1',
-      'conversation:other sender/main chat/2026-09-21T14:15Z/#2']);
+      'conversation:operator/main chat/2026-09-21 07:14 PDT/#1',
+      'conversation:other sender/main chat/2026-09-21 07:15 PDT/#2']);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -140,7 +140,9 @@ it('keeps same-name people apart for the model and gives an unknown person nothi
   const root = origin();
   try {
     // As the real extraction prompt asks: each name exactly as written, no extra short aliases.
-    const w = world(root, { names: ['Sam Patel', 'Sam Ruiz'], bad: false });
+    // This checks homonym recall after compaction, with room for both sourced people.
+    // The smaller pressure fixture can legitimately shed one after fixed guidance grows.
+    const w = world(root, { names: ['Sam Patel', 'Sam Ruiz'], bad: false, maxBytes: 16000 });
     await w.say(1, 'Sam Patel from accounting approved the budget.');
     await w.say(2, 'Sam Ruiz, my neighbour, lent me a ladder.');
     await w.say(3, 'My cofounder Sam thinks the launch should slip to November.');
@@ -198,6 +200,8 @@ it('recalls an older cofounder by role or nickname without letting newer neighbo
       await w.say(next, filler(next));
     }
     expect(next).toBeLessThan(80);
+    // Establish this recall fixture's post-compaction state explicitly; automatic passes now cool down.
+    await w.worker.summarizeIfNeeded(true);
     const sources = (question: string) => {
       const probe = w.worker.probe(question);
       if ('reason' in probe) throw Error(probe.reason);
@@ -392,7 +396,12 @@ it('links an introductory claim even when its source ends in a question', async 
   const root = origin();
   try {
     // cbuild-2: the always-offered summary decision needs room beside the merge candidates (measured fit 7000; was 6000).
-    const w = world(root, { maxBytes: 7000, summarize: sourceSummarizer, answer: mergeAnswer });
+    // w3-longchat: the answer protocol's compaction and meaning-coverage sentences grew by 55 bytes (Rules 11, 110),
+    // and the merge candidates were the block that yielded; re-measured in 10-byte steps, fit 7030, fail 7010.
+    // cint-L40 (w3-retrocluster, Rule 19): the 130-byte pushback sentence rides once an answer is in history; the merge
+    // candidates yield again. Re-measured in 10-byte steps, fit 7110, fail 7100; the same 70 bytes of headroom kept.
+    // w3-floorduty: plus the obligation guide's floor form, which now outranks optional evidence under pressure (Rules 3, 93).
+    const w = world(root, { maxBytes: 7180 + OBLIGATION_FLOOR_PACKET_BYTES, summarize: sourceSummarizer, answer: mergeAnswer });
     await w.say(1, 'My cofounder Sam prefers October. Can you remember that?');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     const n = await w.fillUntilRecall(3, 'Are Sam and Sam Ortiz the same person?');
@@ -413,7 +422,8 @@ it.each(['Can you remember that?', 'Please remember that.'])
   ('keeps a distinct homonym ambiguous with ending: %s', async ending => {
   const root = origin();
   try {
-    const w = world(root, { maxBytes: 6000, summarize: sourceSummarizer, answer: mergeAnswer });
+    // Match the positive merge neighbor: ambiguity must refuse with all person evidence present, not because it was trimmed.
+    const w = world(root, { maxBytes: 7180 + OBLIGATION_FLOOR_PACKET_BYTES, summarize: sourceSummarizer, answer: mergeAnswer });
     await w.say(1, 'My cofounder Sam prefers October.');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     await w.say(3, `My neighbour Sam lent me a ladder. ${ending}`);
@@ -453,11 +463,11 @@ it('carries two distinct people into the reply call and sends one short clarific
     await w.say(n, 'What did Sam do?');
     const ambiguous = w.journal.view.order.at(-1)!;
     // Rule 110: a first reply from a newly compacted context carries the fixed disclosure first.
-    expect(replyBody(ambiguous)).toBe('PREVIEW — Do you mean Sam Patel from accounting or Sam Ruiz, your neighbour?');
+    expect(replyBody(ambiguous)).toBe('Do you mean Sam Patel from accounting or Sam Ruiz, your neighbour?');
     expect(ambiguous.intent?.match(/\?/gu)).toHaveLength(1);
     expect(ambiguous.sent).toBe(1);
     await w.say(n + 1, 'What did Sam Ruiz do?');
-    expect(replyBody(w.journal.view.order.at(-1)!)).toBe('PREVIEW — Sam Ruiz lent you a ladder.');
+    expect(replyBody(w.journal.view.order.at(-1)!)).toBe('Sam Ruiz lent you a ladder.');
     expect(w.journal.view.order.at(-1)?.sent).toBe(1);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -479,9 +489,9 @@ it('keeps disagreeing active facts in context for clarification and answers a qu
     await w.say(1, 'The Atlas launch is on October 8.');
     await w.say(2, 'The Atlas launch is on November 12.');
     await w.say(3, 'When is the Atlas launch?');
-    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — Which Atlas launch date should I use, October 8 or November 12?');
+    expect(w.journal.view.order.at(-1)?.intent).toBe('Which Atlas launch date should I use, October 8 or November 12?');
     await w.say(4, 'What October date did I mention for Atlas?');
-    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — October 8.');
+    expect(w.journal.view.order.at(-1)?.intent).toBe('October 8.');
     expect(w.journal.view.replies).toBe(4);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -502,7 +512,7 @@ it('renders the whole source message, so an excerpt can never drop the context t
     const packet = JSON.parse(w.asked.get('Which month does Sam support?')!);
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user === message)).toBe(false);
-    expect(packet.people).toMatchObject([{ source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message,
+    expect(packet.people).toMatchObject([{ source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21 07:14 PDT', message,
       mentions: [{ person: 'Sam', quote: 'Sam supports November' }] }]);
     expect(packet.capability).toContain('Read a mention only within its whole message');
     w.journal.close();
@@ -530,7 +540,7 @@ it('carries a dated, sourced timeline from imported messages and caps it per per
     expect(packet.people.map((entry: { date: string }) => entry.date)).toEqual(
       [...packet.people.map((entry: { date: string }) => entry.date)].sort());
     expect(packet.people[0].sourceId).toMatch(/^channel-ref:[a-f0-9]{64}$/u);
-    expect(packet.people[0].date).toBe('2026-09-21T14:16Z');
+    expect(packet.people[0].date).toBe('2026-09-21 07:16 PDT');
     expect(packet.people.at(-1)).toMatchObject({ source: 'conversation',
       from: 'justin@example.test (export sender metadata, unverified)',
       message: 'Maya Chen denied ordering shipment 12.',
@@ -606,9 +616,11 @@ it('keeps a plain summary and reports the missing people record; person notes gi
 it('keeps per-turn non-model overhead flat through 200 turns with person notes and a restart', async () => {
   const root = origin(), samples: number[] = [];
   try {
-    let w = world(root, { bad: false });
+    // Keep optional people beside the expanded standing guidance; this measures runtime,
+    // while the separate pressure tests exercise eviction at smaller packet bounds.
+    let w = world(root, { bad: false, maxBytes: 9000 });
     for (let i = 1; i <= 200; i++) {
-      if (i === 100) { w.journal.close(); w = world(root, { bad: false }); }
+      if (i === 100) { w.journal.close(); w = world(root, { bad: false, maxBytes: 9000 }); }
       const text = i % 10 === 1 ? `Sam ${i} reported that Priya wants item ${i} reviewed.`
         : i === 199 ? 'What have Sam and Priya said?' : filler(i);
       const start = performance.now();

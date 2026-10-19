@@ -1,0 +1,122 @@
+{
+  "source": "Read-only private copy of lanes/preview-trial-root/justin-group-20261010/journal.encrypted, 2026-10-12. Neither failing turn dispatched a Jev model-call. Requests are reconstructed from the exact recorded answer and unchanged shipped questions. Audience timings and verdicts are recorded; provider completion after admission is injected from recorded 969390424, not claimed as a response to these two turns.",
+  "cases": [
+    {
+      "update": 969390426,
+      "answer": "19 × 4 = 76.",
+      "checks": [
+        {
+          "verdict": "unavailable",
+          "ruleIds": [],
+          "confidence": null,
+          "path": "jev",
+          "latencyMs": 643.1006670000206,
+          "cause": "other",
+          "candidateDigest": "d56606b8f915d05ca6b06e9ee9b80e584a1dde52a9433677de4a5706c85575ac"
+        },
+        {
+          "verdict": "unavailable",
+          "ruleIds": [],
+          "confidence": null,
+          "path": "jev",
+          "latencyMs": 853.7000000000116,
+          "cause": "timeout",
+          "candidateDigest": "d56606b8f915d05ca6b06e9ee9b80e584a1dde52a9433677de4a5706c85575ac"
+        }
+      ],
+      "admissions": [
+        {
+          "elapsedMs": 618,
+          "accepted": false
+        },
+        {
+          "elapsedMs": 1761,
+          "accepted": true
+        }
+      ]
+    },
+    {
+      "update": 969390427,
+      "answer": "Sunset in Boise, Idaho tomorrow (Tuesday, Oct 13, 2026) is at 7:04:31 PM MDT — from a direct read of sunrise-sunset.org's Boise page just now. A web search I ran alongside it corroborates this closely: timeanddate.com, almanac.com, and generalblue.com converge on roughly 7:05–7:06 PM MDT for the same date.\n\nSources:\n- https://sunrise-sunset.org/us/boise-id\n- https://www.timeanddate.com/sun/usa/boise?month=10\n- https://www.almanac.com/astronomy/sun-rise-and-set/ID/Boise",
+      "checks": [
+        {
+          "verdict": "unavailable",
+          "ruleIds": [],
+          "confidence": null,
+          "path": "jev",
+          "latencyMs": 853.1491669999959,
+          "cause": "timeout",
+          "candidateDigest": "fe2ee6b1268637eec4e81ebe36d57bcd862726d6d19c2c73061ede434e6860c0"
+        },
+        {
+          "verdict": "unavailable",
+          "ruleIds": [],
+          "confidence": null,
+          "path": "jev",
+          "latencyMs": 853.958209000004,
+          "cause": "timeout",
+          "candidateDigest": "fe2ee6b1268637eec4e81ebe36d57bcd862726d6d19c2c73061ede434e6860c0"
+        }
+      ],
+      "admissions": [
+        {
+          "elapsedMs": 1791,
+          "accepted": true
+        },
+        {
+          "elapsedMs": 923,
+          "accepted": true
+        }
+      ]
+    }
+  ],
+  "pass": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "raw_path": {
+        "type": "noul",
+        "noul": 0.1
+      },
+      "cli_command": {
+        "type": "noul",
+        "noul": 0.23
+      },
+      "config_key": {
+        "type": "noul",
+        "noul": 0.26
+      },
+      "credential": {
+        "type": "noul",
+        "noul": 0.12
+      },
+      "api_endpoint": {
+        "type": "noul",
+        "noul": 0.23
+      },
+      "quits_on_self": {
+        "type": "noul",
+        "noul": 0.2
+      },
+      "claims_blocked": {
+        "type": "noul",
+        "noul": 0.34
+      },
+      "parks_on_user": {
+        "type": "noul",
+        "noul": 0.34
+      },
+      "defers_work": {
+        "type": "noul",
+        "noul": 0.33
+      },
+      "unrecorded_blocker": {
+        "type": "noul",
+        "noul": 0.23
+      }
+    },
+    "usage": {
+      "input_tokens": 697,
+      "output_tokens": 184
+    }
+  }
+}

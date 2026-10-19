@@ -5,8 +5,11 @@
   /Library/LaunchDaemons/ai.instar.worker-monitor.plist by the operator's
   administrative path only. The installer materializes the single token
   @RELEASE_DIR@ (/Library/Instar2/m4-launch/releases/<release-digest>); there is
-  no `current` symlink. Only the supervisor service is kept alive: no worker is
-  ever restarted, and no global resource keys are set (they are host-wide).
+  no `current` symlink. Only the supervisor service is restarted, and only after
+  an unsuccessful exit: its own restart breaker exits successfully (0) after five
+  consecutive unstable starts, so launchd stops restarting it and the failure
+  settles (Rules 55/61). No worker is ever restarted, and no global resource keys
+  are set (they are host-wide).
 -->
 <plist version="1.0">
 <dict>
@@ -33,7 +36,10 @@
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
-  <true/>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
   <key>ThrottleInterval</key>
   <integer>10</integer>
   <key>AbandonProcessGroup</key>

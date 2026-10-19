@@ -1,14 +1,18 @@
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
-import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, subscriptionConversationPolicy,
-  SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT,
-  SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_THINKING_ENV, subscriptionPolicyFor,
-  validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
-import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
+import { createClaudeCodeSubscriptionRoute, createSubscriptionVersionCheck, subscriptionInvocationPolicy, subscriptionConversationPolicy,
+  SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
+  SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY,
+  SUBSCRIPTION_THINKING_ENV, subscriptionActivationEndAllowed, subscriptionPolicyFor,
+  validateSubscriptionActivation, subscriptionDoorway, subscriptionSessionPolicy, claudeSubscriptionStatusAccepted } from '../../src/assembly/production-provider.js';
+import { SESSION_WORK_RESIDUAL } from '../../src/assembly/production-session-work.js';
+import { CODEX_SUBSCRIPTION_VERSION, codexSessionPolicy } from '../../src/assembly/production-codex-provider.js';
+import type { ProductionProviderIO, SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { factsFixture, value } from '../facts/fixtures.js';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
@@ -18,7 +22,7 @@ const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const hash = (value: unknown) => canonical(value).kind === 'Success' ?
   (canonical(value) as { kind: 'Success'; value: { hash: string } }).value.hash : '';
-function fixture(options: { status?: object; terminal?: string; pending?: boolean; resultBytes?: number; rawBytes?: number; tokens?: number; invalidUtf8?: boolean; malformedAuth?: boolean; conversation?: boolean } = {}) {
+function fixture(options: { descriptor?: boolean; status?: object; terminal?: string; pending?: boolean; resultBytes?: number; rawBytes?: number; tokens?: number; invalidUtf8?: boolean; malformedAuth?: boolean; conversation?: boolean } = {}) {
   const f = factsFixture(), root = realpathSync(mkdtempSync(join(tmpdir(), 'subscription-offline-'))); roots.push(root);
   const home = join(root, 'home'), configDirectory = join(root, 'config'), workingDirectory = join(root, 'work');
   for (const path of [home, configDirectory, workingDirectory]) mkdirSync(path, { mode: 0o700 });
@@ -27,6 +31,9 @@ function fixture(options: { status?: object; terminal?: string; pending?: boolea
   const status = { loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', analyticsDisabled: true,
     projectsDirectory: `${configDirectory}/projects`, configDirectory, email: 'synthetic@example.invalid',
     orgId: 'synthetic-organization', orgName: 'synthetic', subscriptionType: 'max', ...options.status };
+  // A descriptor login (the host hands the CLI its token): the CLI reports that and nothing of an account.
+  const reported = options.descriptor ? { loggedIn: true, authMethod: 'oauth_token', apiProvider: 'firstParty', analyticsDisabled: false,
+    projectsDirectory: `${configDirectory}/projects`, configDirectory, ...options.status } : status;
   const answer = JSON.stringify({ ...f.decisionInput(), conclusion: { ...f.decisionInput().conclusion, subject: 'preview-stage2-answer', predicate: 'answer-text', value: 'café <世界> &' } });
   const result = options.resultBytes ? answer + ' '.repeat(options.resultBytes - Buffer.byteLength(answer)) : answer;
   const terminal = options.terminal ?? JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result,
@@ -37,14 +44,15 @@ function fixture(options: { status?: object; terminal?: string; pending?: boolea
     let stdin='';for await(const chunk of process.stdin)stdin+=chunk;
     appendFileSync(${JSON.stringify(report)},JSON.stringify({args:process.argv.slice(2),env:process.env,cwd:process.cwd(),stdin})+'\\n');
     if(process.argv[2]==='--version')process.stdout.write('2.1.280 (Claude Code)\\n');
-    else if(process.argv[2]==='auth')process.stdout.write(${JSON.stringify(options.malformedAuth ? '{' : JSON.stringify(status))});
+    else if(process.argv[2]==='auth')process.stdout.write(${JSON.stringify(options.malformedAuth ? '{' : JSON.stringify(reported))});
     else if(process.argv.slice(2).filter(v=>v==='--system-prompt').length!==1 || process.argv[process.argv.indexOf('--system-prompt')+1]!==${JSON.stringify(options.conversation ? SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT : SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT)})process.exit(42);
     else ${options.pending ? 'setInterval(()=>{},1000)' : `process.stdout.write(Buffer.from(${JSON.stringify(raw.toString('base64'))},'base64'))`};\n`;
   writeFileSync(executable, source); chmodSync(executable, 0o700);
   let active = true;
   const physical = createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => !active });
   const launched: Record<string, string>[] = [];
-  const io = { ...physical, execute: (input: any) => { launched.push(input.env); return physical.execute(input); } };
+  const io = { ...physical, ...(options.descriptor ? { descriptorLogin: true as const } : {}),
+    execute: (input: any) => { launched.push(input.env); return physical.execute(input); } };
   const seed = { type: 'ProviderSubscriptionProfile' as const, schemaVersion: 1 as const, reference: 'subscription-login',
     home, configDirectory, workingDirectory, expectedAccount: status.email, organization: status.orgId, plan: 'max' as const,
     executable, artifact: `sha256:${createHash('sha256').update(source).digest('hex')}`, version: '2.1.280',
@@ -103,9 +111,9 @@ it('spawns the synthetic subscription CLI with exact bytes, args and allowlisted
 // were held. MAX_THINKING_TOKENS=0 is the pinned CLI's env-only thinking-off control.
 // The conversation digest is int11's policy (reviewer-compact-call and related fields);
 // the live frozen14 build pins sha256:557a62fa…, so an int11 switch needs a new record.
-const RECORDED_DIGESTS = { 'preview-decision-system-v2': 'sha256:234293e8e209f210b23cdcf5322202065766dfe64f532f85bbea69486c0260b4',
-  // 2026-09-28 declaration-slot system prompt; its predecessor sha256:efe69876… (record v4) needs a policy successor.
-  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:aced65e686a665f11a02d7480501170ad3e2f8664fa5858ec69f42374390374a' } as const;
+const CURRENT_DIGESTS = { 'preview-decision-system-v2': 'sha256:ddf74607ea84a54ad11e7db935e7516d8a4bad0065087402afdc2ecec334e074',
+  // 2026-10-15 completion guidance adds 112 bytes; activation requires a verified policy successor.
+  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:7b1d9af257f848e9cef4abad31771394af1cb4e1b6062a4538d3442a2045f220' } as const;
 for (const conversation of [false, true]) it(`sends thinking off on the ${conversation ? 'conversation' : 'decision'} framing, args unchanged`, async () => {
   const f = fixture({ conversation });
   expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('complete');
@@ -116,16 +124,19 @@ for (const conversation of [false, true]) it(`sends thinking off on the ${conver
   expect(model[0].args).toEqual((conversation ? subscriptionConversationPolicy : subscriptionInvocationPolicy)(f.input.model).args);
   expect(model[0].args.some((arg: string) => /thinking|effort/iu.test(arg))).toBe(false);
 });
-it('keeps both recorded activation policy digests; a policy-borne thinking field would void the activation', () => {
+it('keeps both current activation policy digests; a policy-borne thinking field would void the activation', () => {
   const f = fixture({ conversation: true }), model = 'claude-sonnet-5';
-  for (const [framing, digest] of Object.entries(RECORDED_DIGESTS)) {
-    const { policy } = subscriptionPolicyFor(model, framing as keyof typeof RECORDED_DIGESTS);
+  for (const [framing, digest] of Object.entries(CURRENT_DIGESTS)) {
+    const { policy } = subscriptionPolicyFor(model, framing as keyof typeof CURRENT_DIGESTS);
     expect(hash(policy)).toBe(digest);
     expect(Object.keys(policy)).not.toContain('MAX_THINKING_TOKENS');
     expect(hash({ ...policy, ...SUBSCRIPTION_THINKING_ENV })).not.toBe(digest);
   }
-  const live = { ...f.input.activation, model, invocationPolicyDigest: RECORDED_DIGESTS[SUBSCRIPTION_CONVERSATION_FRAMING] };
+  const live = { ...f.input.activation, model, invocationPolicyDigest: CURRENT_DIGESTS[SUBSCRIPTION_CONVERSATION_FRAMING] };
   expect(() => validateSubscriptionActivation(live, f.input.profile, model, 1000, SUBSCRIPTION_CONVERSATION_FRAMING)).not.toThrow();
+  const predecessor = { ...live, invocationPolicyDigest: 'sha256:3598cc7514f4be6ffec52f1d321e1596cd2db420a67fd7958281f3862dd9ce8c' };
+  expect(() => validateSubscriptionActivation(predecessor, f.input.profile, model, 1000, SUBSCRIPTION_CONVERSATION_FRAMING))
+    .toThrow(/policy differs/u);
   const moved = { ...live, invocationPolicyDigest: hash({ ...subscriptionConversationPolicy(model), ...SUBSCRIPTION_THINKING_ENV }) };
   expect(() => validateSubscriptionActivation(moved, f.input.profile, model, 1000, SUBSCRIPTION_CONVERSATION_FRAMING))
     .toThrow(/policy differs/u);
@@ -168,6 +179,17 @@ it('refuses contradicted/expired activation, changed artifact, wrong account, st
   ]) expect(createClaudeCodeSubscriptionRoute(input).kind).toBe('Refused');
   writeFileSync(f.input.profile.executable, 'changed');
   expect(createClaudeCodeSubscriptionRoute(f.input).kind).toBe('Refused'); expect(f.commands()).toHaveLength(0);
+});
+// Rules 2 and 115: the custodian's frozen-descriptor check is the one that kept the shipped self-host
+// command away from its own doorway when the command handed over a plain `JSON.parse` result. Both arms
+// are stated here so a later repair of that command cannot be mistaken for loosening this check.
+it('admits a frozen host-owned descriptor and refuses the same descriptor unfrozen, with no dispatch', () => {
+  const f = fixture();
+  expect(createClaudeCodeSubscriptionRoute(f.input).kind).toBe('Success');
+  const mutable = { ...f.input.profile } as ProviderSubscriptionProfile;
+  expect(Object.isFrozen(mutable)).toBe(false);
+  expect(createClaudeCodeSubscriptionRoute({ ...f.input, profile: mutable, resolveProfile: () => mutable }).kind).toBe('Refused');
+  expect(f.commands()).toHaveLength(0);
 });
 it('refuses managed helpers and path swaps before dispatch', async () => {
   const f = fixture(); const route = value(createClaudeCodeSubscriptionRoute(f.input));
@@ -275,8 +297,147 @@ it('spends preflight time inside the reply-review deadline and dispatches only w
   }
 });
 
-it('refuses cached remote/server policy and orphan signature files before any child', async () => {
-  for (const name of ['remote-settings.json', 'remote-settings.json.signature.json', 'policy-limits.json.signature-iat.json']) {
+// Regression from forum answer update 715675453: the model produced its answer, but the
+// review never reached its model command. Current authority checks consumed the dispatch margin.
+it.each([250, 58_900, 59_000])('recomputes review time after a %i ms authority check', async checkMs => {
+  const capture = JSON.parse(readFileSync('tests/preview/fixtures/forum-review-budget-2026-10-10.json', 'utf8'));
+  // Real forum review input and recorded bounded-review output, not a hand-authored verdict.
+  const terminal = JSON.stringify({ type: 'result', subtype: capture.replay.subtype, is_error: capture.replay.is_error,
+    result: capture.replay.output, usage: capture.replay.usage, session_id: 'recorded-review-replay' });
+  const f = fixture({ conversation: true, terminal });
+  let clock = 1000, checked = false, modelTimeout: number | undefined;
+  const input = { ...f.input, now: () => clock,
+    active: () => {
+      if (!checked && f.commands().length === 2) { checked = true; clock += checkMs; }
+      return true;
+    },
+    io: { ...f.input.io, execute: async (command: Parameters<ProductionProviderIO['execute']>[0]) => {
+      if (command.stdin) modelTimeout = command.timeout;
+      const result = await f.input.io.execute(command);
+      if (command.args[0] === 'auth') clock += 1000;
+      return result;
+    } } };
+  const result = await value(createClaudeCodeSubscriptionRoute(input)).invoke(capture.original.input,
+    { ...f.bounds, deadline: 61_000, timeout: 60_000 });
+  const remaining = 61_000 - clock - 100;
+  expect(checked).toBe(true);
+  expect(result.state).toBe(remaining > 0 ? 'complete' : 'uncertain');
+  expect(modelTimeout).toBe(remaining > 0 ? remaining : undefined);
+  expect(f.commands()).toHaveLength(remaining > 0 ? 3 : 2);
+  if (remaining > 0) {
+    expect(f.commands()[2].stdin).toBe(capture.original.input);
+    expect(result.bytes).toBe(capture.replay.output);
+  }
+});
+
+const serverPolicyFixture = (name: string) => readFileSync(new URL(`../fixtures/claude-server-policy-2.1.280/${name}`, import.meta.url), 'utf8');
+const serverPolicyFiles = ['policy-limits.json', 'policy-limits.json.stamp.json', 'remote-settings.json'];
+function installServerPolicy(directory: string) {
+  for (const name of serverPolicyFiles) writeFileSync(join(directory, name), serverPolicyFixture(name));
+}
+
+it('accepts the real 2.1.280 server policy only after the profile and activation are re-derived', async () => {
+  const f = fixture();
+  const staleRoute = value(createClaudeCodeSubscriptionRoute(f.input));
+  installServerPolicy(f.input.profile.configDirectory);
+  const observed = f.input.io.inspectSubscriptionProfile(f.input.profile);
+  expect(observed.loginProfileIdentity).toBe(f.input.profile.loginProfileIdentity);
+  expect(observed.managedConfigurationDigest).not.toBe(f.input.profile.managedConfigurationDigest);
+  expect((await staleRoute.invoke('request', f.bounds)).state).toBe('uncertain');
+  expect(f.commands()).toHaveLength(0);
+  const profile = Object.freeze({ ...f.input.profile, ...observed });
+  expect(createClaudeCodeSubscriptionRoute({ ...f.input, profile }).kind).toBe('Refused');
+  const input = { ...f.input, profile, resolveProfile: () => profile,
+    adapterEvidenceContract: { ...f.input.adapterEvidenceContract, version: hash(profile) },
+    activation: { ...f.input.activation, profileDigest: hash(profile) } };
+  const renewedRoute = value(createClaudeCodeSubscriptionRoute(input));
+  expect((await renewedRoute.invoke('request', f.bounds)).state).toBe('complete');
+  expect(f.commands()).toHaveLength(3);
+  const stamp = JSON.parse(serverPolicyFixture('policy-limits.json.stamp.json'));
+  writeFileSync(join(profile.configDirectory, 'policy-limits.json.stamp.json'), JSON.stringify({ ...stamp, confirmed_at: stamp.confirmed_at + 1 }));
+  expect((await renewedRoute.invoke('request', f.bounds)).state).toBe('complete');
+  expect(f.commands()).toHaveLength(5); // version is reused; auth and model still run
+});
+
+const capturedPolicy = () => JSON.parse(serverPolicyFixture('policy-limits.json'));
+const capturedStamp = () => JSON.parse(serverPolicyFixture('policy-limits.json.stamp.json'));
+
+it.each([
+  ['policy-limits.json', null, 'expected object'],
+  ['policy-limits.json', [], 'expected object'],
+  ['policy-limits.json', { ...capturedPolicy(), extra: false }, 'extra: unexpected key'],
+  ['policy-limits.json', {}, 'restrictions: missing key'],
+  ['policy-limits.json', { ...capturedPolicy(), restrictions: [] }, 'restrictions: expected object'],
+  ...[null, {}, { allowed: true }, { allowed: 0 }, { allowed: 'false' }, { allowed: false, extra: false }]
+    .map<[string, unknown, string]>(value => ['policy-limits.json', { ...capturedPolicy(), restrictions: { enforce_web_search_mcp_isolation: value } },
+      'restrictions.enforce_web_search_mcp_isolation']),
+  ...[null, ['taint']].map<[string, unknown, string]>(value => ['policy-limits.json', { ...capturedPolicy(), compliance_taints: value }, 'compliance_taints: expected []']),
+  ['policy-limits.json', { ...capturedPolicy(), monitoring_notice: '' }, 'monitoring_notice: expected null'],
+  ['policy-limits.json', { ...capturedPolicy(), defaults: null }, 'defaults: expected object'],
+  ['policy-limits.json', { ...capturedPolicy(), defaults: { extra: false } }, 'defaults.extra: unexpected key'],
+  ['policy-limits.json', { ...capturedPolicy(), defaults: { remote_control_at_startup: true } }, 'remote_control_at_startup: expected false'],
+  ['remote-settings.json', { extra: false }, 'extra: unexpected key'],
+  ['remote-settings.json', [], 'expected object'],
+  ['remote-settings.json', null, 'expected object'],
+  ['policy-limits.json.stamp.json', { ...capturedStamp(), extra: false }, 'extra: unexpected key'],
+  ['policy-limits.json.stamp.json', {}, 'v: missing key'],
+  ...Object.entries({ v: 2, identity: 'opaque', kind: 'org', sha: 'opaque', confirmed_at: -1, hipaa_seen: ['taint'] })
+    .map<[string, unknown, string]>(([key, value]) => ['policy-limits.json.stamp.json', { ...capturedStamp(), [key]: value }, `${key}: expected`]),
+  ['policy-limits.json.stamp.json', { ...capturedStamp(), confirmed_at: 1.5 }, 'confirmed_at: expected'],
+  ['policy-limits.json.stamp.json', { ...capturedStamp(), confirmed_at: '123' }, 'confirmed_at: expected'],
+  ['policy-limits.json.stamp.json', { ...capturedStamp(), hipaa_seen: null }, 'hipaa_seen: expected'],
+] as const)('refuses unreviewed server policy %s: %j (%s)', async (name, settings, reason) => {
+  const f = fixture(); const route = value(createClaudeCodeSubscriptionRoute(f.input));
+  installServerPolicy(f.input.profile.configDirectory);
+  writeFileSync(join(f.input.profile.configDirectory, name), JSON.stringify(settings));
+  expect(() => f.input.io.inspectSubscriptionProfile(f.input.profile)).toThrow(reason);
+  expect((await route.invoke('request', f.bounds)).state).toBe('uncertain');
+  expect(f.commands()).toHaveLength(0);
+});
+
+it('binds each accepted file and its removal to the managed digest; permits only restrictive additions', () => {
+  const f = fixture(), directory = f.input.profile.configDirectory;
+  installServerPolicy(directory);
+  const inspect = () => f.input.io.inspectSubscriptionProfile(f.input.profile).managedConfigurationDigest;
+  const initial = inspect();
+  for (const [name, settings] of [
+    ['policy-limits.json', { ...capturedPolicy(), restrictions: { another_restriction: { allowed: false } } }],
+    ['policy-limits.json', { ...capturedPolicy(), restrictions: {}, defaults: {} }],
+    ['policy-limits.json.stamp.json', { ...capturedStamp(), identity: 'a'.repeat(64) }],
+    ['policy-limits.json.stamp.json', { ...capturedStamp(), sha: `sha256:${'b'.repeat(64)}` }],
+  ] as const) {
+    writeFileSync(join(directory, name), JSON.stringify(settings));
+    expect(inspect()).not.toBe(initial);
+    installServerPolicy(directory);
+  }
+  // An unchanged-cache confirmation is freshness only, after full schema validation.
+  writeFileSync(join(directory, 'policy-limits.json.stamp.json'),
+    JSON.stringify({ ...capturedStamp(), confirmed_at: capturedStamp().confirmed_at + 1 }));
+  expect(inspect()).toBe(initial);
+  // Parsed content, not whitespace, is the effective configuration.
+  writeFileSync(join(directory, 'policy-limits.json'), JSON.stringify(capturedPolicy()));
+  expect(inspect()).toBe(initial);
+  for (const name of ['remote-settings.json', 'policy-limits.json.stamp.json']) {
+    rmSync(join(directory, name)); expect(inspect()).not.toBe(initial); installServerPolicy(directory);
+  }
+  rmSync(join(directory, 'policy-limits.json'));
+  expect(inspect).toThrow('policy-limits.json.stamp.json: missing policy-limits.json');
+});
+
+it('refuses malformed, oversized and redirected server policy files', () => {
+  const f = fixture(), directory = f.input.profile.configDirectory, path = join(directory, 'remote-settings.json');
+  for (const bytes of ['{', '{} trailing', '{}'.padEnd(65537)]) {
+    writeFileSync(path, bytes);
+    expect(() => f.input.io.inspectSubscriptionProfile(f.input.profile)).toThrow('remote-settings.json:');
+  }
+  rmSync(path); symlinkSync(join(directory, 'elsewhere'), path);
+  expect(() => f.input.io.inspectSubscriptionProfile(f.input.profile)).toThrow('remote-settings.json: unsafe path or size');
+  rmSync(path); mkdirSync(path);
+  expect(() => f.input.io.inspectSubscriptionProfile(f.input.profile)).toThrow('remote-settings.json: unsafe path or size');
+});
+
+it('holds added remote/server policy and orphan signature files before any child', async () => {
+  for (const name of ['remote-settings.json', 'remote-settings.json.signature.json', 'remote-settings.other', 'policy-limits.json.signature-iat.json', 'policy-limits.json.extra']) {
     const f = fixture(); const route = value(createClaudeCodeSubscriptionRoute(f.input));
     writeFileSync(join(f.input.profile.configDirectory, name), '{}');
     expect((await route.invoke('request', f.bounds)).state).toBe('uncertain');
@@ -299,7 +460,7 @@ it('refuses the old invocation policy identity before any child', () => {
   expect(createClaudeCodeSubscriptionRoute({ ...f.input, activation: { ...f.input.activation,
     invocationPolicyDigest: hash(policy) } }).kind).toBe('Refused');
   expect(f.commands()).toHaveLength(0);
-  expect(Buffer.byteLength(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT)).toBe(1424);
+  expect(Buffer.byteLength(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT)).toBe(1459);
 });
 
 for (const change of ['missing', 'changed', 'duplicated']) it(`synthetic CLI refuses ${change} system argument without a positive answer`, async () => {
@@ -316,4 +477,254 @@ for (const change of ['missing', 'changed', 'duplicated']) it(`synthetic CLI ref
   } };
   expect((await value(createClaudeCodeSubscriptionRoute({ ...f.input, io })).invoke('request', f.bounds)).state).toBe('uncertain');
   expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+});
+
+// w3-renewal1012 option (b): a record at the predecessor's reviewed end runs only while the journal's current end is that
+// end, so a runner on it can propose the renewal; the build alone names both ends, and nothing reads an end from the record.
+it('accepts the predecessor end only while the journal is still at it, and the governed end always', () => {
+  expect(SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY).toBe(Date.UTC(2026, 9, 12, 20, 40));
+  expect(SUBSCRIPTION_PREVIEW_EXPIRY - SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY).toBe(31 * 24 * 3600 * 1000 + 3600 * 1000);
+  const P = SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY, G = SUBSCRIPTION_PREVIEW_EXPIRY;
+  expect([subscriptionActivationEndAllowed(P, P), subscriptionActivationEndAllowed(P, G), subscriptionActivationEndAllowed(P),
+    subscriptionActivationEndAllowed(G, P), subscriptionActivationEndAllowed(G, G), subscriptionActivationEndAllowed(G)])
+    .toEqual([true, false, false, true, true, true]);
+  // Any other end is refused whatever the journal says, including the journal's own end and the 2026-09-28 end.
+  for (const end of [Date.UTC(2026, 8, 28, 20, 40), P - 1, P + 1, G - 1, G + 1, Date.UTC(2026, 9, 19, 20, 40)])
+    for (const journal of [undefined, P, G, end]) expect(subscriptionActivationEndAllowed(end, journal)).toBe(false);
+  const f = fixture(), { profile, model } = f.input, v5 = { ...f.input.activation, expiresAt: P };
+  expect(() => validateSubscriptionActivation(v5, profile, model, 1000, undefined, P)).not.toThrow();
+  for (const journal of [G, undefined]) expect(() => validateSubscriptionActivation(v5, profile, model, 1000, undefined, journal))
+    .toThrow('subscription activation expired or clock differs');
+  // The predecessor end still expires at itself: the journal's end never extends a record past its own end.
+  expect(() => validateSubscriptionActivation(v5, profile, model, P, undefined, P)).toThrow('expired or clock differs');
+  expect(() => validateSubscriptionActivation({ ...v5, expiresAt: P + 1 }, profile, model, 1000, undefined, P + 1))
+    .toThrow('expired or clock differs');
+});
+
+it('re-reads the journal end at every call: a predecessor-end route stops dispatching once the renewal lands', async () => {
+  const f = fixture(), P = SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY;
+  let journalEnd = P;
+  const input = { ...f.input, activation: { ...f.input.activation, expiresAt: P }, journalEnd: () => journalEnd };
+  expect(createClaudeCodeSubscriptionRoute({ ...f.input, activation: input.activation }).kind).toBe('Refused');
+  const route = value(createClaudeCodeSubscriptionRoute(input));
+  expect((await route.invoke('request', f.bounds)).state).toBe('complete');
+  journalEnd = SUBSCRIPTION_PREVIEW_EXPIRY;                       // the renewal frame applied
+  expect((await route.invoke('request', f.bounds)).state).not.toBe('complete');
+  expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+  expect(createClaudeCodeSubscriptionRoute(input).kind).toBe('Refused');
+  // The renewed record runs on the renewed journal (and the governed end is unaffected by the reader).
+  expect(createClaudeCodeSubscriptionRoute({ ...input, activation: f.input.activation }).kind).toBe('Success');
+});
+
+it('admits Claude session work only under its own reviewed grant and a live subscription sign-in', async () => {
+  const f = fixture();
+  const session = subscriptionDoorway('claude-code-subscription').session;
+  expect(session.framework).toBe('claude-code');
+  const { profile, activation, io, model } = f.input as unknown as { profile: ProviderSubscriptionProfile;
+    activation: SubscriptionActivationRecord; io: Parameters<typeof session.admit>[0]['io']; model: string };
+  const policy = subscriptionSessionPolicy(model);
+  expect(policy.launch).toEqual(['--dangerously-skip-permissions', '--model', model]);
+  expect(policy).toMatchObject({ confinement: 'admitted-tools', effects: 'effect-doorway', admission: { framing: 'session-admission-v2', allowance: 24 } });
+  const grant = { ...activation, invocationPolicyDigest: hash(policy), acceptedResiduals: [SESSION_WORK_RESIDUAL] };
+  expect(() => session.validateActivation(grant, profile, model, 1000)).not.toThrow();
+  // The answer activation is not a session grant; a grant without the written residual is refused.
+  expect(() => session.validateActivation(activation, profile, model, 1000)).toThrow(/policy differs/u);
+  expect(() => session.validateActivation({ ...grant, acceptedResiduals: ['other'] }, profile, model, 1000)).toThrow(/admitted-session residual/u);
+  await expect(session.admit({ profile, io, deadline: 20_000, now: () => 1000 })).resolves.toBeUndefined();
+  await expect(session.admit({ profile: { ...profile, artifact: 'sha256:changed' }, io, deadline: 20_000, now: () => 1000 }))
+    .rejects.toThrow(/executable changed/u);
+});
+for (const status of [{ authMethod: 'api_key' }, { apiKeySource: 'ANTHROPIC_API_KEY' }, { subscriptionType: 'console' }])
+  it(`refuses a delegated session on status ${JSON.stringify(status)}`, async () => {
+    const f = fixture({ status });
+    const { profile, io } = f.input as unknown as { profile: ProviderSubscriptionProfile;
+      io: Parameters<ReturnType<typeof subscriptionDoorway>['session']['admit']>[0]['io'] };
+    await expect(subscriptionDoorway('claude-code-subscription').session.admit({ profile, io, deadline: 20_000, now: () => 1000 }))
+      .rejects.toThrow(/authentication status refused/u);
+  });
+it('accepts a descriptor login only from a host that declares the hand-off, and only in its exact shape', async () => {
+  const handed = fixture({ descriptor: true });
+  expect((await value(createClaudeCodeSubscriptionRoute(handed.input)).invoke('request', handed.bounds)).state).toBe('complete');
+  // The same CLI report from a host that declares no hand-off is no subscription login.
+  const undeclared = fixture({ status: { authMethod: 'oauth_token' } });
+  expect((await value(createClaudeCodeSubscriptionRoute(undeclared.input)).invoke('request', undeclared.bounds)).state).toBe('uncertain');
+  // A host that hands the login over refuses a stored one (a plain-text login the harness could open) and any other shape.
+  for (const status of [{ email: 'synthetic@example.invalid' }, { authMethod: 'claude.ai' }, { loggedIn: false },
+    { configDirectory: '/different-profile' }, { apiKeySource: 'ANTHROPIC_API_KEY' }, { apiProvider: 'bedrock' }]) {
+    const f = fixture({ descriptor: true, status });
+    expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('uncertain');
+    expect(f.commands().some(row => row.args.includes('--print'))).toBe(false);
+  }
+  const stored = fixture();
+  const profile = (stored.input as unknown as { profile: ProviderSubscriptionProfile }).profile;
+  const claudeAi = { loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', analyticsDisabled: true,
+    projectsDirectory: `${profile.configDirectory}/projects`, configDirectory: profile.configDirectory, email: profile.expectedAccount,
+    orgId: profile.organization, orgName: 'synthetic', subscriptionType: profile.plan };
+  expect(claudeSubscriptionStatusAccepted(claudeAi, profile)).toBe(true);
+  expect(claudeSubscriptionStatusAccepted(claudeAi, profile, true)).toBe(false);
+});
+
+it.each(['capture', 'session-incident'])('preserves the zero-token capacity refusal from the physical CLI (%s)', async kind => {
+  const captured = readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8');
+  // Exact weekly capture, plus the operator-recorded session wording in that captured envelope.
+  const terminal = kind === 'capture' ? captured : JSON.stringify({ ...JSON.parse(captured),
+    result: "You've hit your session limit · resets 6pm (America/Los_Angeles)" });
+  const f = fixture({ terminal });
+  const route = value(createClaudeCodeSubscriptionRoute(f.input));
+  const result = await route.invoke('{"exact":"question"}', f.bounds);
+  expect(result).toMatchObject({ state: 'rejected', bytes: null, failure: { failureClass: 'limit',
+    resetHint: kind === 'capture' ? null : '6:00pm' }, usage: { inputTokens: 0, inputComplete: true, outputTokens: 0, charge: null } });
+  expect(f.commands()).toHaveLength(3); // Version/auth and one launched model attempt.
+});
+
+it('uses generic Instar identity on decision, conversation and tool routes', () => {
+  for (const prompt of [SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT]) {
+    expect(prompt).toMatch(/^You are an Instar 2\.0 agent/u);
+    expect(prompt).not.toMatch(/Justin/iu);
+    // The legacy Decision subject is protocol metadata, not the agent’s identity.
+    expect(prompt.split(". Your task")[0]).not.toMatch(/preview/iu);
+  }
+});
+
+
+// These version-cache proofs use the same real synthetic executable on WSL, without
+// the macOS resource-owner launcher. No serving login or provider is involved.
+function versionFixture() {
+  const f = fixture();
+  const io = { ...f.input.io, execute: async (command: Parameters<ProductionProviderIO['execute']>[0]) => {
+    const result = spawnSync(command.executable, [...command.args], { cwd: command.cwd, env: command.env,
+      input: command.stdin, timeout: command.timeout, maxBuffer: command.maxBytes });
+    const stdoutBytes = result.stdout ?? Buffer.alloc(0);
+    return { code: result.status, limited: result.error !== undefined, stdout: stdoutBytes.toString('utf8'), stdoutBytes };
+  } };
+  return { ...f, input: { ...f.input, io } };
+}
+
+it('reuses a checked version across runner routes while checking auth and physical identity on every call', async () => {
+  const f = versionFixture(), versionCheck = createSubscriptionVersionCheck();
+  let inspected = 0, digested = 0;
+  const io = { ...f.input.io,
+    inspectSubscriptionProfile: (profile: ProviderSubscriptionProfile) => { inspected++; return f.input.io.inspectSubscriptionProfile(profile); },
+    executableBytes: (path: string) => { digested++; return f.input.io.executableBytes(path); } };
+  const route = () => value(createClaudeCodeSubscriptionRoute({ ...f.input, io, versionCheck }));
+  expect((await route().invoke('first', f.bounds)).state).toBe('complete');
+  const before = { inspected, digested };
+  expect((await route().invoke('second', f.bounds)).state).toBe('complete');
+  expect(inspected).toBeGreaterThan(before.inspected); expect(digested).toBeGreaterThan(before.digested);
+  const commands = f.commands();
+  expect(commands.filter(c => c.args[0] === '--version')).toHaveLength(1);
+  expect(commands.filter(c => c.args[0] === 'auth')).toHaveLength(2);
+  expect(commands.filter(c => c.stdin.length > 0)).toHaveLength(2);
+  // A successful version check grants no authority to a revoked runner.
+  const revoked = route(); f.stop();
+  expect((await revoked.invoke('third', f.bounds)).state).toBe('uncertain');
+  expect(f.commands()).toHaveLength(5);
+});
+
+it('a cached version does not cover a changed physical artifact, login identity or auth status', async () => {
+  for (const changed of ['artifact', 'identity', 'auth'] as const) {
+    const f = versionFixture(), versionCheck = createSubscriptionVersionCheck(); let altered = false;
+    const io = { ...f.input.io,
+      executableBytes: (path: string) => altered && changed === 'artifact' ? Buffer.from('different artifact') : f.input.io.executableBytes(path),
+      inspectSubscriptionProfile: (profile: ProviderSubscriptionProfile) => {
+        const observed = f.input.io.inspectSubscriptionProfile(profile);
+        return altered && changed === 'identity' ? { ...observed, loginProfileIdentity: 'changed' } : observed;
+      },
+      execute: async (command: Parameters<ProductionProviderIO['execute']>[0]) => {
+        const result = await f.input.io.execute(command);
+        if (altered && changed === 'auth' && command.args[0] === 'auth') {
+          const stdout = JSON.stringify({ loggedIn: false });
+          return { ...result, stdout, stdoutBytes: Buffer.from(stdout) };
+        }
+        return result;
+      } };
+    const route = value(createClaudeCodeSubscriptionRoute({ ...f.input, io, versionCheck }));
+    expect((await route.invoke('first', f.bounds)).state).toBe('complete'); altered = true;
+    expect((await route.invoke('second', f.bounds)).state).toBe('uncertain');
+    expect(f.commands().filter(c => c.stdin.length > 0)).toHaveLength(1);
+    expect(f.commands().filter(c => c.args[0] === '--version')).toHaveLength(1);
+  }
+});
+
+it('revalidates version when an authorized artifact or profile changes and does not retain a failed version', async () => {
+  const f = versionFixture(), versionCheck = createSubscriptionVersionCheck();
+  const route = (input = f.input) => value(createClaudeCodeSubscriptionRoute({ ...input, versionCheck }));
+  expect((await route().invoke('first', f.bounds)).state).toBe('complete');
+  const source = readFileSync(f.input.profile.executable, 'utf8') + '\n// new executable artifact\n';
+  writeFileSync(f.input.profile.executable, source);
+  const profile = Object.freeze({ ...f.input.profile, artifact: `sha256:${createHash('sha256').update(source).digest('hex')}` });
+  const changed = { ...f.input, profile, resolveProfile: () => profile,
+    activation: { ...f.input.activation, artifact: profile.artifact, profileDigest: hash(profile) },
+    adapterEvidenceContract: { ...f.input.adapterEvidenceContract, version: hash(profile) } };
+  expect((await route(changed).invoke('second', f.bounds)).state).toBe('complete');
+  const workingDirectory = join(f.root, 'second-work'); mkdirSync(workingDirectory, { mode: 0o700 });
+  const nextSeed = { ...profile, workingDirectory };
+  const nextProfile = Object.freeze({ ...nextSeed, ...f.input.io.inspectSubscriptionProfile(nextSeed) });
+  const next = { ...changed, profile: nextProfile, resolveProfile: () => nextProfile,
+    activation: { ...changed.activation, profileDigest: hash(nextProfile) },
+    adapterEvidenceContract: { ...changed.adapterEvidenceContract, credentialReference: nextProfile.reference, endpoint: nextProfile.loginProfileIdentity, version: hash(nextProfile) } };
+  // Profile changes revalidate even when the executable artifact stays fixed.
+  expect((await route(next).invoke('third', f.bounds)).state).toBe('complete');
+  expect(f.commands().filter(c => c.args[0] === '--version')).toHaveLength(3);
+  let attempts = 0;
+  const failed = createSubscriptionVersionCheck();
+  await expect(failed(profile, async () => { attempts++; throw Error('wrong version'); })).rejects.toThrow('wrong version');
+  await failed(profile, async () => { attempts++; });
+  await failed(profile, async () => { attempts++; });
+  expect(attempts).toBe(2);
+});
+
+it('coalesces overlapping version checks only for the same complete profile', async () => {
+  const f = versionFixture(), check = createSubscriptionVersionCheck(); let calls = 0;
+  let release!: () => void;
+  const wait = new Promise<void>(resolve => { release = resolve; });
+  const verify = async () => { calls++; await wait; };
+  const a = check(f.input.profile, verify), b = check(f.input.profile, verify);
+  await Promise.resolve(); expect(calls).toBe(1); release(); await Promise.all([a, b]);
+  await check({ ...f.input.profile, version: 'different' }, async () => { calls++; });
+  expect(calls).toBe(2);
+  // Failure of an older in-flight profile cannot discard a newer successful slot.
+  let reject!: (reason: Error) => void;
+  const older = check(f.input.profile, () => new Promise<void>((_resolve, fail) => { reject = fail; }));
+  await Promise.resolve();
+  const newer = { ...f.input.profile, version: 'newer' };
+  await check(newer, async () => { calls++; });
+  const rejected = expect(older).rejects.toThrow('older failed');
+  reject(Error('older failed')); await rejected;
+  await check(newer, async () => { calls++; });
+  expect(calls).toBe(3);
+});
+
+it('keeps scheduled work policy unchanged and requires the exact continuing-session policy', () => {
+  const f = fixture(), session = subscriptionDoorway('claude-code-subscription').session;
+  const { profile, activation, model } = f.input;
+  const conversation = session.conversation!;
+  const policy = conversation.policy(model);
+  expect(policy.limits).toMatchObject({ maxStepsPerLaunch: 64, maxCallsPerStep: 128, deadlineMs: 4 * 60 * 60 * 1000 });
+  expect(policy.admission.allowance).toBe(policy.limits.maxCallsPerStep);
+  expect(policy.prompt).toContain('wait for the next message');
+  expect(policy.prompt).not.toContain('You have no tools');
+  const granted = { ...activation, invocationPolicyDigest: hash(policy), acceptedResiduals: [SESSION_WORK_RESIDUAL] };
+  expect(() => conversation.validateActivation(granted, profile, model, 1000)).not.toThrow();
+  expect(() => session.validateActivation(granted, profile, model, 1000)).toThrow(/policy differs/u);
+  const scheduled = { ...granted, invocationPolicyDigest: hash(subscriptionSessionPolicy(model)) };
+  expect(() => session.validateActivation(scheduled, profile, model, 1000)).not.toThrow();
+  expect(() => conversation.validateActivation(scheduled, profile, model, 1000)).toThrow(/policy differs/u);
+  expect(() => conversation.validateActivation({ ...granted, acceptedResiduals: [] }, profile, model, 1000))
+    .toThrow(/residual/u);
+  const codex = subscriptionDoorway('codex-cli-subscription').session;
+  const codexConversation = codex.conversation!;
+  const codexModel = 'gpt-synthetic-exact-1';
+  const codexProfile = { ...profile, version: CODEX_SUBSCRIPTION_VERSION };
+  const codexPolicy = codexConversation.policy(codexModel);
+  expect(codexPolicy).toMatchObject({ framework: 'codex-cli', launch: ['app-server', '--listen', 'stdio://', '--model', codexModel] });
+  const codexGrant = { ...granted, model: codexModel, version: CODEX_SUBSCRIPTION_VERSION,
+    profileDigest: hash(codexProfile), invocationPolicyDigest: hash(codexPolicy) };
+  expect(() => codexConversation.validateActivation(codexGrant, codexProfile, codexModel, 1000)).not.toThrow();
+  expect(() => codex.validateActivation(codexGrant, codexProfile, codexModel, 1000)).toThrow(/policy differs/u);
+  const codexScheduled = { ...codexGrant, invocationPolicyDigest: hash(codexSessionPolicy(codexModel)) };
+  expect(() => codex.validateActivation(codexScheduled, codexProfile, codexModel, 1000)).not.toThrow();
+  expect(() => codexConversation.validateActivation(codexScheduled, codexProfile, codexModel, 1000)).toThrow(/policy differs/u);
+  expect(() => codexConversation.validateActivation({ ...codexGrant, acceptedResiduals: [] }, codexProfile, codexModel, 1000))
+    .toThrow(/residual/u);
 });

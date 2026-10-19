@@ -3,10 +3,11 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { setImmediate as yieldTurn } from 'node:timers/promises';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { ANSWER_INSTRUCTIONS, MIND_RULES, SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, MEMORY_LOOKUP_INSTRUCTIONS, MIND_RULES, SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
 import { readRuns, selfState, selfStateSource } from './self-state.js';
 
 const key = new Uint8Array(32).fill(11);
@@ -255,12 +256,16 @@ it('keeps an older due agent promise visible when the ten-item packet limit is r
 it('surfaces a fresh promise made after the latest summary', async () => {
   const root = origin();
   try {
-    const w = world(root, { maxBytes: 6500, answer: question => question === 'Promise'
+    // Leave room for the base's in-role memory guidance alongside the fresh promise.
+    const w = world(root, { maxBytes: 8192, answer: question => question === 'Promise'
       ? 'I’ll check the report tomorrow.' : 'Okay.' });
     let id = 1;
     for (; !w.journal.view.summaries.length && id < 60; id++) await w.say(id, filler(id));
     expect(w.journal.view.summaries.length).toBeGreaterThan(0);
     await w.say(id++, 'Promise');
+    // w3-floorduty (Rules 3, 93): the probed packet also carries the obligation guide's floor form, which now outranks
+    // optional evidence under pressure, so the probe gets those bytes beside the promise it is checked for.
+    w.journal.view.limits.maxBytes += OBLIGATION_FLOOR_PACKET_BYTES;
     const probe = w.worker.probe('What did you promise?');
     expect('reason' in probe).toBe(false);
     if ('reason' in probe) throw Error(probe.reason);
@@ -306,9 +311,9 @@ it('brings open items back after compaction with who said them and when, says it
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect(packet.history.some((turn: { user: string }) => turn.user === LOCKER || turn.user === DENTIST)).toBe(false);
     expect(packet.commitments).toMatchObject([
-      { source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message: LOCKER, items: [{ id: 1, quote: LOCKER }] },
-      { source: 'telegram:12345678:update:2', from: 'the operator (verified sender)', date: '2026-09-21T14:15Z', message: DENTIST, items: [{ id: 2, quote: DENTIST }] },
-      { source: 'telegram:12345678:update:2', from: 'you, in your own earlier reply', date: '2026-09-21T14:15Z', reply: `Noted. ${PROMISE}`, answering: DENTIST,
+      { source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21 07:14 PDT', message: LOCKER, items: [{ id: 1, quote: LOCKER }] },
+      { source: 'telegram:12345678:update:2', from: 'the operator (verified sender)', date: '2026-09-21 07:15 PDT', message: DENTIST, items: [{ id: 2, quote: DENTIST }] },
+      { source: 'telegram:12345678:update:2', from: 'you, in your own earlier reply', date: '2026-09-21 07:15 PDT', reply: `Noted. ${PROMISE}`, answering: DENTIST,
         delivery: 'Telegram API accepted', items: [{ id: 0, quote: PROMISE }] }]);
     expect(packet.capability).toContain('a promise itself grants no send');
     expect(packet.capability).toContain('Absence from this bounded list proves nothing');
@@ -401,7 +406,11 @@ it('refuses a closure for an open item omitted from the summary packet', async (
       },
       send: async () => 1, checkOutbound: () => {} });
     let id = 1;
-    const say = async (text: string) => { worker.intake([update(id++, text)]); await worker.drain(); await worker.summarizeIfNeeded(); };
+    const say = async (text: string) => {
+      worker.intake([update(id++, text)]); await worker.drain(); await worker.summarizeIfNeeded();
+      // The inspect children are synchronous; let Vitest receive task updates between turns.
+      await yieldTurn();
+    };
     await say(`Please remember the dentist request: ${'details '.repeat(100)}`.trim());
     for (; !journal.view.summaries.length && id < 60;) await say(filler(id));
     expect(journal.view.commitments).toHaveLength(1);
@@ -441,8 +450,9 @@ it('drops optional open commitments until the complete summary envelope fits and
       model: async input => { calls.push({ id: input.id, context: input.context });
         return input.id.startsWith('summary:') ? 'The thirty items remain open; later discussion covered the garden.' : 'ok'; },
       send: async () => 3, checkOutbound: () => {} });
-    // Sized below the live bound less the always-offered decisions and the mind-held instructions.
-    worker.intake([update(3, `Please answer this long question: ${'question '.repeat(2200)}`)]);
+    // Keep the long question below the live bound after the expanded standing instructions.
+    // The thirty optional commitments still overflow, so the summary must trim them.
+    worker.intake([update(3, `Please answer this long question: ${'question '.repeat(2000)}`)]);
     await worker.drain();
     const summaryCall = calls.find(call => call.id === 'summary:2');
     expect(summaryCall).toBeDefined();
@@ -523,7 +533,7 @@ it('the live script reaches compaction and the question carries the open commitm
       sources: () => {
         const now = Date.now(), runs = readRuns(join(root, 'runs.jsonl'));
         const desk = deskStatusSource(readDeskStatus(join(root, 'desk-status.md')), now, join(root, 'desk-status.md'));
-        return [...sources, selfStateSource(selfState(journal.view, runs, now, 'UTC')), desk];
+        return [...sources, selfStateSource(selfState(journal.view, runs, now, 'UTC')), ...(desk ? [desk] : [])];
       },
       prepareModel: input => { const bytes = prepareJournalEnvelope(input, model, g.grant, Date.now());
         if (!input.id.startsWith('summary:')) prepared.push(bytes); return bytes; },
@@ -533,7 +543,11 @@ it('the live script reaches compaction and the question carries the open commitm
     const sentence = 'The garden plan has tomatoes, beans, squash and herbs along the south fence. ';
     const LIVE_FILLER = `Filler for the memory test, just reply ok. ${sentence.repeat(50).trim()}`;
     let id = 1;
-    const say = async (text: string) => { worker.intake([update(id++, text)]); await worker.drain(); await worker.summarizeIfNeeded(); };
+    const say = async (text: string) => {
+      worker.intake([update(id++, text)]); await worker.drain(); await worker.summarizeIfNeeded();
+      // The inspect children are synchronous; let Vitest receive task updates between turns.
+      await yieldTurn();
+    };
     await say(LOCKER); await say(DENTIST);
     const question = 'What did I ask you to remember or do?';
     let fillers = 0;
@@ -543,9 +557,9 @@ it('the live script reaches compaction and the question carries the open commitm
       expect(fillers).toBeLessThan(12);
       await say(LIVE_FILLER); fillers++;
     }
-    // int12: near the boundary the real turn can still fit complete history once an optional
-    // candidate yields; one more filler keeps the asked question past compaction.
-    await say(LIVE_FILLER); fillers++;
+    // The inspect probe already established summary-plus-recent with the open commitments.
+    // Do not add another large filler after that boundary: it can evict the optional
+    // commitment block that this fixture is about to verify.
     worker.intake([update(id++, question)]);
     await worker.drain();
     const inspected = run(root, 'inspect'), last = inspected.last;
@@ -554,27 +568,29 @@ it('the live script reaches compaction and the question carries the open commitm
     // first reply sent from a compacted context, bound to the exact text sent.
     expect(inspected.summaryFrontier).toBe(journal.view.summaries.at(-1)!.through);
     const accounted = journal.view.order.find(turn => turn.continuity)!;
-    expect(accounted.intent!.startsWith(`PREVIEW — ${accounted.continuity!.disclosure} `)).toBe(true);
+    expect(accounted.intent!.startsWith(`${accounted.continuity!.disclosure} `)).toBe(true);
     expect(run(root, 'inspect', '--update', String(accounted.update)).reply.continuity).toEqual(accounted.continuity);
     // The read-only inspect surface names the standing instructions the prepared prompt carried.
     expect(last.instructions.rules).toEqual(MIND_RULES.map(([rule]) => rule));
     expect(last.commitments.flatMap((entry: { items: { quote: string }[] }) => entry.items.map(item => item.quote)))
       .toEqual([LOCKER, DENTIST, PROMISE]);
-    // Rule 47: at prepared provider input, the persistent instruction set and persistent
-    // sources are identical at the first turn and after compaction; current state may change.
+    // Rule 47: persistent instructions and sources survive compaction. The memory-lookup
+    // protocol joins them only when the compacted packet actually offers that capability.
     const parts = (bytes: string) => {
       const messages = (JSON.parse(bytes) as { messages: { role: string; content: string }[] }).messages;
       const packet = (JSON.parse(messages.find(item => item.role === 'context')!.content) as {
-        packet: { historyMode: string; sources: { id: string; title: string; text: string; provenance: unknown }[] } }).packet;
+        packet: { historyMode: string; memoryLookup?: string; sources: { id: string; title: string; text: string; provenance: unknown }[] } }).packet;
       return { instructions: messages.find(item => item.role === 'instructions')?.content, packet };
     };
     const start = parts(prepared[0]!), after = parts(prepared.at(-1)!);
     expect(start.packet.historyMode).toBe('complete');
     expect(after.packet.historyMode).toBe('summary-plus-recent');
     expect(start.instructions).toBe(ANSWER_INSTRUCTIONS);
-    expect(after.instructions).toBe(start.instructions);
-    const lasting = (packet: typeof start.packet) => packet.sources.filter(item => item.id.startsWith('purpose:') || item.id === 'capability-note');
-    expect(lasting(start.packet)).toHaveLength(4);
+    expect(start.packet.memoryLookup).toBeUndefined();
+    expect(after.packet.memoryLookup).toBe('offered');
+    expect(after.instructions).toBe(`${start.instructions}\n${MEMORY_LOOKUP_INSTRUCTIONS}`);
+    const lasting = (packet: typeof start.packet) => packet.sources.filter(item => item.id.startsWith('purpose:') || item.id === 'rules:87' || item.id === 'capability-note');
+    expect(lasting(start.packet).map(item => item.id)).toEqual(['purpose:purpose', 'purpose:coherency', 'rules:87', 'capability-note']);
     expect(lasting(after.packet)).toEqual(lasting(start.packet));
     expect(after.packet.sources.map(item => item.id)).toEqual(expect.arrayContaining(start.packet.sources.map(item => item.id)));
     process.stdout.write(`commitments live script: ${fillers} fillers; turns=${journal.view.order.length}, calls=${journal.view.calls}, summaries=${journal.view.summaries.length}\n`);

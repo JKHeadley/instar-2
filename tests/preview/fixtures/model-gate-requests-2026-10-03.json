@@ -1,0 +1,6 @@
+{
+  "recorded": "2026-10-03, a loopback forwarding probe in front of claude 2.1.288 (`claude -p`, ANTHROPIC_BASE_URL) and codex-cli 0.156.1 (`codex exec`, a provider whose base_url is the probe), one one-word answer each, the requests in arrival order; method and path only",
+  "claude-code": { "modelCalls": 1, "requests": [["HEAD", "/api/hello"], ["POST", "/v1/messages?beta=true"]] },
+  "codex-cli": { "modelCalls": 1, "requests": [["GET", "/backend-api/codex/models?client_version=0.156.1"], ["GET", "/backend-api/codex/models?client_version=0.156.1"],
+    ["POST", "/backend-api/codex/responses"], ["GET", "/backend-api/codex/models?client_version=0.156.1"]] }
+}

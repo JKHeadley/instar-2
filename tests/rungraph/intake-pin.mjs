@@ -6,7 +6,7 @@ import { resolve, posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
 export const intakeCommit = '28c84e0cf041b442436c3047fe50b25b74c6337a';
-const source = path => execFileSync('git', ['show', `${intakeCommit}:${path}`], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+const source = path => execFileSync('git', ['show', `${intakeCommit}:${path}`], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024, timeout: 60_000, killSignal: 'SIGKILL' });
 const data = code => 'data:text/javascript;base64,' + Buffer.from(code).toString('base64');
 const files = Object.fromEntries(['src/intake/port.declarations.json', 'register-source/bootstrap-shape.json'].map(path => [path, source(path)]));
 const fsAdapter = data(`const files=${JSON.stringify(files)}; export function readFileSync(path){if(!(path in files))throw Error('unpinned fixture artifact: '+path);return files[path];}`);

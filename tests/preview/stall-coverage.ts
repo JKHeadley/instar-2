@@ -27,7 +27,7 @@ export const PREVIEW_JOURNAL_STALL_COVERAGE: HarnessStallCoverage = Object.freez
     { stall: 'prompt-approval-or-tool-wait',
       detection: 'the model route runs one non-interactive call with no tools; any wait surfaces as the bounded local call timeout, recorded as a distinct failure class',
       recovery: 'the call becomes UNKNOWN and its turn gets a loss notice; nothing is clicked or approved by timeout and no next call starts during a stop',
-      positive: { file: 'tests/preview/call-diagnostics.test.ts', title: 'distinguishes a parsed 2048-token over-cap result from a 120-second local timeout without retaining prose' },
+      positive: { file: 'tests/preview/call-diagnostics.test.ts', title: 'distinguishes a parsed 2048-token over-cap result from a 120-second local timeout with a bounded raw excerpt' },
       failing: { file: 'tests/preview/journal.test.ts', title: 'falls back to killing the child when process-group kill gets EPERM on timeout' } },
     { stall: 'provider-unavailable-or-expired',
       detection: 'the recorded call outcome and failure class of the actual provider attempt, metered against the shared cap',

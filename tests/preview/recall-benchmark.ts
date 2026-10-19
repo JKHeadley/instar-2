@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { createJournalWorker, importChannelItems, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, importChannelItems, openPreviewJournal, withoutCorrectedHistory } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(63);
 const now = 1_790_000_000_000;
@@ -171,7 +171,9 @@ export async function runRecallSet(turns: 200 | 1000 | 2000): Promise<RecallSetR
       results.push({ id: item.id, kind: item.kind, packetBytes: Buffer.byteLength(context),
         containsWanted: item.wanted === undefined ? null : context.includes(item.wanted)
           && (item.alsoWanted === undefined || context.includes(item.alsoWanted)),
-        excludesAbsent: item.absent === undefined ? null : !context.includes(item.absent),
+        // A corrected-away clause may appear only as labelled history (memorySearch `was`, Rule 7); a forgotten one never.
+        excludesAbsent: item.absent === undefined ? null
+          : !(item.kind === 'correction' ? withoutCorrectedHistory(context) : context).includes(item.absent),
         answer, historyMode: (JSON.parse(context) as { historyMode: string }).historyMode, probePreparationMs });
     }
     const wanted = results.filter(item => item.containsWanted !== null);

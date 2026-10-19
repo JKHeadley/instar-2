@@ -1,0 +1,374 @@
+{
+  "one": {
+    "outcome": {
+      "result": {
+        "state": "complete",
+        "raw": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"preview-stage2-answer-1\",\"at\":1791052582876,\"by\":{\"judgment\":\"judgment\",\"model\":\"claude-sonnet-5\",\"route\":\"preview-subscription\"},\"reason\":{\"subject\":\"plan.txt creation\",\"predicate\":\"tool-call-result\",\"value\":\"The operator asked me to create plan.txt in the workspace containing exactly 'kiwi-7731' and then reply 'saved.' I used the Write tool (call 1) to create /private/tmp/itw-6e1005eb2ad6/ws/plan.txt with content 'kiwi-7731', and the tool reported success ('File created successfully'). This is a workspace file write, not a consequential effect requiring the effect doorway, so no registration was needed. The task is complete, so the reply is simply 'saved.' as instructed, with no promises or open commitments implied.\",\"evidence\":[\"telegram:12345678:update:1\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":\"saved.\",\"evidence\":[\"telegram:12345678:update:1\"]},\"floor\":{\"allowed\":[\"work\"],\"chosen\":\"work\"}}",
+        "text": "saved."
+      },
+      "turn": {
+        "slug": "b592ae84fc07730d-0",
+        "directory": "/private/tmp/tool-persist-live-jEOGc6/persist/tool-turns/b592ae84fc07730d-0",
+        "volumeDirectory": "/private/tmp/tool-persist-live-jEOGc6/persist/workspaces/6e1005eb2ad6",
+        "scratch": "/private/tmp/itw-6e1005eb2ad6",
+        "workspace": "/private/tmp/itw-6e1005eb2ad6/ws",
+        "stateDirectory": "/private/tmp/tool-persist-live-jEOGc6/persist/tool-turns/b592ae84fc07730d-0/state",
+        "hook": {
+          "node": "/usr/local/bin/node",
+          "script": "/Users/dabombstudio/.instar/agents/echo/.worktrees/w4-persist/tests/preview/tool-admission-hook.mjs"
+        }
+      },
+      "trace": {
+        "calls": [
+          {
+            "n": 1,
+            "tool": "Write",
+            "input": "{\"file_path\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\",\"content\":\"kiwi-7731\"}",
+            "decision": "allow",
+            "reason": "ordinary in-workspace file operation",
+            "result": "{\"type\":\"create\",\"filePath\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\",\"content\":\"kiwi-7731\",\"structuredPatch\":[],\"originalFile\":null,\"userModified\":false}"
+          }
+        ],
+        "children": [],
+        "consistent": true,
+        "admitted": 1,
+        "refused": 0
+      },
+      "session": {
+        "id": "183f648e-4d91-47a4-812b-866c7c847f60",
+        "resume": false,
+        "reason": "new",
+        "turn": 1,
+        "previous": null
+      }
+    },
+    "elapsedMs": 10323,
+    "stopToSettledMs": null
+  },
+  "two": {
+    "outcome": {
+      "result": {
+        "state": "complete",
+        "raw": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"preview-stage2-answer-2\",\"at\":1791052593199,\"by\":{\"judgment\":\"judgment\",\"model\":\"claude-sonnet-5\",\"route\":\"preview-subscription\"},\"reason\":{\"subject\":\"plan.txt contents and prior-turn recall\",\"predicate\":\"tool-call-result-and-direct-recall\",\"value\":\"I used the Read tool (call 1) on /private/tmp/itw-6e1005eb2ad6/ws/plan.txt, which returned exactly one line: 'kiwi-7731' — matching what was written in the previous turn. For the second part of the question (what the operator asked in their previous message), the context packet's history array is empty, so there is no evidence supplied via context/history/recalled to cite. However, the prior operator message is directly visible to me as the immediately preceding turn in this same conversation: it asked me to use the Write tool to create plan.txt containing exactly 'kiwi-7731' and then reply 'saved.' I report this directly rather than via a lookup, since it is present in this session's own turn sequence, not absent/unknown. No consequential effects were taken; this is a read-only report.\",\"evidence\":[\"telegram:12345678:update:2\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":\"plan.txt contains exactly: kiwi-7731\\n\\nIn your previous message, you asked me to use the Write tool to create plan.txt in my workspace containing exactly \\\"kiwi-7731,\\\" and then to reply with \\\"saved.\\\" — which I did.\",\"evidence\":[\"telegram:12345678:update:2\"]},\"floor\":{\"allowed\":[\"work\"],\"chosen\":\"work\"}}",
+        "text": "plan.txt contains exactly: kiwi-7731\n\nIn your previous message, you asked me to use the Write tool to create plan.txt in my workspace containing exactly \"kiwi-7731,\" and then to reply with \"saved.\" — which I did."
+      },
+      "turn": {
+        "slug": "72b726f73e9e5a9a-1",
+        "directory": "/private/tmp/tool-persist-live-jEOGc6/persist/tool-turns/72b726f73e9e5a9a-1",
+        "volumeDirectory": "/private/tmp/tool-persist-live-jEOGc6/persist/workspaces/6e1005eb2ad6",
+        "scratch": "/private/tmp/itw-6e1005eb2ad6",
+        "workspace": "/private/tmp/itw-6e1005eb2ad6/ws",
+        "stateDirectory": "/private/tmp/tool-persist-live-jEOGc6/persist/tool-turns/72b726f73e9e5a9a-1/state",
+        "hook": {
+          "node": "/usr/local/bin/node",
+          "script": "/Users/dabombstudio/.instar/agents/echo/.worktrees/w4-persist/tests/preview/tool-admission-hook.mjs"
+        }
+      },
+      "trace": {
+        "calls": [
+          {
+            "n": 1,
+            "tool": "Read",
+            "input": "{\"file_path\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\"}",
+            "decision": "allow",
+            "reason": "ordinary in-workspace file operation",
+            "result": "{\"type\":\"text\",\"file\":{\"filePath\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\",\"content\":\"kiwi-7731\",\"numLines\":1,\"startLine\":1,\"totalLines\":1}}"
+          },
+          {
+            "n": 2,
+            "tool": "Bash",
+            "input": "{\"command\":\"echo done\",\"description\":\"No-op placeholder, no further action needed\"}",
+            "decision": "allow",
+            "reason": "sandboxed command",
+            "result": "{\"stdout\":\"done\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}"
+          }
+        ],
+        "children": [],
+        "consistent": true,
+        "admitted": 2,
+        "refused": 0
+      },
+      "session": {
+        "id": "183f648e-4d91-47a4-812b-866c7c847f60",
+        "resume": true,
+        "reason": "resumed",
+        "turn": 2,
+        "previous": null
+      }
+    },
+    "elapsedMs": 14666,
+    "stopToSettledMs": null
+  },
+  "three": {
+    "outcome": {
+      "result": {
+        "state": "complete",
+        "raw": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"preview-stage2-plan-read-01\",\"at\":1791052607865,\"by\":{\"judgment\":\"judgment\",\"model\":\"claude-sonnet-5\",\"route\":\"preview-subscription\"},\"reason\":{\"subject\":\"plan.txt contents request\",\"predicate\":\"answer-derivation\",\"value\":\"The operator asked me to use the Read tool on plan.txt and report exactly what it contains. I called Read on /private/tmp/itw-6e1005eb2ad6/ws/plan.txt (Read, call 1). The tool returned a single line, line 1: 'kiwi-7731'. No other lines were present. I'm reporting that content verbatim as requested, with no embellishment or interpretation added. This is a direct factual report of tool output, not a commitment to future action, so no promises field is needed.\",\"evidence\":[\"telegram:12345678:update:3\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":\"plan.txt contains exactly one line:\\n\\nkiwi-7731\",\"evidence\":[\"telegram:12345678:update:3\"]},\"floor\":{\"allowed\":[\"work\"],\"chosen\":\"work\"}}",
+        "text": "plan.txt contains exactly one line:\n\nkiwi-7731"
+      },
+      "turn": {
+        "slug": "a0e0225681156508-2",
+        "directory": "/private/tmp/tool-persist-live-jEOGc6/persist/tool-turns/a0e0225681156508-2",
+        "volumeDirectory": "/private/tmp/tool-persist-live-jEOGc6/persist/workspaces/6e1005eb2ad6",
+        "scratch": "/private/tmp/itw-6e1005eb2ad6",
+        "workspace": "/private/tmp/itw-6e1005eb2ad6/ws",
+        "stateDirectory": "/private/tmp/tool-persist-live-jEOGc6/persist/tool-turns/a0e0225681156508-2/state",
+        "hook": {
+          "node": "/usr/local/bin/node",
+          "script": "/Users/dabombstudio/.instar/agents/echo/.worktrees/w4-persist/tests/preview/tool-admission-hook.mjs"
+        }
+      },
+      "trace": {
+        "calls": [
+          {
+            "n": 1,
+            "tool": "Read",
+            "input": "{\"file_path\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\"}",
+            "decision": "allow",
+            "reason": "ordinary in-workspace file operation",
+            "result": "{\"type\":\"text\",\"file\":{\"filePath\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\",\"content\":\"kiwi-7731\",\"numLines\":1,\"startLine\":1,\"totalLines\":1}}"
+          }
+        ],
+        "children": [],
+        "consistent": true,
+        "admitted": 1,
+        "refused": 0
+      },
+      "session": {
+        "id": "4d416c7b-747b-4b9f-96bc-17de7be6254a",
+        "resume": false,
+        "reason": "lost: the transcript is missing",
+        "turn": 1,
+        "previous": {
+          "v": 1,
+          "id": "183f648e-4d91-47a4-812b-866c7c847f60",
+          "binding": "preview-s2-activation-v2-2026-09-23 sha256:7bf4d627659a1165a220978874d0b92a4ea7fb720799197cbd2937e481cc2d2b 2.1.280 claude-sonnet-5",
+          "facts": "sha256:679371e24266c7583a4f3dc4c1ad6afd5e5b0f11374774ee8dac19bf7e9eb0f9",
+          "workspace": "/private/tmp/itw-6e1005eb2ad6/ws",
+          "turns": 2,
+          "open": false,
+          "at": 1791052607793
+        }
+      }
+    },
+    "elapsedMs": 20055,
+    "stopToSettledMs": null
+  },
+  "journalRows": [
+    {
+      "kind": "tool-turn",
+      "phase": "reserved",
+      "id": "telegram:12345678:update:1",
+      "attempt": 0,
+      "calls": 15,
+      "delegation": {
+        "children": 2,
+        "turnsEach": 4,
+        "type": "worker",
+        "authority": "preview-s2-activation-v2-2026-09-23 sha256:7bf4d627659a1165a220978874d0b92a4ea7fb720799197cbd2937e481cc2d2b"
+      },
+      "workspace": {
+        "key": "6e1005eb2ad6",
+        "kept": true
+      },
+      "at": 1791052582876
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "trace",
+      "id": "telegram:12345678:update:1",
+      "attempt": 0,
+      "consistent": true,
+      "calls": [
+        {
+          "n": 1,
+          "tool": "Write",
+          "input": "{\"file_path\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\",\"content\":\"kiwi-7731\"}",
+          "decision": "allow",
+          "reason": "ordinary in-workspace file operation",
+          "result": "{\"type\":\"create\",\"filePath\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\",\"content\":\"kiwi-7731\",\"structuredPatch\":[],\"originalFile\":null,\"userModified\":false}"
+        }
+      ],
+      "edges": [],
+      "workspaceBytes": 9,
+      "session": {
+        "id": "183f648e-4d91-47a4-812b-866c7c847f60",
+        "mode": "new",
+        "reason": "new",
+        "turn": 1,
+        "kept": true,
+        "transcriptBytes": 72376
+      },
+      "at": 1791052593071
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "reserved",
+      "id": "telegram:12345678:update:2",
+      "attempt": 1,
+      "calls": 15,
+      "delegation": {
+        "children": 2,
+        "turnsEach": 4,
+        "type": "worker",
+        "authority": "preview-s2-activation-v2-2026-09-23 sha256:7bf4d627659a1165a220978874d0b92a4ea7fb720799197cbd2937e481cc2d2b"
+      },
+      "workspace": {
+        "key": "6e1005eb2ad6",
+        "kept": true
+      },
+      "at": 1791052593199
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "trace",
+      "id": "telegram:12345678:update:2",
+      "attempt": 1,
+      "consistent": true,
+      "calls": [
+        {
+          "n": 1,
+          "tool": "Read",
+          "input": "{\"file_path\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\"}",
+          "decision": "allow",
+          "reason": "ordinary in-workspace file operation",
+          "result": "{\"type\":\"text\",\"file\":{\"filePath\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\",\"content\":\"kiwi-7731\",\"numLines\":1,\"startLine\":1,\"totalLines\":1}}"
+        },
+        {
+          "n": 2,
+          "tool": "Bash",
+          "input": "{\"command\":\"echo done\",\"description\":\"No-op placeholder, no further action needed\"}",
+          "decision": "allow",
+          "reason": "sandboxed command",
+          "result": "{\"stdout\":\"done\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}"
+        }
+      ],
+      "edges": [],
+      "workspaceBytes": 9,
+      "session": {
+        "id": "183f648e-4d91-47a4-812b-866c7c847f60",
+        "mode": "resume",
+        "reason": "resumed",
+        "turn": 2,
+        "kept": true,
+        "transcriptBytes": 111285
+      },
+      "at": 1791052607794
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "reserved",
+      "id": "telegram:12345678:update:3",
+      "attempt": 2,
+      "calls": 15,
+      "delegation": {
+        "children": 2,
+        "turnsEach": 4,
+        "type": "worker",
+        "authority": "preview-s2-activation-v2-2026-09-23 sha256:7bf4d627659a1165a220978874d0b92a4ea7fb720799197cbd2937e481cc2d2b"
+      },
+      "workspace": {
+        "key": "6e1005eb2ad6",
+        "kept": true
+      },
+      "at": 1791052607866
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "trace",
+      "id": "telegram:12345678:update:3",
+      "attempt": 2,
+      "consistent": true,
+      "calls": [
+        {
+          "n": 1,
+          "tool": "Read",
+          "input": "{\"file_path\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\"}",
+          "decision": "allow",
+          "reason": "ordinary in-workspace file operation",
+          "result": "{\"type\":\"text\",\"file\":{\"filePath\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\",\"content\":\"kiwi-7731\",\"numLines\":1,\"startLine\":1,\"totalLines\":1}}"
+        }
+      ],
+      "edges": [],
+      "workspaceBytes": 9,
+      "session": {
+        "id": "4d416c7b-747b-4b9f-96bc-17de7be6254a",
+        "mode": "new",
+        "reason": "lost: the transcript is missing",
+        "turn": 1,
+        "kept": true,
+        "transcriptBytes": 72135
+      },
+      "at": 1791052617173
+    }
+  ],
+  "admissions": [
+    [
+      {
+        "phase": "pre",
+        "id": "toolu_01TzXWeoTQhTJYiBdM4dQHVV",
+        "n": 1,
+        "tool": "Write",
+        "input": "{\"file_path\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\",\"content\":\"kiwi-7731\"}",
+        "decision": "allow",
+        "reason": "ordinary in-workspace file operation"
+      },
+      {
+        "phase": "post",
+        "id": "toolu_01TzXWeoTQhTJYiBdM4dQHVV",
+        "tool": "Write",
+        "result": "{\"type\":\"create\",\"filePath\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\",\"content\":\"kiwi-7731\",\"structuredPatch\":[],\"originalFile\":null,\"userModified\":false}"
+      }
+    ],
+    [
+      {
+        "phase": "pre",
+        "id": "toolu_01Ck5Z5yjrG3KhDattF5Z1z9",
+        "n": 1,
+        "tool": "Read",
+        "input": "{\"file_path\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\"}",
+        "decision": "allow",
+        "reason": "ordinary in-workspace file operation"
+      },
+      {
+        "phase": "post",
+        "id": "toolu_01Ck5Z5yjrG3KhDattF5Z1z9",
+        "tool": "Read",
+        "result": "{\"type\":\"text\",\"file\":{\"filePath\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\",\"content\":\"kiwi-7731\",\"numLines\":1,\"startLine\":1,\"totalLines\":1}}"
+      },
+      {
+        "phase": "pre",
+        "id": "toolu_01EGYtXP7WiqZoHa3mGWvqyn",
+        "n": 2,
+        "tool": "Bash",
+        "input": "{\"command\":\"echo done\",\"description\":\"No-op placeholder, no further action needed\"}",
+        "decision": "allow",
+        "reason": "sandboxed command"
+      },
+      {
+        "phase": "post",
+        "id": "toolu_01EGYtXP7WiqZoHa3mGWvqyn",
+        "tool": "Bash",
+        "result": "{\"stdout\":\"done\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}"
+      }
+    ],
+    [
+      {
+        "phase": "pre",
+        "id": "toolu_01GT2AaWDZobSBWqwnHHCPbq",
+        "n": 1,
+        "tool": "Read",
+        "input": "{\"file_path\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\"}",
+        "decision": "allow",
+        "reason": "ordinary in-workspace file operation"
+      },
+      {
+        "phase": "post",
+        "id": "toolu_01GT2AaWDZobSBWqwnHHCPbq",
+        "tool": "Read",
+        "result": "{\"type\":\"text\",\"file\":{\"filePath\":\"/private/tmp/itw-6e1005eb2ad6/ws/plan.txt\",\"content\":\"kiwi-7731\",\"numLines\":1,\"startLine\":1,\"totalLines\":1}}"
+      }
+    ]
+  ],
+  "workspace": "/private/tmp/itw-6e1005eb2ad6/ws"
+}

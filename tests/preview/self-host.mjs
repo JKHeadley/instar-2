@@ -155,6 +155,16 @@ export async function doorwayProvider({ doorwayId, io, profile, activation, mode
     routeFactory: stage2RouteFactory({ activation, profile, model, io, now, active: () => !stopped(), framing, create: doorway.create }) });
 }
 
+/**
+ * The CLI's `--login-profile` loading point, as the provider credential custodian requires it: the
+ * host's own frozen descriptor ("host-owned frozen subscription descriptor required",
+ * src/assembly/provider-credential-custodian.ts). The host owns this descriptor, so it is frozen
+ * where it is read, and every other shipped client loads its profile the same way. A plain parse
+ * leaves the file's object mutable, so the custodian refuses every valid profile and the route is
+ * never constructed — the shipped CLI reports "preview: subscription route refused" with no call.
+ */
+export const loadLoginProfile = path => Object.freeze(JSON.parse(readFileSync(path, 'utf8')));
+
 export const SELF_HOST_CONTEXT = Object.freeze({ site: 'preview.journal', preserved: 'preview:self-host', register: {
   generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'preview:register' },
   entries: ['preview.journal', 'preview', 'host'], producers: ['host'], methods: [], actions: {}, subjects: {},
@@ -182,7 +192,7 @@ const main = async () => {
   const model = options.model, stopped = stoppedAt(root);
   const { createSubscriptionProviderIO } = await import('../../scripts/production-boot-io.mjs');
   const activation = JSON.parse(readFileSync(options['activation-record'], 'utf8'));
-  const profile = JSON.parse(readFileSync(options['login-profile'], 'utf8'));
+  const profile = loadLoginProfile(options['login-profile']);
   const provider = await doorwayProvider({ doorwayId: options.doorway, io: createSubscriptionProviderIO({ repository: process.cwd(), stopped }),
     profile, activation, model, stopped });
   const report = await selfHost({ task: options.task, provider, repo: process.cwd(), root, grants, context: SELF_HOST_CONTEXT,

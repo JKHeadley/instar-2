@@ -23,7 +23,7 @@ import { decodeVerificationRecord, deriveGuardPosture, deriveVerificationDue, me
 import type { GuardPosture, ProbePostureResolution, ProbeRecord, VerificationPlan } from '../../src/verification/index.js';
 import { isStatusCommand } from './status-command.js';
 import { loopHealth } from './obligations.js';
-import { CREDENTIAL_SHAPE_NOTICE, durableProjection, packetDigest, replyBody } from './journal.js';
+import { CREDENTIAL_SHAPE_NOTICE, PREVIEW_LIVE_GATES, durableProjection, packetDigest, replyBody, wholeReplyReceipt } from './journal.js';
 import { HOLDING_REPLY } from './reply-check.js';
 import type { JournalView, Turn } from './journal.js';
 
@@ -134,7 +134,9 @@ function delivery(rows: readonly Attempt[], now: number, freshness: number, noun
 }
 const turnAttempts = (view: JournalView, select: (turn: Turn) => boolean): Attempt[] => view.order
   .filter(turn => select(turn) && turn.intent !== undefined)
-  .map(turn => ({ message: turn.sent, attemptAt: turn.at, acceptedAt: turn.sentAt }));
+  // A split reply counts as accepted only when every message carrying it was (Rule 42).
+  .map(turn => { const receipt = wholeReplyReceipt(view, turn);
+    return { message: receipt?.message, attemptAt: turn.at, acceptedAt: receipt?.at }; });
 const answerCalls = (view: JournalView) => view.callOutcomes.filter(row => row.role === 'model');
 const completedCall = (row: JournalView['callOutcomes'][number]) => row.outcome.subtype === 'success' && row.outcome.isError !== true && row.outcome.localLimit === null;
 const CAP_HOLDS = new Set(['call cap', 'reply cap']);
@@ -461,9 +463,21 @@ export function executeProof(plan: ProofPlan, ports: ProofPorts, generation: str
 export interface PipelineStep { step: string; supervisors: readonly Supervisor[] }
 export type Supervisor = 'reply-review' | 'summary-review' | 'step-check';
 export interface Pipeline { failureDirection: 'open' | 'closed'; steps: readonly PipelineStep[]; owner: string }
+/** Rule 95 is declared per consumer, so a pipeline whose send is gated by the pre-send reply review takes that
+ * gate's direction from the one live gate table rather than restating it. Restating it is how the two drifted:
+ * the table said open (Rules 77, 86, 95 — reachability to the operator) while this roster said closed, and the
+ * behaviour released replies without a review pass. A renamed gate fails the build here rather than silently
+ * defaulting. Only the mandatory floors named in `owner` hold a candidate, and each is its own closed gate in
+ * that same table. */
+const REPLY_REVIEW_GATE = 'pre-send reply review (Jev and full-context)';
+const replyReviewDirection = (): 'open' | 'closed' => {
+  const gate = PREVIEW_LIVE_GATES.find(entry => entry.gate === REPLY_REVIEW_GATE);
+  if (gate === undefined) throw Error(`preview proofs: no live gate named ${REPLY_REVIEW_GATE}`);
+  return gate.fails;
+};
 export const CRITICAL_PIPELINES: Readonly<Record<string, Pipeline>> = Object.freeze({
-  'operator-reply': { failureDirection: 'closed',
-    owner: 'reply review holds the send without a pass; the step supervisor observes intake, preparation, answer and cleanup',
+  'operator-reply': { failureDirection: replyReviewDirection(),
+    owner: 'reply review objections are advisory signals recorded with the send, so an unavailable review and every non-mandatory objection release the reply (Rules 77, 86, 95); only the mandatory floors withhold anything, and each withholds only what it named — the credential shape wall and a credential named by a check withhold the whole reply behind a fixed notice, while a review naming an untracked deferral or an unevidenced cannot-do claim removes the sentences carrying that claim and sends the rest, with the removal and any unlocated claim recorded (plan #215); a runner-refused obligation declaration forces the contextual review and holds the turn only while that review cannot decide; the step supervisor observes intake, preparation, answer and cleanup',
     steps: [
       { step: 'intake', supervisors: ['step-check'] },
       { step: 'prepare-packet', supervisors: ['step-check'] },
@@ -472,15 +486,16 @@ export const CRITICAL_PIPELINES: Readonly<Record<string, Pipeline>> = Object.fre
       { step: 'send', supervisors: ['reply-review'] },
       { step: 'cleanup', supervisors: ['step-check'] },
     ] },
-  'requested-action': { failureDirection: 'closed',
-    owner: 'the step supervisor validates due selection and preparation before the model call; reply review holds the send without a pass',
+  'requested-action': { failureDirection: replyReviewDirection(),
+    owner: 'the step supervisor validates due selection and preparation before the model call; its reply runs the same pre-send reply review, so an unavailable review and every non-mandatory objection release it, and only the mandatory floors withhold anything — each withholding only the content it named (Rules 4, 77, 86, 95)',
     steps: [
       { step: 'select-due', supervisors: ['step-check'] },
       { step: 'prepare-packet', supervisors: ['step-check'] },
       { step: 'answer', supervisors: ['reply-review', 'step-check'] },
       { step: 'send', supervisors: ['reply-review'] },
     ] },
-  'rolling-summary': { failureDirection: 'open', owner: 'the faithfulness verdict is recorded with each commit',
+  'rolling-summary': { failureDirection: 'closed',
+    owner: 'committing derived memory is integrity (Rule 95): only a passing faithfulness review commits a summary, so an unavailable or rejecting review preserves the candidate without committing it, and the verdict is recorded with each commit',
     steps: [
       { step: 'summarize', supervisors: ['summary-review', 'step-check'] },
       { step: 'commit-summary', supervisors: ['summary-review'] },
@@ -491,10 +506,13 @@ type StepState = 'validated' | 'held' | 'failed' | 'unavailable' | 'missing';
 interface Operation { id: string; states: Partial<Record<string, { state: StepState; attempt: string; resolution: string }>> }
 const verdictState = (verdict: string | undefined): StepState => verdict === 'pass' ? 'validated'
   : verdict === 'violation' || verdict === 'lost' ? 'failed' : verdict === undefined ? 'missing' : 'unavailable';
-/** The fixed notice that went out in place of a flagged answer: the answer itself never left (Rules 4, 86). */
-const heldNotice = (turn: Turn) => { const body = replyBody(turn);
-  return body !== undefined && [HOLDING_REPLY, CREDENTIAL_SHAPE_NOTICE].some(text => body === text
-    || body.endsWith(`\n${text.replace(/^PREVIEW — /u, '')}`)); };
+/** The flagged content did not leave. Either the fixed notice went out in place of the answer (Rules 4, 86), or
+ * the claim-scoped floor removed the sentences the review named and sent the rest (plan #215): in both cases the
+ * named content never reached the operator, which is supervision working rather than failing. */
+const heldNotice = (turn: Turn) => { const body = replyBody(turn)?.replace(/^PREVIEW — /u, '');
+  return (turn.release?.withheld?.removed.length ?? 0) > 0
+    || (body !== undefined && [HOLDING_REPLY, CREDENTIAL_SHAPE_NOTICE].some(text => body === text
+      || body.endsWith(`\n${text.replace(/^PREVIEW — /u, '')}`))); };
 function stepState(view: JournalView, supervisor: Supervisor, key: string, supervisors: ProofPorts['supervisors']) {
   if (supervisor === 'reply-review') {
     if (!supervisors.replyReview) return null;

@@ -15,7 +15,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/rungraph/closure-registration-additivity.test.ts",
-        "hash": "sha256:a9ed355990313e8ee127d0595332180fd0f33582d3e9bcded4009ad26940545a"
+        "hash": "sha256:44945bbf2717151a43bb9780de428f9aab1541f784bac3060488521cc411dda5"
       }
     },
     {
@@ -60,7 +60,7 @@
       "id": "decodeRun",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:3fbefbe3c278f9e700b32bb2218c34a827a27eabbe9e30e791124623f29be086"
+        "hash": "sha256:f7e2d3d04f508f43b7216cc1ac5aebadfba50a1ae9ddaf934c9d4047fd87d4c2"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
@@ -71,7 +71,7 @@
       "id": "decodeRunStep",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:3fbefbe3c278f9e700b32bb2218c34a827a27eabbe9e30e791124623f29be086"
+        "hash": "sha256:f7e2d3d04f508f43b7216cc1ac5aebadfba50a1ae9ddaf934c9d4047fd87d4c2"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
@@ -82,7 +82,7 @@
       "id": "decodeRunTransition",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:3fbefbe3c278f9e700b32bb2218c34a827a27eabbe9e30e791124623f29be086"
+        "hash": "sha256:f7e2d3d04f508f43b7216cc1ac5aebadfba50a1ae9ddaf934c9d4047fd87d4c2"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
@@ -93,7 +93,7 @@
       "id": "decodeRunExit",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:3fbefbe3c278f9e700b32bb2218c34a827a27eabbe9e30e791124623f29be086"
+        "hash": "sha256:f7e2d3d04f508f43b7216cc1ac5aebadfba50a1ae9ddaf934c9d4047fd87d4c2"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
@@ -104,7 +104,7 @@
       "id": "decodeSessionGrounding",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:3fbefbe3c278f9e700b32bb2218c34a827a27eabbe9e30e791124623f29be086"
+        "hash": "sha256:f7e2d3d04f508f43b7216cc1ac5aebadfba50a1ae9ddaf934c9d4047fd87d4c2"
       },
       "artifact": {
         "path": "src/rungraph/records.ts",
@@ -115,7 +115,7 @@
       "id": "decodeExhaustionRecord",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:3fbefbe3c278f9e700b32bb2218c34a827a27eabbe9e30e791124623f29be086"
+        "hash": "sha256:f7e2d3d04f508f43b7216cc1ac5aebadfba50a1ae9ddaf934c9d4047fd87d4c2"
       },
       "artifact": {
         "path": "src/rungraph/closure-records.ts",
@@ -126,7 +126,7 @@
       "id": "decodeUnreachableRunExit",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:3fbefbe3c278f9e700b32bb2218c34a827a27eabbe9e30e791124623f29be086"
+        "hash": "sha256:f7e2d3d04f508f43b7216cc1ac5aebadfba50a1ae9ddaf934c9d4047fd87d4c2"
       },
       "artifact": {
         "path": "src/rungraph/closure-records.ts",
@@ -137,7 +137,7 @@
       "id": "decodeInstalledRunGovernanceReferenceAtOrigin",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:3fbefbe3c278f9e700b32bb2218c34a827a27eabbe9e30e791124623f29be086"
+        "hash": "sha256:f7e2d3d04f508f43b7216cc1ac5aebadfba50a1ae9ddaf934c9d4047fd87d4c2"
       },
       "artifact": {
         "path": "src/rungraph/installed-governance.ts",
@@ -148,7 +148,7 @@
       "id": "decodeHistoricalInstalledRunGovernanceReference",
       "module": {
         "path": "src/rungraph/index.ts",
-        "hash": "sha256:3fbefbe3c278f9e700b32bb2218c34a827a27eabbe9e30e791124623f29be086"
+        "hash": "sha256:f7e2d3d04f508f43b7216cc1ac5aebadfba50a1ae9ddaf934c9d4047fd87d4c2"
       },
       "artifact": {
         "path": "src/rungraph/installed-governance.ts",

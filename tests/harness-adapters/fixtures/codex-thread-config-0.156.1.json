@@ -1,0 +1,9 @@
+{
+  "source": "Installed codex-cli 0.156.1, Mama PC, 2026-10-14. Empty temporary home, no login, ephemeral empty thread, unreachable loopback provider. No turn/start, model call, user conversation or tool call. These are exact error bytes and the accepted configuration field; successful thread identity and machine metadata omitted.",
+  "invalid": {
+    "params": { "config": { "bypass_hook_trust": "invalid" } },
+    "error": { "code": -32600, "message": "failed to load configuration: `bypass_hook_trust` override must be a boolean" }
+  },
+  "accepted": { "config": { "bypass_hook_trust": true } },
+  "limit": "Configuration acceptance does not prove PreToolUse execution; the desk live walk must establish that boundary."
+}

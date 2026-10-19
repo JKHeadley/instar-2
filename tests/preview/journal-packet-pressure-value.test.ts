@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, openPreviewJournal } from './journal.js';
 
 const key = new Uint8Array(32).fill(47);
 const now = 1790500000000;
@@ -18,7 +18,13 @@ const GUIDANCE = 300; // cint-23-occam re-measure (every packet lost the summary
 // restores the prior outcomes, so the window moves by +149.
 // w3-memcorr (Rule 7, live K13b): memoryDecision now states the exact memory item shape, which adds exactly 580
 // JSON bytes to every operator packet, so the window moves by +580.
-const GUIDANCE_L3 = GUIDANCE - 471 + 149 + 580;
+// w3-fixedtrim (plan step 8): the capability guidance no longer repeats what the capability-note source itself
+// states, and obligationDecision is worded shorter with the same fields and the same decisions. Measured on this
+// exact packet shape, that removes 69 JSON bytes (4623 -> 4554 for the two-item packet), so the window moves by -69.
+// w3-floorduty (Rules 3, 93; live 2026-10-03, proof room one): under pressure the obligation guide now yields to its
+// floor form instead of vanishing, so every pressured operator packet here carries that key and text and the window
+// moves by exactly its JSON bytes.
+const GUIDANCE_L3 = GUIDANCE - 471 + 149 + 580 - 69 + OBLIGATION_FLOOR_PACKET_BYTES;
 
 it('measures which memories survive a capped packet after 5,000 turns', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-packet-pressure-')));
@@ -67,10 +73,7 @@ it('measures which memories survive a capped packet after 5,000 turns', () => {
     for (const limit of [3950 + GUIDANCE_L3, 4200 + GUIDANCE_L3, 6000 + GUIDANCE_L3]) {
       journal.view.limits.maxBytes = limit;
       const probe = worker.probe('What is the harbor key handoff status?');
-      if ('reason' in probe) {
-        process.stdout.write(`packet pressure ${limit}: ${probe.reason}\n`);
-        continue;
-      }
+      if ('reason' in probe) throw Error(`packet pressure ${limit}: ${probe.reason}`);
       const packet = JSON.parse(probe.context) as { recalled?: { id: string }[]; openQuestions?: { id: string }[] };
       const kept = packet.recalled?.map(item => item.id) ?? [];
       process.stdout.write(`packet pressure ${limit}: bytes=${Buffer.byteLength(probe.context)} kept=${kept.map(id => id.split(':').at(-1)).join(',')} dropped=${probe.dropped.map(item => `${item.kind}:${item.source.split(':').at(-1)}`).join(',')} open=${packet.openQuestions?.length ?? 0}\n`);
@@ -82,10 +85,16 @@ it('measures which memories survive a capped packet after 5,000 turns', () => {
         expect(kept.every(id => id === source(200))).toBe(true);
       }
       if (limit === 4200 + GUIDANCE_L3) {
-        // The unanswered question itself, carried as a continued turn, takes the second slot.
-        expect(kept).toEqual([source(200), source(5000)]);
+        // Current-question matches lead. Among equally matching handoffs, the open-question
+        // link (200) and the earlier reply's reference (100) beat unreferenced handoffs.
+        // The continued question (5000) has no handoff evidence and yields first.
+        expect(kept).toEqual([source(100), source(200)]);
         expect(probe.dropped.filter(item => item.kind === 'recent').map(item => item.source))
-          .toEqual(expect.arrayContaining([source(100), source(300), source(400), source(500)]));
+          .toEqual(expect.arrayContaining([source(300), source(400), source(500), source(5000)]));
+      }
+      if (limit === 6000 + GUIDANCE_L3) {
+        // With room, both handoff evidence and the continued question remain available.
+        expect(kept).toEqual([source(100), source(200), source(300), source(400), source(500), source(4999), source(5000)]);
       }
     }
     journal.view.limits.maxBytes = 4200 + GUIDANCE_L3;
@@ -94,8 +103,10 @@ it('measures which memories survive a capped packet after 5,000 turns', () => {
     delete recentTurn.sent;
     const withoutRecent = worker.probe('What is the harbor key handoff status?');
     if ('reason' in withoutRecent) throw Error(withoutRecent.reason);
+    // With earlier exposure removed, the open-question link still wins; recency breaks the
+    // remaining equal-match ties. Restoring exposure below must bring 100 back.
     expect((JSON.parse(withoutRecent.context) as { recalled?: { id: string }[] }).recalled?.map(item => item.id))
-      .toEqual([source(200), source(5000)]);
+      .toEqual([source(200), source(500)]);
     recentTurn.sent = sent;
     const questions = journal.view.questions.splice(0);
     const withoutOpen = worker.probe('What is the harbor key handoff status?');

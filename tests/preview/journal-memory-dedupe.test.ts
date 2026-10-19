@@ -19,7 +19,9 @@ it.each(['first', 'repeat'] as const)('keeps one restated item and withholds bot
   const repeat = 'Remember: my gym locker code is 3310.';
   const changed = 'Please remember that my gym locker code is 4412.';
   const targetQuote = target === 'first' ? first : repeat;
-  let journal = openPreviewJournal(path, key, genesis);
+  // Keep both withheld-source neighbors in recall after explicit zone labels add bytes.
+  const limits = { ...genesis, maxBytes: 8256 };
+  let journal = openPreviewJournal(path, key, limits);
   const makeWorker = () => createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
     prepareModel: input => input.context,
     model: async input => {
@@ -42,7 +44,7 @@ it.each(['first', 'repeat'] as const)('keeps one restated item and withholds bot
     expect(journal.view.commitments[0]).toMatchObject({ source: 'telegram:12345678:update:1',
       sources: [{ source: 'telegram:12345678:update:2', quote: repeat }] });
     journal.close();
-    journal = openPreviewJournal(path, key, genesis);
+    journal = openPreviewJournal(path, key, limits);
     worker = makeWorker();
     expect(journal.view.commitments).toHaveLength(1);
     let nextId = 3;

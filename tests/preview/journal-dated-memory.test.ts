@@ -4,7 +4,7 @@ import { performance } from 'node:perf_hooks';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { UNKNOWN_SEND_NOTICE, createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket } from './briefing.js';
@@ -579,7 +579,7 @@ it('fits an upcoming clause inside visible and encoded limits, leaving an omitte
       worker.intake([update(1, 'Invoice due Oct 3 at 8 am.')]); await worker.drain();
       now = Date.UTC(2026, 9, 1, 15);
       worker.intake([update(2, 'Long')]); await worker.drain();
-      expect(sends[1]).toBe(`PREVIEW — ${answer}${included ? ' Upcoming: Invoice due Oct 3 at 8 am. (2026-10-03 08:00).' : ''}`);
+      expect(sends[1]).toBe(`${answer}${included ? ' Upcoming: Invoice due Oct 3 at 8 am. (2026-10-03 08:00).' : ''}`);
       expect(checked[1]).toBe(sends[1]);
       expect(journal.view.order[1]?.held).toBeUndefined();
       expect(journal.view.mentionedDates.size).toBe(included ? 1 : 0);
@@ -608,9 +608,10 @@ it('delivers upcoming-date behavior in the prepared packet and source briefing',
     const sources = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
       { providerAttempts: 30, expiresAt: genesis.expires });
     const note = sources.sources.find(source => source.id === 'capability-note')?.text;
-    expect(note).toContain('unprompted message');
+    // The closing boundary limits self-started messages to the listed later-time answers (70a93418).
+    expect(note).toContain('no message you start yourself beyond the listed answers to later-time requests');
     // The briefing carries the one-line feature text; the full description (including restart memory) is the README Details line.
-    expect(note).toContain('- preview-upcoming-date-mention: a saved date within 48 hours can get one short mention in the next reply.');
+    expect(note).toContain('- a saved date within 48 hours can get one short mention in the next reply.');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -624,7 +625,9 @@ it('does not repeat an imminent item after an UNKNOWN send intent', async () => 
       model: async (input: { question: string }) => JSON.stringify({ reply: 'Okay.', memory: [],
         dated: input.question.includes('Invoice due')
           ? [{ quote: 'Invoice due Oct 3 at 8 am.', when: 'Oct 3 at 8 am' }] : [] }),
-      send: async () => { sends++; return sends === 2 ? null : sends; }, checkOutbound: () => {} };
+      send: async (input: { expectedText: string }) => {
+        sends++; if (sends === 3) expect(input.expectedText).toBe(UNKNOWN_SEND_NOTICE);
+        return sends === 2 ? null : sends; }, checkOutbound: () => {} };
     let worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'Invoice due Oct 3 at 8 am.')]); await worker.drain();
     now = Date.UTC(2026, 9, 1, 15);
@@ -633,8 +636,11 @@ it('does not repeat an imminent item after an UNKNOWN send intent', async () => 
     expect(journal.view.order[1]?.sent).toBeUndefined();
     journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
     worker.intake([update(3, 'More')]); await worker.drain();
-    expect(sends).toBe(3);
+    expect(sends).toBe(4); // three answers and one separate delivery notice
+    expect(journal.view.order[1]?.deliveryNotice?.sent).toBe(3);
+    expect(journal.view.order[1]?.sent).toBeUndefined();
     expect(journal.view.order[2]?.intent).not.toContain('Upcoming:');
+    await worker.drain(); expect(sends).toBe(4);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -644,9 +650,9 @@ it('keeps an imminent item eligible when an objected reply is revised without it
   try {
     let now = start, rejectOnce = true;
     const sends: string[] = [];
-    // cint-2: cbuild-2's ~4 KB instruction message and cbuild-4's guide ride every prepared answer; measured fit:
-    // 17408 overflows, 18432 fits (was 12000).
-    const journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 20480 });
+    // Keep both short turns in view beside the standing instructions. This case
+    // isolates revision of an upcoming notice; compaction has its own boundary tests.
+    const journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 22528 });
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, timeZone: 'America/Los_Angeles',
       prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-4-5', 'grant:preview', now),
       model: async (input: { question: string }) => JSON.stringify({ reply: 'Okay.', memory: [],
@@ -662,7 +668,7 @@ it('keeps an imminent item eligible when an objected reply is revised without it
     worker.intake([update(1, 'Invoice due Oct 3 at 8 am.')]); await worker.drain();
     now = Date.UTC(2026, 9, 1, 15);
     worker.intake([update(2, 'Hello')]); await worker.drain();
-    expect(sends[1]).toBe('PREVIEW — Okay, noted.');
+    expect(sends[1]).toBe('Okay, noted.');
     expect(journal.view.mentionedDates.size).toBe(0);
     worker.intake([update(3, 'Another question')]); await worker.drain();
     expect(sends[2]).toContain('Upcoming: Invoice due Oct 3 at 8 am.');
@@ -720,7 +726,7 @@ it('replays the exact completed paid review when the 48-hour edge moves', async 
       send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return sends.length; }, checkOutbound: () => {},
       replyCheck: {
         jev: async (text: string) => ({ value: { model: JEV_MODEL, answers: Object.fromEntries(Object.keys(REPLY_RULES)
-          .map(id => [id, { type: 'noul', noul: text === 'PREVIEW — Okay.' && now !== start && id === 'raw_path' ? 0.5 : 0 }])) }, latencyMs: 1 }),
+          .map(id => [id, { type: 'noul', noul: text === 'Okay.' && now !== start && id === 'raw_path' ? 0.5 : 0 }])) }, latencyMs: 1 }),
         escalate: async () => { reviews++; stopAfterReview = true;
           return { verdict: 'pass' as const, ruleIds: [], confidence: 1, latencyMs: 1 }; },
         elapsedMs: () => 0 } };
@@ -735,7 +741,7 @@ it('replays the exact completed paid review when the 48-hour edge moves', async 
     now = Date.UTC(2026, 9, 1, 15); stopAfterReview = false;
     await worker.drain();
     expect(reviews).toBe(1);
-    expect(sends[1]).toBe('PREVIEW — Okay.');
+    expect(sends[1]).toBe('Okay.');
     expect(journal.view.order[1]?.held).toBeUndefined();
     expect(journal.view.mentionedDates.size).toBe(0);
     worker.intake([update(3, 'Next')]); await worker.drain();

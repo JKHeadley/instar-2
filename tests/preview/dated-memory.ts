@@ -1,8 +1,22 @@
 /** Calendar interpretation for the preview's operator-authored dated clauses. */
 export interface DatedItem { source: string; quote: string; when: string; zone: string;
-  day?: string; time?: string; ambiguity?: string; repeat?: 'weekly';
-  /** The verified operator explicitly asked to be reminded: the scoped grant for this one send. */
-  remind?: true }
+  day?: string; time?: string; ambiguity?: string; repeat?: 'weekly'; recurrence?: 'daily' | 'weekdays';
+  /** The verified operator explicitly asked to be reminded: the scoped grant for one occurrence or the declared recurring series. */
+  remind?: true;
+  /** Persisted absolute due instant and its original clock; recurring series use local occurrences. */
+  resolution?: { at: number; instant: string } }
+
+/** Compare one-shot requests against their persisted instant without rounding away seconds.
+ * Calendar-only/legacy records and recurring occurrences retain their local-minute schedule.
+ * This is timing only: the journal owns request authority, withdrawal and dispatch uniqueness. */
+export function requestedTimeReached(item: DatedItem, now: number): boolean {
+  if (!item.day || item.ambiguity !== undefined || !Number.isFinite(now)) return false;
+  if (item.resolution && !item.recurrence && !item.repeat)
+    return now >= Date.parse(item.resolution.instant);
+  const local = localParts(now, item.zone);
+  const clock = `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`;
+  return `${item.day} ${item.time ?? '09:00'}` <= `${dayKey(local.year, local.month, local.day)} ${clock}`;
+}
 
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
@@ -18,6 +32,18 @@ export function localParts(at: number, zone: string) {
     hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(at);
   const part = (type: string) => Number(fields.find(field => field.type === type)?.value);
   return { year: part('year'), month: part('month'), day: part('day'), hour: part('hour'), minute: part('minute') };
+}
+
+// Retain only the last zone formatter: packet selection renders the same dates many times.
+let minuteFormatter: { zone: string; format: Intl.DateTimeFormat } | undefined;
+/** Model-facing time in the operator zone, including the zone at this instant (DST aware). */
+export function localMinute(at: number, zone: string): string {
+  if (minuteFormatter?.zone !== zone) minuteFormatter = { zone, format: new Intl.DateTimeFormat('en-US', {
+    timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    hourCycle: 'h23', timeZoneName: 'short' }) };
+  const fields = minuteFormatter.format.formatToParts(at);
+  const part = (type: string) => fields.find(field => field.type === type)!.value;
+  return `${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')} ${part('timeZoneName')}`;
 }
 
 /** Date phrases parseDatedItem reads. */
@@ -46,9 +72,14 @@ export function parseDatedItem(source: string, quote: string, when: string, at: 
   const today = localParts(at, zone), localToday = dayKey(today.year, today.month, today.day);
   let day: string | undefined, ambiguity: string | undefined;
   const phrase = when.trim();
-  const expression = phrase.replace(/\.$/u, '');
+  // An explicit Portland zone is exact only in the configured Portland/Los Angeles zone.
+  // Other named zones stay unresolved for model interpretation; no machine-local zone is used.
+  const expression = (zone === 'America/Los_Angeles'
+    ? phrase.replace(/,?\s+Portland time$/iu, '') : phrase).replace(/\.$/u, '');
   const timed = /^(.+?)\s+at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/iu.exec(expression);
   const date = timed?.[1] ?? expression;
+  const recurrence = /^(?:every day|daily|every morning)$/iu.test(date) ? 'daily' as const
+    : /^(?:every weekday|weekdays)$/iu.test(date) ? 'weekdays' as const : undefined;
   const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/u.exec(date);
   const named = /^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?$/iu.exec(date);
   const weekday = /^(?:(this|next|every)\s+)?(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)$/iu.exec(date);
@@ -79,19 +110,57 @@ export function parseDatedItem(source: string, quote: string, when: string, at: 
     const value = new Date(Date.UTC(today.year, today.month - 1, today.day + 1));
     day = dayKey(value.getUTCFullYear(), value.getUTCMonth() + 1, value.getUTCDate());
   } else if (/^today$/iu.test(date)) day = localToday;
+  else if (recurrence) day = localToday;
   else ambiguity = 'date expression unresolved';
   let time: string | undefined;
   if (timed) {
     const hour = Number(timed[2]), minute = Number(timed[3] ?? 0);
-    const meridiem = timed[4]?.toLowerCase();
+    const meridiem = timed[4]?.toLowerCase() ?? (/^every morning$/iu.test(date) ? 'am' : undefined);
     if (minute > 59 || hour > 23 || (meridiem && (hour < 1 || hour > 12))) ambiguity = 'invalid time';
     else if (meridiem) time = `${String(hour % 12 + (meridiem === 'pm' ? 12 : 0)).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     else if (timed[3] && (hour === 0 || hour > 12)) time = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     else ambiguity = ambiguity ?? 'AM or PM unspecified';
   }
-  return { source, quote, when: phrase, zone, ...(day ? { day } : {}), ...(time ? { time } : {}),
+  if (recurrence && !timed) ambiguity = 'recurring request needs a local time';
+  if (recurrence && day && time && !ambiguity) {
+    const clock = `${String(today.hour).padStart(2, '0')}:${String(today.minute).padStart(2, '0')}`;
+    if (time <= clock) day = addDay(day, 1);
+    day = eligibleRecurringDay(day, recurrence, 1);
+  }
+  return { source, quote, when: phrase, zone, ...(recurrence ? { recurrence } : {}), ...(day ? { day } : {}), ...(time ? { time } : {}),
     ...(weekday?.[1]?.toLowerCase() === 'every' && day ? { repeat: 'weekly' as const } : {}),
     ...(ambiguity ? { ambiguity } : {}) };
+}
+
+/** Exact duration arithmetic, not reminder-intent detection. The model still selects the
+ * operator clause and whether it requests action. Relative deadlines use durable intake. */
+export function relativeDelay(when: string): number | undefined {
+  const match = /^in\s+(?:about\s+)?(a|an|one|two|three|four|five|ten|twelve|\d+)\s+(minutes?|hours?)$/iu.exec(when.trim());
+  if (!match) return undefined;
+  const words: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, ten: 10, twelve: 12 };
+  const amount = words[match[1]!.toLowerCase()] ?? Number(match[1]);
+  const delay = amount * (match[2]!.toLowerCase().startsWith('hour') ? 3600000 : 60000);
+  return Number.isSafeInteger(delay) && delay > 0 ? delay : undefined;
+}
+
+/** Model interpretation of a phrase outside the calendar grammar. The quote remains the
+ * authority; the clock/zone binding prevents a delayed answer resolving against a new now.
+ * Known calendar ambiguity/invalidity cannot be overridden by a model restatement. */
+export function resolvedDatedItem(item: DatedItem, resolution: unknown, at: number): DatedItem {
+  if (item.ambiguity !== 'date expression unresolved' || resolution === undefined) return item;
+  const value = resolution as { instant?: unknown; at?: unknown; zone?: unknown; ambiguity?: unknown } | null;
+  if (value && typeof value.ambiguity === 'string' && value.ambiguity.trim() && value.ambiguity.length <= 200)
+    return { ...item, ambiguity: value.ambiguity };
+  if (!value || value.at !== at || value.zone !== item.zone || typeof value.instant !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value.instant))
+    return { ...item, ambiguity: 'date resolution needs the original clock, zone and a valid UTC instant' };
+  const instant = Date.parse(value.instant);
+  if (!Number.isFinite(instant) || new Date(instant).toISOString() !== value.instant || instant <= at)
+    return { ...item, ambiguity: 'invalid or past resolved instant' };
+  const local = localParts(instant, item.zone);
+  const { ambiguity: _ambiguity, ...rest } = item;
+  return { ...rest, resolution: { at, instant: value.instant }, day: dayKey(local.year, local.month, local.day),
+    time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}` };
 }
 
 export function dueState(item: DatedItem, now: number): 'upcoming' | 'due' | 'overdue' | 'ambiguous' {
@@ -187,11 +256,13 @@ export function selectDatedItems(items: readonly DatedItem[], question: string, 
       candidates.push({ ...item, state: 'ambiguous' });
       continue;
     }
-    if (item.repeat === 'weekly') {
+    if (item.repeat === 'weekly' || item.recurrence) {
       const first = window ? addDay(window.start, -2) : localDay(now, item.zone);
-      const elapsed = Math.max(0, Math.ceil((Date.parse(`${first}T00:00:00Z`) - Date.parse(`${item.day}T00:00:00Z`)) / (7 * 86_400_000)));
+      const interval = item.recurrence ? 1 : 7;
+      const elapsed = Math.max(0, Math.ceil((Date.parse(`${first}T00:00:00Z`) - Date.parse(`${item.day}T00:00:00Z`)) / (interval * 86_400_000)));
       const end = window ? addDay(window.end, 2) : item.day > addDay(first, 6) ? item.day : addDay(first, 6);
-      for (let day = addDay(item.day, elapsed * 7); day <= end; day = addDay(day, 7)) {
+      for (let day = addDay(item.day, elapsed * interval); day <= end; day = addDay(day, interval)) {
+        if (item.recurrence && eligibleRecurringDay(day, item.recurrence, 1) !== day) continue;
         const { repeat: _repeat, ...once } = item;
         const occurrence = { ...once, day }, shownDay = queryDay(occurrence, zone);
         if (day >= first)
@@ -234,3 +305,22 @@ export function selectDatedItems(items: readonly DatedItem[], question: string, 
   const selected = [...shown, ...fallback.slice(0, fallbackLimit)];
   return { items: selected, omitted: Math.max(0, candidates.length - selected.length), window };
 }
+
+/** Calendar arithmetic, never 24-hour delays: DST cannot create a second occurrence on one local day. */
+const eligibleRecurringDay = (day: string, recurrence: 'daily' | 'weekdays', direction: 1 | -1) => {
+  if (recurrence === 'daily') return day;
+  const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
+  return weekday === 0 ? addDay(day, direction === 1 ? 1 : -2)
+    : weekday === 6 ? addDay(day, direction === 1 ? 2 : -1) : day;
+};
+export const nextRecurringDay = (item: DatedItem, after: string) =>
+  eligibleRecurringDay(addDay(after, 1), item.recurrence!, 1);
+/** Collapse downtime to the most recent due local occurrence; never enumerate a backlog. */
+export const latestRecurringDay = (item: DatedItem, now: number) => {
+  const parts = localParts(now, item.zone);
+  let day = dayKey(parts.year, parts.month, parts.day);
+  const clock = `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`;
+  if (clock < item.time!) day = addDay(day, -1);
+  day = eligibleRecurringDay(day, item.recurrence!, -1);
+  return day < item.day! ? item.day! : day;
+};

@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal.js';
+import { createJournalWorker, openPreviewJournal, SUMMARY_FORMAT } from './journal.js';
 import { interpretStepJev } from './step-check.js';
 import { redact } from '../../src/recall/redact.js';
 
@@ -62,7 +62,7 @@ it('records pass and violation verdicts without changing sends, then replays the
     expect(answerStates(states)[0]).toContain('"memoryChanges":[]');
     expect(journal.view.stepChecks.get('answer:telegram:12345678:update:1')?.result?.verdict).toBe('violation');
     expect(journal.view.stepChecks.get('answer:telegram:12345678:update:2')?.result?.verdict).toBe('pass');
-    expect(sends).toEqual(['PREVIEW — I recorded a memory change.', 'PREVIEW — I recorded a memory change.']);
+    expect(sends).toEqual(['I recorded a memory change.', 'I recorded a memory change.']);
     journal.close();
     const replay = openPreviewJournal(path, key, undefined, undefined, true);
     expect(answerVerdicts(replay.view.stepChecks)).toEqual(['violation', 'pass']);
@@ -212,7 +212,7 @@ it('keeps failed-summary frames in the original shape after disabling a previous
       send: async () => 5, checkOutbound: () => {} });
     worker.intake([update(1, 'What is seven?')]); await worker.drain(); await worker.summarizeIfNeeded(true);
     expect(frames.filter(frame => JSON.parse(frame).kind === 'summary-failed')).toEqual([
-      JSON.stringify({ kind: 'summary-failed', through: 1, state: 'complete', failureClass: 'malformed', at: 2000 })]);
+      JSON.stringify({ kind: 'summary-failed', format: SUMMARY_FORMAT, through: 1, state: 'complete', failureClass: 'malformed', at: 2000 })]);
     expect(frames.some(frame => JSON.parse(frame).kind === 'step-check-reserve')).toBe(false);
     second.close();
   } finally { rmSync(root, { recursive: true, force: true }); }

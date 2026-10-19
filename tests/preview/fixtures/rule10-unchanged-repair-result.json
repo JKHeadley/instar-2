@@ -1,0 +1,18 @@
+{
+  "scope": "Offline regression using captured reply bytes from update 715676157, message 7234; revision declarations and verdicts are synthetic protocol inputs.",
+  "before": {
+    "tests": 12,
+    "failed": 4,
+    "passed": 8
+  },
+  "after": {
+    "files": 7,
+    "passed": 160,
+    "failed": 0
+  },
+  "restart": "Crash after:reply-revision, reopen and drain twice; unchanged newly declared promise and supported fulfillment survive with one send per turn and one revision call.",
+  "sha256": {
+    "tests/preview/journal.ts": "8c0f7f2642bdee213bf387f58ee82b0362007fe54c56f3087ac202d082102a28",
+    "tests/preview/journal-revision-promises.test.ts": "03aadd02013bb0d9fc32b5df2c54e00851f1ac40b923262e33c9ab734fadc400"
+  }
+}

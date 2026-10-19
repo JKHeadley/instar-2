@@ -157,7 +157,7 @@ it('relaunches a SIGSTOPped real journal runner, and a message sent afterwards i
       '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
-      '--activation-record', activation, '--operator-records', join(dir, 'operator-records'), '--login-profile', profile, '--model', world.model,
+      '--tools', 'off', '--activation-record', activation, '--operator-records', join(dir, 'operator-records'), '--login-profile', profile, '--model', world.model,
       '--bot-username', world.configuration.botUsername, '--max-cycles', '100000', '--max-poll-seconds', '1'];
     const supervised = superviseJournal({ mode: 'journal', root, cwd: process.cwd(), agent, hangAfterMs: 20000, backoffMs: 50, maxBackoffMs: 100 });
     const polls = () => existsSync(log) ? readFileSync(log, 'utf8').split('getUpdates').length - 1 : 0;

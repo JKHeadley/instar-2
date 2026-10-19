@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { productionGroundingSourceDigest } from '../../scripts/check-assembly-contracts.mjs';
 const root = realpathSync(fileURLToPath(new URL('../..', import.meta.url)));
 const hash = value => createHash('sha256').update(value).digest('hex');
-const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', timeout: 60_000, killSignal: 'SIGKILL' }).trim();
 const sourceDigest = productionGroundingSourceDigest(root);
 let current;
 const methods = ['toBe', 'toEqual', 'toStrictEqual', 'toMatchObject', 'toHaveLength', 'toContain', 'toBeDefined', 'toBeUndefined',

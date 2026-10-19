@@ -1,0 +1,48 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.journal-replication.openReplicaStore",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "compacts",
+      "holdsAgentMemory": "yes",
+      "machineScope": {
+        "kind": "shared"
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      2,
+      7,
+      31,
+      32,
+      113
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.journal-replication.adoptReceivedCopy",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "yes",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Rule 113: the lineage record says which lease epoch THIS machine last wrote the journal under, and a journal this machine set aside when it adopted the other machine's newer copy is kept here as a file and never deleted; the shared history itself is the journal and its acknowledged copy."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      2,
+      7,
+      32,
+      113
+    ],
+    "holds": []
+  }
+]

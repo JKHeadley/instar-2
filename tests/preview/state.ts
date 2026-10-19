@@ -11,7 +11,10 @@ import { dirname, join, resolve } from 'node:path';
 export const PREVIEW_STATE_VERSION = 3 as const;
 export const MAX_PREVIEW_ERROR_LIMIT = 10_000 as const;
 export const MAX_PREVIEW_TOTAL_ERROR_LIMIT = 1_000_000 as const;
-export const HOST_OUTAGE_TEXT = 'PREVIEW — experimental test agent; production safeguards incomplete.\nPreview host watcher: The agent did not recover after a restart attempt. Replies are unavailable right now. Messages already admitted to this trial remain preserved.';
+const LEGACY_HOST_OUTAGE_TEXT = 'PREVIEW — experimental test agent; production safeguards incomplete.\nPreview host watcher: The agent did not recover after a restart attempt. Replies are unavailable right now. Messages already admitted to this trial remain preserved.';
+export const HOST_OUTAGE_TEXT = 'Host watcher: The agent did not recover after a restart attempt. Replies are unavailable right now. Messages already admitted remain preserved.';
+/** Existing roots keep their exact recorded host-notice authority. */
+export const isHostOutageText = (text: string) => text === HOST_OUTAGE_TEXT || text === LEGACY_HOST_OUTAGE_TEXT;
 
 export type PreviewIntakeDisposition =
   | 'admitted-bound' | 'admitted-unbound' | 'held' | 'stopped' | 'refused' | 'preserved-unresolved';
@@ -84,7 +87,7 @@ function validate(document: PreviewStateDocument): PreviewStateDocument {
   assertInteger(document.trial.expiresAt, 'expiresAt', 1);
   if (document.trial.hostNotice && (typeof document.trial.hostNotice.botId !== 'string'
     || typeof document.trial.hostNotice.chatId !== 'string'
-    || document.trial.hostNotice.message !== HOST_OUTAGE_TEXT)) throw new Error('preview state: invalid host notice authority');
+    || !isHostOutageText(document.trial.hostNotice.message))) throw new Error('preview state: invalid host notice authority');
   assertInteger(document.trial.maxPendingTurns, 'max pending turns', 1);
   assertInteger(document.trial.maxTrialTurns, 'max trial turns', 1);
   assertInteger(document.trial.errorLimit, 'error limit', 1, MAX_PREVIEW_ERROR_LIMIT);

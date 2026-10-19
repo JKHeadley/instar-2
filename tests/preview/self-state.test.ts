@@ -8,7 +8,7 @@ import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './jou
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { appendRun, heldNotices, heldRepliesToday, holdNotice, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource } from './self-state.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
-import { TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, TOO_LONG_REPLY_NOTICE } from './journal.js';
 
 
 const key = new Uint8Array(32).fill(4);
@@ -90,20 +90,22 @@ it('gives every held reply one fixed plain reason and truthful resend advice', (
 const jevPass = { model: JEV_MODEL, answers: Object.fromEntries(
   Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: 0.01 }])) };
 
-it('sends the fixed too-long notice after a healthy safety check without partial output', async () => {
+it('checks a too-long answer once, whole, then sends all of it across two messages (never the notice, never a partial)', async () => {
+  // Plan #466 (w4-statuslen): the safety check judges the whole reply before it is split for sending.
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-hold-size-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
     let checks = 0, sends = 0;
     const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
-      model: async () => 'x'.repeat(4100), send: async () => { sends++; return 1; }, checkOutbound: () => {},
+      model: async () => 'x'.repeat(4100), send: async () => ++sends, checkOutbound: () => {},
       replyCheck: { jev: async () => { checks++; return { value: jevPass, latencyMs: 1 }; },
         escalate: async () => { throw Error('unexpected review'); }, elapsedMs: () => 0 } });
     worker.intake([update(1, 'one', NOON)]); await worker.drain();
     expect(checks).toBe(1);
-    expect(sends).toBe(1);
-    expect(journal.view.order[0]?.intent).toBe(TOO_LONG_REPLY_NOTICE);
-    expect(journal.view.order[0]?.intent).not.toContain('x'.repeat(4100));
+    expect(sends).toBe(2);
+    expect(journal.view.order[0]?.intent).toBe(`${'x'.repeat(4100)}`);
+    expect(journal.view.order[0]?.intent).not.toBe(TOO_LONG_REPLY_NOTICE);
+    expect(journal.view.order[0]?.replyParts).toEqual([expect.objectContaining({ started: true, sent: 2 })]);
     expect(heldNotices(journal.view)).toEqual([]);
     expect(selfState(journal.view, { launches: [], unreadable: 0 }, NOON, 'UTC'))
       .toContain('Held messages: none.');
@@ -161,10 +163,10 @@ it('derives an honest self-state from the journal and run log, correct across a 
     w.worker.intake([update(4, 'today two', clock)]); await w.worker.drain();
     expect(w.journal.view.order.at(-1)!.held).toBe('call cap');
     let text = selfState(w.journal.view, readRuns(runs), clock, 'America/Los_Angeles', run2);
-    expect(text).toContain('Operator messages received: 2 today, 4 in this trial');
-    expect(text).toContain("My memory: 4 accepted operator turns, 0 summaries and 0 validated memory changes in this trial's encrypted local journal.");
-    expect(text).toContain('It survives runner restarts and spans this trial\'s topics');
-    expect(text).toContain('My replies Telegram accepted: 1 today, 3 in this trial');
+    expect(text).toContain('Operator messages received: 2 today, 4 so far');
+    expect(text).toContain("My memory: 4 accepted operator turns, 0 summaries and 0 validated memory changes in my encrypted local journal.");
+    expect(text).toContain('It survives runner restarts and spans our topics');
+    expect(text).toContain('My replies Telegram accepted: 1 today, 3 so far');
     expect(text).toContain('Model attempts: 3 of 3 used, 0 left');
     expect(text).toContain(`Held messages: 1 — ${holdNotice('call cap')}`);
     expect(text).toContain('Replies held today: 1. Reasons: 1 (call cap). Update 4: call cap (still held).');
@@ -185,11 +187,11 @@ it('derives an honest self-state from the journal and run log, correct across a 
     const probeState = selfState(w.journal.view, readRuns(runs), clock, 'America/Los_Angeles', run3);
     await w.worker.drain();
     expect(w.journal.view.order.every(turn => turn.sent === 7)).toBe(true);
-    expect(probeState).toContain('Operator messages received: 3 today, 5 in this trial (including the one being answered now)');
+    expect(probeState).toContain('Operator messages received: 3 today, 5 so far (including the one being answered now)');
     expect(probeState).toContain('My memory: 5 accepted operator turns');
     expect(probeState).toContain('The verified operator can ask me to correct or forget a recorded fact');
     expect(probeState).toContain('original audit record remains in the journal');
-    expect(probeState).toContain('My replies Telegram accepted: 2 today, 4 in this trial');
+    expect(probeState).toContain('My replies Telegram accepted: 2 today, 4 so far');
     expect(probeState).toContain('Messages exchanged today: 5');
     expect(probeState).toContain('Model attempts: 4 of 8 used, 4 left');
     expect(probeState).toContain('Caps last raised 2026-09-26 11:29 PDT on the authority "Justin, topic 52075"');
@@ -202,7 +204,7 @@ it('derives an honest self-state from the journal and run log, correct across a 
     // The zone is stated, never assumed: an hour past local midnight nothing from "yesterday" counts.
     expect(selfState(w.journal.view, readRuns(runs), clock, 'UTC', run3)).toContain('(time zone UTC; "today" means 2026-09-26 there)');
     expect(selfState(w.journal.view, readRuns(runs), NOON + 13 * 3_600_000, 'America/Los_Angeles', run3))
-      .toContain('Operator messages received: 0 today, 5 in this trial');
+      .toContain('Operator messages received: 0 today, 5 so far');
     expect(selfState(w.journal.view, readRuns(runs), NOON + 13 * 3_600_000, 'America/Los_Angeles', run3))
       .toContain('Replies held today: 0.');
     // A read-only status view, with no current launch, reports the latest launch honestly.
@@ -544,8 +546,10 @@ it('carries the self-state in every packet after rolling summaries take over the
   try {
     appendRun(runs, { v: 1, launch: NOON, pid: 1 });
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
-      // cbuild-2: room for the always-offered summary decision (measured fit 7600; was 7168).
-      { ...genesis, maxCalls: 80, maxReplies: 40, maxTurns: 40, maxBytes: 7600 });
+      // cbuild-2: room for the always-offered summary decision (measured fit 7600; was 7168). w3-floorduty: plus the
+      // obligation guide's floor form, which now rides a pressured packet where the guide used to vanish (Rules 3, 93).
+      { ...genesis, maxCalls: 80, maxReplies: 40, maxTurns: 40,
+        maxBytes: 7600 + OBLIGATION_FLOOR_PACKET_BYTES });
     const packets: { id: string; packet: { historyMode: string; sources?: { id: string; text: string }[] } }[] = [];
     const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
       sources: () => [selfStateSource(selfState(journal.view, readRuns(runs), NOON, 'UTC', NOON))],
@@ -588,10 +592,10 @@ it('briefs every turn with only the facts a reply must not contradict, agreeing 
     expect(brief).toContain('Model attempts: 2 of 2 used, 0 left.');
     expect(brief).toContain('Exhausted: model attempts.');
     expect(brief).toContain('Open: held replies 1; replies held today 1; all other obligation counts are 0.');
-    expect(brief).toContain('original audit record remains');
+    expect(brief).toContain('a corrected fact stays recallable only as labelled earlier history; both keep their original audit record');
     expect(brief).toContain('This run started 2026-09-26 18:00 UTC; uptime 1h 0m.');
     // Every fact line the brief shares with the full status is identical there (one computation).
-    for (const line of ['Operator messages received: 3 today, 3 in this trial (including the one being answered now).',
+    for (const line of ['Operator messages received: 3 today, 3 so far (including the one being answered now).',
       'Model attempts: 2 of 2 used, 0 left', 'Launches recorded: 1 (1 today).']) {
       expect(brief).toContain(line); expect(full).toContain(line);
     }

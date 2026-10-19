@@ -188,7 +188,14 @@ it('keeps a correction beside a delivered lost-answer notice across replay', asy
     const packet = JSON.parse(next.context);
     expect(packet.memory).toMatchObject([{ mode: 'corrected', replacement: 'the cedar trail starts at West Pier.' }]);
     expect(packet.memory[0].sourceLabel).toMatch(/^correction:operator\/main chat\/.+\/#\d+$/u);
-    expect(next.context).not.toContain('East Pier');
+    // The corrected-away value never appears as a current value. Its one permitted appearance is as labelled
+    // history: the `was` of a corrected memorySearch item (Rule 7, w3-k13a), which this 8000-byte packet carries
+    // once the guidance is short enough for the optional search block to fit (it did not before w3-fixedtrim).
+    const searched = (packet.memorySearch?.items ?? []) as { status: string; quote: string; was?: string }[];
+    for (const item of searched.filter(entry => entry.was?.includes('East Pier')))
+      expect(item).toMatchObject({ status: 'corrected', quote: 'the cedar trail starts at West Pier.' });
+    expect(JSON.stringify({ ...packet, memorySearch: packet.memorySearch && { ...packet.memorySearch,
+      items: searched.map(({ was: _was, ...rest }) => rest) } })).not.toContain('East Pier');
     const lost = packet.history.find((item: { notice?: string }) => item.notice === UNKNOWN_ANSWER_NOTICE);
     expect(lost).toMatchObject({ answer: null, notice: UNKNOWN_ANSWER_NOTICE, outcome: 'loss notice delivered; model UNKNOWN' });
     expect(lost.user).toContain('[withheld: operator correction or forgetting]');
@@ -473,7 +480,7 @@ it('never sends a rejected acknowledgement after a later no-request decision', a
     const reopened = openPreviewJournal(path, key);
     await createJournalWorker(reopened, ports).drain();
     expect(reopened.view.memory).toEqual([]);
-    expect(reopened.view.order[1]?.intent).toBe('PREVIEW — I reviewed your memory request.');
+    expect(reopened.view.order[1]?.intent).toBe('I reviewed your memory request.');
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 10000);
@@ -493,10 +500,10 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     // reply first discloses it and accounts for the last message (Rule 110), then answers.
     const asked = w.journal.view.order.at(-1)!;
     expect(asked.answer?.endsWith('Your gym locker code is 3310.')).toBe(true);
-    expect(asked.intent!.startsWith('PREVIEW — Earlier conversation up to #')).toBe(asked.continuity !== undefined);
+    expect(asked.intent!.startsWith('Earlier conversation up to #')).toBe(asked.continuity !== undefined);
     await w.say(id++, 'Actually my gym locker code is 4412, not 3310.');
     expect(w.journal.view.memory).toHaveLength(1);
-    expect(replyBody(w.journal.view.order.at(-1)!)).toBe('PREVIEW — Changed My gym locker code is 3310 → my gym locker code is 4412.');
+    expect(replyBody(w.journal.view.order.at(-1)!)).toBe('Changed My gym locker code is 3310 → my gym locker code is 4412.');
     w.journal.close(); w = world(root);
     await w.say(id++, question);
     const corrected = JSON.parse(w.prompts.get(question)!);
@@ -510,7 +517,7 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     if (!('reason' in sam)) expect(JSON.parse(sam.context).people).toBeUndefined();
     await w.say(id++, 'Forget my gym locker code.');
     expect(w.journal.view.memory).toHaveLength(2);
-    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — Forgot the requested information.');
+    expect(w.journal.view.order.at(-1)?.intent).toBe('Forgot the requested information.');
     w.journal.append({ kind: 'coherence', id: w.journal.view.order.at(-1)!.id,
       findings: [{ rule: 96, check: 'possible stale quote', excerpt: 'My gym locker code is 3310' }],
       at: 1790000000000 });
@@ -600,8 +607,9 @@ it('keeps only the tenth correction with longer and shorter quotes through resta
     expect(compactions).toBeGreaterThan(0);
     expect(journal.view.summaries.length).toBeGreaterThan(0);
     for (let id = 12; id < 20; id++) {
-      // int12: filler leaves room for the fact-update instruction in each reply packet.
-      worker.intake([update(id, `Unrelated garden note ${id}: ${'garden '.repeat(450)}`)]);
+      // int12: filler leaves room for the fact-update instruction in each reply packet. w3-floorduty: and for the
+      // obligation guide's floor form, which now stays where the whole guide used to yield (Rules 3, 93).
+      worker.intake([update(id, `Unrelated garden note ${id}: ${'garden '.repeat(435)}`)]);
       await worker.drain(); await worker.summarizeIfNeeded(true);
     }
     const probe = worker.probe('What is the observatory access word?');
@@ -710,7 +718,10 @@ it('settles a correction the capped summary path cannot decide as undecided and 
     expect(w.journal.view.memory).toEqual([]);
     expect(w.journal.view.order[1]?.held).toBe('memory correction pending');
     await w.say(3, 'What is my gym locker code?');
-    expect([...w.journal.view.summaryFailures.values()]).toEqual([2]);
+    // Two attempts per span: two from the start, then, once the summary through #1 is accepted, two from that base.
+    expect([...w.journal.view.summaryFailures]).toEqual([[2, 4]]);
+    expect(w.journal.view.summaries.map(item => item.through)).toEqual([1]);
+    expect(w.journal.view.summarySpanFailures).toEqual([2, 2]);
     expect(w.journal.view.order[1]).toMatchObject({ memoryPending: true, memoryUndecided: true });
     expect(w.journal.view.order[1]?.held).toBeUndefined();
     expect(w.journal.view.order[1]?.intentBody).toBe(MEMORY_UNDECIDED_REPLY);
@@ -829,7 +840,7 @@ it('settles an undecidable correction with one honest reply and keeps answering 
     await worker.drain(); await worker.drain();
     expect(sends).toHaveLength(3);
     expect(sends[1]).toBe(MEMORY_UNDECIDED_REPLY);
-    expect(sends[2]).toBe('PREVIEW — Plain answer.');
+    expect(sends[2]).toBe('Plain answer.');
     expect(journal.view.order.every(turn => turn.held === undefined)).toBe(true);
     expect(journal.view.summaryReservations.size).toBe(1); // the UNKNOWN summary is never repeated
     journal.close();

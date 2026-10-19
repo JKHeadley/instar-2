@@ -1,4 +1,5 @@
-node_modules/
+# Dependencies may be installed locally or linked to the shared installation.
+node_modules
 coverage/
 dist/
 .test-results.json

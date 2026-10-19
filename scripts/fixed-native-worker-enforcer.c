@@ -37,6 +37,7 @@
 #include <fcntl.h>
 #include <grp.h>
 #include <libproc.h>
+#include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <mach-o/dyld.h>
 #include <netinet/in.h>
@@ -51,6 +52,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/proc.h>
+#include <sys/event.h>
 #include <sys/ptrace.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
@@ -77,10 +79,24 @@
 #ifndef INSTAR_TEST_UNPRIVILEGED
 #define INSTAR_TEST_UNPRIVILEGED 0
 #endif
+#ifndef INSTAR_RESTART_STATE
+#define INSTAR_RESTART_STATE "/private/var/db/instar2-worker/supervisor-restarts"
+#endif
+#ifndef INSTAR_STABLE_MS
+#define INSTAR_STABLE_MS 60000       /* a supervisor run this long resets the restart breaker */
+#endif
 #define MAX_FRAME 65536u
 #define CLIENT_TIMEOUT_MS 1000
 #define LAPSE_MS 250                 /* mirrors WORKER_CHANNEL_LIMITS.lapseMs */
 #define HEARTBEAT_MS 50
+/* The stated owner bound: from the owner's last successful authority check to the
+ * worker's termination being initiated. The supervisor stops beating after LAPSE_MS,
+ * the guard ends the worker LAPSE_MS after its last beat, and the supervisor itself
+ * kills its own guard (and so, through the kernel, the traced worker) at this bound
+ * if the guard has not reported by then. Two serial 250 ms timers are 500 ms, not 250. */
+#define OWNER_TERMINATION_MS (2 * LAPSE_MS + 2 * HEARTBEAT_MS)
+#define DEADLINE_BACKSTOP_MS LAPSE_MS /* the supervisor's own kill after the immutable deadline */
+#define RESTART_CAP 5                /* consecutive unstable supervisor starts before terminal failure */
 #define RELAY_BUDGET (2u * 1048576u) /* 2 x WORKER_CHANNEL_LIMITS.bytes, both directions */
 #define SERVICE_TIMEOUT_MS 5000
 #define MAX_TOKEN 512
@@ -379,6 +395,26 @@ static int unique_id(pid_t pid, uint64_t *id, uint64_t *parent) {
   return 0;
 }
 
+/* The supervisor's backstop over its own unreaped guard child. The guard enforces the
+ * deadline and the heartbeat; this catches a guard that cannot (stopped, or stalled
+ * past a bound). Killing the guard ends the worker through the kernel (a traced
+ * process dies with its tracer), and the guard is the caller's own unreaped child,
+ * so the kill cannot reach another process. Returns the bound crossed, or 0. */
+enum { BACKSTOP_NONE = 0, BACKSTOP_STOPPED = 1, BACKSTOP_DEADLINE = 2, BACKSTOP_OWNER = 3 };
+static int guard_backstop(int guard_stopped, uint64_t now_ticks, uint64_t deadline_ticks,
+                          int owner_attached, uint64_t now, uint64_t last_progress) {
+  if (guard_stopped) return BACKSTOP_STOPPED;
+  if (now_ticks >= deadline_ticks + ms_to_ticks(DEADLINE_BACKSTOP_MS)) return BACKSTOP_DEADLINE;
+  if (owner_attached && now - last_progress > OWNER_TERMINATION_MS) return BACKSTOP_OWNER;
+  return BACKSTOP_NONE;
+}
+
+/* Is our own unreaped child stopped? (Read-only kernel fact; a zombie is not stopped.) */
+static int child_stopped(pid_t pid) {
+  struct kinfo_proc kp;
+  return child_facts(pid, &kp) == 0 && kp.kp_proc.p_stat == SSTOP;
+}
+
 static void guard_report(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void guard_report(const char *fmt, ...) {
   char line[256];
@@ -393,8 +429,11 @@ static void guard_report(const char *fmt, ...) {
  * fd 3: link to the supervisor (any byte = heartbeat). fd 4: the worker's channel
  * end (optional). Spawns the worker as its own traced, unreaped child, verifies it
  * before the gate opens, reports `S <pid> <uid> <uniqueid> <start_us>`, then enforces
- * until the worker ends and reports `T <reason> <wait status>`. It never restarts
- * anything and cannot move the deadline, which is continuous-clock ticks in argv.
+ * until the worker ends and reports `T <reason> <wait status> <exit detail>`. The exit
+ * detail is the kernel's own account of why a worker that ended by itself (reason 0)
+ * ended: NOTE_EXIT_MEMORY marks a memorystatus (Jetsam) kill; -1 means unavailable.
+ * It never restarts anything and cannot move the deadline, which is continuous-clock
+ * ticks in argv.
  */
 static int role_guard(int argc, char **argv) {
   if (argc < 10) { errno = 0; die("guard arguments"); }
@@ -409,7 +448,7 @@ static int role_guard(int argc, char **argv) {
     if (null != 4) close(null);
   }
   if (mem != RLIM_INFINITY && geteuid() != 0) {         /* never run with a limit we cannot install */
-    guard_report("T %d 0\n", END_REFUSED);
+    guard_report("T %d 0 0\n", END_REFUSED);
     errno = EPERM; die("memory limit requires the administrator-owned guard");
   }
   int gate[2], ready[2];
@@ -434,8 +473,13 @@ static int role_guard(int argc, char **argv) {
   posix_spawn_file_actions_destroy(&fa);
   posix_spawnattr_destroy(&at);
   close(gate[0]); close(ready[1]); close(4);
-  if (rc != 0) { guard_report("T %d 0\n", END_REFUSED); errno = rc; die("guard spawn"); }
+  if (rc != 0) { guard_report("T %d 0 0\n", END_REFUSED); errno = rc; die("guard spawn"); }
   int st = 0;
+  /* The kernel's exit detail for this one child (observation only: it never kills). */
+  int kq = kqueue();
+  struct kevent watch;
+  EV_SET(&watch, w, EVFILT_PROC, EV_ADD | EV_ONESHOT, NOTE_EXIT | NOTE_EXIT_DETAIL, 0, NULL);
+  int watching = kq >= 0 && kevent(kq, &watch, 1, NULL, 0, NULL) == 0;
   /* Everything below kills only `w`: our own child, never reaped before it ends. */
   /* A SIGKILL sent to a trace-stopped process stays pending until the tracer
    * resumes it, so the kill is also delivered as the resume signal. If the
@@ -449,7 +493,7 @@ static int role_guard(int argc, char **argv) {
       if ((y == w && !WIFSTOPPED(st)) || now_ms() >= stop) break; \
       usleep(1000); \
     } \
-    guard_report("T %d %d\n", (code), st); return (code); } while (0)
+    guard_report("T %d %d 0\n", (code), st); return (code); } while (0)
   char r = 0;
   if (read_exact(ready[0], &r, 1, now_ms() + 2000) != 0 || r != 'R') END(END_REFUSED);
   close(ready[0]);
@@ -487,7 +531,12 @@ static int role_guard(int argc, char **argv) {
       }
       ptrace(PT_CONTINUE, w, (caddr_t)1, sig);
     } else if (x == w) {
-      guard_report("T %d %d\n", END_WORKER, st);
+      int detail = -1;
+      struct kevent ev;
+      struct timespec wait = { 0, 200000000 };
+      if (watching && kevent(kq, NULL, 0, &ev, 1, &wait) == 1 && (ev.fflags & NOTE_EXIT_DETAIL))
+        detail = (int)(ev.data & NOTE_EXIT_DETAIL_MASK);
+      guard_report("T %d %d %d\n", END_WORKER, st, detail);
       return END_WORKER;
     }
   }
@@ -539,12 +588,20 @@ static void *spin(void *arg) { volatile uint64_t x = 0; (void)arg; for (;;) x++;
 static int role_probe(int argc, char **argv) {
   if (argc < 3) return 64;
   const char *p = argv[2];
-  if (!strcmp(p, "alloc")) {                 /* malloc+touch: must be ended by the memory limit */
+  if (!strcmp(p, "alloc")) {                 /* touch <mib>: ended by the memory limit, or measured */
     size_t mib = argc > 3 ? (size_t)strtoull(argv[3], NULL, 10) : 1024;
     size_t n = mib << 20;
-    char *m = malloc(n);
-    if (m) { for (size_t i = 0; i < n; i += 4096) m[i] = 1; return 10; }
-    return 3;                                 /* allocation refused */
+    if (mib == 0 || mib > 1048576) return 64;
+    /* Volatile stores to every page: an optimizing compiler may not remove them
+     * (it removed a malloc+touch whose result was never read, measured at -O2). */
+    volatile unsigned char *m = mmap(NULL, n, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE, -1, 0);
+    if ((void *)m == MAP_FAILED) return 3;    /* allocation refused */
+    for (size_t i = 0; i < n; i += 4096) m[i] = (unsigned char)((i >> 12) | 1);
+    /* Consumption is verified, not assumed: the kernel's own footprint of this task. */
+    task_vm_info_data_t vm;
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&vm, &count) != KERN_SUCCESS) return 4;
+    return vm.phys_footprint >= (uint64_t)n ? 10 : 13;   /* 13 = touched but not consumed */
   }
   if (!strcmp(p, "raise")) {                 /* raise any hard limit: must fail */
     struct rlimit r, up;
@@ -631,15 +688,26 @@ static int report(const char *name, const char *status, const char *fmt, ...) {
 
 static char uid_s[16], gid_s[16];
 
-typedef struct { int reason; int status; pid_t worker; uint64_t wall_ms; int started; } run_t;
+typedef struct { int reason; int status; int detail; pid_t worker; uint64_t wall_ms; int started; } run_t;
+
+/* The only memory verdict: the worker started under its limit and was then ended by
+ * the kernel's memorystatus kill, not by its guard (deadline 30, lapse 31, memory
+ * setup failure 34, refusal 35 all carry their own reason) and not by any other
+ * SIGKILL (the kernel's exit detail must name memory). */
+static int memory_attributed(const run_t *r) {
+  return r->started && r->reason == END_WORKER && WIFSIGNALED(r->status) && WTERMSIG(r->status) == SIGKILL
+         && r->detail >= 0 && (r->detail & NOTE_EXIT_MEMORY) != 0;
+}
 
 static int exit_code(int st) { return WIFEXITED(st) ? WEXITSTATUS(st) : -WTERMSIG(st); }
 
 /* Run one worker under a real guard, acting as its supervisor with a steady
- * heartbeat; returns the guard's terminal report. `hold_ms` > 0 stops the
- * heartbeat after that long (a supervisor that stopped answering). */
-static int run_guarded(run_t *out, const char *cpu, const char *mem, const char *profile,
-                       uint64_t lifetime_ms, char *const payload[]) {
+ * heartbeat; returns the guard's terminal report. Test faults (observation runs
+ * only): FAULT_KILL sends the started worker an outside SIGKILL; FAULT_SILENT never
+ * heartbeats (a supervisor that stopped answering). */
+enum { FAULT_NONE = 0, FAULT_KILL = 1, FAULT_SILENT = 2 };
+static int run_guarded_fault(run_t *out, const char *cpu, const char *mem, const char *profile,
+                             uint64_t lifetime_ms, char *const payload[], int fault) {
   char deadline[32];
   snprintf(deadline, sizeof deadline, "%llu", (unsigned long long)(mach_continuous_time() + ms_to_ticks(lifetime_ms)));
   char *argv[64];
@@ -651,16 +719,20 @@ static int run_guarded(run_t *out, const char *cpu, const char *mem, const char 
   guard_t g;
   memset(out, 0, sizeof *out);
   out->reason = -1;
+  out->detail = -1;
   uint64_t t0 = now_ms();
   if (spawn_guard(&g, argv, -1) != 0) return -1;
   char line[256];
   for (;;) {
-    (void)write(g.link, "H", 1);
+    if (fault != FAULT_SILENT) (void)write(g.link, "H", 1);
     struct pollfd p = { .fd = g.link, .events = POLLIN };
     if (poll(&p, 1, HEARTBEAT_MS) > 0) {
       if (read_line(g.link, line, sizeof line, now_ms() + 1000) != 0) break;
-      if (line[0] == 'S') { out->started = 1; sscanf(line + 2, "%d", &out->worker); }
-      if (line[0] == 'T') { sscanf(line + 2, "%d %d", &out->reason, &out->status); break; }
+      if (line[0] == 'S') {
+        out->started = 1; sscanf(line + 2, "%d", &out->worker);
+        if (fault == FAULT_KILL) { usleep(100000); kill(out->worker, SIGKILL); }  /* test fault only */
+      }
+      if (line[0] == 'T') { sscanf(line + 2, "%d %d %d", &out->reason, &out->status, &out->detail); break; }
     }
     if (now_ms() - t0 > lifetime_ms + 10000) break;
   }
@@ -668,6 +740,11 @@ static int run_guarded(run_t *out, const char *cpu, const char *mem, const char 
   close(g.link);
   out->wall_ms = now_ms() - t0;
   return out->reason >= 0 ? 0 : -1;
+}
+
+static int run_guarded(run_t *out, const char *cpu, const char *mem, const char *profile,
+                       uint64_t lifetime_ms, char *const payload[]) {
+  return run_guarded_fault(out, cpu, mem, profile, lifetime_ms, payload, FAULT_NONE);
 }
 
 static int probe_case(const char *name, const char *profile, char *const payload[], int expect, const char *what) {
@@ -684,10 +761,13 @@ static int alive(pid_t pid) {
   return kp.kp_proc.p_stat != SZOMB;
 }
 
-/* feasibility <case> <profile> <scratch> [runtime] [uid gid]: an administrator run
- * names the installed worker account so the cases drop to it exactly as a launch does. */
+/* feasibility <case> <profile> <scratch> [runtime] [uid gid [memory_mib]]: an administrator
+ * run names the installed worker account so the cases drop to it exactly as a launch does,
+ * and the installed memory bound so the crossing is proven at that bound (default 256). */
 static int feasibility(const char *which, const char *profile, const char *scratch, const char *runtime,
-                       const char *uid, const char *gid) {
+                       const char *uid, const char *gid, const char *memory) {
+  unsigned long mem_mib = memory ? (unsigned long)parse_limit(memory) : 256;
+  if (mem_mib < 16 || mem_mib > 1048576) { errno = EINVAL; die("feasibility memory bound"); }
   signal(SIGPIPE, SIG_IGN);
   if (uid && gid) {
     snprintf(uid_s, sizeof uid_s, "%u", (unsigned)parse_limit(uid));
@@ -700,19 +780,65 @@ static int feasibility(const char *which, const char *profile, const char *scrat
   int all = !strcmp(which, "all");
   run_t r;
   if (all || !strcmp(which, "memory")) {
-    /* A fatal 256 MiB footprint limit must end a worker that touches 1 GiB after
-     * the whole exec chain. Root only: unprivileged, the guard refuses to start. */
-    char *p[] = { self_path, "probe", "alloc", "1024", NULL };
-    int got = run_guarded(&r, "-", "256", profile, 10000, p);
+    /* Attribution first, on every host: the probe really consumes what it touches
+     * (the optimizer cannot remove it), and the one verdict expression rejects every
+     * neighbor that also ends in SIGKILL: an outside kill, the guard's deadline and
+     * lapse kills, a memory setup failure and a refusal. Then, as the administrator,
+     * a below-limit control and the actual crossing at the installed bound through
+     * the shipped exec chain. Unprivileged the crossing stays UNVERIFIED. */
+    char *c[] = { self_path, "probe", "alloc", "64", NULL };
+    int got = run_guarded(&r, "-", "-", profile, 10000, c);
+    failures += report("memory-consumes", VERDICT(got == 0 && r.reason == END_WORKER && exit_code(r.status) == 10),
+      "probe touched 64MiB under -O2 and the kernel counted it in its footprint: outcome=%d (10=consumed, 13=not)",
+      exit_code(r.status));
+    run_t n[6];
+    char *slow[] = { self_path, "probe", "sleep", NULL };
+    int okn = run_guarded_fault(&n[0], "-", "-", profile, 10000, slow, FAULT_KILL) == 0
+              && WIFSIGNALED(n[0].status) && WTERMSIG(n[0].status) == SIGKILL && n[0].reason == END_WORKER;
+    okn = okn && run_guarded(&n[1], "-", "-", profile, 300, slow) == 0 && n[1].reason == END_DEADLINE;
+    okn = okn && run_guarded_fault(&n[2], "-", "-", profile, 10000, slow, FAULT_SILENT) == 0 && n[2].reason == END_LAPSE;
+    n[3] = (run_t){ .reason = END_MEMORY, .status = SIGKILL, .detail = 0, .started = 1 };   /* setup failure */
+    n[4] = (run_t){ .reason = END_REFUSED, .status = SIGKILL, .detail = 0, .started = 0 };
+    n[5] = r;                                                                       /* finished, not killed */
+    int rejected = 1;
+    for (int i = 0; i < 6; i++) rejected = rejected && !memory_attributed(&n[i]);
+    run_t yes = { .reason = END_WORKER, .status = SIGKILL, .detail = NOTE_EXIT_MEMORY, .started = 1 };
+    failures += report("memory-attribution", VERDICT(okn && rejected && memory_attributed(&yes)),
+      "outside-kill(guard=%d signal=%d detail=%d) deadline(guard=%d) lapse(guard=%d) setup-failure refused finished: "
+      "all rejected=%s; a memorystatus kill is accepted=%s",
+      n[0].reason, WIFSIGNALED(n[0].status) ? WTERMSIG(n[0].status) : 0, n[0].detail, n[1].reason, n[2].reason,
+      rejected ? "yes" : "NO", memory_attributed(&yes) ? "yes" : "NO");
+    char lim[24], below[24], over[24];
+    snprintf(lim, sizeof lim, "%lu", mem_mib);
+    snprintf(below, sizeof below, "%lu", mem_mib / 4 > 0 ? mem_mib / 4 : 1);
+    snprintf(over, sizeof over, "%lu", mem_mib * 2);
+    char *p[] = { self_path, "probe", "alloc", over, NULL };
+    got = run_guarded(&r, "-", lim, profile, 30000, p);
     if (geteuid() != 0)
       failures += report("memory", "UNVERIFIED",
         "requires-root: the fatal footprint limit is installed only by the administrator-owned guard "
         "(unprivileged: attribute ignored, memorystatus_control EPERM); guard=%d started=%d (35=refused before release)",
         got == 0 ? r.reason : -1, r.started);
-    else
-      failures += report("memory", VERDICT(got == 0 && r.started && WIFSIGNALED(r.status) && WTERMSIG(r.status) == SIGKILL),
-        "fatal 256MiB limit, 1GiB touched: guard=%d signal=%d wall_ms=%llu",
-        r.reason, WIFSIGNALED(r.status) ? WTERMSIG(r.status) : 0, (unsigned long long)r.wall_ms);
+    else {
+      failures += report("memory", VERDICT(got == 0 && memory_attributed(&r)),
+        "fatal %sMiB limit, %sMiB touched after bootstrap->%s%s: guard=%d signal=%d exit-detail=0x%x (memorystatus=0x%x) wall_ms=%llu",
+        lim, over, strcmp(profile, "-") ? "sandbox-exec->" : "", self_path, r.reason,
+        WIFSIGNALED(r.status) ? WTERMSIG(r.status) : 0, (unsigned)r.detail, (unsigned)NOTE_EXIT_MEMORY,
+        (unsigned long long)r.wall_ms);
+      char *b[] = { self_path, "probe", "alloc", below, NULL };
+      got = run_guarded(&r, "-", lim, profile, 30000, b);
+      failures += report("memory-control", VERDICT(got == 0 && r.started && r.reason == END_WORKER && exit_code(r.status) == 10),
+        "fatal %sMiB limit, %sMiB touched: the worker finishes with its consumption verified: guard=%d outcome=%d",
+        lim, below, r.reason, exit_code(r.status));
+      if (runtime && *runtime) {
+        char *rt[] = { (char *)runtime, "-e", "const a=[];for(;;)a.push(Buffer.alloc(16<<20,1))", NULL };
+        got = run_guarded(&r, "-", lim, profile, 30000, rt);
+        failures += report("memory-runtime", VERDICT(got == 0 && memory_attributed(&r)),
+          "fatal %sMiB limit, the pinned runtime allocating without bound: guard=%d signal=%d exit-detail=0x%x wall_ms=%llu",
+          lim, r.reason, WIFSIGNALED(r.status) ? WTERMSIG(r.status) : 0, (unsigned)r.detail,
+          (unsigned long long)r.wall_ms);
+      }
+    }
     char *q[] = { self_path, "probe", "raise", NULL };
     if (run_guarded(&r, "5", "-", profile, 5000, q) == 0)
       failures += report("limit-raise", VERDICT(r.reason == END_WORKER && exit_code(r.status) == 3),
@@ -749,15 +875,17 @@ static int feasibility(const char *which, const char *profile, const char *scrat
     /* A supervisor simulation owns the guard; faults are injected from here. The
      * worker must end promptly in each case. Nothing here or in the guard signals
      * the worker by looking up a PID. */
-    const char *faults[] = { "supervisor-kill", "supervisor-stop", "guard-kill", "deadline" };
-    for (int f = 0; f < 4; f++) {
+    /* The supervisor simulation runs the supervisor's own backstop, so a stopped
+     * guard is ended by its parent (guard-stop), as the installed slot loop does. */
+    const char *faults[] = { "supervisor-kill", "supervisor-stop", "guard-kill", "deadline", "guard-stop" };
+    for (int f = 0; f < 5; f++) {
       int info[2]; if (pipe(info) != 0) die("pipe");
       pid_t sup = fork();
       if (sup == 0) {
         close(info[0]);
         char deadline[32];
-        snprintf(deadline, sizeof deadline, "%llu",
-                 (unsigned long long)(mach_continuous_time() + ms_to_ticks(f == 3 ? 800 : 20000)));
+        uint64_t deadline_ticks = mach_continuous_time() + ms_to_ticks(f == 3 ? 800 : 20000);
+        snprintf(deadline, sizeof deadline, "%llu", (unsigned long long)deadline_ticks);
         char *argv[] = { self_path, "guard", "-", "-", "32", uid_s, gid_s, (char *)profile, deadline,
                          self_path, "probe", "sleep", NULL };
         guard_t g;
@@ -767,7 +895,12 @@ static int feasibility(const char *which, const char *profile, const char *scrat
         if (read_line(g.link, line, sizeof line, now_ms() + 3000) != 0 || line[0] != 'S') _exit(21);
         char msg[64]; int n = snprintf(msg, sizeof msg, "%d %d\n", atoi(line + 2), g.pid);
         (void)write(info[1], msg, (size_t)n);
-        for (;;) { if (write(g.link, "H", 1) != 1) _exit(0); usleep(HEARTBEAT_MS * 1000); }
+        for (;;) {
+          if (write(g.link, "H", 1) != 1) _exit(0);
+          if (guard_backstop(child_stopped(g.pid), mach_continuous_time(), deadline_ticks, 0, 0, 0) != BACKSTOP_NONE)
+            kill(g.pid, SIGKILL);                     /* our own unreaped child */
+          usleep(10000);
+        }
       }
       close(info[1]);
       char buf[64] = { 0 };
@@ -785,6 +918,7 @@ static int feasibility(const char *which, const char *profile, const char *scrat
       if (f == 0) kill(sup, SIGKILL);
       if (f == 1) kill(sup, SIGSTOP);
       if (f == 2) kill(guardp, SIGKILL);
+      if (f == 4) kill(guardp, SIGSTOP);
       uint64_t limit = f == 3 ? 2000 : 1500, gone_at = 0;
       while (now_ms() - t0 < limit) { if (!alive(worker)) { gone_at = now_ms() - t0; break; } usleep(5000); }
       int gone = !alive(worker);
@@ -794,6 +928,18 @@ static int feasibility(const char *which, const char *profile, const char *scrat
       failures += report(label, VERDICT(before && gone), "worker ended=%s after %llums (deadline case: 800ms from arm)",
                          gone ? "yes" : "NO", (unsigned long long)gone_at);
     }
+    /* Both sides of every backstop bound, on the function the supervisor runs. */
+    uint64_t t = mach_continuous_time(), d = t + ms_to_ticks(1000), grace = ms_to_ticks(DEADLINE_BACKSTOP_MS);
+    int table = guard_backstop(1, t, d, 0, 0, 0) == BACKSTOP_STOPPED
+             && guard_backstop(0, t, d, 0, 0, 0) == BACKSTOP_NONE
+             && guard_backstop(0, d + grace - 1, d, 0, 0, 0) == BACKSTOP_NONE
+             && guard_backstop(0, d + grace, d, 0, 0, 0) == BACKSTOP_DEADLINE
+             && guard_backstop(0, t, d, 1, 10000 + OWNER_TERMINATION_MS, 10000) == BACKSTOP_NONE
+             && guard_backstop(0, t, d, 1, 10001 + OWNER_TERMINATION_MS, 10000) == BACKSTOP_OWNER
+             && guard_backstop(0, t, d, 0, 99999, 0) == BACKSTOP_NONE;
+    failures += report("guard-backstop", VERDICT(table),
+      "supervisor kills its own guard when stopped, %dms past the deadline, or %dms after the last owner "
+      "authority check once attached; not before", DEADLINE_BACKSTOP_MS, OWNER_TERMINATION_MS);
   }
   if (all || !strcmp(which, "nowrite")) {
     char *p1[] = { self_path, "probe", "write", (char *)scratch, NULL };
@@ -947,9 +1093,9 @@ static int load_conf(void) {
  * the slot thread owns the heartbeat, the channel relay and the terminal report. */
 static struct {
   pthread_mutex_t lock;
-  int active, link, chan, attach, attached_ever, terminal, wstatus;
+  int active, link, chan, attach, attached_ever, terminal, wstatus, backstopped;
   pid_t guard, worker;
-  uint64_t last_progress, last_beat, relayed;
+  uint64_t last_progress, last_beat, relayed, deadline_ticks;
   char identity[MAX_TOKEN + 1];
 } slot = { .lock = PTHREAD_MUTEX_INITIALIZER, .link = -1, .chan = -1, .attach = -1, .terminal = -1 };
 
@@ -971,6 +1117,14 @@ static void *slot_thread(void *arg) {
     uint64_t now = now_ms();
     int owner_ok = !slot.attached_ever || (slot.attach >= 0 && now - slot.last_progress <= LAPSE_MS);
     if (owner_ok && now - slot.last_beat >= HEARTBEAT_MS) { (void)write(slot.link, "H", 1); slot.last_beat = now; }
+    /* Backstop: the guard is this thread's own unreaped child (reaped only below,
+     * under this lock, as the slot closes), so its PID is still it. Before attach,
+     * only the immutable deadline bounds the launch (the finite loading phase). */
+    if (!slot.backstopped) {
+      slot.backstopped = guard_backstop(child_stopped(slot.guard), mach_continuous_time(), slot.deadline_ticks,
+                                        slot.attached_ever, now, slot.last_progress);
+      if (slot.backstopped) kill(slot.guard, SIGKILL);   /* the kernel then kills the traced worker */
+    }
     struct pollfd p[3] = { { .fd = slot.link, .events = POLLIN },
                            { .fd = slot.attach >= 0 ? slot.chan : -1, .events = POLLIN },
                            { .fd = slot.attach, .events = POLLIN } };
@@ -1047,7 +1201,7 @@ static void do_start(int service, char *identity, char *handle, char *delivery, 
   pthread_mutex_lock(&slot.lock);
   slot.active = 1; slot.guard = g.pid; slot.worker = pid; slot.link = g.link; slot.chan = ch[0];
   slot.attach = -1; slot.attached_ever = 0; slot.terminal = -1; slot.wstatus = 0; slot.relayed = 0;
-  slot.last_beat = now_ms(); slot.last_progress = 0;
+  slot.last_beat = now_ms(); slot.last_progress = 0; slot.deadline_ticks = deadline_ticks; slot.backstopped = 0;
   strcpy(slot.identity, identity);
   pthread_mutex_unlock(&slot.lock);
   mach_timebase_info_data_t tb = timebase();
@@ -1071,7 +1225,7 @@ static int hexval(char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && 
 
 /* One client request: relay to the owner service and serve its start/observe
  * calls until it answers. Any service failure ends the supervisor (fail closed:
- * launchd restarts it and every guard ends its worker on link EOF). */
+ * launchd restarts it within its restart breaker, and every guard ends its worker on link EOF). */
 static void handle_request(int client, int service, const unsigned char *req, uint32_t n) {
   static char line[2 * (MAX_FRAME + 4) + 64];
   static unsigned char reply[MAX_FRAME + 4];
@@ -1109,12 +1263,61 @@ static void handle_request(int client, int service, const unsigned char *req, ui
   }
 }
 
+/* Restart breaker (Rules 55/61). launchd restarts the supervisor only after an
+ * unsuccessful exit (KeepAlive SuccessfulExit=false). Every start is counted before
+ * anything else runs, so any failure, a crash included, leaves the count raised; a
+ * run that stays up INSTAR_STABLE_MS resets it. After RESTART_CAP consecutive
+ * unstable starts the record becomes `terminal` and every later start exits 0, so
+ * launchd stops: the service settles in a failed state instead of restarting
+ * forever. Recovery is the operator's: remove the record and kickstart, or
+ * uninstall and reinstall. An unreadable, foreign or malformed record, or one that
+ * cannot be written, is also terminal (no bounded count, no start). */
+static int restart_record(const char *text) {
+  int fd = open(INSTAR_RESTART_STATE, O_WRONLY | O_TRUNC | O_NOFOLLOW | O_CLOEXEC);
+  if (fd < 0) return -1;
+  int ok = write_exact(fd, text, strlen(text)) == 0 && fcntl(fd, F_FULLFSYNC) != -1;
+  close(fd);
+  return ok ? 0 : -1;
+}
+
+static int restart_gate(void) {
+  int fd = open(INSTAR_RESTART_STATE, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0600);
+  struct stat st;
+  char text[32] = { 0 };
+  long count = -1;
+  if (fd >= 0) {
+    ssize_t n = fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_uid == conf_owner()
+                && (st.st_mode & (S_IWGRP | S_IWOTH)) == 0 ? read(fd, text, sizeof text - 1) : -1;
+    close(fd);
+    if (n == 0) count = 0;
+    else if (n > 0) {
+      char *end; errno = 0;
+      long v = strtol(text, &end, 10);
+      if (!errno && end != text && *end == '\n' && end[1] == '\0' && v >= 0 && v < RESTART_CAP) count = v;
+    }
+  }
+  char next[32];
+  snprintf(next, sizeof next, "%ld\n", count + 1);
+  if (count < 0 || restart_record(next) != 0) {
+    if (strcmp(text, "terminal\n") != 0) (void)restart_record("terminal\n");
+    fprintf(stderr, "instar-worker-enforcer: supervise: restart breaker open (%d consecutive unstable starts, "
+                    "or an unusable record); terminal failed state, not restarting. Operator recovery: inspect, "
+                    "then remove %s and kickstart the service, or uninstall and reinstall\n",
+            RESTART_CAP, INSTAR_RESTART_STATE);
+    return -1;
+  }
+  return 0;
+}
+
 static int role_supervise(void) {
   errno = 0;
+  if (restart_gate() != 0) return 0;  /* successful exit: launchd does not restart a settled failure */
+  uint64_t started = now_ms();
+  int stable = 0;
   int loaded = load_conf();
   if (loaded == -1) {
     fprintf(stderr, "instar-worker-enforcer: supervise: installed owner bindings unavailable; refusing\n");
-    return 78; /* EX_CONFIG: launchd throttles restarts */
+    return 78; /* EX_CONFIG: unsuccessful, so launchd restarts it within the restart breaker */
   }
   if (loaded != 0) {
     fprintf(stderr, "instar-worker-enforcer: supervise: installed configuration invalid; refusing\n");
@@ -1169,8 +1372,12 @@ static int role_supervise(void) {
   pthread_t t;
   if (pthread_create(&t, NULL, slot_thread, NULL) != 0) die("slot thread");
   for (;;) {
+    if (!stable && now_ms() - started >= INSTAR_STABLE_MS) {
+      if (restart_record("0\n") != 0) die("restart record");
+      stable = 1;
+    }
     struct pollfd p[2] = { { .fd = ls, .events = POLLIN }, { .fd = service, .events = POLLIN } };
-    if (poll(p, 2, 1000) < 0) { if (errno == EINTR) continue; die("poll"); }
+    if (poll(p, 2, stable ? 1000 : 100) < 0) { if (errno == EINTR) continue; die("poll"); }
     if (p[1].revents) { errno = 0; die("owner service ended"); }
     if (!p[0].revents) continue;
     int c = accept(ls, NULL, NULL);
@@ -1219,8 +1426,8 @@ int main(int argc, char **argv) {
   if (!strcmp(role, "guard")) return role_guard(argc, argv);
   if (!strcmp(role, "supervise") && argc == 2) return role_supervise();
   if (!strcmp(role, "journal-sync") && argc == 3) return role_journal_sync(argv[2]);
-  if (!strcmp(role, "feasibility") && (argc == 5 || argc == 6 || argc == 8))
-    return feasibility(argv[2], argv[3], argv[4], argc > 5 ? argv[5] : "", argc == 8 ? argv[6] : NULL,
-                       argc == 8 ? argv[7] : NULL);
+  if (!strcmp(role, "feasibility") && (argc == 5 || argc == 6 || argc == 8 || argc == 9))
+    return feasibility(argv[2], argv[3], argv[4], argc > 5 ? argv[5] : "", argc >= 8 ? argv[6] : NULL,
+                       argc >= 8 ? argv[7] : NULL, argc == 9 ? argv[8] : NULL);
   errno = 0; die("unknown role");
 }

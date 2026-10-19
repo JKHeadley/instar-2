@@ -6,7 +6,64 @@ import { closeSync, constants, existsSync, fsyncSync, lstatSync, mkdirSync, open
 import { join, resolve, relative, isAbsolute } from 'node:path';
 import { homedir, userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { assertAgentPaths } from './agent-paths.mjs';
 import { hostResources, limitedFileArgv } from './resource-owner.mjs';
+
+/** Read native nonsecret preferences without following links or replacing malformed state. */
+function readInteractiveConfig(path) {
+  let value = {};
+  try {
+    if (!lstatSync(path).isFile()) throw Error('interactive profile config must be a regular file');
+    // The worker can rename entries here: refuse a link swapped in after lstat, too.
+    value = JSON.parse(readFileSync(path, { encoding: 'utf8', flag: constants.O_RDONLY | constants.O_NOFOLLOW }));
+  } catch (error) { if (error?.code !== 'ENOENT') throw error; }
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw Error('interactive profile config must be an object');
+  return value;
+}
+function publishInteractiveConfig(path, previous, next) {
+  if (JSON.stringify(next) === JSON.stringify(previous)) return false;
+  const temporary = `${path}.${process.pid}.first-run.pending`;
+  const fd = openSync(temporary, 'wx', 0o600);
+  try {
+    try { writeFileSync(fd, JSON.stringify(next, null, 2) + '\n'); fsyncSync(fd); }
+    finally { closeSync(fd); }
+    renameSync(temporary, path);
+  } finally { if (existsSync(temporary)) unlinkSync(temporary); }
+  return true;
+}
+/** Claude Code adapter bootstrap, ported from 1.x ensureInteractiveReady. These are local
+ * first-run preferences, not authentication or Instar authority. Never write a login here.
+ * 2.1.280 moved permission-mode acknowledgement into user settings; the legacy config flag
+ * is ignored after migration. Installation and the interactive bridge share this upgrade. */
+export function prepareSubscriptionInteractive(configDirectory, workingDirectory) {
+  if (!isAbsolute(configDirectory) || !lstatSync(configDirectory).isDirectory())
+    throw Error('interactive profile requires its own existing config directory');
+  const path = join(configDirectory, '.claude.json'), settingsPath = join(configDirectory, 'settings.json');
+  const previous = readInteractiveConfig(path), settings = readInteractiveConfig(settingsPath);
+  const next = { ...previous, hasCompletedOnboarding: true, theme: previous.theme ?? 'dark' };
+  // Native workspace trust is keyed by the real cwd, not the profile's default work folder.
+  // This is the exact workspace already admitted by Instar, never a parent or all projects.
+  if (workingDirectory !== undefined) {
+    if (!isAbsolute(workingDirectory) || !lstatSync(workingDirectory).isDirectory())
+      throw Error('interactive profile requires its exact existing workspace');
+    const cwd = realpathSync(workingDirectory);
+    const projects = previous.projects ?? {};
+    if (!projects || typeof projects !== 'object' || Array.isArray(projects))
+      throw Error('interactive profile projects must be an object');
+    const project = projects[cwd] ?? {};
+    if (!project || typeof project !== 'object' || Array.isArray(project))
+      throw Error('interactive profile workspace must be an object');
+    next.projects = { ...projects, [cwd]: { ...project, hasTrustDialogAccepted: true } };
+  }
+  const changed = publishInteractiveConfig(path, previous, next);
+  const settingsChanged = publishInteractiveConfig(settingsPath, settings, { ...settings, skipDangerousModePermissionPrompt: true });
+  if (changed || settingsChanged) {
+    const directory = openSync(configDirectory, 'r');
+    try { fsyncSync(directory); } finally { closeSync(directory); }
+  }
+  return changed || settingsChanged;
+}
 
 /** The transport child's own bounds: per-process handles, and user-ID process headroom. */
 const TRANSPORT_LIMITS = Object.freeze({ handleCount: 256, processCount: 4 });
@@ -23,7 +80,9 @@ function transportProcessLimit() {
 
 export const productionStorageIO = Object.freeze({ pid: process.pid,
   probePid: pid => { process.kill(pid, 0); }, join, resolve, closeSync, constants, existsSync,
-  fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, rmdirSync,
+  fsyncSync, lstatSync, mkdirSync: (path, options) => {
+    assertAgentPaths({ state: path }); return mkdirSync(path, options);
+  }, openSync, readFileSync, realpathSync, renameSync, rmdirSync,
   unlinkSync, writeFileSync });
 
 export const productionProviderIO = Object.freeze({
@@ -80,8 +139,23 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
       handles: TRANSPORT_LIMITS.handleCount, cpuSeconds: Math.ceil((input.timeoutMs + 2000) / 1000) + 1,
       processLimit: transportProcessLimit(), env }) };
   };
-  const settle = (status, stdout) => {
-    if (status !== 0) return { kind: 'uncertain', limitation: 'transport', stage: 'child-exit' };
+  /** Exit codes the transport only ever produces BEFORE its network call, so nothing can have reached
+   * the provider: the limit shim's own refusal (every `exit 125` in limit-exec.sh precedes its `exec`,
+   * as does env's own failure code) and the bridge's request refusal (every `process.exit(2)` precedes
+   * its fetch). A child killed on the timeout exits by signal, never with one of these. */
+  const NEVER_DISPATCHED_EXITS = new Set([2, 125]);
+  /** `neverStarted` is true only when the host refused to start the child at all (a spawn error with
+   * no process id). Any error from a child that did start (a timeout kill as ETIMEDOUT, an output
+   * overflow as ENOBUFS after the provider already answered) is NOT such a refusal: that child may
+   * have sent first, so it settles UNKNOWN through the null status below and is never repeated. */
+  const settle = (status, stdout, neverStarted = false) => {
+    if (neverStarted)
+      return { kind: 'uncertain', limitation: 'transport', stage: 'spawn-refused', sent: false };
+    // Rule 42: a locally refused launch is a definite non-delivery, told apart from a child that
+    // exited after it may already have sent (which stays UNKNOWN and is never repeated).
+    if (status !== 0) return NEVER_DISPATCHED_EXITS.has(status)
+      ? { kind: 'uncertain', limitation: 'transport', stage: 'launch-refused', sent: false }
+      : { kind: 'uncertain', limitation: 'transport', stage: 'child-exit' };
     try {
       const reply = JSON.parse(stdout);
       if (reply.kind === 'identity') {
@@ -103,6 +177,8 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
       const { env, timeout, argv } = launch(input);
       const child = spawnSync('/bin/sh', argv, { input: credential, encoding: 'utf8', timeout, maxBuffer: MAX_TRANSPORT_BYTES,
         env, stdio: ['pipe', 'pipe', 'ignore'] });
+      // Rule 26: an error label is no proof. Only a child that never got a process id sent nothing.
+      if (child.error) return settle(null, '', !child.pid);
       return settle(child.status, child.stdout);
     },
     /** The same bounded child, awaited without blocking the event loop: the long poll. A synchronous
@@ -163,13 +239,80 @@ export function subscriptionProfileIdentity(bindings) {
   return `sha256:${createHash('sha256').update(JSON.stringify(rows)).digest('hex')}`;
 }
 
-/** Preview-only provider host. No secret file or Keychain contents are read here. */
-export function createSubscriptionProviderIO({ repository, stopped, work = 'answer' }) {
+/** The reviewed Claude Code 2.1.280 cache shape. Unknown policy effects hold
+ * activation; accepted content remains bound by the existing profile digest. */
+function subscriptionServerPolicy(configDirectory) {
+  const names = readdirSync(configDirectory).filter(name =>
+    name.startsWith('policy-limits.json') || name.startsWith('remote-settings')).sort();
+  const reviewed = ['policy-limits.json', 'policy-limits.json.stamp.json', 'remote-settings.json'];
+  const hold = reason => { throw Error(`subscription server policy: ${reason}; activation hold`); };
+  const object = (value, field) => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) hold(`${field}: expected object`);
+  };
+  const keys = (value, expected, field, required = expected) => {
+    object(value, field);
+    for (const key of Object.keys(value)) if (!expected.includes(key)) hold(`${field}.${key}: unexpected key`);
+    for (const key of required) if (!Object.hasOwn(value, key)) hold(`${field}.${key}: missing key`);
+  };
+  const empty = (value, field) => {
+    if (!Array.isArray(value) || value.length !== 0) hold(`${field}: expected []`);
+  };
+  return names.map(name => {
+    if (!reviewed.includes(name)) hold(`${name}: unexpected file`);
+    const path = join(configDirectory, name), info = lstatSync(path);
+    if (!info.isFile() || info.size > 65536 || realpathSync(path) !== path) hold(`${name}: unsafe path or size`);
+    let settings;
+    try { settings = JSON.parse(readFileSync(path, 'utf8')); }
+    catch { hold(`${name}: unreadable JSON`); }
+    if (name === 'policy-limits.json') {
+      keys(settings, ['restrictions', 'compliance_taints', 'monitoring_notice', 'defaults'], name);
+      object(settings.restrictions, `${name}.restrictions`);
+      for (const [restriction, value] of Object.entries(settings.restrictions)) {
+        const field = `${name}.restrictions.${restriction}`;
+        keys(value, ['allowed'], field);
+        if (value.allowed !== false) hold(`${field}.allowed: expected false`);
+      }
+      empty(settings.compliance_taints, `${name}.compliance_taints`);
+      if (settings.monitoring_notice !== null) hold(`${name}.monitoring_notice: expected null`);
+      keys(settings.defaults, ['remote_control_at_startup'], `${name}.defaults`, []);
+      if (Object.hasOwn(settings.defaults, 'remote_control_at_startup') && settings.defaults.remote_control_at_startup !== false)
+        hold(`${name}.defaults.remote_control_at_startup: expected false`);
+    } else if (name === 'remote-settings.json') {
+      keys(settings, [], name);
+    } else {
+      keys(settings, ['v', 'identity', 'kind', 'sha', 'confirmed_at', 'hipaa_seen'], name);
+      if (settings.v !== 1) hold(`${name}.v: expected 1`);
+      if (typeof settings.identity !== 'string' || !/^[0-9a-f]{64}$/u.test(settings.identity))
+        hold(`${name}.identity: expected 64 lowercase hex characters`);
+      if (settings.kind !== 'token') hold(`${name}.kind: expected token`);
+      if (typeof settings.sha !== 'string' || !/^sha256:[0-9a-f]{64}$/u.test(settings.sha))
+        hold(`${name}.sha: expected sha256 digest`);
+      if (!Number.isSafeInteger(settings.confirmed_at) || settings.confirmed_at < 0)
+        hold(`${name}.confirmed_at: expected nonnegative safe integer`);
+      empty(settings.hipaa_seen, `${name}.hipaa_seen`);
+      if (!names.includes('policy-limits.json')) hold(`${name}: missing policy-limits.json`);
+      // Cache confirmation refreshes do not change policy or authority. Validate the
+      // complete stamp above, then bind only its identity/content fields to activation.
+      const { confirmed_at, ...binding } = settings;
+      settings = binding;
+    }
+    return { path, settings };
+  });
+}
+
+/** Preview-only provider host. No secret file or Keychain contents are read here. `runAs` (harness-user.mjs readiness:
+ * `{ user, launcher, login, plan }`, or null) runs every harness command (version, auth status, model call) as the
+ * harness's own user through the one sudoers rule: `sudo -n -u USER LAUNCHER --handoff ENV... -- EXECUTABLE ARGS`, the
+ * launcher applying exactly the command's environment. The login and any MCP configuration file reach the harness only
+ * through the launcher's hand-off (harnessCommand), never as a file its user can open. The resource owner still
+ * launches, bounds and reclaims it (the launcher ends its tree). */
+export function createSubscriptionProviderIO({ repository, stopped, work = 'answer', runAs = null }) {
   const outside = (path, root) => { const suffix = relative(root, path);
     return suffix.startsWith('../') || suffix === '..' || isAbsolute(suffix); };
   const digest = value => `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`;
   const inspectSubscriptionProfile = profile => {
     if (!['darwin', 'linux'].includes(process.platform)) throw Error('subscription platform unsupported');
+    assertAgentPaths({ home: profile.home, configuration: profile.configDirectory, workspace: profile.workingDirectory });
     const bindings = [];
     for (const path of [profile.home, profile.configDirectory, profile.workingDirectory]) {
       const info = lstatSync(path);
@@ -192,7 +335,8 @@ export function createSubscriptionProviderIO({ repository, stopped, work = 'answ
     // The pinned CLI also consults device and per-user MDM policy. This narrow
     // preview refuses those sources rather than interpreting plist helpers.
     if (process.platform === 'darwin') {
-      for (const base of ['/Library/Managed Preferences', `/Library/Managed Preferences/${userInfo().username}`]) {
+      for (const base of ['/Library/Managed Preferences', `/Library/Managed Preferences/${userInfo().username}`,
+        ...(runAs ? [`/Library/Managed Preferences/${runAs.user}`] : [])]) {
         if (existsSync(join(base, 'com.anthropic.claudecode.plist'))) throw Error('subscription MDM policy unsupported');
       }
     }
@@ -210,14 +354,81 @@ export function createSubscriptionProviderIO({ repository, stopped, work = 'answ
         throw Error('subscription managed configuration unsupported');
       policy.push({ path, settings });
     }
-    // Unknown server policy formats are an activation hold, never ignored.
-    // 2.1.280 also reads remote-settings plus signed/cache companions. Never
-    // adopt an opaque cached server policy (including an orphan companion).
-    if (readdirSync(profile.configDirectory).some(name =>
-      name.startsWith('policy-limits.json') || name.startsWith('remote-settings')))
-      throw Error('subscription server policy requires reviewed effective configuration');
+    // Include every reviewed cache file in the same activation-bound digest.
+    // Effective policy or identity/content changes hold launches; cache freshness does not.
+    policy.push(...subscriptionServerPolicy(profile.configDirectory));
+    lastPolicy = policy;
     return Object.freeze({ loginProfileIdentity: subscriptionProfileIdentity(bindings), managedConfigurationDigest: digest(policy) });
   };
-  return Object.freeze({ ...productionProviderIO, inspectSubscriptionProfile,
-    execute: input => productionProviderIO.execute({ ...input, stopped }, work) });
+  // The tool turn's admission hook is load-bearing: managed policy that disables hooks must refuse it. Read
+  // from the policy the same inspection just verified against the profile's digest; unknown is not false.
+  let lastPolicy = null;
+  const managedHooksDisabled = profile => { inspectSubscriptionProfile(profile);
+    return lastPolicy === null ? null : lastPolicy.some(row => row.settings?.disableAllHooks === true); };
+  /** Rule 30: which sign-in a Codex login home holds — subscription, an API key, or none. Only the
+   * `auth_mode` shape is read and only its CLASS is returned; no token, key or account value is read
+   * into a return value or a message. The Codex CLI prints its sign-in state on STDERR, which the
+   * host's bounded transport does not capture, so this narrow observation is what lets a route
+   * refuse a metered key instead of trusting an exit code that is 0 for both. `null` is unknown,
+   * and unknown is not subscription. */
+  const codexAuthMode = profile => {
+    inspectSubscriptionProfile(profile);
+    const path = join(profile.configDirectory, 'auth.json');
+    if (!existsSync(path)) return 'absent';
+    try {
+      const info = lstatSync(path);
+      if (!info.isFile() || info.size > 65536 || realpathSync(path) !== path) return null;
+      const record = JSON.parse(readFileSync(path, 'utf8'));
+      if (!record || typeof record !== 'object' || Array.isArray(record)) return null;
+      if (typeof record.OPENAI_API_KEY === 'string' && record.OPENAI_API_KEY.length > 0) return 'apikey';
+      if (record.auth_mode === 'chatgpt' && record.tokens && typeof record.tokens === 'object') return 'chatgpt';
+      if (record.auth_mode === 'apikey') return 'apikey';
+      return null;
+    } catch { return null; }
+  };
+  /** A tool turn's admission record (written by the runner's hook beside the workspace): the calls it admitted.
+   * Unreadable or malformed is null, never zero, so an unaccounted tool item refuses the turn. */
+  const admittedToolCalls = stateDirectory => {
+    try {
+      const path = join(stateDirectory, 'admission.jsonl');
+      if (!existsSync(path)) return 0;
+      const info = lstatSync(path);
+      if (!info.isFile() || info.size > 4194304) return null;
+      let admitted = 0;
+      for (const line of readFileSync(path, 'utf8').split('\n')) {
+        if (!line) continue;
+        const row = JSON.parse(line);
+        if (row?.phase === 'pre' && row.decision === 'allow') admitted++;
+      }
+      return admitted;
+    } catch { return null; }
+  };
+  const execute = async input => runAs ? productionProviderIO.execute({ ...input, ...harnessCommand(input, runAs), stopped }, work)
+    : productionProviderIO.execute({ ...input, stopped }, work);
+  return Object.freeze({ ...productionProviderIO, inspectSubscriptionProfile, managedHooksDisabled, codexAuthMode, admittedToolCalls,
+    ...(runAs ? { descriptorLogin: true } : {}), execute });
+}
+/** One harness command as the harness user (see createSubscriptionProviderIO). The environment travels as launcher
+ * arguments, so sudo needs no SETENV and its own environment is only a plain PATH. What the harness user must never be able
+ * to open travels in the launcher's stdin hand-off line instead: the login (`runAs.login()`, read from the runner's custody
+ * for each command) and the file of an `--mcp-config PATH` argument (read here; the argument becomes /dev/fd/4). A handed-
+ * over login carries no plan; the custody binds the login to `runAs.plan`, declared here as the CLI's
+ * CLAUDE_CODE_SUBSCRIPTION_TYPE, as a stored claude.ai login's own record would. */
+export const HARNESS_MCP_DESCRIPTOR = '/dev/fd/4';
+export function harnessCommand(input, runAs, read = path => readFileSync(path, 'utf8')) {
+  if (!runAs || !/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/u.test(String(runAs.user)) || typeof runAs.launcher !== 'string' || !runAs.launcher.startsWith('/')
+    || typeof runAs.login !== 'function' || !['pro', 'max', 'team', 'enterprise'].includes(runAs.plan))
+    throw Error('preview: harness identity malformed');
+  const env = Object.entries({ ...input.env, CLAUDE_CODE_SUBSCRIPTION_TYPE: runAs.plan }).filter(([, value]) => value !== undefined)
+    .map(([key, value]) => `${key}=${String(value)}`);
+  const args = [...input.args], header = { login: runAs.login() };
+  if (typeof header.login !== 'string' || !header.login) throw Error('preview: harness login unavailable');
+  for (let at = 0; at < args.length - 1; at++) {
+    if (args[at] !== '--mcp-config' || !isAbsolute(args[at + 1])) continue;
+    if (header.mcp !== undefined) throw Error('preview: more than one MCP configuration file');
+    header.mcp = read(args[at + 1]);
+    args[at + 1] = HARNESS_MCP_DESCRIPTOR;
+  }
+  return { executable: '/usr/bin/sudo', args: ['-n', '-u', runAs.user, runAs.launcher, '--handoff', ...env, '--', input.executable, ...args],
+    env: Object.freeze({ PATH: '/usr/bin:/bin' }), stdin: `${JSON.stringify(header)}\n${input.stdin ?? ''}` };
 }

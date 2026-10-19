@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SUBSCRIPTION_THINKING_ENV, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 import { createJournalWorker, openPreviewJournal, openQuestionCandidates, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal-test-worker.js';
-import { parseModelJson } from './model-json.js';
+import { failureShapeOf, parseModelJson } from './model-json.js';
 import { parseReplyReviewVerdict, replyReviewDiagnostics } from './reply-check.js';
+import { splitReply } from './reply-parts.js';
 
 // Each named case is a replayable boundary from the live preview record. The
 // nearby accepting case prevents a safety hold from becoming a blanket refusal.
@@ -34,7 +35,7 @@ it('F01 thinking overflow: an over-cap review stays charged and held after repla
         raw: JSON.stringify(update(index, 'Check this answer')), accepted: true, cursor: index + 1, at: 1000 + index });
       journal.append({ kind: 'reserve', id, at: 1000 + index });
       journal.append({ kind: 'answer', id, text: 'candidate', state: 'complete', at: 1000 + index });
-      journal.append({ kind: 'reply-review-reserve', id, candidate: 'PREVIEW — candidate', at: 1000 + index });
+      journal.append({ kind: 'reply-review-reserve', id, candidate: 'candidate', at: 1000 + index });
       journal.append({ kind: 'reply-review-state', id, state,
         diagnostics: replyReviewDiagnostics({ outputTokens: tokens }), at: 1000 + index });
       if (state === 'uncertain') journal.append({ kind: 'hold', id, reason: 'reply check unavailable', at: 1000 + index });
@@ -73,10 +74,37 @@ it('F03 contradicting review prose: a PASS is valid alone, never after a written
     .toEqual({ ok: false, shape: 'fenced' });
 });
 
-it('F04 too-long notice: a short answer sends whole; an oversized answer sends one fixed notice across replay', async () => {
-  // Live failure: a reply beyond Telegram's limit must not send a truncated prefix.
-  const cases: [string, string][] = [['short answer', 'PREVIEW — short answer'], ['x'.repeat(4085), TOO_LONG_REPLY_NOTICE]];
-  for (const [answer, expected] of cases) {
+it('F06 prose-wrapped answer: the answer side reads one wrapped object; a list, a cut object and wrong fields do not', () => {
+  // Live failure (2026-10-01 12:38 PDT, k6 update 969389879, "what is my padlock code now?"): both answer
+  // attempts wrapped the Decision in reasoning, status counted answer/decision/malformed/prose-wrapped twice,
+  // and the operator was told "I couldn't produce an answer to that." That turn's own raw bytes stay in its
+  // journal's model-call records, which this machine cannot read; the replay below uses the recorded real-model
+  // answers of 2026-09-28, which carry the same two wrappers through the same route.
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/live-declarations-2026-09-28.json', import.meta.url), 'utf8')) as
+    { current: { answers: string[] }; fixedResidualProse: string };
+  for (const raw of [fixture.current.answers[3]!, fixture.fixedResidualProse]) {
+    expect(parseModelJson(raw)).toMatchObject({ ok: false });                 // a gate's verdict: unchanged
+    expect(parseModelJson(raw, { wrapped: 'accept' })).toMatchObject({ ok: true, shape: 'prose-wrapped' });
+  }
+  const at = fixture.fixedResidualProse.indexOf('{"type"');
+  const prose = fixture.fixedResidualProse.slice(0, at), object = fixture.fixedResidualProse.slice(at);
+  for (const [input, shape] of [[`${prose}[${object}]`, 'prose-wrapped'], [`${prose}${object.slice(0, -1)}`, 'truncated'],
+    [`${prose}${object}\n${object}`, 'multiple-objects']] as const)
+    expect(parseModelJson(input, { wrapped: 'accept' })).toEqual({ ok: false, shape });
+  expect(failureShapeOf(parseModelJson(`${prose}{"type":"Other"}`, { wrapped: 'accept' }))).toBe('prose-wrapped-wrong-fields');
+});
+
+it('F04 too-long answer: a short answer sends whole; an oversized answer sends whole across two messages, once, across replay', async () => {
+  // Live failure: a reply beyond Telegram's limit must not send a truncated prefix. Since plan #466 (w4-statuslen) it is
+  // never refused either: the whole answer goes out in order across messages, and nothing is sent again on replay.
+  const long = 'x'.repeat(4097);
+  const cases: [string, string[], string][] = [['short answer', ['short answer'], 'short answer'],
+    [long, splitReply(`${long}`)!, `${long}`]];
+  const [first, second] = cases[1]![1];
+  expect(cases[1]![1]).toHaveLength(2);
+  expect(first!.endsWith(' (1/2)') && second!.startsWith('(2/2) — ')).toBe(true);
+  expect(`${first!.slice(0, -' (1/2)'.length)}${second!.slice('(2/2) — '.length)}`).toBe(`${long}`);
+  for (const [answer, sends, intent] of cases) {
     await inJournal(async path => {
       const journal = openPreviewJournal(path, key, genesis());
       const sent: string[] = [];
@@ -85,9 +113,10 @@ it('F04 too-long notice: a short answer sends whole; an oversized answer sends o
         send: async ({ text }) => { sent.push(text); return 7; } });
       worker.intake([update(1, 'Please answer.')]);
       await worker.drain();
-      expect(sent).toEqual([expected]);
+      expect(sent).toEqual(sends);
+      expect(sent).not.toContain(TOO_LONG_REPLY_NOTICE);
       expect(journal.view.order[0]?.answer).toBe(answer);
-      expect(journal.view.order[0]?.intent).toBe(expected);
+      expect(journal.view.order[0]?.intent).toBe(intent);
       journal.close();
       const replay = openPreviewJournal(path, key);
       let repeats = 0;

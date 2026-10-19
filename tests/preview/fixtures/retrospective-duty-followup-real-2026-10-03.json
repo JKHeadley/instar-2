@@ -1,0 +1,64 @@
+{
+ "source": "Plan row #440 (w4-retroduties). REAL model calls, 2026-10-03, claude-sonnet-5 through the production prepared envelope (prepareJournalEnvelope + subscriptionConversationPolicy argv, the same reader as the launcher), asking RETRO_DUTY_FOLLOWUP_QUESTION over the recorded cint-L40 packet (retrospective-live-failures-4-2026-10-03.json plan.state) plus followUpDuties = the duties the held real answer (realModelCalls[heldCall]) left uninspected. Answers are verbatim conclusion text. question \"first-draft\" is the question before its no-refs sentence was added: that real answer wrote a ref-less \"nothing found\" finding per duty, every one refused, so no duty was taken (the stubs had not shown this). question \"final\" is the shipped RETRO_DUTY_FOLLOWUP_QUESTION.",
+ "calls": [
+  {
+   "heldCall": 1,
+   "question": "first-draft",
+   "asked": [
+    "unsupported-reversal",
+    "recurrence",
+    "removable-attention",
+    "workaround",
+    "standing-grant",
+    "benchmark-divergence"
+   ],
+   "outputTokens": 1408,
+   "answer": "{\"uninspected\":[],\"wells\":[0,0,0,0,0,0,0],\"eff\":\"No repeated calls, redundant replies or failed attempts found among the inspected cases this pass.\",\"findings\":[{\"duty\":\"standing-grant\",\"refs\":[],\"summary\":\"No authorization case present in this context's cases list to review.\",\"recurs\":[],\"rootCause\":\"not-applicable\",\"structuralRemedy\":{\"none\":\"No authorization case exists here; nothing to remedy.\"},\"disposition\":{\"declined\":\"No authorization case in context\"}},{\"duty\":\"benchmark-divergence\",\"refs\":[],\"summary\":\"No rerun case present in this context's cases list to compare.\",\"recurs\":[],\"rootCause\":\"not-applicable\",\"structuralRemedy\":{\"none\":\"No rerun case exists here; nothing to remedy.\"},\"disposition\":{\"declined\":\"No rerun case in context\"}},{\"duty\":\"unsupported-reversal\",\"refs\":[],\"summary\":\"No reversal after pushback found in the single answer or verdict.\",\"recurs\":[],\"rootCause\":\"not-applicable\",\"structuralRemedy\":{\"none\":\"Nothing found warranting change.\"},\"disposition\":{\"declined\":\"No reversal present\"}},{\"duty\":\"recurrence\",\"refs\":[],\"summary\":\"No earlier finding or problem repeats in this context.\",\"recurs\":[],\"rootCause\":\"not-applicable\",\"structuralRemedy\":{\"none\":\"No recurrence to address.\"},\"disposition\":{\"declined\":\"No recurrence present\"}},{\"duty\":\"removable-attention\",\"refs\":[],\"summary\":\"No recurring manual-attention pattern found among these cases.\",\"recurs\":[],\"rootCause\":\"not-applicable\",\"structuralRemedy\":{\"none\":\"Nothing recurring to remove.\"},\"disposition\":{\"declined\":\"No candidate present\"}},{\"duty\":\"workaround\",\"refs\":[],\"summary\":\"No hand-made workaround found among these cases.\",\"recurs\":[],\"rootCause\":\"not-applicable\",\"structuralRemedy\":{\"none\":\"No workaround to formalize.\"},\"disposition\":{\"declined\":\"No workaround present\"}}]}"
+  },
+  {
+   "heldCall": 1,
+   "question": "final",
+   "asked": [
+    "unsupported-reversal",
+    "recurrence",
+    "removable-attention",
+    "workaround",
+    "standing-grant",
+    "benchmark-divergence"
+   ],
+   "outputTokens": 705,
+   "answer": "{\"uninspected\":[],\"wells\":[0,0,0,0,0,0,0],\"eff\":\"No wasted calls, repeated questions, or redundant replies found among these cases.\",\"findings\":[]}"
+  },
+  {
+   "heldCall": 2,
+   "question": "final",
+   "asked": [
+    "unsupported-reversal",
+    "removable-attention",
+    "workaround",
+    "standing-grant",
+    "refuted-reason",
+    "process-tier",
+    "proportionality",
+    "benchmark-divergence"
+   ],
+   "outputTokens": 701,
+   "answer": "{\"uninspected\":[],\"wells\":[0,0,0,0,0,0,0],\"eff\":\"No wasted calls or redundant replies found in this pass's cases.\",\"findings\":[]}"
+  },
+  {
+   "heldCall": 4,
+   "question": "final",
+   "asked": [
+    "unsupported-reversal",
+    "recurrence",
+    "removable-attention",
+    "workaround",
+    "standing-grant",
+    "refuted-reason",
+    "benchmark-divergence"
+   ],
+   "outputTokens": 713,
+   "answer": "{\"uninspected\":[],\"wells\":[0,0,0,0,0,0,0],\"eff\":\"\",\"findings\":[]}"
+  }
+ ]
+}

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { assertLiveJudgment, decisionWithinFloor, ENVELOPE_FLOOR, LIVE_JUDGMENTS, modelCallRecord, replayEligibility, USAGE_EXCEPTIONS } from './model-call-boundary.js';
 import { openPreviewJournal } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
+import { parseModelJson } from './model-json.js';
 
 const call = (overrides: Record<string, unknown> = {}) => ({ id: 'turn:1', judgment: 'answer', route: 'preview-subscription',
   model: 'claude-test', input: 'the exact prompt', output: '{"type":"Decision"}', outcome: 'complete' as const, latencyMs: 12.4,
@@ -85,6 +86,22 @@ it('every registered judgment names a route, a closed action space and a default
     expect(judgment.invalid.length, name).toBeGreaterThan(10);
     expect(['signal', 'mandatory'], name).toContain(judgment.authority);
   }
+});
+
+it('retains a completed response that missed its format, so a refused shape stays replayable', () => {
+  // #106 retention: the shape sidecar is content-free, so the raw bytes of a refused shape are only
+  // replayable because the call record itself keeps them (redacted and length-bounded).
+  const wrapped = 'Looking at the history: {"type":"Decision"}';
+  const record = modelCallRecord(call({ output: wrapped }));
+  expect(record.output).toBe(wrapped);
+  expect(parseModelJson(record.output!)).toEqual({ ok: false, shape: 'prose-wrapped' });
+  expect(parseModelJson(record.output!, { wrapped: 'accept' })).toMatchObject({ ok: true, shape: 'prose-wrapped' });
+  // A call that never returned carries no output; only a completed one does.
+  expect(modelCallRecord(call({ outcome: 'failed', output: null, usage: null })).output).toBeNull();
+  // A secret inside the wrapper is redacted before the record is written, and the redaction is recorded.
+  const leaked = modelCallRecord(call({ output: `token sk-live-0000000000000000 then {"type":"Decision"}` }));
+  expect(leaked.outputTransformations).toContain('credential-redacted');
+  expect(leaked.output).not.toContain('sk-live-0000000000000000');
 });
 
 it('journals model-call records and refuses a malformed one at the write boundary', () => {

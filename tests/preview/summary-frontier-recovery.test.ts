@@ -27,21 +27,26 @@ function world(undecided: (through: number) => boolean, maxBytes = 12000) {
   const journal = openPreviewJournal(path, key, genesis(maxBytes));
   const judged: { through: number; score: number }[] = [];
   const prepared: string[] = [];
+  /** Every answer-call packet, so what the reachability floor set aside can be read back. */
+  const answers: { id: string; packet: { summary?: { through: number }; historySetAside?: { count: number } } }[] = [];
   let clock = 0;
   const worker = createJournalWorker(journal, { now: () => 1790000000000 + clock, elapsed: () => clock, stopped: () => false,
     // The real envelope adds framing: a packet that fits can still overflow once prepared (live: "prompt overflow").
     prepareModel: input => { prepared.push(input.id);
       if (Buffer.byteLength(input.context) > maxBytes * 0.8) throw Error('preview: envelope over its byte bound');
       return JSON.stringify(input); },
-    model: async input => input.id.startsWith('summary:')
-      ? JSON.stringify({ summary: `Earlier the operator kept filler notes about a garden shed (through ${input.id}).`, people: [] })
-      : 'Noted.',
+    model: async input => {
+      if (input.id.startsWith('summary:'))
+        return JSON.stringify({ summary: `Earlier the operator kept filler notes about a garden shed (through ${input.id}).`, people: [] });
+      answers.push({ id: input.id, packet: JSON.parse(input.context) as { summary?: { through: number }; historySetAside?: { count: number } } });
+      return 'Noted.';
+    },
     summaryCheck: async evidence => {
       const through = frontierOf(evidence), score = undecided(through) ? 0.16 : 0.01;
       judged.push({ through, score }); return jev(score);
     },
     send: async () => 1, checkOutbound: () => {} });
-  return { root, path, journal, worker, judged, prepared, tick: (ms: number) => { clock += ms; },
+  return { root, path, journal, worker, judged, prepared, answers, tick: (ms: number) => { clock += ms; },
     close: () => { journal.close(); rmSync(root, { recursive: true, force: true }); } };
 }
 
@@ -68,57 +73,66 @@ it('moves to another span after an undecided frontier, so a long chat at its byt
   } finally { w.close(); }
 });
 
-/** Fill until a turn is held for want of a summary. */
-async function fillUntilHeld(w: ReturnType<typeof world>) {
+/** Fill past the byte bound. No turn can be held for size any more -- the reachability floor answers instead --
+ * so this returns the first turn whose packet had to set older history aside. */
+async function fillUntilFloored(w: ReturnType<typeof world>) {
   for (let id = 1; id <= 40; id++) {
     w.worker.intake([update(id, filler(id))]);
     await w.worker.drain();
-    const held = w.journal.view.order.find(turn => turn.held?.startsWith('summary unavailable:'));
-    if (held) return held;
+    const floored = w.answers.find(item => item.packet.historySetAside !== undefined);
+    if (floored) return w.journal.view.order.find(turn => turn.id === floored.id)!;
   }
   throw Error('fixture never reached its byte bound');
 }
 
-it('holds a turn no summary can shrink as recoverable, and prepares it again only when something changed', async () => {
+it('answers a turn no summary can shrink, and still spends nothing once every span is exhausted', async () => {
   const w = world(() => true, 9000);
   try {
-    const held = await fillUntilHeld(w);
-    // Recoverable, not a cap: nothing latches the preview while a summary may still let it resume.
+    // Before the reachability floor this turn was held "summary unavailable: prompt overflow" and so was every
+    // turn after it (the live proof-room wedge). Now it is answered, with the set-aside disclosed in its packet.
+    const floored = await fillUntilFloored(w);
+    expect(floored.sent).toBeDefined();
+    expect(floored.held).toBeUndefined();
+    expect(w.journal.view.order.filter(turn => turn.held?.startsWith('summary unavailable:')
+      || turn.held === 'prompt overflow' || turn.held === 'context overflow')).toEqual([]);
+    // Recoverable, not a cap: nothing latches the preview, and a summary may still improve what is kept.
     expect(reachedJournalCap(w.journal.view)).toBeNull();
-    // Each drain gives another span its bounded attempts; none re-prepares the held turn.
-    const preparations = w.prepared.filter(item => item === held.id).length;
-    for (let i = 0; i < 12; i++) await w.worker.drain();
-    // Every frontier the summary can reach (the turns answered before the held one) used its two attempts.
-    const reachable = w.journal.view.order.filter(turn => turn.sent !== undefined && turn.update < held.update).map(turn => turn.update);
-    expect([...w.journal.view.summaryFailures.keys()].sort((a, b) => a - b)).toEqual(reachable);
-    expect([...w.journal.view.summaryFailures.values()].every(count => count === 2)).toBe(true);
-    expect(w.prepared.filter(item => item === held.id).length).toBe(preparations);
-    // Every span in reach is exhausted: further drains spend nothing and prepare nothing; the hold stays visible.
-    const calls = w.journal.view.calls;
+    // Each drain gives another span its bounded attempts; the budget is per span and is never widened.
+    let calls = -1;
+    for (let i = 0; i < 40 && calls !== w.journal.view.calls; i++) { calls = w.journal.view.calls; await w.worker.drain(); }
+    const reachable = w.journal.view.order.filter(turn => turn.sent !== undefined
+      && turn.requestedAction === undefined).map(turn => turn.update);
+    expect([...w.journal.view.summaryFailures.keys()].every(through => reachable.includes(through))).toBe(true);
+    expect([...w.journal.view.summaryFailures.values()].every(count => count <= 2)).toBe(true);
+    // Every span in reach is exhausted: further drains spend nothing at all, and nothing is held.
     for (let i = 0; i < 5; i++) await w.worker.drain();
-    expect(w.prepared.filter(item => item === held.id).length).toBe(preparations);
     expect(w.journal.view.calls).toBe(calls);
-    expect(held.held).toMatch(/^summary unavailable:/u);
-    // After the bounded interval it is prepared once more (still held: nothing changed).
+    expect(w.journal.view.order.filter(turn => turn.accepted && turn.sent === undefined)).toEqual([]);
+    // The floor is a preparation decision, so the interval that governs re-preparing a held turn is untouched.
     w.tick(HELD_REPREPARE_MS);
     await w.worker.drain();
-    expect(w.prepared.filter(item => item === held.id).length).toBeGreaterThan(preparations);
-    expect(held.held).toMatch(/^summary unavailable:/u);
     expect(w.journal.view.calls).toBe(calls);
   } finally { w.close(); }
 });
 
-it('resumes a byte-held turn as soon as a summary is accepted, without waiting for the retry interval', async () => {
-  // Undecided until the chat reaches its bound and a turn is held; the next attempt passes.
+it('stops needing the floor as soon as a summary is accepted', async () => {
+  // Undecided until the chat is past its bound and the floor has had to set history aside; the next attempt passes.
   let undecided = true;
   const w = world(() => undecided, 9000);
   try {
-    const held = await fillUntilHeld(w);
+    const floored = await fillUntilFloored(w);
+    expect(floored.sent).toBeDefined();
     undecided = false;
-    for (let i = 0; i < 6 && held.sent === undefined; i++) await w.worker.drain();
+    for (let i = 0; i < 6 && !w.journal.view.summaries.length; i++) await w.worker.summarizeIfNeeded(true);
     expect(w.journal.view.summaries.length).toBeGreaterThan(0);
-    expect(held.held).toBeUndefined();
-    expect(held.sent).toBeDefined();
+    // With a summary carrying the old history, the next packet goes back to summary-plus-recent and needs no floor.
+    const before = w.answers.length;
+    w.worker.intake([update(39, filler(39))]);
+    await w.worker.drain();
+    const next = w.answers.slice(before).at(-1)!;
+    expect(next.packet.summary?.through).toBe(w.journal.view.summaries.at(-1)!.through);
+    expect(next.packet.historySetAside).toBeUndefined();
+    expect(w.journal.view.order.filter(turn => turn.accepted && turn.sent === undefined)).toEqual([]);
     expect(reachedJournalCap(w.journal.view)).toBeNull();
   } finally { w.close(); }
 });

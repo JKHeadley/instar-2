@@ -1,0 +1,40 @@
+{
+  "name": "voice",
+  "question": "When is the meeting mentioned in my voice note?",
+  "error": null,
+  "answer": "{\"reasoning\":\"The operator sent a voice note transcribed locally, asking when the meeting is. The transcription says 'The meeting is on Tuesday at 9 in the morning.' This is straightforward - I just need to read the transcription and answer. No tools needed, no memory lookup needed since the info is right there in the message. I should note that voice transcription may contain recognition errors, but the content is clear enough to answer directly. No promises are being made here, just relaying information.\",\"answer\":\"According to your voice note, the meeting is on Tuesday at 9am. (Just a heads-up: this was a local voice transcription, so if \\\"Tuesday\\\" or \\\"9\\\" seems off from what you remember saying, it might be worth double-checking.)\"}",
+  "state": "complete",
+  "rows": [],
+  "trace": {
+    "kind": "tool-turn",
+    "phase": "trace",
+    "id": "telegram:12345678:update:1",
+    "attempt": 0,
+    "consistent": true,
+    "calls": [],
+    "edges": [],
+    "workspaceBytes": 0,
+    "volume": {
+      "lost": false,
+      "reconciled": 0
+    },
+    "harness": {
+      "user": "_instarharness"
+    },
+    "at": 1791695408635
+  },
+  "toolTurns": {
+    "invocations": 1,
+    "reservedCalls": 15,
+    "refusedCap": 0,
+    "toolCalls": 0,
+    "toolRefusals": 0,
+    "inconsistent": 0,
+    "open": [],
+    "workspaces": [
+      "8cbf778849f3"
+    ]
+  },
+  "plaintextLoginsAfter": [],
+  "provenance": "2026-10-10 real Claude Code confined tool route on synthetic media; no Telegram send or live media copy"
+}

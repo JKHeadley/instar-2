@@ -87,7 +87,7 @@ it('leaves an ordinary answer alone when the model does not request the list', a
       send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
     worker.intake([JSON.parse(raw(1, 'Hello.'))]);
     await worker.drain();
-    expect(sent).toEqual(['PREVIEW — An ordinary answer.']);
+    expect(sent).toEqual(['An ordinary answer.']);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -102,7 +102,7 @@ it('says plainly when the journal has no active saved items', async () => {
       send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
     worker.intake([JSON.parse(raw(1, 'What do you remember about me?'))]);
     await worker.drain();
-    expect(sent).toEqual(['PREVIEW — I have no active saved memory items about you in this preview journal.']);
+    expect(sent).toEqual(['I have no active saved memory items about you in this preview journal.']);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

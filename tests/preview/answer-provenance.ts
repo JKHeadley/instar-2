@@ -1,3 +1,11 @@
+/** Rules 10/26/116: the answering mind judges support from its existing packet,
+ * not a keyword detector or another verifier. A source label identifies a record;
+ * it does not prove the claim that record contains. No new call or send gate. */
+export const CLAIM_EVIDENCE_GUIDANCE = 'Ground completion and factual claims in the recorded sources and outcomes. '
+  + 'State supported claims plainly; for an unsupported claim add one short clause saying it is not verified; '
+  + 'when the record is uncertain say you are not sure. A prior assertion, source label or completed model call alone is not proof. '
+  + 'Do not annotate ordinary conversation, questions or quoted hypotheticals. Use available evidence before declaring it missing.';
+
 /** A conservative, signal-only check: a reply repeats four adjacent words from
  * remembered material that arrived without a source label. Paraphrases and
  * shorter facts need human review; this must never gate a send. */

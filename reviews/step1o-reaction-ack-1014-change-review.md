@@ -1,0 +1,31 @@
+# Change review — reaction acknowledgement and bounded typing
+
+Subject base: 324d40539a76ce148ccfd6d74b0278e72571ae32
+Review state: open
+Reviewed content: none
+Outcome: A slow Telegram answer acknowledges the user's message with 👀 instead of a repeated text bubble, falls back to the existing text on definite failure, and shows bounded typing while preparing the answer.
+Affected rules: Rules 1, 13, 26, 34, 36, 39, 42, 44, 49, 52, 55, 60, 63, 74, 77, 84, 87, 89, 95, 101, 102, 105, 111, 113, 116.
+Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake retain their existing admission points. The bridge scans the new outbound methods for its held credential. No new model call, authority, store, queue or retry protocol.
+Operator questions: none
+Suggested tier: critical
+Declared tier: ordinary
+Tier rationale: Fixed acknowledgement rendering and ephemeral typing reuse the existing signed durable notice and physical transport; no prompt wording, answer parsing or acceptance judgment changes.
+Side effects: A supported chat shows a reaction instead of a message; a definite reaction rejection adds at most the bounded 500 ms reaction request before text fallback. Ambiguous reaction outcomes remain UNKNOWN and do not generate fallback text. The receipt's message id names the inbound message on the reaction path, and acknowledgementPath distinguishes it from text. Typing adds at most 30 bounded calls in two minutes per current indicator, expires naturally at Telegram, and stops on any answer/progress dispatch, work cancellation, lost authority or failed refresh. General reaction/typing tools remain inhibited; only the fixed acknowledgement use is supported. The existing slow progress lines are unchanged.
+Undo and recovery: Revert the host rendering and typing changes, keeping the optional journal fields readable. Existing intents prevent both reaction and text replay, including a crash before receipt. Do not delete journal history or retry UNKNOWN sends. Old records without the optional fields continue to replay.
+Multi-machine posture: Intent and receipt remain in the existing replicated journal and consume the existing conversation-owner dispatch claim. Each typing refresh checks ownership, stop, expiry and disclosure again. Typing timers are local and disposable, never recovered as message-send work. No lease or replica demand is lowered.
+Layer below: Inspected durable notice projection, signed provenance, shared.admit/shared.outcome, exact inbound reply anchoring, Telegram bridge method admission and credential scan, and physical transport UNKNOWN classification. The host's resource shim remains unchanged. Offline bridge tests exercise real HTTP with the fixed test token only.
+Bug class: live-path
+Bug evidence: reproducer=tests/preview/ack-deadline-rewalk.test.ts; live=tests/preview/fixtures/ack-deadline-rewalk-2026-10-14.json
+Hook bypass: none; core.hooksPath is unset and the common hooks directory contains sample hooks only.
+Convergence: none
+Prompt review: No prompt wording, output parser, model routing, accept/escalate/refuse judgment or review policy changes. Generated channel parity metadata describes the fixed acknowledgement and typing support without granting general tools. Recorded summary writer, uncertain summary, undecided/unsure Jev, reply review, delivered reply and empty reply shapes replay the new reaction path in reply-acknowledgement.test.ts; real bridge tests cover transport rather than asserting new live model judgments.
+Prompt finding: e8708c7fea24 | quoted-evidence | Existing source-attribution guidance in journal.ts is unchanged; the literal checks supplied evidence labels rather than interpreting intent.
+Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory rendering in journal.ts is unchanged; the literal denotes the exact empty inventory.
+Decision: step1o-path | Reuse the signed held-notice intent, add optional mode and receipt-path fields, and leave the reaction at 👀 after completion to avoid a second effect lifecycle. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1o-reaction-ack-1014-PROGRESS.md
+Decision: step1o-unknown | Fall back only on definite rejection or proof of no network send; an ambiguous reaction cannot safely be followed by text under the no-duplicate floor. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1o-reaction-ack-1014-PROGRESS.md
+Decision: step1o-typing | Refresh typing after acknowledgement every four seconds, with current-work and authority checks, a failure breaker and a two-minute/30-call ceiling; stop on answer/progress dispatch. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1o-reaction-ack-1014-PROGRESS.md
+Decision: step1o-proof | Preserve captured historical bytes and replay updates 840342743–840342745 through reaction and text outcomes, including restart and lost-receipt crash; validate both methods through real offline HTTP. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1o-reaction-ack-1014-PROGRESS.md
+
+simplestRobustRoute: This is the simplest robust route through the existing acknowledgement timer, signed intent, ownership/replication claim and receipt. Optional fields distinguish the rendered effect without introducing another store. The only added loop is bounded ephemeral typing because Telegram expires indicators after five seconds. It checks existing authority rather than inventing another lease. Start guards are verified durable intake, disclosure, stop, allowance and conversation ownership; end guards are final/progress dispatch and current-work cancellation; limit guards are finite calls, lifetime and failure termination. The named failure prevented by UNKNOWN handling is text appearing after an already-landed reaction. No live walk, deployment, unattended product acceptance or independent convergence is claimed.
+80/20: Targeted acknowledgement, directly affected transport, journal receipt, held-notice and pinned READY checks, plus typecheck/build and required static checks. No full suite, load generator or second base worktree.
+VERDICT: author submission for desk review; no independent convergence claimed

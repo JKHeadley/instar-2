@@ -1,0 +1,88 @@
+{
+ "source": "Plan row #440 (w4-retroduties). RECORDED, verbatim, read-only from proof run I-proofroom2-20261003-173810 on the cint-L43 root (383c1094): livePass is status-i-end.json retrospective.passes[0] (its duty rows, accounting and efficiency as the runner reported them); statusLine is the Retrospective review line of status-i1s.json \"self\"; statusQuestion is msg-i1s.txt, the operator message of update 6232001; modelReply is reply-i1s.json, the model-written answer to it that dropped the retrospective line (check I1d FAIL).",
+ "livePass": {
+  "pass": 0,
+  "at": 1791073976386,
+  "state": "complete",
+  "eligible": 28,
+  "supplied": 13,
+  "inspected": 13,
+  "efficiency": "Two repairs repeated the same daily-reminder deferral objection, wasting a review-repair cycle each time.",
+  "duties": [
+   {
+    "duty": "gravity-well",
+    "disposition": "inspected",
+    "note": "inspected; finding opened"
+   },
+   {
+    "duty": "unsupported-reversal",
+    "disposition": "unavailable",
+    "note": "reported unavailable although its evidence was present; not inspected"
+   },
+   {
+    "duty": "recurrence",
+    "disposition": "inspected",
+    "note": "inspected; finding opened"
+   },
+   {
+    "duty": "removable-attention",
+    "disposition": "unavailable",
+    "note": "reported unavailable although its evidence was present; not inspected"
+   },
+   {
+    "duty": "workaround",
+    "disposition": "unavailable",
+    "note": "reported unavailable although its evidence was present; not inspected"
+   },
+   {
+    "duty": "waste",
+    "disposition": "inspected",
+    "note": "inspected; nothing found"
+   },
+   {
+    "duty": "outcome",
+    "disposition": "inspected",
+    "note": "inspected; nothing found"
+   },
+   {
+    "duty": "feedback",
+    "disposition": "inspected",
+    "note": "inspected; nothing found"
+   },
+   {
+    "duty": "standing-grant",
+    "disposition": "inspected",
+    "note": "inspected; nothing found"
+   },
+   {
+    "duty": "refuted-reason",
+    "disposition": "inspected",
+    "note": "inspected; nothing found"
+   },
+   {
+    "duty": "waiver-recurrence",
+    "disposition": "unavailable",
+    "note": "unavailable: the waiver authority/provenance producer (build 5) has supplied no waiver authorizations or acts to this consumer (finding row refused: a finding needs source refs)"
+   },
+   {
+    "duty": "process-tier",
+    "disposition": "unavailable",
+    "note": "reported unavailable although its evidence was present; not inspected"
+   },
+   {
+    "duty": "proportionality",
+    "disposition": "unavailable",
+    "note": "reported unavailable although its evidence was present; not inspected"
+   },
+   {
+    "duty": "benchmark-divergence",
+    "disposition": "unavailable",
+    "note": "reported unavailable although its evidence was present; not inspected"
+   }
+  ]
+ },
+ "statusLine": "Retrospective review: 1 completed pass(es); last at epoch ms 1791073994363 inspected 13 of 28 case(s) and deferred 15 (efficiency duty ran: Two repairs repeated the same daily-reminder deferral objection, wasting a review-repair cycle each time.); duties not inspected although their evidence was present: unsupported-reversal, removable-attention, workaround, process-tier, proportionality, benchmark-divergence; duties not inspected for lack of evidence: waiver-recurrence; open improvement items 1; pending grades 1; feedback dispositions 0; standing-grant candidates 0 (0 recurring, shown per P-10; none grants anything until the operator approves); benchmark cases promoted 0, reruns 0 (0 regressed); model route selection unmeasured (one route).",
+ "statusQuestion": "What is your status?",
+ "statusUpdate": 6232001,
+ "modelReply": "PREVIEW — As of 17:42 PDT: 896 of 1000 model attempts left, nothing held open (no pending replies, reminders, or memory corrections), trial ends 2026-10-05 13:40 PDT. My own state is current; the status of other Instar 2.0 work (the desk report) is unknown — no report is available."
+}

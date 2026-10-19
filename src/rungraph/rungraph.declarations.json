@@ -226,6 +226,7 @@
     "requiredFacts": {
       "authority": "block",
       "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "operator-emergency-stop",
       "criticality": "Worst-case control loss for bounded user-facing work",
       "failDirection": "open",
       "preservesInput": "part-two:run-input",

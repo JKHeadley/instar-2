@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-agent.test.ts",
-        "hash": "sha256:b48cda37e7b94b5c347fce864ca635654debabc62db9f69d3169ee32d919a352"
+        "hash": "sha256:9019f6deea889b76c350867db46b0377df36dba2207ef279305fde21ec5ae294"
       }
     },
     {
@@ -15,7 +15,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-memory-correction.test.ts",
-        "hash": "sha256:5518816fcf99b074a9e5d3ac729e95057d022fb45018b5a1853bb4203ab8463a"
+        "hash": "sha256:9ea2c0069c88a38101bb77e6af17eb970e6ac5c6a9bd682a83ae4c6ba72eb67b"
       }
     },
     {
@@ -23,7 +23,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/status-command.test.ts",
-        "hash": "sha256:c344940cc7c7f40a38c0a62f8b25cd7a55b5a8f39efd205847f1434ef4e38d85"
+        "hash": "sha256:e33f1b404a49e98531ef21261b2166b0398ce8f9ffde0ec70340e140cee0d46c"
       }
     },
     {
@@ -31,7 +31,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-dated-memory.test.ts",
-        "hash": "sha256:86c6a1ba5c36b669c03e76390fbac84207cb395ea28008cdbf96616b4e921a66"
+        "hash": "sha256:5292bb6e55dd7204b91ea3f31b7471cd9d859e0cb5e472bc549dbdb041d3a79c"
       }
     },
     {
@@ -39,7 +39,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-requested-action.test.ts",
-        "hash": "sha256:3b3e7795a955d0fb9890f53595725e63658d0f55a9881e85fb70566623a365e7"
+        "hash": "sha256:7557400031dceafae36c1901d3313081882c0acff1e250a47f82b50047208ca6"
       }
     },
     {
@@ -47,7 +47,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-obligations.test.ts",
-        "hash": "sha256:3cf86dae9a48a0b4ef5a79bf1a8647b26b5e8042366912d3e7214b6a2def4c4b"
+        "hash": "sha256:545ef1b6a0aae7391a020eaa85e0d70ff9366d849de2d51c771eb5b499edd3a5"
       }
     },
     {
@@ -55,7 +55,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-spend-cap.test.ts",
-        "hash": "sha256:6eb3011a39303be4dc25cd35d87e532acb6c36efa8094d70b6577df58b3e4c72"
+        "hash": "sha256:38390029e069738e7dc3c8d636dc8d07df45698db201896237aed09ad253e35b"
       }
     },
     {
@@ -63,7 +63,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/reply-check.test.ts",
-        "hash": "sha256:67390f72942200f48c5e25e812b9ff5073d3ba4262d378c44c67533e7ae45cd9"
+        "hash": "sha256:7c4539d103c5b184bf4a229d599bcef6fd769ef3616f69d4f4f480c4c0b0595f"
       }
     },
     {
@@ -71,7 +71,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/model-json.test.ts",
-        "hash": "sha256:82fa887801b714f6e6d7a6f7a4634009549d319a7c0b84b7748fac1136cf85aa"
+        "hash": "sha256:98831eb20d1053bf09a4c6f43b63e8a0eaa598c4b2a72b86a85d5f6b31309ed1"
       }
     },
     {
@@ -88,6 +88,62 @@
       "artifact": {
         "path": "tests/preview/jev-response-capture.test.ts",
         "hash": "sha256:3e7152fa92b15e99c06d6c964069577c2420713ceada9872d9023802fdadde28"
+      }
+    },
+    {
+      "id": "PREVIEW-KEPT-SESSION-SUBORDINATE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/tool-persist.test.ts",
+        "hash": "sha256:5f67ed0759fade5c9017aba99bbedf21ebd31b226c3d94c4fabfdb24c57c12d6"
+      }
+    },
+    {
+      "id": "PREVIEW-WORKSPACE-SUBORDINATE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/tool-persist.test.ts",
+        "hash": "sha256:5f67ed0759fade5c9017aba99bbedf21ebd31b226c3d94c4fabfdb24c57c12d6"
+      }
+    },
+    {
+      "id": "PREVIEW-SECRET-WALL",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/secret-custody.test.ts",
+        "hash": "sha256:9c0dd8dd76c59cb4856be241d509b0355c173b20d7ec01bbbc95a2768f3f6277"
+      }
+    },
+    {
+      "id": "PREVIEW-HOST-RESOURCE-FUNNEL",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-agent-resources.test.ts",
+        "hash": "sha256:d8366707a8188137dc7fa4389ff00c60dcc12b08221615bc4f3f69eccff5cdf4"
+      }
+    },
+    {
+      "id": "PREVIEW-MEDIA-CUSTODY",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/telegram-media.test.ts",
+        "hash": "sha256:7506f07453d13944b99927a25edcd61875ec98a828b504dd5c0ae0c355b83351"
+      }
+    },
+    {
+      "id": "PREVIEW-MEDIA-PROTECTION",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/media-understanding.test.ts",
+        "hash": "sha256:d03329168bdf9bcc06c5a17d95efcefa3e5c3201f3a3af1651e1121f14993bf5"
+      }
+    },
+    {
+      "id": "PREVIEW-CONVERSATION-RESULT-COLLECTION",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-conversation-session.test.ts",
+        "hash": "sha256:bf05e9489e360f46bfb207600fdef604d02a107ac91ab853e86b1769475dcee4"
       }
     }
   ],

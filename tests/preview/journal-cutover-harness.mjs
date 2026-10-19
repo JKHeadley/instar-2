@@ -20,7 +20,7 @@ export function cutoverHarness(world, profile, childEnv = {}) {
     '--bot-id', world.configuration.botId, '--bot-username', world.configuration.botUsername,
     '--chat-id', world.configuration.chatId, '--operator-sender-id', world.configuration.operatorSenderId,
     '--grant-reference', activation.trial, '--configuration-digest', activation.baseConfigurationDigest,
-    '--expires-at', String(activation.expiresAt), '--activation-record', activationPath, '--operator-records', join(directory, 'operator-records'),
+    '--expires-at', String(activation.expiresAt), '--tools', 'off', '--activation-record', activationPath, '--operator-records', join(directory, 'operator-records'),
     '--login-profile', profilePath, '--model', world.model, '--max-cycles', String(cycles),
     '--max-poll-seconds', '1'];
   const env = (role, fenced = false) => ({ ...process.env, ...childEnv, INSTAR_SECRET_PREVIEW_STORAGE_KEY: key,
@@ -32,8 +32,15 @@ export function cutoverHarness(world, profile, childEnv = {}) {
     ...(role === 'canary' && !fenced ? { INSTAR_CONVERSATION_OWNERS: join(directory, 'owners-canary') } : {}) });
   const canaryRoot = join(directory, 'cutover-canary');
   const liveRoot = join(directory, 'cutover-live');
-  const startCanary = (fenced = false) => spawn(process.execPath, launchArgs(canaryRoot, 'canary', 1000),
-    { cwd: process.cwd(), env: env('canary', fenced), stdio: 'ignore' });
+  let canary, canaryError = '';
+  const startCanary = (fenced = false) => {
+    canaryError = '';
+    canary = spawn(process.execPath, launchArgs(canaryRoot, 'canary', 1000),
+      { cwd: process.cwd(), env: env('canary', fenced), stdio: ['ignore', 'ignore', 'pipe'] });
+    canary.stderr.setEncoding('utf8').on('data', chunk => { canaryError = (canaryError + chunk).slice(-4096); });
+    canary.once('error', error => { canaryError = error.message; });
+    return canary;
+  };
   const launchLive = cycles => spawnSync(process.execPath, launchArgs(liveRoot, 'live', cycles),
     { cwd: process.cwd(), env: env('live'), encoding: 'utf8', timeout: 30000 });
   /** The live runner as a child the test can kill at a chosen moment (a crash with no exit record). */
@@ -41,9 +48,18 @@ export function cutoverHarness(world, profile, childEnv = {}) {
     { cwd: process.cwd(), env: env('live'), stdio: 'ignore' });
   const status = () => spawnSync(process.execPath, [...args,
     'status', '--root', liveRoot], { cwd: process.cwd(), env: env('live'), encoding: 'utf8', timeout: 10000 });
-  const waitForOverlap = async () => {
-    for (let i = 0; i < 100; i++) { if (existsSync(marker)) return; await pause(50); }
-    throw Error('canary never entered a long poll');
+  // Startup includes the real loader and journal boot. Five seconds was a scheduling
+  // assumption, not an ownership condition. Keep a deadline, and fail promptly on exit.
+  const waitForOverlap = async (timeoutMs = 30000) => {
+    const deadline = performance.now() + timeoutMs;
+    while (true) {
+      if (!canary || canary.exitCode !== null || canary.signalCode !== null || canary.pid === undefined)
+        throw Error(`canary exited before long poll (status=${canary?.exitCode}, signal=${canary?.signalCode}): ${canaryError}`);
+      if (existsSync(marker)) return;
+      if (performance.now() >= deadline)
+        throw Error(`canary never entered a long poll within ${timeoutMs}ms: ${canaryError}`);
+      await pause(50);
+    }
   };
   const stopCanary = async child => {
     if (child.exitCode !== null || child.signalCode !== null) return;
@@ -69,9 +85,21 @@ export function cutoverHarness(world, profile, childEnv = {}) {
   /** Any non-run command against an arbitrary root (e.g. a copy), with the live role's key and no poller. */
   const commandOn = (root, command, extraArgs = []) => collect(spawn(process.execPath, [...args, command, '--root', root, ...extraArgs],
     { cwd: process.cwd(), env: env('live'), stdio: ['ignore', 'pipe', 'pipe'] }), 30000);
+  /** Any runner on any root, under a named role, as a child the test drives (two machines on one host). */
+  const startRunner = (root, role, cycles, extraArgs = [], extraEnv = {}) => {
+    const child = spawn(process.execPath, [...launchArgs(root, role, cycles), ...extraArgs],
+      { cwd: process.cwd(), env: { ...env(role), ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const output = { stdout: '', stderr: '' };
+    child.stdout.setEncoding('utf8').on('data', chunk => { output.stdout += chunk; });
+    child.stderr.setEncoding('utf8').on('data', chunk => { output.stderr += chunk; });
+    return { child, output, exited: new Promise(done => child.once('close', (status, signal) => done({ status, signal }))) };
+  };
+  /** The status command against any root, under any role's environment. */
+  const statusOn = (root, extraEnv = {}) => collect(spawn(process.execPath, [...args, 'status', '--root', root],
+    { cwd: process.cwd(), env: { ...env('live'), ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] }), 30000);
   const setUpdates = updates => writeFileSync(join(directory, 'updates.json'), JSON.stringify(updates));
   const setConflicts = count => writeFileSync(join(directory, 'conflicts-remaining'), String(count));
   const calls = () => readFileSync(join(directory, 'telegram.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
   return { directory, canaryRoot, liveRoot, startCanary, launchLive, startLive, status, waitForOverlap,
-    stopCanary, releaseOverlap, setUpdates, setConflicts, calls, runLive, statusOf, commandOn };
+    stopCanary, releaseOverlap, setUpdates, setConflicts, calls, runLive, statusOf, commandOn, startRunner, statusOn };
 }

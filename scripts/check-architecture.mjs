@@ -161,7 +161,7 @@ export function lintIntentSites(sources = Object.fromEntries(Object.keys(INTENT_
  * word-match only. */
 export const RETRIEVAL_SITES = Object.freeze({
   'tests/preview/journal.ts': { owner: 'composeRecall', adapter: 'ownedRecall', rankers: ['selectRecall', 'selectSaidTurns'],
-    entryPoints: ['recallFor', 'searchFor'],
+    entryPoints: ['recallFor', 'searchFor', 'lookupRecall'],
     // Bounded advisory offers the model judges: imports, open items, reply provenance, dated turns, summary candidates.
     advisory: ['channelFor', 'relatedOpenFor', 'replyProvenanceFor', 'preparedFor', 'runSummary'] },
 });
@@ -235,6 +235,7 @@ export function shippedClientFiles() {
  * adapter interface by a registered id. */
 export const HARNESS_ADAPTER_MODULES = Object.freeze([
   'src/harness-adapters/', 'src/assembly/production-session-driver.ts', 'src/assembly/production-provider.ts',
+  'src/assembly/production-codex-provider.ts',
   'scripts/production-session-io.mjs', 'scripts/production-boot-io.mjs',
 ]);
 const HARNESS_NAME = /^(?:claude-code|claude|codex-cli|codex|gemini-cli|gemini|pi-cli|grok-build|grok|aider|cursor|opencode)$/iu;

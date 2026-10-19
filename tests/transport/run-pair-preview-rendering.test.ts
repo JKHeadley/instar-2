@@ -17,7 +17,7 @@ for (const mutation of ['prefix', 'value', 'acceptance']) it(`refuses altered pr
   const s = await pair(); value(s.admit());
   const text = acceptedReplyPreviewText(s.f.all(), s.reply.id);
   const reply = outbound(s, mutation === 'acceptance' ? { text, sourceResult: s.f.opening.id }
-    : { text: mutation === 'prefix' ? text.replace('PREVIEW', 'ANSWER') : text + '!' });
+    : { text: mutation === 'prefix' ? `ANSWER — ${text}` : text + '!' });
   expect(reply.prepare().kind).toBe('Refused'); expect(reply.calls()).toBe(0);
 }, 120000);
 

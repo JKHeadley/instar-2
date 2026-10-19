@@ -1,0 +1,42 @@
+{
+  "source": ".instar/lanes/postswitch37-c1-1014-evidence/c1-frames.json",
+  "journal": "preview-trial-root/proofroom4-dshort15-20261014-221816/journal.encrypted",
+  "journalSha256": "96bd92a046e5e63e426d385ddffc4c304599fab98c816d2109850412aed0e616",
+  "update": 46040043,
+  "answerFrame": 230,
+  "request": "Please write me a complete, detailed month-by-month plan for a backyard vegetable garden for one full year. For each of the twelve months give what to sow, what to transplant, what to harvest and the main care jobs, with a short reason for each.",
+  "answer": "Here's a month-by-month vegetable garden plan for a full year. This is written for a generic temperate Northern Hemisphere climate (roughly USDA zones 5-7) — shift timing earlier if you're in a warmer zone, later if colder.\n\n**January** — Sow: nothing outdoors; start onions/leeks indoors under lights (long season crops need the head start). Transplant: none. Harvest: stored root crops (carrots, potatoes, beets) from the cellar; overwintered kale/leeks if mild. Care: order seeds early for best variety availability; check stored produce for rot; service tools.\n\n**February** — Sow: start tomatoes, peppers, eggplant indoors (8-10 weeks before last frost, since they're slow to mature); sow early lettuce/spinach under cover. Transplant: none yet. Harvest: remaining stored roots. Care: test soil pH/nutrients so amendments can work in before planting; chit seed potatoes (sprout them) for a head start.\n\n**March** — Sow: direct-sow peas, spinach, radishes outdoors as soil becomes workable (cool-season crops tolerate frost); start brassicas (broccoli, cabbage) indoors. Transplant: harden off and transplant onion sets outdoors. Harvest: late winter greens if overwintered. Care: prepare beds — dig in compost (feeds soil biology before the growing rush); install pea/bean supports now while beds are empty.\n\n**April** — Sow: direct-sow carrots, beets, lettuce, radish, Swiss chard (soil has warmed enough for germination). Transplant: brassica seedlings outdoors under row cover (protects from early pests/cold). Harvest: asparagus spears if established; early radishes. Care: mulch to suppress spring weeds before they establish; watch for slugs on tender seedlings.\n",
+  "state": "complete",
+  "usage": {
+    "inputTokens": 42943,
+    "outputTokens": 984,
+    "charge": null,
+    "inputComplete": true
+  },
+  "replyCheck": {
+    "verdict": "pass",
+    "ruleIds": [],
+    "confidence": 0.7,
+    "path": "jev",
+    "latencyMs": 178,
+    "scores": {
+      "raw_path": 0.01,
+      "cli_command": 0.02,
+      "config_key": 0.01,
+      "credential": 0.01,
+      "api_endpoint": 0.01,
+      "quits_on_self": 0.04,
+      "claims_blocked": 0.04,
+      "parks_on_user": 0.27,
+      "defers_work": 0.14,
+      "unrecorded_blocker": 0.3
+    },
+    "usage": {
+      "inputTokens": 1088,
+      "outputTokens": 184,
+      "charge": null
+    },
+    "candidateDigest": "b011b3dd9b69dd924fe6ecdb6c9c2a11308a4d87432f306257624d9764b0d472"
+  },
+  "receiptNote": "Raw provider receipt was not retained. Test receipts are counterfactual controls, not captured Telegram evidence."
+}

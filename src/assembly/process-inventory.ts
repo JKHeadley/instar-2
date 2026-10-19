@@ -126,8 +126,13 @@ export interface LaunchRoot {
   readonly workingArea: string | null;
   /** The root's start identity; the working-area join needs it. */
   readonly start: string | null;
+  /** The private area whose sandbox instance confines this launch (a launch run under a per-launch sandbox
+   * profile that reads that area and not its parent), or absent/null when it has none to join on. */
+  readonly sandboxArea?: string | null;
 }
-export type MembershipReason = 'recorded' | 'group' | 'ancestry' | 'working-area';
+export type MembershipReason = 'recorded' | 'group' | 'ancestry' | 'working-area' | 'sandbox';
+/** One process's sandbox reading: the private area whose sandbox instance holds it (`null`: in none of them). */
+export type SandboxReading = { readonly state: 'observed'; readonly area: string | null } | { readonly state: 'unavailable' };
 export interface Membership { readonly launch: string; readonly reason: MembershipReason }
 
 const inside = (path: string, area: string) => {
@@ -203,6 +208,25 @@ export function joinWorkingArea(snapshot: ProcessInventorySnapshot, launches: re
       && startSeconds(l.start)! <= s && inside(cwd.path, l.workingArea!))
       .sort((a, b) => startSeconds(b.start!)! - startSeconds(a.start!)!)[0];
     if (owner) joined.set(pid, { launch: owner.id, reason: 'working-area' });
+  }
+  return joined;
+}
+
+/**
+ * The sandbox join over the candidates whose sandbox was read: the kernel's own sandbox identity, which a process
+ * cannot leave by a new session, a new parent or another working directory. A candidate joins the newest launch,
+ * started no later than it, whose sandbox area its reading names.
+ */
+export function joinSandbox(snapshot: ProcessInventorySnapshot, launches: readonly LaunchRoot[], candidates: readonly number[],
+  readings: ReadonlyMap<number, SandboxReading>): ReadonlyMap<number, Membership> {
+  const rows = new Map(snapshot.processes.map(p => [p.pid, p]));
+  const joined = new Map<number, Membership>();
+  for (const pid of candidates) {
+    const reading = readings.get(pid), row = rows.get(pid), s = row && startSeconds(row.start);
+    if (reading?.state !== 'observed' || reading.area === null || s === null || s === undefined) continue;
+    const owner = launches.filter(l => l.sandboxArea === reading.area && l.start && startSeconds(l.start) !== null
+      && startSeconds(l.start)! <= s).sort((a, b) => startSeconds(b.start!)! - startSeconds(a.start!)!)[0];
+    if (owner) joined.set(pid, { launch: owner.id, reason: 'sandbox' });
   }
   return joined;
 }

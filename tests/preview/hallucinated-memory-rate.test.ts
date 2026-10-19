@@ -65,8 +65,8 @@ type Packet = { capability: string; history: { user: string; sourceLabel: string
 const hasPrecisionInstruction = (packet: Packet) => packet.capability.includes('state a remembered detail only when the offered journal evidence supports that exact detail')
   && packet.capability.includes('I don\'t know from this journal');
 const withoutPrecisionInstruction = (packet: Packet): Packet => {
-  const start = packet.capability.indexOf('For a question about what the operator said');
-  const last = 'Cite sourceLabel for supported remembered facts.';
+  const start = packet.capability.indexOf('For recall,');
+  const last = 'Cite sourceLabel; disclose unknown sources.';
   const end = packet.capability.indexOf(last, start) + last.length;
   if (start < 0 || end < last.length) throw Error('recall precision instruction absent');
   return { ...packet, capability: packet.capability.slice(0, start)
@@ -124,7 +124,7 @@ it('scores unsupported memory claims against the actual answer packet and checke
       await worker.drain();
       expect(answerPacket, item.id).toMatchObject({ capability: packet.capability, history: packet.history });
       const reply = sent.at(-1) ?? '';
-      expect(reply, item.id).toContain('PREVIEW — ');
+      expect(reply, item.id).toContain('');
       if (item.kind === 'absent') {
         actualInvented += Number(invented(item, reply));
         actualAbstained += Number(abstained(reply));

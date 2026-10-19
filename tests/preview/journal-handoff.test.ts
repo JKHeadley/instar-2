@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { UNKNOWN_SEND_NOTICE } from './journal.js';
 
 const child = 'tests/preview/journal-handoff-child.mjs';
 const lines = (root: string, name: string) => {
@@ -61,23 +62,31 @@ it('keeps shared durable facts and one-shot effects across build switch and comp
 
     const resumed = run(root, 'resume');
     expect(lines(root, 'sends.log').map(line => JSON.parse(line))).toEqual([
-      { update: 4, text: 'PREVIEW — Answer for telegram:12345678:update:4' },
+      { update: 4, text: 'Answer for telegram:12345678:update:4' },
+      { update: 6, text: UNKNOWN_SEND_NOTICE },
     ]);
     expect(lines(root, 'models.log')).toEqual(['telegram:12345678:update:4']);
     expect(run(root, 'inspect')).toEqual(resumed);
     expect(run(root, 'resume')).toEqual(resumed);
-    expect(lines(root, 'sends.log')).toHaveLength(1);
+    expect(lines(root, 'sends.log').map(line => JSON.parse(line))).toEqual([
+      { update: 4, text: 'Answer for telegram:12345678:update:4' },
+      { update: 6, text: UNKNOWN_SEND_NOTICE },
+    ]);
 
     const compacted = run(root, 'compact');
     expect(compacted).toEqual(resumed);
     expect(run(root, 'inspect')).toEqual(resumed);
     expect(status(root)).toMatchObject({ cursor: 7, turns: 6, summaryThrough: 2 });
     const later = run(root, 'after-compact');
-    expect(lines(root, 'sends.log').map(line => JSON.parse(line).update)).toEqual([4, 7]);
+    expect(lines(root, 'sends.log').map(line => JSON.parse(line).update)).toEqual([4, 6, 7]);
     expect(lines(root, 'models.log')).toEqual(['telegram:12345678:update:4', 'telegram:12345678:update:7']);
     expect(run(root, 'inspect')).toEqual(later);
     expect(run(root, 'after-compact')).toEqual(later);
-    expect(lines(root, 'sends.log')).toHaveLength(2);
+    expect(lines(root, 'sends.log').map(line => JSON.parse(line))).toEqual([
+      { update: 4, text: 'Answer for telegram:12345678:update:4' },
+      { update: 6, text: UNKNOWN_SEND_NOTICE },
+      { update: 7, text: 'Answer for telegram:12345678:update:7' },
+    ]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 120000);
 
@@ -93,8 +102,14 @@ it('starts a successor after SIGKILL with the same pending and UNKNOWN work', ()
     expect(status(root)).toMatchObject({ cursor: 7, turns: 6, unknownSends: 1 });
     const after = run(root, 'resume');
     expect(after.cursor).toBe(7);
+    expect((after.turns as { update: number; sent: number | null }[]).find(turn => turn.update === 6)?.sent).toBeNull();
+    expect(status(root).unknownSends).toBe(1);
+    expect(run(root, 'resume')).toEqual(after);
     expect(run(root, 'inspect')).toEqual(after);
-    expect(lines(root, 'sends.log')).toHaveLength(1);
+    expect(lines(root, 'sends.log').map(line => JSON.parse(line))).toEqual([
+      { update: 4, text: 'Answer for telegram:12345678:update:4' },
+      { update: 6, text: UNKNOWN_SEND_NOTICE },
+    ]);
     expect(lines(root, 'models.log')).toEqual(['telegram:12345678:update:4']);
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60000);

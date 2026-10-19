@@ -1,0 +1,215 @@
+# Standing trust setup
+
+Run `node scripts/setup-standing-trust.mjs setup ROOT OPERATOR-REQUEST.json` as the
+operator's installer, with the operator's recorded choice. The exported
+`configureTrust(root, action, request)` entry point also supports a wizard. The
+request records the role, accounts, channels and starting trust agreed in one onboarding conversation; it contains no credentials. Supply credentials to the runner vault first;
+MCP environment entries name them with `secretRef`.
+
+A request looks like this (replace example values with the operator's choices):
+
+```json
+{
+  "source": "operator:setup:record-id",
+  "custodian": "operator",
+  "recovery": "Revoke standing trust and restart the runner",
+  "resourceLevelUsd": 2,
+  "role": {
+    "description": "Manage our private drafts",
+    "accounts": ["drafts:team"],
+    "channels": ["private-drafts"],
+    "trust": "Act within this role up to two dollars per operation"
+  },
+  "effects": [
+    {
+      "effect": "tool:mcp",
+      "target": "mcp__drafts__edit",
+      "recovery": "Restore the previous private draft revision",
+      "registration": {
+        "consequence": "data",
+        "reversibility": "reversible",
+        "reach": "world",
+        "costUsd": 0
+      }
+    }
+  ],
+  "mcp": {
+    "mcpServers": {
+      "drafts": {
+        "command": "/operator-installed/draft-server",
+        "env": { "TOKEN": { "secretRef": "draft-service-token" } }
+      }
+    },
+    "reads": ["mcp__drafts__read"]
+  }
+}
+```
+
+The named draft server must expose only the declared undoable operation in the
+agent's custody. Tool names are not evidence of reversibility. Do not classify a
+send, post, release, or message to a person as reversible. A grant never approves
+irreversibility. Such operations remain refused outside the installation's closed
+set on one machine. Unknown cost remains refused, even with a resource grant.
+The dollar amount bounds each declared effect; the runner's aggregate spend cap
+and model-call reservations remain separately enforced.
+
+For a reversible network write, use `effect: "tool:network-write"`, the exact host
+as `target`, and `request: {"method":"PATCH","path":"/owned-draft/1"}` alongside
+its registration. The route must itself be limited to the declared operation;
+request bodies are not classified by this setup. A shared Git receive-pack route
+cannot distinguish branches here: use an operator-installed MCP tool or a service
+credential restricted to the owned branch. Do not grant an entire shared Git host
+as reversible. Other routes and method overrides do not inherit this registration.
+
+Setup writes `ROOT/effect-policy.json` and `ROOT/mcp.json`. It refuses different
+existing choices instead of overwriting them. Repeating the same setup is a no-op;
+if interrupted between files, repeat the identical request. File contents and the
+parent directory are synced before success is reported. An interrupted replacement
+can leave `.trust-next`; inspect that operator-owned file before retrying.
+
+Launch the existing runner with `--effect-policy ROOT/effect-policy.json`, retaining
+its existing root and all other launcher arguments. Policy is reread at turn
+boundaries. MCP changes require a restart. The setup command does not start or
+restart a runner and does not grant itself authority to administer safeguards.
+
+The installer can record a later conversation widening or narrowing that role with
+`node scripts/setup-standing-trust.mjs revise ROOT REQUEST.json`. This replaces the
+role and its grants in the same store; the request must carry the person’s new
+recorded choice and full role. It is an installer operation, not a tool the agent
+can use to administer its own safeguards. Existing policy files without a role
+summary continue to decode; their grants remain the actual authority.
+
+To tighten, run `node scripts/setup-standing-trust.mjs tighten ROOT REQUEST.json`.
+Keep the original provenance and recovery statements and reduce the effects,
+resource ceilings, servers or reads. Classifications stay recorded even when a
+grant is removed, so tightening cannot restore a more permissive default. To
+withdraw all setup trust, run `node scripts/setup-standing-trust.mjs revoke ROOT`
+and restart the runner. Repeating revoke is safe. Effects already dispatched
+cannot be recalled by revocation.
+
+For Justin's live installation, the desk must select the actual scoped tools,
+servers and dollar level from his recorded setup approval, populate the request,
+run setup under the custodian identity, and add the effect-policy flag to the
+existing launcher. Recompute the changed tools-policy activation and run the
+Darwin harness proof before restarting. Verify an owned draft edit, an unrelated
+write refusal, irreversible send refusal, and a tighten/revoke cycle through the
+live tool surface. Keep the previous launch configuration for rollback. No live
+configuration is modified by the builder.
+
+This state is installation-local deliberately: each machine's custodian installs
+its own scoped policy and vault references. Setup does not add operations to the
+one-machine profile or change replicated durability demands.
+
+## Authorization inventory (Rules 49, 103 and 104)
+
+This inventory covers setup's asks and the runtime authorization consumers beneath
+the tool briefing. A model suggestion creates no authority. The purpose's four
+consequential-effect tests, independently administered safeguards and recorded
+outward scope govern the retained fences. An existing authorization is reused
+within its recorded scope; a candidate standing grant requires operator acceptance.
+
+| Action or ask | Governing constraint | Standing grant disposition and actual consumer |
+|---|---|---|
+| Install scoped tools, MCP servers and per-effect dollar levels | Purpose: a role is granted once, at onboarding; Rules 98/100 | The operator accepts one setup request. [configureTrust and setupTrustPolicy](../tests/preview/trust-setup.mjs) write existing policy records; repeating identical setup asks for nothing and changes nothing. A different or wider choice requires a new operator-owned record, never model inference. |
+| Reversible MCP action, network write or sensitive read | Purpose: short, fixed sign-off list and recorded role; Rules 4/103/104 | [classifyEffect and admitEffect](../tests/preview/effect-doorway.mjs) consume exact effect/target/request scope, finite known cost and policy-sensitive grants. [admitToolCall and admitEgress](../tests/preview/tool-admission.mjs) use that policy at the checkpoint. Covered actions run without a new yes; absent scope, unknown cost and out-of-scope routes refuse with a reason. A new operator grant is needed only to widen the recorded scope. Role admission never by itself approves a matter marked sensitive. |
+| Ordinary workspace tools, public reads, subagents and sessions within accepted bounds | Purpose: ordinary bounded work and ability preservation; Rules 30/60/114 | [tool turn preparation and execution](../tests/preview/tool-turn.mjs) retain the tools and model-call reservation; [tool admission](../tests/preview/tool-admission.mjs) and [session driver](../src/assembly/production-session-driver.ts) enforce checkpoint and recorded child-edge obligations. These do not acquire a per-action setup approval requirement. |
+| Make setup MCP tools available in either harness | Rules 30/100 | [prepareToolTurn](../tests/preview/tool-turn.mjs) wraps vault references once; [Claude launch](../src/assembly/production-provider.ts) consumes its JSON file and [codexToolHookArgs](../src/assembly/production-codex-provider.ts) consumes the same prepared launches as per-invocation TOML overrides. This is the concrete consumer repair: setup no longer depends on manually installing Codex servers. Removal applies after the documented MCP restart. Independently installed login-home servers remain governed by their own configuration and the admission hook. |
+| Paid calls and ordinary replies in the one-machine closed set | Purpose: single-machine profile acceptance and durable cause; spend/stop/duplicate floors | [activation authority](../tests/preview/activation-authority.ts) and [effect owner](../src/effects/doorway.ts) consume installed policy and exact durable evidence. Setup tool grants neither replace that acceptance nor ask again for each covered call or reply. Unknown dispatch is never permission to resend. |
+| Other irreversible sends, releases or external deletion | Purpose: irreversible durable cause and single-machine closed set | [admitEffect](../tests/preview/effect-doorway.mjs) refuses outside the profile. Setup cannot grant irreversibility; an ordinary per-action yes cannot erase durability or expand the closed set. A changed supported installation policy/durability path requires its governing operator acceptance. This is a governed effect fence, not removal of tools. |
+| Raise call/reply/turn caps | Spend/resource ceiling; Rules 82/98; independently administered safeguards | [OperatorAction and admitChatYes](../tests/preview/operator-yes.ts) issue an exact request. [produceExplicitYes](../src/operator/explicit-yes.ts) verifies account assent; [decideOperatorRequest and applyOperatorYes](../tests/preview/journal.ts) consume it once. The alternate [approval surface](../scripts/approval-surface.mjs) feeds verifiedApproval/validApproval in the same journal. An existing accepted ceiling already covers work below it. Setup's per-effect dollar grant does not authorize raising aggregate caps; retain a fresh yes for a new ceiling. No auto-approval repair is warranted. |
+| Renew installation expiry | Exact accepted activation and lifetime; Rules 82/98 | [proposeOperatorRequest](../tests/preview/operator-yes.ts) and [applyOperatorYes](../tests/preview/journal.ts) require the installed renewal activation and exact approved end. A setup grant without expiry does not renew provider or installation authority. Retain the fresh request for a new end; the applied renewal then covers work until that end. |
+| Retract identified operator-account turns as test traffic | Rule 35; verified principal and exact approval, Rules 28/98 | [operator-yes](../tests/preview/operator-yes.ts) and [retractRefusal/applyOperatorYes](../tests/preview/journal.ts) bind exact update ids and reason. Retain the fresh authorization: a tool grant cannot declare different messages to be test traffic. An already applied request is not asked again. |
+| Authenticate an approval, including shared-account acceptance | Purpose: operator approval remains the operator's act; Rules 28/29/98 | [explicit-yes admission](../src/decode/explicit-yes.ts) binds an exact unexpired request and consumes it once; the current installation-specific shared-access acceptance is reused with disclosure, and withdrawal stops consumption. [verifiedApproval/verifiedStop](../tests/preview/journal.ts) consume the independent surface's proof. Setup grants are not signatures, account acceptance or verified approvals; no conversion or repair is appropriate. |
+| Emergency stop | Stop floor; independently administered safeguards | [verifiedStop and stop handling](../tests/preview/journal.ts) and [approval surface](../scripts/approval-surface.mjs) retain their actual operator authentication paths. No standing work grant can suppress, clear or impersonate the stop. |
+| Initiated dated reminders | Purpose: initiated conversation needs outward grant; no duplicate sends | The journal's [reminder-grant consumer](../tests/preview/journal.ts) reuses the installed initiated-dated-reminders grant for that trial, surface, custodian and recovery. Setup's tool grants do not imply it. No repeat ask for each covered reminder; a missing or wider scope needs its own operator acceptance. |
+| Change enforced operation definitions or safeguards | Purpose: agent cannot administer its safeguards; Rules 82/98 | [effect definition consumers](../src/effects/records.ts) decode Authorization and check its live exact base/content and approver. Retain approval for protected definition changes. Ordinary work under an accepted definition is already covered; setup does not manufacture an Authorization for these consumers. |
+
+The retained asks above change authority, accepted limits, protected content or
+the installation's lifetime. None is a new blanket permission fence. Repeated
+requests are candidates for narrower standing grants under Rule 104, but this
+setup's three effect kinds cannot stand in for another consumer's authority type.
+
+Codex's configuration mapping follows the supported [MCP server configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
+(`command`, `args`, `env`, `cwd`). The adapter leaves the admission hook installed;
+credentials still reach the server through the vault launcher, never TOML values.
+
+## Operator-owned restoration after revocation
+
+`setup` does not overwrite revoked choices, and `tighten` cannot widen them. To
+restore authority, the installation custodian stops the runner, records the new
+explicit acceptance and archives the revoked `effect-policy.json` and `mcp.json`
+together outside the active root, retaining both as history. Run setup with the
+newly accepted request on the same root, then merge back any previously recorded
+classifications and policy-sensitive restrictions before restarting. Do not drop
+those restrictions when replacing grants. Validate the resulting policy with
+`decodeEffectPolicy`, refresh the applicable activation, and verify a covered
+action plus an unrelated refusal. The custodian owns these policy files; the
+agent must not perform this procedure as a way around revocation. Retain the
+revoked pair for rollback and do not touch the journal, vault or stop state.
+
+Registrations record the five sign-off conditions separately from durability. Private
+in-role messages do not require sign-off just because another person learns something.
+On one machine, irreversible operations outside the fixed provider/Telegram/Slack set
+are refused for durability; the refusal names the rule and explains that a second
+enrolled machine with replicated operation registration would allow them. A role grant
+never substitutes for the effect owner's exact durable-prefix receipt.
+
+The five sign-off conditions are resources above the named level, an irreversible act
+outside the role, public speech in the person's name, widening the agent's own authority,
+and a matter the person marked sensitive. Registrations use `publicInPersonName` and
+`widensAuthority` for those two facts; `policySensitive` lists the person's marked matters.
+Omitted flags on existing registrations mean false; unregistered tools keep the existing
+worst-case cost and durability refusal. Setup grants scope and the agreed resource level,
+not a blanket approval of sensitive matters. The journal retains its legacy risk flags
+for replay and duplicate prevention while new rows carry both classifications.
+
+## Terminal role onboarding
+
+Run `node bin/instar2.mjs setup [installation-directory]` (the package bin is
+`instar2 setup`). The default directory is `~/.instar2`. Run it as the installation
+owner, outside the agent's confined runtime. It asks for the role, starting trust,
+monthly US-dollar spending limit and sensitive matters once. Role and trust are
+recorded verbatim, not interpreted into external permissions. Separate sensitive
+matters with semicolons; `none` explicitly records an empty list. No credentials
+belong in these answers.
+
+Each answer is durably published before the next question. EOF pauses setup;
+interruption resumes from the first unanswered question. Concurrent attempts use
+no-replace publication, so they cannot replace another answer or agent identity.
+Setup feeds `configureTrust` and verifies its actual decoded policy and MCP
+records before writing a completion receipt. A second completed run prints
+“Already set up” and leaves those bytes unchanged. Missing or changed installed
+records are reported, never silently recreated after completion or revocation.
+An existing policy without this onboarding history is left intact.
+
+The agreed role lives in the existing `effect-policy.json` role record; sensitive
+matters use its existing `policySensitive` list. Its optional `onboarding` field
+holds the stable agent id, local installer provenance, monthly spending choice
+and enabled identity, self-knowledge, reflection and growth defaults. The existing
+`mcp.json` operator-grant provenance links the same conversation. Older policy
+files need no migration and keep decoding. Later trust edits retain the original
+onboarding record; it is not a replacement for an authorized cap-change operation.
+Revocation still removes active role and effect grants.
+
+This first slice records one role/grant-policy set with no connected-account effect
+grants: no account or channel has been bound. It does not infer tool scopes from a
+free-text role, manufacture an activation or enable paid calls. The monthly amount
+is a recorded installation choice, **not** the existing per-operation resource
+ceiling and **not** an enforced monthly meter. Per-operation grants remain zero.
+The subscription/activation increment must consume the monthly choice through the
+existing cap authority before permitting paid use; it must not interpret a setup
+receipt as verified activation, custody or single-machine loss-model acceptance.
+The tracked scope is install-scope-1010 increment 2; channel binding is increment 3.
+The command honestly reports role setup complete, not an active conversational
+agent. The existing runtime's identity/self-knowledge defaults are not disabled.
+
+`.onboarding/` is an installation-owner-local input/checkpoint record, deliberately
+matching the existing installation-local grant policy. It creates no second
+runtime journal or authority source. Validation detects malformed/missing records
+and disagreement with the installed policy. A crash may leave a private `.pending`
+file; only the atomically published name is consumed. Interrupted setup before the
+completion receipt may safely finish missing policy files from the same answers.
+After completion, policy changes go through the existing owner revision path.
+Preserve the input records and grant files together; do not clear them to reset an
+unknown installation or repeat an uncertain effect. No stop, intake, send or
+credential record is touched by this command.

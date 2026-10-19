@@ -1,0 +1,3 @@
+{"phase":"pre","id":"exec-16655675-0588-458c-99f9-dfa98bf8f679","n":1,"tool":"apply_patch","input":"{\"command\":\"*** Begin Patch\\n*** Add File: /ROOT/outside.txt\\n+x\\n*** End Patch\"}","decision":"deny","reason":"path outside the workspace: /ROOT/outside.txt","kind":"scope"}
+{"phase":"pre","id":"exec-2cedf8a5-c4e7-45ed-9726-1463288ac7bc","n":2,"tool":"Bash","input":"{\"command\":\"head -c 20 /LOGIN/auth.json\"}","decision":"allow","reason":"confined command"}
+{"phase":"post","id":"exec-2cedf8a5-c4e7-45ed-9726-1463288ac7bc","tool":"Bash","result":"\"head: /LOGIN/auth.json: Operation not permitted\\n\""}

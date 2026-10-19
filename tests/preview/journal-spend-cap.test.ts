@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
-import { createJournalWorker, openPreviewJournal, openQuestionCandidates, raiseJournalCaps, reachedJournalCap, reportJournalCap, unknownCallCounts, MINIMAL_RESERVE, MINIMAL_POLL_LIMIT } from './journal-test-worker.js';
+import { capacityRefused, createJournalWorker, openPreviewJournal, openQuestionCandidates, raiseJournalCaps, reachedJournalCap, reportJournalCap, unknownCallCounts, MINIMAL_RESERVE, MINIMAL_POLL_LIMIT } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(19);
 const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-cap-')));
@@ -37,7 +37,7 @@ it('keeps reading past maxTurns through the minimal reserve without poisoning re
     expect(counts).toEqual({ calls: 1, sends: 2 });
     expect(first.pollLimit()).toBe(MINIMAL_POLL_LIMIT);
     expect(reportJournalCap(journal, 1000, line => lines.push(line))).toBe('update cap reached');
-    expect(lines).toEqual(['PREVIEW — turns cap reached; work paused. Check status for held work.\n']);
+    expect(lines).toEqual(['turns cap reached; work paused. Check status for held work.\n']);
     journal.close();
     journal = openPreviewJournal(path, key);
     expect(journal.view.cursor).toBe(3);
@@ -70,8 +70,8 @@ it('counts each UNKNOWN answer, summary, review and Jev check once across restar
     expect(journal.view.calls).toBe(3);
     const lines: string[] = [];
     expect(reportJournalCap(journal, 1000, line => lines.push(line))).toBe('model attempt cap reached');
-    expect(lines).toEqual(['PREVIEW — calls trial cap at least 80% used (3/3); 0 remain.\n',
-      'PREVIEW — calls cap reached; work paused. Check status for held work.\n']);
+    expect(lines).toEqual(['calls trial cap at least 80% used (3/3); 0 remain.\n',
+      'calls cap reached; work paused. Check status for held work.\n']);
     journal.close();
     journal = openPreviewJournal(path, key);
     expect(unknownCallCounts(journal.view)).toEqual({ answers: 1, summaries: 1, reviews: 0, jev: 1, index: 0, total: 3 });
@@ -279,7 +279,7 @@ it('replays a previously valid cap raise after unavailable Jev and completed sub
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-it('holds maxReplies and maxBytes work, and journals one cap report per reached threshold', async () => {
+it('PREVIEW-TRIAL-GATES holds maxReplies and maxBytes work, and journals one cap report per reached threshold', async () => {
   const dir = root(), path = join(dir, 'journal.encrypted');
   try {
     let journal = openPreviewJournal(path, key, genesis({ maxReplies: 1, maxBytes: 128 }));
@@ -292,7 +292,7 @@ it('holds maxReplies and maxBytes work, and journals one cap report per reached 
     const lines: string[] = [];
     expect(reportJournalCap(journal, 1000, line => lines.push(line))).toBe('context byte cap reached');
     expect(reportJournalCap(journal, 1001, line => lines.push(line))).toBe('context byte cap reached');
-    expect(lines).toEqual(['PREVIEW — bytes cap reached; work paused. Check status for held work.\n']);
+    expect(lines).toEqual(['bytes cap reached; work paused. Check status for held work.\n']);
     journal.close();
     journal = openPreviewJournal(path, key);
     expect([...journal.view.capReports]).toEqual(['bytes:128']);
@@ -305,14 +305,30 @@ it('holds maxReplies and maxBytes work, and journals one cap report per reached 
     expect(counts).toEqual({ calls: 1, sends: 1 });
     expect(reachedJournalCap(journal.view)).toEqual({ reason: 'replies', limit: 1 });
     expect(reportJournalCap(journal, 1002, line => lines.push(line))).toBe('reply cap reached');
-    expect(lines.slice(1)).toEqual(['PREVIEW — replies trial cap at least 80% used (1/1); 0 remain.\n',
-      'PREVIEW — replies cap reached; work paused. Check status for held work.\n']);
+    expect(lines.slice(1)).toEqual(['replies trial cap at least 80% used (1/1); 0 remain.\n',
+      'replies cap reached; work paused. Check status for held work.\n']);
     expect(() => journal.append({ kind: 'intent', id: id(1), text: 'again', chat: '7654321',
       update: 1, grant: 'trial', at: 1003 })).toThrow('capacity');
     journal.close();
     journal = openPreviewJournal(path, key);
     expect(journal.view.replies).toBe(1);
     expect([...journal.view.capReports]).toEqual(['bytes:128', 'replies:80:1', 'replies:1']);
+    journal.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('capacityRefused refuses a model-call reservation at the call cap and admits it below, before the file', async () => {
+  const dir = root(), path = join(dir, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, genesis({ maxCalls: 1 }));
+    const counts = { calls: 0, sends: 0 }, w = worker(journal, counts);
+    w.intake([update(1), update(2)]);
+    expect(capacityRefused(journal.view, { kind: 'reserve', id: id(1), at: 1000 })).toBe(false);
+    await w.drain();
+    expect(counts.calls).toBe(1);
+    expect(capacityRefused(journal.view, { kind: 'reserve', id: id(2), at: 1000 })).toBe(true);
+    expect(() => journal.append({ kind: 'reserve', id: id(2), at: 1000 })).toThrow('capacity reached');
+    expect(journal.view.turns.get(id(2))?.reserved).toBeFalsy();
     journal.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -333,15 +349,15 @@ it.each(['calls', 'replies'] as const)('reports the %s 80%% and final boundaries
         level: 'near', at: 1000 })).toThrow('cap report');
       if (number === 4) {
         expect(stopped).toBeNull();
-        expect(lines).toEqual([`PREVIEW — ${reason} trial cap at least 80% used (4/5); 1 remain.\n`]);
+        expect(lines).toEqual([`${reason} trial cap at least 80% used (4/5); 1 remain.\n`]);
         expect(() => journal.append({ kind: 'cap-report', reason, limit: 5,
           level: 'near', at: 1000 })).toThrow('cap report');
       }
       if (number === 5) expect(stopped).toBe(reason === 'calls' ? 'model attempt cap reached' : 'reply cap reached');
     }
     expect(counts).toEqual({ calls: 5, sends: 5 });
-    expect(lines).toEqual([`PREVIEW — ${reason} trial cap at least 80% used (4/5); 1 remain.\n`,
-      `PREVIEW — ${reason} cap reached; work paused. Check status for held work.\n`]);
+    expect(lines).toEqual([`${reason} trial cap at least 80% used (4/5); 1 remain.\n`,
+      `${reason} cap reached; work paused. Check status for held work.\n`]);
     journal.close();
     journal = openPreviewJournal(path, key);
     expect(reportJournalCap(journal, 1001, line => lines.push(line))).not.toBeNull();
@@ -368,7 +384,7 @@ it.each(['calls', 'replies'] as const)('reports the %s 80%% and final boundaries
     expect(journal.view.calls).toBeLessThanOrEqual(journal.view.limits.maxCalls);
     expect(journal.view.replies).toBeLessThanOrEqual(journal.view.limits.maxReplies);
     expect(reportJournalCap(journal, 1003, line => lines.push(line))).toBeNull();
-    expect(lines.at(-1)).toBe(`PREVIEW — ${reason} trial cap at least 80% used (6/7); 1 remain.\n`);
+    expect(lines.at(-1)).toBe(`${reason} trial cap at least 80% used (6/7); 1 remain.\n`);
     journal.close();
     journal = openPreviewJournal(path, key);
     await worker(journal, counts).drain();

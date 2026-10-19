@@ -5,7 +5,7 @@ import { decodeShape, generateRegister, generationOf, decodeGenerationRecord, lo
 import type { RegisterContext, SpineReadPort, FactReference, WorkflowChecks } from '../../src/register/index.js';
 import { checkProtectedTests } from '../../scripts/check-register-protection.mjs';
 import { readFileSync } from 'node:fs';
-import { setup, json, value, detail, hash, shapeInput } from './fixtures.js';
+import { setup, json, value, detail, hash, shapeInput, withoutBasis } from './fixtures.js';
 
 function reply<T>(payload: T, context: RegisterContext): Result<T> {
   return value(defineDecoder<T, RegisterContext>({ name: 'WorkflowFixtureReply', owner: 'test-only', currentVersion: 1,
@@ -77,7 +77,7 @@ describe('repair workflow composition', () => {
     expect(detail(runRegisterChecks(s.build([s.rule(4)]), { ...checks, claims: checks.claims.map(c => ({ ...c, complete: true })) }, s.context))).toContain('residual');
     expect(detail(runRegisterChecks(s.build([s.bound, { ...s.declaration(), profile: s.f.profileInput() }]), checks, s.context))).toContain('paired construct');
     const holder = s.holder([]);
-    const guarded = { ...holder, requiredFacts: { ...holder.requiredFacts, decidesAlone: 'governed-state', enforces: { record: 'store', decoder: 'decode:Profile' } } };
+    const guarded = { ...holder, requiredFacts: { ...withoutBasis(holder.requiredFacts), decidesAlone: 'governed-state', enforces: { record: 'store', decoder: 'decode:Profile' } } };
     const row = { id: 'store', version: 'v1', status: 'live', since: 'commit:old', supersedes: [], approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: 'approval:1' },
       landedIn: 'commit:old', base: 'base:old', contentHash: hash(s.declaration()) };
     const governed = s.build([s.declaration(), guarded], { extract: { ...s.extract, rows: [row] } });

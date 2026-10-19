@@ -219,31 +219,36 @@ it('P2-OCC-09 machines named like Object.prototype properties keep their signed 
   }
 });
 
-function turns(size: number, rounds: number) {
+function history(size: number) {
   const s = setup();
   s.append('grant');
   const kinds = ['note', 'work', 'owned', 'captured'];
   while (s.rows.length < size) s.append(kinds[s.rows.length % kinds.length]!);
   value(s.store.readForProjection());
   const decodes: number[] = [], live: number[] = [], times: number[] = [];
-  for (let i = 0; i < rounds; i++) {
+  function turn() {
     const count = s.historicalDecodes(), origin = s.originDecodes(), started = performance.now();
     s.append('owned'); value(s.store.readForProjection()); value(s.store.readForProjection());
     times.push(performance.now() - started); decodes.push(s.historicalDecodes() - count);
     // The live owned decode is re-run for every owned fact on each derivation, plus the append's own.
     live.push(s.originDecodes() - origin - value(s.store.read()).filter(f => f.kind === 'owned').length);
   }
-  const median = [...times].sort((a, b) => a - b)[Math.floor(times.length / 2)]!;
-  return { decodes, live, median };
+  return { turn, decodes, live, times };
 }
 
 it('P2-OCC-07 per-turn work tracks the new facts, not the history size', () => {
-  const small = turns(50, 5), large = turns(200, 5);
+  // Each history runs its turns in turn (two live stores interleaved share decode state and change
+  // the counts). The fastest turn is each side's cost with the least outside interference: a load
+  // spike only ever slows a turn, and a median of five turns once read 3.2x on a busy gate host.
+  const small = history(50);
+  for (let i = 0; i < 9; i++) small.turn();
+  const large = history(200);
+  for (let i = 0; i < 9; i++) large.turn();
   // Deterministic: a turn derives the new fact's full status once, whatever the history size
   // (historical decodes of earlier facts are kept); only the live owned decode is linear.
   expect(large.decodes).toEqual(small.decodes);
   expect(large.live).toEqual(small.live);
   // Ratio bound, not seconds: 4x the history costs under 3x per turn (measured ~1.8x; the kept
   // per-read storage comparison is linear). Re-deriving every status per turn measured ~3.4x here.
-  expect(large.median / small.median).toBeLessThan(3);
+  expect(Math.min(...large.times) / Math.min(...small.times)).toBeLessThan(3);
 }, 120_000);

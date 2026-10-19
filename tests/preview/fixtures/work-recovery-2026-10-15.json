@@ -1,0 +1,381 @@
+{
+  "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/postswitch37-c1-1014-evidence/frames.json",
+  "sha256": "d44c100df548fc6e3921c6be7a45c8af9b2dc48f1d61f7bae636fe2361cbb669",
+  "workCall": "obligation:commitment:0:1792042495116",
+  "workOutput": "{\"reasoning\":\"The obligation is the open item from the 05:21 operator message: the operator explicitly asked me to NOT answer at that time, but to think over which three things they've told me matter most for planning their week, and deliver that as a later message. This is the deferred work itself — I need to actually produce that answer now, drawing from what's in memory (packet.memory.summary and operatorMessages). Reviewing what's known: (1) library card D-4 renewal needs a city specified — unresolved, relevant to week planning as an open task; (2) standing instruction to end shopping lists with '— K' — a recurring preference, relevant to planning routine tasks; (3) pancake shopping list request — a concrete near-term task (grocery shopping for pancakes). Picking the three most relevant to week planning: the library card renewal (blocked, needs city info — operator should resolve this to move it forward), the pancake shopping/grocery errand, and the standing shopping-list formatting preference as a recurring process note. These are literally the only substantive things recorded, so I'll present these three and tie them to week planning. This is a 'report' outcome since I can complete this judgment now with available memory.\",\"outcome\":\"report\",\"report\":\"Here are the three things from what you've told me that matter most for planning your week:\\n\\n1. Library card D-4 renewal — still blocked. I can't log into the city library site (no account access), and I still don't know which city's library system it's with. Resolving that this week unblocks the renewal.\\n\\n2. Pancake ingredients shopping trip — you asked for a pancake shopping list (flour, baking powder, salt, sugar, eggs, milk, butter/oil, vanilla extract, maple syrup, butter for topping). Worth slotting a grocery run into your week if you haven't already.\\n\\n3. Standing formatting preference — every shopping list I write for you now ends with \\\"— K\\\", so any list I hand you this week will already follow that convention; no action needed from you, just flagging it as an active standing instruction.\"}",
+  "workStart": {
+    "kind": "obligation-start",
+    "obligation": "commitment:0",
+    "slot": 1792042495116,
+    "maxInputTokens": 409600,
+    "maxOutputTokens": 2048,
+    "at": 1792042498854
+  },
+  "workResult": {
+    "kind": "obligation-result",
+    "obligation": "commitment:0",
+    "slot": 1792042495116,
+    "outcome": "report",
+    "report": "Here are the three things from what you've told me that matter most for planning your week:\n\n1. Library card D-4 renewal — still blocked. I can't log into the city library site (no account access), and I still don't know which city's library system it's with. Resolving that this week unblocks the renewal.\n\n2. Pancake ingredients shopping trip — you asked for a pancake shopping list (flour, baking powder, salt, sugar, eggs, milk, butter/oil, vanilla extract, maple syrup, butter for topping). Worth slotting a grocery run into your week if you haven't already.\n\n3. Standing formatting preference — every shopping list I write for you now ends with \"— K\", so any list I hand you this week will already follow that convention; no action needed from you, just flagging it as an active standing instruction.",
+    "usage": {
+      "inputTokens": 30697,
+      "outputTokens": 653,
+      "charge": null,
+      "inputComplete": true
+    },
+    "at": 1792042511183
+  },
+  "workerSource": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1-rewalk7-1015-run2-records/walk/smoke-frames.json",
+  "workerSha256": "06620e01c06a563abc683f70f8c0a72b65ee96df5f92f3ff7f1b93baf0e3776f",
+  "workerRecords": [
+    {
+      "frame": 5,
+      "kind": "session-work",
+      "record": {
+        "type": "SessionWorkEdge",
+        "schemaVersion": 1,
+        "id": "operator-46b2d3ec022df2fde68c2e417e3f24f6:allowance",
+        "parent": "launch:telegram/bot-8968100844/chat-7812716706",
+        "child": "operator-46b2d3ec022df2fde68c2e417e3f24f6",
+        "scope": "/private/tmp/its-0a9ac9cb8d94",
+        "owner": "DaBombs-Mac-Studio.local",
+        "authority": "continuing conversation grant preview-harness-profile-adriana-v1-activation bytes 802a32e95b15c43581a36e3786b6c8638af800bcd0f0c06e6f7e2ddb9f208e66: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-adriana-v1-activation",
+        "budget": {
+          "steps": 1,
+          "deadline": 1794519600000,
+          "maxResultBytes": 65536,
+          "calls": 128,
+          "tokens": null
+        },
+        "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+        "placement": "machine:DaBombs-Mac-Studio.local",
+        "transport": "tmux session on this machine",
+        "resultDestination": "/private/tmp/its-0a9ac9cb8d94",
+        "openedAt": 1792102705726
+      },
+      "at": 1792102705752
+    },
+    {
+      "frame": 6,
+      "kind": "session-work",
+      "record": {
+        "type": "SessionWorkEdge",
+        "schemaVersion": 1,
+        "id": "conversation-e0c0e5e347be03360d71929f3f1cd2e5-1:edge",
+        "parent": "operator-46b2d3ec022df2fde68c2e417e3f24f6:allowance",
+        "child": "conversation-e0c0e5e347be03360d71929f3f1cd2e5-1",
+        "scope": "/private/tmp/its-0a9ac9cb8d94",
+        "owner": "DaBombs-Mac-Studio.local",
+        "authority": "continuing conversation grant preview-harness-profile-adriana-v1-activation bytes 802a32e95b15c43581a36e3786b6c8638af800bcd0f0c06e6f7e2ddb9f208e66: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-adriana-v1-activation",
+        "budget": {
+          "steps": 1,
+          "deadline": 1794519600000,
+          "maxResultBytes": 65536,
+          "calls": 128,
+          "tokens": null
+        },
+        "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+        "placement": "machine:DaBombs-Mac-Studio.local",
+        "transport": "tmux session on this machine",
+        "resultDestination": "/private/tmp/its-0a9ac9cb8d94",
+        "openedAt": 1792102705726,
+        "drawsOn": "operator-46b2d3ec022df2fde68c2e417e3f24f6:allowance"
+      },
+      "at": 1792102705769
+    },
+    {
+      "frame": 7,
+      "kind": "session-work",
+      "record": {
+        "type": "SessionWorkEdge",
+        "schemaVersion": 1,
+        "id": "conversation-e0c0e5e347be03360d71929f3f1cd2e5-1:process",
+        "parent": "conversation-e0c0e5e347be03360d71929f3f1cd2e5-1:edge",
+        "child": "conversation-e0c0e5e347be03360d71929f3f1cd2e5-1",
+        "scope": "/private/tmp/its-0a9ac9cb8d94",
+        "owner": "DaBombs-Mac-Studio.local",
+        "authority": "continuing conversation grant preview-harness-profile-adriana-v1-activation bytes 802a32e95b15c43581a36e3786b6c8638af800bcd0f0c06e6f7e2ddb9f208e66: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-adriana-v1-activation",
+        "budget": {
+          "steps": 1,
+          "deadline": 1792106305726,
+          "maxResultBytes": 65536,
+          "calls": 128,
+          "tokens": null
+        },
+        "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+        "placement": "machine:DaBombs-Mac-Studio.local",
+        "transport": "tmux session on this machine",
+        "resultDestination": "/private/tmp/its-0a9ac9cb8d94",
+        "openedAt": 1792102705726,
+        "drawsOn": "conversation-e0c0e5e347be03360d71929f3f1cd2e5-1:edge"
+      },
+      "at": 1792102706552
+    },
+    {
+      "frame": 492,
+      "kind": "session-work",
+      "record": {
+        "type": "SessionWorkEdge",
+        "schemaVersion": 1,
+        "id": "conversation-e0c0e5e347be03360d71929f3f1cd2e5-2:process",
+        "parent": "conversation-e0c0e5e347be03360d71929f3f1cd2e5-1:edge",
+        "child": "conversation-e0c0e5e347be03360d71929f3f1cd2e5-2",
+        "scope": "/private/tmp/its-0a9ac9cb8d94",
+        "owner": "DaBombs-Mac-Studio.local",
+        "authority": "continuing conversation grant preview-harness-profile-adriana-v1-activation bytes 802a32e95b15c43581a36e3786b6c8638af800bcd0f0c06e6f7e2ddb9f208e66: one bounded conversation for the verified operator, with the full tool set behind the admission hook, its result returned by file; topic main account grant preview-harness-profile-adriana-v1-activation",
+        "budget": {
+          "steps": 1,
+          "deadline": 1792108465505,
+          "maxResultBytes": 65536,
+          "calls": 77,
+          "tokens": null
+        },
+        "exitTest": "each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released",
+        "placement": "machine:DaBombs-Mac-Studio.local",
+        "transport": "tmux session on this machine",
+        "resultDestination": "/private/tmp/its-0a9ac9cb8d94",
+        "openedAt": 1792104865505,
+        "drawsOn": "conversation-e0c0e5e347be03360d71929f3f1cd2e5-1:edge"
+      },
+      "at": 1792104866739
+    },
+    {
+      "frame": 759,
+      "kind": "session-work",
+      "record": {
+        "type": "SessionWorkEdgeClose",
+        "schemaVersion": 1,
+        "id": "conversation-e0c0e5e347be03360d71929f3f1cd2e5-2:process:host-close:2",
+        "edge": "conversation-e0c0e5e347be03360d71929f3f1cd2e5-2:process",
+        "child": null,
+        "state": "complete",
+        "detail": "conversation closed",
+        "evidence": "conversation-e0c0e5e347be03360d71929f3f1cd2e5-1:edge",
+        "resultBytes": null,
+        "closedAt": 1792105728595,
+        "calls": 79,
+        "reserved": 128
+      },
+      "at": 1792105728595
+    }
+  ],
+  "unknownSend": [
+    {
+      "frame": 225,
+      "kind": "send-outcome",
+      "target": "held-notice:telegram:8993213212:update:46040043",
+      "outcome": "unknown",
+      "reason": "reaction transport uncertain",
+      "at": 1792043408445
+    },
+    {
+      "frame": 238,
+      "kind": "send-outcome",
+      "target": "reply:telegram:8993213212:update:46040043",
+      "outcome": "unknown",
+      "reason": "receipt differs from intent",
+      "at": 1792043420279
+    }
+  ],
+  "provenance": "Exact records selected from read-only desk copies. Tests inject host loss after a completed work checkpoint; the source walk records idle worker replacement, not that injected crash.",
+  "checkpointRows": [
+    {
+      "kind": "tool-turn",
+      "phase": "reserved",
+      "id": "obligation:commitment:0:1792042495116",
+      "attempt": 4,
+      "calls": 15,
+      "delegation": {
+        "children": 2,
+        "turnsEach": 4,
+        "type": "worker",
+        "authority": "preview-harness-profile-sagemind-adriana-v1-activation sha256:5fed4bcfd823d950c1444a008a9c11d40824671dd8e68aa2f5908ed8534a2926"
+      },
+      "workspace": {
+        "key": "c7f8fa448dd5",
+        "kept": true
+      },
+      "at": 1792042498912
+    },
+    {
+      "kind": "phase-timing",
+      "id": "obligation:commitment:0:1792042495116",
+      "phase": "auth",
+      "measurements": {
+        "elapsedMs": 714,
+        "failed": false
+      },
+      "at": 1792042500009,
+      "forward": {
+        "generation": 4,
+        "additive": true
+      }
+    },
+    {
+      "kind": "call-outcome",
+      "id": "obligation:commitment:0:1792042495116",
+      "role": "model",
+      "outcome": {
+        "exitCode": 0,
+        "localLimit": null,
+        "elapsedMs": 10893,
+        "type": "result",
+        "subtype": "success",
+        "isError": false,
+        "outputTokens": 653,
+        "promptBytes": 13300,
+        "diagnostic": {
+          "signal": null,
+          "cancellationReason": null,
+          "limited": false,
+          "rawOutputExcerpt": "{\"duration_api_ms\":9950,\"stop_reason\":\"end_turn\",\"session_id\":\"2bccbde0-a3d6-46bc-b6d6-2061d8b7239b\",\"total_cost_usd\":0.057627,\"usage\":{\"input_tokens\":2,\"cache_creation_input_tokens\":11830,\"cache_read_input_tokens\":18865,\"output_tokens\":653,\"output_tokens_details\":{\"thinking_tokens\":0},\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":11830,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"global\",\"iterations\":[],\"speed\":\"standard\"},\"modelUsage\":{\"claude-sonnet-5\":{\"inputTokens\":2,\"outputTokens\":653,\"cacheReadInputTokens\":18865,\"cacheCreationInputTokens\":11830,\"webSearchRequests\":0,\"costUSD\":0.057627,\"contextWindow\":1000000,\"maxOutputTokens\":64000,\"thinkingTokens\":0,\"canonicalModel\":\"claude-sonnet-5\",\"provider\":\"firstParty\",\"costBasis\":\"list\"}},\"permission_denials\":[],\"terminal_reason\":\"completed\",\"fast_mode_state\":\"off\",\"fast_mode_disabled_reason\":\"sdk_opt_in_required\",\"subagent_stats\":{\"spawned\":0,\"requested\":{\"background\":0,\"foreground\":0,\"unset\":0},\"started_in_background\":0,\"max_depth\":0,\"spawned_by_subagents\":0,\"completed\":0,\"failed\":0,\"killed\":{\"parent\":0,\"user\":0,\"system\":0},\"refused\":{\"depth_limit\":0,\"concurrency_limit\":0,\"budget\":0},\"by_type\":{}},\"is_error\":false,\"num_turns\":1,\"subtype\":\"success\",\"api_error_status\":null,\"result\":\"{\\\"reasoning\\\":\\\"The obligation is the open item from the 05:21 operator message: the operator explicitly asked me to NOT answer at that time, but to think over which three things they've told me matter most for planning their week, and deliver that as a later message. This is the deferred work itself — I need to actually produce that answer now, drawing from what's in memory (packet.memory.summary and operatorMessages). Reviewing what's known: (1) library card D-4 renewal needs a city specified — unresolved, relevant to week planning as an open task; (2) standing instruction to end shopping lists with '— K' — a recurring preference, relevant to planning routine tasks; (3) pancake shopping list request — a concrete near-term task (grocery shopping for pancakes). Picking the three most relevant to week planning: the library card renewal (blocked, needs city info — operator should resolve this to move it forward), the pancake shopping/grocery errand, and the standing shopping-list formatting preference as a recurring process note. These are literally the only substantive things recorded, so I'll present these three and tie them to week planning. This is a 'report' outcome since I can complete this judgment now with available memory.\\\",\\\"outcome\\\":\\\"report\\\",\\\"report\\\":\\\"Here are the three things from what you've told me that matter most for planning your week:\\\\n\\\\n1. Library card D-4 renewal — still blocked. I can't log into the city library site (no account access), and I still don't know which city's library system it's with. Resolving that this week unblocks the renewal.\\\\n\\\\n2. Pancake ingredients shopping trip — you asked for a pancake shopping list (flour, baking powder, salt, sugar, eggs, milk, butter/oil, vanilla extract, maple syrup, butter for topping). Worth slotting a grocery run into your week if you haven't already.\\\\n\\\\n3. Standing formatting preference — every shopping list I write for you now ends with \\\\\\\"— K\\\\\\\", so any list I hand you this week will already follow that convention; no action needed from you, just flagging it as an active standing instruction.\\\"}\",\"ttft_ms\":10009,\"type\":\"result\",\"duration_ms\":10049,\"uuid\":\"bcd1382d-0927-4918-8750-ebb3a3cf2dda\",\"ttft_stream_ms\":1908,\"time_to_request_ms\":99,\"first_content_frame_ms\":1908,\"queued_turn_count\":0,\"result_index\":0}\n"
+        },
+        "resources": {
+          "enforcement": {
+            "cpuPerProcess": "hard",
+            "handlesPerProcess": "hard",
+            "processGrowth": "sampled",
+            "treeHandles": "unsupported",
+            "memory": "sampled",
+            "treeCpu": "sampled"
+          },
+          "uidProcesses": {
+            "state": "hard",
+            "subject": "uid:501",
+            "limit": 536
+          },
+          "admission": {
+            "work": "answer",
+            "concurrent": 1,
+            "waitedMs": 306
+          },
+          "peakMemoryBytes": 314966016,
+          "peakProcesses": 3,
+          "treeCpuMilliseconds": 440,
+          "census": "complete",
+          "leakedDescendants": 0,
+          "cleanup": "verified",
+          "membership": "working-area-joined",
+          "allocation": {
+            "set": "allocation:sha256:0a35522a8198149db204f51bd9674fb5bd55c07719a015f1f70b2c5be87c0d40",
+            "state": "returned"
+          }
+        }
+      },
+      "at": 1792042511003
+    },
+    {
+      "kind": "model-call",
+      "id": "obligation:commitment:0:1792042495116",
+      "judgment": "answer",
+      "route": "preview-subscription",
+      "model": "claude-sonnet-5",
+      "inputSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "input": "",
+      "output": "{\"reasoning\":\"The obligation is the open item from the 05:21 operator message: the operator explicitly asked me to NOT answer at that time, but to think over which three things they've told me matter most for planning their week, and deliver that as a later message. This is the deferred work itself — I need to actually produce that answer now, drawing from what's in memory (packet.memory.summary and operatorMessages). Reviewing what's known: (1) library card D-4 renewal needs a city specified — unresolved, relevant to week planning as an open task; (2) standing instruction to end shopping lists with '— K' — a recurring preference, relevant to planning routine tasks; (3) pancake shopping list request — a concrete near-term task (grocery shopping for pancakes). Picking the three most relevant to week planning: the library card renewal (blocked, needs city info — operator should resolve this to move it forward), the pancake shopping/grocery errand, and the standing shopping-list formatting preference as a recurring process note. These are literally the only substantive things recorded, so I'll present these three and tie them to week planning. This is a 'report' outcome since I can complete this judgment now with available memory.\",\"outcome\":\"report\",\"report\":\"Here are the three things from what you've told me that matter most for planning your week:\\n\\n1. Library card D-4 renewal — still blocked. I can't log into the city library site (no account access), and I still don't know which city's library system it's with. Resolving that this week unblocks the renewal.\\n\\n2. Pancake ingredients shopping trip — you asked for a pancake shopping list (flour, baking powder, salt, sugar, eggs, milk, butter/oil, vanilla extract, maple syrup, butter for topping). Worth slotting a grocery run into your week if you haven't already.\\n\\n3. Standing formatting preference — every shopping list I write for you now ends with \\\"— K\\\", so any list I hand you this week will already follow that convention; no action needed from you, just flagging it as an active standing instruction.\"}",
+      "outcome": "complete",
+      "latencyMs": 11808,
+      "usage": {
+        "inputTokens": 30697,
+        "outputTokens": 653,
+        "charge": null
+      },
+      "occurrence": "obligation:commitment:0:1792042495116",
+      "inputTransformations": [],
+      "outputTransformations": [],
+      "replay": "faithful",
+      "at": 1792042511008
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "trace",
+      "id": "obligation:commitment:0:1792042495116",
+      "attempt": 4,
+      "consistent": true,
+      "calls": [],
+      "edges": [],
+      "workspaceBytes": 0,
+      "volume": {
+        "lost": false,
+        "reconciled": 0
+      },
+      "harness": {
+        "user": "_instarharness"
+      },
+      "session": {
+        "id": "2bccbde0-a3d6-46bc-b6d6-2061d8b7239b",
+        "mode": "new",
+        "reason": "the journal changed a fact",
+        "turn": 1,
+        "kept": true,
+        "transcriptBytes": 166305
+      },
+      "at": 1792042511030
+    }
+  ],
+  "checkpointTransformations": "model-call input and its digest replaced with empty input; unrelated private prompt content omitted. Output, outcome, closure and trace fields are verbatim.",
+  "negativeOutputs": [
+    {
+      "source": "summary-ack-walk-2026-10-15.json",
+      "id": "summary:840342889",
+      "shape": "summary writer complete",
+      "output": "{\"reasoning\":\"Correction: pottery class moved to Tuesdays replaces an earlier old clause (not shown in candidates list directly, but is the withheld third fact). No candidate reply repeats it, no summary passage exists yet. Include people, concepts per message.\",\"summary\":\"Conversation \\\"main chat\\\": 2026-10-15T06:26Z operator (Justin) greeted, said still getting used to having an assistant; agent replied warmly. 2026-10-15T06:27Z operator asked why Moon looks bigger near horizon; agent explained it's the Moon illusion (optical, not real size change), citing Kaufman & Rock research on perceived sky dome. 2026-10-15T06:28Z operator asked what agent can/can't do day to day; agent listed capabilities (encrypted journal, standing instructions, status answers without model call, saved dates within 48 hours get one mention) and limits (files/shell/web reads/subagents, no MCP/account access, effect doorway checks, 1000 model attempts cap ending epoch ms 1794519600000). 2026-10-15T06:29Z operator said to remember: lives in Portland, prefers decaf coffee, and a third fact later corrected (per memory record) to: pottery class has moved to Tuesdays.\",\"memory\":[{\"mode\":\"correct\",\"source\":\"telegram:8968100844:update:840342889\",\"quote\":\"[withheld: operator correction or forgetting]\",\"replacement\":\"my pottery class has moved to Tuesdays\",\"replies\":[],\"summaryPassages\":[]}],\"people\":[{\"name\":\"Justin\",\"source\":\"telegram:8968100844:update:840342886\",\"quote\":\"Morning! I am still getting used to having an assistant. How is your morning going?\"}],\"personAttributes\":[],\"commitments\":[],\"closed\":[],\"memoryDisposition\":\"resolved\",\"questions\":[],\"memoryItems\":[{\"source\":\"telegram:8968100844:update:840342889\",\"quote\":\"I live in Portland\"},{\"source\":\"telegram:8968100844:update:840342889\",\"quote\":\"I prefer decaf coffee\"}],\"concepts\":[{\"source\":\"telegram:8968100844:update:840342886\",\"terms\":[\"greeting\",\"new assistant\",\"first impressions\"]},{\"source\":\"telegram:8968100844:update:840342887\",\"terms\":[\"moon illusion\",\"astronomy\",\"optical illusion\",\"horizon\"]},{\"source\":\"telegram:8968100844:update:840342888\",\"terms\":[\"capabilities\",\"limitations\",\"what can you do\",\"features\"]},{\"source\":\"telegram:8968100844:update:840342889\",\"terms\":[\"remember facts\",\"personal info\",\"preferences\",\"pottery class\"]}]}"
+    },
+    {
+      "source": "summary-ack-walk-2026-10-15.json",
+      "id": "summary:840342889",
+      "shape": "summary writer uncertain",
+      "output": null
+    },
+    {
+      "source": "credential-answer-live-2026-10-09.json",
+      "id": "969390298",
+      "shape": "Jev undecided",
+      "output": "{\"verdict\": \"pass\", \"ruleIds\": [], \"confidence\": 0.54, \"path\": \"jev\", \"latencyMs\": 155, \"scores\": {\"raw_path\": 0.02, \"cli_command\": 0.06, \"config_key\": 0.13, \"credential\": 0.46, \"api_endpoint\": 0.05, \"quits_on_self\": 0.03, \"claims_blocked\": 0.05, \"parks_on_user\": 0.14, \"defers_work\": 0.06, \"unrecorded_blocker\": 0.04}, \"usage\": {\"inputTokens\": 867, \"outputTokens\": 201, \"charge\": null}, \"approvalReport\": {\"request\": \"87432af9acef18cc\", \"answer\": \"undecided\", \"noul\": 0.48}, \"candidateDigest\": \"1fedd3004b04485015be114e47d4e820e2350c469dee1378c6f5f346921e628c\"}"
+    },
+    {
+      "source": "guidance-live-2026-10-03.json",
+      "id": "telegram:8820318295:update:969389570",
+      "shape": "Jev unsure",
+      "output": "{\"verdict\": \"unsure\", \"ruleIds\": [\"quits_on_self\", \"parks_on_user\"], \"confidence\": 0.16, \"path\": \"jev\", \"latencyMs\": 158, \"scores\": {\"raw_path\": 0.01, \"cli_command\": 0.01, \"config_key\": 0.02, \"credential\": 0.02, \"api_endpoint\": 0.02, \"quits_on_self\": 0.16, \"claims_blocked\": 0.08, \"parks_on_user\": 0.16}}"
+    },
+    {
+      "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1-rewalk7-1015-run2-records/walk/smoke-frames.json",
+      "id": "telegram:8968100844:update:840343048:reply-review",
+      "shape": "reply review complete",
+      "output": "{\"reasoning\":\"Checking candidateReply against the three rules. config_key: no dotted config key mentioned anywhere in the reply; it's a plain-language astronomy explanation. self_state_claim: the reply makes no claims about the agent's own state, memory, sends, or capabilities beyond the appended model-route note, which is a standard disclosure and not contradicted by records. breaks_preference: no active operator preference is listed in packet.preferences (none provided in packet), and the operator's current message just asks a factual question which the reply answers directly and thoroughly, matching the conversational tone established. No breach found on any rule.\",\"config_key\":\"PASS | No dotted configuration key path appears anywhere in the reply.\",\"self_state_claim\":\"PASS | No self-state or capability claim in the reply is contradicted by records; the model-route note is a standard disclosure.\",\"breaks_preference\":\"PASS | No active operator reply preference is listed, and the reply directly answers the question asked.\"}"
+    },
+    {
+      "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step1-rewalk7-1015-run2-records/walk/smoke-frames.json",
+      "id": "telegram:8968100844:update:840343079:reply-review",
+      "shape": "reply review uncertain",
+      "output": null
+    },
+    {
+      "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/postswitch37-c1-1014-evidence/frames.json",
+      "id": "telegram:8993213212:update:46040043",
+      "shape": "ordinary reply, send unknown",
+      "output": "Here's a month-by-month vegetable garden plan for a full year. This is written for a generic temperate Northern Hemisphere climate (roughly USDA zones 5-7) — shift timing earlier if you're in a warmer zone, later if colder.\n\n**January** — Sow: nothing outdoors; start onions/leeks indoors under lights (long season crops need the head start). Transplant: none. Harvest: stored root crops (carrots, potatoes, beets) from the cellar; overwintered kale/leeks if mild. Care: order seeds early for best variety availability; check stored produce for rot; service tools.\n\n**February** — Sow: start tomatoes, peppers, eggplant indoors (8-10 weeks before last frost, since they're slow to mature); sow early lettuce/spinach under cover. Transplant: none yet. Harvest: remaining stored roots. Care: test soil pH/nutrients so amendments can work in before planting; chit seed potatoes (sprout them) for a head start.\n\n**March** — Sow: direct-sow peas, spinach, radishes outdoors as soil becomes workable (cool-season crops tolerate frost); start brassicas (broccoli, cabbage) indoors. Transplant: harden off and transplant onion sets outdoors. Harvest: late winter greens if overwintered. Care: prepare beds — dig in compost (feeds soil biology before the growing rush); install pea/bean supports now while beds are empty.\n\n**April** — Sow: direct-sow carrots, beets, lettuce, radish, Swiss chard (soil has warmed enough for germination). Transplant: brassica seedlings outdoors under row cover (protects from early pests/cold). Harvest: asparagus spears if established; early radishes. Care: mulch to suppress spring weeds before they establish; watch for slugs on tender seedlings.\n"
+    },
+    {
+      "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/pipeline/live-proof/results/gap-group-wording-20261010T084123/reply.json",
+      "id": "messageId:4",
+      "shape": "recorded empty reply field; replied=false (absence, not a claimed delivered empty bubble)",
+      "output": "",
+      "record": {
+        "chat": "-1004290919884",
+        "topic": 1,
+        "sentAt": 1791646927500,
+        "sent": true,
+        "messageId": 4,
+        "sentTopic": 1,
+        "replied": false,
+        "inTopic": [],
+        "elsewhere": [],
+        "isolated": false,
+        "seconds": 47,
+        "reply": ""
+      }
+    }
+  ]
+}

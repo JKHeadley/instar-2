@@ -19,7 +19,8 @@ import { authoritySealKey, sealAuthorityRecord } from './activation-authority.js
 
 export const OPERATOR = 7812716706;
 const START = 1790000000000;
-const base = Object.freeze({ machine: 'preview-test-machine', botId: '8820318295', botUsername: '@echo_mmtest_seam_b27x_bot',
+// Offline bot identity also used by the cutover token and fake Telegram endpoints; never use a live bot here.
+const base = Object.freeze({ machine: 'preview-test-machine', botId: '12345678', botUsername: '@echo_mmtest_seam_b27x_bot',
   operatorSenderId: String(OPERATOR), chatId: String(OPERATOR), chatKind: 'private', forum: false, messageThreadId: null,
   maxPollSeconds: 1, maxBatchItems: 8, maxContextTurns: 8, maxContextBytes: 65536 });
 const stateConfiguration = (root: string) => ({ ...base, root, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY, replyLimit: 6,
@@ -28,11 +29,13 @@ const artifactBytes = Buffer.from('offline executable bytes');
 const model = 'claude-offline-exact-1';
 /** Source for a substitute provider module: registers the doorway the launcher selects by default,
  * routed to the module's own `createClaudeCodeSubscriptionRoute`. */
-export const FIXTURE_DOORWAY = `import { SUBSCRIPTION_DOORWAYS } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
+export const FIXTURE_DOORWAY = `export { createSubscriptionVersionCheck } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
+import { SUBSCRIPTION_DOORWAYS } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
 export const DEFAULT_SUBSCRIPTION_DOORWAY = 'claude-code-subscription';
 export const subscriptionDoorway = id => {
   if (id !== DEFAULT_SUBSCRIPTION_DOORWAY) throw Error('subscription doorway ' + id + ' is not registered');
-  return { id, contract: SUBSCRIPTION_DOORWAYS[id].contract, create: input => createClaudeCodeSubscriptionRoute(input) };
+  // The real registered doorway (framings, policy, activation and session checks); only its model creation is replaced.
+  return { ...SUBSCRIPTION_DOORWAYS[id], create: input => createClaudeCodeSubscriptionRoute(input) };
 };`;
 /** Source for a fake reviewer's passing verdict: one `rule_id: PASS | reason` line for exactly the rules the
  * live review question selected, the only form a new live review accepts (Rules 41, 58, 108). */
@@ -102,13 +105,13 @@ export function writeOperatorRecords(directory: string, messages = [offlineOpera
 /** The recorded operator authority the offline launchers resolve an activation against: an
  * activation grant plus a bounded one-week renewal grant, and the waiver of the departed rules,
  * sealed as the desk's disposition under the offline trial's storage key. */
-export const offlineActivationAuthority = (activation: Record<string, any>) => sealAuthorityRecord({ type: 'PreviewActivationAuthority', schemaVersion: 1,
+export const offlineActivationAuthority = (activation: Record<string, any>, maxExtensionMs = 604_800_000) => sealAuthorityRecord({ type: 'PreviewActivationAuthority', schemaVersion: 1,
   grants: [{ id: 'offline-standing-grant', grantor: String(OPERATOR), grantee: 'echo-desk', words: OFFLINE_GRANT_WORDS,
     source: { kind: 'telegram-message', topicId: 1, messageId: 1 }, issuedAt: START, actions: ['activate-subscription-preview', 'renew-subscription-activation'],
     scope: { trial: activation.trial, model: activation.model, expectedAccount: activation.expectedAccount,
       executable: activation.executable, artifact: activation.artifact, version: activation.version,
       invocationPolicyDigest: activation.invocationPolicyDigest, profileDigest: activation.profileDigest },
-    renewal: { maxExtensionMs: 604_800_000, latestExpiresAt: activation.expiresAt } }],
+    renewal: { maxExtensionMs, latestExpiresAt: activation.expiresAt } }],
   waivers: [{ reference: activation.waiver, rules: ['rule:38'], grantor: String(OPERATOR), recordedAt: START,
     source: { kind: 'telegram-message', topicId: 1, messageId: 2 }, words: OFFLINE_WAIVER_WORDS }],
   revocations: [] }, authoritySealKey(OFFLINE_STORAGE_KEY));
@@ -204,7 +207,7 @@ export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir
   const compose = (options: any = {}) => {
     const outerState = state();
     return createSuccessiveComposition({ configuration: { ...base, root }, state: outerState, root,
-      storageKey: OFFLINE_STORAGE_KEY, resolveSecret: () => '8820318295:synthetic_recorded_test_only_value',
+      storageKey: OFFLINE_STORAGE_KEY, resolveSecret: () => '12345678:synthetic_recorded_test_only_value',
       telegramIO: () => options.telegramIO?.(telegramIO) ?? telegramIO, provider: {
         activation: options.activation ?? activation(outerState.read()), profile: options.profile ?? offlineProfile, model,
         io: options.providerIO?.(io) ?? io,

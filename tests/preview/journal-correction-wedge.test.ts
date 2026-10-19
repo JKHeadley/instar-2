@@ -40,8 +40,10 @@ const world = (root: string, summaryAnswers: boolean, clock = { now: start + 20 
         return JSON.stringify({ reply: 'Okay, 12:30 pm today.', memory: [], dated: [{ quote: feeder, when: 'today at 12:30 pm', remind: true }] });
       if (input.question === cancel) {
         const listed = (JSON.parse(input.context) as { reminders?: { id: string; quote: string }[] }).reminders ?? [];
+        // The answer path now admits a cancellation only against the operator's own withdrawing words.
         return JSON.stringify({ reply: 'Okay.', memory: [], dated: [],
-          cancelReminders: listed.filter(item => item.quote.includes('bird feeder')).map(item => item.id) });
+          cancelReminders: listed.filter(item => item.quote.includes('bird feeder'))
+            .map(item => ({ id: item.id, quote: 'cancel the bird feeder one' })) });
       }
       return JSON.stringify({ reply: `Answered: ${input.question}`, memory: [], dated: [] });
     },
@@ -132,7 +134,7 @@ const exhaustedPrefix = async (w: ReturnType<typeof world>) => {
   }
   await w.worker.summarizeIfNeeded(true); await w.worker.summarizeIfNeeded(true);
 };
-const pushes = (sent: string[]) => sent.filter(text => text.startsWith('PREVIEW — You asked on'));
+const pushes = (sent: string[]) => sent.filter(text => text.startsWith('You asked on'));
 
 it('fires a request made after an undecided correction once at its due minute through the scheduler writer, and never again after a restart', async () => {
   const root = tmp('due-after-undecided');
@@ -175,19 +177,30 @@ it('fires a request made after an undecided correction once at its due minute th
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 30000);
 
-it('still holds a request an undecided correction made after it may have withdrawn', async () => {
+/** Both sides of the wait. A later correction may have withdrawn an earlier request, so the request waits
+ * for that correction's own reply -- and no longer. cint-L27 (w3-cancelpath): the wait used to have no end at
+ * all when the correction settled undecided, so one unrecordable correction killed every request made before
+ * it. A request the operator really made stands and falls due (Rules 2, 57, 93, 95). */
+it('holds a request until the later correction that may have withdrawn it is answered, then fires it once', async () => {
   const root = tmp('undecided-after-due');
   try {
     const clock = { now: start + 20 * 60_000 };
     const w = world(root, false, clock);
     await exhaustedPrefix(w);
     w.worker.intake([update(5, walk)]); await w.worker.drain();
-    w.worker.intake([update(6, locker)]); await w.worker.drain();
-    expect(w.journal.view.order[5]!.memoryUndecided).toBe(true);
+    // The correction is durable but unanswered when the due minute passes: it may have withdrawn the walk.
+    w.worker.intake([update(6, locker)]);
     clock.now = Date.UTC(2026, 8, 29, 19, 50);
     await w.worker.sendRequested();
     expect(w.journal.view.order.filter(turn => turn.requestedAction)).toEqual([]);
     expect(pushes(w.sent)).toEqual([]);
+    // Now it is answered: settled undecided, with its reply sent. It withdrew nothing.
+    await w.worker.drain();
+    expect(w.journal.view.order[5]!.memoryUndecided).toBe(true);
+    expect(w.journal.view.order[5]!.intent).toBeDefined();
+    await w.worker.sendRequested(); await w.worker.sendRequested();
+    expect(pushes(w.sent)).toHaveLength(1);
+    expect(pushes(w.sent)[0]).toContain(walk);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 30000);

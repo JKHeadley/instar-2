@@ -2,14 +2,15 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(29);
 const day = 86_400;
 const start = Math.floor(Date.UTC(2026, 8, 1) / 1000);
+// w3-floorduty (Rules 3, 93): plus the obligation guide's floor form, which now outranks optional evidence under pressure.
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
-  maxCalls: 400, maxReplies: 200, maxTurns: 120, maxBytes: 10000, cursor: 0 };
+  maxCalls: 400, maxReplies: 200, maxTurns: 120, maxBytes: 10000 + OBLIGATION_FLOOR_PACKET_BYTES, cursor: 0 };
 const changes: Record<string, { attribute: 'job' | 'city' | 'partner' | 'pet'; value: string; status: 'current' | 'ended' }> = {
   'Sam Rivera now works at Acme.': { attribute: 'job', value: 'Acme', status: 'current' },
   'Sam Rivera lives in Boston.': { attribute: 'city', value: 'Boston', status: 'current' },
@@ -84,15 +85,15 @@ it('keeps two months of job, city, partner and pet changes dated across summarie
     expect(attribute('city').map(item => [item.value, item.status])).toEqual([['Boston', 'historical'], ['Seattle', 'current']]);
     expect(attribute('partner').map(item => [item.value, item.status])).toEqual([['Maya', 'historical'], ['Maya', 'ended']]);
     expect(attribute('pet').map(item => [item.value, item.status])).toEqual([['Luna', 'historical'], ['Luna', 'ended']]);
-    expect(attribute('job')[1]).toMatchObject({ date: new Date((start + 38 * day) * 1000).toISOString().slice(0, 16) + 'Z',
+    expect(attribute('job')[1]).toMatchObject({ date: '2026-10-08 17:00 PDT',
       source: 'telegram:12345678:update:38' });
     expect(packet.capability).toContain('historical and ended values must never be stated as current');
     expect(packet.personAttributes.filter(item => item.status === 'current').map(item => item.value)).toEqual(['Seattle', 'Beta']);
     const question = "What is Sam Rivera's current job and city, and what is their history?";
     await w.say(66, question);
     const reply = w.journal.view.order.find(turn => turn.update === 66)?.intent;
-    expect(reply).toContain('Current: Beta (2026-10-09T00:00Z), Seattle (2026-09-21T00:00Z).');
-    expect(reply).toContain('Earlier: Acme (2026-09-02T00:00Z)');
+    expect(reply).toContain('Current: Beta (2026-10-08 17:00 PDT), Seattle (2026-09-20 17:00 PDT).');
+    expect(reply).toContain('Earlier: Acme (2026-09-01 17:00 PDT)');
     expect(reply).not.toContain('Current: Acme');
     await w.say(67, 'Sam Rivera now works at Gamma.');
     const fresh = w.worker.probe('What is Sam Rivera\'s current job?');

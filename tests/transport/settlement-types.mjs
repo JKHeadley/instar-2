@@ -5,8 +5,9 @@ import { effectCommit } from './effect-pin.mjs';
 
 // Compile the real pinned eight sources against the local six declaration. No
 // surrogate EffectSettlement interface can accidentally make this seam typecheck.
-const paths = execFileSync('git', ['ls-tree', '-r', '--name-only', effectCommit, 'src/effects'], { encoding: 'utf8' }).trim().split('\n').filter(p => p.endsWith('.ts'));
-const files = new Map(paths.map(path => [resolve(path), execFileSync('git', ['show', `${effectCommit}:${path}`], { encoding: 'utf8' })]));
+const paths = execFileSync('git', ['ls-tree', '-r', '--name-only', effectCommit, 'src/effects'],
+  { encoding: 'utf8', timeout: 60_000, killSignal: 'SIGKILL' }).trim().split('\n').filter(p => p.endsWith('.ts'));
+const files = new Map(paths.map(path => [resolve(path), execFileSync('git', ['show', `${effectCommit}:${path}`], { encoding: 'utf8', timeout: 60_000, killSignal: 'SIGKILL' })]));
 const seam = resolve('src/settlement-owner-typecheck.ts');
 files.set(seam, `
 import { createTransportAuthority, registerTransportBodies } from './transport/index.js';

@@ -1,0 +1,99 @@
+{
+  "source": "Read-only proofroom2-q-20261009-153854/journal.encrypted, build 01279df4; B-proofroom2-20261009-163811 and B-proofroom2-20261009-170814. Exact operator text, answer output and summary failure records; older delivered/status answer retained as setup response.",
+  "cases": [
+    {
+      "older": {
+        "update": 6233049,
+        "text": "If I ask you to check something later, can you keep track of it?",
+        "at": 1791585657386,
+        "reply": "Yes, in two ways:\n\n1. If you give me a specific day/time (\"check X tomorrow at 9am\"), that's handled as a reminder — I'll come back and answer it at that time on my own, no need for you to message me again.\n\n2. If it's more of a standing instruction or an open task without a fixed time (\"keep an eye on X\" or \"let me know when Y happens\"), I hold it as an open commitment and act on it across future messages rather than forgetting it when this conversation moves on.\n\nThe honest limit: I don't have a background process that proactively polls the outside world on its own — \"checking\" something only works if it's checkable with the tools I have here (files, shell commands, reading the public web) or at the moment a scheduled reminder fires. If what you want checked requires a logged-in account (email, a dashboard, etc.), I don't have access to that without it being connected first.\n\nIf you've got something specific in mind, tell me what it is and when/how often, and I'll set it up now rather than in the abstract."
+      },
+      "request": {
+        "update": 6233067,
+        "text": "Remind me today at 4:49 pm to take a short walk",
+        "at": 1791589527105,
+        "output": "{\"reasoning\":\"The operator is explicitly asking for a reminder at a specific day/time: 'today at 4:49 pm' to 'take a short walk'. This is exactly the dated remind:true case per datedDecision: 'add remind:true only when the operator directly asks you to remind them of, or do or tell them, something at that date or time, quoting the whole request clause'. The current clock is 16:45 PDT (4:45pm) on 2026-10-09, so 4:49pm today is just 4 minutes away — a legitimate near-term same-day reminder, well within capability (preview-requested-actions handles an explicit request for a settled later day and time).\\n\\nI should confirm the reminder is set, quoting the date phrase word-for-word as 'today at 4:49 pm' (not converting to absolute date/zone myself, since the runner resolves it). This fits the dated:[{quote:..., when:\\\"today at 4:49 pm\\\", remind:true}] shape.\\n\\nIs this a promise? The instructions say 'A conditional or quoted example is not a promise' but this is a direct reminder-setting confirmation, not a conditional. However, the dated/remind mechanism already covers this specific commitment — it's the structured path for exactly this kind of request, so I should use the dated field rather than (or in addition to) promises. Looking at the obligationDecision and promises guidance: 'If your reply commits you to a later action, return JSON with reply and promises:[...]'. Confirming I'll remind them at 4:49pm does commit me to a later action. But the dated mechanism is the designated system for exactly this (preview-requested-actions). I think the correct combined shape is to use 'reply' with 'dated' field since dated/remind is the named decision field for this exact case, and also add promises since my reply text commits to a specific later action with a time phrase.\\n\\nGiven the format rules: 'when a decision field the context's guidance names applies ... write instead reply:<...> and each applicable field, in exactly the shape that guidance gives, directly beside reasoning and with no answer field'. The dated decision clearly applies here. I'll include both dated and promises since both conditions are met (dated event with remind:true, and my reply sentence is an exact promise with a when clause).\\n\\nMy reply should be short given the 2-sentence preference, confirming the reminder clearly.\",\"reply\":\"Got it — I'll remind you today at 4:49 pm to take a short walk.\",\"dated\":[{\"quote\":\"Remind me today at 4:49 pm to take a short walk\",\"when\":\"today at 4:49 pm\",\"remind\":true}],\"promises\":[{\"quote\":\"I'll remind you today at 4:49 pm to take a short walk.\",\"when\":\"today at 4:49 pm\"}],\"memory\":[]}"
+      },
+      "failures": [
+        {
+          "kind": "summary-failed",
+          "format": 4,
+          "through": 6233049,
+          "state": "complete",
+          "failureClass": "malformed",
+          "memoryPendingFor": "telegram:8989505249:update:6233049",
+          "usage": {
+            "inputTokens": 10640,
+            "outputTokens": 751,
+            "charge": null,
+            "inputComplete": true
+          },
+          "at": 1791589742477
+        },
+        {
+          "kind": "summary-failed",
+          "format": 4,
+          "through": 6233049,
+          "state": "complete",
+          "failureClass": "malformed",
+          "memoryPendingFor": "telegram:8989505249:update:6233049",
+          "usage": {
+            "inputTokens": 10640,
+            "outputTokens": 762,
+            "charge": null,
+            "inputComplete": true
+          },
+          "at": 1791589768240
+        }
+      ],
+      "due": "2026-10-09T23:49:00Z"
+    },
+    {
+      "older": {
+        "update": 6233063,
+        "text": "status",
+        "at": 1791589169996,
+        "reply": "Status (2026-10-09, America/Los_Angeles)\nTurns today: 16.\nHeld replies: none.\nPending memory decisions: 13 (updates 6233048, 6233049, 6233050, 6233051, 6233052, 6233053, 6233054, 6233055, 6233056, 6233057, and 3 later).\nNext dated item: none confirmed.\nOpen loops: 1 (1 commitment); 0 due to resurface with your next message.\nBacklog: 1 unfinished (1 message, 0 due work steps); oldest 0 min.\nProgress: progressing; last 0 min ago.\nScheduled work: 1 waiting for their time.\nOverdue: 0 check-ins, 0 blocker rechecks, 0 requested actions; corrections awaiting your next message: 0.\nSentinels: context respawn episode recovered; presence watching 0 unanswered (0 holding notes due); promises 0 overdue reported, 0 waiting on someone else, 0 with work requested.\nRetrospective review: 1 completed pass(es); last inspected 9 of 26 case(s), efficiency duty ran; open improvement items 3; pending grades 0.\nProofs: 5/13 healthy; 8 not currently observed.\nCapabilities: 1 confirmed, 7 unconfirmed, 1 dark (preview.step-check); 12 without a live proof at their current version.\nGraduation: preview.step-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-10-15 (recorded 2026-09-28).\nServing: this runner on DaBombs-Mac-Studio.local owns this conversation (claimed 60 min ago); 2 duplicate launch(es) refused on this machine.\nStore checks: 3 of 4 agree.\nPast a cap: each kept message gets one limited answer from the reserve.\nMemory failures: 1 recorded (1 source unresolved); learned: 0 retrieval hints, 0 pinned facts.\nSpend allowance: 236/1000 subscription attempts; 14/1000 Jev checks. Dollar spend/cap: not recorded in this journal. Replies: 15/1000 used.\nReplies sent as your own words repeated back, without the second check: 1.\nBuild: 01279df4 running since 2026-10-09 15:39; running code matches the installed files.\nHarness: preview-journal-native via claude-code-subscription; 9 of 9 silent-stop classes covered.\nUpdate: from an unrecorded earlier build; briefing change unknown; delivered in my reply to update 6233048.\nTools: the harness's full built-in set (27 tools, each call decided at the admission hook) and the root's MCP servers, in this conversation's private workspace (kept between turns, 128 MB); shell sandboxed, its network through the turn's checkpoint (reads of public hosts admitted, writes sent to the effect doorway); web reads only; subagents may…\nTool turns: 14 run (210 model attempts reserved for them), 1 tool calls admitted, 0 refused, 0 turns answered without tools because the call allowance was short.\nKept session: 10 turns resumed it, 4 started a new one (3 after the journal changed a fact or the authority changed, 0 after a loss or an interrupted turn, 0 at its size or turn bound); 0 ended at a stop, withdrawal or failed turn.\nEffect doorway: 0 effect(s) reached it from tool turns (0 ordinary, 0 admitted under an operator grant, 0 admitted in the accepted closed set, 0 refused); ordinary work in the turn's own workspace is admitted without it. Replies and model calls go through the installation's accepted closed set (provider call, ordinary replies), and limit or…\nHarness identity: Claude Code runs as its own macOS user (_instarharness). The kernel refuses its opens of the operator account's private files; its login and MCP credentials reach it only through a one-shot hand-off, never a file it can open; new entries in the system temporary folder are denied to it from creation; operator files every local…"
+      },
+      "request": {
+        "update": 6233075,
+        "text": "Remind me today at 5:18 pm to take a short walk",
+        "at": 1791591271812,
+        "output": "{\"reasoning\":\"The operator (Justin) is asking to set a new reminder: today at 5:18 pm, to take a short walk. Current clock is 2026-10-09 17:14 America/Los_Angeles, so 5:18 pm today is 4 minutes away and in the future (not yet overdue). This is a straightforward, specific day/time request matching the confirmed preview-requested-actions capability. I should acknowledge and set it. There's an existing earlier reminder for 4:49 pm (already delivered/overdue per dated list) for the same \\\"take a short walk\\\" — this is a new, separate request for a new time, not a correction, so I treat it as a fresh reminder rather than touching the old one.\\n\\nPer preferences, operator asked to keep replies to two sentences — I'll honor that in my reply text.\\n\\nThis commits me to a later action (reminder), so I should return promises with the exact quote and when phrase, and also dated requires the runner to resolve it — per datedDecision, I return dated:[{quote:..., when:...}] without converting to absolute date/zone, remind:true since this is a direct request to remind them at that time.\\n\\nI need to combine the obligation protocol (dated) with the memory/style and promises fields as applicable. Since no correction/forget/style-setting is happening here beyond already-set preference, memory:[] is appropriate (no new preference stated this turn). This is a dated remind:true item, so I use the dated-reply shape: {reply:{answer,dateAcknowledgement?}, memory:[], dated:[...], lastNamedPerson, personAttributes}. Wait — the top-level required shape is 'reply' field with the plain text when a decision field applies (dated). So I write 'reply' not 'answer', and add 'dated' field alongside reasoning.\\n\\nI also should check promises — a reminder commitment is a promise with 'when'. The system-reminder about promises says: if reply commits to later action, return promises:[{quote, when}]. This is separate from 'dated'. I'll include both as instructed.\\n\\nlastNamedPerson: no person named in this message, so null. personAttributes: none.\\n\\nNo tool calls needed — this is a simple scheduling acknowledgment handled by the journal/runner, not something I need Bash/Agent for.\\n\\nKeeping reply to two sentences per operator's stated preference.\",\"reply\":\"Got it — I'll remind you today at 5:18 pm to take a short walk.\",\"dated\":[{\"quote\":\"Remind me today at 5:18 pm to take a short walk\",\"when\":\"today at 5:18 pm\",\"remind\":true}],\"promises\":[{\"quote\":\"I'll remind you today at 5:18 pm to take a short walk.\",\"when\":\"today at 5:18 pm\"}],\"memory\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}"
+      },
+      "failures": [
+        {
+          "kind": "summary-failed",
+          "format": 4,
+          "through": 6233063,
+          "state": "complete",
+          "failureClass": "malformed",
+          "memoryPendingFor": "telegram:8989505249:update:6233063",
+          "usage": {
+            "inputTokens": 14637,
+            "outputTokens": 700,
+            "charge": null,
+            "inputComplete": true
+          },
+          "at": 1791591472464
+        },
+        {
+          "kind": "summary-failed",
+          "format": 4,
+          "through": 6233063,
+          "state": "complete",
+          "failureClass": "malformed",
+          "memoryPendingFor": "telegram:8989505249:update:6233063",
+          "usage": {
+            "inputTokens": 14637,
+            "outputTokens": 1083,
+            "charge": null,
+            "inputComplete": true
+          },
+          "at": 1791591493021
+        }
+      ],
+      "due": "2026-10-10T00:18:00Z"
+    }
+  ]
+}

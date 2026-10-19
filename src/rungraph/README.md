@@ -156,3 +156,23 @@ Production probes, cadence and Tier-1 supervision remain eleven's assembly duty.
 
 - `rungraph-core`: records each run as signed facts and refuses a step outside its budget or grant.
   Details: records each run's opening, grounding, steps, transitions and exit as signed facts, and refuses a step outside its declared budget or grant.
+
+Helper return accounting binds each new or received delegation destination to its
+accountable parent run and edge before custody. The session-work collector selects
+only the top-level attempt, so nested child edges cannot hide a completed result.
+Failed or stalled launched helpers retain their recorded diagnosis and exact child
+identity on collection; they stay uncertain for replay because they may have acted.
+Only a proven pre-launch refusal permits the existing bounded next-step schedule.
+
+## Completion accounting for journal work
+
+`completion.ts` reconciles bounded worker completion checklists inside the existing
+obligation result. The preview journal persists the checklist, carries it into the
+next worker packet and shows unfinished entries on the pull surface. New specs,
+scripts and tasks join the original job; omitted entries remain. An open entry
+prevents a final work report, while completion requires a nonempty evidence claim.
+The worker and existing review judge the evidence; this is not independent proof.
+Stops, expired windows, failed or uncertain attempts retain the checklist. No new
+store, send authority, retry or model call is introduced. Older records without a
+checklist retain their original meaning. This helper does not change RunExit or
+claim that unreported filesystem work has been discovered.

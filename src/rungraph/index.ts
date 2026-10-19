@@ -28,3 +28,6 @@ export { createAgentEndpoint, createLocalAgentTransport, offerEnvelope, cancelEn
   envelopeIntact, semanticDigest, evidenceFromReceipt } from './agent-transport.js';
 export type { AgentTransportPort, AgentTransportEnvelope, AgentEnvelopeKind, AgentEndpoint, EndpointReceipt, DelegatedWorker,
   WorkerOutcome, SendMode, DelegatedRunAuthority } from './agent-transport.js';
+
+export { reconcileRunCompletion, RUN_COMPLETION_LIMIT } from './completion.js';
+export type { RunCompletionItem } from './completion.js';

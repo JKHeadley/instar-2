@@ -1,9 +1,33 @@
 // Rule 42: one closed classification of a Telegram sendMessage reply. A definite provider
 // rejection is `refused`; anything that might have delivered is `unknown`; only a receipt
 // naming exactly this chat, thread and text is `accepted`. Neither non-success is delivery.
-export function classifyTelegramSend(reply, { chat, expectedText, thread }) {
-  if (!reply || reply.kind !== 'response')
-    return { kind: 'unknown', reason: reply?.kind === 'uncertain' ? `transport ${String(reply.limitation)}` : 'no transport response' };
+// The bridge's own closed failure stages (src/assembly/telegram-bot-api-bridge.mjs). Kept in the
+// recorded reason so a lost send can be diagnosed; anything else is dropped, never echoed.
+const BRIDGE_STAGES = new Set(['resolver', 'child-exit', 'fetch-timeout', 'fetch-failure', 'body-read',
+  'invalid-response', 'scan-policy', 'scan-budget', 'sealed-capture',
+  // The transport's own pre-network refusals (scripts/production-boot-io.mjs): the host would not start
+  // the child, or the launcher refused before its exec. Both carry `sent: false`.
+  'spawn-refused', 'launch-refused']);
+const TRANSPORT_CODES = new Set(['ECONNRESET', 'ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT',
+  'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET', 'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT', 'UND_ERR_ABORTED', 'EPIPE']);
+const TRANSPORT_SYSCALLS = new Set(['connect', 'getaddrinfo', 'read', 'write']);
+function transportReason(reply) {
+  if (!Array.isArray(reply.transportErrors)) return '';
+  const errors = reply.transportErrors.slice(0, 8).filter(error => TRANSPORT_CODES.has(error?.code))
+    .map(error => `${error.code}${TRANSPORT_SYSCALLS.has(error.syscall) ? `/${error.syscall}` : ''}`);
+  return errors.length ? ` (${[...new Set(errors)].join(', ')})` : '';
+}
+export function classifyTelegramSend(reply, { chat, expectedText, thread, forum = false }) {
+  if (!reply || reply.kind !== 'response') {
+    const reason = reply?.kind === 'uncertain' ? `transport ${String(reply.limitation)}${
+      BRIDGE_STAGES.has(reply.stage) ? ` at ${reply.stage}` : ''}${transportReason(reply)}` : 'no transport response';
+    // A transport that states the network call was never made is a definite non-delivery, not UNKNOWN:
+    // nothing can have reached Telegram, so this exact intent may be dispatched again without any risk
+    // of a duplicate. Only the transport asserts this; a missing field is never read as proof.
+    return reply?.kind === 'uncertain' && reply.sent === false
+      ? { kind: 'not-sent', reason: `not sent: ${reason}` } : { kind: 'unknown', reason };
+  }
   let payload = null;
   try { payload = JSON.parse(reply.bytes); } catch { /* an unparseable body settles below */ }
   if (Number.isSafeInteger(reply.status) && reply.status >= 400 && reply.status < 500 && payload?.ok === false)
@@ -11,7 +35,8 @@ export function classifyTelegramSend(reply, { chat, expectedText, thread }) {
       ? `: ${payload.description.slice(0, 120)}` : ''}` };
   if (reply.status !== 200 || payload?.ok !== true) return { kind: 'unknown', reason: `telegram status ${String(reply.status)}` };
   return String(payload.result?.chat?.id) === chat && payload.result?.text === expectedText
-    && (thread === undefined || payload.result?.message_thread_id === thread)
+    && (thread === undefined ? !forum || payload.result?.message_thread_id === undefined || payload.result?.message_thread_id === 1
+      : payload.result?.message_thread_id === thread)
     && Number.isSafeInteger(payload.result?.message_id) && payload.result.message_id > 0
     ? { kind: 'accepted', message: payload.result.message_id } : { kind: 'unknown', reason: 'receipt differs from intent' };
 }

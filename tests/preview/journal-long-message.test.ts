@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, openPreviewJournal, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { createJournalWorker, OBLIGATION_FLOOR_PACKET_BYTES, openPreviewJournal, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { replyReviewContext } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
@@ -75,7 +75,7 @@ it('drains a batched oversized correction and retires its stale holds across res
     journal.append({ kind: 'hold', id: journal.view.order[0]!.id, reason: 'memory correction pending', at: 1000 });
     journal.append({ kind: 'hold', id: journal.view.order[1]!.id, reason: 'summary oversized turn', at: 1000 });
     await worker.drain();
-    expect(sent).toEqual(['PREVIEW — First answer', TOO_LONG_INPUT_NOTICE]);
+    expect(sent).toEqual(['First answer', TOO_LONG_INPUT_NOTICE]);
     expect(journal.view.order.map(turn => turn.held)).toEqual([undefined, undefined]);
     journal.close();
     const replay = openPreviewJournal(path, key);
@@ -115,7 +115,10 @@ it.each([{ verdict: 'pass', receipt: 7 }, { verdict: 'pass', receipt: null },
     await resumed.drain();
     expect(status(dir).tooLong).toEqual([{ update: 1, kind: 'input',
       delivery: receipt === null ? 'UNKNOWN' : 'Telegram API accepted' }]);
-    // The next prompt must describe the exact prior intent, including after journal replay.
+    // The next prompt must describe the exact prior intent, including after journal replay. w3-floorduty: that prompt
+    // now also carries the obligation guide's floor form (Rules 3, 93), so that next turn gets those bytes beside the
+    // history it is checked for; the over-limit first message above is judged at the original limit.
+    replay.view.limits.maxBytes += OBLIGATION_FLOOR_PACKET_BYTES;
     const context = await (async () => {
       const next = createJournalWorker(replay, { now: () => 1002, stopped: () => false,
         model: async ({ context }) => context, send: async () => 8, checkOutbound: () => {} });
@@ -220,23 +223,23 @@ it('does not prepare a too-long notice after stop, then sends it once when resum
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-it('sends a full reply at the Telegram boundary and a truthful notice for longer or HTML-expanded answers', async () => {
+it('sends a full reply at the Telegram boundary, and a longer or HTML-expanded answer whole across two messages in order', async () => {
+  // Plan #466 (w4-statuslen): an answer past one Telegram message is split, never refused for its length.
   for (const answer of ['a'.repeat(4084), 'a'.repeat(4085), '<'.repeat(1200)]) {
     const dir = root();
     try {
       const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis());
       const sent: string[] = [];
+      let message = 7;
       const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
-        model: async () => answer, send: async ({ text }) => { sent.push(text); return 7; }, checkOutbound: () => {} });
+        model: async () => answer, send: async ({ text }) => { sent.push(text); return message++; }, checkOutbound: () => {} });
       worker.intake([update(1, 'Short question')]); await worker.drain();
       expect(journal.view.order[0]?.answer).toBe(answer);
-      expect(sent).toHaveLength(1);
-      if (Buffer.byteLength(`PREVIEW — ${answer}`) <= 4096 && answer[0] !== '<')
-        expect(journal.view.order[0]?.intent).toBe(`PREVIEW — ${answer}`);
-      else {
-        expect(journal.view.order[0]?.intent).toBe(TOO_LONG_REPLY_NOTICE);
-        expect(status(dir).tooLong).toEqual([{ update: 1, kind: 'reply', delivery: 'Telegram API accepted' }]);
-      }
+      expect(journal.view.order[0]?.intent).toBe(`${answer}`);
+      expect(sent).toHaveLength(Buffer.byteLength(`${answer}`) <= 4096 && answer[0] !== '<' ? 1 : 2);
+      for (const body of sent) expect(Buffer.byteLength(body)).toBeLessThanOrEqual(4096);
+      expect(status(dir).tooLong).toEqual([]);
+      expect(status(dir).unknownSends).toBe(0);
       journal.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }
