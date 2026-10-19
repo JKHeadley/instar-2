@@ -30,6 +30,9 @@ Prompt review: No model-facing text, parser, decision policy or delivered output
 
 Verification: Portable targeted evidence and host-dependent failures are reported separately in the operator report; no full-suite pass or independent convergence claimed.
 
+Register refresh: The supplied desk rehash tool refreshed four preview source pins; the supplied repin chain changed no inventory or checker bytes. Generated publication is reproduced in shape-only replay mode from the repair pin commit; no pin is hand-edited.
+Deferral: generated/register.json:1 | not-a-deferral=Existing governed declaration text reproduced by the register generator; no work is deferred.
+
 ## Closing block
 
 simplestRobustRoute: This is that route: reuse the existing async child helper, yield between existing matrix rows, and size finite fixture watchdogs from recorded gate failures. Start is the existing fixture admission; end is the actual child result plus unchanged assertions; limits are finite timeouts, exact-PID cleanup and one-worker targeted execution. Added timeout bookkeeping prevents graceful zero exits from falsely certifying expired runs. No unattended shipped-path completion is claimed.
