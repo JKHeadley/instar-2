@@ -18,6 +18,7 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none
 Convergence: none
+Decision: train-78-review-metadata | Expand inherited email review base to its exact ancestor SHA and name the duplicate-send floor literally; checker-only metadata repair, no product change. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-78-PROGRESS.md
 Decision: train-78-merge-files | Ordinary merge of exact 528d07b815dcee2dc59210cefaa53d99d4a94488; cited Studio reports telegram-files-1018-p2-PROGRESS.md and telegram-files-1018r-PROGRESS.md read through file API. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-78-PROGRESS.md
 Decision: train-78-merge-email | Ordinary merge of exact cbc6c2325a343aec272605c4223bc568439ad2b0; cited Studio reports gap-email-1018s-PROGRESS.md and gap-email-1018v-PROGRESS.md read through file API. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-78-PROGRESS.md
 Decision: train-78-A | Preserve both member behaviors; shared conversation test auto-merges, audio transcripts remain beside paths. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-78-PROGRESS.md

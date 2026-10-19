@@ -1,6 +1,6 @@
 # Change review — gap-email-1018s
 
-Subject base: 0227b381
+Subject base: 0227b3815d1b0a07b225e2a0957f8be394468aae
 Review state: open
 Reviewed content: none
 Outcome: Explain the existing application response contract so a missing mailbox can yield an honest limitation and an unsent draft through the ordinary result file.
