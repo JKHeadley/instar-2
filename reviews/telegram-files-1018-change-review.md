@@ -1,6 +1,6 @@
 # Change review — files sent in Telegram reach the agent
 
-Subject base: 0227b381
+Subject base: 0227b3815d1b0a07b225e2a0957f8be394468aae
 Review state: open
 Reviewed content: none
 Outcome: Files sent in Telegram reach the agent through one source-bound file path in the admitted session's harness-readable work area.
@@ -21,7 +21,7 @@ Convergence: none
 Decision: telegram-files-one-path | Reuse the existing session file bridge for every supported Telegram file kind; remove per-type decoding and transcription from intake/delivery while retaining historical transcript readability. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/telegram-files-1018-PROGRESS.md
 Decision: telegram-files-raw-floor | Follow the explicit section 7 direction: preserve encrypted custody and raw-byte secret protection, remove the PDF decoded-content scanner, and let the harness report unsupported contents honestly. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/telegram-files-1018-PROGRESS.md
 Prompt review: Reuses the existing file-tool instruction and user-data-not-authority warning; the noun is now file for every kind. Removes the voice-only transcript notice. Tests replay the actual recorded PDF refusal (update 6234449/message 8687) and image refusal (update 715676899/message 875), plus recorded summary, uncertain/undecided Jev, reply-review, delivered and empty-context shapes through the protected path. Historical refusals are not relabeled as fresh successful model answers; native format support remains the harness's responsibility.
-Verification: Initial shipped-callback regression: one photo passed, seven cases failed (PDF refusal, voice/audio missing paths, video/video-note/animation/sticker missing intake). After the change all eight passed. Typecheck and build pass. Directly importing tests and final gates are recorded with their exact outcomes in the report; the two untouched local-transcriber host tests require unavailable host resources. No full suite or live provider call is claimed.
+Verification: Initial shipped-callback regression: one photo passed, seven cases failed (PDF refusal, voice/audio missing paths, video/video-note/animation/sticker missing intake). After the change all eight passed. Typecheck and build pass. Directly importing tests and final gates are recorded with their exact outcomes in the report; the two untouched local-transcriber host tests require unavailable host resources. The real session batch consumer also checks the generic file notice (its earlier photo-only regex was updated in this change). No full suite or live provider call is claimed.
 
 ## Closing block
 

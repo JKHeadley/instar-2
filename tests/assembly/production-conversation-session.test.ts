@@ -1045,7 +1045,7 @@ it('delivers two source-bound images through the real media bridge in one admitt
   const original = f.adapter.deliver;
   f.adapter.deliver = async delivery => {
     expect(f.admissions).toHaveLength(1);
-    for (const match of delivery.text.matchAll(/photo: ("[^"]+")\./gu)) {
+    for (const match of delivery.text.matchAll(/file: ("[^"]+")\./gu)) {
       const path = JSON.parse(match[1]!); paths.push(path); expect(readFileSync(path)).toEqual(bytes);
     }
     expect(paths).toHaveLength(2);
