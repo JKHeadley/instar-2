@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Integrate the exact reviewed Telegram file and audio transcript head onto the pinned live train-82 build.
 Affected rules: 1, 4, 26, 30, 32, 34, 36, 37, 44, 45, 49, 60, 63, 66, 70, 74, 84, 86, 90, 95, 100, 101, 102, 105, 111, 112, 113, 115, 116
-Affected floors: Existing raw-byte and transcript secret protection, spend cap, stop, unique durable sends and encrypted durable intake remain. No additional provider or authority.
+Affected floors: Existing raw-byte and transcript secret protection, spend cap, stop, no duplicate sends and encrypted durable intake remain. No additional provider or authority.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
