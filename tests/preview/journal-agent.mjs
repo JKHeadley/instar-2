@@ -1750,9 +1750,7 @@ async function main() {
     const mediaCustody = createTelegramMediaCustody(root, key(), { token, stopped: mediaStopped, admission: mediaAdmission,
       transcribe: async (bytes, source) => {
         const text = await localTranscribe(bytes);
-        const protectedText = custody.custody({ text, raw: JSON.stringify({ text }), source });
-        if (protectedText.custody?.state === 'failed') throw Error('voice credential custody unavailable');
-        return protectedText.text;
+        return protectMediaBytes(Buffer.from(text), source, custody, heldSecrets).toString('utf8');
       } });
     const currentMedia = id => {
       const turn = journal.view.turns.get(id);
@@ -1843,8 +1841,7 @@ async function main() {
       doorway.policyFor(required(options, 'model'), doorway.toolsFraming ?? doorway.conversationFraming).maxPromptBytes);
     const preparation = toolPreparation(() => toolsActive());
     const modelEnvelope = input => {
-      // Local transcripts pass the same held-secret/redaction boundary as text intake.
-      // Only the exact accepted source gets this attachment, never a summary/reviewer id.
+      // Local transcripts use the same source and held-secret boundary as text intake.
       input = prepareMediaInput(input, currentMedia, text => redact(concealSecretMaterial(text, heldSecretValues())).text);
       const bytes = prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
       // A tool turn's longer system prompt must fit that room too; an overflow here makes the packet ladder yield, as
@@ -2027,8 +2024,7 @@ async function main() {
       invoke: async (toolTurn, notice) => {
         const answer = mediaNotice => invokeSubscription(withWorkspaceNotice(prepared, [notice, mediaNotice].filter(Boolean).join('\n')), id, undefined, undefined, toolTurn, selected);
         return invokeMediaTurn(id, toolTurn, currentMedia, answer,
-          (bytes, source, area) => protectMediaBytes(bytes, source, custody, heldSecrets, { cwd: area,
-            stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive() }));
+          (bytes, source) => protectMediaBytes(bytes, source, custody, heldSecrets));
       } })).result;
     };
     const proofLines = () => {
@@ -2647,7 +2643,7 @@ async function main() {
           authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
           workingActivity: (operation, claim, phase) => workingActivities.observe(operation, claim, phase),
           prepareInputFiles: operations => openConversationMedia({ tmp: join(project, '.tmp'), scope: String(topic ?? 'main'), operations,
-            lookup: currentMedia, protect: (bytes, source, area) => protectMediaBytes(bytes, source, custody, heldSecrets, { cwd: area, stopped: stoppedNow }) }),
+            lookup: currentMedia, protect: (bytes, source) => protectMediaBytes(bytes, source, custody, heldSecrets) }),
           currentActionFacts: async operation => JSON.stringify(currentActionFacts(journal.view, wallNow(),
             journal.view.genesis.forum !== true || await verifiedActionAudience(),
             String(journal.view.turns.get(operation)?.thread ?? 'main'), timeZoneOf(options))),

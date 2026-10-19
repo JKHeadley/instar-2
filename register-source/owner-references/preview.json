@@ -127,7 +127,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/telegram-media.test.ts",
-        "hash": "sha256:7506f07453d13944b99927a25edcd61875ec98a828b504dd5c0ae0c355b83351"
+        "hash": "sha256:d012522c64ef92d1fd26ba0612d402645a7f6a3f8878c51be436eb057c75cc14"
       }
     },
     {
@@ -135,7 +135,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/media-understanding.test.ts",
-        "hash": "sha256:d03329168bdf9bcc06c5a17d95efcefa3e5c3201f3a3af1651e1121f14993bf5"
+        "hash": "sha256:608dcee98c98e149aafcbd90c10a48eb994c99fe6d9dbf4cea3bf8c0d039886c"
       }
     },
     {

@@ -35,10 +35,6 @@
     "register:generate": "npm run build && node scripts/build-register.mjs",
     "register:check": "node scripts/build-register.mjs --check"
   },
-  "dependencies": {
-    "pdf-lib": "1.17.1",
-    "pdfjs-dist": "6.4.299"
-  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "~5.9.3",
