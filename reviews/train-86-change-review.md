@@ -28,6 +28,6 @@ Decision: train-86-desk | Existing downloaded repin/build/rehash/replay chain, w
 
 Deferral: generated/register.json:1 | not-a-deferral=Existing declaration wording reproduced by the generator; no deferred repair introduced.
 Verification: Targeted changed tests and direct importers, journal tests, subscription, default-context floor, pinned READY subset, typecheck, lint, architecture, register and review checks; exact outcomes in the train report.
-simplestRobustRoute: This is the simplest robust route: one ordinary exact-head merge and existing desk regeneration. No new product machinery. Retain admission, durable intake, stop, result-file completion and unique send guards; successful isolated model adoption is evidence, not a claim of unattended live rollout.
+simplestRobustRoute: This is the simplest robust route: one ordinary exact-head merge and existing desk regeneration (register replay at 47bdcb671780e3687ae83107b0f3642bf5ebf1fa). No new product machinery. Retain admission, durable intake, stop, result-file completion and unique send guards; successful isolated model adoption is evidence, not a claim of unattended live rollout.
 80/20: Targeted direct importers and requested train checks only, no full suite. Preserve proven behavior instead of rebuilding it.
 VERDICT: author submission for desk gate; no independent convergence or live acceptance claim
