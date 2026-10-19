@@ -4,7 +4,7 @@ import { localMinute } from './dated-memory.js';
 import { isoMinute } from '../../src/recall/ground.js';
 import { statedFacts } from './memory-sentinel.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
-import { activePersonMerges, admittedUpdate, before, groundingHistory, isJournalUpdate, projectMemoryClause } from './journal.js';
+import { activePersonMerges, admittedUpdate, before, groundingHistory, isJournalUpdate, projectMemoryClause, UNREADABLE_OPERATOR_MESSAGE } from './journal.js';
 import { validCarriedMemory } from './group-carry.js';
 import { matchesBoundChat } from './forum-routing.js';
 import { authenticateTelegramSender, writerBoundToRaw } from './intake-principal.js';
@@ -412,8 +412,14 @@ export function auditActiveMemory(view) {
         authenticateTelegramSender(raw, view.genesis.origin ?? 'production', turn.at));
       const legacy = admittedUpdate(view.genesis, raw,
         authenticateTelegramSender(raw, view.genesis.origin ?? 'production', turn.at), true);
+      // Before generic file delivery these kinds retained only text/caption and
+      // the unreadable flag. Keep that exact authenticated history valid.
+      const historicalFile = ['video', 'video_note', 'animation', 'sticker'].includes(telegramInboundMedia(raw.message)?.kind)
+        ? typeof raw.message.text === 'string' ? raw.message.text
+          : typeof raw.message.caption === 'string' && raw.message.caption.trim() ? `${raw.message.caption}\n${UNREADABLE_OPERATOR_MESSAGE}`
+            : UNREADABLE_OPERATOR_MESSAGE : null;
       const suffix = turn.media === undefined ? '' : `\n[Media custody: ${mediaCustodyText(turn.media)}]`;
-      return parsed.accepted && [parsed.text, legacy.text].some(text => turn.text === text + suffix);
+      return parsed.accepted && [parsed.text, legacy.text, historicalFile].some(text => text !== null && turn.text === text + suffix);
     } catch { return false; }
   };
   const operator = (id, at) => {
