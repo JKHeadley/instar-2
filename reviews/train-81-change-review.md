@@ -45,6 +45,7 @@ Prompt finding: 849db3a6296a | protocol-literal | Unchanged existing protocol te
 Deferral: tests/preview/fixtures/email-gap-1017.json:5 | not-a-deferral=Captured historical refusal and request, not unfinished integration work.
 Prompt finding: 0725f0150c56 | protocol-literal | Application-role guidance asserted by the recorded replay test; not a classifier matching user words.
 Prompt finding: 27d7720e7977 | protocol-literal | Historical application memory framing retained for exact replay normalization; not a keyword decision.
+Carried review repair: Expand the email member Subject base from its short spelling to the exact full existing ancestor; no scope or reviewed product behavior changes.
 Publication: Generated register replay committed in 41d2cd02 from source 64c47cef; this record covers that publication as well as all four merges.
 Verification: Exact commands, targeted replay results, native certificate exception and expected Studio-only report findings are recorded in train-81-PROGRESS.md through the local handoff report.
 simplestRobustRoute: This is the simplest robust route: ordinary merges of the reviewed heads, preservation of both behaviors at overlaps, and existing regeneration tools. No new product machinery, retry or authority is introduced. Existing start admission, output/durability end checks and stop/spend/resource limits remain. Studio owns native recertification and unattended live acceptance; local replay establishes integration behavior only.
