@@ -90,7 +90,7 @@ import { createTelegramMediaCustody, journalMediaSource, telegramInboundMedia } 
 import { createLocalTranscriber } from '../../scripts/local-transcriber.mjs';
 import { prepareMediaInput, invokeMediaTurn, protectMediaBytes, openConversationMedia } from './media-understanding.mjs';
 import { createMediaAdmission } from './media-admission.js';
-import { credentialNotices, doorwayNotices, dueWithDelivery, sessionLoginNotices, sessionLoginStatus } from './credential-reminders.js';
+import { credentialNotices, dueWithDelivery, sessionLoginNotices, sessionLoginStatus } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
 import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, untilStopped, waitWorking } from './live-sentinels.js';
 import { SENTINEL_FAMILIES } from './sentinel-record.js';
@@ -2143,8 +2143,9 @@ async function main() {
         } }),
       // Rule 44: an installed update rides operator packets until a sent answer's recorded prompt carried it.
       installedUpdate: () => installUpdate && !updateDelivery(installUpdate, journal.view.order) ? updatePacketItem(installUpdate) : null,
-      // Rules 8, 56, 100: due credential reminder stages and a failing doorway check ride the next answer as one line.
-      // An unreadable registry or map offers nothing here; status reports it (credentials.error, doorways.fresh).
+      // Rules 8, 100: due credential reminder stages ride the next answer as one line; an unreadable registry offers
+      // nothing here and status reports it (credentials.error). Rules 56, 87, 88: a failing doorway check is the agent's
+      // own maintenance and never rides an answer; status reports it (doorways.fresh, doorways.standing).
       replyNotices: turn => {
         const now = wallNow(), notices = [];
         // Part Twelve: this answer's own refused effects ride first, so a refusal is reported even if the answer omits it.
@@ -2155,7 +2156,6 @@ async function main() {
         notices.push(...(loginPool?.notices() ?? []));
         notices.push(...sessionLoginNotices([...sessionLoginObservations.values()], now));
         try { notices.push(...credentialNotices(dueCredentialReminders(createSecretCustody(root, key(), wallNow).records(), now), now)); } catch { /* status shows it */ }
-        try { notices.push(...doorwayNotices(readDoorwayMap(doorwaysPath), now)); } catch { /* status shows it */ }
         return notices;
       },
       // Rules 9, 96, 114: this runner's current work and the other owned runners beside it, read at each operator turn.
