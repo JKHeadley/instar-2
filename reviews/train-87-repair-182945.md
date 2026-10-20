@@ -23,7 +23,7 @@ Decision: train-87-repair-merge | Merge exact live ec8ed1d8; retain train-87 sha
 Decision: train-87-repair-list | Existing earlier repair already added Telegram file ACL coverage; detector reports neither missing nor stale rows, so do not edit the list unnecessarily. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-87-repair-182945-PROGRESS.md
 Decision: train-87-repair-publication | Regenerate owner pins and merged register through delegated desk scripts and register replay; retain histories rather than replacing them. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-87-repair-182945-PROGRESS.md
 Deferral: generated/register.json:1 | not-a-deferral=Mechanically reproduced existing declaration wording; no new deferred work.
-Verification: Targeted PDF, platform list, live changed portable fixture tests, typecheck and cheap checks; exact results and host limits in the handoff report.
+Verification: Typecheck and architecture passed; six targeted files passed 99/99 tests (PDF, platform list, phone route, Telegram media, obligations and sibling replay). Register replay uses source 570e473aac12bddc8266b62e45b053f89f8cc63f. Final cheap checks and pinned subset results are in the handoff report.
 simplestRobustRoute: This is the simplest robust route: ordinary merge, one canonical fixture-root correction and existing publication generators. No new mechanism or authority; existing custody, cleanup and test bounds retain start, end-state and resource guards. This makes no unattended live acceptance claim.
 80/20: Only targeted tests and required cheap checks; the Studio owns the full suite.
 VERDICT: author submission for desk gate; no independent convergence or live acceptance claim
