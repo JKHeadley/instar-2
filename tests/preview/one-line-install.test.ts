@@ -20,7 +20,7 @@ const packageOf = (specifier: string) => specifier.split('/').slice(0, specifier
 function setupEntries(): string[] {
   const entry = 'bin/instar2.mjs', text = read(entry) ?? '';
   const loaders = [...text.matchAll(/register\(\s*'(\.{1,2}\/[^']+)'\s*,\s*import\.meta\.url\s*\)/gu)]
-    .map(match => normalize(join(dirname(entry), match[1])));
+    .map(match => normalize(join(dirname(entry), String(match[1]))));
   return [entry, ...loaders];
 }
 /** Bare (package) imports reached from the setup entries, by package name. */
