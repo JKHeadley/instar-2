@@ -1,7 +1,6 @@
 import { expect, it } from 'vitest';
 import { ANSWER_INSTRUCTIONS, MEMORY_LOOKUP_INSTRUCTIONS, REPLY_FORMAT_GUIDANCE, answerInstructions, replyFormatGuidance } from './briefing.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-// @ts-expect-error The Telegram renderer runs as plain JavaScript in the harness.
 import { renderTelegramHtml } from './telegram-markdown.mjs';
 
 // md-briefing-1020: the model is told, on the turn's own platform, which markdown that platform shows,
