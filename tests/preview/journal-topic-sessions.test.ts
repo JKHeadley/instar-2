@@ -107,7 +107,11 @@ function fixture(forum = false, prepared = false, maxSessions = 2, timeZone = 'A
     prepareModel: input => prepared ? prepareJournalEnvelope(input, 'offline-model', 'grant:offline', now, 262144) : JSON.stringify(input), checkOutbound: () => {},
     send: async input => {
       sent.push({ text: input.expectedText, thread: input.thread, update: input.update });
-      expect(input.text).toBe(encodeReply(input.expectedText));
+      // The journal now signs the prepared HTML, whose shown text is the receipt subject.
+      expect(journal.verifyOutbound(input.provenance, { target: input.target!, chat: input.chat,
+        ...(input.thread === undefined ? {} : { thread: input.thread }), body: input.text })).toBe(true);
+      if (input.formatting) expect(input.expectedText).toBe(input.formatting.shown);
+      else expect(input.text).toBe(encodeReply(input.expectedText));
       return classifyTelegramSend({ kind: 'response', status: 200, bytes: JSON.stringify({ ok: true, result: {
         message_id: sent.length, chat: { id: Number(input.chat) }, text: input.expectedText.trimEnd(),
         ...(input.thread === undefined ? {} : { message_thread_id: input.thread }),
