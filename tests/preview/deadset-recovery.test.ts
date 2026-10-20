@@ -3,7 +3,7 @@
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, afterEach, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
 // @ts-expect-error Physical host adapter is JavaScript.
 import { createResourceOwner, RESOURCE_CEILINGS } from '../../scripts/resource-owner.mjs';
 import { createHostResourceAllocation } from './six-host-resources.js';
@@ -16,7 +16,10 @@ const reserve = (allocation: ReturnType<typeof createHostResourceAllocation>, la
   if (!result.ok) throw Error(result.reason);
   return result.handle;
 };
-let seed: ReturnType<typeof seedFixture> | undefined;
+let seed: ReturnType<typeof seedFixture>;
+// Creating 128+ durable facts is suite setup, not recovery latency. Keep its own
+// finite budget so a busy host cannot consume the first recovery case's deadline.
+beforeAll(() => { seed = seedFixture(); }, 120_000);
 afterAll(() => { if (seed) rmSync(seed.root, { recursive: true, force: true }); });
 function seedFixture() {
   const root = mkdtempSync(join(tmpdir(), 'deadset-seed-'));
@@ -38,7 +41,6 @@ function seedFixture() {
   return { root, dead };
 }
 function fixture() {
-  seed ??= seedFixture();
   const root = mkdtempSync(join(tmpdir(), 'deadset-recovery-')); roots.push(root);
   cpSync(seed.root, root, { recursive: true });
   let incarnation = 1;
