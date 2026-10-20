@@ -85,8 +85,8 @@ const CODEX_TOOLS_SENTENCE = READ_BEFORE_ANSWER + 'In this turn you have your ow
   + 'must return before you answer. A read of a host or matter the operator marked policy-sensitive, an MCP tool call, and any other '
   + 'step that acts outside this turn pass the effect doorway: ordinary work and work the operator has granted run; a consequential '
   + 'step without a grant is refused. Existing standing grants already authorize their scoped work; do not ask for the same yes again. '
-  + 'The operator can tighten or revoke standing trust through setup-standing-trust. Irreversible outward sends remain outside '
-  + 'the one-machine closed set. A refusal is an answer you report, not something to route around. Repeating the same '
+  + 'The operator can tighten or revoke standing trust through setup-standing-trust. '
+  + 'A refusal is an answer you report, not something to route around. Repeating the same '
   + `consequential step with the same input is refused. The whole turn, subagents included, has at most `
   + `${CODEX_TOOL_LIMITS.maxTurns} model calls; a call past them is refused and the turn ends with no answer. When your answer reports `
   + 'a value a tool produced, say in reasoning which tool call, by name and order, produced it. Never claim an effect no tool '

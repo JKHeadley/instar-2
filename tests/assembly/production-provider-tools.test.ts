@@ -17,6 +17,7 @@ import { createClaudeCodeSubscriptionRoute, subscriptionConversationPolicy, subs
 import type { SubscriptionActivationRecord, SubscriptionToolTurn } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { COMPLETE_REQUESTED_WORK } from '../../src/assembly/tool-answer-guidance.js';
+import { guidanceOnlyPolicyPins } from '../preview/tools-policy-class.js';
 import { prepareJournalEnvelope } from '../preview/journal-envelope.js';
 import { factsFixture, value } from '../facts/fixtures.js';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
@@ -97,15 +98,26 @@ it('tells the model it has the whole tool set and how each call is bounded, and 
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('You have no tools and cannot act beyond this answer; never claim otherwise.');
   // Plan #510: the tool route runs without --safe-mode, so Claude Code injects its own account email; the prompt says that
   // login is never the operator. Completion guidance adds the inherited 508-character
-  // tool-only clause; delta delivery changes neither prompt nor activation policy.
+  // tool-only clause; delta delivery changes neither prompt nor activation policy. The 70-character closed-set sentence
+  // went with the 2026-10-13 single-machine ruling (purpose changelog): one machine has no closed operation set.
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('is the subscription login running you, never the operator');
-  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBe(2767 + 508);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).not.toContain('closed set');
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBe(2697 + 508);
   const captures = JSON.parse(readFileSync(new URL('../preview/fixtures/tools-guidance-only-2026-10-15.json', import.meta.url), 'utf8'));
   const [previous, completion] = captures.builds;
   expect(previous.digest).toBe('sha256:5fed4bcfd823d950c1444a008a9c11d40824671dd8e68aa2f5908ed8534a2926');
   expect(hash(previous.policy)).toBe(previous.digest);
-  expect(subscriptionToolsPolicy('claude-sonnet-5')).toEqual(completion.policy);
-  expect(hash(subscriptionToolsPolicy('claude-sonnet-5'))).toBe(completion.digest);
+  // The captured completion policy differs from today's only by that removed sentence in the system prompt, so it stays
+  // inside the sealed guidance-only class (its pins blank the prompt prose) and needs no new grant.
+  const closedSet = 'Irreversible outward sends remain outside the one-machine closed set. ';
+  const current = subscriptionToolsPolicy('claude-sonnet-5'), prompt = current.args.indexOf('--system-prompt') + 1;
+  expect(completion.policy.args[prompt].split(closedSet)).toHaveLength(2);
+  expect({ ...current, args: current.args.map((arg, index) => index === prompt ? completion.policy.args[prompt].replace(closedSet, '') : arg) })
+    .toEqual(current);
+  expect({ ...completion.policy, args: completion.policy.args.map((arg: string, index: number) => index === prompt ? current.args[prompt] : arg) })
+    .toEqual(current);
+  expect(guidanceOnlyPolicyPins(current)).toBe(guidanceOnlyPolicyPins(completion.policy));
+  expect(hash(completion.policy)).toBe(completion.digest);
   expect(completion.digest).not.toBe(previous.digest);
 });
 

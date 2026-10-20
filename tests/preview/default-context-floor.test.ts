@@ -281,8 +281,9 @@ it('keeps a tool turn\'s always-sent parts inside the same measured floor (Part 
   // whose sentence says a network write goes to the effect doorway and a consequential effect runs once the operator
   // registers and grants it (+70); read-first adds 1202, standing-trust guidance adds 21,
   // and the inherited tool-only COMPLETE_REQUESTED_STEPS instruction adds 508.
-  // The new shared completion sentence adds 112 bytes to each route, cancelling here.
-  expect(growth).toBe(3275);
+  // The new shared completion sentence adds 112 bytes to each route, cancelling here. The closed-set sentence (70) went
+  // with the 2026-10-13 single-machine ruling.
+  expect(growth).toBe(3205);
   // The packet names what the call really has (review round 1, finding 5): the text-only route keeps the no-tools read and
   // its "attempted nothing" guidance; the tool route says the tools are listed (in the note's tools item) and that only its recorded calls ran.
   expect(plain.packet?.capabilities?.externalTools).toBe('none');
