@@ -15,7 +15,7 @@ Undo and recovery: revert the commit; the old template returns. Recorded replies
 Multi-machine posture: machine-local reply text only.
 Layer below: inspected memoryAcknowledgement's change filter (unchanged), the withheld-history path for corrected clauses, and the memory-list exclusion.
 Bug class: unit
-Bug evidence: reproducer=tests/preview/journal-correction-ack-diff.test.ts (walk-24 msg 10/11 shapes reproduced the exact broken text before the change)
+Bug evidence: reproducer=tests/preview/journal-correction-ack-diff.test.ts
 Hook bypass: none
 Convergence: none
 Decision: correction-ack-quote | quote both clauses rather than splice them into one clause, since a quote may be a whole sentence | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/walk-findings-1020-PROGRESS.md
