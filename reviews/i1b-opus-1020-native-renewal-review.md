@@ -22,6 +22,8 @@ Decision: i1b-native-renewal | Step back to the sole remaining obligation: run t
 Prompt review: No model-facing change in this round. The prior recorded usage replay remains the numeric evidence; this captured-frame native contract makes no live-model or combined-build Opus completion claim.
 Deferral: generated/register.json:1 | not-a-deferral=deterministically replayed existing register descriptions; no new commitment
 
+Generated evidence: Replayed the existing register at source commit d975be8c9c3184f7c9528bfdafeb46bc996253dc. This record covers the certificate commit and the subsequent generated-output commit; all seven generated files derive from that replay.
+
 ## Closing block
 
 simplestRobustRoute: Run the existing native contract on the declared runtime, update the existing certificate from its actual composition digest, and replay the register. This is that route. Start guard: exact runtime and complete closure. End guard: passing native contract and architecture for the same bytes. Limit guards: unchanged secrets, spend, stop, uniqueness and durable intake. No added machinery or unattended live-model completion claim.
