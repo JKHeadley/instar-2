@@ -171,3 +171,12 @@ it('replays recorded summary, Jev, review and empty shapes without changing thei
     expect(telegramPlainText(row.raw), row.kind).toBe(expected);
   }
 });
+
+it.each([true, false])('awaits retained refusal custody before the alternative (peer admitted=%s)', async admitted => {
+  const events: string[] = [];
+  const result = await sendFormattedText({ text: '<b>Done</b>', expectedText: 'Done', fallback: { text: 'Done' }, body: {}, classify,
+    mayResend: () => true, recordRefusal: async () => { events.push('stored'); await Promise.resolve(); events.push('peer'); return admitted; },
+    invoke: request => { events.push(request.parse_mode === 'HTML' ? 'html' : 'plain'); return events.length === 1 ? parseRefusal : receipt('Done'); } });
+  expect(events).toEqual(admitted ? ['html', 'stored', 'peer', 'plain'] : ['html', 'stored', 'peer']);
+  expect(result.kind).toBe(admitted ? 'accepted' : 'refused');
+});
