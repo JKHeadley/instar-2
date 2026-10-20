@@ -5,7 +5,7 @@
 // literal text, escaped exactly as `encodeReply` escapes it today.
 //
 // `sendFormattedText` is the one physical send of a reply. If Telegram refuses the formatted send as unparsable
-// (a 4xx "can't parse entities", which proves no message was created), the same reply is sent once more as plain
+// (a 400 "can't parse entities", which proves no message was created), the same reply is sent once more as plain
 // text with the markers removed. That is the only resend: an accepted, unknown or other refused outcome is final
 // (Rules 42 and 116; floor: no duplicate sends).
 
@@ -19,12 +19,14 @@ const MAX_INPUT = 32768;
 const escapeText = s => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 const escapeAttribute = s => escapeText(s.replace(/[\x00-\x1f\x7f]/gu, '')).replaceAll('"', '&quot;');
 const unescapeText = s => s.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&amp;', '&');
-const safeUrl = raw => /^(https?|tg|mailto):\S+$/iu.test(raw.trim()) ? raw.trim() : null;
+const safeUrl = raw => /^(https?|tg|mailto):\S+$/iu.test(raw.trim()) && !/[\x00-\x1f\x7f]/u.test(raw) ? raw.trim() : null;
 
 /** Fenced code, tables and inline code, set aside before anything else is read as markdown. */
 function extract(text, held, render) {
   const out = [];
   for (let i = 0; i < text.length;) {
+    const link = linkAt(text, i);
+    if (link) { out.push(text.slice(i, link.end + 1)); i = link.end + 1; continue; }
     const end = text.startsWith('```', i) ? text.indexOf('```', i + 3) : -1;
     if (end === -1) { out.push(text[i]); i++; continue; }
     const newline = text.indexOf('\n', i + 3);
@@ -41,24 +43,35 @@ function extract(text, held, render) {
       held.push(render.pre(block.filter(line => !separator(line)).join('\n'))); kept.push(slot(held.length - 1)); i = j;
     } else { kept.push(lines[i]); i++; }
   }
-  return kept.join('\n').replace(/`([^`\n]{1,500})`/gu, (_m, inner) => { held.push(render.code(inner)); return slot(held.length - 1); });
+  const protectedLinks = links(kept.join('\n'), { link: (label, url) => {
+    held.push(render.link(convert(label, render), url)); return slot(held.length - 1);
+  } });
+  return protectedLinks.replace(/`([^`\n]{1,500})`/gu, (_m, inner) => { held.push(render.code(inner)); return slot(held.length - 1); });
+}
+
+/** Read raw destinations once, before any code/emphasis transformation. */
+function linkAt(text, i) {
+  const close = text[i] === '[' ? text.slice(i + 1, i + 501).search(/[\]\n]/u) : -1;
+  if (close === -1 || text[i + 1 + close] !== ']' || text[i + 2 + close] !== '(') return null;
+  const start = i + 3 + close;
+  let depth = 1, end = -1;
+  for (let k = start; k < Math.min(text.length, start + 2048) && text[k] !== '\n'; k++) {
+    if (text[k] === '(') depth++;
+    else if (text[k] === ')' && --depth === 0) { end = k; break; }
+  }
+  const url = end === -1 ? null : safeUrl(text.slice(start, end));
+  return url === null ? null : { label: text.slice(i + 1, i + 1 + close), url, end };
 }
 
 /** `[text](url)` with balanced parentheses in the URL; an unsafe scheme stays literal. */
 function links(text, render) {
   const out = [];
   for (let i = 0; i < text.length;) {
-    const close = text[i] === '[' ? text.slice(i + 1, i + 501).search(/[\]\n]/u) : -1;
-    if (close === -1 || text[i + 1 + close] !== ']' || text[i + 2 + close] !== '(') { out.push(text[i]); i++; continue; }
-    const start = i + 3 + close;
-    let depth = 1, end = -1;
-    for (let k = start; k < Math.min(text.length, start + 2048) && text[k] !== '\n'; k++) {
-      if (text[k] === '(') depth++;
-      else if (text[k] === ')' && --depth === 0) { end = k; break; }
-    }
-    const url = end === -1 ? null : safeUrl(render.raw(text.slice(start, end)));
-    if (url === null) { out.push(text[i]); i++; continue; }
-    out.push(render.link(text.slice(i + 1, i + 1 + close), url)); i = end + 1;
+    if (text[i] === '`') { const end = text.indexOf('`', i + 1);
+      if (end !== -1 && !text.slice(i + 1, end).includes('\n')) { out.push(text.slice(i, end + 1)); i = end + 1; continue; } }
+    const link = linkAt(text, i);
+    if (!link) { out.push(text[i]); i++; continue; }
+    out.push(render.link(link.label, link.url)); i = link.end + 1;
   }
   return out.join('');
 }
@@ -69,9 +82,9 @@ function convert(markdown, render) {
   text = text.replace(/\*\*\*([^*\n]{1,200}?)\*\*\*/gu, (_m, t) => render.bold(render.italic(t)))
     .replace(/\*\*([^*\n]{1,200}?)\*\*/gu, (_m, t) => render.bold(t))
     .replace(/(^|[\s(,.;:!?])\*(?!\s)([^*\n]{1,200}?)(?<!\s)\*(?=$|[\s),.;:!?])/gmu, (_m, before, t) => before + render.italic(t))
-    .replace(/^#{1,6}[ \t]+(.{1,2000}?)[ \t]*#*[ \t]*$/gmu, (_m, t) => render.bold(t))
+    .replace(/^#{1,6}[ \t]+(.{1,2000}?)(?:[ \t]+#+)?[ \t]*$/gmu, (_m, t) => render.bold(t))
     .replace(/^([ \t]{0,20})[-*+][ \t]+/gmu, '$1• ');
-  return links(text, render).replace(SLOT, (_m, ch) => held[ch.codePointAt(0) - 0x100000] ?? '');
+  return text.replace(SLOT, (_m, ch) => held[ch.codePointAt(0) - 0x100000] ?? '');
 }
 
 const HTML = { escape: escapeText, raw: unescapeText, pre: t => `<pre>${escapeText(t)}</pre>`, code: t => `<code>${escapeText(t)}</code>`,
@@ -88,21 +101,21 @@ export function renderTelegramHtml(markdown) {
 /** The same reply as plain text: every marker removed, each link's text kept with its URL. */
 export const telegramPlainText = markdown => markdown.length > MAX_INPUT ? markdown : convert(markdown, PLAIN);
 
-const parseRefused = reply => {
+export const parseRefused = reply => {
   if (reply?.kind !== 'response' || reply.status !== 400) return false;
   try { const payload = JSON.parse(reply.bytes); return payload?.ok === false && /can't parse entities/iu.test(String(payload.description)); }
   catch { return false; }
 };
 
-/** Sends one reply. `text` is its signed HTML body and `expectedText` its text; only a body that is exactly the
- * escaped text is rendered as markdown (any other body is sent as signed). `mayResend` is re-checked (stop,
- * ownership, expiry) before the single plain fallback. */
-export function sendFormattedText({ text, expectedText, body, invoke, classify, mayResend }) {
-  if (text !== escapeText(expectedText)) return classify(invoke({ ...body, text, parse_mode: 'HTML' }), expectedText);
-  const { html, shown } = renderTelegramHtml(expectedText);
-  const reply = invoke({ ...body, text: html, parse_mode: 'HTML' });
-  const outcome = classify(reply, shown);
-  if (outcome.kind !== 'refused' || !parseRefused(reply) || !mayResend()) return outcome;
-  const plain = telegramPlainText(expectedText);
-  return classify(invoke({ ...body, text: plain }), plain);
+/** Dispatch only bytes prepared and signed by the journal owner. A parse refusal must be durably
+ * retained before the one pre-authorized plain alternative; unknown outcomes never enable it. */
+export async function sendFormattedText({ text, expectedText, fallback, body, invoke, classify, mayResend, recordRefusal }) {
+  const reply = invoke({ ...body, text, parse_mode: 'HTML' });
+  const outcome = classify(reply, expectedText);
+  if (outcome.kind !== 'refused' || !parseRefused(reply) || !fallback) return outcome;
+  if (await recordRefusal(reply) === false) return outcome;
+  if (!mayResend()) return outcome;
+  const fallbackOutcome = classify(invoke({ ...body, text: fallback.text }), fallback.text);
+  // The bounded alternative is exhausted; do not let the outer not-sent retry restart HTML.
+  return fallbackOutcome.kind === 'not-sent' ? { kind: 'refused', reason: fallbackOutcome.reason } : fallbackOutcome;
 }
