@@ -36,6 +36,8 @@ Prompt finding: feadb66b8ad1 | protocol-literal | Existing unchanged protocol gu
 Decision: train98-review-overcap | Extend the existing one paid review re-ask only for exact ended output-cap evidence; preserve its accounting and every send checkpoint. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-98-repair-PROGRESS.md
 Verification: nice -n 10 npx tsc --noEmit; nice -n 10 npm run build; nice -n 10 npx vitest run --maxWorkers 1 tests/preview/reply-review-overcap.test.ts tests/preview/format-retry.test.ts; node scripts/check-architecture.mjs. All passed. Final lint/register/change-review and pushed-head evidence are in the lane report.
 
+Register replay: generated files rebuilt by node scripts/build-register.mjs --replay --commit 357cff74a1f62e5334276aa3d6c2ebf801bec107; desk owner rehash and repin commands found no owner/inventory pin changes.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reuse the one existing paid format retry for one more exact unusable-output case. Start guard: a recorded ended process with final result and output-cap; end guard: a new valid audience review; limit guards: original output allowance, call cap, shared deadline, stop, credential wall and unique send. No new service, background retry loop or capability restriction. No autonomous live success claimed.
