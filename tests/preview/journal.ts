@@ -7021,8 +7021,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (turn.answer !== undefined && (/^Here are \d+ active memory items I have about you/u.test(turn.answer)
       || turn.answer.startsWith('I have no active saved memory items'))) return undefined;
     // A forgotten quote has no trusted boundary between subject and value.
+    // Walk-24 message 11: "Changed my sister's birthday is March 14. → ..." read as broken; quote both clauses instead.
+    const clause = (text: string) => text.trim().replace(/\s+/gu, ' ').replace(/[.!?]+$/u, '');
     const detail = changes.map(change => change.mode === 'remember' ? 'Saved the requested fact' : change.mode === 'correct'
-      ? `Changed ${change.quote.trim().replace(/\s+/gu, ' ')} → ${change.replacement!.trim().replace(/\s+/gu, ' ')}`
+      ? `Updated my notes: “${clause(change.quote)}” is now “${clause(change.replacement!)}”`
       : 'Forgot the requested information').join('; ');
     return `${detail}${/[.!?]$/u.test(detail) ? '' : '.'}`;
   };
