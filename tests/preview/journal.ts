@@ -7029,8 +7029,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (turn.answer !== undefined && (/^Here are \d+ active memory items I have about you/u.test(turn.answer)
       || turn.answer.startsWith('I have no active saved memory items'))) return undefined;
     // A forgotten quote has no trusted boundary between subject and value.
+    // Walk-24 message 11: "Changed my sister's birthday is March 14. → ..." read as broken. The new value leads and the
+    // old one follows, at no more bytes than the old template (packet-pressure tests sit at zero slack).
+    // The old clause stays verbatim: corrected-history withholding matches this reply against the exact quote (Rule 7).
+    const clause = (text: string) => text.trim().replace(/\s+/gu, ' ');
     const detail = changes.map(change => change.mode === 'remember' ? 'Saved the requested fact' : change.mode === 'correct'
-      ? `Changed ${change.quote.trim().replace(/\s+/gu, ' ')} → ${change.replacement!.trim().replace(/\s+/gu, ' ')}`
+      ? `Now: ${clause(change.replacement!).replace(/[.!?]+$/u, '')}. Was: ${clause(change.quote)}`
       : 'Forgot the requested information').join('; ');
     return `${detail}${/[.!?]$/u.test(detail) ? '' : '.'}`;
   };

@@ -32,7 +32,7 @@ it('names a validated correction old to new once, and withholds its old clause f
     let worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'The cedar trail starts at East Pier.')]); await worker.drain();
     worker.intake([update(2, 'Actually, the cedar trail starts at West Pier.')]); await worker.drain();
-    expect(sends[1]).toBe('Changed The cedar trail starts at East Pier. → the cedar trail starts at West Pier.');
+    expect(sends[1]).toBe('Now: the cedar trail starts at West Pier. Was: The cedar trail starts at East Pier.');
     expect(sends[1]?.includes('\n')).toBe(false);
     journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
     await worker.drain();
@@ -42,6 +42,31 @@ it('names a validated correction old to new once, and withholds its old clause f
     expect(withoutCorrectedHistory(next.context)).not.toContain('East Pier');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// Walk-24 messages 10 and 11 (strong-agent-1020, runs A and B): the recorded quote and replacement shapes.
+// The old template sent "Changed my sister's birthday is March 14. → my sister's birthday is March 17."
+it('words the walk-24 correction as two plain sentences, new value first', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-ack-walk-')));
+  const sends: string[] = [];
+  const ports = { now: () => 1790000000000, stopped: () => false,
+    model: async (input: { id: string; question: string; context: string }) => {
+      const packet = JSON.parse(input.context);
+      if (input.id.startsWith('summary:')) return JSON.stringify({ summary: "The sister's birthday is March 17.", people: [], memory: [] });
+      if (input.question.startsWith('Correction:')) {
+        const source = packet.memoryCandidates?.find((item: { message: string }) => item.message.includes('March 14'));
+        return JSON.stringify({ reply: 'Updated.', memory: [{ mode: 'correct', source: source.id,
+          quote: "my sister's birthday is March 14.", replacement: "my sister's birthday is March 17" }] });
+      }
+      return 'Okay.';
+    }, send: async (input: { text: string }) => { sends.push(input.text); return sends.length; }, checkOutbound: () => {} };
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  try {
+    const worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, "Note for later: my sister's birthday is March 14.")]); await worker.drain();
+    worker.intake([update(2, "Correction: my sister's birthday is March 17, not March 14.")]); await worker.drain();
+    expect(sends[1]).toBe("Now: my sister's birthday is March 17. Was: my sister's birthday is March 14.");
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
 it('acknowledges accepted forgetting without repeating the old quote, while a no-change turn keeps its ordinary reply', async () => {
@@ -114,7 +139,7 @@ it('uses a validated ordinary reply decision for an uncued correction', async ()
     worker.intake([update(1, 'My home city is Rome.')]); await worker.drain();
     worker.intake([update(2, 'My home city changed to Paris.')]); await worker.drain();
     expect(journal.view.memory).toHaveLength(1);
-    expect(sends[1]).toBe('Changed My home city is Rome. → My home city changed to Paris.');
+    expect(sends[1]).toBe('Now: My home city changed to Paris. Was: My home city is Rome.');
     const next = worker.probe('Where do I live?');
     if ('reason' in next) throw Error(next.reason);
     expect(next.context).not.toContain('Rome');
