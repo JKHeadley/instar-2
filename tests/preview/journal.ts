@@ -1099,6 +1099,8 @@ export type JournalRecord =
     /** Rule 35: set only by a trusted test composition; absent means a production store. */
     origin?: 'test' }
   | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody;
+    /** Rule 96: chronological position after a bot rebind; update/raw/cursor retain the wire identity. */
+    historyUpdate?: number;
     /** Rules 28/29: the verified principal minted at intake; absent only on legacy or unaccepted rows. */
     writer?: WriterRecord;
     /** Admitted past the ordinary turn allowance by the minimal reserve (Rule 15). */
@@ -2876,13 +2878,17 @@ export const wallEpoch = (day: string, time: string, zone: string) => {
 };
 /** A runner-authored turn sorts after every earlier turn and before the next Telegram update. */
 const SYNTHETIC_UPDATE_STEP = 1 / 1024;
-/** "Everything before this turn": integer Telegram updates keep their old meaning. The packet
+/** "Everything before this turn": integer intake positions keep their old meaning. The packet
  * writer and its audit both bound history with this, so a due turn's own request stays in view. */
 export const before = (update: number) => update - SYNTHETIC_UPDATE_STEP / 4;
-/** The journal's update domain: a Telegram update id, or a synthetic update on the 1/1024 grid that a requested
- * action's due turn receives. One definition, read by every consumer that names an operation by its update. */
+/** The journal's chronological update domain: an intake position (the wire id unless a bot was rebound),
+ * or a synthetic update on the 1/1024 grid that a requested action's due turn receives. One definition, read by every consumer that names an operation by its update. */
 export const isJournalUpdate = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
   && value >= 0 && Number.isSafeInteger(value / SYNTHETIC_UPDATE_STEP);
+/** Copied bot streams have unrelated wire counters. New turns follow every copied or synthetic turn.
+ * Persist the position on intake rather than renumbering old evidence when a journal is replayed. */
+const nextIntakeHistoryUpdate = (view: JournalView, wireUpdate: number) => Math.max(wireUpdate,
+  Math.floor(view.order.reduce((max, turn) => Math.max(max, turn.update), -1)) + 1);
 export const nextSyntheticUpdate = (view: JournalView) => {
   const top = view.order.reduce((max, turn) => Math.max(max, turn.update), 0), base = Math.floor(top);
   const step = Math.round((top - base) / SYNTHETIC_UPDATE_STEP) + 1;
@@ -3956,7 +3962,10 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
   if (row.kind === 'intake') {
     const prior = view.turns.get(row.id);
     view.waiting = view.waiting.filter(item => item.update !== row.update);
-    if (prior) { if (prior.update !== row.update || prior.raw !== row.raw) throw Error('preview journal: update collision'); return; }
+    if (prior) { if (prior.update !== (row.historyUpdate ?? row.update) || prior.raw !== row.raw) throw Error('preview journal: update collision'); return; }
+    const historyUpdate = row.historyUpdate ?? row.update;
+    if (row.historyUpdate !== undefined && (!view.testCopy || !isJournalUpdate(historyUpdate)
+      || historyUpdate !== nextIntakeHistoryUpdate(view, row.update))) throw Error('preview journal: intake history order');
     if (row.reserve !== undefined && (row.reserve !== true || view.order.length < view.limits.maxTurns))
       throw Error('preview journal: reserve intake order');
     if (view.order.length >= view.limits.maxTurns && !(row.reserve && (!row.accepted
@@ -3969,10 +3978,10 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       && /^sha256:[0-9a-f]{64}$/u.test(row.custody.arrival) && typeof row.custody.capture === 'string' && Array.isArray(row.custody.secrets)
       && row.custody.secrets.every(name => typeof name === 'string'))) throw Error('preview journal: intake custody malformed');
     if (row.editOf !== undefined && (!row.accepted || !row.replaces || !view.turns.get(row.editOf)?.accepted
-      || !view.turns.get(row.replaces)?.accepted || row.update <= view.turns.get(row.replaces)!.update))
+      || !view.turns.get(row.replaces)?.accepted || historyUpdate <= view.turns.get(row.replaces)!.update))
       throw Error('preview journal: edit lineage refused');
     checkIntakeWriter(view, row);
-    const turn: Turn = { id: row.id, update: row.update, text: row.text, raw: row.raw, accepted: row.accepted, at: row.at, reserved: false,
+    const turn: Turn = { id: row.id, update: historyUpdate, text: row.text, raw: row.raw, accepted: row.accepted, at: row.at, reserved: false,
       ...(row.writer === undefined ? {} : { writer: row.writer }),
       ...(row.thread === undefined ? {} : { thread: row.thread }),
       ...(row.custody === undefined ? {} : { custody: row.custody }),
@@ -6210,15 +6219,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (reserve && parsed.accepted && reserveTurnsUsed(journal.view, ports.now()) >= MINIMAL_RESERVE.turns) {
         held = true; holdBacklog(pending.slice(index), waiting); break;
       }
+      const historyUpdate = journal.view.testCopy ? nextIntakeHistoryUpdate(journal.view, update.update_id) : update.update_id;
       let editOf: string | undefined, replaces: string | undefined;
       if (update.edited_message && parsed.accepted && Number.isSafeInteger(update.edited_message.message_id)
         && update.edited_message.message_id! > 0) {
-        const matches = journal.view.order.filter(turn => turn.accepted && turn.update < update.update_id
+        const matches = journal.view.order.filter(turn => turn.accepted && turn.update < historyUpdate
           && turn.thread === parsed.thread && (() => {
             try {
               const raw = JSON.parse(turn.raw) as TelegramUpdate;
               const message = raw.edited_message ?? raw.message;
-              return message?.message_id === update.edited_message!.message_id
+              return turn.id === previewTurnId(journal.view.genesis.bot, raw.update_id)
+                && message?.message_id === update.edited_message!.message_id
                 && message?.chat?.id === update.edited_message!.chat?.id
                 && message?.from?.id === update.edited_message!.from?.id;
             } catch { return false; }
@@ -6235,6 +6246,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         ? ports.secrets.custody({ text: parsed.text, raw: JSON.stringify(update), source: parsed.id }) : null;
       journal.append({ kind: 'intake', id: parsed.id, update: update.update_id, text: accepted ? custody?.text ?? parsed.text : '',
         raw: custody?.raw ?? JSON.stringify(update), accepted, cursor, at: ports.now(),
+        ...(journal.view.testCopy ? { historyUpdate } : {}),
         ...(custody?.custody ? { custody: custody.custody } : {}),
         ...(accepted && principal ? { writer: writerRecord(principal) } : {}),
         ...(accepted && parsed.thread !== undefined ? { thread: parsed.thread } : {}),
