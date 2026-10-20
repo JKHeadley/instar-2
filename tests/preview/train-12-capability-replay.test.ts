@@ -10,9 +10,11 @@ import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS } from '../../src/ass
 import { CLAIM_EVIDENCE_GUIDANCE } from './answer-provenance.js';
 import { readAnswer } from './answer-reading.js';
 
-// These provider captures predate train-41's requested-step verification guidance.
-// Preserve the captures; the dedicated guidance tests cover the added instruction.
-const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
+// These captures predate requested-work guidance and removal of the one-machine send restriction.
+// Reconstruct their historical prompt without changing the captured evidence or current abilities.
+const historicalSendRestriction = 'Irreversible outward sends remain outside the one-machine closed set. ';
+const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '')
+  .replace('The effect doorway reports', `${historicalSendRestriction}The effect doorway reports`);
 
 const evidence = JSON.parse(readFileSync(new URL('./fixtures/train-12-capability-2026-10-12.json', import.meta.url), 'utf8'));
 // Historical prompts remain immutable; translate self-description and add literal-copy and claim-evidence guidance.
@@ -43,6 +45,7 @@ async function rendered(value: string, question: string) {
 }
 
 it('retains live paraphrase and malformed-key failures beside the fixed-sample rendered replays', async () => {
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).not.toContain(historicalSendRestriction);
   expect(evidence.original.update).toBe(715675606);
   expect(evidence.original.judge).toMatchObject({ verdict: 'FAIL', reason: 'rendered tools/outbound sentence missing, altered or duplicated' });
   expect(evidence.original.answer.split('\n')).not.toContain(capabilitySentence(evidence.original.limits));

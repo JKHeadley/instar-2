@@ -12,6 +12,8 @@ import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS } from '../../src/ass
 
 // These provider captures predate train-41's requested-step verification guidance.
 // Preserve the captures; the dedicated guidance tests cover the added instruction.
+// Recorded captures predate the 2026-10-13 single-machine ruling; the current prompt drops only this sentence.
+const CLOSED_SET_SENTENCE = 'Irreversible outward sends remain outside the one-machine closed set. ';
 const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
 
 // Captured read-only from the failed forum answer copy, update 715675751. The
@@ -37,7 +39,7 @@ it('retains the delivered error and captured copying guidance while replay uses 
   expect(capture.instructions).toContain(LITERAL_COPY_INSTRUCTIONS);
   expect(capture.instructions.replace(historicalSelfDescription, SELF_DESCRIPTION)
     .replace(LITERAL_COPY_INSTRUCTIONS, `${LITERAL_COPY_INSTRUCTIONS}\n${CLAIM_EVIDENCE_GUIDANCE}`)).toBe(ANSWER_INSTRUCTIONS);
-  expect(capture.system).toBe(historicalToolsSystem);
+  expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(historicalToolsSystem);
   expect(LITERAL_COPY_INSTRUCTIONS).not.toContain('probe');
   expect(capture.runs).toHaveLength(3);
 });
