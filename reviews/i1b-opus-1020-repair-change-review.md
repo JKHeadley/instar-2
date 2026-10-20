@@ -13,7 +13,7 @@ Tier rationale: Repairs the owner consumer of the existing answer-token cap with
 Side effects: New subscription receipts include optional answerTokens. Legacy receipts omit it and preserve existing semantics and encoding. Malformed answer-token metadata cannot relax admission. outputTokens continues to include thinking for accounting and existing budget consumers.
 Undo and recovery: Revert the repair commits, rebuild, renew the resulting native certificate from its contract and regenerate register pins. This restores the prior false refusal. No durable schema or ownership migration is introduced; old receipts remain readable.
 Multi-machine posture: The calculation and validation are stateless and identical on each machine. No store, ownership transfer, replication demand or peer dependency changes. Native evidence is specific to the declared macOS Node 24.14.1 runtime.
-Layer below: Read production-provider, provider-invocation, ProviderObservation, observationCheck and provider-path receipt consumers; exercised the actual effect doorway, transport reservation and invocation owners with captured usage. All 100 tests in production-provider-subscription pass, including acceptance, exact boundary, oversize, malformed/absent thinking, invalid answer quantities, accessor nonexecution and charge refusal. tsc --noEmit and build pass. The native harness contract case passed before certificate renewal; final checks are recorded in the repair PROGRESS.
+Layer below: Read production-provider, provider-invocation, ProviderObservation, observationCheck and provider-path receipt consumers; exercised the actual effect doorway, transport reservation and invocation owners with captured usage. All 100 tests in production-provider-subscription pass, including acceptance, exact boundary, oversize, malformed/absent thinking, invalid answer quantities, accessor nonexecution and charge refusal. tsc --noEmit and build pass. The native harness contract case passed before certificate renewal; all 10 native-harness-contract tests then passed with the new certificate sha256:7caa6b1f52ff200c30483f076b4ebf8102ac926974bf81b0db788f84569c1c89. The delegated desk scripts regenerated the grounding inventory pins and register outputs; final checks are recorded in the repair PROGRESS.
 Bug class: live-path
 Bug evidence: tests/preview/fixtures/thinking-floor-opus-2026-10-20.json, recorded retrospective:0 of proofroom3-ps-20261020-131859. tests/assembly/production-provider-subscription.test.ts replays its exact usage through the adapter and owners. The full retrospective answer was not recovered; the numeric replay uses an explicit synthetic envelope. Group I live completion remains the combined build proof, not claimed here.
 Hook bypass: none
@@ -26,6 +26,8 @@ Prompt finding: 45e37ea2e9e9 | quoted-evidence | Existing unchanged fixture phra
 Prompt finding: 9781075d458e | quoted-evidence | Existing unchanged fixture phrase; numeric usage repair does not alter this prompt.
 Prompt finding: b1bb3946362d | quoted-evidence | Existing unchanged fixture phrase; numeric usage repair does not alter this prompt.
 
+
+Deferral: generated/register.json:1 | not-a-deferral=deterministically replayed register containing existing descriptions, not a new commitment
 
 ## Closing block
 
