@@ -97,7 +97,8 @@ it('audio, malformed metadata and unsupported media stay distinguishable', () =>
     kind: 'audio', fileId: 'audio-id', name: 'talk.mp3', size: 20 });
   expect(telegramInboundMedia({ voice: { file_id: '../secret', file_size: -1 } })).toMatchObject({ kind: 'voice', fileId: null, size: null });
   expect(telegramInboundMedia({ photo: [] })).toMatchObject({ kind: 'photo', fileId: null });
-  expect(telegramInboundMedia({ sticker: {} })).toBeNull();
+  expect(telegramInboundMedia({ sticker: {} })).toMatchObject({ kind: 'sticker', fileId: null });
+  expect(telegramInboundMedia({ location: {} })).toBeNull();
 });
 
 it('wrong sender, chat, sender-chat and a service event cause no file fetch or model call', () => withRoot(async root => {

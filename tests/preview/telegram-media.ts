@@ -9,7 +9,7 @@ import { isMediaAdmission, MEDIA_OPERATION, type MediaAdmission, type MediaDispa
 /** Structural metadata only. The intake owner still verifies the sender and captures
  * the original update before a custodian may fetch anything (Rules 28, 46, 100). */
 export interface TelegramInboundMedia {
-  readonly kind: 'photo' | 'voice' | 'audio' | 'document';
+  readonly kind: 'photo' | 'voice' | 'audio' | 'document' | 'video' | 'video_note' | 'animation' | 'sticker';
   readonly fileId: string | null;
   readonly name: string;
   readonly size: number | null;
@@ -17,7 +17,7 @@ export interface TelegramInboundMedia {
 export function telegramInboundMedia(message: unknown): TelegramInboundMedia | null {
   if (message === null || typeof message !== 'object' || Array.isArray(message)) return null;
   const fields = message as Readonly<Record<string, unknown>>;
-  const kind = (['photo', 'voice', 'audio', 'document'] as const).find(key => fields[key] !== undefined);
+  const kind = (['photo', 'voice', 'audio', 'document', 'video', 'video_note', 'animation', 'sticker'] as const).find(key => fields[key] !== undefined);
   if (!kind) return null;
   let value = fields[kind];
   if (kind === 'photo') {
