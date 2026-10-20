@@ -1168,7 +1168,7 @@ export type JournalRecord =
     rejected?: RejectedObligations;
     /** Completed obligation work whose result this answer carries to the operator (Rules 8, 92). */
     reports?: string[];
-    /** Rules 8, 56, 100: the one fixed reminder line (credential expiry stage or failing doorway check) this answer carries. */
+    /** Rules 8, 100: the one fixed reminder line (credential expiry stage, refused effect, sign-in) this answer carries; a recorded doorway line still replays. */
     notices?: ReplyNotice[];
     /** Model-proposed promises and fulfillments, validated as exact quotes of this answer (Rule 10). */
     promises?: PromiseProposal[]; fulfills?: FulfillmentProposal[];
@@ -5835,7 +5835,7 @@ export interface PreviewPorts {
   statusLines?(): readonly string[];
   /** Rule 44: the runner's installed update, carried into operator packets until a sent answer included it. */
   installedUpdate?(): object | null;
-  /** Rules 8, 56, 100: due reminder lines (credential expiry stages, a failing doorway check), most urgent first. */
+  /** Rules 8, 100: due reminder lines (credential expiry stages, refused effects, sign-ins), most urgent first. */
   /** Offered for the answer to turn `turn` (its own effect-doorway refusals ride first). */
   replyNotices?(turn?: string): readonly ReplyNotice[];
   /** Plan #442 (Rules 4, 86, 100): the secret values the runner holds (vault and host custody, the harness login, the

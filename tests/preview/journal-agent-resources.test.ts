@@ -131,6 +131,9 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     expect(reactions.every(row => row.reaction[0].emoji === '👀')).toBe(true);
     expect(sends.at(-1).text).toContain('Noted.');
     expect(sends.filter(row => row.text.includes('Noted.')), JSON.stringify(sends)).toHaveLength(2);
+    // Rules 56, 87, 88: the failing standing doorway check (the Jev route below) is the agent's own maintenance,
+    // reported on the status pull surface; it never rides an ordinary answer (walk-24 messages 1 and 3).
+    expect(sends.filter(row => row.text.includes('Model route check')), JSON.stringify(sends)).toEqual([]);
     // The model never received the secret; it saw the stored reference instead.
     const seen = readFileSync(prompts, 'utf8');
     expect(seen.length).toBeGreaterThan(0);

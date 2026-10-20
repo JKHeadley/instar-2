@@ -1,12 +1,11 @@
-// Rules 8, 56, 100: a due credential reminder and a failing doorway check ride the next operator answer as one line.
+// Rules 8, 100: a due credential reminder rides the next operator answer as one line.
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
-import { sessionLoginNotices, sessionLoginStatus, SESSION_LOGIN_FRESH_MS, credentialNotices, doorwayNotices, dueWithDelivery, openReplyNotices, remainingText, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
-import { installDoorways, observeExchange, standingDoorwayCheck, DOORWAY_FRESH_MS } from './doorway-map.js';
+import { sessionLoginNotices, sessionLoginStatus, SESSION_LOGIN_FRESH_MS, credentialNotices, dueWithDelivery, openReplyNotices, remainingText, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
 
 const key = new Uint8Array(32).fill(41);
 const T0 = 1790000000000, HOUR = 3_600_000, DAY = 24 * HOUR;
@@ -180,21 +179,6 @@ it('offers nothing when nothing is due', async () => {
     expect(w.journal.view.order[0]!.answerNotices).toBeUndefined();
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
-
-it('reports a failing doorway check once per verdict episode, and never a route the live verdict finds fresh', () => {
-  const installed = installDoorways(null, [{ id: 'preview-subscription', billing: 'subscription', model: 'm1', priceReason: 'none' }], T0);
-  const verified = observeExchange(installed, 'preview-subscription', 'm1', { ok: true, reportedModels: ['m1'], evidence: 'offline' }, T0);
-  const fresh = standingDoorwayCheck(verified, T0 + 1);
-  expect(doorwayNotices(fresh, T0 + 1)).toEqual([]);
-  const stale = standingDoorwayCheck(verified, T0 + DOORWAY_FRESH_MS + 1);
-  expect(doorwayNotices(stale, T0 + DOORWAY_FRESH_MS + 1)).toEqual([{ key: `doorway:${T0 + DOORWAY_FRESH_MS + 1}`,
-    line: 'Model route check: preview-subscription/m1 is stale.' }]);
-  // The check recorded stale, but this answer's exchange re-verified the route: nothing to report.
-  const reverified = observeExchange(stale, 'preview-subscription', 'm1', { ok: true, reportedModels: ['m1'], evidence: 'offline' },
-    T0 + DOORWAY_FRESH_MS + 2);
-  expect(doorwayNotices(reverified, T0 + DOORWAY_FRESH_MS + 2)).toEqual([]);
-  expect(doorwayNotices(null, T0)).toEqual([]);
 });
 
 it('accepts a recorded notice only when the answer says it verbatim', () => {
