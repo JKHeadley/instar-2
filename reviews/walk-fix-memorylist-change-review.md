@@ -15,7 +15,7 @@ Undo and recovery: revert the commit; the old sentence returns.
 Multi-machine posture: machine-local prompt text.
 Layer below: inspected the runner's memoryList replacement (unchanged, still guarded by operator origin, probe, lookup and validity) and the default-context-floor measurement.
 Bug class: unit
-Bug evidence: reproducer=tests/preview/default-context-floor.test.ts, tests/preview/journal-memory-list.test.ts (stub); real-shape replays in the unit PROGRESS
+Bug evidence: reproducer=tests/preview/default-context-floor.test.ts
 Hook bypass: none
 Convergence: none
 Decision: memorylist-prompt-only | keep the host's list path as the hallucination guard and narrow when the model asks for it; a 47-byte wording was dropped after it made Sonnet set the flag on run B's recorded input | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/walk-findings-1020-PROGRESS.md
