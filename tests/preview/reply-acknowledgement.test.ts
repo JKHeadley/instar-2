@@ -4,7 +4,7 @@ import { appendFileSync } from 'node:fs';
 import { mkdtempSync, realpathSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, unknownCallKeys,
+import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, unknownCallKeys, sendOutcomeCounts,
   type PreviewPorts } from './journal-test-worker.js';
 import { readAnswer } from './answer-reading.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -251,13 +251,17 @@ it('a fixed acknowledgement needs neither review availability nor a paid-call sl
   } finally { f.close(); }
 });
 
-it('cancels an acknowledgement when the answer arrives during its disclosure check', async () => {
+it.each([false, true])('cancels an acknowledgement when the answer arrives (intent already admitted=%s)', async admitted => {
   const f = fixture(), checking = pendingResult<void>(), disclosure = pendingResult<boolean>();
   let hold = false;
   const originalSend = f.ports.send;
   f.ports.sendAdmits = true;
   f.ports.send = async input => {
-    if (hold) { checking.resolve(); await disclosure.promise; }
+    if (hold) {
+      // Replication can await the peer after the durable intent was admitted.
+      if (admitted) input.admit?.();
+      checking.resolve(); await disclosure.promise;
+    }
     if (input.current && !input.current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
     input.admit?.(); return originalSend(input);
   };
@@ -266,6 +270,12 @@ it('cancels an acknowledgement when the answer arrives during its disclosure che
     hold = true; f.advance(10000); await worker.minimal(); await checking.promise;
     f.answer.resolve('Done.'); await new Promise<void>(done => setImmediate(done));
     hold = false; disclosure.resolve(true); await drain;
+    expect(f.sent.map(row => row.expectedText)).toEqual(['Done.']);
+    expect(f.journal.view.replies).toBe(admitted ? 2 : 1);
+    expect(sendOutcomeCounts(f.journal.view)).toMatchObject({ accepted: 1, refused: Number(admitted), unknown: 0 });
+    if (admitted) expect(sendOutcomeCounts(f.journal.view).lastRefusal).toMatchObject({
+      target: `held-notice:${f.journal.view.order[0]!.id}`, reason: 'acknowledgement cancelled' });
+    await worker.drain();
     expect(f.sent.map(row => row.expectedText)).toEqual(['Done.']);
   } finally { f.close(); }
 });

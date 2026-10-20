@@ -521,6 +521,11 @@ it('batches prepared and ordinary requests once each, keeping follow-up order an
 type RecordedPromptGroup = { requests: SessionWorkRequest[]; beforeBytes: number; hostContext: string; resultPath: string };
 const walkFixture = JSON.parse(readFileSync(new URL('../preview/fixtures/packet-once-walk-2026-10-14.json', import.meta.url), 'utf8')) as {
   source: string; sourceSha256: string; groups: RecordedPromptGroup[] };
+// Normalize only the intentionally changed application prologue against historical packet/digest baselines.
+const oldPrologue = 'Continue your conversation with your operator. You have the harness tools admitted by your current role. '
+  + 'Use them to answer and act within that role; a tool refusal remains a refusal. ';
+const currentPrologue = conversationSessionPrompt({ question: 'probe', context: '' }, '/result').split('This memory and work record')[0]!;
+const prologueGrowth = Buffer.byteLength(currentPrologue) - Buffer.byteLength(oldPrologue);
 const hostFacts = (text: string) => text.slice(text.lastIndexOf('\nHOST CLOCK ') + 1, text.indexOf('\n\nReturn the JSON object'));
 
 it('replays recorded walk requests through single and batched prompt construction without losing packet bytes', async () => {
@@ -580,7 +585,7 @@ it('replays recorded walk requests through single and batched prompt constructio
     expect(text).not.toContain(contextHeading);
     expect(occurrences(text, group.hostContext)).toBe(1);
     const afterBytes = Buffer.byteLength(text);
-    expect(group.beforeBytes - afterBytes).toBe(removedBytes);
+    expect(group.beforeBytes - afterBytes + prologueGrowth).toBe(removedBytes);
     measurements.push({ operations: group.requests.map(request => request.operation), beforeBytes: group.beforeBytes, afterBytes, removedBytes });
     await f.port.close();
   }
@@ -605,7 +610,7 @@ it('matches train-46 native deliveries for recorded single and batch requests on
     expect((await f.port.runBatch(requests)).every(result => result.state === 'complete')).toBe(true);
     const delivery = f.delivered.at(-1)!;
     const text = delivery.text.replace(hostFacts(delivery.text), group.hostContext).replace(delivery.resultPath, group.resultPath);
-    actual.push({ operations: requests.map(r => r.operation), digest: hash(text) });
+    actual.push({ operations: requests.map(r => r.operation), digest: hash(text.replace(currentPrologue, oldPrologue)) });
     expect(text).not.toContain('packetFromOperation');
     expect(text).not.toContain('Use the unchanged instructions');
   }
@@ -1076,5 +1081,25 @@ it.each(['complete', 'stop', 'failure'])('awaits asynchronous attachment protect
   expect(f.delivered).toHaveLength(mode === 'complete' ? 1 : 0);
   expect(closes).toBe(mode === 'failure' ? 0 : 1);
   if (mode === 'complete') expect(f.delivered[0]!.text).toContain('protected asynchronous attachment');
+  await f.port.close();
+});
+
+const emailWalk = JSON.parse(readFileSync(new URL('../preview/fixtures/email-gap-1017.json', import.meta.url), 'utf8'));
+it('replays the failed email turn: missing result stays uncertain, and the actual envelope gets the application contract', async () => {
+  const f = fixture();
+  // The captured native text was never a result-file write: do not promote terminal prose to a delivered answer.
+  expect(emailWalk.nativeText).toContain('no mail account connected, no MCP server');
+  expect(emailWalk.resultFile).toBeNull();
+  f.adapter.observe = async input => ({ observations: [{ kind: 'turn-end', delivery: input.delivery!.operation, state: 'completed' }], cursor: 1, complete: true });
+  const request = { ...f.request(emailWalk.update), question: emailWalk.prompt, context: '' };
+  expect(await f.port.run(request)).toMatchObject({ state: 'uncertain' });
+  const prompt = f.delivered[0]!.text;
+  expect(prompt).toContain(emailWalk.prompt);
+  expect(prompt).toContain('response for the Instar application');
+  expect(prompt).toContain('Use available account connectors when granted');
+  expect(prompt).toContain('cannot read it in this session');
+  expect(prompt).toContain('unsent email draft');
+  expect(prompt).toContain('Put that honest answer in the requested result file');
+  expect(prompt).toContain('never invent account contents or completed actions');
   await f.port.close();
 });

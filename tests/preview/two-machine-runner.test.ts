@@ -23,6 +23,37 @@ function answers(t) {
   return sends.filter(send => send.text !== REPLY_ACKNOWLEDGEMENT);
 }
 
+// Replies count durable intents, including an acknowledgement cancelled while its
+// intent is being replicated. Only accepted outcomes must equal physical sends.
+function expectSendAccounting(status, t) {
+  const cancelled = status.heldNotices.filter(notice => notice.state === 'refused');
+  for (const notice of cancelled) expect(notice.refusal).toBe('acknowledgement cancelled');
+  expect(status.heldNotices.every(notice => [1, 2].includes(notice.update))).toBe(true);
+  expect(new Set(status.heldNotices.map(notice => notice.update)).size).toBe(status.heldNotices.length);
+  expect(status).toMatchObject({
+    replies: answers(t).length + status.heldNotices.length,
+    unknownSends: 0,
+    sendOutcomes: { accepted: t.sends().length, refused: cancelled.length, unknown: 0 },
+  });
+}
+
+it('accounts for cancelled acknowledgement intents without accepting lost, duplicate or unknown sends', () => {
+  const reply = { kind: 'send', role: 'studio', text: 'Juniper is the marker.' };
+  const t = { sends: () => [reply] };
+  const status = { replies: 2, unknownSends: 0,
+    heldNotices: [{ update: 1, state: 'refused', refusal: 'acknowledgement cancelled' }],
+    sendOutcomes: { accepted: 1, refused: 1, unknown: 0 } };
+  expectSendAccounting(status, t);
+  expectSendAccounting({ replies: 1, unknownSends: 0, heldNotices: [],
+    sendOutcomes: { accepted: 1, refused: 0, unknown: 0 } }, t);
+  expect(() => expectSendAccounting(status, { sends: () => [] })).toThrow();
+  expect(() => expectSendAccounting(status, { sends: () => [reply, reply] })).toThrow();
+  expect(() => expectSendAccounting({ ...status, unknownSends: 1 }, t)).toThrow();
+  expect(() => expectSendAccounting({ ...status, heldNotices: [{ update: 1, state: 'refused',
+    refusal: 'conversation ownership lost before dispatch' }] }, t)).toThrow();
+  expect(() => expectSendAccounting({ ...status, heldNotices: [{ update: 1, state: 'UNKNOWN' }] }, t)).toThrow();
+});
+
 it('counts fast and acknowledged answers while rejecting duplicate or unanchored acknowledgements', () => {
   const reply = { kind: 'send', role: 'studio', text: 'Juniper is the marker.' };
   const acknowledgement = { kind: 'send', role: 'studio', text: REPLY_ACKNOWLEDGEMENT, replyTo: 101 };
@@ -80,7 +111,7 @@ it('two runners, one conversation: one reply; the peer goes away and the reply i
   expect((await t.view())).toMatchObject({ epoch: 1, unresolved: [], claims: t.sends().length });
   expect(t.polls('laptop')).toHaveLength(0);
   expect(studio.output.stderr).toContain('the other machine acknowledged the journal; replies are sent');
-  expect((await t.status('studio'))).toMatchObject({ replies: t.sends().length, unknownSends: 0 });
+  expectSendAccounting(await t.status('studio'), t);
   await t.stop(back); await t.stop(studio);
 }, 180000);
 
@@ -108,7 +139,9 @@ it('the owner machine is lost: the other machine takes over WITH the history, ho
   await t.stop(studio, 'SIGKILL');
   await until('the standby takes over with the history', () => laptop.output.stderr.includes('owner: epoch 2; history adopted'), 60000);
   await until('the adopted journal is readable', async () => (await t.status('laptop'))?.turns === 1);
-  expect(await t.status('laptop')).toMatchObject({ turns: 1, replies: t.sends().length, unknownSends: 0,
+  const adopted = await t.status('laptop');
+  expectSendAccounting(adopted, t);
+  expect(adopted).toMatchObject({ turns: 1, unknownSends: 0,
     sharedHistory: { lineage: { epoch: 2, adopted: { machine: 'studio', epoch: 1 } } } });
 
   const sendsBefore = t.sends();
@@ -134,7 +167,8 @@ it('the owner machine is lost: the other machine takes over WITH the history, ho
   await until('the first machine serves again', () => returned.output.stderr.includes('owner: epoch 3; history adopted'), 60000);
   await until('its journal holds both exchanges', async () => (await t.status('studio'))?.turns === 2);
   const final = await t.status('studio');
-  expect(final).toMatchObject({ turns: 2, replies: t.sends().length, unknownSends: 0 });
+  expectSendAccounting(final, t);
+  expect(final).toMatchObject({ turns: 2, unknownSends: 0 });
   expect(final.sharedHistory.setAside).toHaveLength(1);
   expect(existsSync(join(t.rootOf('studio'), final.sharedHistory.setAside[0]))).toBe(true);
   await pause(3000);
