@@ -28,8 +28,9 @@ it('uses review headroom only when a full-context reply check is installed', () 
       maxTurns: 30, maxBytes: 32768, cursor: 0 });
     // cbuild-2: the prepared envelope now carries the mind-held instructions, so the history that fits
     // without review headroom but not with it is smaller (measured 60-80 repeats; was 100).
+    // md-briefing-1020: a Telegram turn's reply-format line (141 bytes) moved the window down by one repeat.
     for (let turn = 1; turn <= 18; turn++) {
-      const text = `Turn ${turn}: ${'field notes '.repeat(70)}`;
+      const text = `Turn ${turn}: ${'field notes '.repeat(69)}`;
       journal.append({ kind: 'intake', id: `telegram:12345678:update:${turn}`, update: turn,
         text, raw: JSON.stringify({ message: { from: { id: 7654321 }, date: Math.floor(now / 1000), text } }),
         accepted: true, cursor: turn + 1, at: now });

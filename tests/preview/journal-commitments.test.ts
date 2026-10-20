@@ -7,7 +7,7 @@ import { setImmediate as yieldTurn } from 'node:timers/promises';
 import { spawnSync } from 'node:child_process';
 import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { ANSWER_INSTRUCTIONS, MEMORY_LOOKUP_INSTRUCTIONS, MIND_RULES, SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, MEMORY_LOOKUP_INSTRUCTIONS, MIND_RULES, REPLY_FORMAT_GUIDANCE, SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
 import { readRuns, selfState, selfStateSource } from './self-state.js';
 
 const key = new Uint8Array(32).fill(11);
@@ -585,10 +585,11 @@ it('the live script reaches compaction and the question carries the open commitm
     const start = parts(prepared[0]!), after = parts(prepared.at(-1)!);
     expect(start.packet.historyMode).toBe('complete');
     expect(after.packet.historyMode).toBe('summary-plus-recent');
-    expect(start.instructions).toBe(ANSWER_INSTRUCTIONS);
+    // md-briefing-1020: a Telegram turn ends its instructions with the Telegram reply-format line.
+    expect(start.instructions).toBe(`${ANSWER_INSTRUCTIONS}\n${REPLY_FORMAT_GUIDANCE.telegram}`);
     expect(start.packet.memoryLookup).toBeUndefined();
     expect(after.packet.memoryLookup).toBe('offered');
-    expect(after.instructions).toBe(`${start.instructions}\n${MEMORY_LOOKUP_INSTRUCTIONS}`);
+    expect(after.instructions).toBe(`${ANSWER_INSTRUCTIONS}\n${MEMORY_LOOKUP_INSTRUCTIONS}\n${REPLY_FORMAT_GUIDANCE.telegram}`);
     const lasting = (packet: typeof start.packet) => packet.sources.filter(item => item.id.startsWith('purpose:') || item.id === 'rules:87' || item.id === 'capability-note');
     expect(lasting(start.packet).map(item => item.id)).toEqual(['purpose:purpose', 'purpose:coherency', 'rules:87', 'capability-note']);
     expect(lasting(after.packet)).toEqual(lasting(start.packet));

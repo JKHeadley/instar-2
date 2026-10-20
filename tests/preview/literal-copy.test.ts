@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, SELF_DESCRIPTION } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, REPLY_FORMAT_GUIDANCE, SELF_DESCRIPTION } from './briefing.js';
 import { CLAIM_EVIDENCE_GUIDANCE } from './answer-provenance.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
@@ -69,7 +69,7 @@ it('delivers each real corrected output through both answer readers once, retain
       expect(sent).toEqual(['probe-7d09d28a']);
       expect(prepared).toHaveLength(1);
       expect(JSON.parse(prepared[0]!).messages.find((m: { role: string }) => m.role === 'instructions').content)
-        .toBe(ANSWER_INSTRUCTIONS);
+        .toBe(`${ANSWER_INSTRUCTIONS}\n${REPLY_FORMAT_GUIDANCE.telegram}`);
       journal.close(); journal = openPreviewJournal(path, key);
       await worker().drain();
       expect(sent).toHaveLength(1);
@@ -81,7 +81,7 @@ it('delivers each real corrected output through both answer readers once, retain
       const envelope = prepareJournalEnvelope({ question: capture.original.question, context: probe.context,
         id: 'telegram:12345678:update:715675752' }, capture.model, 'grant:preview', now, 131072);
       expect(JSON.parse(envelope).messages.find((m: { role: string }) => m.role === 'instructions').content)
-        .toBe(ANSWER_INSTRUCTIONS);
+        .toBe(`${ANSWER_INSTRUCTIONS}\n${REPLY_FORMAT_GUIDANCE.telegram}`);
     } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
   }
 });
