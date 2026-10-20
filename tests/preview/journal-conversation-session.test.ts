@@ -944,8 +944,9 @@ it('tells the operator once per login outage, never again in that episode or aft
     expect(first.held).toBeUndefined(); // kept, not refused or relabelled
     f.worker.intake([update(2, 'Second question')]); await f.worker.drain(); await f.worker.drain();
     expect(f.sent).toEqual([notice]);
-    await f.restart(); await f.worker.drain(); await f.worker.drain();
+    f.journal.compact(); await f.restart(); await f.worker.drain(); await f.worker.drain();
     expect(f.sent).toEqual([notice]); expect(f.counts().calls).toBe(0);
+    expect(f.journal.view.order[0]!.loginOutageNotice?.sent).toBe(1); // survives compaction and restart
     // Capacity returns at the known reset; the kept messages are answered through the ordinary path.
     clock = reset + 1000; full = false; f.advance(200); await f.port.maintain();
     for (let n = 0; n < 4; n++) { await f.worker.drain(); await f.port.maintain(); }
