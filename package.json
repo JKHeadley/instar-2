@@ -35,9 +35,11 @@
     "register:generate": "npm run build && node scripts/build-register.mjs",
     "register:check": "node scripts/build-register.mjs --check"
   },
+  "dependencies": {
+    "typescript": "~5.9.3"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "~5.9.3",
     "vitest": "~3.2.4"
   }
 }
