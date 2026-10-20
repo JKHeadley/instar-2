@@ -9,7 +9,7 @@ Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake
 Operator questions: none
 Suggested tier: ordinary
 Declared tier: ordinary
-Tier rationale: One missing path in the existing test platform inventory; no runtime or model-facing change.
+Tier rationale: One missing path in the existing test platform inventory, with the inline runIf form added to the existing detector fixture; no runtime or model-facing change.
 Side effects: Split Linux runs exclude the whole Telegram files test file; split Mac runs include it. Unsplit runs retain the same tests.
 Undo and recovery: Revert the inventory addition if the file ceases to need macOS, as enforced by the existing stale-entry check.
 Multi-machine posture: Test scheduling only: Linux and Mac halves jointly cover the suite. No production state or coordination changes.
@@ -18,7 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/platform/macos-only.test.ts
 Hook bypass: none; core.hooksPath unset and the common hooks directory contains only sample hooks.
 Convergence: none
-Decision: train-89-repair-A | Add the missing path to the existing sorted inventory because the file contains a real macOS ACL proof; retain the detector and all assertions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-89-repair-201018-PROGRESS.md
+Decision: train-89-repair-A | Add the missing path to the existing sorted inventory because the file contains a real macOS ACL proof; retain the detector and all assertions and cover the actual inline runIf form in its fixture. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-89-repair-201018-PROGRESS.md
 Verification: Run the platform inventory tests, typecheck, architecture/lint, register check, change-review check and the required portable pinned tests; outcomes are recorded in the report.
 
 simplestRobustRoute: This is the simplest robust route: add one missing inventory entry, using existing detection and split scheduling with no new mechanism. The existing equality test detects both missing and stale entries; no autonomous completion claim is made.
