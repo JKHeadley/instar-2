@@ -7,9 +7,9 @@ Outcome: A fresh macOS or Linux machine gets Instar's role setup from one line, 
 Affected rules: 5, 30, 34, 37, 44, 49, 62, 70, 74, 78, 84, 101, 113, 116
 Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake are unchanged. Setup still grants no account, channel or paid use and records the monthly limit only.
 Operator questions: none
-Suggested tier: standard
-Declared tier: standard
-Tier rationale: One dependency moves from dev to run time and the README gains an install section; no product logic changes.
+Suggested tier: significant
+Declared tier: significant
+Tier rationale: User-facing install path. One dependency moves from dev to run time and the README gains an install section; no product logic changes.
 Side effects: Installing the package as a dependency now also installs typescript (already present in every development install). The repository's own installs, tests and builds are unchanged because npm installs dependencies and devDependencies alike there. No runtime behaviour, record or authority changes.
 Undo and recovery: Revert the commit. Existing agent roots are untouched; a reverted one-liner fails again at module load, before any answer is recorded.
 Multi-machine posture: Machine-local, deliberately: the install places code and the setup records on the machine it runs on, as setup already did. No new state.
