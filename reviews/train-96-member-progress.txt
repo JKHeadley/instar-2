@@ -1,0 +1,118 @@
+# clean-install-1020 PROGRESS
+- 06:39 started; constitution (00, 01) read in full; INSTANCE-ONLY, items.json holds, LIVE-PATH-PLAN phase two and decision 5 read. Next: find the one-line install path and run it on a clean target.
+- 06:41 clean run on the Studio (fresh HOME /tmp/ci-1020/home, anonymous clone of public JKHeadley/instar-2 train-90): clone ok, npm ci ok, `node bin/instar2.mjs setup` ok (4 answers recorded, effect-policy.json + mcp.json). Hands needed: (1) there is no one-line install at all; you must know to git clone + npm ci + run bin/instar2.mjs, and `npm i -g instar2` installs an UNRELATED stranger's npm package (maintainer xieyuheng); (2) after setup nothing exists for sign-in, channel or start: the only runner is tests/preview/journal-agent.mjs with ~20 flags, sealed authority/activation records and a hand-made harness OS user. Fixing (1) first as a unit; (2) is design milestones 1-4.
+- 06:45 FIRST PROVEN STEP: the one line `npx github:JKHeadley/instar-2 setup` now completes on a clean macOS home (fresh HOME, empty npm cache, anonymous GitHub download) at pushed e59625d4; before the fix (train-90 e44d3ce1) the same line failed: ERR_MODULE_NOT_FOUND 'typescript' from scripts/slice-ts-loader.mjs (dev-only dependency; git installs get dependencies only). Rerun says "Already set up". Next: change review, lint/register/READY gate, then the plan for the rest.
+- Decision clean-install-1020-A: use npm's existing git-package install (the 1.x `npx instar` shape) instead of writing a new install script; no new machinery, same on macOS and Linux.
+- Decision clean-install-1020-B: do not publish to npm or claim an npm name (an outward release act, not mine); the README warns that the npm package `instar2` is someone else's.
+
+## Plan (ordered), as of 2026-10-20 07:05
+
+### What a fresh machine gets today
+1. One line: `npx github:JKHeadley/instar-2 setup` (works after this unit; failed before). Same on macOS and Linux: it uses npm's own git install, no OS-specific step.
+2. Role setup: four answers recorded (role, starting trust, monthly limit, sensitive matters) in `~/.instar2`.
+3. Then nothing. No command signs in a subscription, connects Telegram, or starts the agent. The only runner is the test driver `tests/preview/journal-agent.mjs run` with ~20 flags, desk-sealed authority/activation records and a hand-made harness OS user (see `lanes/runner-group-run.sh`). This is docs/14 "Fresh installation" milestones 1-4, all "to build".
+
+### INSTANCE-ONLY rows
+| # | Row | Belongs in | What it waits on |
+|---|---|---|---|
+| 1 | Forum group + bot admin | installer | milestone 2 (pairing: Telegram login on the phone, bot DM); wizard checks the bot is admin |
+| 2 | Carry private-chat history into the group | product (1.x-to-2.0 migration); not needed on a fresh machine | a migration step after milestone 4 |
+| 3 | Group launcher and its flags | installer (launcher generated from admission) | milestone 4 |
+| 4 | launchd keeper | installer (launchd on macOS, systemd on Linux) | milestone 4 (`install-*-first-exchange`) |
+| 5 | Cap raises | product (default caps + plain raise path) | overlaps strong-agent-1020 (caps to 1.x levels) |
+| 6 | Claude login in custody | installer + product (login pool) | milestones 1 (custody) and 3-4 (first grant, login admission) |
+| 7 | Harness profile + managed configuration | product + installer profile derivation | milestones 1 and 4 |
+| 8 | Activation/authority records sealed per build | product (grants follow the build) + installer (first grant) | milestone 3 = install-firstgrant-1013 |
+| 9 | Pickup restart guard | desk-only (interim) | pickup fix live |
+| 10 | Chat export for the observer | desk-only | none |
+| 11 | Session-work activation line | product (on by default) | grants-follow-build (row 8) |
+| 12 | 80% login usage warning | product | none; ordinary product unit |
+| 13 | Proof-room queues off | desk-only | none |
+| 14 | Answer checks in the test group | desk-only | none |
+| 15 | MCP account access | product + installer | product unit (pass the reviewed MCP list) |
+New row (found today, fixed by this unit): "one-line install" did not exist; installer.
+
+### Held items and what blocks each today
+- install-firstgrant-1013 (hold since 10-13 09:15): the stated reason is stale. The design it waited for (install-bootstrap-design-1013, PR 162) MERGED 2026-10-13 18:18 and is in train-90. What blocks it now is order: docs/14 says the first bounded unit is the broker isolation on each OS, then the setup supervisor, custody, pairing/genesis, and only then the first grant. Recommend: re-scope it as milestone 3 and start `install-macos-broker` first.
+- install-broker-linux-1013 (hold since 10-14): one review MUST-FIX open: the foreground broker launch (`scripts/custody-platform/linux.mjs:161-169`, `setpriv`) sets no memory/process ceilings (Rule 60). Needs a Linux host; the Studio has no Linux runtime (no docker/podman/lima). Desk: Mama PC slot.
+- linux-limit-launcher-1013 (hold since 10-14): one review MUST-FIX: `tests/integration/limit-launcher.test.ts:24` fixture's NPROC ceiling of 96 fails when the user already has many tasks; reproduced on the macOS Studio, so it can be repaired on the Studio, no Mama needed.
+- linux-test-portability-1013 (hold since 10-14): unit review OK at 9b5bec8f; held only because train-31 was shelved. Desk action: re-batch onto the current live base.
+- All three Linux heads are on train-18 and not in train-90; each needs a merge of the current base.
+
+### Next units, in order
+1. desk: re-batch linux-test-portability-1013 (no builder work).
+2. linux-limit-launcher-1013 fixture repair on the Studio (small).
+3. install-broker-linux-1013 resource-ceiling repair on the Mama PC.
+4. install-macos-broker, then supervisor, custody, pairing/genesis, first grant (install-firstgrant-1013), login + first exchange; each with its Linux twin (docs/14 build-unit table).
+5. After each, re-run the clean install from scratch and move the "then nothing" line one step later.
+
+### Finding for the desk/operator (not changed by me)
+`sudo -n -l` on the Studio: the desk user `dabombstudio` has `(ALL) NOPASSWD: ALL`. Any process running as that user (the desk, and his agent's runner) can become root and administer the separate harness user and any custodian, so on this host the "separate OS user the agent cannot alter" boundary of docs/14 and the purpose's "agent never administers its own safeguards" do not hold for processes under this user. docs/14 requires fresh authentication for the helper (no NOPASSWD). This is machine configuration and the operator's call; the broker milestone cannot claim its boundary on this host while it stands.
+
+## This unit: clean-install-1020 (one-line install)
+
+Branch clean-install-1020 from origin/train-90 (e44d3ce1). Commits:
+f3d1e15a clean-install-1020: typecheck the registered-loader match
+dd09d418 clean-install-1020: tier per Rule 48
+a2fe2c9e clean-install-1020: change review and recorded live one-line install
+e59625d4 One-line install: typescript is a run-time dependency of setup
+
+Changed: package.json (typescript moves from devDependencies to dependencies), package-lock.json (same, 3 lines), README.md (Install section: the one line, what it does, what it does not do yet, the unrelated npm name), tests/preview/one-line-install.test.ts (5 tests), tests/preview/fixtures/one-line-install-2026-10-20.txt (recorded live before/after), reviews/clean-install-1020-change-review.md.
+
+### ELI16
+Instar's setup program is written partly in TypeScript, and it brings its own translator for TypeScript (a package called `typescript`). The project listed that translator as "only needed by developers". When someone installs straight from GitHub with one line, npm skips the developer-only packages, so the setup program started, looked for its translator, didn't find it, and crashed before asking anything. I moved the translator to the "needed to run" list. Now the one line downloads Instar, asks the four setup questions, and saves the answers; running it again says it is already set up. A test now checks that everything the setup program loads is on the "needed to run" list, so this can't quietly break again. The README now shows the one line, says honestly that signing in, connecting Telegram and starting the agent aren't built yet, and warns that the npm package called `instar2` belongs to a stranger.
+
+### Rules this touches
+- Rule 116 (simplest robust route): no new install script or machinery; npm's existing git install (the 1.x `npx instar` shape) plus one dependency declaration.
+- Rule 30 / Mac and Linux: the path has no OS branch; it is npm + node on both. Linux not yet run (see below).
+- Rule 34 / 37: reproducer test with both sides (the real manifest passes; a dev-only manifest is refused naming typescript), suite targets green.
+- Rule 62 / 70 (user-facing, live evidence): the real one line run on a clean macOS home before (failed) and after (completed), recorded in the fixture.
+- Rule 5 / 84 / 78 (documentation, awareness, no manual work): the README states the line and its limits.
+- Rule 4 (a document may not assert what it cannot keep current): the README claims only what was run; the missing steps are named as to build.
+- Rule 44 (migration parity): no installed-file change; existing agents are unaffected.
+- Rule 113: machine-local, deliberately.
+- Rule 74 / 48 / 102: change review written, tier significant, decisions A and B named above.
+- Rule 101: no hook bypass; `git config --get core.hooksPath` empty, hooks dir holds samples only.
+- Floors (secrets, spend cap, stop, no duplicate sends, durable intake): unchanged; setup grants no account, channel or paid use.
+No conflict between the constitution and this task.
+
+### Verification (final head)
+- Live: one line on a clean macOS home: before e44d3ce1 ERR_MODULE_NOT_FOUND typescript (exit 1); after e59625d4 completes, records role/limit/sensitive, rerun "Already set up" (exit 0).
+- `npx vitest run tests/preview/one-line-install.test.ts tests/preview/onboarding.test.ts`: 2 files, 13 tests passed.
+- READY pinned tests (`ready-gate-tests.py`, 8 files): 119 passed, exit 0 (06:56-07:01).
+- `npm run typecheck`: exit 0. `node scripts/check-architecture.mjs`: passed.
+- `node scripts/check-change-review.mjs check`: exit 0.
+- `npm run lint` / `npm run register:check`: architecture passes; the only finding is "source wiring pin trails package.json" / "P3-NF-01: source pin trails package.json", the desk-owned register replay (charter item 7 exception). Not hand-edited.
+- `git diff --check origin/train-90...HEAD` and `git diff --check`: empty.
+- Model-facing replay (observer #106): not applicable, no prompt/parser/verdict change.
+
+### Unrun or host-dependent checks
+- Linux: the same one line on the Mama PC (WSL) from a fresh HOME: `npx -y github:JKHeadley/instar-2#clean-install-1020 setup /tmp/<fresh>/.instar2` with four answers. The Studio has no Linux runtime. Desk to run.
+- Full suite: not run (targeted plus READY set only).
+- Register replay for the package.json pin: desk.
+
+### git status --porcelain
+```
+```
+### git show --stat (all pushed commits)
+```
+f3d1e15a82c409657736dde843309c0a914df1c0 clean-install-1020: typecheck the registered-loader match
+ tests/preview/one-line-install.test.ts | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+dd09d418237cb70d459ddfbafa108ad5a6d4f8f4 clean-install-1020: tier per Rule 48
+ reviews/clean-install-1020-change-review.md | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+a2fe2c9ec15ef5a9389669c764da42dce83aa5f4 clean-install-1020: change review and recorded live one-line install
+ reviews/clean-install-1020-change-review.md        | 27 ++++++++++++++++++
+ .../fixtures/one-line-install-2026-10-20.txt       | 32 ++++++++++++++++++++++
+ 2 files changed, 59 insertions(+)
+e59625d412470e3d5f7ef0939ec079f90888af5b One-line install: typescript is a run-time dependency of setup
+ README.md                              | 21 +++++++++++
+ package-lock.json                      |  5 +--
+ package.json                           |  4 ++-
+ tests/preview/one-line-install.test.ts | 65 ++++++++++++++++++++++++++++++++++
+ 4 files changed, 92 insertions(+), 3 deletions(-)
+```
+
+Pushed head: f3d1e15a82c409657736dde843309c0a914df1c0 (branch clean-install-1020)
+READY 2026-10-20T07:02-07:00
