@@ -15,7 +15,7 @@ Undo and recovery: revert the commit; two back-to-back tries return. Recorded ou
 Multi-machine posture: machine-local send funnel; no shared state or ownership change.
 Layer below: inspected the bridge's connectionNeverOpened/observedNeverSent proof and its own inner retry (unchanged), classifyTelegramSend not-sent mapping, and the refused-notice path.
 Bug class: unit
-Bug evidence: reproducer=tests/preview/delivery-failure-notice.test.ts (recorded reason 'ETIMEDOUT/connect'; two and three outages now deliver, four still refuse; an unknown outcome is never retried)
+Bug evidence: reproducer=tests/preview/delivery-failure-notice.test.ts
 Hook bypass: none
 Convergence: none
 Decision: connect-retry-in-dispatch | widen the existing bounded loop rather than add a durable re-dispatch queue; a later redispatch would need a new intent state and is a larger unit | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/walk-findings-1020-PROGRESS.md
