@@ -180,6 +180,16 @@ export const SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT = "You are an Instar 2.0 agent, 
  * 2229-8192 output tokens under this same value). Named here so a consumer whose answer must fit can
  * budget its ask against the bound instead of repeating a number. */
 export const SUBSCRIPTION_MAX_OUTPUT_TOKENS = 2048;
+/** The output tokens the cap above bounds: the answer's, so the frame's output less the thinking it reports. A model that
+ * rejects disabled thinking (Opus 5.5) keeps a 2048-token thinking budget under MAX_THINKING_TOKENS=0, so counting its
+ * thinking refused an answer of 1238 tokens at 3286 (proof room three, 2026-10-20, retrospective:0) and no narrowing of
+ * the ask could ever fit. A thinking count that is not a whole number within the output proves nothing: all is counted. */
+export function subscriptionAnswerTokens(usage: { output_tokens: number; output_tokens_details?: unknown }): number {
+  const details = usage.output_tokens_details, thinking = details && typeof details === 'object'
+    ? (details as { thinking_tokens?: unknown }).thinking_tokens : undefined;
+  return typeof thinking === 'number' && Number.isSafeInteger(thinking) && thinking >= 0 && thinking <= usage.output_tokens
+    ? usage.output_tokens - thinking : usage.output_tokens;
+}
 export function subscriptionInvocationPolicy(model: string) {
   return Object.freeze({ args: Object.freeze(['--safe-mode', '--print', '--input-format', 'text', '--output-format', 'json',
     '--system-prompt', SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT,
@@ -661,7 +671,7 @@ export function createClaudeCodeSubscriptionRoute(input:
           && typeof frame.session_id === 'string'
           && frame.session_id.length > 0 && frame.session_id.length <= 256
           && reportedUsage !== null
-          && frame.usage.output_tokens <= policy.maxTokens, 'subscription result refused');
+          && subscriptionAnswerTokens(frame.usage) <= policy.maxTokens, 'subscription result refused');
         const usage = reportedUsage;
 
         if (frame.is_error === true) {

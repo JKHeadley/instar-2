@@ -22,7 +22,7 @@ const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const hash = (value: unknown) => canonical(value).kind === 'Success' ?
   (canonical(value) as { kind: 'Success'; value: { hash: string } }).value.hash : '';
-function fixture(options: { descriptor?: boolean; status?: object; terminal?: string; pending?: boolean; resultBytes?: number; rawBytes?: number; tokens?: number; invalidUtf8?: boolean; malformedAuth?: boolean; conversation?: boolean } = {}) {
+function fixture(options: { descriptor?: boolean; status?: object; terminal?: string; pending?: boolean; resultBytes?: number; rawBytes?: number; tokens?: number; thinking?: unknown; invalidUtf8?: boolean; malformedAuth?: boolean; conversation?: boolean } = {}) {
   const f = factsFixture(), root = realpathSync(mkdtempSync(join(tmpdir(), 'subscription-offline-'))); roots.push(root);
   const home = join(root, 'home'), configDirectory = join(root, 'config'), workingDirectory = join(root, 'work');
   for (const path of [home, configDirectory, workingDirectory]) mkdirSync(path, { mode: 0o700 });
@@ -37,7 +37,8 @@ function fixture(options: { descriptor?: boolean; status?: object; terminal?: st
   const answer = JSON.stringify({ ...f.decisionInput(), conclusion: { ...f.decisionInput().conclusion, subject: 'preview-stage2-answer', predicate: 'answer-text', value: 'café <世界> &' } });
   const result = options.resultBytes ? answer + ' '.repeat(options.resultBytes - Buffer.byteLength(answer)) : answer;
   const terminal = options.terminal ?? JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result,
-    session_id: 'synthetic-call', usage: { input_tokens: 10, output_tokens: options.tokens ?? 20 }, total_cost_usd: 1.25 });
+    session_id: 'synthetic-call', usage: { input_tokens: 10, output_tokens: options.tokens ?? 20,
+      ...(options.thinking === undefined ? {} : { output_tokens_details: { thinking_tokens: options.thinking } }) }, total_cost_usd: 1.25 });
   const frame = options.rawBytes ? terminal + ' '.repeat(options.rawBytes - Buffer.byteLength(terminal)) : terminal;
   const raw = options.invalidUtf8 ? Buffer.from([0xff, 0xfe]) : Buffer.from(frame);
   const source = `#!${process.execPath}\nimport {appendFileSync} from 'node:fs';
@@ -227,6 +228,17 @@ for (const tokens of [2048, 2049]) it(`enforces ${tokens} observed output tokens
   expect(observed.usage.outputTokens).toBe(tokens);
   expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
 });
+// i1b-opus-1020: a model that rejects disabled thinking keeps a 2048-token thinking budget under MAX_THINKING_TOKENS=0,
+// so the recorded Opus retrospective (3286 output tokens, 2048 of them thinking, tests/preview/fixtures/
+// thinking-floor-opus-2026-10-20.json) was refused although its answer fitted. The cap is checked on the answer.
+for (const [tokens, thinking, state] of [[3286, 2048, 'complete'], [4096, 2048, 'complete'], [4097, 2048, 'uncertain'],
+  [3286, -1, 'uncertain'], [3286, 5000, 'uncertain'], [3286, '2048', 'uncertain']] as const)
+  it(`checks the output cap on answer tokens: ${tokens} output with ${String(thinking)} thinking is ${state}`, async () => {
+    const f = fixture({ tokens, thinking });
+    const observed = await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds);
+    expect(observed.state).toBe(state);
+    expect(observed.usage.outputTokens).toBe(tokens);
+  });
 it('keeps available usage on uncertain conversation results and leaves unavailable usage null', async () => {
   for (const [terminal, outputTokens] of [
     [JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'candidate',

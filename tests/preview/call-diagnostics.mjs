@@ -1,3 +1,4 @@
+import { subscriptionAnswerTokens } from '../../src/assembly/production-provider.js';
 import { redact } from '../../src/recall/redact.js';
 
 import { recordPhaseTiming } from './phase-timing.js';
@@ -16,9 +17,11 @@ export function subscriptionCallOutcome(result, promptBytes, elapsedMs, maxToken
   const isError = type === 'result' && typeof object.is_error === 'boolean' ? object.is_error : null;
   const tokens = object?.usage?.output_tokens;
   const outputTokens = Number.isSafeInteger(tokens) && tokens >= 0 ? tokens : null;
+  // The cap bounds the answer: reported thinking is not part of it (subscriptionAnswerTokens, i1b-opus-1020).
+  const answerTokens = outputTokens === null ? null : subscriptionAnswerTokens(object.usage);
   const code = Number.isSafeInteger(result.code) && result.code >= 0 ? result.code : null;
   const localLimit = RESOURCE_LIMITS.includes(result.localLimit) ? result.localLimit
-    : !result.limited && type === 'result' && outputTokens !== null && outputTokens > maxTokens ? 'output-cap'
+    : !result.limited && type === 'result' && answerTokens !== null && answerTokens > maxTokens ? 'output-cap'
     : !result.limited && type === 'result' && typeof object.result === 'string'
       && Buffer.byteLength(object.result) > maxOutputBytes ? 'size' : null;
   // Capture at the physical boundary, before a downstream parser can reject an otherwise
