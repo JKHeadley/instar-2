@@ -29,6 +29,8 @@ const decode = (run: Capture) => {
   return reading.value;
 };
 
+// Recorded captures predate the 2026-10-13 single-machine ruling; the current prompt drops only this sentence.
+const CLOSED_SET_SENTENCE = 'Irreversible outward sends remain outside the one-machine closed set. ';
 it('delivers the same read guidance on all tool routes without claiming tools on text-only routes', () => {
   for (const prompt of [SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, SUBSCRIPTION_NATIVE_SYSTEM_PROMPT, CODEX_TOOLS_SYSTEM_PROMPT])
     expect(prompt.split(READ_BEFORE_ANSWER)).toHaveLength(2);
@@ -99,7 +101,7 @@ it('replays recorded tool results and final replies under their exact historical
   expect(captured.runs.map(run => run.name)).toEqual(['requested-verification', 'no-verification-needed']);
   for (const run of captured.runs) {
     // The recorded run predates only this full-set clause. Preserve the capture verbatim.
-    expect(run.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(
+    expect(run.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(
       COMPLETE_REQUESTED_WORK, ''));
     const answer = decode(run);
     const trace = toolTrace(run.admission.trim().split('\n').filter(Boolean));
@@ -137,7 +139,7 @@ it('replays real web calls and cited answers for the recorded comparison and a p
   expect(captured.original.review.verdict).toBe('pass'); // the original false-clear is retained as evidence
   for (const name of ['compare', 'plain-read']) {
     const run = captured.runs.find(item => item.name === name)!;
-    expect(run.system).toBe(capturedSystem);
+    expect(run.system.replace(CLOSED_SET_SENTENCE, '')).toBe(capturedSystem);
     const text = decode(run);
     const trace = toolTrace(run.admission.trim().split('\n'));
     expect(trace.consistent).toBe(true);
@@ -150,7 +152,7 @@ it('replays real web calls and cited answers for the recorded comparison and a p
 
 it('replays a real failed lookup without inventing the missing report', () => {
   const run = fixture().runs.find(item => item.name === 'failed-read')!;
-  expect(run.system).toBe(capturedSystem);
+  expect(run.system.replace(CLOSED_SET_SENTENCE, '')).toBe(capturedSystem);
   const text = decode(run);
   const trace = toolTrace(run.admission.trim().split('\n'));
   expect(trace.calls.some((call: { tool: string }) => ['WebFetch', 'Bash'].includes(call.tool))).toBe(true);
