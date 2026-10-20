@@ -1065,7 +1065,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['phase-timing', 'group-carry', 'request-transfer', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1088,6 +1088,10 @@ export type JournalRecord =
   // Non-additive: an older writer must not discard the no-repeat expectation.
   | { kind: 'media-claim'; id: string; digest: string; at: number }
   | { kind: 'media-custody'; id: string; result: MediaCustodyResult; at: number }
+  /** Non-additive (test-copy-1020): the explicit, recorded rebind of a test copy onto a test bot and the operator's own
+   * private chat on it, naming the source root and the exact journal head it was copied from. Once per journal. */
+  | { kind: 'test-copy'; bot: string; chat: string; cursor: number; grant?: string; configurationDigest?: string;
+    source: TestCopySource; at: number }
   | { kind: 'genesis'; bot: string; chat: string; operator: string; forum?: true; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number;
     /** Rules 8, 92: this root's own open-loop revisit interval, fixed for its life. Absent keeps
      * `LOOP_REVISIT_MS`, so every root created before this field behaves exactly as it did. */
@@ -1478,6 +1482,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
 
 
 
+export interface TestCopySource { root: string; journal: string; bytes: number; frontier: string }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   /** Highest durable journal timestamp; a later wall-clock rollback cannot reorder frames. */
   clockFloor: number;
@@ -1499,6 +1504,10 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
 
   /** Non-additive: older readers must refuse, including after compaction; descendants depend on its disclosure gate. */
   groupCarry?: CarriedMemory;
+  /** A test copy's rebind (test-copy-1020): where it came from, the source's own binding (lineage) and the open work
+   * that was copied with it. Present only in a copy; `genesis` then holds the test binding every launch is checked against. */
+  testCopy?: { source: TestCopySource; lineage: Extract<JournalRecord, {kind:'genesis'}>; at: number;
+    copied: { requests: string[]; commitments: number; turns: string[]; waiting: number } };
   /** Predecessor only: open requests whose execution moved to a group root, once. Never fired from here again. */
   requestTransfer?: { destinationRoot: string; chat: string; requests: ReminderRef[]; at: number };
   channelItems: Map<string, ChannelItem>;
@@ -4006,6 +4015,28 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       || !validCarriedMemory(row.memory)) throw Error('preview journal: group lineage refused');
     view.groupCarry = row.memory; return;
   }
+  if (row.kind === 'test-copy') {
+    // Rule 35 / least revelation: a copy is rebound only onto the SAME verified operator's private chat with a different
+    // bot, so the audience of the copied history is that operator alone; a copy of a copy has no second lineage.
+    const g = view.genesis, source = row.source as Partial<TestCopySource> | undefined;
+    if (view.testCopy || g.importSource !== undefined && !view.imported || row.bot === g.bot || !/^[1-9][0-9]*$/u.test(row.bot)
+      || row.chat !== g.operator || !Number.isSafeInteger(row.cursor) || row.cursor < 0 || !Number.isSafeInteger(row.at) || row.at <= 0
+      || row.grant !== undefined && (typeof row.grant !== 'string' || !row.grant)
+      || row.configurationDigest !== undefined && (typeof row.configurationDigest !== 'string' || !row.configurationDigest)
+      || !source || typeof source.root !== 'string' || !source.root.startsWith('/') || !/^sha256:[a-f0-9]{64}$/u.test(source.journal ?? '')
+      || !Number.isSafeInteger(source.bytes) || source.bytes! <= 0 || !/^[a-f0-9]{64}$/u.test(source.frontier ?? ''))
+      throw Error('preview journal: test copy refused');
+    view.testCopy = { source: { root: source.root, journal: source.journal!, bytes: source.bytes!, frontier: source.frontier! }, lineage: g, at: row.at,
+      copied: { requests: openRequests(view).map(datedKey), commitments: view.commitments.filter((_, id) => commitmentOpen(view, id)).length,
+        turns: view.order.filter(turn => turn.accepted && turn.intent === undefined).map(turn => turn.id), waiting: view.waiting.length } };
+    const { forum: _forum, ...binding } = g;
+    view.genesis = { ...binding, bot: row.bot, chat: row.chat, cursor: row.cursor,
+      ...(row.grant === undefined ? {} : { grant: row.grant }),
+      ...(row.configurationDigest === undefined ? {} : { configurationDigest: row.configurationDigest }) };
+    // The source bot's queued updates are the source's; the test bot's own update stream starts at the copy's cursor.
+    view.cursor = row.cursor; view.waiting = [];
+    return;
+  }
   if (row.kind === 'request-transfer') {
     const open = new Set(openRequests(view).map(datedKey)), keys = Array.isArray(row.requests) ? row.requests.map(reminderKey) : [];
     if (view.requestTransfer || view.groupCarry || view.genesis.forum === true || !Array.isArray(row.requests)
@@ -5318,13 +5349,15 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
   let pendingSnapshot: { start: SnapshotStart; chunks: Buffer[] } | undefined;
   let closed = false;
   let signer: ReturnType<typeof outboundSigner> | undefined;
-  const signerOf = () => signer ??= outboundSigner(key, view!.genesis.bot);
+  // A test copy keeps its lineage's signing identity, so every copied signature and verified writer still verifies.
+  const lineageBot = () => view!.testCopy?.lineage.bot ?? view!.genesis.bot;
+  const signerOf = () => signer ??= outboundSigner(key, lineageBot());
   /** Rule 89: the journal owner signs every outbound intent automatically; callers never hold the key. */
   const signOutbound = (speaker: Speaker, subject: OutboundSubject) => signerOf().sign(speaker, subject);
   const verifyOutbound = (provenance: unknown, subject: OutboundSubject) => signerOf().verify(provenance, subject);
   let system: ReturnType<typeof systemWriters> | undefined;
   /** Rule 29: the owner's verified system writers; minted and re-verified with the journal's own key. */
-  const systemOf = () => system ??= systemWriters(key, view!.genesis.bot);
+  const systemOf = () => system ??= systemWriters(key, lineageBot());
   const systemCheck: SystemCheck = (writer, method, occurrence) => systemOf().check(writer, method, occurrence);
   const systemWriter = (method: SystemMethod, occurrence: string, at: number) => systemOf().mint(method, occurrence, at);
   const sealed = readFileSync(fd);
