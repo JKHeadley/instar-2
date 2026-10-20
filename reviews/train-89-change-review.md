@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Integrate reviewed Telegram file paths and protected audio transcripts while preserving the live train-84 behavior.
 Affected rules: 1, 4, 26, 30, 32, 34, 36, 37, 44, 45, 49, 60, 63, 66, 69, 70, 74, 84, 86, 90, 95, 100, 101, 102, 105, 111, 112, 113, 115, 116
-Affected floors: Existing raw-byte and transcript custody/held-secret protection, spend admission, stop, unique dispatch and durable encrypted intake remain. No new authority or provider.
+Affected floors: Existing raw-byte and transcript custody/held-secret protection, spend admission, stop, no duplicate sends through unique dispatch, and durable encrypted intake remain. No new authority or provider.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
