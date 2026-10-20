@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, readdirSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { telegramInboundMedia, createTelegramMediaCustody, MEDIA_MAX_BYTES, MEDIA_STORE_MAX_BYTES, journalMediaSource } from './telegram-media.js';
@@ -16,7 +16,7 @@ const genesis = { kind: 'genesis' as const, bot: '123456789', chat: '-1004367556
   origin: 'test' as const, grant: 'grant:media-test', configurationDigest: 'sha256:offline', expires: 9999999999999,
   maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 65536, cursor: 0 };
 const withRoot = async (run: (root: string) => Promise<void>) => {
-  const root = mkdtempSync(join(tmpdir(), 'telegram-media-'));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'telegram-media-')));
   try { await run(root); } finally { rmSync(root, { recursive: true, force: true }); }
 };
 // Synthetic admission source; the integration below also checks retained intake at dispatch.

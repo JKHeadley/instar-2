@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -19,7 +19,7 @@ it.each([
   { update: 715676486, limit: 32768 }, { update: 715676488, limit: 32768 },
   { update: 715676486, limit: 24500 },
 ])('grounds the recorded scoped-tool answer for $update within $limit bytes', async ({ update, limit }) => {
-  const root = mkdtempSync(join(tmpdir(), 'sibling-replay-'));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'sibling-replay-')));
   const rows = capture.rows;
   const id = `telegram:8994258214:update:${update}`;
   const index = rows.findIndex(row => row.kind === 'reserve' && row.id === id);

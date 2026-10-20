@@ -21,21 +21,21 @@ export function phoneRouteProof(raw, reviewedExpiry) {
   // Missing fields and unknown declared surfaces do not disappear through vacuous all().
   if (!source || !phone(surfaces.raiseCaps) || !nonempty(surfaces.renewExpiry)
     || Object.entries(surfaces).some(([name, value]) => name !== 'renewExpiry' && !phone(value)))
-    return { source, actions: false, renewal: 'route evidence missing or inadmissible' };
+    return { source, actions: false, renewalActions: false, renewal: 'route evidence missing or inadmissible' };
   if (!Number.isSafeInteger(reviewedExpiry) || reviewedExpiry <= 0
     || !Number.isSafeInteger(status.expires) || status.expires <= 0 || status.expires > reviewedExpiry)
-    return { source, actions: false, renewal: 'missing or invalid trial end' };
+    return { source, actions: false, renewalActions: false, renewal: 'missing or invalid trial end' };
   // Rule 79: "Every action needing the operator can be completed from a phone."
-  // At the reviewed ceiling there is no renewal that ANY surface may offer. This is UNTESTED,
-  // never PASS: it cannot substitute for a completed phone renewal while one is available.
+  // Separate available-action coverage from renewal: the ceiling cannot hide a missing raise
+  // route, nor does coverage at the ceiling prove a phone renewal.
   if (status.expires === reviewedExpiry)
-    return { source, actions: null, renewal: 'untested: already at the reviewed trial end' };
-  return { source, actions: phone(surfaces.renewExpiry), renewal: 'a later reviewed end requires an unconditional phone route' };
+    return { source, actions: true, renewalActions: null, renewal: 'untested: already at the reviewed trial end' };
+  return { source, actions: phone(surfaces.renewExpiry), renewalActions: phone(surfaces.renewExpiry), renewal: 'a later reviewed end requires an unconditional phone route' };
 }
 
 // The CLI reads only recorded status and the DEPLOYED build's reviewed ceiling, never a desk-supplied expiry.
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  let result = { source: false, actions: false, renewal: 'missing or unreadable proof input' };
+  let result = { source: false, actions: false, renewalActions: false, renewal: 'missing or unreadable proof input' };
   try {
     const tree = resolve(process.argv[2]);
     const { SUBSCRIPTION_PREVIEW_EXPIRY } = await import(pathToFileURL(resolve(tree, 'src/assembly/subscription-window.ts')).href);
