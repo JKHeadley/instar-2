@@ -933,7 +933,7 @@ it('tells the operator once per login outage, never again in that episode or aft
     physical: () => ({ load: () => ({ resumes: {} }) }), project: '/fixture', framework: 'claude-code', admit: async () => {} });
   const f = fixture(true, true, 200, { loginCapacity: () => pool.outage(), timeZone: 'UTC' });
   f.boundary(handoff.prepareTurn);
-  const notice = "I've used up my model allowance for now, so I can't answer yet. I expect to answer again after 1970-01-03 00:00 (UTC). "
+  const notice = "My model is unavailable right now, so I can't answer yet. I expect to answer again after 1970-01-03 00:00 (UTC). "
     + "Your messages are kept and I'll answer them then; you don't need to resend them.";
   try {
     f.worker.intake([update(1, 'First question')]); await f.worker.drain();

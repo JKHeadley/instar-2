@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createHarnessLoginPool, loadHarnessLogins, harnessQuotaLimit, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { harnessGate, harnessLoginPath, migrateHarnessLogin, readHarnessLogin, storeHarnessLogin } from './harness-user.mjs';
 import { classifyProviderFailure } from '../../src/assembly/provider-failure.js';
+import { loginOutageReply } from './journal.js';
 import { openReplyNotices, validAnswerNotices } from './credential-reminders.js';
 
 const roots: string[] = [];
@@ -489,4 +490,22 @@ it('outage() reports no capacity with the earliest known reset, reads only, and 
   // After the known reset passes, the login has room again.
   f.clock.at = later + 1; document = null;
   expect(createHarnessLoginPool(f.settings).outage()).toBeNull();
+});
+
+it('signed-out logins with fresh room report unavailable, never exhaustion or a reset promise', () => {
+  const f = fixture();
+  const document = { version: 1, accounts: f.configuration.entries.map(({ profile }) => ({
+    email: profile.expectedAccount, configHome: profile.configDirectory, status: 'needs-reauth',
+    lastQuota: { measuredAt: new Date(f.clock.at).toISOString(),
+      fiveHour: { utilizationPct: 1, resetsAt: new Date(f.clock.at + 3600_000).toISOString() },
+      sevenDay: { utilizationPct: 1, resetsAt: new Date(f.clock.at + 86400_000).toISOString() } } })) };
+  const pool = createHarnessLoginPool({ ...f.settings, usage: () => document });
+  expect(pool.readySession()).toBeNull();
+  expect(pool.outage()).toEqual({ resetAt: null });
+  const text = loginOutageReply(pool.outage().resetAt);
+  expect(text).toContain('My model is unavailable right now');
+  expect(text).toContain("I don't know yet when it will be available");
+  expect(text).not.toMatch(/used up|allowance|resets/);
+  document.accounts.forEach(account => { account.status = 'active'; });
+  expect(pool.outage()).toBeNull();
 });

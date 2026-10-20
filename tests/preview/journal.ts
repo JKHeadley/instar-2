@@ -525,11 +525,12 @@ export const MODEL_CAPACITY_ALERT = 'provider usage limit; saved turns need rese
 /** limit-notice-1020: every reviewed login is out of capacity, so a queued turn waits in host custody. One fixed
  * infrastructure notice per outage (no model call): what is wrong, the earliest known reset, and that the
  * messages are kept and will be answered. The outage ends at the next successful model answer. */
-export const loginOutageReply = (resetAt: number | null, zone = 'UTC') => "I've used up my model allowance for now, so I can't answer yet. "
-  + (resetAt === null ? "I don't know yet when it resets; I'll answer as soon as it does."
+export const loginOutageReply = (resetAt: number | null, zone = 'UTC') => "My model is unavailable right now, so I can't answer yet. "
+  + (resetAt === null ? "I don't know yet when it will be available; I'll answer as soon as it is."
     : `I expect to answer again after ${localStamp(resetAt, zone)} (${zone}).`)
   + " Your messages are kept and I'll answer them then; you don't need to resend them.";
-const LOGIN_OUTAGE_TEXT = /^I've used up my model allowance for now, so I can't answer yet\. (?:I don't know yet when it resets; I'll answer as soon as it does|I expect to answer again after [0-9]{4}-[0-9]{2}-[0-9]{2} [0-2][0-9]:[0-5][0-9] \([^()]{1,64}\))\. Your messages are kept and I'll answer them then; you don't need to resend them\.$/u;
+// Accept the previous fixed wording on replay; new notices make no unsupported cause claim.
+const LOGIN_OUTAGE_TEXT = /^(?:I've used up my model allowance for now|My model is unavailable right now), so I can't answer yet\. (?:I don't know yet when it resets; I'll answer as soon as it does|I don't know yet when it will be available; I'll answer as soon as it is|I expect to answer again after [0-9]{4}-[0-9]{2}-[0-9]{2} [0-2][0-9]:[0-5][0-9] \([^()]{1,64}\))\. Your messages are kept and I'll answer them then; you don't need to resend them\.$/u;
 /** Open from a recorded outage notice until a later successful model answer. */
 export const loginOutageOpen = (view: JournalView) => {
   const notice = Math.max(-Infinity, ...view.order.map(turn => turn.loginOutageNotice?.at ?? -Infinity));
@@ -4572,7 +4573,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (!turn.accepted || !operatorWriter(view, turn, true) || !turn.reserved || turn.intent !== undefined
       || turn.requestedAction || turn.editOf || turn.loginOutageNotice || loginOutageOpen(view)
       || !(resetAt === null || Number.isSafeInteger(resetAt) && resetAt > 0) || !LOGIN_OUTAGE_TEXT.test(row.text)
-      || (resetAt === null) !== row.text.includes("I don't know yet when it resets")
+      || (resetAt === null) !== row.text.includes("I don't know yet when")
       || view.stop !== null || row.at >= view.expires || view.replies >= view.limits.maxReplies - 1
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
       || row.grant !== view.genesis.grant || row.workingProgress || row.waitingProgress || row.deliveryUnknown
@@ -8390,10 +8391,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const thread = turn.thread === undefined ? {} : { thread: turn.thread }, target = `login-outage:${turn.id}`;
     ports.checkOutbound(text);
     const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
-    journal.append({ kind: 'held-notice-intent', id: turn.id, text, chat, ...thread, update: turn.update,
-      grant: journal.view.genesis.grant, loginOutage: { resetAt }, provenance, at: now });
-    gate();
-    const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, ...thread, update: turn.update });
+    const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, ...thread, update: turn.update }, () => {
+      journal.append({ kind: 'held-notice-intent', id: turn.id, text, chat, ...thread, update: turn.update,
+        grant: journal.view.genesis.grant, loginOutage: { resetAt }, provenance, at: ports.now() });
+    });
     if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: turn.id, loginOutage: true, message: outcome.message, at: ports.now() }); }
     catch { /* the notice stays UNKNOWN; never repeated */ }
   };
