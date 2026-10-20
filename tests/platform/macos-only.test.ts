@@ -27,7 +27,8 @@ const spawnOf = (tool: string) => `spawn${'Sync'}('/usr/bin/${tool}', ['-x']);\n
 it('the checked-in list is exactly the detected macOS-only test files', () => {
   const detected = detectMacosOnly(process.cwd()).map((row: { file: string }) => row.file);
   const listed = readList(readFileSync(LIST_PATH, 'utf8'));
-  expect(listDrift(detected, listed)).toEqual({ missing: [], stale: [] });
+  const drift = listDrift(detected, listed);
+  expect(drift, `macOS test-list drift: ${JSON.stringify(drift)}`).toEqual({ missing: [], stale: [] });
   expect(listed).toEqual([...listed].sort());
   expect(listed.length).toBeGreaterThan(0);
 });
