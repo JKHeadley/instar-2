@@ -18,6 +18,9 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/directive-reply-format.test.ts; live=tests/preview/fixtures/directive-reply-format-2026-10-20.json
 Hook bypass: none; core.hooksPath unset and common hooks directory contains samples only.
 Convergence: none
+Prompt finding: 4106b49fff07 | protocol-literal | Existing no-tools capability disclosure is asserted by the topic-awareness test; it is unchanged and does not decide user intent by keyword.
+Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory status wording is tested at its consumer; unchanged by this merge, not an intent classifier.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing source-provenance instruction is tested at its consumer; unchanged, not a semantic phrase gate.
 Prompt review: Carries only the member's reviewed 14-byte wording change. Recorded outputs from updates 46040376 and 46040368 and real-model positive/one-off replays exercise the worker. This batch does not claim a new live model run or Studio acceptance.
 Decision: train-90-merge | Ordinary merge of exact reviewed 345023ec6b197b12fc2b4c852d4f73fa0c3c0f2e, fast-forward without conflicts. Member report: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/d5c-directive-since-1020-PROGRESS.md (read remotely). Its later unreviewed register-only commit is excluded. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-90-PROGRESS.md
 Decision: train-90-A | Preserve the member wording, tests and fixture byte-for-byte; no overlapping edits required resolution. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-90-PROGRESS.md
