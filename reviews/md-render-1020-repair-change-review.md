@@ -15,7 +15,7 @@ Undo and recovery: revert rendering preparation and dispatch together, retaining
 Multi-machine posture: exact variants replicate with the existing intent before the existing claim. A parse refusal is journaled and replicated before fallback, with the existing owner, stop and expiry checks repeated. No separate store, target or claim is created.
 Layer below: outboundSigner verifies exact target/chat/thread/body; journal append fsync and snapshot retain preparation; shared.replicated retains refusal evidence under the existing claim; Telegram classifier requires matching receipt text and destination. The core adapter without a prepared alternative continues to refuse alternate rendering.
 Bug class: durability
-Bug evidence: reproducer=tests/preview/journal-markdown-preparation.test.ts; restart=tests/preview/journal-markdown-preparation.test.ts
+Bug evidence: reproducer=tests/preview/journal-markdown-preparation.test.ts; restart=tests/preview/fixtures/markdown-repair-result-2026-10-20.json
 Hook bypass: none
 Convergence: none
 Decision: md-render-preparation | bind HTML and one plain alternative in the existing intent before dispatch; record parse refusal separately so successful fallback cannot erase it | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/md-render-1020-repair-142633-PROGRESS.md

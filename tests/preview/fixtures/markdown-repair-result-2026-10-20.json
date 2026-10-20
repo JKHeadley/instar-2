@@ -1,0 +1,9 @@
+{
+  "source": "Actual WSL vitest output from the repair session, 2026-10-20; no live Telegram acceptance claimed",
+  "command": "nice -n 10 node node_modules/vitest/vitest.mjs run --maxWorkers 1 tests/preview/telegram-markdown.test.ts tests/preview/journal-markdown-preparation.test.ts tests/preview/journal-rollback-window.test.ts",
+  "exitCode": 0,
+  "output": "\n RUN  v3.2.7 /home/echo/.instar/agents/echo/md-render-1020-fix\n\n \u2713 tests/preview/journal-rollback-window.test.ts (9 tests) 85ms\n \u2713 tests/preview/journal-markdown-preparation.test.ts (6 tests) 225ms\n \u2713 tests/preview/telegram-markdown.test.ts (22 tests) 49ms\n\n Test Files  3 passed (3)\n      Tests  37 passed (37)\n   Start at  14:37:32\n   Duration  8.25s (transform 4.45s, setup 134ms, collect 6.71s, tests 359ms, environment 1ms, prepare 302ms)\n\n",
+  "note": "The subsequent linkAt raw-destination change is covered by the second run below; the journal preparation/restart implementation was unchanged.",
+  "finalRepairOutput": "\n RUN  v3.2.7 /home/echo/.instar/agents/echo/md-render-1020-fix\n\n \u2713 tests/preview/journal-markdown-preparation.test.ts (6 tests) 292ms\n \u2713 tests/preview/telegram-markdown.test.ts (24 tests) 90ms\n\n Test Files  2 passed (2)\n      Tests  30 passed (30)\n   Start at  14:41:02\n   Duration  8.52s (transform 5.27s, setup 135ms, collect 6.84s, tests 381ms, environment 1ms, prepare 296ms)\n\n",
+  "restartTestSourceSha256": "f85ff7a50764afe6443b9eb3c34f5c91b9c9c1b806573b448a774b347030a69b"
+}
