@@ -15,7 +15,7 @@ Undo and recovery: revert the commit; the notice producer and its call return. N
 Multi-machine posture: machine-local reply text only; no shared state, sender or ownership change.
 Layer below: inspected doorwayFreshness/standingDoorwayCheck and the status doorways block (unchanged), validAnswerNotices replay of recorded doorway keys, and openReplyNotices ordering with the remaining notice sources.
 Bug class: unit
-Bug evidence: reproducer=tests/preview/journal-agent-resources.test.ts (shipped runner: a failing Jev route check, no sent answer may carry the line; failed before, passes after)
+Bug evidence: reproducer=tests/preview/journal-agent-resources.test.ts
 Hook bypass: none
 Convergence: none
 Decision: routecheck-status-only | the doorway state is the agent's own maintenance (Rules 56, 87, 88), so it moves to the pull surface rather than being reworded | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/walk-findings-1020-PROGRESS.md
