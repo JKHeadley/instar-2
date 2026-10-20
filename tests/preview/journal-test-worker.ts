@@ -26,7 +26,7 @@ export const admittedDependencies = (): Record<MinimalDependency, boolean> => ({
   route: true, 'delivery-evidence': true });
 export const createJournalWorker = (...[journal, ports]: Parameters<typeof createWorker>) =>
   createWorker(journal, { summaryCheck: async () => faithful, minimal: { context: previewTestContext, dependencies: admittedDependencies },
-    ...ports });
+    sendRetryWait: async () => {}, ...ports });
 
 /** A stand-in for Part Nine's independently administered surface: its signing key never reaches the
  * worker, its challenges are one-use and expire, and only the operator's act on it yields a proof. */

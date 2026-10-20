@@ -91,9 +91,10 @@ it('sends the renewal\'s completion line again when the transport proves the fir
 }));
 
 it('records a second proof as refused, keeps it through a compaction snapshot, and never dispatches it again', () => withRoot(async path => {
-  const h = harness(path, [NOT_SENT, NOT_SENT]);
+  // Every try the dispatch allows (walk-findings-1020: four, with backoff) proves never-sent.
+  const h = harness(path, [NOT_SENT, NOT_SENT, NOT_SENT, NOT_SENT]);
   const id = await h.approve();
-  expect(h.resultSends()).toHaveLength(2);
+  expect(h.resultSends()).toHaveLength(4);
   const rows = h.journal.view.sendOutcomes.filter(row => row.target === `operator-result:${id}`);
   expect(rows).toMatchObject([{ outcome: 'refused', reason: 'not sent: transport transport at launch-refused' }]);
   expect(operatorRequestsReport(h.journal.view, START + 100).at(-1)).toMatchObject({ state: 'applied', resultNotice: 'refused' });
