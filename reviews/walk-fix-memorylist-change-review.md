@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: the answer guidance now says memoryList:true swaps the reply for the raw saved list and is not for a shaped ask (walk-24 run B msg 24).
 Affected rules: 3, 10, 12, 74, 106, 113, 116
-Affected floors: secrets — unchanged; spend cap — +5 bytes in the packet, measured context floor test green; stop — unchanged; no duplicate sends — unchanged; durable intake — unchanged
+Affected floors: secrets — unchanged; spend cap — one byte shorter than the old sentence, packet floor and capped-packet tests green; stop — unchanged; no duplicate sends — unchanged; durable intake — unchanged
 Operator questions: none
 Suggested tier: critical
 Declared tier: significant
@@ -19,7 +19,7 @@ Bug evidence: none
 Hook bypass: none
 Convergence: none
 Decision: memorylist-prompt-only | keep the host's list path as the hallucination guard and narrow when the model asks for it; a 47-byte wording was dropped after it made Sonnet set the flag on run B's recorded input | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/walk-findings-1020-PROGRESS.md
-Prompt review: model-facing; no in-tree reproducer (a stub cannot reproduce a model choosing the flag), evidence is the replay below. Replayed recorded msg-24 inputs (run A update 6235088, run B update 6235112) per-call on the proof account with claude-sonnet-5: old sentence 0/2 on B, committed sentence 0/2 on B, A 0/1 each. The Fable shape that produced the miss could not be replayed (provider refused the per-call replay); the fix is unproven on that shape.
+Prompt review: model-facing; no in-tree reproducer (a stub cannot reproduce a model choosing the flag), evidence is the replay below. Replayed recorded msg-24 inputs (run A update 6235088, run B update 6235112) per-call on the proof account with claude-sonnet-5: old sentence 0/2 on B; a 56-byte draft 0/2 on B (dropped: +5 bytes displaced items in zero-slack packet tests); committed 50-byte sentence 0/2 on B; A 0/1 each. The Fable shape that produced the miss could not be replayed (provider refused the per-call replay); the fix is unproven on that shape.
 Prompt finding: 4106b49fff07 | protocol-literal | existing tool-attempt honesty guidance in journal.ts, unchanged by this unit.
 Prompt finding: 849db3a6296a | protocol-literal | existing saved-memory response contract in journal.ts, unchanged by this unit.
 Prompt finding: e8708c7fea24 | protocol-literal | existing source-label and uncertainty guidance in journal.ts, unchanged by this unit.
