@@ -1,5 +1,23 @@
 name: constitutional-types
 on: [push, pull_request]
+# Added because Actions concurrency is allotted PER ACCOUNT, shared with the sibling
+# repo, and this workflow was the dominant consumer. Measured 2026-10-20: 10 jobs
+# running + 25 queued here while the sibling repo had 0 running + 21 queued against a
+# shared 20-job allowance. Grouping by branch collapses the queued set from 25 to 9,
+# because the repeats are heavy (two branches at x5, three at x3) rather than one run
+# per branch.
+#
+# The key resolves a pull_request event and a push to the same branch into ONE group:
+# `on:` fires for both, so every push to a branch with an open pull request was
+# starting two full runs of the same commit. There is no pull_request_review trigger
+# here, so collapsing them loses no signal.
+#
+# `cancel-in-progress` deliberately excludes main: a post-merge run is the record that
+# a merge was sound, and cancelling it would destroy that evidence.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   contract:
     strategy:
