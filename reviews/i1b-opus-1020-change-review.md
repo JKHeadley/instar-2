@@ -14,7 +14,7 @@ Side effects: On a model that thinks despite MAX_THINKING_TOKENS=0, a call whose
 Undo and recovery: Revert the three commits and replay the register. Restoring the old certificate alone makes the current composition fail R105. No stored-state migration is needed.
 Multi-machine posture: Machine-local provider check; no ownership, replication or shared state changes. The native certificate is specific to the declared macOS runtime node-24.14.1.
 Layer below: Inspected the pinned CLI binary's thinking selection (models flagged rejects_disabled_thinking get a 2048 thinking budget when thinking is disabled), call-diagnostics.mjs classification, the production-provider frame check, retrospective.ts measuredAnswerBudget/retroAnswerBudget, and the read-only copy of the proof-room journal (call-outcome diagnostic of retrospective:0). Tests were written first and failed on the accept side; afterward call-diagnostics, production-provider-subscription and the over-cap suites (161), tests/assembly (1140 passed, 6 skipped), the ready-gate tests (119) and native-harness-contract (10/10, on node 24.14.1 on the Studio) passed, as did typecheck, lint and register:check.
-Bug class: provider-bound-counts-unrequested-output
+Bug class: live-path
 Bug evidence: tests/preview/fixtures/thinking-floor-opus-2026-10-20.json (recorded usage of proof room three retrospective:0 and two direct CLI frames); tests/preview/call-diagnostics.test.ts and tests/assembly/production-provider-subscription.test.ts cover both sides.
 Hook bypass: none
 Convergence: none
