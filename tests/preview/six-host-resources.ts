@@ -149,6 +149,9 @@ export function createHostResourceAllocation(options: Readonly<{ root: string; m
   return Object.freeze({
     policies,
     reserve: input => {
+      let token: FenceToken;
+      try { token = current(); retryPending(); rotate(); token = current(); } catch (error) { return { ok: false, reason: String((error as Error).message) }; }
+      // Rotation changes every domain head: derive demands only after selecting the generation.
       const run = { owner: 'part-five' as const, name: 'Run' as const, id: `host-launch:${input.launch}` };
       const request = { owner: 'part-eight' as const, name: 'EffectRequest' as const, id: `provider-launch:${input.launch}` };
       const installation = `installation:${options.machine}`, family = `job-family:${input.work}`;
@@ -161,8 +164,6 @@ export function createHostResourceAllocation(options: Readonly<{ root: string; m
           policy: 'policy:host-processes', expectedPredecessor: head(installation) },
         { dimension: 'job-family', domain: family, resource: 'launches', amount: 1, policy: 'policy:family-launches', expectedPredecessor: head(family) },
       ].sort((a, b) => a.domain < b.domain ? -1 : a.domain > b.domain ? 1 : a.resource < b.resource ? -1 : a.resource > b.resource ? 1 : 0) as ResourceDemand[];
-      let token: FenceToken;
-      try { token = current(); retryPending(); rotate(); token = current(); } catch (error) { return { ok: false, reason: String((error as Error).message) }; }
       const reserved = g.sets.reserveResourceSet({ command: `launch:${input.launch}`, fence: token, request, run, parentAllocation: '', demands });
       const refusal = detail(reserved);
       if (refusal) {
