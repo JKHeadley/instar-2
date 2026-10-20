@@ -80,7 +80,10 @@ it('asks once about two active birthday claims, then records the operator choice
     worker = createJournalWorker(journal, ports);
     worker.intake([update(5, 'When is my birthday?')]); await worker.drain();
     expect(sends.filter(text => text.includes('Which is right?'))).toHaveLength(1);
-    expect(sends.at(-1)).toContain('March 2.');
+    // The last send is the resolution's acknowledgement naming March 2 as current. (walk-findings-1020: this line
+    // used to match 'March 2.' inside the old 'Changed ... → My birthday is March 2.' template; update 5 itself
+    // gets no answer after this reopen, a gap reported to the desk, not repaired here.)
+    expect(sends.at(-1)).toContain('is now “My birthday is March 2”');
     expect(withoutCorrectedHistory(contexts.at(-1)!)).not.toContain(second);
     worker.intake([update(6, 'Check that disagreement again.')]); await worker.drain();
     expect(sends.filter(text => text.includes('Which is right?'))).toHaveLength(1);
