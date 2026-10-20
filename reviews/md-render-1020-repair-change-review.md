@@ -25,6 +25,8 @@ Prompt finding: 4106b49fff07 | protocol-literal | existing guidance to preserve 
 Prompt finding: 849db3a6296a | protocol-literal | existing fixed saved-memory answer; unchanged by this repair.
 Prompt finding: e8708c7fea24 | protocol-literal | existing source-label and uncertainty guidance; unchanged by this repair.
 
+Register regeneration: delegated owner-manifest and inventory scripts reported zero changed pins; generated/ replay is bound to product commit 7e3fad6c297676be408ddaa2b543cd28fbeceaa3.
+
 ## Closing block
 
 simplestRobustRoute: prepare both exact variants through the existing journal owner, sign them before admission, dispatch one target, retain a definite parse refusal and permit only its bounded alternative. This is that route. The retained alternative prevents formatter-version drift; refusal evidence prevents success from erasing a rejected attempt; protected URLs and whitespace-delimited heading closers prevent the two demonstrated content corruptions. Existing start, stop, ownership and durability checks remain. No live unattended acceptance is claimed from offline replay.
