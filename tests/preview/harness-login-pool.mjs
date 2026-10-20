@@ -252,6 +252,26 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
           at: now(), sequence: state.switches.length + 1 }],
         handoffs: [...(state.handoffs ?? []), { ...move, machine, at: now() }] });
     },
+    /** limit-notice-1020: read-only mirror of select()'s exclusions. Null while any reviewed login may have
+     * room (a stale or missing reading is not evidence); otherwise the earliest reset any login names, or null. */
+    outage() {
+      const at = now();
+      let reading = null;
+      try { reading = usage(); } catch { /* A failed quota observation cannot create a limit. */ }
+      const resets = [];
+      for (const entry of entries) {
+        if (unavailable.has(entry.index) || matchingUsageAccount(reading, entry)?.status === 'needs-reauth') continue;
+        const quota = harnessQuotaReading(reading, entry.profile, at, entry.usageAccount);
+        const limit = quotaLimit(quota, configuration.threshold), held = state.holds[entry.index];
+        const recovered = held?.resetAt === null && quota && quota.at > held.observedAt
+          && quota.windows.every(window => window && window.utilizationPct < configuration.threshold);
+        const holding = held && !recovered && (held.resetAt === null || held.resetAt > at);
+        if (!holding && !limit) return null;
+        const known = [holding ? held.resetAt : at, limit ? limit.resetAt : at];
+        if (!known.includes(null)) resets.push(Math.max(...known));
+      }
+      return { resetAt: resets.length ? Math.min(...resets) : null };
+    },
     selectSession: current => select('session', current, true),
     readySession: current => select('session', current, true, true),
     signinRepairs: () => (state.signinRepairs ?? []).map(item => ({

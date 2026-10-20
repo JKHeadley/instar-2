@@ -913,3 +913,78 @@ it.each(['deadline', 'calls'] as const)('delivers one infrastructure safety-limi
   expect(turn.answer).toBeUndefined();
   await f.replay(); expect(f.sent).toHaveLength(1);
 });
+
+// limit-notice-1020: on 2026-10-20 every reviewed login was out (A at the 95% threshold, B at 100%) and every
+// message got only the holding reaction. The journal now tells the operator once per outage, through the
+// infrastructure notice path (no model call), and still answers the kept messages when capacity returns.
+it('tells the operator once per login outage, never again in that episode or after restart, and answers the kept message after', async () => {
+  const entries = ['a', 'b'].map((name, index) => ({ index, profile: {
+    reference: name, expectedAccount: `${name}@example.invalid`, configDirectory: `/fixture-${name}` } }));
+  let reset = 1000 + 2 * 86400_000, full = true, topicState: unknown, clock = 1000;
+  const pool = createHarnessLoginPool({ configuration: { entries, identity: 'fixture-outage', threshold: 95, current: () => true },
+    statePath: 'unused', now: () => clock, validate: () => {},
+    readText: () => { const error = new Error('absent') as Error & { code: string }; error.code = 'ENOENT'; throw error; },
+    write: () => {}, usage: () => ({ version: 1,
+      accounts: entries.map(entry => ({ email: entry.profile.expectedAccount, configHome: entry.profile.configDirectory,
+        lastQuota: { measuredAt: new Date(clock).toISOString(), fiveHour: { utilizationPct: 10, resetsAt: new Date(clock + 3600_000).toISOString() },
+          sevenDay: { utilizationPct: full ? (entry.index === 0 ? 95 : 100) : 10, resetsAt: new Date((full ? reset : reset + 7 * 86400_000) + entry.index).toISOString() } } })) }) });
+  const handoff = createTopicLoginHandoff({ topic: 'main', pool, entries,
+    store: { load: () => topicState ?? null, save: (next: unknown) => { topicState = structuredClone(next); } },
+    physical: () => ({ load: () => ({ resumes: {} }) }), project: '/fixture', framework: 'claude-code', admit: async () => {} });
+  const f = fixture(true, true, 200, { loginCapacity: () => pool.outage(), timeZone: 'UTC' });
+  f.boundary(handoff.prepareTurn);
+  const notice = "I've used up my model allowance for now, so I can't answer yet. I expect to answer again after 1970-01-03 00:00 (UTC). "
+    + "Your messages are kept and I'll answer them then; you don't need to resend them.";
+  try {
+    f.worker.intake([update(1, 'First question')]); await f.worker.drain();
+    expect(f.state().inputs[0]!.state).toBe('queued');
+    expect(f.sent).toEqual([notice]); expect(f.speakers).toEqual(['infrastructure']);
+    const first = f.journal.view.order[0]!;
+    expect(first.loginOutageNotice).toMatchObject({ resetAt: reset, sent: 1 });
+    expect(first.held).toBeUndefined(); // kept, not refused or relabelled
+    f.worker.intake([update(2, 'Second question')]); await f.worker.drain(); await f.worker.drain();
+    expect(f.sent).toEqual([notice]);
+    await f.restart(); await f.worker.drain(); await f.worker.drain();
+    expect(f.sent).toEqual([notice]); expect(f.counts().calls).toBe(0);
+    // Capacity returns at the known reset; the kept messages are answered through the ordinary path.
+    clock = reset + 1000; full = false; f.advance(200); await f.port.maintain();
+    for (let n = 0; n < 4; n++) { await f.worker.drain(); await f.port.maintain(); }
+    expect(f.sent.filter(text => text === notice)).toHaveLength(1);
+    expect(f.sent.filter(text => text === 'A useful answer.')).toHaveLength(2);
+    expect(f.journal.view.order.every(turn => turn.modelState === 'complete')).toBe(true);
+    // A later outage is a new episode: the operator is told again, once.
+    reset = 1000 + 4 * 86400_000; full = true; clock += 1000;
+    f.worker.intake([update(3, 'Third question')]); await f.worker.drain(); await f.worker.drain();
+    const second = notice.replace('1970-01-03', '1970-01-05');
+    expect(f.sent.filter(text => text === notice || text === second)).toEqual([notice, second]);
+    await f.restart(); await f.worker.drain();
+    expect(await f.replay()).toBeDefined(); expect(f.sent.filter(text => text === second)).toHaveLength(1);
+  } finally { await f.close(); }
+});
+
+it('sends no outage notice while a login has capacity, and none without the capacity port', async () => {
+  for (const ports of [{ loginCapacity: () => null }, {}]) {
+    const f = fixture(true, true, 200, ports);
+    try {
+      f.worker.intake([update(1, 'First question')]); await f.worker.drain();
+      expect(f.sent).toEqual(['A useful answer.']);
+      expect(f.journal.view.order[0]!.loginOutageNotice).toBeUndefined();
+    } finally { await f.close(); }
+  }
+});
+
+it('a busy host (queued for a worker, not for a login) sends no outage notice', async () => {
+  const f = fixture(true, true, 200, { loginCapacity: () => null });
+  try {
+    f.busy(true); f.worker.intake([update(1, 'First question')]); await f.worker.drain();
+    expect(f.state().inputs[0]!.state).toBe('queued'); expect(f.sent).toEqual([]);
+  } finally { await f.close(); }
+});
+
+it('the shipped host wires the worker capacity read to its real login pool (null without one)', () => {
+  const line = /\n {6}loginCapacity: (\(\) => [^\n]+),\n/u.exec(host)?.[1];
+  expect(line).toBe('() => loginPool?.outage() ?? null');
+  const read = (loginPool: unknown) => (Function('loginPool', `return ${line!};`)(loginPool) as () => unknown)();
+  expect(read(null)).toBeNull();
+  expect(read({ outage: () => ({ resetAt: 7 }) })).toEqual({ resetAt: 7 });
+});
