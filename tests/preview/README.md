@@ -82,6 +82,29 @@ admission remain unchanged. Use a fresh root for the forum; never relabel the pr
 configuration belongs to the journal launcher. The older `production-conversation-host.ts` successive
 fixture still takes one owner-admitted binding and one fixed target; these flags do not widen it.
 
+## Test copy of an agent
+
+`journal-agent.mjs test-copy --source-root SOURCE_ROOT --root NEW_ROOT --bot-id TEST_BOT_ID
+--chat-id OPERATOR_ID [--cursor N] [--grant-reference GRANT] [--configuration-digest DIGEST]`
+makes a real copy of an agent for testing: a NEW root holding the source journal's complete frames
+byte for byte (history, memory, people, preferences, open requests and commitments) plus one recorded
+`test-copy` frame that rebinds the copy to the test bot and to the SAME verified operator's private
+chat with it. The frame names the source root, the copied journal's sha256 and length, its projection
+frontier and the source's own binding (lineage), and marks the open requests, commitments and
+unanswered turns it copied. The source root is only read (its journal bytes, once): no writer lease,
+login inventory, credential or media custody, ownership record or other file of the source is
+opened or copied, so the copy launches with the test room's own launch line and login. The rebind is
+written to a staging file and only then renamed to `journal.encrypted`, so no launchable copy bound to
+the source's bot ever exists. It needs the same storage custody as the source.
+
+Refused: a copy root that exists and is not empty, the source's own bot, a chat other than the
+operator's private chat (least revelation: the copied history reaches its own operator only), and a
+copy of a copy. The genesis check is unchanged: the copy refuses the source's bot, chat and forum mode,
+and the source refuses the copy's. While the copy serves, every send must go to its test chat (never
+its lineage's group), and a copied forum topic is not put on the wire of the private chat. A forum
+source's General conversation continues in the copy's private chat; its other topics stay other
+topics, as they would for a new message in General.
+
 ## Granted private-to-forum memory carry
 
 `journal-agent.mjs carry-group --root GROUP_ROOT --source-root PRIVATE_ROOT
