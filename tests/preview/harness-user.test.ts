@@ -316,11 +316,13 @@ describe('the launcher', () => {
     expect(await waitFor(() => !alive(pidOf(out, 'same-group')) && !alive(pidOf(out, 'own-group')))).toBe(true);
   });
   it('keeps a temporary directory the command names, and refuses the terminal mode with no terminal', async () => {
-    const out = fresh('launcher-tmpdir');
-    const given = spawnSync(process.execPath, [launcher, `OUT=${out}`, 'CLAUDE_CODE_TMPDIR=/private/tmp/itt-000000000000', '--', fake, 'exit'],
+    // This checks environment forwarding, not a mounted tool volume. A fabricated
+    // /private/tmp/itt-* path unnecessarily invokes the host-wide lsof census.
+    const out = fresh('launcher-tmpdir'), temporary = fresh('named-tmpdir');
+    const given = spawnSync(process.execPath, [launcher, `OUT=${out}`, `CLAUDE_CODE_TMPDIR=${temporary}`, '--', fake, 'exit'],
       { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } });
     expect(given.status).toBe(7);
-    expect(readFileSync(join(out, 'env'), 'utf8')).toContain('CLAUDE_CODE_TMPDIR=/private/tmp/itt-000000000000\n');
+    expect(readFileSync(join(out, 'env'), 'utf8')).toContain(`CLAUDE_CODE_TMPDIR=${temporary}\n`);
     const tty = spawnSync(process.execPath, [launcher, '--handoff', '--tty', `OUT=${out}`, '--', fake], { encoding: 'utf8', input: '{}\n', env: { PATH: '/usr/bin:/bin' } });
     expect(tty.status).toBe(125);
     expect(tty.stderr).toMatch(/--tty needs a terminal on stdout/u);
