@@ -503,7 +503,7 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     expect(asked.intent!.startsWith('Earlier conversation up to #')).toBe(asked.continuity !== undefined);
     await w.say(id++, 'Actually my gym locker code is 4412, not 3310.');
     expect(w.journal.view.memory).toHaveLength(1);
-    expect(replyBody(w.journal.view.order.at(-1)!)).toBe('Updated my notes: “My gym locker code is 3310” is now “my gym locker code is 4412”.');
+    expect(replyBody(w.journal.view.order.at(-1)!)).toBe('Now: my gym locker code is 4412. Was: My gym locker code is 3310.');
     w.journal.close(); w = world(root);
     await w.say(id++, question);
     const corrected = JSON.parse(w.prompts.get(question)!);
