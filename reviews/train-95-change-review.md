@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Combine the three exact reviewed heads: bounded retries for proven never-sent Telegram attempts, memory-list guidance naming reply replacement, and route-check maintenance kept off ordinary replies.
 Affected rules: 3, 10, 12, 34, 36, 37, 42, 49, 55, 56, 66, 69, 74, 87, 88, 90, 95, 101, 102, 111, 112, 113, 116
-Affected floors: Secrets and spend-cap enforcement are unchanged; no model call is added. Stop brakes retries after each wait. Unknown send outcomes are never retried; all retries consume the existing durable intent. Durable intake is unchanged. Context guard constants remain unchanged.
+Affected floors: Secrets and spend-cap enforcement are unchanged; no model call is added. Stop brakes retries after each wait. No duplicate sends: unknown send outcomes are never retried; all retries consume the existing durable intent. Durable intake is unchanged. Context guard constants remain unchanged.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
