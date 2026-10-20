@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createSecretCustody, secretRef } from './secret-custody.js';
@@ -11,7 +11,7 @@ const capture = JSON.parse(readFileSync(new URL('./fixtures/gap-pdf-1017.json', 
 const pdf = readFileSync(new URL('./fixtures/media-understanding/synthetic-brief.pdf', import.meta.url));
 
 it('files sent in Telegram reach the agent: recorded update 6234449 now has an accessible original', async () => {
-  const tmp = mkdtempSync(join(tmpdir(), 'files-recorded-'));
+  const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'files-recorded-')));
   try {
     const source = capture.intake.id;
     const custody = createSecretCustody(tmp, new Uint8Array(32).fill(11), () => 1000);

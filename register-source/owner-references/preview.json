@@ -47,7 +47,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-obligations.test.ts",
-        "hash": "sha256:545ef1b6a0aae7391a020eaa85e0d70ff9366d849de2d51c771eb5b499edd3a5"
+        "hash": "sha256:b415f6c3c44036d958f597b556af4d749725cc230d2bebf9c8e60f8b9bf4f296"
       }
     },
     {
@@ -127,7 +127,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/telegram-media.test.ts",
-        "hash": "sha256:d012522c64ef92d1fd26ba0612d402645a7f6a3f8878c51be436eb057c75cc14"
+        "hash": "sha256:585d40a8467fff54f7336e4a8d5c386efccfe1506f7cc4d258fa99529f49567c"
       }
     },
     {
