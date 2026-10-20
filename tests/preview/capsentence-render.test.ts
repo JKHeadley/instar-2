@@ -18,6 +18,8 @@ const expectedNote = (text: string) => {
   return [...publicLines.slice(0, -1), '', publicLines.at(-1)!.slice(CAPABILITY_SENTENCE_LABEL.length), '', ...limits].join('\n');
 };
 const canonical = expectedNote(note.text);
+// Telegram renders list markers after the canonical capability text has passed review.
+const deliveredCanonical = canonical.replace(/^- /gm, '• ');
 
 async function deliver(answer: string, revision?: string, question = captured.question, violation: ReplyRule = 'raw_path') {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'capsentence-render-')));
@@ -71,7 +73,7 @@ it.each([
   const expected = canonical;
   expect(result.answer).toBe(expected);
   expect(result.reviewed).toEqual([expected]);
-  expect(result.sent).toEqual([expected]);
+  expect(result.sent).toEqual([deliveredCanonical]);
 });
 
 it.each([{ tools: false }, { tools: true }, { tools: true, mcp: 0 }, { tools: true, mcp: 2 }])(
@@ -114,7 +116,7 @@ it('does not turn an empty answer or ordinary prose into a capability answer', a
 it('resolves a revised marker before its own review and sends only that reviewed text', async () => {
   const result = await deliver('Look in /Users/me/notes for it.', `Revised.\n\n${CAPABILITY_SENTENCE_MARKER}`);
   expect(result.reviewed).toEqual(['Look in /Users/me/notes for it.', canonical]);
-  expect(result.sent).toEqual([canonical]);
+  expect(result.sent).toEqual([deliveredCanonical]);
 });
 
 it('preserves recorded non-capability writer, Jev and review shapes, including uncertain/undecided', () => {
@@ -136,7 +138,7 @@ it('repairs the recorded 16:36 grant overclaim through review and explicit revis
   expect(renderCapabilityReply(recorded.delivered.reply, { sources: [note] })).toBe(recorded.delivered.reply);
   const result = await deliver(recorded.delivered.reply, CAPABILITY_SENTENCE_MARKER, captured.question, 'self_state_claim');
   expect(result.sent).toHaveLength(1);
-  expect(result.sent[0]).toContain('- answers the operator in chat/topics;');
+  expect(result.sent[0]).toContain('• answers the operator in chat/topics;');
   expect(result.sent[0]).not.toContain('as the operator');
   expect(result.reviewed).toEqual([recorded.delivered.reply, canonical]);
 });
