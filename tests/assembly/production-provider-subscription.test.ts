@@ -15,6 +15,9 @@ import { CODEX_SUBSCRIPTION_VERSION, codexSessionPolicy } from '../../src/assemb
 import type { ProductionProviderIO, SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { factsFixture, value } from '../facts/fixtures.js';
+import { providerFixture, refused } from '../model-provider/fixture.js';
+import { observationCheck } from '../../src/judgment/model-adapter.js';
+import thinkingCapture from '../preview/fixtures/thinking-floor-opus-2026-10-20.json' with { type: 'json' };
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
 
@@ -239,6 +242,71 @@ for (const [tokens, thinking, state] of [[3286, 2048, 'complete'], [4096, 2048, 
     expect(observed.state).toBe(state);
     expect(observed.usage.outputTokens).toBe(tokens);
   });
+it('replays recorded Opus usage through the subscription adapter and effect/invocation owners, retaining total accounting', async () => {
+  const recorded = thinkingCapture.recorded.usage;
+  for (const [total, thinking, answer, accepted] of [
+    [recorded.output_tokens, recorded.output_tokens_details.thinking_tokens, thinkingCapture.recorded.answerResultTokens, true],
+    [4096, 2048, 2048, true], [4097, 2048, 2049, false],
+    [3286, undefined, 3286, false], [3286, -1, 3286, false], [3286, 1.5, 3286, false],
+    [3286, '2048', 3286, false], [3286, 5000, 3286, false],
+  ] as const) {
+    const usage = { ...recorded, output_tokens: total,
+      output_tokens_details: thinking === undefined ? undefined : { thinking_tokens: thinking } };
+    // Only the captured usage is available; this envelope is a numeric replay, not the lost retrospective answer.
+    const f = fixture({ terminal: JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
+      session_id: 'recorded-usage-replay', result: '{}', usage }) });
+    const route = value(createClaudeCodeSubscriptionRoute(f.input));
+    let calls = 0;
+    const owner = providerFixture({ maxTokens: 2048, route: { invoke: async (bytes, bounds) => {
+      calls++;
+      // The fixture exercises the existing receipt contract; its local owner route has no response-evidence registration.
+      return route.invoke(bytes, { ...f.bounds, maxTokens: bounds.maxTokens });
+    } } });
+    roots.push(owner.directory);
+    const { request } = owner.prepare();
+    expect(request.payload.maxTokens).toBe(2048);
+    const result = await owner.api.dispatch(request, owner.fence);
+    if (accepted) {
+      value(result);
+      const response = owner.all().find(fact => fact.kind === 'judgment-provider-ProviderJudgmentAttemptRecord'
+        && (fact.body as any).record.phase === 'response-observed')!;
+      const receipt = (response.body as any).record.receipt;
+      const observation = JSON.parse(owner.metadata[receipt.reference]!.bytes!);
+      expect(observation).toMatchObject({ state: 'complete', usage: {
+        outputTokens: total, answerTokens: answer, inputTokens: 25216, charge: null } });
+      expect(() => observationCheck(observation, owner.jh.description)).not.toThrow();
+    } else refused(result, 'provider token bound exceeded');
+    expect(calls).toBe(1);
+    expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+  }
+});
+
+it('keeps legacy token and charge bounds and refuses malformed answer usage without executing getters', async () => {
+  for (const answerTokens of [undefined, -1, 1.5, '1238', null, 3287, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const owner = providerFixture({ maxTokens: 2048, route: { invoke: async () => ({ state: 'complete', bytes: '{}',
+      providerOperation: 'invalid-usage', retryBlocked: false,
+      usage: { inputTokens: 4, outputTokens: 3286, charge: null, source: 'captured usage neighbor',
+        ...(answerTokens === undefined ? {} : { answerTokens: answerTokens as number }) } }) } });
+    roots.push(owner.directory);
+    const { request } = owner.prepare();
+    refused(await owner.api.dispatch(request, owner.fence), answerTokens === undefined ? 'provider token bound exceeded' : 'invalid provider answer usage');
+    if (answerTokens !== undefined) expect(() => observationCheck({ state: 'complete', bytes: '{}', providerOperation: null,
+      retryBlocked: false, usage: { inputTokens: 4, outputTokens: 3286, charge: null, source: 'neighbor',
+        answerTokens: answerTokens as number } }, owner.jh.description)).toThrow('invalid observed answer usage');
+  }
+  let getters = 0;
+  const owner = providerFixture({ maxTokens: 2048, route: { invoke: async () => ({ state: 'complete', bytes: '{}',
+    providerOperation: null, retryBlocked: false, usage: { inputTokens: 4, outputTokens: 3286, charge: null, source: 'accessor neighbor',
+      get answerTokens() { getters++; return 1238; } } }) } });
+  roots.push(owner.directory);
+  refused(await owner.api.dispatch(owner.prepare().request, owner.fence), 'provider token bound exceeded');
+  expect(getters).toBe(0);
+  const charged = providerFixture({ maxTokens: 2048, route: { invoke: async () => ({ state: 'complete', bytes: '{}',
+    providerOperation: null, retryBlocked: false, usage: { inputTokens: 4, outputTokens: 3286, answerTokens: 1238,
+      charge: 21, source: 'charge-bound neighbor' } }) } });
+  roots.push(charged.directory);
+  refused(await charged.api.dispatch(charged.prepare().request, charged.fence), 'provider charge bound exceeded');
+});
 it('keeps available usage on uncertain conversation results and leaves unavailable usage null', async () => {
   for (const [terminal, outputTokens] of [
     [JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'candidate',

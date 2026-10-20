@@ -181,10 +181,12 @@ export function createConfinedProviderInvocation(route: ConfinedProviderRoute, a
           // execute or enter the receipt's bounded canonical encoding.
           const limitation = own(returned, 'limitation'), draft = own(returned, 'responseEvidenceDraft');
           const failure = own(returned, 'failure');
+          const answerTokens = own(usage, 'answerTokens');
           const safeDraft = draft && typeof draft === 'object' && admitted.evidenceContract
             ? snapshotEvidenceDraft(draft, payload.maxOutputBytes, admitted.evidenceContract) : undefined;
           observation = { state: own(returned, 'state'), bytes: own(returned, 'bytes'), providerOperation: own(returned, 'providerOperation'),
-            usage: { inputTokens: own(usage, 'inputTokens'), outputTokens: own(usage, 'outputTokens'), charge: own(usage, 'charge'), source: own(usage, 'source') },
+            usage: { inputTokens: own(usage, 'inputTokens'), outputTokens: own(usage, 'outputTokens'), charge: own(usage, 'charge'), source: own(usage, 'source'),
+              ...(answerTokens === undefined ? {} : { answerTokens }) },
             retryBlocked: own(returned, 'retryBlocked'), ...(limitation && typeof limitation === 'object' ? { limitation: { kind: own(limitation, 'kind'), observedBytesAtLeast: own(limitation, 'observedBytesAtLeast') } } : {}),
             ...(failure && typeof failure === 'object' ? { failure: { failureClass: own(failure, 'failureClass'), resetHint: own(failure, 'resetHint'), resetAt: own(failure, 'resetAt') } } : {}),
             ...(safeDraft ? { responseEvidence: materializeEvidence(safeDraft,
@@ -215,7 +217,11 @@ export function createConfinedProviderInvocation(route: ConfinedProviderRoute, a
           ensure(!observation.retryBlocked, 'hidden retry reported; uncertainty retained');
           for (const n of [observation.usage.inputTokens, observation.usage.outputTokens, observation.usage.charge])
             ensure(n === null || Number.isSafeInteger(n) && n >= 0, 'invalid provider usage');
-          ensure(observation.usage.outputTokens === null || observation.usage.outputTokens <= payload.maxTokens, 'provider token bound exceeded; uncertainty retained');
+          const answerTokens = observation.usage.answerTokens;
+          ensure(answerTokens === undefined || Number.isSafeInteger(answerTokens) && answerTokens >= 0
+            && observation.usage.outputTokens !== null && answerTokens <= observation.usage.outputTokens, 'invalid provider answer usage');
+          const cappedTokens = answerTokens ?? observation.usage.outputTokens;
+          ensure(cappedTokens === null || cappedTokens <= payload.maxTokens, 'provider token bound exceeded; uncertainty retained');
           ensure(observation.usage.charge === null || observation.usage.charge <= payload.maxCharge, 'provider charge bound exceeded; uncertainty retained');
           if (observation.responseEvidence) {
             const evidence = observation.responseEvidence;

@@ -19,6 +19,8 @@ export function observationCheck(v: ProviderObservation, d: ModelDescription): v
   ensure(v.state !== 'complete' || v.bytes !== null, 'complete response lacks bytes');
   ensure(v.providerOperation === null || typeof v.providerOperation === 'string' && v.providerOperation.length <= 256, 'provider operation bound');
   for (const n of [v.usage.inputTokens, v.usage.outputTokens, v.usage.charge]) ensure(n === null || Number.isSafeInteger(n) && n >= 0, 'invalid observed usage');
+  ensure(v.usage.answerTokens === undefined || Number.isSafeInteger(v.usage.answerTokens) && v.usage.answerTokens >= 0
+    && v.usage.outputTokens !== null && v.usage.answerTokens <= v.usage.outputTokens, 'invalid observed answer usage');
   ensure(typeof v.usage.source === 'string' && v.usage.source.length > 0 && v.usage.source.length <= 256, 'usage source or explicit exception required');
   ensure(typeof v.retryBlocked === 'boolean', 'retry observation required');
   if (v.responseEvidence) {

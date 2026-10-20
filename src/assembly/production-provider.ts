@@ -663,7 +663,7 @@ export function createClaudeCodeSubscriptionRoute(input:
             + frame.usage.cache_creation_input_tokens + frame.usage.cache_read_input_tokens : null;
           reportedUsage = { inputTokens: completeInput !== null && Number.isSafeInteger(completeInput) ? completeInput : null,
             ...(completeInput !== null && Number.isSafeInteger(completeInput) ? { inputComplete: true as const } : {}),
-            outputTokens: frame.usage.output_tokens, charge: null,
+            outputTokens: frame.usage.output_tokens, answerTokens: subscriptionAnswerTokens(frame.usage), charge: null,
             source: 'Subscription policy declares zero additional metered demand; actual charge unknown; CLI estimate is raw evidence only' };
         }
         ensure(frame && typeof frame === 'object' && !Array.isArray(frame) && frame.type === 'result'
@@ -671,7 +671,7 @@ export function createClaudeCodeSubscriptionRoute(input:
           && typeof frame.session_id === 'string'
           && frame.session_id.length > 0 && frame.session_id.length <= 256
           && reportedUsage !== null
-          && subscriptionAnswerTokens(frame.usage) <= policy.maxTokens, 'subscription result refused');
+          && reportedUsage.answerTokens! <= policy.maxTokens, 'subscription result refused');
         const usage = reportedUsage;
 
         if (frame.is_error === true) {
