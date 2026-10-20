@@ -3,7 +3,8 @@ import { createWorkingActivities, readWorkingAdmission } from './working-activit
 import { AgentPathRefused, assertAgentPaths } from '../../scripts/agent-paths.mjs';
 import { prepareSessionConnectors, conversationAccountActions, admitSessionConnector } from './session-connectors.mjs';
 import { recordPhaseTiming } from './phase-timing.js';
-import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice } from './reply-check.js';
+import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice, REVIEW_OUTPUT_CAP, REVIEW_OUTPUT_CAP_REMINDER } from './reply-check.js';
+import { overCapCall } from './journal.js';
 import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin, observeInstalledSessionLogin } from './installed-harness-logins.mjs';
 import { loadHarnessLogins, harnessLoginPoolStatus, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { groupMembershipReader } from './group-membership-io.mjs';
@@ -2241,7 +2242,8 @@ async function main() {
             : operation === 'revision' ? `${id}:revision-review` : `${id}:reply-review`;
           // Plan #491: the one format re-ask names the exact defect the reader found in this review's refused verdict.
           const defect = reviewDefects.get(operationId);
-          const context = formatRetry ? withFormatReminder(reviewContext, defect ? `${REVIEW_FORMAT_REMINDER} The defect: ${defect}.`
+          const context = formatRetry ? withFormatReminder(reviewContext, defect === REVIEW_OUTPUT_CAP ? REVIEW_OUTPUT_CAP_REMINDER
+            : defect ? `${REVIEW_FORMAT_REMINDER} The defect: ${defect}.`
             : REVIEW_FORMAT_REMINDER) : reviewContext;
           reviewDefects.delete(operationId);
           // Rule 29: the review input is written by the runner, a verified system principal.
@@ -2255,6 +2257,10 @@ async function main() {
           if (result.state === 'complete' && result.failureClass === 'malformed') {
             if (result.defect) reviewDefects.set(operationId, result.defect);
             throw Error(REVIEW_MALFORMED);
+          }
+          if (operation === undefined && result.state === 'uncertain' && overCapCall(journal.view, operationId)) {
+            reviewDefects.set(operationId, REVIEW_OUTPUT_CAP);
+            throw Error(REVIEW_OUTPUT_CAP);
           }
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
           // The reply verdict is one exact line per selected rule (rule_id: PASS | reason); the whole-line

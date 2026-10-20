@@ -269,8 +269,10 @@ export function replyReviewContext(originalPrompt: string, candidateReply: strin
 // provider ceiling, so no verdict reached the shared-audience checkpoint. Budget the ask,
 // not the parser: all rules and full context remain, and longer complete reasons still parse.
 export const REPLY_REVIEW_REASON_ASK = 160;
-/** The one error that means the reviewer answered but missed the verdict format (the only case re-asked). */
+/** The reviewer answered but missed the verdict format. */
 export const REVIEW_MALFORMED = 'preview: review malformed';
+export const REVIEW_OUTPUT_CAP = 'preview: review output cap exceeded';
+export const REVIEW_OUTPUT_CAP_REMINDER = 'The previous review ended over its output allowance; its verdict was discarded. Judge the same candidate and full context again. Return only reasoning under 200 characters and one "PASS | reason" or "VIOLATION | reason" field per listed rule. Keep each reason under 100 characters and the entire object under 2000 characters.';
 /** Runner-authored packet guidance for the single format re-ask of a review. */
 export const REVIEW_FORMAT_REMINDER = 'Your previous verdict for this same review was refused because it was not exactly one field per listed rule, named by the rule id and valued "PASS | reason" or "VIOLATION | reason". Return only the flat object {"reasoning":..., one such field per listed rule}, no other text. Keep reasoning under 400 characters and the entire response under 4000 characters.';
 export const REPLY_REVIEW_REASON_MAX = 600;
@@ -395,7 +397,7 @@ export interface ReplyCheckPorts {
   escalate(text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[], deadlineAt?: number,
     /** `revision`: the held-class review of a revised candidate, a distinct operation from the first review. */
     operation?: 'revision' | 'acknowledgement',
-    /** The single format re-ask of a malformed first-review verdict (Rule 116). */
+    /** The single re-ask of an unusable first-review verdict (Rule 116). */
     formatRetry?: boolean): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
     findings?: ReplyFinding[];
     usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }>;
@@ -403,8 +405,8 @@ export interface ReplyCheckPorts {
   /** Durably reserve one additional Jev call, under the existing stop and spend floors. */
   reserveJevRetry?(): boolean;
   reserveEscalation(text: string, originalPrompt?: string): boolean;
-  /** Reserve the one format re-ask after a malformed verdict under the same call cap; false when capped or stopped. */
-  reserveFormatRetry?(): boolean;
+  /** Reserve the one format/output-cap re-ask under the same call cap; false when capped or stopped. */
+  reserveFormatRetry?(cause?: 'malformed' | 'output-cap'): boolean;
   record(result: ReplyCheckResult): void;
   elapsedMs(): number;
   now?(): number;
@@ -576,8 +578,10 @@ export async function reviewReply(text: string, id: string, ports: ReplyCheckPor
     let result;
     try { result = await ports.escalate(text, id, originalPrompt, reviewRules, ports.deadlineAt); }
     catch (error) {
-      // Rule 116: one bounded re-ask when the verdict missed its exact format; a second miss is refused as before.
-      if (!(error instanceof Error) || error.message !== REVIEW_MALFORMED || expired(ports) || !ports.reserveFormatRetry?.()) throw error;
+      // One shared retry for an unusable format or a proven ended output-cap result, never an outage.
+      const cause = error instanceof Error && error.message === REVIEW_MALFORMED ? 'malformed'
+        : error instanceof Error && error.message === REVIEW_OUTPUT_CAP ? 'output-cap' : undefined;
+      if (!cause || expired(ports) || !ports.reserveFormatRetry?.(cause)) throw error;
       result = await ports.escalate(text, id, originalPrompt, reviewRules, ports.deadlineAt, undefined, true);
     }
     // A returned VIOLATION is a real refusal: keep it even if the deadline passed meanwhile (Rule 42).

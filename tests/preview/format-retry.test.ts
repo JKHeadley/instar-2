@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { ANSWER_FORMAT_REMINDER, MODEL_FAILURE_REPLY } from './journal.js';
 import { conclusionText, parseModelJson } from './model-json.js';
-import { REPLY_RULES, REVIEW_MALFORMED, reviewReply, type ReplyCheckResult } from './reply-check.js';
+import { REPLY_RULES, REVIEW_MALFORMED, REVIEW_OUTPUT_CAP, reviewReply, type ReplyCheckResult } from './reply-check.js';
 
 const key = new Uint8Array(32).fill(54);
 const usage = { inputTokens: 10, outputTokens: 5, charge: null };
@@ -200,4 +200,16 @@ it('re-asks a format miss and sends the model\'s real bare answer, while the rea
     expect(r.sent[0]).toContain((JSON.parse(retried) as { reply: string }).reply.replace(/^PREVIEW:\s*/u, '').slice(0, 40));
     expect(r.turn.answerRetried).toBe(true);
   } finally { r.close(); }
+});
+
+it('format and ended output-cap failures share one paid retry allowance', async () => {
+  const causes: string[] = [];
+  let calls = 0;
+  const decision = await reviewReply('candidate', 'turn:1', { elapsedMs: () => 0,
+    jev: async () => ({ value: null, latencyMs: 0 }), reserveEscalation: () => true,
+    reserveFormatRetry: cause => { causes.push(cause!); return true; }, record: () => {},
+    escalate: async () => { throw Error(++calls === 1 ? REVIEW_OUTPUT_CAP : REVIEW_MALFORMED); } }, []);
+  expect(decision.outcome).toBe('unavailable');
+  expect(causes).toEqual(['output-cap']);
+  expect(calls).toBe(2);
 });

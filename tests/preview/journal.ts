@@ -736,7 +736,7 @@ const jevOutputMaximum = JEV_RESPONSE_MAX_BYTES;
 /** Whether a call's own recorded physical outcome proves an ended process whose final result frame reported
  * more output than the route's cap. The exit code and the error flag are not the proof (live #496 ended exit 1
  * with an is_error frame after 8192 output tokens); an ended call with a result frame and `output-cap` is. */
-const overCapCall = (view: JournalView, id: string): boolean => {
+export const overCapCall = (view: JournalView, id: string): boolean => {
   for (let index = view.callOutcomes.length - 1; index >= 0; index--) {
     const row = view.callOutcomes[index]!;
     if (row.id !== id) continue;
@@ -1215,7 +1215,7 @@ export type JournalRecord =
    * the same cap, and the packet the second call saw replaces the first as the turn's prompt and grounding. */
   | { kind: 'lookup'; id: string; words: string[]; found: string[]; prompt?: string; grounding?: ReplyGrounding; packetDropped?: PacketDrop[];
     usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
-  | { kind: 'format-retry'; id: string; role: 'answer' | 'reply-review'; state?: 'complete'; failureClass?: 'malformed'; undecided?: true; prompt?: string; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'format-retry'; id: string; role: 'answer' | 'reply-review'; state?: 'complete'; failureClass?: 'malformed' | 'output-cap'; undecided?: true; prompt?: string; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   /** The one replacement of an answer call that ended at the local timeout (docs/09: a replacement takes separate
    * capacity). The timed-out call stays UNKNOWN and charged; the replacement is reserved under the same cap. */
   | { kind: 'answer-replace'; id: string; state: 'uncertain'; prompt?: string; usage?: ModelUsage; latencyMs?: number; maxInputTokens?: number; maxOutputTokens?: number; at: number }
@@ -3887,7 +3887,8 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
 
   // Model-answer failure classes count every refused answer call (a format re-ask's refused first call included);
   // a reply review's format miss is a review outcome, not an answer failure.
-  if ('failureClass' in row && row.failureClass && !(row.kind === 'format-retry' && row.role === 'reply-review'))
+  if ('failureClass' in row && row.failureClass && row.failureClass !== 'output-cap'
+    && !(row.kind === 'format-retry' && row.role === 'reply-review'))
     view.failureClasses.set(row.failureClass, (view.failureClasses.get(row.failureClass) ?? 0) + 1);
   if (row.kind === 'genesis') throw Error('preview journal: duplicate genesis');
   if (row.kind === 'cap-report') {
@@ -4826,14 +4827,19 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       throw Error('preview journal: review state order');
     turn.reviewState = row.state;
     if (row.diagnostics) turn.reviewDiagnostics = row.diagnostics;
-    if (row.state !== 'uncertain') settleTokens(view, `review:${row.id}`, row.usage);
+    // A physical final over-cap result proves the call ended: meter its reported usage,
+    // while keeping its verdict uncertain. Missing usage still keeps the reservation.
+    if (row.state !== 'uncertain' || overCapCall(view, `${row.id}:reply-review`))
+      settleTokens(view, `review:${row.id}`, row.usage);
 
     return;
   }
   if (row.kind === 'format-retry') {
     // Rules 42, 75: the refused first call stays visible (its failure class and usage), and the one re-ask is a
     // counted, token-reserved call under the same cap; it is never repeated and never follows a send.
-    if ((row.undecided === true ? row.failureClass !== undefined || row.role !== 'answer' : row.failureClass !== 'malformed')
+    const cappedReview = row.role === 'reply-review' && row.failureClass === 'output-cap'
+      && turn.reviewState === 'uncertain' && overCapCall(view, `${row.id}:reply-review`);
+    if ((row.undecided === true ? row.failureClass !== undefined || row.role !== 'answer' : row.failureClass !== 'malformed' && !cappedReview)
       || view.calls >= view.limits.maxCalls || turn.intent !== undefined)
       throw Error('preview journal: format retry order or cap');
     if (row.role === 'answer') {
@@ -4848,8 +4854,13 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     } else if (row.role === 'reply-review') {
       if (row.prompt !== undefined) throw Error('preview journal: format retry order or cap');
       if (row.state !== undefined || replyCandidate === undefined || !turn.reviewReserved || turn.reviewRetried
-        || turn.reviewState !== undefined && turn.reviewState !== 'complete'
+        || turn.reviewState !== undefined && turn.reviewState !== 'complete' && !cappedReview
         || turn.replyChecks?.some(item => item.path === 'subscription')) throw Error('preview journal: format retry order or cap');
+      // Keep any unmeasured part of the refused call; the replacement is separately charged.
+      if (cappedReview) {
+        const prior = view.tokenCurrent.get(`review:${row.id}`);
+        if (prior !== undefined) { view.tokenCurrent.delete(`review:${row.id}`); view.tokenCurrent.set(`review-replaced:${row.id}`, prior); }
+      }
       reserveTokens(view, `review:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
         row.maxOutputTokens ?? subscriptionOutputMaximum);
       delete turn.reviewState; turn.reviewRetried = true;
@@ -9585,9 +9596,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                     : { prompt: originalPrompt }),
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum,
                   at: ports.now() }); return true; },
-              reserveFormatRetry: () => {
+              reserveFormatRetry: (failureClass: 'malformed' | 'output-cap' = 'malformed') => {
                 if (halted() || journal.view.calls >= journal.view.limits.maxCalls) return false;
-                journal.append({ kind: 'format-retry', id: turn.id, role: 'reply-review', failureClass: 'malformed',
+                journal.append({ kind: 'format-retry', id: turn.id, role: 'reply-review', failureClass,
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
                 return true; },
               record: (result: ReplyCheckResult) => journal.append({ kind: 'reply-check', id: turn.id,
