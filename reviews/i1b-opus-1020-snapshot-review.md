@@ -21,6 +21,8 @@ Convergence: none
 Decision: i1b-snapshot-optional | Extend the existing closed data-only snapshot with optional validated answer usage; reject malformed present values and preserve independent totals without adding a new parser or cap. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/i1b-opus-1020-repair-143352-PROGRESS.md
 Prompt review: No prompt or semantic decision changes; tests replay numeric usage only. The captured retrospective usage and two CLI probes are paired with the existing valid judgment fixture, not presented as the lost retrospective answer or a live completion.
 
+Generated evidence: Delegated desk scripts refreshed the grounding inventory and its checker digest; owner-reference manifests needed no updates. The register was replayed from the pin commit. Architecture reports only the charter-authorized native macOS conformance digest mismatch; its declaration is unchanged for the Studio desk.
+
 ## Closing block
 
 simplestRobustRoute: Extend the existing snapshot's accepted usage shape and bounded copy. This is the simplest robust route, retaining the existing safe-integer, nonnegative and no-greater-than-total guards, uncertain malformed outcome and all transport floors. No autonomous live-completion claim is made; the combined-build proof remains with the desk.
