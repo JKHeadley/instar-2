@@ -49,7 +49,8 @@
 // cleaning up. The owner, outside any launch's sandbox, is never dependent on a helper
 // inside the launch to finish.
 //
-// Recovery after a crash is observation only. Disposing of a process left by a dead
+// Recovery after a crash never signals: verified-gone launches return their Six debit
+// under the host lease before their ledger row is removed. Disposing of a process left by a dead
 // launcher is a recovery effect that needs the typed Part Eight process effect and
 // the Ten driver seams, which are not landed; until then surviving orphans are
 // reported with their evidence and their rows stay in the durable ledger.
@@ -743,7 +744,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       child.stdin.end(input.stdin, 'utf8');
     });
   }
-  /** Observation-only recovery (docs/18 §§8, 14): a row is examined against its owner and every
+  /** Non-signalling recovery (docs/18 §§8, 14): a row is examined against its owner and every
    * recorded member's incarnation. A live owner, an unknown reading or a surviving member keeps the
    * row; nothing is signalled, because disposal needs the unlanded typed recovery effect. Only a row
    * whose owner is gone and whose every recorded member is verified gone (missing, or the pid now
@@ -758,7 +759,11 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       if (Number.isSafeInteger(row?.pid) && !members.some(([pid]) => pid === row.pid)) members.push([row.pid, startIdentity(row.start) ?? null]);
       // A live owner (the same incarnation still running, or unknown) owns its launch: never ours to judge.
       const owner = row?.owner;
-      const ownerNow = owner && Number.isSafeInteger(owner.pid) ? await startEvidence(owner.pid) : null;
+      // Missing identity is not proof of a dead owner: never credit a possibly live launch.
+      if (!Number.isSafeInteger(owner?.pid) || owner.pid <= 1 || typeof owner.start !== 'string' || !startIdentity(owner.start)) {
+        orphans.push({ launch: id, state: 'unknown', reason: 'owner identity unavailable' }); continue;
+      }
+      const ownerNow = await startEvidence(owner.pid);
       if (ownerNow === UNKNOWN || owner && typeof owner.start === 'string' && ownerNow === startIdentity(owner.start)) {
         orphans.push({ launch: id, state: ownerNow === UNKNOWN ? 'unknown' : 'live-owner', owner: owner.pid }); continue;
       }
