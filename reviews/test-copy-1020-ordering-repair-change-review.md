@@ -25,6 +25,8 @@ Prompt finding: 4106b49fff07 | protocol-literal | Existing guidance tells an age
 Prompt finding: 849db3a6296a | protocol-literal | Existing exact empty-memory status protocol is unchanged by this repair.
 Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label provenance instruction is unchanged by this repair.
 
+Generated wiring: Ran the delegated owner-manifest rehash and repin chain (no manifest or inventory bytes changed), then replayed the register at implementation commit 837c466e4878b244323e26f9523b00f3d5202aba. Only generated outputs refresh the journal source pin.
+
 ## Closing block
 
 simplestRobustRoute: Persist a chronological position only on intake after the existing durable test-copy rebind, while retaining the raw wire identity. Existing history, summary and recall consumers then work unchanged. The extra field prevents unrelated bot counters from hiding copied history; its persistence prevents replay from reinterpreting old evidence. Existing authentication, resource limits, stop and dispatch guards remain the start, limit and end-state guards. This is the simplest robust route; no autonomous live-completion claim is made by these offline tests.
