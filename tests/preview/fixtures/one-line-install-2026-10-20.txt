@@ -1,0 +1,32 @@
+Recorded on the Mac Studio, 2026-10-20, by unit clean-install-1020.
+Clean target: a fresh HOME folder with an empty npm cache; Instar downloaded anonymously from
+the public repository by npx. Answers were piped on stdin (npx -y skips the download prompt that
+a person confirms by hand). npm notices about its own version are omitted.
+
+== Before: train-90 e44d3ce1 (06:42 PDT)
+$ HOME=<fresh> npx -y github:JKHeadley/instar-2#train-90 setup <fresh>/.instar2
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'typescript' imported from <npx cache>/node_modules/@instar/constitutional-types/scripts/slice-ts-loader.mjs
+exit 1
+
+== After: clean-install-1020 e59625d4 (06:44 PDT)
+$ HOME=<fresh> npx -y github:JKHeadley/instar-2#e59625d4 setup
+npm warn gitignore-fallback No .npmignore file found, using .gitignore for file exclusion. Consider creating a .npmignore file to explicitly control published files.
+Instar role setup. Identity, self-knowledge, reflection and growth are on by default.
+Use this terminal as the installation owner. Do not enter passwords or credentials.
+What role should your agent have? [max 2048 characters]
+> Saved answer 1/4.
+How much trust should it start with? Describe what it may do within that role. [max 1024 characters]
+> Saved answer 2/4.
+What is its monthly spending limit in US dollars? (0 is allowed) [max 1024 characters]
+> Saved answer 3/4.
+Which matters are sensitive? Separate them with semicolons, or enter none. [max 1024 characters]
+> Saved answer 4/4.
+Role setup complete. Your role, starting trust, monthly limit and sensitive matters are recorded.
+Subscription sign-in, channels and activation are separate installation steps; no paid use is enabled here.
+exit 0
+<fresh>/.instar2: .onboarding/, effect-policy.json (role "A helper for my small bakery", limit 25, sensitive [health, payroll]), mcp.json
+
+$ HOME=<fresh> npx -y github:JKHeadley/instar-2#e59625d4 setup    (same line again, no input)
+Instar role setup. Identity, self-knowledge, reflection and growth are on by default.
+Use this terminal as the installation owner. Do not enter passwords or credentials.
+Already set up. Your recorded role and choices are unchanged.
