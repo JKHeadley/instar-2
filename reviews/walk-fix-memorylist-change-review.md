@@ -14,12 +14,12 @@ Side effects: a model that previously set memoryList for a shaped memory questio
 Undo and recovery: revert the commit; the old sentence returns.
 Multi-machine posture: machine-local prompt text.
 Layer below: inspected the runner's memoryList replacement (unchanged, still guarded by operator origin, probe, lookup and validity) and the default-context-floor measurement.
-Bug class: unit
-Bug evidence: reproducer=tests/preview/default-context-floor.test.ts
+Bug class: none
+Bug evidence: none
 Hook bypass: none
 Convergence: none
 Decision: memorylist-prompt-only | keep the host's list path as the hallucination guard and narrow when the model asks for it; a 47-byte wording was dropped after it made Sonnet set the flag on run B's recorded input | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/walk-findings-1020-PROGRESS.md
-Prompt review: model-facing. Replayed recorded msg-24 inputs (run A update 6235088, run B update 6235112) per-call on the proof account with claude-sonnet-5: old sentence 0/2 on B, committed sentence 0/2 on B, A 0/1 each. The Fable shape that produced the miss could not be replayed (provider refused the per-call replay); the fix is unproven on that shape.
+Prompt review: model-facing; no in-tree reproducer (a stub cannot reproduce a model choosing the flag), evidence is the replay below. Replayed recorded msg-24 inputs (run A update 6235088, run B update 6235112) per-call on the proof account with claude-sonnet-5: old sentence 0/2 on B, committed sentence 0/2 on B, A 0/1 each. The Fable shape that produced the miss could not be replayed (provider refused the per-call replay); the fix is unproven on that shape.
 Prompt finding: 4106b49fff07 | protocol-literal | existing tool-attempt honesty guidance in journal.ts, unchanged by this unit.
 Prompt finding: 849db3a6296a | protocol-literal | existing saved-memory response contract in journal.ts, unchanged by this unit.
 Prompt finding: e8708c7fea24 | protocol-literal | existing source-label and uncertainty guidance in journal.ts, unchanged by this unit.
