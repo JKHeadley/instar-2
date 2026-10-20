@@ -27,6 +27,8 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory status r
 Prompt finding: 85544c20941f | protocol-literal | Fixed infrastructure outage sentence, not a model verdict or keyword classifier.
 Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label disclosure guidance is unchanged by this repair.
 
+Publication: Delegated owner rehash refreshed one preview test source pin. Inventory repin changed zero pins. Register replay from 2179b3f00062865c38a93597c6668d5cbdaefd7c generated seven artifacts with generation sha256:e9cca4433015473b31790daa22cb807aeaf961f0f252fba95ee77bf7f3c4f85d; shape-only, no new runtime authority.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: move the existing durable append into the existing admitted-send callback and use neutral fixed availability wording. No new queue, classifier, timer or sign-in automation. Start guards remain queued host custody, unavailable alternatives, stop, audience and reply allowance; end state is one admitted notice with UNKNOWN fenced or a proven refusal still eligible. Saved turns recover through the existing session path. Live combined-build acceptance remains with the desk; no deployment claim is made.
