@@ -1,7 +1,7 @@
 # Capabilities
 
-Register generation: sha256:bf77fd05345e5130bc4e9671bde51b65f5b5e7bbd5a64f20c9beb3c8b3c88919
-Source commit: 5b87d77c7f05f8af70f1744ab8f74191980ea0f8
+Register generation: sha256:c432e8e08136c0bdccab03b1778979b79dceb227014e3a51982cc714cc56c534
+Source commit: 5cd3603990517a64e26634f661d8ca9fbb999420
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -16,7 +16,7 @@ Authority: shape-only; entering-force verification required at consumption.
 - preview-upcoming-date-mention: dark; metrics: ["preview.dated.mentions"]; live proof: unavailable
 - preview.coherence-check: live; metrics: ["coherence"]; live proof: unavailable
 - preview.rolling-summary: live; metrics: ["summaries","summaryChecks","lastSummaryFaithfulness","summaryPending"]; live proof: unavailable
-- preview.step-check: dark; metrics: ["stepChecks"]; live proof: unavailable
+- preview.step-check: retired; metrics: ["stepChecks"]; live proof: unavailable
 - register-tooling: live; metrics: ["register.entries","register.rules","register.terms","register.warnings"]; live proof: unavailable
 - rungraph-core: dark; metrics: ["rungraph.fact-count","rungraph.pending-count","rungraph.fold-ms","rungraph.conflict-count"]; live proof: unavailable
 - slack-conversation-adapter: dark; metrics: ["slack.envelope.captured","slack.intake.admitted","slack.intake.held","slack.reply.refused","slack.operation.ordinary-reply.unproven","slack.operation.ordinary-reply.reason=the Slack reply adapter is declared dark (slack-ordinary-reply, gate P12-NF-28) and the live runner does not answer in Slack","slack.operation.durable-intake.supported","slack.operation.durable-intake.evidence=tests/conversation/slack-preparation.test.ts#P12-NF-19 writes the exact envelope capture and receipt before ack, then uses the shared intake owner","slack.operation.channel-memory-import.supported","slack.operation.channel-memory-import.evidence=tests/preview/channel-source.test.ts#accepts Slack only from channels bound to this agent and from platform user IDs","slack.operation.status-command.unproven","slack.operation.status-command.reason=status replies ride the ordinary reply path, which is unproven in Slack","slack.operation.requested-action.unproven","slack.operation.requested-action.reason=a requested action is an initiated send; no Slack send surface is installed on the live path","slack.operation.too-long-notice.unproven","slack.operation.too-long-notice.reason=depends on the Slack ordinary reply, which is unproven","slack.operation.media.unsupported","slack.operation.media.reason=a non-text Slack message is held with a receipt and no reply operation","slack.operation.acknowledgement-reaction.unsupported","slack.operation.acknowledgement-reaction.reason=no Slack acknowledgement reaction is installed","slack.operation.reply-typing.unsupported","slack.operation.reply-typing.reason=no Slack reply typing indicator is installed","slack.operation.reaction.unsupported","slack.operation.reaction.reason=no Slack reaction operation is installed","slack.operation.typing.unsupported","slack.operation.typing.reason=no Slack typing operation is installed","slack.operation.delete.unsupported","slack.operation.delete.reason=no Slack delete operation is installed","slack.operation.edit.unsupported","slack.operation.edit.reason=no Slack edit operation is installed","slack.operation.aggregate.unsupported","slack.operation.aggregate.reason=no Slack aggregate operation is installed"]; live proof: unavailable
