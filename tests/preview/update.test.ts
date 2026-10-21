@@ -17,7 +17,9 @@ const json = (p: string) => JSON.parse(readFileSync(p, 'utf8'));
 function fixture(version = '0.2.0', body = 'export const migrations = [];', schema = 1) {
   const p = scratch(); mkdirSync(join(p, 'scripts')); mkdirSync(join(p, 'bin'));
   writeFileSync(join(p, 'package.json'), JSON.stringify({ name: '@instar/constitutional-types', version, type: 'module' }));
-  writeFileSync(join(p, 'bin/instar2.mjs'), '// fixture launcher\n');
+  writeFileSync(join(p, 'bin/instar2.mjs'), readFileSync('bin/instar2.mjs'));
+  writeFileSync(join(p, 'scripts/update.mjs'), readFileSync('scripts/update.mjs'));
+  writeFileSync(join(p, 'scripts/slice-ts-loader.mjs'), readFileSync('scripts/slice-ts-loader.mjs'));
   writeFileSync(join(p, 'scripts/update-release.mjs'), `export const schemaVersion = ${schema};\nexport const readableSchemas = [1, ${schema}];\n${body}\n`);
   return `file:${p}`;
 }
@@ -90,6 +92,9 @@ process.exit(child.status ?? 1);
   expect(json(args).at(-1)).toBe('github:JKHeadley/instar-2#v0.2.0');
   expect(json(join(root, 'version.json')).version).toBe('0.2.0');
   expect(run().stdout).toContain('Already on this release');
+  const installed = spawnSync(process.execPath, [join(root, 'current/bin/instar2.mjs'), 'update', root, '--release', 'v0.2.0'], { encoding: 'utf8', timeout: 30000 });
+  expect(installed.status, installed.stderr).toBe(0);
+  expect(installed.stdout).toContain('Already on this release');
 });
 it('resumes a real process death mid-list and skips the completed migration', async () => {
   const root = scratch();

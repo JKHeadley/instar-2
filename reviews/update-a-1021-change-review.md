@@ -13,7 +13,7 @@ Tier rationale: Introduces installed root state and an explicit operator CLI, wi
 Side effects: Disk use increases by the installed release and root backup. Migrations can leave partial data changes on failure, while current and the version stamp remain old; each migration is contractually idempotent and resumes from its recorded start. A concurrent updater refuses. Interrupted installation staging and ambiguous locks remain inspectable.
 Undo and recovery: Retry the same tag to finish an interrupted migration or publication. Use the recorded prior pointer and backup for supervised recovery on a stopped copy. Do not restore old state over a live journal. No automatic rollback claim: that is update plan step D. Reverting the code removes the command but leaves its data intact.
 Multi-machine posture: Machine-local, deliberately. Each machine installs its own release and holds a local process lock; this command never chooses conversation ownership or weakens peer durability.
-Layer below: Read the full constitution, docs/14 upgrade lifecycle, current setup CLI, npm install behavior, and the existing judgment-captures unique-owner lock pattern. Verified the filesystem consumer via actual installed packages and symlinks, including process exit during the migration list. No live roots or proof-room harness changes.
+Layer below: Read the full constitution, docs/14 upgrade lifecycle, current setup CLI, npm install behavior, and the existing judgment-captures unique-owner lock pattern. Verified the filesystem consumer via actual installed packages and symlinks, including process exit during the migration list. An installed-copy test first failed because unconditional CLI loader registration required a dev-only TypeScript dependency; register the loader only in setup, so update uses only Node built-ins. No live roots or proof-room harness changes.
 Bug class: none
 Bug evidence: none
 Hook bypass: none
@@ -21,6 +21,8 @@ Convergence: none
 Decision: update-a-schema | Record schema readability explicitly instead of guessing compatibility from version ordering; a readable downgrade retains the highest written schema. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/update-a-1021-PROGRESS.md
 Decision: update-a-resume | Reuse unique local PID ownership and a flushed migration transaction; completed steps skip and started steps replay idempotently. Preserve earlier transactions and backups. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/update-a-1021-PROGRESS.md
 Decision: update-a-install | Reuse npm git install with lifecycle scripts disabled, a staged release folder and one atomic relative symlink rename. Restart and automatic rollback remain step D. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/update-a-1021-PROGRESS.md
+
+Decision: update-a-runtime | Register the TypeScript loader only for setup: the installed JavaScript update command must run without development dependencies, proven by invoking the installed copy. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/update-a-1021-PROGRESS.md
 
 Subject (6 paths): bin/instar2.mjs, scripts/update-release.mjs, scripts/update.mjs, docs/update.md, tests/preview/update.test.ts, reviews/update-a-1021-change-review.md
 

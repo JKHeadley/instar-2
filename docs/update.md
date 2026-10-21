@@ -62,3 +62,5 @@ it resolves. A migration must preserve the five floors and name all affected con
 CLI, failure before activation, incompatible and compatible older releases, a real
 process exit during a migration, and concurrent update refusal. CLI fixture tests
 replace only the npm source argument with a local path; they use real npm and no network.
+They then invoke the installed command, which needs only Node built-ins for update.
+The TypeScript loader remains specific to setup.

@@ -3,7 +3,6 @@ import { register } from 'node:module';
 import { createInterface } from 'node:readline';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-register('../scripts/slice-ts-loader.mjs', import.meta.url);
 const [command, root = join(homedir(), '.instar2'), ...extra] = process.argv.slice(2);
 if (command === 'update') {
   try {
@@ -22,6 +21,7 @@ if (command === 'update') {
   process.stderr.write('Usage: instar2 setup [installation-directory] | update [installation-directory] [--release <tag>]\n');
   process.exitCode = 1;
 } else {
+  register('../scripts/slice-ts-loader.mjs', import.meta.url);
   const { runOnboarding } = await import('../scripts/onboarding.mjs');
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
   const iterator = lines[Symbol.asyncIterator]();
