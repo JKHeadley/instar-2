@@ -8,7 +8,7 @@ Affected rules: 37, 49, 69, 72, 73, 74, 90, 101, 111, 112, 113, 116
 Affected floors: secrets — untouched; spend cap — untouched; stop — untouched; no duplicate sends — untouched; durable intake — untouched. Publication grants no new authority.
 Operator questions: none
 Suggested tier: critical
-Declared tier: standard
+Declared tier: ordinary
 Tier rationale: Mechanical shape-only replay of committed declarations through the existing generator; no runtime or constitutional wording changes.
 Side effects: Seven generated publications acquire the new source commit, generation and source pins, including the finite October 24 step-check deadline. No approval or graduation is claimed.
 Undo and recovery: Regenerate from a reviewed correcting source commit; preserve promotion history, evidence and the dark status. Never edit generated pins by hand.
