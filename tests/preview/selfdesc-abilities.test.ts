@@ -30,7 +30,9 @@ const wall = (update: number, constraint: string) => ({ source: `telegram:898950
 
 // Translate declared guidance changes only; captured bytes and historical judge digests stay intact.
 // Requested result delivery is tested separately in owed-delivery.test.ts; historical PASS does not certify it.
-const currentChannelNote = (text: string) => compactRecordedNote(text)
+// The accepted retirement removes only this inventory entry, not historical evidence.
+const retiredStepCheck = '- preview.step-check: off unless launched with it; independently checks each business step and changes nothing.\n';
+const currentChannelNote = (text: string) => compactRecordedNote(text.replace(retiredStepCheck, ''))
   .replace('keeps standing instructions and works the promises its replies leave open, holding results for the next message.',
     'keeps instructions and works promises; delivers explicitly requested results, otherwise holds them for the next message.')
   .replace('In the code but switched off here, so not available:', 'Code switched off here:')
@@ -66,11 +68,23 @@ const currentInstructions = (text: string) => {
   return text.replace('For a later-action promise', `${LITERAL_COPY_INSTRUCTIONS}\n${CLAIM_EVIDENCE_GUIDANCE}\nFor a later-action promise`);
 };
 
-// Adapt only presentation: captured model outputs, capability descriptions and limits remain exact.
+// Adapt only presentation here; the explicit retirement translation above handles the inventory change.
 const compactRecordedNote = (text: string) => text
   .replace(/^- (?!tools:)[a-z][a-z0-9.-]*: /gmu, '- ')
   .replace('What you can do for the operator here:', 'Capabilities:')
   .replace('Internal machinery running under you:', 'Internal:');
+
+it('translates only the exact retired inventory entry and retains unrelated capability drift', () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/preview-prompt-2026-10-11.json', import.meta.url), 'utf8'));
+  expect(capture.note.split(retiredStepCheck)).toHaveLength(2);
+  const current = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text;
+  expect(renderedNote(capture.note)).toBe(current);
+  expect(renderedNote(capture.note.replace(retiredStepCheck, ''))).toBe(current);
+  // Changed retirement wording and drift in a retained capability must still fail equality.
+  expect(renderedNote(capture.note.replace('changes nothing.', 'changes everything.'))).not.toBe(current);
+  expect(renderedNote(capture.note.replace('faithfulness-checked', 'unchecked'))).not.toBe(current);
+  expect(capture.note).toContain(retiredStepCheck);
+});
 
 it('replays preswitch update 840342287 with current self-description and the unchanged K11 rubric and declared capability revisions', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-outward-2026-10-11.json', import.meta.url), 'utf8'));
