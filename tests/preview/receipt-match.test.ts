@@ -24,7 +24,10 @@ function fixture(answer: string, mismatch?: 'chat' | 'id' | 'text' | 'thread') {
   const ports: PreviewPorts = { now: () => 1000, stopped: () => false, model: async () => answer, checkOutbound: () => {},
     send: async input => {
       calls.push(input);
-      expect(input.text).toBe(encodeReply(input.expectedText));
+      expect(journal.verifyOutbound(input.provenance, { target: input.target!, chat: input.chat,
+        ...(input.thread === undefined ? {} : { thread: input.thread }), body: input.text })).toBe(true);
+      if (input.formatting) expect(input.expectedText).toBe(input.formatting.shown);
+      else expect(input.text).toBe(encodeReply(input.expectedText));
       expect(input.expectedText).toBe(input.expectedText.trimEnd());
       const fault = input.target?.startsWith('reply:') ? mismatch : undefined;
       // Counterfactual provider receipt: the original incident did not retain this body.
@@ -47,7 +50,8 @@ it.each(['\n', ' \t\r\n', '\u00a0\n'])('canonicalizes a fitting reply before sig
     expect(turn.intent).toBe(original.trimEnd());
     expect(turn.sent).toBe(1);
     expect(f.calls).toHaveLength(1);
-    expect(f.calls[0]!.expectedText).toBe(turn.intent);
+    // This capture uses bold month names; Telegram's receipt carries their text without markers.
+    expect(f.calls[0]!.expectedText).toBe(original.trimEnd().replaceAll('**', ''));
     await f.worker.drain(); expect(f.calls).toHaveLength(1);
     f.journal.close();
     const reopened = openPreviewJournal(f.path, key);
