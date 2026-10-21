@@ -6,7 +6,7 @@ import type { SessionWorkEdge, SessionWorkEffect } from '../../src/assembly/prod
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { afterEach, expect, it } from 'vitest';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
-import { encodeReply, wholeReplySent } from './reply-parts.js';
+import { wholeReplySent } from './reply-parts.js';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -107,7 +107,10 @@ function fixture(forum = false, prepared = false, maxSessions = 2, timeZone = 'A
     prepareModel: input => prepared ? prepareJournalEnvelope(input, 'offline-model', 'grant:offline', now, 262144) : JSON.stringify(input), checkOutbound: () => {},
     send: async input => {
       sent.push({ text: input.expectedText, thread: input.thread, update: input.update });
-      expect(input.text).toBe(encodeReply(input.expectedText));
+      // Rendered HTML and its displayed text differ; dispatch binds the stored bytes.
+      expect(journal.verifyOutbound(input.provenance, { target: input.target!, chat: input.chat,
+        ...(input.thread === undefined ? {} : { thread: input.thread }), body: input.text })).toBe(true);
+      if (input.formatting) expect(input.expectedText).toBe(input.formatting.shown);
       return classifyTelegramSend({ kind: 'response', status: 200, bytes: JSON.stringify({ ok: true, result: {
         message_id: sent.length, chat: { id: Number(input.chat) }, text: input.expectedText.trimEnd(),
         ...(input.thread === undefined ? {} : { message_thread_id: input.thread }),

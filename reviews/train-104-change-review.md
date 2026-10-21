@@ -33,7 +33,7 @@ Decision: train-104-C | No member left out. Generated conflicts temporarily reta
 Decision: train-104-D | WSL host-dependent tests and composition-bound Darwin certificate renewal are reported to the Studio gate; no declaration changed to conceal a failed check. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-104-PROGRESS.md
 Decision: train-104-desk | Download and execute the existing repin/build/rehash/register replay chain, changing only macOS sed syntax for Linux. No handwritten generated resolution and no floor increase. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-104-PROGRESS.md
 
-Decision: train-104-consumers | Preserve raw authored/review assertions while updating capability and deferred-result send expectations to the reviewed Telegram bullet glyphs; real recorded reply fixtures remain unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-104-PROGRESS.md
+Decision: train-104-consumers | Preserve raw authored/review assertions while updating capability and deferred-result send expectations to the reviewed Telegram bullet glyphs; the multipart fake sender verifies signed rendered bytes and displayed text; real recorded reply fixtures remain unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-104-PROGRESS.md
 
 Verification: Targeted changed tests, direct importers, journal tests, register CLI, subscription and default-context floor; architecture, lint, typecheck, register and change-review checks, and pinned READY tests. Exact results and host limitations are recorded in the desk report.
 
