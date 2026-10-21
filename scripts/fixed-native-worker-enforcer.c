@@ -671,6 +671,10 @@ static int role_probe(int argc, char **argv) {
     }
     return 3;
   }
+  if (!strcmp(p, "kill-ready")) {            /* all exec/trace stops are behind us */
+    if (write(3, "R", 1) != 1) return 4;
+    for (;;) pause();                       /* supervisor injects the outside kill */
+  }
   if (!strcmp(p, "sleep")) { usleep((useconds_t)(argc > 3 ? atoi(argv[3]) : 30000) * 1000u); return 0; }
   return 64;
 }
@@ -721,21 +725,37 @@ static int run_guarded_fault(run_t *out, const char *cpu, const char *mem, const
   out->reason = -1;
   out->detail = -1;
   uint64_t t0 = now_ms();
-  if (spawn_guard(&g, argv, -1) != 0) return -1;
+  int ready[2] = { -1, -1 };
+  if (fault == FAULT_KILL && socketpair(AF_UNIX, SOCK_STREAM, 0, ready) != 0) return -1;
+  int spawned = spawn_guard(&g, argv, ready[1]);
+  if (ready[1] >= 0) close(ready[1]);
+  if (spawned != 0) { if (ready[0] >= 0) close(ready[0]); return -1; }
+  int kill_ready = 0, killed = 0;
   char line[256];
   for (;;) {
     if (fault != FAULT_SILENT) (void)write(g.link, "H", 1);
-    struct pollfd p = { .fd = g.link, .events = POLLIN };
-    if (poll(&p, 1, HEARTBEAT_MS) > 0) {
+    struct pollfd p[2] = { { .fd = g.link, .events = POLLIN }, { .fd = ready[0], .events = POLLIN } };
+    int polled = poll(p, 2, HEARTBEAT_MS);
+    if (polled > 0 && (p[1].revents & POLLIN)) {
+      char byte = 0;
+      kill_ready = read(ready[0], &byte, 1) == 1 && byte == 'R';
+      close(ready[0]); ready[0] = -1;
+    }
+    if (polled > 0 && p[0].revents) {
       if (read_line(g.link, line, sizeof line, now_ms() + 1000) != 0) break;
       if (line[0] == 'S') {
         out->started = 1; sscanf(line + 2, "%d", &out->worker);
-        if (fault == FAULT_KILL) { usleep(100000); kill(out->worker, SIGKILL); }  /* test fault only */
       }
       if (line[0] == 'T') { sscanf(line + 2, "%d %d %d", &out->reason, &out->status, &out->detail); break; }
     }
+    /* The guard's S precedes exec. Only the payload's R proves that the traced
+     * exec chain has completed. Keep heartbeating while waiting; never guess a delay. */
+    if (fault == FAULT_KILL && out->started && kill_ready && !killed) {
+      kill(out->worker, SIGKILL); killed = 1;  /* exact worker, observation fault only */
+    }
     if (now_ms() - t0 > lifetime_ms + 10000) break;
   }
+  if (ready[0] >= 0) close(ready[0]);
   int gs; waitpid(g.pid, &gs, 0);
   close(g.link);
   out->wall_ms = now_ms() - t0;
@@ -791,12 +811,14 @@ static int feasibility(const char *which, const char *profile, const char *scrat
     failures += report("memory-consumes", VERDICT(got == 0 && r.reason == END_WORKER && exit_code(r.status) == 10),
       "probe touched 64MiB under -O2 and the kernel counted it in its footprint: outcome=%d (10=consumed, 13=not)",
       exit_code(r.status));
-    run_t n[6];
+    run_t n[6] = {0};
     char *slow[] = { self_path, "probe", "sleep", NULL };
-    int okn = run_guarded_fault(&n[0], "-", "-", profile, 10000, slow, FAULT_KILL) == 0
+    char *kill_ready[] = { self_path, "probe", "kill-ready", NULL };
+    int okn = run_guarded_fault(&n[0], "-", "-", profile, 10000, kill_ready, FAULT_KILL) == 0
               && WIFSIGNALED(n[0].status) && WTERMSIG(n[0].status) == SIGKILL && n[0].reason == END_WORKER;
-    okn = okn && run_guarded(&n[1], "-", "-", profile, 300, slow) == 0 && n[1].reason == END_DEADLINE;
-    okn = okn && run_guarded_fault(&n[2], "-", "-", profile, 10000, slow, FAULT_SILENT) == 0 && n[2].reason == END_LAPSE;
+    int deadline_ok = run_guarded(&n[1], "-", "-", profile, 300, slow) == 0 && n[1].reason == END_DEADLINE;
+    int lapse_ok = run_guarded_fault(&n[2], "-", "-", profile, 10000, slow, FAULT_SILENT) == 0 && n[2].reason == END_LAPSE;
+    okn = okn && deadline_ok && lapse_ok;
     n[3] = (run_t){ .reason = END_MEMORY, .status = SIGKILL, .detail = 0, .started = 1 };   /* setup failure */
     n[4] = (run_t){ .reason = END_REFUSED, .status = SIGKILL, .detail = 0, .started = 0 };
     n[5] = r;                                                                       /* finished, not killed */
