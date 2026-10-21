@@ -20,14 +20,14 @@ Hook bypass: none; core.hooksPath is unset and the common hooks directory contai
 Convergence: none
 Decision: train98-repair185058-rendered-boundary | Compare delivered output with rendered recorded bytes and fix the receipt substitutes, preserving raw captures and all timing, mismatch, restart and disclosure assertions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-98-repair-185058-PROGRESS.md
 
-Subject (9 paths): register-source/owner-references/preview.json, tests/preview/ack-deadline-rewalk.test.ts, tests/preview/deferral-finish.test.ts, tests/preview/group-carry-relocation.test.ts, tests/preview/owed-delivery.test.ts, tests/preview/receipt-match.test.ts, tests/preview/reply-acknowledgement-timing.test.ts, tests/preview/telegram-media.test.ts, tests/preview/working-progress.test.ts
+Subject (16 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, register-source/owner-references/preview.json, tests/preview/ack-deadline-rewalk.test.ts, tests/preview/deferral-finish.test.ts, tests/preview/group-carry-relocation.test.ts, tests/preview/owed-delivery.test.ts, tests/preview/receipt-match.test.ts, tests/preview/reply-acknowledgement-timing.test.ts, tests/preview/telegram-media.test.ts, tests/preview/working-progress.test.ts
 
 Decision: train98-repair185058-fixture-clock | Inject the existing clock at the recorded group fixture time so a replay cannot expire with the host calendar; keep real monotonic elapsed time and all activation checks. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-98-repair-185058-PROGRESS.md
 
 ## Closing block
 
 simplestRobustRoute: This IS the simplest robust route: use the existing renderer for downstream delivery expectations and make the local HTTP receipt match Telegram semantics. No added runtime machinery. Recorded intake guards entry; exact displayed receipt and durable replay guard completion; existing stop, spend, disclosure and uniqueness limits remain.
-Register replay: Owner artifact hash refreshed with the delegated desk scripts; no manual pin edit. Generated outputs rebuilt after the source commit.
+Register replay: Owner artifact hash refreshed with the delegated desk scripts; no manual pin edit. Generated outputs rebuilt from 0cffc4cb46c61fc53350f8ec14114a8edb21b111 (shape-only replay, no entering-force authority).
 
 80/20: Target the eight gate-failing test files and required cheap checks; the Studio owns the full-suite rerun. No deployment or independent acceptance claim.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
