@@ -24,6 +24,8 @@ Prompt review: No prompt, model parser or accept/refuse logic changed. Real reco
 
 Subject (12 paths): tests/preview/README.md, tests/preview/capabilities.declarations.json, tests/preview/capabilities.test.ts, tests/preview/deferral-not-memory.test.ts, tests/preview/gap-progress-final.test.ts, tests/preview/group-carry-requests.test.ts, tests/preview/memory-prefer.test.ts, tests/preview/no-handback.test.ts, tests/preview/obligation-task-answer-live.test.ts, tests/preview/promotion-record.test.ts, tests/preview/promotion-record.ts, tests/preview/reply-acknowledgement.test.ts
 
+Register replay: Generated outputs rebuilt from 07998320ff7db1d55b1305f85da8bf5ec9a504ee with the delegated desk scripts (zero owner or inventory pin changes), then build-register --replay. No pins hand-edited.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reuse the installed formatter and append-only deadline mechanism. Start guards are the recorded input and exact host body; end guards assert one complete delivery and retained commitments across restart; limit guards remain stop, cap, disclosure and no duplicate sends. No new machinery or autonomous live acceptance claim.
