@@ -22,3 +22,13 @@ Prompt review: The promotion record appends the deadline, reason, owner and roll
 Decision: stepcheck-grad-refused-third-extension | Rule 72 graduation requires recorded stage evidence; none exists because no root ever launched with step-check on. Graduating would claim protection that was never observed (Rule 73). Extend 72 h a third time, say so plainly, and name the closing action and owner so a fourth extension is not the default. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/stepcheck-grad-1020-PROGRESS.md
 
 Verification: Recorded in the stepcheck-grad-1020 PROGRESS report.
+
+## ELI16
+
+Step-check is a safety checker that is switched off. The rules say a switched-off safety feature must either prove itself and be promoted, or have a date by which it will. Its date passed again tonight, and that made every build fail. We looked for proof that it was ever switched on and tried for real. There is none: no run anywhere has turned it on. Promoting it would mean claiming a guard we never saw work, so we did not. Instead we moved the date three days out, for the third time, wrote down exactly what is missing, and named who has to do the live test (the desk with Justin) or remove the feature.
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: append one owned decision to the existing promotion record, move the declared deadline to match, update the consuming assertions and documentation, then regenerate the register with the project tool. No new machinery. Graduation stays guarded by the existing stage-evidence requirement and the new date by the existing strict deadline check.
+80/20: Verify the evidence scan, the step-check, promotion and inventory tests, register/rulegraph tests, typecheck, architecture, lint, register check and the desk's pinned ready tests; leave the live graduation procedure with its named owner.
+VERDICT: author submission; no independent convergence claim — the review desk records its judgment
