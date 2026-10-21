@@ -1,3 +1,4 @@
+import { renderTelegramHtml } from './telegram-markdown.mjs';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -85,7 +86,7 @@ it.each([1, 2])('a held follow-up cannot replace recorded final answer %i (garde
     const before = w.sent.length;
     await w.answer(index);
     const answer = primary(capture.turns[index]!.answer), parts = splitReply(answer)!;
-    expect(w.sent.slice(before)).toEqual(parts);
+    expect(w.sent.slice(before)).toEqual(parts.map(part => renderTelegramHtml(part).shown));
     if (index === 1) { expect(parts.length).toBeGreaterThan(1); expect(parts.join('\n')).toContain('**December**'); }
     else expect(parts.join('\n')).toContain('Byte count: 25 bytes');
     const turn = w.journal.view.order.at(-1)!;

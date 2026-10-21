@@ -1,3 +1,4 @@
+import { renderTelegramHtml } from './telegram-markdown.mjs';
 import { readFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -102,7 +103,7 @@ it('replays the captured handback into one corrected answer and retains the rece
   // The completed research is recorded, not inferred from its answer wording.
   expect(run('compare').admission).toContain('WebSearch');
   const result = await replay(captured.original.answer, review('original'), completed);
-  expect(result.sends).toEqual(splitReply(completed));
+  expect(result.sends).toEqual(splitReply(completed)!.map(part => renderTelegramHtml(part).shown));
   expect(result.revisions).toBe(1);
   expect(result.turn.sent).toBe(777);
   expect(result.guidance.find(row => row.member === 'tone-self-stop')).toMatchObject({ verdict: 'fired', landing: 'revised' });

@@ -1,3 +1,4 @@
+import { renderTelegramHtml } from './telegram-markdown.mjs';
 import { expect, it } from 'vitest';
 import { createCipheriv, randomBytes } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
@@ -191,7 +192,7 @@ it('replays live lookup 969390382 with its recorded answer, Jev and contextual r
       // Captured verdict replay, not a claim that a live reviewer has judged the new acknowledgement.
       escalate: async () => captured.checks[1]! } };
   try { worker = createJournalWorker(journal, ports); worker.intake([captured.raw]); await worker.drain();
-    expect(sent.map(row => row.expectedText)).toEqual([REPLY_ACKNOWLEDGEMENT, captured.reply]);
+    expect(sent.map(row => row.expectedText)).toEqual([REPLY_ACKNOWLEDGEMENT, renderTelegramHtml(captured.reply).shown]);
     expect(sent.map(row => row.replyTo)).toEqual([105, 105]);
     expect(journal.view.order[0]?.replyChecks?.map(check => check.path)).toEqual(['jev']);
     expect(journal.view.order[0]?.heldNoticeReview).toBeUndefined();
