@@ -52,11 +52,25 @@ no model calls and never changes model settings, grants, stop state or spend lim
 ## Adding a migration
 
 The installed release owns `scripts/update-release.mjs`. Declare the schema it writes,
-the schemas it can read, and an array of `{ id, run(root) }` in strictly increasing id
-order. The initial list is empty. Keep ids stable forever and make every effect durable
+the schemas it can read, and an array of `{ id, run(root) }` in registration order.
+Ids must be unique; they do not determine execution order. The initial list is empty.
+Keep ids stable forever and make every effect durable
 and replay-safe inside `run`: intent is flushed before calling it, and completion after
 it resolves. A migration must preserve the five floors and name all affected consumers
 (Rules 44 and 45). Do not lower a schema to make older code appear compatible.
+
+The step shape adapts Instar 1.x's `MigratorStepEngine.registerStep` and
+`runPendingSteps`: named idempotent workers, registration order, persisted completion
+and atomic ledger replacement. The release manifest selects the steps, so no separate
+semver scheduler is needed. Stable ids skip completed steps across releases; the
+transaction records their release and prior version for provenance. This path keeps
+its existing on-disk format so previously started updates can still resume.
+
+Unlike the 1.x engine, it must record intent before an effect, retry an interrupted
+step, and stop on failure before activating a release. It must also preserve and
+refuse corrupt records instead of resetting their history. The existing transaction,
+schema-readability check and single-updater lock hold those requirements; importing
+the 1.x engine unchanged would not. No second ledger or migration service is needed.
 
 `tests/preview/update.test.ts` exercises npm installs from local fixtures, the actual
 CLI, failure before activation, incompatible and compatible older releases, a real

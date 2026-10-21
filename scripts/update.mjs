@@ -100,8 +100,11 @@ async function apply(root, release, source) {
   const manifest = await import(pathToFileURL(join(installed, 'scripts/update-release.mjs')).href);
   if (!Number.isSafeInteger(manifest.schemaVersion) || manifest.schemaVersion < 1 || !Array.isArray(manifest.readableSchemas)
     || !manifest.readableSchemas.includes(previous.schema)) throw Error('Release cannot read the existing state schema; downgrade refused');
-  if (!Array.isArray(manifest.migrations) || manifest.migrations.some((m, i, all) => !m || typeof m.id !== 'string' || !m.id
-    || typeof m.run !== 'function' || (i > 0 && all[i - 1].id >= m.id))) throw Error('Migrations must have unique ordered ids');
+  // Adapt MigratorStepEngine.registerStep (Instar 1.x): unique names, registration
+  // order, idempotent workers. An id identifies a step; it does not sort the list.
+  if (!Array.isArray(manifest.migrations) || manifest.migrations.some(m => !m || typeof m.id !== 'string' || !m.id
+    || typeof m.run !== 'function') || new Set(manifest.migrations.map(m => m.id)).size !== manifest.migrations.length)
+    throw Error('Migrations must have unique ids and callable workers');
   if (!state || state.phase === 'complete') {
     if (state) {
       const history = join(root, 'update-history'); mkdirSync(history, { recursive: true, mode: 0o700 });
@@ -112,6 +115,9 @@ async function apply(root, release, source) {
     save(statePath, state);
   }
   const ids = new Set(state.previous.migrations);
+  // Same pending-step shape as 1.x runPendingSteps: traverse registration order
+  // and skip persisted completions. Here intent must precede effects, interrupted
+  // steps retry, and errors stop activation; never record a failure as completed.
   for (const migration of manifest.migrations) {
     if (ids.has(migration.id)) continue;
     let step = state.steps.find(s => s.id === migration.id);

@@ -141,12 +141,27 @@ it('refuses a concurrent updater while preserving the owner and resumes after it
   await first;
   expect((await updateRoot(root, { release: 'v0.2.0', source })).status).toBe('unchanged');
 });
-it('refuses unordered migrations before effect and retains the existing release on install failure', async () => {
+it('runs named migrations in registration order, not alphabetical id order', async () => {
+  const root = scratch();
+  const source = fixture('0.2.0', `import { appendFileSync } from 'node:fs';
+import { join } from 'node:path';
+export const migrations = [
+ { id: 'z-first', run(root) { appendFileSync(join(root, 'order'), 'first\\n'); } },
+ { id: 'a-second', run(root) { appendFileSync(join(root, 'order'), 'second\\n'); } }
+];`);
+  await updateRoot(root, { release: 'v0.2.0', source });
+  expect(readFileSync(join(root, 'order'), 'utf8')).toBe('first\nsecond\n');
+  expect(json(join(root, 'update-state.json')).steps).toEqual([
+    { id: 'z-first', status: 'done' }, { id: 'a-second', status: 'done' },
+  ]);
+  expect(json(join(root, 'version.json')).migrations).toEqual(['z-first', 'a-second']);
+});
+it('refuses duplicate migrations before effect and retains the existing release on install failure', async () => {
   const root = scratch(); await updateRoot(root, { release: 'v0.2.0', source: fixture() });
   const before = readFileSync(join(root, 'version.json'), 'utf8'), pointer = readlinkSync(join(root, 'current'));
   await expect(updateRoot(root, { release: 'bad', source: 'file:/nonexistent-update-fixture' })).rejects.toThrow('installation failed');
-  const source = fixture('0.3.0', "export const migrations = [{ id: 'b', run() { throw Error('effect ran'); } }, { id: 'a', run() {} }];");
-  await expect(updateRoot(root, { release: 'v0.3.0', source })).rejects.toThrow('unique ordered ids');
+  const source = fixture('0.3.0', "export const migrations = [{ id: 'b', run() { throw Error('effect ran'); } }, { id: 'a', run() {} }, { id: 'b', run() {} }];");
+  await expect(updateRoot(root, { release: 'v0.3.0', source })).rejects.toThrow('unique');
   expect(readFileSync(join(root, 'version.json'), 'utf8')).toBe(before);
   expect(readlinkSync(join(root, 'current'))).toBe(pointer);
 });
