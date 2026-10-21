@@ -90,17 +90,21 @@ for (const sample of capture.cases) it.each(['finished', 'restart', 'old-continu
       expect(loopHealth(journal.view, now).awaitingDelivery).toBe(0);
       return;
     }
+    const report = JSON.parse(sample.after.output).report as string;
+    expect(journal.view.obligationWork['commitment:0']!.report?.text).toBe(report);
     expect(loopHealth(journal.view, now)).toMatchObject({ awaitingDelivery: 1,
       deliveryInhibition: 'no grant for unsolicited sends; 1 finished result waits for your next message' });
     expect(await worker.workObligations()).toBe(false);
     if (mode === 'restart') {
       journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
       expect(loopHealth(journal.view, now).awaitingDelivery).toBe(1);
+      expect(journal.view.obligationWork['commitment:0']!.report?.text).toBe(report);
     }
     intake(worker, sample.update + 1, 'hi'); await worker.drain(); await worker.drain();
     expect(sends).toHaveLength(2);
     expect(sends[1]).toContain('Follow-up on "');
-    expect(sends[1]).toContain(JSON.parse(sample.after.output).report);
+    // Telegram displays list bullets; the retained model report above stays byte-exact.
+    expect(sends[1]).toContain(report.replace(/^- /gm, '• '));
     expect(journal.view.closed.has(0)).toBe(true);
     journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
     await worker.drain(); expect(await worker.workObligations()).toBe(false);
