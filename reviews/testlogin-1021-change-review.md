@@ -7,8 +7,8 @@ Outcome: A reusable test-launch preflight refuses an operator-reserved account b
 Affected rules: Rules 1, 4, 15, 26, 30, 35, 42, 49, 52, 55, 74, 101, 103, 111, 113 and 116; purpose coherence, granted scope and least revelation.
 Affected floors: secrets — only non-secret profile metadata is read and raw parser errors are withheld; spend cap — no model call or cap change; stop — existing runner stop behavior unchanged; no duplicate sends — no sends or retries added; durable intake — preflight precedes runner startup and existing journals are not changed by the guard.
 Operator questions: none
-Suggested tier: standard
-Declared tier: standard
+Suggested tier: significant
+Declared tier: significant
 Tier rationale: Exact enforcement of the operator's explicit test-account restriction in a physical launch preflight; no model prompt, model parser, application authority or delivery path changes.
 Side effects: A copy whose selected pool includes a reserved member refuses even if that member is currently held. Missing metadata also refuses rather than assuming capacity is safe. A separate test login can pass this restriction while still exhausted; this check grants no capacity. Desk launchers and their supervisor configs receive a preload that performs the same check before the runner body. No live runner is restarted or modified by this unit.
 Undo and recovery: Restore each edited desk file from its named pre-edit backup, recorded under the absolute lanes/testlogin-1021/backups.json path, and revert this commit if the reusable checker is withdrawn. Keep captured quota and refusal evidence. No journal rollback, credential replacement, resend or account mutation is needed.
