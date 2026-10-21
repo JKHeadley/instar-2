@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Integrate four exact reviewed heads: platform reply guidance, bounded proven-not-sent retry, memory-list consequence guidance and status-only route-check notices.
 Affected rules: 1, 3, 7, 10, 12, 34, 36, 37, 42, 47, 49, 55, 56, 66, 69, 72, 73, 74, 78, 84, 87, 88, 90, 101, 102, 105, 111, 112, 113, 116
-Affected floors: Secrets and spend caps unchanged; stop checked after retry waits; uncertain sends never retried; durable intake and existing dispatch ownership remain. No added model calls.
+Affected floors: Secrets and spend caps unchanged; stop checked after retry waits; no duplicate sends: uncertain sends never retried; durable intake and existing dispatch ownership remain. No added model calls.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
