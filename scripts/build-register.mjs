@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
-import { stripTypeScriptTypes } from 'node:module';
+import ts from 'typescript';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { decodeMeasurement, canonical, schemas } from '../dist/index.js';
 import { generateRegister, generationOf, renderRegister, invariantCoverage, implementedInvariants, decodeCheckRun,
@@ -161,20 +161,21 @@ export function build(root, commit, options = {}) {
 }
 // Rule 72: the owner of a feature's next graduation step is the latest new-deadline entry of the promotion
 // record committed beside its declaration (tests/preview/promotion-record.ts for the preview's features).
-async function graduationOwners(show, rows) {
+async function graduationOwners(input, rows) {
   const owners = new Map();
   for (const path of new Set(rows.map(row => row.path))) {
-    let source;
-    try { source = show(`${dirname(path)}/promotion-record.ts`); } catch { continue; }
-    const record = await import('data:text/javascript,' + encodeURIComponent(stripTypeScriptTypes(source)));
+    const file = `${dirname(path)}/promotion-record.ts`;
+    if (!input.files.includes(file)) continue;
+    const js = ts.transpileModule(input.show(file), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+    const record = await import('data:text/javascript,' + encodeURIComponent(js));
     for (const entry of record.PROMOTION_RECORD ?? []) if (entry.decision === 'new-deadline') owners.set(entry.capability, entry.owner);
   }
   return owners;
 }
 // Rules 72/73: a graduation deadline is announced from 24 h before it and, once passed, on every run until the
 // feature is graduated or retired. An overdue dark feature fails no build; switched on past it, its own check fails.
-export async function deadlineLines(deadlines, show) {
-  const owners = await graduationOwners(show, [...deadlines.dueSoon, ...deadlines.overdue]);
+export async function deadlineLines(deadlines, input) {
+  const owners = await graduationOwners(input, [...deadlines.dueSoon, ...deadlines.overdue]);
   const tail = row => `(declared in ${row.path}, status ${row.status}); owner: ${owners.get(row.id) ?? 'no promotion record beside the declaration; the declaring module\'s maintainers'}`;
   return [
     ...deadlines.dueSoon.map(row => `REGISTER-DEADLINE WARNING: feature ${row.id} graduation deadline ${new Date(row.deadline).toISOString()} is within 24 h; `
@@ -199,7 +200,7 @@ export async function run(args, root = process.cwd()) {
   const provider = flag('--provider') ? (await import(pathToFileURL(resolve(root, flag('--provider'))))).provider : undefined;
   const mode = selectedModes[0]?.[1] ?? workflow?.mode ?? (!workflow ? recorded.mode : undefined);
   const result = build(root, commit, { mode, workflow, provider, ...(flag('--now') ? { now: Number(flag('--now')) } : {}) });
-  for (const line of await deadlineLines(result.deadlines, result.input.show)) console.error(line);
+  for (const line of await deadlineLines(result.deadlines, result.input)) console.error(line);
   const tracked = execFileSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).trim().split('\n');
   const live = tracked.filter(p => Object.hasOwn(result.input.sources, p) || p.startsWith('docs/rules/') && p.endsWith('.md')
     || isDeclarationSource(p) || isActionSource(p) || p.startsWith('register-source/') && p.endsWith('.json')).sort();
