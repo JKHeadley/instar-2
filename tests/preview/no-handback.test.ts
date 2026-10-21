@@ -8,6 +8,7 @@ import { readAnswer } from './answer-reading.js';
 import { jevQuestions, REPLY_RULES, parseReplyReviewVerdict, parseReplyRevision,
   replyReviewContext, replyRevisionQuestion, substantiveReply } from './reply-check.js';
 import { splitReply } from './reply-parts.js';
+import { renderTelegramHtml } from './telegram-markdown.mjs';
 import { guidanceVerdicts } from './guidance.js';
 
 type Capture = { name: string; question: string; raw: string; answer: string; admission: string };
@@ -102,7 +103,8 @@ it('replays the captured handback into one corrected answer and retains the rece
   // The completed research is recorded, not inferred from its answer wording.
   expect(run('compare').admission).toContain('WebSearch');
   const result = await replay(captured.original.answer, review('original'), completed);
-  expect(result.sends).toEqual(splitReply(completed));
+  expect(result.turn.intent).toBe(completed.trimEnd());
+  expect(result.sends).toEqual(splitReply(completed)!.map(part => renderTelegramHtml(part).shown));
   expect(result.revisions).toBe(1);
   expect(result.turn.sent).toBe(777);
   expect(result.guidance.find(row => row.member === 'tone-self-stop')).toMatchObject({ verdict: 'fired', landing: 'revised' });
