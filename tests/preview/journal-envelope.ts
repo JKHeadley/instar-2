@@ -1,6 +1,6 @@
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 import { encoded } from './canonical.js';
-import { ANSWER_INSTRUCTIONS, MEMORY_LOOKUP_INSTRUCTIONS } from './briefing.js';
+import { answerInstructions } from './briefing.js';
 import { ENVELOPE_FLOOR } from './model-call-boundary.js';
 
 /** The exact launcher envelope, shared with its bounded offline path proof. The
@@ -20,8 +20,8 @@ export function prepareJournalEnvelope(input: { question: string; context: strin
   // Update 969390343's replay returned a memory-lookup object instead of using web
   // tools when that protocol was present but unavailable. Ground it in actual
   // availability, identically before and after compaction (Rules 47, 78).
-  const instructions = packet.memoryLookup === 'offered'
-    ? `${ANSWER_INSTRUCTIONS}\n${MEMORY_LOOKUP_INSTRUCTIONS}` : ANSWER_INSTRUCTIONS;
+  // md-briefing-1020: the turn's platform adds its one reply-format line (Telegram on a Telegram turn).
+  const instructions = answerInstructions(input.id, packet.memoryLookup === 'offered');
   const bindings = { at, by: { judgment: 'judgment', model, route: 'preview-subscription' },
     floor, evidence: [input.id], ...(input.writer ? { writer: input.writer } : {}) };
   const bytes = encoded({ provider: 'anthropic', model, route: 'preview-subscription',
