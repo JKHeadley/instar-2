@@ -1,0 +1,12 @@
+{
+  "source": "i1b-opus-1020. recorded: the usage object of the one retrospective call (retrospective:0) of proof room three's train-92-p2 39d72c39 root proofroom3-ps-20261020-131859 (proof run I-proofroom3-ps, status-i-end.json: outputTokens 3286, localLimit output-cap, outcome uncertain, pass 0 'review output over the cap'), verbatim from the call-outcome row's diagnostic excerpt in a read-only copy of journal.encrypted, read 2026-10-20. The provider reported claude-opus-4-8 for the configured claude-opus-5-5. probes: two direct calls of the pinned Claude Code 2.1.280 (claude-opus-5-5, MAX_THINKING_TOKENS=0, CLAUDE_CODE_MAX_OUTPUT_TOKENS=2048, --print --output-format json), 2026-10-20, usage verbatim. The CLI maps MAX_THINKING_TOKENS=0 to a 2048-token thinking budget for a model that rejects disabled thinking, so thinking can fill the whole 2048-token output cap before the answer is written.",
+  "recorded": {
+    "id": "retrospective:0",
+    "answerResultTokens": 1238,
+    "usage": { "input_tokens": 4, "cache_creation_input_tokens": 25212, "cache_read_input_tokens": 0, "output_tokens": 3286, "output_tokens_details": { "thinking_tokens": 2048 } }
+  },
+  "probes": [
+    { "prompt": "trivial", "usage": { "output_tokens": 4, "output_tokens_details": { "thinking_tokens": 0 } } },
+    { "prompt": "two-part arithmetic", "usage": { "output_tokens": 1636, "output_tokens_details": { "thinking_tokens": 1282 } } }
+  ]
+}
