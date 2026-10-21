@@ -14,20 +14,21 @@ describe('the promotion record', () => {
   it('the committed record is well formed and moves step-check to a recorded, not overdue, deadline', () => {
     expect(promotionRecordFindings(PROMOTION_RECORD)).toEqual([]);
     const step = promotionOf(PROMOTION_RECORD, 'preview.step-check');
-    expect(step.deadline).toMatchObject({ deadline: Date.UTC(2026, 9, 21), recordedAt: 1792312984000 });
-    expect(step.deadline!.deadline).toBe(Date.UTC(2026, 9, 18) + 72 * 60 * 60 * 1000);
-    expect(utcDay(step.deadline!.recordedAt)).toBe('2026-10-18');
+    expect(step.deadline).toMatchObject({ deadline: Date.UTC(2026, 9, 24), recordedAt: 1792541292655 });
+    expect(step.deadline!.deadline).toBe(Date.UTC(2026, 9, 21) + 72 * 60 * 60 * 1000);
+    expect(utcDay(step.deadline!.recordedAt)).toBe('2026-10-21');
     // Both branch decisions survive, ordered by their actual recording time.
-    expect(PROMOTION_RECORD.slice(-3, -1)).toMatchObject([
+    expect(PROMOTION_RECORD.slice(1, 3)).toMatchObject([
       { recordedAt: 1792023460035, deadline: Date.UTC(2026, 9, 16), by: 'agent (train-35 integration)' },
       { recordedAt: 1792024088000, deadline: Date.UTC(2026, 9, 18), by: 'agent (register-stepcheck-deadline-1014)' },
     ]);
-    expect(promotionOf(PROMOTION_RECORD.slice(0, -2), 'preview.step-check').deadline?.deadline)
+    expect(promotionOf(PROMOTION_RECORD.slice(0, 2), 'preview.step-check').deadline?.deadline)
       .toBe(Date.UTC(2026, 9, 16));
     expect(PROMOTION_RECORD[0]).toMatchObject({ deadline: Date.UTC(2026, 9, 15), recordedAt: Date.UTC(2026, 8, 28) });
-    expect(step.deadline!.reason).toContain('SECOND 72-hour extension');
-    expect(step.deadline!.owner).toContain('the desk: open a graduation item');
-    expect(promotionOf(PROMOTION_RECORD.slice(0, -1), 'preview.step-check').deadline?.deadline).toBe(Date.UTC(2026, 9, 18));
+    expect(step.deadline!.reason).toContain('Repeated extensions reflect unfinished graduation work');
+    expect(step.deadline!.owner).toContain('the desk: resolve the step-check graduation item');
+    expect(promotionOf(PROMOTION_RECORD.slice(0, -1), 'preview.step-check').deadline?.deadline).toBe(Date.UTC(2026, 9, 21));
+    expect(PROMOTION_RECORD[3]).toMatchObject({ recordedAt: 1792312984000, deadline: Date.UTC(2026, 9, 21) });
     // No stage is claimed without evidence: the live trace has not been recorded.
     expect(step.stages).toEqual({ 'test-agent': null, 'development-agent': null, fleet: null });
     expect(existsSync('tests/preview/jev-step-supervisor-live-test.md')).toBe(true);
