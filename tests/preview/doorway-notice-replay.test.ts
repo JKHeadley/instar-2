@@ -4,23 +4,23 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { doorwayNotices } from './credential-reminders.js';
-import { observeExchange, type DoorwayMap } from './doorway-map.js';
+import type { ReplyNotice } from './credential-reminders.js';
 import { HOLDING_REPLY, parseReplyReviewVerdict, type ReplyRule } from './reply-check.js';
 import { readAnswer } from './answer-reading.js';
 
 // The retained answer-check copy is never run. This replays update 715675469's exact
-// answer/review shapes through a fresh offline journal, including the notice producer.
+// answer/review shapes through a fresh offline journal, with the notice it recorded. The runner no longer
+// offers a doorway notice (Rules 56, 87, 88: status only), so the recorded one stands in for any reply notice.
 const read = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/${name}-2026-10-11.json`, import.meta.url), 'utf8'));
 const captured = read('doorway-notice-held');
 const repaired = read('doorway-notice-repaired-review');
 const offload = read('doorway-notice-offload-review');
-const notice = () => doorwayNotices(observeExchange(captured.map as DoorwayMap, 'preview-subscription', 'claude-sonnet-5',
-  { ok: true, reportedModels: ['claude-sonnet-5'], evidence: 'recorded answer exchange' }, captured.at), captured.at);
+// The line in its last shipped wording (the recorded one also said 'send "status" for detail'), under the recorded key.
+const notice = (): ReplyNotice[] => [{ key: captured.answerNotices[0].key,
+  line: 'Model route check: typesafe-jev/jev-1.13.0 is unverified.' }];
 
-it('reconstructs the held notice from the recorded base map and preserves its episode key', () => {
-  expect(notice()).toEqual([{ key: captured.answerNotices[0].key,
-    line: 'Model route check: typesafe-jev/jev-1.13.0 is unverified.' }]);
+it('replays the recorded held notice shape', () => {
+  expect(captured.answerNotices[0].line.startsWith(notice()[0]!.line.slice(0, -1))).toBe(true);
   expect(captured.replyChecks[0]).toMatchObject({ verdict: 'unsure', scores: { parks_on_user: 0.69, defers_work: 0.57 } });
   expect(captured.replyChecks[1].ruleIds).toEqual(['parks_on_user', 'defers_work']);
   expect(captured.revisionReview.verdict).toBe('unavailable');

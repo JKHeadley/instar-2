@@ -1,13 +1,12 @@
-// Rules 8, 56, 100 on the reply path. A due credential reminder (the escalating schedule
-// secret-custody keeps for a known fixed expiry) and a failing doorway-map check are
-// open loops the operator must hear about. The reply-only grant allows no unsolicited
-// send, so each rides the next operator answer as ONE fixed line, the way finished
+// Rules 8, 100 on the reply path. A due credential reminder (the escalating schedule
+// secret-custody keeps for a known fixed expiry) is an open loop the operator must hear about.
+// A failing doorway-map check is not: it is the agent's own maintenance (Rules 56, 87, 88) and
+// stays on the status pull surface. Recorded answers that carried one still validate (doorway: keys).
+// The reply-only grant allows no unsolicited send, so each rides the next operator answer as ONE fixed line, the way finished
 // obligation work does. Each line carries a stable key; the journal records the keys an
 // answer carried, so delivery is derived from durable sent replies, never from memory.
-// A line is offered once: a later reminder stage, a renewed credential lifetime or a new failing
-// verdict is a new key.
+// A line is offered once: a later reminder stage or a renewed credential lifetime is a new key.
 import type { DueReminder } from './secret-custody.js';
-import { doorwayFreshness, type DoorwayMap } from './doorway-map.js';
 import { wholeReplySent, wholeReplySentAt } from './reply-parts.js';
 
 export interface ReplyNotice { readonly key: string; readonly line: string }
@@ -52,19 +51,6 @@ export function credentialNotices(due: readonly DueReminder[], now: number): Rep
     key: credentialKey(item),
     line: `Reminder: ${item.displayLabel ?? 'your stored credential'} ${remainingText(item.expiresAt - now)}. `
       + `Smallest step for you: ${item.smallestHumanAction}.` }));
-}
-
-/** A failing standing check (Rule 56) is one notice per verdict episode, keyed by when the verdict
- * began. It is offered only while the live verdict still fails, so a route this very answer just
- * re-verified is never reported stale. Report the known state directly: asking the reader
- * to fetch details made the reply review hold an otherwise complete answer (live update 715675469). */
-export function doorwayNotices(map: DoorwayMap | null, now: number): ReplyNotice[] {
-  if (!map?.check || map.check.fresh) return [];
-  const failing = doorwayFreshness(map, now).models.filter(model => !model.fresh);
-  if (!failing.length) return [];
-  return [{ key: `doorway:${map.check.since}`,
-    line: `Model route check: ${failing.slice(0, 3).map(model => `${model.doorway}/${model.model} is ${model.state}`).join('; ')}`
-      + `${failing.length > 3 ? ` (+${failing.length - 3} more)` : ''}.` }];
 }
 
 /** Candidates a new answer may carry, credentials first. A key is spent when a reply that says its line
