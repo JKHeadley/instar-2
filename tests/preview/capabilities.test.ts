@@ -90,17 +90,33 @@ describe('the preview inventory is register input', () => {
     expect(capabilityFindings(documentTier, classify, NOW).join('\n')).toMatch(/Rule 34 — evidence tiers name executed tests/u);
     expect(capabilityFindings(inventory, classify, STEP_DEADLINE).join('\n')).toMatch(/preview\.step-check: Rule 72 — graduation overdue/u);
   });
-  it('enforces graduation deadlines against the real clock (Rule 72: an overdue dark capability fails the build)', () => {
-    expect(capabilityFindings(inventory, classify, Date.now()).join("|")).toBe("");
+  // Rule 72 at a given clock: overdue capabilities that are not dark, and every finding other than their overdue line.
+  const deadlineVerdict = (inv: typeof inventory, now: number) => {
+    const overdue = inv.capabilities.filter(c => (c.declaration.requiredFacts.gate?.deadline ?? Infinity) <= now).map(c => c.declaration);
+    const findings = capabilityFindings(inv, classify, now);
+    const own = overdue.map(d => `${d.id}: Rule 72 — graduation overdue; graduate it, retire it, or record a new deadline`);
+    return { overdue: overdue.map(d => d.id), notDark: overdue.filter(d => d.status !== 'dark').map(d => d.id),
+      reported: own.every(line => findings.includes(line)), other: findings.filter(line => !own.includes(line)) };
+  };
+  it('checks graduation deadlines against the real clock (Rule 72: an overdue capability stays dark and reported; it fails no unrelated run)', () => {
+    // The overdue capability itself must be dark (soaking past its deadline is its own failure); its overdue line stays a
+    // finding, visible on every run; every other finding still fails here.
+    expect(deadlineVerdict(inventory, Date.now())).toMatchObject({ notDark: [], reported: true, other: [] });
+    // Both sides on a fixed clock: before the deadline nothing is overdue; at it step-check is overdue, dark and reported,
+    // and this test passes; switched to soaking at the same clock, it fails on that capability alone.
+    expect(deadlineVerdict(inventory, STEP_DEADLINE - 1)).toEqual({ overdue: [], notDark: [], reported: true, other: [] });
+    expect(deadlineVerdict(inventory, STEP_DEADLINE)).toEqual({ overdue: ['preview.step-check'], notDark: [], reported: true, other: [] });
+    const soaking = previewInventory(DECLARATIONS.map(d => d.id === 'preview.step-check' ? { ...d, status: 'soaking' as const } : d));
+    expect(deadlineVerdict(soaking, STEP_DEADLINE).notDark).toEqual(['preview.step-check']);
     // The moved deadline is the promotion record's, and the README states it.
     expect(promotionOf(PROMOTION_RECORD, 'preview.step-check').deadline?.deadline).toBe(STEP_DEADLINE);
-    expect(new Date(STEP_DEADLINE).toISOString()).toBe('2026-10-21T00:00:00.000Z');
-    expect(readFileSync('tests/preview/README.md', 'utf8')).toContain('its graduation deadline is now 2026-10-21');
+    expect(new Date(STEP_DEADLINE).toISOString()).toBe('2026-10-24T00:00:00.000Z');
+    expect(readFileSync('tests/preview/README.md', 'utf8')).toContain('its graduation deadline is now 2026-10-24');
   });
   it('binds the declared deadline to the promotion record, on both sides (Rule 72)', () => {
     const moved: PromotionEntry = { ...PROMOTION_RECORD[0]!, deadline: STEP_DEADLINE + 86_400_000 } as PromotionEntry;
     expect(capabilityFindings(inventory, classify, NOW, [moved]).join('\n'))
-      .toMatch(/preview\.step-check: Rule 72 — the declared graduation deadline differs from the promotion record's latest \(2026-10-22\)/u);
+      .toMatch(/preview\.step-check: Rule 72 — the declared graduation deadline differs from the promotion record's latest \(2026-10-25\)/u);
     expect(capabilityFindings(inventory, classify, NOW, PROMOTION_RECORD)).toEqual([]);
     // With no record entry the declared deadline stands alone; a record for an ungated capability is a finding.
     expect(capabilityFindings(inventory, classify, NOW, [])).toEqual([]);
@@ -211,7 +227,7 @@ describe('capability rows count only enabled, currently proven protection', () =
     const lines = proofStatusLines(healthy, [...degraded.values()]);
     expect(lines[1]).toMatch(/confirmed, \d+ unconfirmed, 1 dark \(preview\.step-check\)/u);
     expect(lines[1]).not.toMatch(/graduation overdue/u);
-    expect(lines[2]).toBe('Graduation: preview.step-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-10-21 (recorded 2026-10-18).');
+    expect(lines[2]).toBe('Graduation: preview.step-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-10-24 (recorded 2026-10-21).');
   });
   it('graduation stages come from the promotion record; a passed runtime proof without an entry is observed, not recorded', () => {
     const stepProof = { ...posture('step-check-reached', 'healthy'), capability: 'preview.step-check' };
@@ -229,7 +245,7 @@ describe('capability rows count only enabled, currently proven protection', () =
     expect(late.graduation).toMatchObject({ overdue: true, deadlineRecorded: null });
     const lines = proofStatusLines([], [late]);
     expect(lines[1]).toMatch(/graduation overdue: preview\.step-check/u);
-    expect(lines[2]).toMatch(/deadline 2026-10-21, overdue\.$/u);
+    expect(lines[2]).toMatch(/deadline 2026-10-24, overdue\.$/u);
     // No gated row, no graduation line.
     expect(proofStatusLines([], capabilityRows(inventory, base).filter(r => r.graduation === null))).toHaveLength(2);
   });

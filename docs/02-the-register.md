@@ -102,7 +102,7 @@ Unblocks rules 39, 62, 72, 73, and (with the glossary) 34, 38, 76.
 | `metrics` — the measurements it emits | Rule 39: every feature ships with metrics. Empty fails. |
 | `userFacing` — yes or no, by the glossary's definition | Rules 62 and 76 hinge on this word. It is a declared fact, not a guess. |
 | `significance` — by the glossary's definition | Rule 34's three test tiers apply above a threshold; the threshold needs the word defined. |
-| `gate` — for a `dark` or `soaking` feature: the graduation test and the deadline | Rules 72 and 73: a dark feature with no deadline is the 20-of-92 failure. A deadline in the past fails the build. |
+| `gate` — for a `dark` or `soaking` feature: the graduation test and the deadline | Rules 72 and 73: a dark feature with no deadline is the 20-of-92 failure. The register warns from 24 hours before the deadline. At or after it, every run reports the overdue obligation: a `dark` feature may remain dark without failing unrelated builds; an overdue `soaking` feature fails the build. The graduation obligation remains open until the feature graduates, retires, or records a new deadline. |
 | `liveProof` — for a user-facing feature: the record of a real end-to-end run | Rule 62: not "done" until driven through its real surface. |
 
 The capability briefing the agent reads at every session (rule 84) is **generated from this

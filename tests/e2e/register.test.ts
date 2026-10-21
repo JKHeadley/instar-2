@@ -233,14 +233,20 @@ describe('compiled register build adapter lifecycle', () => {
       const rung = { decidesAlone: 'ruled-three', decidesAloneBasis: 'operator-emergency-stop', criticality: 'exact fixture', failDirection: 'closed', preservesInput: 'capture' };
       const holder = (rule: number, part: number) => declaration('fixture-holder', 'blocking sites', { authority: 'block', inspectedBy: 'check', ...rung }, {
         profile, holds: [{ rule, class: 'deferred', part, ceiling: 1000, owner: 'fixture-operator', overdueAction: 'surface' }] });
-      const cases: [object, string | null][] = [
+      const cases: [object, string | null, (string | null)?][] = [
         [holder(999, 99), 'missing rule 999'],
         [holder(4, 99), 'unknown deferred part 99'],
         [holder(4, 8), null],
         [declaration('fixture-rule', 'rules', { number: 999, name: 'Fixture rule', statement: 'A test-only obligation.', held: 'script', parent: 'root', rootReason: 'fixture', termRefs: [], checkDescription: 'test', deadline: 99, owner: 'fixture-operator', overdueAction: 'surface' }), 'deadline passed'],
         [declaration('fixture-rule', 'rules', { number: 999, name: 'Fixture rule', statement: 'A test-only obligation.', held: 'script', parent: 'root', rootReason: 'fixture', termRefs: [], checkDescription: 'test', deadline: 1000, owner: 'fixture-operator', overdueAction: 'surface' }), null],
-        [declaration('fixture-feature', 'features', { metrics: ['counter'], gate: { test: 'check', deadline: 99 } }, { profile, status: 'dark' }), 'graduation overdue'],
-        [declaration('fixture-feature', 'features', { metrics: ['counter'], gate: { test: 'check', deadline: 1000 } }, { profile, status: 'dark' }), null],
+        // Rule 72: an overdue DARK feature does not fail the build (it would fail every unrelated train); it is reported
+        // on every run. Soaking past the deadline fails its own check. A deadline within 24 h warns ahead.
+        [declaration('fixture-feature', 'features', { metrics: ['counter'], gate: { test: 'check', deadline: 99 } }, { profile, status: 'dark' }), null,
+          'REGISTER-DEADLINE OVERDUE: feature fixture-feature graduation deadline 1970-01-01T00:00:00.099Z passed'],
+        [declaration('fixture-feature', 'features', { metrics: ['counter'], gate: { test: 'check', deadline: 99 } }, { profile, status: 'soaking' }), 'graduation overdue while soaking'],
+        [declaration('fixture-feature', 'features', { metrics: ['counter'], gate: { test: 'check', deadline: 1000 } }, { profile, status: 'dark' }), null,
+          'REGISTER-DEADLINE WARNING: feature fixture-feature graduation deadline 1970-01-01T00:00:01.000Z is within 24 h'],
+        [declaration('fixture-feature', 'features', { metrics: ['counter'], gate: { test: 'check', deadline: 100 + 86_400_001 } }, { profile, status: 'dark' }), null, null],
         [declaration('fixture-holder', 'blocking sites', { authority: 'block', inspectedBy: 'check', ...rung, decidesAlone: 'governed-state', rungs: [] }, { profile }), 'rungs'],
         [declaration('fixture-holder', 'blocking sites', { authority: 'block', inspectedBy: 'check', rungs: [rung, { ...rung, failDirection: 'open' }] }, { profile }), null],
       ];
@@ -250,7 +256,7 @@ describe('compiled register build adapter lifecycle', () => {
       // A live alone-deciding site must be bound to its checkpoint (P3-NF-19), so each blocking-site case carries a
       // literal-id binding and reaches the check it tests; the other cases carry none (a binding needs a live site).
       const binding = join(root, 'src/repair-binding.ts');
-      for (const [d, error] of cases) {
+      for (const [d, error, notice] of cases) {
         writeFileSync(join(root, 'src/README.md'), (d as { kind: string }).kind === 'features'
           ? `${readme}\n## Capabilities\n\n- \`fixture-feature\`: a test-only feature for the deadline cases.\n` : readme);
         if ((d as { kind: string }).kind === 'blocking sites') writeFileSync(binding, "import { bindBlockingSite } from './register/governance.js';\n"
@@ -260,6 +266,8 @@ describe('compiled register build adapter lifecycle', () => {
         const result = spawnSync(process.execPath, [script, '--replay', '--checks', 'register-source/checks.json', '--now', '100', '--commit', revision, '--out', join(root, 'out')], { cwd: root, encoding: 'utf8' });
         if (error) { expect(result.status, result.stderr).not.toBe(0); expect(result.stderr).toContain(error); }
         else { expect(result.status, result.stderr).toBe(0); expect(JSON.parse(result.stdout).prerequisites).toBeGreaterThan(0); }
+        if (notice) expect(result.stderr).toContain(notice);
+        if (notice === null) expect(result.stderr).not.toContain('REGISTER-DEADLINE');
         await new Promise<void>(done => setImmediate(done));
       }
       rmSync(binding, { force: true });
