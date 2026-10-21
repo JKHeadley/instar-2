@@ -8,6 +8,27 @@ repository slug is an artifact of setup, not a second name. Why the name carries
 what this project is for, and who decides what are all in
 [docs/00-the-purpose.md](docs/00-the-purpose.md) — read that first.
 
+## Install
+
+On macOS or Linux, with git and a current Node.js (tested with Node 24), one line:
+
+```sh
+npx github:JKHeadley/instar-2 setup
+```
+
+npm downloads Instar from this repository and starts role setup in your terminal. It asks four
+questions: the agent's role, how much trust it starts with, its monthly spending limit, and which
+matters are sensitive. Each answer is saved as you give it, so running the same line again
+resumes where you stopped. The agent's records go in `~/.instar2`; name another folder after
+`setup` to put them elsewhere.
+
+What it does not do yet: sign in a model subscription, connect Telegram, or start the agent.
+Those installation steps are designed in [docs/14-the-assembly.md](docs/14-the-assembly.md)
+("Fresh installation") and are still to build.
+
+The npm package named `instar2` is someone else's and is not this project. Install from this
+repository as above.
+
 ## What this project is for
 
 Instar 1.x has around ninety written rules for how it should be built. Almost none of
