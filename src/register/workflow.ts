@@ -4,7 +4,7 @@ import type { ConstructObservation, GovernedStateObservation } from './governanc
 import type { CheckCatalog } from '../rulegraph/graph.js';
 import { checked, requireThat, take } from './boundary.js';
 import { checkPairing, checkBoundaryCoverage, checkGovernedState, checkGovernedStateSources, checkSeparation } from './governance.js';
-import { buildRuleGraph, checkDeadlines } from '../rulegraph/graph.js';
+import { buildRuleGraph, checkDeadlines, featureDeadlines } from '../rulegraph/graph.js';
 import { boundaryRungs } from './rungs.js';
 import { resolveTerms } from '../terms/resolver.js';
 import { ownerDocuments } from './owner-contracts.js';
@@ -57,7 +57,7 @@ export function runRegisterChecks(register: GeneratedRegister, checks: WorkflowC
     const graph = take(buildRuleGraph(register, checks.branch, checks.runs, checks.catalog, context, checks.bootstrapRules));
     take(checkDeadlines(graph, register, checks.landedParts, checks.now, context));
     const terms = take(resolveTerms(register, context));
-    return { graph, terms, pairing, authorityPrerequisites,
+    return { graph, terms, pairing, authorityPrerequisites, deadlines: featureDeadlines(register, checks.now.value),
       authority: replay ? 'shape-only' : checks.mode === 'bootstrap' ? 'bootstrap-prerequisites' : 'checked-candidate' };
   });
 }

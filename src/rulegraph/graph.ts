@@ -153,6 +153,22 @@ export function checkGraphLoops(graph: RuleGraph, context: RegisterContext) {
 export function modelEntryFresh(verifiedAt: number, freshFor: number, now: number): boolean {
   return freshFor > 0 && verifiedAt <= now && now - verifiedAt <= freshFor;
 }
+/** Rule 72's advance notice: a graduation deadline is reported from this long before it. */
+export const GRADUATION_WARNING_WINDOW = 86_400_000;
+export interface FeatureDeadline { readonly id: string; readonly deadline: number; readonly status: string; readonly path: string }
+/** Every dark or soaking feature whose graduation deadline is within the warning window (dueSoon) or has passed
+ * (overdue). The build check prints both on every run, so an overdue deadline is never silent while it stands. */
+export function featureDeadlines(register: GeneratedRegister, now: number): { dueSoon: FeatureDeadline[]; overdue: FeatureDeadline[] } {
+  const dueSoon: FeatureDeadline[] = []; const overdue: FeatureDeadline[] = [];
+  for (const { declaration: d } of register.entries) {
+    if (d.kind !== 'features' || (d.status !== 'dark' && d.status !== 'soaking')) continue;
+    const gate = d.requiredFacts.gate as { readonly deadline?: unknown } | undefined;
+    if (typeof gate?.deadline !== 'number') continue;
+    const row = { id: d.id, deadline: gate.deadline, status: d.status, path: d.declaredBy.path };
+    if (gate.deadline <= now) overdue.push(row); else if (gate.deadline - GRADUATION_WARNING_WINDOW <= now) dueSoon.push(row);
+  }
+  return { dueSoon, overdue };
+}
 export function checkDeadlines(graph: RuleGraph, register: GeneratedRegister, landedParts: readonly number[], now: Clock, context: RegisterContext) {
   return checked('DeadlineCheck', { graph, register, landedParts, now }, context, () => {
     const clock = take(decodeMeasurement('clock', now, context.types));
@@ -163,7 +179,12 @@ export function checkDeadlines(graph: RuleGraph, register: GeneratedRegister, la
     }
     for (const { declaration: d } of register.entries) {
       if (d.kind === 'features' && (d.status === 'dark' || d.status === 'soaking')) {
-        const gate = object(d.requiredFacts.gate!); requireThat(number(gate.deadline, 'deadline') > now.value, `feature ${d.id} graduation overdue`);
+        // Rule 72: an overdue graduation deadline is the feature's own failure, not every build's. A dark feature
+        // past its deadline passes here and is reported by featureDeadlines on every check; one switched partly on
+        // (soaking) past it fails, because the overdue feature must be dark until it is graduated or retired.
+        const gate = object(d.requiredFacts.gate!); const deadline = number(gate.deadline, 'deadline');
+        requireThat(d.status === 'dark' || deadline > now.value,
+          `feature ${d.id} graduation overdue while soaking; switch it dark, graduate it, retire it, or record a new deadline`);
       }
       if (d.kind === 'model doorways') for (const raw of list(d.requiredFacts.models, 'models')) {
         const model = object(raw); const at = number(model.verifiedAt, 'model verifiedAt'); const window = number(model.freshFor, 'model freshness');

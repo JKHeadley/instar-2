@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { stripTypeScriptTypes } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { decodeMeasurement, canonical, schemas } from '../dist/index.js';
 import { generateRegister, generationOf, renderRegister, invariantCoverage, implementedInvariants, decodeCheckRun,
@@ -154,9 +155,33 @@ export function build(root, commit, options = {}) {
   const outputs = value(renderRegister(register, generation, checked.terms, checked.graph, context));
   const capabilities = { generation: generation.id, commit: register.commit, ...capabilityBriefing(register, input.inventory, input.show) };
   return { input, register, generation, outputs, completion, conversion, graph: checked.graph, capabilities,
-    authorityPrerequisites: checked.authorityPrerequisites, ownerArtifacts: owner.artifacts, metrics: {
+    authorityPrerequisites: checked.authorityPrerequisites, deadlines: checked.deadlines, ownerArtifacts: owner.artifacts, metrics: {
     entries: register.entries.length, rules: checked.graph.rules.length, terms: register.entries.filter(e => e.declaration.kind === 'terms').length,
     warnings: checked.terms.warnings.length, prerequisites: checked.graph.prerequisites.length } };
+}
+// Rule 72: the owner of a feature's next graduation step is the latest new-deadline entry of the promotion
+// record committed beside its declaration (tests/preview/promotion-record.ts for the preview's features).
+async function graduationOwners(show, rows) {
+  const owners = new Map();
+  for (const path of new Set(rows.map(row => row.path))) {
+    let source;
+    try { source = show(`${dirname(path)}/promotion-record.ts`); } catch { continue; }
+    const record = await import('data:text/javascript,' + encodeURIComponent(stripTypeScriptTypes(source)));
+    for (const entry of record.PROMOTION_RECORD ?? []) if (entry.decision === 'new-deadline') owners.set(entry.capability, entry.owner);
+  }
+  return owners;
+}
+// Rules 72/73: a graduation deadline is announced from 24 h before it and, once passed, on every run until the
+// feature is graduated or retired. An overdue dark feature fails no build; switched on past it, its own check fails.
+export async function deadlineLines(deadlines, show) {
+  const owners = await graduationOwners(show, [...deadlines.dueSoon, ...deadlines.overdue]);
+  const tail = row => `(declared in ${row.path}, status ${row.status}); owner: ${owners.get(row.id) ?? 'no promotion record beside the declaration; the declaring module\'s maintainers'}`;
+  return [
+    ...deadlines.dueSoon.map(row => `REGISTER-DEADLINE WARNING: feature ${row.id} graduation deadline ${new Date(row.deadline).toISOString()} is within 24 h; `
+      + `graduate it, retire it, or record a new deadline before then ${tail(row)}`),
+    ...deadlines.overdue.map(row => `REGISTER-DEADLINE OVERDUE: feature ${row.id} graduation deadline ${new Date(row.deadline).toISOString()} passed; `
+      + `Rule 72 obligation open: it must stay dark (switched on, its own check fails) until it is graduated, retired, or given a recorded new deadline ${tail(row)}`),
+  ];
 }
 export async function run(args, root = process.cwd()) {
   const flag = name => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };
@@ -174,6 +199,7 @@ export async function run(args, root = process.cwd()) {
   const provider = flag('--provider') ? (await import(pathToFileURL(resolve(root, flag('--provider'))))).provider : undefined;
   const mode = selectedModes[0]?.[1] ?? workflow?.mode ?? (!workflow ? recorded.mode : undefined);
   const result = build(root, commit, { mode, workflow, provider, ...(flag('--now') ? { now: Number(flag('--now')) } : {}) });
+  for (const line of await deadlineLines(result.deadlines, result.input.show)) console.error(line);
   const tracked = execFileSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).trim().split('\n');
   const live = tracked.filter(p => Object.hasOwn(result.input.sources, p) || p.startsWith('docs/rules/') && p.endsWith('.md')
     || isDeclarationSource(p) || isActionSource(p) || p.startsWith('register-source/') && p.endsWith('.json')).sort();
@@ -195,7 +221,8 @@ export async function run(args, root = process.cwd()) {
     if (check) { if (!existsSync(path) || readFileSync(path, 'utf8') !== text) throw new Error(`P3-NF-01/P3-NF-09: generated ${name} differs`); }
     else writeFileSync(path, text);
   }
-  console.log(JSON.stringify({ generation: result.generation.id, commit, ...result.metrics, check, authority: 'shape-only', mode }));
+  console.log(JSON.stringify({ generation: result.generation.id, commit, ...result.metrics, check, authority: 'shape-only', mode,
+    deadlines: { dueSoon: result.deadlines.dueSoon.map(row => row.id), overdue: result.deadlines.overdue.map(row => row.id) } }));
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   run(process.argv.slice(2)).catch(error => { console.error(error.message); process.exitCode = 1; });
