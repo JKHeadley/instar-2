@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Integrate the exact reviewed markdown rendering head while preserving the live train's accepted behavior. Retain signed HTML and plain alternatives before admission; a definite parse refusal is durable before the one permitted plain alternative.
 Affected rules: 1, 33, 34, 36, 37, 42, 44, 49, 63, 66, 69, 74, 76, 77, 89, 90, 101, 102, 111, 112, 113, 116
-Affected floors: Secrets checked on original and unique formatted variants; spend cap unchanged; stop and ownership rechecked before fallback; no retry of uncertain sends; durable intake unchanged.
+Affected floors: Secrets checked on original and unique formatted variants; spend cap unchanged; stop and ownership rechecked before fallback; no duplicate sends through unique dispatch and no retry of uncertain sends; durable intake unchanged.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
