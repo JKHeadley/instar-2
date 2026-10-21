@@ -82,6 +82,75 @@ it('live preflight refuses shared or excluded identities and stages before their
   live.targets.bare!.login = live.targets.instar1!.login; expect(() => validateConfig(live)).toThrow('separate');
 });
 
+it('uses actual stage spacing for late campaigns, admits the exact boundary, and retains stub compression', async () => {
+  const live = { ...config(), taskIds: ['standing-format'], mode: 'live', driverModule: 'driver.mjs', graderModule: 'grader.mjs',
+    targets: Object.fromEntries(['bare', 'instar1', 'instar2'].map(s => [s, { disposable: true, model: config().model,
+      root: `/scratch/${s}`, login: `demo-${s}`, bot: `bot-${s}`, channel: `demo-${s}`, isolationReceipt: 'receipt', floorReceipt: 'receipt' }])) };
+  const dir = root(); initialize(dir, live);
+  const late = Date.parse(live.start) + 4 * 86400000;
+  let time = late;
+  await runDay(dir, 0, driver, grader, () => time);
+  for (const offset of [0, 2 * 86400000 - 1]) {
+    time = late + offset;
+    await expect(runDay(dir, 2, driver, grader, () => time)).rejects.toThrow('elapsed stage spacing');
+    expect(rows(dir)).toHaveLength(3);
+    expect(readdirSync(join(dir, 'events')).some(n => n.includes('.1.intent'))).toBe(false);
+  }
+  time = late + 2 * 86400000;
+  await runDay(dir, 2, driver, grader, () => time);
+  await expect(runDay(dir, 4, driver, grader, () => time)).rejects.toThrow('elapsed stage spacing');
+  time = late + 4 * 86400000;
+  await runDay(dir, 4, driver, grader, () => time);
+  expect(rows(dir)).toHaveLength(9);
+  const stub = root(); initialize(stub, { ...config(), taskIds: ['standing-format'] });
+  for (const day of [0, 2, 4]) await runDay(stub, day, driver, grader, () => late);
+  expect(rows(stub)).toHaveLength(9);
+});
+
+it('captures and meters an evidenced unsupported boundary without dispatch while other setups continue', async () => {
+  const targets = Object.fromEntries(['bare', 'instar1', 'instar2'].map(s => [s, { root: `/scratch/${s}`, model: config().model,
+    disposable: true, live: false, actualMachine: 'A', epoch: '1', receipt: `inspect-${s}`,
+    floors: { secrets: true, spendCap: true, stop: true, uniqueSend: true, durableIntake: true } }]));
+  const dispatched: string[] = [], metered: string[] = [];
+  let unsupportedReceipt = 'unsupported-compact';
+  const host = {
+    inspect: async (target: object) => target,
+    prepare: async ({ request }: { request: Request }) => ({ requestId: request.id, model: request.model, receipt: 'prepared', copyLineage: 'seed', ablated: [] }),
+    boundary: async (name: string, { request }: { request: Request }) => request.setup === 'bare' && name === 'compact'
+      ? { state: 'unsupported', actual: false, reason: 'No retained context to compact', receipt: unsupportedReceipt }
+      : { actual: true, receipt: 'actual-boundary', beforeContext: 'old', afterContext: 'new' },
+    executeBounded: async ({ request }: { request: Request }) => { dispatched.push(request.id); return { state: 'complete', model: request.model }; },
+    sendAsDemoUser: async ({ request }: { request: Request }) => { dispatched.push(request.id); return { messageId: request.id, receipt: 'sent' }; },
+    awaitReply: async ({ request }: { request: Request }) => ({ state: 'complete', model: request.model, inReplyTo: request.id }),
+    collectMessages: async () => { throw Error('must not collect unsupported boundary'); },
+    meter: async ({ request }: { request: Request }) => { metered.push(request.id); return { breaches: [], costs: [
+      { id: 'prepare', part: 'model-work', calls: 1, tokens: 5, wallMs: 0, evidence: 'preparation-meter' },
+    ], totals: { calls: 1, tokens: 5 } }; },
+  };
+  const adapter = createDriver(host);
+  const dir = root(); initialize(dir, { ...config(), taskIds: ['reground-after-compaction'], targets });
+  await runDay(dir, 0, adapter, grader);
+  await runDay(dir, 2, adapter, grader);
+  const results = rows(dir), unsupported = results.find(r => r.result.state === 'unsupported');
+  expect(results).toHaveLength(6);
+  expect(unsupported.setup).toBe('bare');
+  expect(unsupported.result.evidence).toContain('unsupported-compact');
+  expect(unsupported.result.totals).toEqual({ calls: 1, tokens: 5 });
+  expect(metered).toContain('reground-after-compaction.bare.1');
+  expect(dispatched).not.toContain('reground-after-compaction.bare.1');
+  expect(dispatched).toContain('reground-after-compaction.instar2.1');
+  expect(readdirSync(join(dir, 'events'))).toContain('reground-after-compaction.bare.1.capture.json');
+  expect(unsupported.grade.correctness).not.toBe('pass');
+  expect(() => validateGrade({ ...unsupported.grade, correctness: 'pass' }, tasks.find(t => t.id === 'reground-after-compaction')!, unsupported.result)).toThrow('cannot pass');
+  const before = dispatched.length;
+  await runDay(dir, 2, adapter, grader);
+  expect(dispatched).toHaveLength(before);
+  unsupportedReceipt = '';
+  await expect(adapter.execute({ id: 'missing-evidence', setup: 'bare', model: config().model,
+    target: targets.bare, boundary: 'compact', prompt: null })).rejects.toThrow('unsupported boundary lacks evidence');
+  expect(dispatched).toHaveLength(before);
+});
+
 it('allows a complete measured pair, but refuses a cut that loses trust or leaves a task ungraded', () => {
   const makeRows = (off: string[]) => tasks.flatMap(task => task.stages.map((_, stage) => ({
     task: task.id, stage, setup: 'instar2', mode: 'live', off,

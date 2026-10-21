@@ -44,7 +44,10 @@ runs the short tasks. Day 1 cancels a reminder. Day 2 crosses restart, topic,
 compaction and machine boundaries, including observing due reminders without a
 prompt. Day 4 checks a standing directive again. Invoke `run ROOT DAY` on each
 date; the command finishes, keeping no background waiter. Live mode refuses a
-day before its scheduled date. The desk arranges the noon reminder windows in
+day before its scheduled date and requires the stage-day gap to have elapsed
+since the preceding stage’s durable intent timestamp for that task and setup.
+A late start shifts subsequent stages; back-to-back catch-up is refused before
+recording a new intent, so it can be invoked again when actually due. The desk arranges the noon reminder windows in
 the configured timezone and supplies complete observations; a window missed by
 the runner cannot be counted as a pass. The planned dates are October 23, 24, 25
 and 27, 2026 (use these ISO dates rather than the inconsistent weekday labels in
@@ -98,7 +101,7 @@ configuration. No live integration is claimed by the stub proof. Its ports are:
 |---|---|
 | `inspect(target, request)` | Read actual model, root, login, demo bot/channel, machine and epoch. Return `disposable`, `live:false`, `receipt`, and all five `floors` booleans: `secrets`, `spendCap`, `stop`, `uniqueSend`, `durableIntake`. Check standing against the actual installation, not target labels. |
 | `prepare({request,target,recipe})` | Initialize once per task/arm, write only the current stage's fixtures, start that isolated agent using existing lifecycle tools. Return `requestId`, `model`, `receipt`; 2.0 also `copyLineage`, `ablated`. No raw root or credential cloning. |
-| `boundary(name,{request,target})` | Fresh/new-session/restart/compact/move-machine through existing bounded controls. Return `receipt`, `actual:true`; restart has distinct before/after epochs, move has distinct machines, compaction has distinct context IDs. Unsupported capability produces an explicit unsupported result, never simulated live evidence. |
+| `boundary(name,{request,target})` | Fresh/new-session/restart/compact/move-machine through existing bounded controls. Return `receipt`, `actual:true`; restart has distinct before/after epochs, move has distinct machines, compaction has distinct context IDs. Unsupported capability returns `state:"unsupported", actual:false, reason, receipt` without dispatching that boundary. The adapter skips prompt dispatch/collection, meters preparation and boundary costs, and captures and grades an unsupported result; it cannot pass correctness. Missing evidence or an ambiguous boundary still stops the run. |
 | `executeBounded(...)` | Bare CLI through existing physical resource and credential boundaries. Capture effective model, actual usage and tools/artifacts. Honour `deadlineMs`, `remainingCalls`, abort signal and stop. Record exact child PIDs and retire only owned processes. No inherited serving credentials or unrestricted shell. |
 | `sendAsDemoUser(...)` | Existing 1.x user-role sender (or 2.0 proof-room sender), durable idempotency key `request.id`; return `messageId`, `receipt`. Never send as the tested bot or to the live channel. |
 | `awaitReply(...)` | Return `inReplyTo` matching the sent message, `model`, `state`, `responderMachine`, reply, artifacts and evidence. Earlier/unrelated replies cannot satisfy it. |

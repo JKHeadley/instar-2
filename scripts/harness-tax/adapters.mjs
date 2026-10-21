@@ -24,12 +24,21 @@ export function createDriver(host) {
     requireThat(prepared.requestId === request.id && prepared.receipt && prepared.model === request.model, 'preparation not evidenced');
     if (request.setup === 'instar2') requireThat(prepared.copyLineage && prepared.ablated?.join(',') === request.off.join(','), 'copy or ablation evidence missing');
     const boundary = await host.boundary(request.boundary, { request, target });
-    requireThat(boundary.receipt && boundary.actual === true, 'simulated boundary is not live evidence');
-    if (request.boundary === 'move-machine') requireThat(boundary.beforeMachine !== boundary.afterMachine && boundary.afterMachine, 'seat never moved');
-    if (request.boundary === 'restart') requireThat(boundary.beforeEpoch !== boundary.afterEpoch && boundary.afterEpoch, 'process never restarted');
-    if (request.boundary === 'compact') requireThat(boundary.beforeContext !== boundary.afterContext && boundary.afterContext, 'context was not compacted');
+    const unsupported = boundary.state === 'unsupported';
+    if (unsupported) {
+      requireThat(boundary.receipt && boundary.actual === false && typeof boundary.reason === 'string' && boundary.reason.trim(),
+        'unsupported boundary lacks evidence');
+    } else {
+      requireThat(boundary.receipt && boundary.actual === true, 'simulated boundary is not live evidence');
+      if (request.boundary === 'move-machine') requireThat(boundary.beforeMachine !== boundary.afterMachine && boundary.afterMachine, 'seat never moved');
+      if (request.boundary === 'restart') requireThat(boundary.beforeEpoch !== boundary.afterEpoch && boundary.afterEpoch, 'process never restarted');
+      if (request.boundary === 'compact') requireThat(boundary.beforeContext !== boundary.afterContext && boundary.afterContext, 'context was not compacted');
+    }
     let observation;
-    if (request.prompt === null) {
+    if (unsupported) {
+      observation = { state: 'unsupported', model: target.model, boundary: request.boundary,
+        reason: boundary.reason, evidence: [boundary.receipt] };
+    } else if (request.prompt === null) {
       // Port collectMessages: read the entire window without a prompting message.
       observation = await host.collectMessages({ request, target, deadlineMs: request.deadlineMs });
       requireThat(observation.completeWindow === true, 'absence/due evidence incomplete');
@@ -46,7 +55,7 @@ export function createDriver(host) {
       requireThat(observation.inReplyTo === sent.messageId, 'reply is not correlated');
     }
     requireThat(observation.model === request.model, 'effective model changed');
-    if (request.boundary === 'move-machine') requireThat(observation.responderMachine === boundary.afterMachine, 'reply did not come from destination');
+    if (!unsupported && request.boundary === 'move-machine') requireThat(observation.responderMachine === boundary.afterMachine, 'reply did not come from destination');
     const meter = await host.meter({ request, target, prepared, boundary, observation });
     return { requestId: request.id, model: observation.model, state: observation.state,
       observation, evidence: [target.receipt, prepared.receipt, boundary.receipt, ...(observation.evidence ?? [])],

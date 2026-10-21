@@ -122,7 +122,14 @@ export async function runDay(root, day, driver, grader, now = () => Date.now()) 
         fixtures: index === 0 ? task.fixtures : {}, off: setup === 'instar2' ? config.off ?? [] : [],
         target: config.targets?.[setup], deadlineMs: config.timeoutMs, remainingCalls: config.maxCalls - calls,
         mode: config.mode, experimentRoot: root };
-      durable(intent, { request, at: now() });
+      const at = now();
+      if (config.mode === 'live' && index) {
+        const previous = read(join(root, 'events', `${task.id}.${setup}.${index - 1}.intent.json`));
+        const spacing = (step.day - task.stages[index - 1].day) * 86400000;
+        if (!finite(previous.at) || !finite(at) || at - previous.at < spacing)
+          fail('elapsed stage spacing not met; planned dates are not continuity evidence');
+      }
+      durable(intent, { request, at });
       const start = performance.now();
       const controller = new AbortController();
       let timer;
