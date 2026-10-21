@@ -7,6 +7,7 @@ import { hostname } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { schemaVersion } from './update-release.mjs';
+import { assertAgentPaths } from './agent-paths.mjs';
 
 const packageInfo = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const load = path => JSON.parse(readFileSync(path, 'utf8'));
@@ -61,6 +62,7 @@ export async function updateRoot(directory, options = {}) {
   // source is a programmatic test seam; the public CLI only installs the named GitHub tag.
   const source = options.source ?? `github:JKHeadley/instar-2#${release}`;
   const root = resolve(directory);
+  assertAgentPaths({ root });
   mkdirSync(root, { recursive: true, mode: 0o700 });
   const lock = join(root, '.update-lock');
   // Same unique-owner reclamation as judgment-captures: only a proven dead local

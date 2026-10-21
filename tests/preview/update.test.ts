@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readlinkSync, existsSync, rmSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readlinkSync, existsSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync, execFileSync } from 'node:child_process';
@@ -19,10 +19,29 @@ function fixture(version = '0.2.0', body = 'export const migrations = [];', sche
   writeFileSync(join(p, 'package.json'), JSON.stringify({ name: '@instar/constitutional-types', version, type: 'module' }));
   writeFileSync(join(p, 'bin/instar2.mjs'), readFileSync('bin/instar2.mjs'));
   writeFileSync(join(p, 'scripts/update.mjs'), readFileSync('scripts/update.mjs'));
+  writeFileSync(join(p, 'scripts/agent-paths.mjs'), readFileSync('scripts/agent-paths.mjs'));
   writeFileSync(join(p, 'scripts/slice-ts-loader.mjs'), readFileSync('scripts/slice-ts-loader.mjs'));
   writeFileSync(join(p, 'scripts/update-release.mjs'), `export const schemaVersion = ${schema};\nexport const readableSchemas = [1, ${schema}];\n${body}\n`);
   return `file:${p}`;
 }
+it.each(['Documents', 'Desktop', 'Downloads', 'Library/Mobile Documents', 'alias'])
+('the updater refuses macOS protected root %s before its first write', folder => {
+  const home = scratch();
+  if (folder === 'alias') {
+    mkdirSync(join(home, 'Documents'));
+    symlinkSync(join(home, 'Documents'), join(home, folder));
+  }
+  const root = join(home, folder, 'absent/agent');
+  // Exercise the real boundary on Linux too; only the child platform is emulated.
+  const child = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+    const { updateRoot } = await import('./scripts/update.mjs');
+    await updateRoot(process.argv[1], { release: 'v0.2.0', source: 'file:/must-not-install' });
+  `, root], { env: { ...process.env, HOME: home }, encoding: 'utf8', timeout: 30000 });
+  expect(child.status, child.stderr).toBe(1);
+  expect(child.stderr).toContain(`macOS protected folder ~/${folder === 'alias' ? 'Documents' : folder}`);
+  expect(existsSync(join(home, folder, 'absent'))).toBe(false);
+});
 it('adopts an unstamped root, backs up settings, installs with npm and repeats without writes', async () => {
   const root = scratch(), source = fixture();
   writeFileSync(join(root, 'model-setting.json'), '{"model":"operator-choice"}');
