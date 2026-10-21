@@ -58,7 +58,7 @@ it('repairs only the legacy sentence in the recorded 12:24 reply before review a
   const result = await deliver(captured.delivered.reply);
   expect(result.answer).toBe(expected);
   expect(result.reviewed).toEqual([expected]);
-  expect(result.sent).toEqual([expected]);
+  expect(result.sent).toEqual([expected.replace(/^- /gm, '• ')]);
 });
 
 it.each([
@@ -71,7 +71,7 @@ it.each([
   const expected = canonical;
   expect(result.answer).toBe(expected);
   expect(result.reviewed).toEqual([expected]);
-  expect(result.sent).toEqual([expected]);
+  expect(result.sent).toEqual([expected.replace(/^- /gm, '• ')]);
 });
 
 it.each([{ tools: false }, { tools: true }, { tools: true, mcp: 0 }, { tools: true, mcp: 2 }])(
@@ -114,7 +114,7 @@ it('does not turn an empty answer or ordinary prose into a capability answer', a
 it('resolves a revised marker before its own review and sends only that reviewed text', async () => {
   const result = await deliver('Look in /Users/me/notes for it.', `Revised.\n\n${CAPABILITY_SENTENCE_MARKER}`);
   expect(result.reviewed).toEqual(['Look in /Users/me/notes for it.', canonical]);
-  expect(result.sent).toEqual([canonical]);
+  expect(result.sent).toEqual([canonical.replace(/^- /gm, '• ')]);
 });
 
 it('preserves recorded non-capability writer, Jev and review shapes, including uncertain/undecided', () => {
@@ -136,7 +136,7 @@ it('repairs the recorded 16:36 grant overclaim through review and explicit revis
   expect(renderCapabilityReply(recorded.delivered.reply, { sources: [note] })).toBe(recorded.delivered.reply);
   const result = await deliver(recorded.delivered.reply, CAPABILITY_SENTENCE_MARKER, captured.question, 'self_state_claim');
   expect(result.sent).toHaveLength(1);
-  expect(result.sent[0]).toContain('- answers the operator in chat/topics;');
+  expect(result.sent[0]).toContain('• answers the operator in chat/topics;');
   expect(result.sent[0]).not.toContain('as the operator');
   expect(result.reviewed).toEqual([recorded.delivered.reply, canonical]);
 });
@@ -177,7 +177,7 @@ it.each(['I', 'The person', 'The agent'])('preserves a mixed tools and arithmeti
   const result = await deliver(body, undefined, question);
   expect(result.answer).toBe(expected);
   expect(result.reviewed).toEqual([expected]);
-  expect(result.sent).toEqual([expected]);
+  expect(result.sent).toEqual([expected.replace(/^- /gm, '• ')]);
 });
 
 it('keeps repeated literal sentences and their neighboring content for contextual review', () => {
