@@ -42,6 +42,10 @@ Prompt finding: f6d7f3274c85 | protocol-literal | Tests quote delivered protocol
 Prompt finding: feadb66b8ad1 | protocol-literal | Tests quote delivered protocol, standing-grant, identity or rationale instructions to verify current or historical bytes; no fixture answer is used as a meaning-based gate trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "any live authentication secret reaching anyone but the verified operator who sup"
 
 
+Validation: Five real isolated Opus 5.5 calls passed with zero model_refusal_fallback events; shipped doorway and answer/review readers accepted their results. Native conformance renewal passed 9/10 before (only stale certificate) and 10/10 after. Build, typecheck and architecture checks passed. Detailed targeted/READY checks are recorded in the absolute lanes progress report.
+Publication: Repository build-register.mjs --replay regenerated seven outputs from source commit a1ed3150c57a64b59ba24be0b3ddf285fc356941. Owner-reference and support-inventory tools found no other stale pins.
+Evidence limit: The real corpus contains delivered replies and an empty candidate in context, not a proved delivered empty bubble. Exact-input versus reconstructed-context replays are distinguished in replay-verification.json. No live installation or chat was modified.
+
 ## Closing block
 
 simplestRobustRoute: The proven one-sentence replacement in two existing definitions is the simplest route; derived prompts inherit it. No model substitution, retry, parser or permission machinery is added. Real bounded copy-only replays show Opus 5.5 and no fallback, with existing readers accepting the outputs.
