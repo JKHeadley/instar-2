@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decode } from '../../src/index.js';
-import { buildRuleGraph, checkDeadlines, checkGraphLoops, decodeCheckRun, checkSeparation, semanticReviewSubject } from '../../src/register/index.js';
+import { buildRuleGraph, checkDeadlines, featureDeadlines, GRADUATION_WARNING_WINDOW, checkGraphLoops, decodeCheckRun, checkSeparation, semanticReviewSubject } from '../../src/register/index.js';
 import type { CheckCatalog, RuleGraph } from '../../src/register/index.js';
 import { setup, json, value, detail, clone } from '../register/fixtures.js';
 
@@ -57,6 +57,29 @@ describe('both-way rule graph and deadlines', () => {
     expect(detail(checkDeadlines(graph, r, [9], s.f.now, s.context))).toContain('P3-NF-24');
     expect(detail(checkDeadlines(graph, r, [], s.f.clock(1000), s.context))).toContain('P3-NF-24');
     expect(detail(checkDeadlines(graph, r, [], s.f.clock(1001), s.context))).toContain('P3-NF-24');
+  });
+  it('Rule 72 a graduation deadline warns from 24 h before; an overdue dark feature is reported, not failed; an overdue soaking feature fails', () => {
+    const s = setup(); const day = GRADUATION_WARNING_WINDOW; const deadline = 10 * day;
+    expect(day).toBe(86_400_000);
+    const feature = (status: string) => s.declaration('feature.x', 'features', { metrics: ['counter'], gate: { test: 'check', deadline } }, { profile: s.profile, status });
+    const dark = s.build([feature('dark')]); const graph = value(buildRuleGraph(dark, 'branch', [], catalog, s.context));
+    // Before the window: nothing to say.
+    expect(featureDeadlines(dark, deadline - day - 1)).toEqual({ dueSoon: [], overdue: [] });
+    // Inside the window: a warning naming the feature, its deadline and where it is declared.
+    expect(featureDeadlines(dark, deadline - day)).toEqual({ dueSoon: [{ id: 'feature.x', deadline, status: 'dark', path: 'src/example.ts' }], overdue: [] });
+    expect(featureDeadlines(dark, deadline - 1).dueSoon.map(d => d.id)).toEqual(['feature.x']);
+    // At and after the deadline: overdue, and it stays reported for as long as the declaration says so.
+    for (const now of [deadline, deadline + 30 * day]) {
+      expect(featureDeadlines(dark, now)).toEqual({ dueSoon: [], overdue: [{ id: 'feature.x', deadline, status: 'dark', path: 'src/example.ts' }] });
+      // A dark overdue feature does not fail an unrelated build: the deadline check passes and the overdue list carries it.
+      expect(value(checkDeadlines(graph, dark, [], s.f.clock(now), s.context))).toBe(true);
+    }
+    // The overdue feature itself must stay dark: switched partly on (soaking) past its deadline, its own check fails.
+    const soaking = s.build([feature('soaking')]); const soakingGraph = value(buildRuleGraph(soaking, 'branch', [], catalog, s.context));
+    expect(value(checkDeadlines(soakingGraph, soaking, [], s.f.clock(deadline - 1), s.context))).toBe(true);
+    expect(detail(checkDeadlines(soakingGraph, soaking, [], s.f.clock(deadline), s.context))).toMatch(/feature feature\.x graduation overdue while soaking/u);
+    // A live (graduated) or retired feature carries no graduation deadline to report.
+    expect(featureDeadlines(s.build([{ ...feature('dark'), status: 'retired' }]), deadline)).toEqual({ dueSoon: [], overdue: [] });
   });
   it('P3-NF-25 runtime sentinel evidence requires a declared freshness probe', () => {
     const s = setup(); const r = s.build([s.rule(4), s.holder([{ ...held, evidence: { kind: 'sentinel', id: 'watcher', stage: 'runtime' } }])]);

@@ -3557,8 +3557,13 @@ Each entry is one decision. A stage is reached only after the stages before it,
 and names the durable evidence a reader can open. A new deadline must fall after
 the moment it is recorded, and names its reason, the owner of the next step and
 the rollback. A capability's declared `gate.deadline` must equal the latest
-deadline in the record; the capability tests fail on any difference, and on a
-deadline past the real clock. `status` adds a `Graduation:` line that shows each
+deadline in the record; the capability tests fail on any difference and check
+deadlines against the real clock. The register warns from 24 hours before the
+deadline and reports the overdue obligation on every run at or after it. An
+overdue dark capability stays visible without failing unrelated builds; an
+overdue soaking capability fails. The graduation obligation remains open until
+the capability graduates, retires, or records a new deadline. `status` adds a
+`Graduation:` line that shows each
 stage as `recorded`, `observed` or `missing`. `observed` means this runtime
 passed the capability's proof but no record entry exists yet. The line also
 shows the deadline and when it was recorded. A dark capability stays `dark` in

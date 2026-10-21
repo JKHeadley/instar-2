@@ -90,8 +90,24 @@ describe('the preview inventory is register input', () => {
     expect(capabilityFindings(documentTier, classify, NOW).join('\n')).toMatch(/Rule 34 — evidence tiers name executed tests/u);
     expect(capabilityFindings(inventory, classify, STEP_DEADLINE).join('\n')).toMatch(/preview\.step-check: Rule 72 — graduation overdue/u);
   });
-  it('enforces graduation deadlines against the real clock (Rule 72: an overdue dark capability fails the build)', () => {
-    expect(capabilityFindings(inventory, classify, Date.now()).join("|")).toBe("");
+  // Rule 72 at a given clock: overdue capabilities that are not dark, and every finding other than their overdue line.
+  const deadlineVerdict = (inv: typeof inventory, now: number) => {
+    const overdue = inv.capabilities.filter(c => (c.declaration.requiredFacts.gate?.deadline ?? Infinity) <= now).map(c => c.declaration);
+    const findings = capabilityFindings(inv, classify, now);
+    const own = overdue.map(d => `${d.id}: Rule 72 — graduation overdue; graduate it, retire it, or record a new deadline`);
+    return { overdue: overdue.map(d => d.id), notDark: overdue.filter(d => d.status !== 'dark').map(d => d.id),
+      reported: own.every(line => findings.includes(line)), other: findings.filter(line => !own.includes(line)) };
+  };
+  it('checks graduation deadlines against the real clock (Rule 72: an overdue capability stays dark and reported; it fails no unrelated run)', () => {
+    // The overdue capability itself must be dark (soaking past its deadline is its own failure); its overdue line stays a
+    // finding, visible on every run; every other finding still fails here.
+    expect(deadlineVerdict(inventory, Date.now())).toMatchObject({ notDark: [], reported: true, other: [] });
+    // Both sides on a fixed clock: before the deadline nothing is overdue; at it step-check is overdue, dark and reported,
+    // and this test passes; switched to soaking at the same clock, it fails on that capability alone.
+    expect(deadlineVerdict(inventory, STEP_DEADLINE - 1)).toEqual({ overdue: [], notDark: [], reported: true, other: [] });
+    expect(deadlineVerdict(inventory, STEP_DEADLINE)).toEqual({ overdue: ['preview.step-check'], notDark: [], reported: true, other: [] });
+    const soaking = previewInventory(DECLARATIONS.map(d => d.id === 'preview.step-check' ? { ...d, status: 'soaking' as const } : d));
+    expect(deadlineVerdict(soaking, STEP_DEADLINE).notDark).toEqual(['preview.step-check']);
     // The moved deadline is the promotion record's, and the README states it.
     expect(promotionOf(PROMOTION_RECORD, 'preview.step-check').deadline?.deadline).toBe(STEP_DEADLINE);
     expect(new Date(STEP_DEADLINE).toISOString()).toBe('2026-10-24T00:00:00.000Z');
