@@ -14,7 +14,7 @@ Side effects: The dark step-check observer has a new October 24 00:00 UTC evalua
 Undo and recovery: Revert this repair and regenerate the register. The previous October 21 deadline becomes overdue again. Keep recorded inputs and all journal/send uniqueness evidence.
 Multi-machine posture: No new machine-local state or transport. Committed tests and promotion records travel through git; existing ownership, disclosure and replay checks still enforce one sender.
 Layer below: Read the full purpose and rules, the Telegram renderer and physical-send wrapper, recorded model/receipt fixtures, journal realpath guard, promotion record and capability deadline checker.
-Bug class: deterministic
+Bug class: integration
 Bug evidence: reproducer=tests/preview/group-carry-requests.test.ts; regression=tests/preview/capabilities.test.ts
 Hook bypass: none; core.hooksPath unset and common hooks directory contains sample files only.
 Convergence: none
