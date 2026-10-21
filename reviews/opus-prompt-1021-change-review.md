@@ -4,7 +4,7 @@ Subject base: 52ead9423d978a2061f7fc32e8d53e0befc32960
 Review state: open
 Reviewed content: none
 Outcome: Replace full internal-reasoning requests with brief evidence-based rationales in both conversation prompt definitions and their three derived routes; preserve the JSON field and parser.
-Affected rules: 1, 4, 12, 26, 34, 35, 36, 41, 49, 57, 58, 70, 74, 75, 90, 101, 108, 111, 112, 113, 116; R105 composition certificate maintenance.
+Affected rules: 1, 4, 12, 26, 30, 34, 35, 36, 41, 49, 57, 58, 70, 74, 75, 90, 101, 108, 111, 112, 113, 115, 116; architecture diagnostic R105 composition certificate maintenance (not constitutional Rule 105, Channel Parity).
 Affected floors: secrets remain under existing custody; spend cap stays bounded; stop still interrupts provider work; no duplicate sends remains enforced; durable intake is unchanged.
 Operator questions: none
 Suggested tier: significant
@@ -19,6 +19,9 @@ Bug evidence: reproducer=tests/assembly/prompt-rationale.test.ts; live=/Users/da
 Hook bypass: none
 Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
+1.x comparison: Instar 1.x src/core/DiscoveryEvaluator.ts:374 requests a "brief explanation of why this is relevant now" in the JSON reasoning field (reviewer verified JKHeadley/instar commit 12d8c3da4f72e1d72e9fd4f8d43df5b824623bb6; the repair also confirms that wording in the local 1.x source). This unit reuses that brief-explanation pattern in the existing 2.0 provider protocol: request a brief evidence-based decision rationale while preserving the reasoning field and parsers. The discovery evaluator itself is not transplanted; no provider rewrite or additional model calls are needed.
+Framework and native coverage: Rule 30 is satisfied by changing both subscription/Claude Code and Codex base instructions, inherited by their tool variants; the subscription native route inherits the same instruction. Rule 115 is satisfied by retaining the native harness public-port path and refreshing its exact composition certificate against the recorded 10/10 native contract result. This documentary repair changes no composition or certificate and claims no fresh native contract run.
+Repair scope: M1 adds the 1.x comparison; N2 completes the Rule 30/115 cross-reference. N1 retains subject base 52ead9423d978a2061f7fc32e8d53e0befc32960 for unit review; the documentary repair alone starts at c75bc53eeb86382f2ad8da8d0b882daf30666548.
 Prompt review: The new sentence asks for a short explanation supported by evidence; no test-specific phrase decides accept/refuse and no expected verdict is supplied. Only the two base prompts requested all reasoning. Tool provenance instructions remain useful and unchanged. Historical strings in tests reconstruct captured prompts and are never sent as new instructions.
 Prompt finding: 0abb3dc96311 | protocol-literal | Tests quote delivered protocol, standing-grant, identity or rationale instructions to verify current or historical bytes; no fixture answer is used as a meaning-based gate trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "an unresolved date or unrecorded scheduling claim is no admitted reminder."
 Prompt finding: 0d4664ea9de7 | protocol-literal | Tests quote delivered protocol, standing-grant, identity or rationale instructions to verify current or historical bytes; no fixture answer is used as a meaning-based gate trigger — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "run without another yes. the operator can tighten or revoke trust through setup-"
