@@ -1,6 +1,6 @@
 # Change review — restore test answers on the reviewed Codex CLI
 
-Subject base: 52ead942
+Subject base: 52ead9423d978a2061f7fc32e8d53e0befc32960
 Review state: open
 Reviewed content: none
 Outcome: Admit the installed native Codex CLI 0.156.1 through the existing exact subscription activation checks, restoring a usable answer doorway for isolated test copies while the Claude test logins are exhausted.
@@ -20,6 +20,8 @@ Hook bypass: none; core.hooksPath unset; shared git hooks directory contains sam
 Convergence: none
 Decision: codex-tests-1021-version | Advance only the exact reviewed pin after recorded and live revalidation; keep historical capture provenance and reject adjacent versions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/codex-tests-1021-PROGRESS.md
 Decision: codex-tests-1021-test-profile | Use codex-dawn-sagemind and test-local gpt-6-astra with authority resolved from grant 121996; leave Justin's live settings untouched. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/codex-tests-1021-PROGRESS.md
+
+Prompt finding: 42faf877ba82 | quoted-evidence | The existing identity assertion quotes unchanged prompt wording; this change alters only the reviewed executable version, with no fixture phrase added to a prompt.
 
 Subject (5 paths): src/assembly/production-codex-provider.ts, src/assembly/README.md, tests/assembly/production-codex-provider.test.ts, tests/e2e/codex-answer-live.test.ts, tests/preview/fixtures/codex-answer-0.156.1.json
 
