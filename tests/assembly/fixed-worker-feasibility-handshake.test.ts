@@ -51,28 +51,32 @@ static int spawn_guard(guard_t *g, char *const argv[], int channel) {
   if (g->pid < 0) return -1;
   if (g->pid == 0) {
     close(sp[0]);
+    int release[2]; if (pipe(release)) _exit(2);
     pid_t worker = fork();
     if (worker < 0) _exit(2);
     if (worker == 0) {
-      close(sp[1]);
+      close(sp[1]); close(release[1]);
       usleep(350000); /* exceeds the old guessed 100ms, without CPU load */
+      char go; if (read(release[0], &go, 1) != 1) _exit(4);
+      close(release[0]);
       if (mode == 0) { if (write(channel, "R", 1) != 1) _exit(4); }
       else if (mode == 2) { if (write(channel, "X", 1) != 1) _exit(4); }
+      if (mode != 1) close(channel);
       for (;;) pause();
     }
-    close(channel);
+    close(channel); close(release[0]);
     dprintf(sp[1], "S %d\\n", worker);
-    uint64_t start = now_ms(), last = start;
-    int status = 0, beats = 0;
+    uint64_t start = now_ms();
+    int status = 0, beats = 0, released = 0;
     for (;;) {
       struct pollfd p = { .fd = sp[1], .events = POLLIN };
-      if (poll(&p, 1, 5) > 0) { char b[64]; if (read(sp[1], b, sizeof b) > 0) { last = now_ms(); beats++; } }
-      if (now_ms() - last > 150) { kill(worker, SIGKILL); waitpid(worker, &status, 0); dprintf(sp[1], "T 31 %d 0\\n", status); _exit(0); }
+      if (poll(&p, 1, 5) > 0) { char b[64]; ssize_t count = read(sp[1], b, sizeof b); if (count > 0) beats += (int)count; }
+      if (beats >= 5 && !released) { if (write(release[1], "G", 1) != 1) _exit(4); close(release[1]); released = 1; }
       if (waitpid(worker, &status, WNOHANG) == worker) {
         int reason = mode == 0 && now_ms() - start >= 350 && beats >= 5 ? 0 : 35;
         dprintf(sp[1], "T %d %d 0\\n", reason, status); _exit(0);
       }
-      if (now_ms() - start > 650) {
+      if (now_ms() - start > (mode == 0 ? 3000 : 650)) {
         kill(worker, SIGKILL); waitpid(worker, &status, 0);
         dprintf(sp[1], "T 30 %d 0\\n", status); _exit(0);
       }
@@ -104,7 +108,7 @@ ${controls}
 int main(void) {
   signal(SIGPIPE, SIG_IGN);
   char *payload[] = { "probe", NULL };
-  for (mode = 0; mode < 3; mode++) {
+  for (mode = 0; mode < 4; mode++) {
     run_t r;
     if (run_guarded_fault(&r, "-", "-", "-", 1000, payload, FAULT_KILL)) return 1;
     printf("mode=%d reason=%d signal=%d\\n", mode, r.reason, WIFSIGNALED(r.status) ? WTERMSIG(r.status) : 0);
@@ -117,6 +121,6 @@ int main(void) {
     expect(build.status, build.stderr).toBe(0);
     const run = spawnSync(join(dir, 'driver'), [], { encoding: 'utf8', timeout: 5000 });
     expect(run.status, run.stdout + run.stderr).toBe(0);
-    expect(run.stdout).toBe('mode=0 reason=0 signal=9\nmode=1 reason=30 signal=9\nmode=2 reason=30 signal=9\n');
+    expect(run.stdout).toBe('mode=0 reason=0 signal=9\nmode=1 reason=30 signal=9\nmode=2 reason=30 signal=9\nmode=3 reason=30 signal=9\n');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

@@ -736,7 +736,7 @@ static int run_guarded_fault(run_t *out, const char *cpu, const char *mem, const
     if (fault != FAULT_SILENT) (void)write(g.link, "H", 1);
     struct pollfd p[2] = { { .fd = g.link, .events = POLLIN }, { .fd = ready[0], .events = POLLIN } };
     int polled = poll(p, 2, HEARTBEAT_MS);
-    if (polled > 0 && (p[1].revents & POLLIN)) {
+    if (polled > 0 && p[1].revents) {
       char byte = 0;
       kill_ready = read(ready[0], &byte, 1) == 1 && byte == 'R';
       close(ready[0]); ready[0] = -1;
