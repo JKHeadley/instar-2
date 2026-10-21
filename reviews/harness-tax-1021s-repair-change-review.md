@@ -15,7 +15,7 @@ Undo and recovery: Revert this repair commit to restore prior code; retain exper
 Multi-machine posture: Deliberately machine-local measurement ledger with one writer. Actual placement verification remains unchanged; moving the runner requires its complete ledger. No shared runtime state added.
 Layer below: Read the complete purpose and rule book, identical to origin/main; existing intent/capture/grading path, actual-boundary checks, README host contract and 1.x .dev/instar/src/core/LiveTestHarness.ts DriverCapabilityError/blocked-outcome distinction. Port the small explicit capability-outcome contract, not the large module or live configuration.
 Bug class: integration
-Bug evidence: reproducer=tests/harness-tax/runner.test.ts exercises late zero-spacing rejection, one millisecond before due rejection, exact elapsed-boundary admission, repeated-stage no-resend, unsupported compaction metering/capture/grade with other setups continuing, missing unsupported evidence refusal, isolation refusal and ambiguous no-resend.
+Bug evidence: reproducer=tests/harness-tax/runner.test.ts
 Hook bypass: none; core.hooksPath unset and shared hooks directory contains sample hooks only, inspected before commit.
 Convergence: none
 Prompt review: No model prompt, reply parser or semantic grading rule changed. Existing archival replay test remains exercised; these repairs change deterministic timing and host-capability evidence admission only.
