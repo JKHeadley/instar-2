@@ -5,11 +5,11 @@ Review state: open
 Reviewed content: none
 Outcome: Integrate the exact reviewed Opus accounting head while retaining the live base. Validated thinking is excluded only from the answer-token bound; total output remains metered and malformed metadata remains conservative through both owner and legacy snapshot paths.
 Affected rules: 1, 13, 24, 34, 36, 37, 42, 45, 49, 66, 69, 70, 74, 75, 90, 101, 102, 111, 112, 113, 115, 116
-Affected floors: Secrets and data-only snapshots preserved; charge and call caps unchanged; stop and deadlines unchanged; one invocation and no new retries; durable intake and receipts preserved.
+Affected floors: Secrets and data-only snapshots preserved; spend cap, charge and call caps unchanged; stop and deadlines unchanged; no duplicate sends, one invocation and no new retries; durable intake and receipts preserved.
 Operator questions: none
-Suggested tier: significant
-Declared tier: significant
-Tier rationale: Composition of a reviewed numeric admission repair, including its real captured usage and owner-consumer checks.
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Composition touches the provider admission boundary and inherited critical live-base paths; preserve that tier while checking the reviewed numeric repair with captured usage and owner-consumer checks.
 Side effects: Optional answerTokens reaches invocation and legacy judgment receipts. Missing metadata retains total-token fallback. Generated source pins reflect the combined tree. Native conformance is bound to composition and may require Studio renewal.
 Undo and recovery: Revert the merge through review, regenerate the register, and renew native conformance for that composition. Existing observations remain readable; rollback restores the known Opus false refusal.
 Multi-machine posture: Stateless usage validation is identical on every machine. Ownership, replication and durability demands remain unchanged. Native conformance remains specific to macOS and its declared runtime.
