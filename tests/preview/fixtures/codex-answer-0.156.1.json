@@ -1,0 +1,43 @@
+{
+  "recordedAgainst": "codex-cli 0.156.1",
+  "model": "gpt-6-astra",
+  "envelope": "{\"provider\":\"openai\",\"model\":\"gpt-6-astra\",\"route\":\"preview-subscription\",\"messages\":[{\"role\":\"user\",\"content\":\"In one short sentence, what is this preview for?\"},{\"role\":\"context\",\"content\":\"{\\\"bindings\\\":{\\\"at\\\":1791051039970,\\\"by\\\":{\\\"judgment\\\":\\\"answer\\\",\\\"model\\\":\\\"codex\\\",\\\"route\\\":\\\"preview-subscription\\\"},\\\"evidence\\\":[\\\"live-proof-evidence\\\"],\\\"floor\\\":{\\\"type\\\":\\\"ActionFloor\\\",\\\"schemaVersion\\\":1,\\\"actions\\\":[\\\"work\\\"],\\\"default\\\":\\\"work\\\"}},\\\"packet\\\":{\\\"now\\\":\\\"2026-10-03T18:10\\\",\\\"audience\\\":\\\"the verified operator\\\",\\\"sources\\\":[{\\\"text\\\":\\\"Instar exists to make coherence something an AI cannot lose.\\\",\\\"provenance\\\":\\\"docs/00-the-purpose.md\\\"}],\\\"history\\\":[]}}\"}],\"attachments\":[],\"tools\":[],\"settings\":{\"automaticRetries\":0,\"maxTokens\":2048},\"outputSchema\":{},\"floor\":{\"type\":\"ActionFloor\",\"schemaVersion\":1,\"actions\":[\"work\"],\"default\":\"work\"},\"evidence\":[\"live-proof-evidence\"],\"point\":\"preview\",\"generation\":\"live-proof\"}",
+  "captures": [
+    {
+      "args": [
+        "--version"
+      ],
+      "code": 0,
+      "limited": false,
+      "stdout": "codex-cli 0.156.1\n"
+    },
+    {
+      "args": [
+        "login",
+        "status"
+      ],
+      "code": 0,
+      "limited": false,
+      "stdout": ""
+    },
+    {
+      "args": [
+        "exec",
+        "--json",
+        "--skip-git-repo-check",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--ephemeral",
+        "--sandbox",
+        "read-only",
+        "--model",
+        "gpt-6-astra",
+        "-"
+      ],
+      "code": 0,
+      "limited": false,
+      "stdout": "{\"type\":\"thread.started\",\"thread_id\":\"01a15fe2-dc13-75e2-a919-18c83c9e4cb2\"}\n{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"{\\\"reasoning\\\":\\\"The supplied purpose statement supports a brief description of the preview.\\\",\\\"answer\\\":\\\"This preview explores how Instar can make coherence something an AI cannot lose.\\\"}\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":15074,\"cached_input_tokens\":12160,\"cache_write_input_tokens\":0,\"output_tokens\":38,\"reasoning_output_tokens\":0}}\n"
+    }
+  ],
+  "source": "Real registered Codex doorway call, 2026-10-21, codex-tests-1021; fixed test envelope, not a user conversation."
+}

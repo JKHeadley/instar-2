@@ -19,6 +19,7 @@ import type { SubscriptionActivationRecord } from '../../src/assembly/production
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { directExecute } from './direct-execute.js';
 import { factsFixture, value } from '../facts/fixtures.js';
+import { readAnswer } from '../preview/answer-reading.js';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
 
@@ -29,7 +30,8 @@ const recorded = JSON.parse(readFileSync('tests/preview/codex-recorded-frames.js
   recordedAgainst: string; exitCodes: Record<string, number>; streams: Record<string, string> };
 
 it('reads the real recorded streams: a tool-free completed turn answers, a tool-using one and a failed one do not', () => {
-  expect(recorded.recordedAgainst).toBe(`codex-cli ${CODEX_SUBSCRIPTION_VERSION}`);
+  // Historical captures retain their real version when the reviewed executable advances.
+  expect(recorded.recordedAgainst).toBe('codex-cli 0.149.1');
   const ok = parseCodexEventStream(recorded.streams.ok!);
   expect(ok).toMatchObject({ answer: 'OK', terminal: 'turn.completed', malformed: false });
   expect(ok.disallowedItems).toEqual([]);
@@ -54,6 +56,56 @@ it('reads the real recorded streams: a tool-free completed turn answers, a tool-
   expect(failed.failureText).toContain('not supported when using Codex with a ChatGPT account');
   // A failed turn exits non-zero and a completed one exits zero, as recorded.
   expect(recorded.exitCodes).toMatchObject({ ok: 0, decision: 0, toolUsed: 0, turnFailed: 1 });
+});
+
+it('admits the reviewed 0.156.1 activation and refuses the retired and unreviewed neighboring versions', () => {
+  expect(CODEX_SUBSCRIPTION_VERSION).toBe('0.156.1');
+  const f = fixture();
+  for (const version of ['0.149.1', '0.156.0', '0.156.1', '0.156.2']) {
+    const profile = { ...f.profile, version };
+    const activation = { ...f.activation(), version, profileDigest: hash(profile) };
+    const validate = () => validateCodexActivation(activation, profile, f.model, 1000, CODEX_CONVERSATION_FRAMING);
+    if (version === '0.156.1') expect(validate).not.toThrow();
+    else expect(validate).toThrow(/artifact or policy differs/u);
+  }
+});
+
+it('replays the live 0.156.1 answer through the admitted doorway and the application reader', async () => {
+  const capture = JSON.parse(readFileSync('tests/preview/fixtures/codex-answer-0.156.1.json', 'utf8')) as {
+    recordedAgainst: string; envelope: string; captures: { code: number; stdout: string }[] };
+  expect(capture.recordedAgainst).toBe(codexVersionLine(CODEX_SUBSCRIPTION_VERSION));
+  const f = fixture(), run = capture.captures.at(-1)!;
+  f.serveText(run.stdout, run.code);
+  const route = value(createCodexSubscriptionRoute(f.input()));
+  const observed = await route.invoke(capture.envelope, f.bounds);
+  expect(observed.state).toBe('complete');
+  expect(readAnswer(observed.bytes!)).toMatchObject({ ok: true, envelope: 'flat' });
+  expect(observed.usage.inputTokens).toBeGreaterThan(0);
+  expect(observed.usage.outputTokens).toBeGreaterThan(0);
+  // Identical recorded bytes with a contradictory process outcome cannot become an answer.
+  f.serveText(run.stdout, 1);
+  expect((await route.invoke(capture.envelope, f.bounds)).state).toBe('uncertain');
+});
+
+it('preserves recorded summary, Jev, review and delivered reply shapes on the newly admitted version', async () => {
+  const corpus = JSON.parse(readFileSync('tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', 'utf8')) as {
+    otherShapes: { kind: string; id: string; raw: string }[] };
+  expect(corpus.otherShapes.map(row => row.kind)).toEqual(['summary-writer', 'summary-uncertain', 'jev-undecided',
+    'jev-unsure', 'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
+  const capture = JSON.parse(readFileSync('tests/preview/fixtures/codex-answer-0.156.1.json', 'utf8')) as {
+    captures: { stdout: string }[] };
+  const events = capture.captures.at(-1)!.stdout.trim().split('\n').map(line => JSON.parse(line));
+  const f = fixture(), route = value(createCodexSubscriptionRoute(f.input()));
+  for (const row of corpus.otherShapes) {
+    // Replay historical model bytes in the captured transport shape; these are not
+    // claimed as new Codex model outputs. The doorway must not reinterpret them.
+    const stream = events.map(event => JSON.stringify(event.type === 'item.completed'
+      ? { ...event, item: { ...event.item, text: row.raw } } : event)).join('\n') + '\n';
+    f.serveText(stream, 0);
+    const observed = await route.invoke(JSON.stringify({ replay: row.id }), f.bounds);
+    if (row.raw.length) expect(observed, row.id).toMatchObject({ state: 'complete', bytes: row.raw });
+    else expect(observed.state, row.id).not.toBe('complete');
+  }
 });
 
 it('treats an unreadable line as malformed and an unknown event as nothing, without inventing an answer', () => {

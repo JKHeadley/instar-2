@@ -6,7 +6,7 @@
 // Subscription sign-in only: the route passes no API key and sets none. It runs only where the CLI
 // and a login home exist; everywhere else it skips rather than asserting an answer it never got.
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
@@ -18,6 +18,7 @@ import type { SubscriptionActivationRecord } from '../../src/assembly/production
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { directExecute } from '../assembly/direct-execute.js';
 import { factsFixture, value } from '../facts/fixtures.js';
+import { readAnswer } from '../preview/answer-reading.js';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
 
@@ -40,7 +41,12 @@ it.skipIf(!ready)('answers one real operator turn through the registered Codex d
   // run directly here: the shipped limit shim refuses on a host whose /bin/sh cannot apply the
   // declared process limit, which would make this a test of the host's shell, not of the doorway.
   const host = createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => false });
-  const io = { ...host, execute: directExecute };
+  const captures: { args: readonly string[]; code: number | null; limited: boolean; stdout: string }[] = [];
+  const io = { ...host, execute: async (input: Parameters<typeof directExecute>[0]) => {
+    const result = await directExecute(input);
+    captures.push({ args: input.args, code: result.code, limited: result.limited, stdout: result.stdout });
+    return result;
+  } };
   const seed = { type: 'ProviderSubscriptionProfile' as const, schemaVersion: 1 as const, reference: 'subscription-login',
     home, configDirectory, workingDirectory, expectedAccount: 'operator-asserted@not-observable.invalid',
     organization: 'operator-asserted-organization', plan: 'pro' as const, executable: executable!,
@@ -99,11 +105,16 @@ it.skipIf(!ready)('answers one real operator turn through the registered Codex d
     expect(observed.usage.outputTokens).toBeGreaterThan(0);
     expect(observed.usage.inputTokens).toBeGreaterThan(0);
     expect(observed.usage.charge).toBe(null);
-    const decision = JSON.parse(observed.bytes!);
-    expect(decision).toMatchObject({ type: 'Decision', schemaVersion: 1,
-      conclusion: { subject: 'preview-stage2-answer', predicate: 'answer-text' } });
-    expect(typeof decision.conclusion.value === 'string' ? decision.conclusion.value : decision.conclusion.value.reply)
-      .toMatch(/\S/u);
-    expect(decision.reason?.value).toBeDefined();
+    const answer = readAnswer(observed.bytes!);
+    expect(answer).toMatchObject({ ok: true, envelope: 'flat' });
+    if (!answer.ok) throw Error(answer.defect);
+    expect(answer.value).toMatch(/\S/u);
+    expect(answer.reason).toMatch(/\S/u);
+    // Opt-in capture of this test's fixed, credential-free request only. Never record the
+    // process environment, login bytes or a real user's conversation. Historical captures
+    // keep the version actually observed, independently of the current reviewed pin.
+    if (process.env.INSTAR_CODEX_CAPTURE) writeFileSync(process.env.INSTAR_CODEX_CAPTURE,
+      `${JSON.stringify({ recordedAgainst: captures[0]?.stdout.trim(), model, envelope, captures }, null, 2)}\n`,
+      { flag: 'wx', mode: 0o600 });
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 600_000);

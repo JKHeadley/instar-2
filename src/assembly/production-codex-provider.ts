@@ -21,7 +21,7 @@ import type { ProductionProviderIO, ProviderAdapterEvidenceContract, Subscriptio
   SubscriptionDoorway, SubscriptionDoorwayContract, SubscriptionPolicyBounds, SubscriptionToolTurn } from './production-provider.js';
 
 /** The pinned Codex CLI this adapter was reviewed against, and the exact line it prints. */
-export const CODEX_SUBSCRIPTION_VERSION = '0.149.1';
+export const CODEX_SUBSCRIPTION_VERSION = '0.156.1';
 export const codexVersionLine = (version: string) => `codex-cli ${version}`;
 /**
  * `codex login status` prints its state on STDERR ("Logged in using ChatGPT", "Logged in using an

@@ -20,6 +20,14 @@ Claude, Codex and native tool turns: acquire missing information through existin
 authorized reads, cite it, and report actual failed attempts. It changes no tool
 authority or resource limit; text-only turns retain their no-tools instruction.
 
+`production-codex-provider.ts` admits the reviewed native Codex CLI 0.156.1
+through an exact executable digest, version, subscription profile and activation
+policy. Historical 0.149.1 captures remain labeled with their original version;
+the 0.156.1 answer capture exercises the same route and application answer reader.
+Retired or unreviewed versions require a new review and activation. Tool admission,
+model-call limits, stop, durable intake and send uniqueness remain enforced by
+their existing owners.
+
 ## Scheduled work recovery
 
 `production-session-work.ts` binds a successful child close to its result digest. The
