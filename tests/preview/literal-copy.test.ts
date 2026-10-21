@@ -14,7 +14,12 @@ import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS } from '../../src/ass
 // Preserve the captures; the dedicated guidance tests cover the added instruction.
 // Recorded captures predate the 2026-10-13 single-machine ruling; the current prompt drops only this sentence.
 const CLOSED_SET_SENTENCE = 'Irreversible outward sends remain outside the one-machine closed set. ';
-const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
+// These captures also predate the brief-rationale prompt change. Translate only
+// that instruction for the historical comparison; never rewrite captured bytes.
+const HISTORICAL_RATIONALE = 'Its first field is "reasoning": do all your reasoning there.';
+const CURRENT_RATIONALE = 'Its first field is "reasoning": give a brief decision rationale supported by the relevant evidence.';
+const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '')
+  .replace(COMPLETE_REQUESTED_WORK, '').replace(CURRENT_RATIONALE, HISTORICAL_RATIONALE);
 
 // Captured read-only from the failed forum answer copy, update 715675751. The
 // three new outputs are real, bounded model replays of that same recorded packet.
@@ -39,6 +44,10 @@ it('retains the delivered error and captured copying guidance while replay uses 
   expect(capture.instructions).toContain(LITERAL_COPY_INSTRUCTIONS);
   expect(capture.instructions.replace(historicalSelfDescription, SELF_DESCRIPTION)
     .replace(LITERAL_COPY_INSTRUCTIONS, `${LITERAL_COPY_INSTRUCTIONS}\n${CLAIM_EVIDENCE_GUIDANCE}`)).toBe(ANSWER_INSTRUCTIONS);
+  expect(capture.system).toContain(HISTORICAL_RATIONALE);
+  expect(capture.system).not.toContain(CURRENT_RATIONALE);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain(CURRENT_RATIONALE);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).not.toContain(HISTORICAL_RATIONALE);
   expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(historicalToolsSystem);
   expect(LITERAL_COPY_INSTRUCTIONS).not.toContain('probe');
   expect(capture.runs).toHaveLength(3);
