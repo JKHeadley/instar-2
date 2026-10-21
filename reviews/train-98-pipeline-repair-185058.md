@@ -29,6 +29,5 @@ Register replay: Owner artifact hash refreshed with the delegated desk scripts; 
 ## Closing block
 
 simplestRobustRoute: This IS the simplest robust route: use the existing renderer for downstream delivery expectations and make the local HTTP receipt match Telegram semantics. No added runtime machinery. Recorded intake guards entry; exact displayed receipt and durable replay guard completion; existing stop, spend, disclosure and uniqueness limits remain.
-
 80/20: Target the eight gate-failing test files and required cheap checks; the Studio owns the full-suite rerun. No deployment or independent acceptance claim.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
