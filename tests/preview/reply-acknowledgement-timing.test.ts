@@ -1,3 +1,4 @@
+import { renderTelegramHtml } from './telegram-markdown.mjs';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -49,7 +50,7 @@ for (const sample of captured.cases.slice(0, 3)) it(`real recorded timing ${samp
       expect(acknowledgements[0]!.at).toBeLessThan(readyAt! + sample.timing.review);
       expect(acknowledgements[0]!.replyTo).toBe(sample.raw.message!.message_id); }
     expect(ackReviews).toBe(0);
-    expect(sent.at(-1)?.text).toBe(sample.reply);
+    expect(sent.at(-1)?.text).toBe(renderTelegramHtml(sample.reply).shown);
     expect(journal.view.order[0]?.heldNoticeReviewReserved).toBeUndefined();
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
@@ -90,11 +91,11 @@ it('picks up recorded second input and acknowledges it while the first turn stil
     const ack = events.filter(row => row.update === second.update && row.text === REPLY_ACKNOWLEDGEMENT);
     expect(ack).toHaveLength(1); expect(ack[0]!.at - second.at).toBe(7000 + second.timing.ackSend!);
     expect(answering).toEqual([first.update]); // answer calls remain serial, with no speculative paid reservation
-    expect(events.some(row => row.text === first.reply)).toBe(false);
+    expect(events.some(row => row.text === renderTelegramHtml(first.reply).shown)).toBe(false);
     await vi.advanceTimersByTimeAsync(50000); await drain;
     expect(answering).toEqual([first.update, second.update]); expect(peak).toBe(1);
     expect(events.filter(row => row.text === REPLY_ACKNOWLEDGEMENT)).toHaveLength(2);
-    expect(events.filter(row => row.text !== REPLY_ACKNOWLEDGEMENT).map(row => row.text)).toEqual([first.reply, second.reply]);
+    expect(events.filter(row => row.text !== REPLY_ACKNOWLEDGEMENT).map(row => row.text)).toEqual([first.reply, second.reply].map(text => renderTelegramHtml(text).shown));
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -129,7 +130,7 @@ it.each([1000, 20000])('keeps acknowledgement through a format continuation last
     expect(reviewing).toBe(continuationMs < 10000);
     if (continuationMs > 10000) expect(journal.view.order[0]?.answer).toBeUndefined();
     await vi.advanceTimersByTimeAsync(40000); await drain;
-    expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT, sample.reply]);
+    expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT, renderTelegramHtml(sample.reply).shown]);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -168,7 +169,7 @@ it.each([
     expect(journal.view.order[1]?.reserved).toBe(false);
     await vi.advanceTimersByTimeAsync(40000); await drain;
     expect(answering).toEqual(samples.map(sample => sample.update));
-    expect(sent.filter(row => row.text !== REPLY_ACKNOWLEDGEMENT).map(row => row.text)).toEqual(samples.map(sample => sample.reply));
+    expect(sent.filter(row => row.text !== REPLY_ACKNOWLEDGEMENT).map(row => row.text)).toEqual(samples.map(sample => renderTelegramHtml(sample.reply).shown));
     journal.close(); journal = openPreviewJournal(path, key);
     await createJournalWorker(journal, ports).drain();
     expect(sent).toHaveLength(4); // accepted acknowledgement intents and answers never repeat
@@ -206,10 +207,10 @@ it.each([false, true])('saved answer remains acknowledgement-eligible during slo
     await vi.advanceTimersByTimeAsync(1); expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT]);
     expect(journal.view.order[0]?.intent).toBeUndefined();
     await vi.advanceTimersByTimeAsync(10000); await drain;
-    expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT, sample.reply]);
+    expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT, renderTelegramHtml(sample.reply).shown]);
     journal.close(); journal = openPreviewJournal(path, key);
     await createJournalWorker(journal, ports).drain();
-    expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT, sample.reply]);
+    expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT, renderTelegramHtml(sample.reply).shown]);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -279,7 +280,7 @@ it.each([
     const ack = { text: REPLY_ACKNOWLEDGEMENT, at: 7000, replyTo: sample.raw.message!.message_id };
     expect(sent.filter(row => row.text === REPLY_ACKNOWLEDGEMENT)).toEqual(answerMs + reviewMs >= 7000 ? [ack] : []);
     await vi.advanceTimersByTimeAsync(30000); await drain; await worker.minimal();
-    const reply = { text: sample.reply, at: answerMs + reviewMs + sendMs, replyTo: sample.raw.message!.message_id };
+    const reply = { text: renderTelegramHtml(sample.reply).shown, at: answerMs + reviewMs + sendMs, replyTo: sample.raw.message!.message_id };
     expect(sent).toEqual(answerMs + reviewMs >= 7000 ? [ack, reply] : [reply]);
     // New intents admitted after answer readiness remain readable and never resend on restart.
     const count = sent.length;

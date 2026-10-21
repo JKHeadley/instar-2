@@ -1,9 +1,10 @@
+import { renderTelegramHtml } from './telegram-markdown.mjs';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, replyOutcomeOf, type PreviewPorts } from './journal-test-worker.js';
-import { encodeReply, splitReply, TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
+import { splitReply, TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/receipt-match-c1-2026-10-14.json', import.meta.url), 'utf8')) as {
@@ -24,7 +25,7 @@ function fixture(answer: string, mismatch?: 'chat' | 'id' | 'text' | 'thread') {
   const ports: PreviewPorts = { now: () => 1000, stopped: () => false, model: async () => answer, checkOutbound: () => {},
     send: async input => {
       calls.push(input);
-      expect(input.text).toBe(encodeReply(input.expectedText));
+      expect(input.text).toBe(renderTelegramHtml(answer.trimEnd()).html);
       expect(input.expectedText).toBe(input.expectedText.trimEnd());
       const fault = input.target?.startsWith('reply:') ? mismatch : undefined;
       // Counterfactual provider receipt: the original incident did not retain this body.
@@ -47,7 +48,7 @@ it.each(['\n', ' \t\r\n', '\u00a0\n'])('canonicalizes a fitting reply before sig
     expect(turn.intent).toBe(original.trimEnd());
     expect(turn.sent).toBe(1);
     expect(f.calls).toHaveLength(1);
-    expect(f.calls[0]!.expectedText).toBe(turn.intent);
+    expect(f.calls[0]!.expectedText).toBe(renderTelegramHtml(turn.intent!).shown);
     await f.worker.drain(); expect(f.calls).toHaveLength(1);
     f.journal.close();
     const reopened = openPreviewJournal(f.path, key);
@@ -66,7 +67,7 @@ it.each(['chat', 'id', 'text', 'thread'] as const)('a mismatched %s stays UNKNOW
     await f.worker.drain();
     const turn = f.journal.view.order[0]!;
     expect(turn.sent).toBeUndefined();
-    expect(replyOutcomeOf(f.journal.view, turn).outcome).toMatchObject({ kind: 'unknown' });
+    expect(replyOutcomeOf(f.journal.view, turn).outcome).toMatchObject({ kind: 'unknown', reason: 'receipt differs from intent' });
     expect(f.calls.filter(call => call.target?.startsWith('reply:'))).toHaveLength(1);
     await f.worker.drain(); f.journal.close();
     const reopened = openPreviewJournal(f.path, key);

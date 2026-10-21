@@ -10,7 +10,7 @@ import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, 
 import { authoritySealKey, sealAuthorityRecord } from './activation-authority.js';
 import { appendGroupCarry } from './group-carry.js';
 import { resolveGroupDisclosure } from './group-disclosure.js';
-import { grant } from './group-carry-fixture.js';
+import { grant, now } from './group-carry-fixture.js';
 import { openPreviewJournal } from './journal-test-worker.js';
 
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/topic-awareness-live-2026-10-10.json', import.meta.url), 'utf8'));
@@ -19,10 +19,11 @@ it.each(['current', 'revoked', 'wider-audience'] as const)('shipped runner serve
   const world = successiveWorld(), dir = world.directory;
   const original = join(dir, 'original-group'), copy = join(dir, 'canary-copy'), sourceRoot = join(dir, 'private');
   const activation = join(dir, 'activation.json'), profile = join(dir, 'profile.json'), authorityPath = join(dir, 'activation-authority.json');
+  const clock = join(dir, 'clock.mjs');
   const operator = join(dir, 'operator-records'), provider = join(dir, 'provider.mjs'), loader = join(dir, 'loader.mjs');
   writeFileSync(activation, JSON.stringify(world.activation()));
   writeFileSync(profile, JSON.stringify(offlineProfile));
-  const trial = world.state().read().trial, now = Date.now();
+  const trial = world.state().read().trial;
   const scope = { sourceRoot, destinationRoot: original, chat: recorded.genesis.chat,
     operator: world.configuration.operatorSenderId, bot: world.configuration.botId };
   const disclosure = { ...grant, scope, grantor: scope.operator, custodian: scope.operator,
@@ -60,7 +61,12 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     reason:{subject:'question',predicate:'answered',value:true,evidence:binding.evidence},floor:{allowed:binding.floor,chosen:binding.floor.default}}),
     usage:{inputTokens:1,outputTokens:1}};
 }}});`);
+  // Replay inside the recorded trial's lifetime, independent of the host calendar.
+  writeFileSync(clock, `import { createPreviewClock as realClock } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'tests/preview/clock.ts')).href)};
+export const createPreviewClock = (_wall, elapsed) => realClock(() => ${now}, elapsed);`);
   writeFileSync(loader, `export async function resolve(specifier,context,next) {
+    if (context.parentURL?.endsWith('/journal-agent.mjs') && specifier === './clock.js')
+      return {url:${JSON.stringify(pathToFileURL(clock).href)},shortCircuit:true};
     if (context.parentURL?.endsWith('/journal-agent.mjs') && specifier.endsWith('/production-provider.js'))
       return {url:${JSON.stringify(pathToFileURL(provider).href)},shortCircuit:true};
     return next(specifier,context);
@@ -70,12 +76,15 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     let bytes = ''; for await (const part of request) bytes += part;
     const body = JSON.parse(bytes), method = request.url!.split('/').at(-1)!; seen.push(method);
     if (method === 'sendMessage') sends.push(body);
+    // Telegram returns visible message text, never the HTML submitted in sendMessage.
+    const shown = body.parse_mode === 'HTML' ? String(body.text).replace(/<[^>]+>/gu, '')
+      .replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&amp;', '&') : body.text;
     const result = method === 'getChat' ? { id: Number(scope.chat), type: 'supergroup', is_forum: true }
       : method === 'getMe' ? { id: Number(scope.bot), is_bot: true, username: world.configuration.botUsername.replace(/^@/, '') }
         : method === 'getChatMemberCount' ? posture === 'wider-audience' ? 3 : 2
           : method === 'getChatMember' ? { status: 'member', user: { id: Number(body.user_id), is_bot: body.user_id === scope.bot } }
             : method === 'getUpdates' ? [recorded.question].filter(u => u.update_id >= Number(body.offset))
-              : { message_id: 100 + sends.length, chat: { id: Number(scope.chat) }, text: body.text };
+              : { message_id: 100 + sends.length, chat: { id: Number(scope.chat) }, text: shown };
     response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ ok: true, result }));
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -90,7 +99,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: '', INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${address.port}` }, timeout: 45000, maxBuffer: 1024 * 1024 });
   try {
-    await run();
+    await run().catch(error => { throw new Error(readFileSync(join(copy, 'runs.jsonl'), 'utf8'), { cause: error }); });
     const replay = openPreviewJournal(join(copy, 'journal.encrypted'), OFFLINE_STORAGE_KEY, undefined, undefined, true);
     try {
       expect(replay.view.groupCarry!.scope.destinationRoot).toBe(original);

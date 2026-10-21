@@ -1,3 +1,4 @@
+import { renderTelegramHtml } from './telegram-markdown.mjs';
 import { expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, readdirSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
@@ -270,7 +271,7 @@ it.each(recorded.otherShapes.filter(row => ['delivered-reply', 'empty-reply-in-r
   worker.intake([fixture('document')]); await worker.drain();
   expect(calls).toBeGreaterThan(0); expect(journal.view.order[0]?.media).toEqual({ state: 'failed', reason: 'admission-refused' });
   expect(sends.every(text => text.trim().length > 0)).toBe(true);
-  if (sample.kind === 'delivered-reply') expect(sends[0]).toBe(sample.raw.replace(/^PREVIEW — /u, ''));
+  if (sample.kind === 'delivered-reply') expect(sends[0]).toBe(renderTelegramHtml(sample.raw.replace(/^PREVIEW — /u, '')).shown);
   else expect(sample.raw).toBe('');
   journal.close();
 }));

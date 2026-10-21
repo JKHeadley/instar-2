@@ -1,3 +1,4 @@
+import { renderTelegramHtml } from './telegram-markdown.mjs';
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -100,7 +101,7 @@ for (const sample of capture.cases) it.each(['finished', 'restart', 'old-continu
     intake(worker, sample.update + 1, 'hi'); await worker.drain(); await worker.drain();
     expect(sends).toHaveLength(2);
     expect(sends[1]).toContain('Follow-up on "');
-    expect(sends[1]).toContain(JSON.parse(sample.after.output).report);
+    expect(sends[1]).toContain(renderTelegramHtml(JSON.parse(sample.after.output).report).shown);
     expect(journal.view.closed.has(0)).toBe(true);
     journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
     await worker.drain(); expect(await worker.workObligations()).toBe(false);

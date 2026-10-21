@@ -173,7 +173,7 @@ it.each([
     f.release(answer); await vi.advanceTimersByTimeAsync(1);
     const replies = f.sent.filter(row => row.target?.startsWith('reply:') || row.target?.startsWith('reply-part:'));
     expect(replies.length).toBeGreaterThan(0);
-    expect(replies.map(row => row.text).join('\n')).toContain(kind === 'long answer' ? '**December**' : 'Byte count: 25 bytes');
+    expect(replies.map(row => row.text).join('\n')).toContain(kind === 'long answer' ? 'December — Sow: none outdoors' : 'Byte count: 25 bytes');
     // Drain itself must finish while the already admitted progress transport is unresolved.
     let drained = false; void f.drain.then(() => { drained = true; });
     await vi.advanceTimersByTimeAsync(1); expect(drained).toBe(true);
