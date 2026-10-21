@@ -8,7 +8,7 @@ Affected rules: 1, 26, 34, 36, 37, 49, 70, 72, 73, 74, 90, 101, 102, 111, 113, 1
 Affected floors: secrets — unchanged signed send and disclosure gates; spend cap — existing replay checks retained; stop — existing negative controls retained; no duplicate sends — one provider call and one physical send across replay asserted; durable intake — journal recovery and commitment tests retained.
 Operator questions: none
 Suggested tier: critical
-Declared tier: standard
+Declared tier: significant
 Tier rationale: Test-boundary repairs and one append-only graduation deadline; no model prompt, parser, runtime decision or authority changes.
 Side effects: The dark step-check observer has a new October 24 00:00 UTC evaluation deadline. No stage or live protection is claimed; the deadline still fails exactly at expiry. Replays now distinguish raw recorded input, Telegram HTML payload and displayed text.
 Undo and recovery: Revert this repair and regenerate the register. The previous October 21 deadline becomes overdue again. Keep recorded inputs and all journal/send uniqueness evidence.
