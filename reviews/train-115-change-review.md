@@ -7,9 +7,9 @@ Outcome: Carry the exact reviewed codex-proofchecks-1021 head on the live train-
 Affected rules: 1, 26, 37, 49, 66, 69, 74, 90, 101, 102, 111, 112, 113, 116
 Affected floors: Secrets custody, spend cap, stop, no duplicate sends and durable intake remain unchanged because no product source or policy is modified.
 Operator questions: none
-Suggested tier: routine
-Declared tier: routine
-Tier rationale: No-op member merge plus standard register replay and this review record; no runtime changes.
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Generated register outputs inherit the critical composition tier even though the member merge is a no-op and no runtime source changes.
 Side effects: Register generation records the exact replay commit. The Studio desk repair remains an external installed artifact, not a file delivered by this branch.
 Undo and recovery: Revert this carrier's review and generated replay through ordinary review. Desk repair rollback belongs to the member's named backups and Studio owner; this builder does not write there.
 Multi-machine posture: Product behavior and ownership remain identical across machines. Verification executes on WSL; installed proof tooling remains machine-local on the Studio.
