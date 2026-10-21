@@ -183,10 +183,11 @@ it('delivers the real recorded completed work bytes through the new path', async
   const reading = readAnswer(call.output, { wrapped: 'accept', evidence: [call.call] }); expect(reading.ok).toBe(true);
   if (!reading.ok) throw Error('recorded answer unreadable');
   const decision = obligationDecision(reading.value, 'commitment', start, 'UTC'); expect(decision.outcome).toBe('report');
+  if (!decision.report) throw Error('recorded report missing');
   const w = world({ rawWork: reading.value });
   try {
     await w.prepare(); await w.worker.sendRequested();
-    expect(w.state.sends[1]?.text).toContain(decision.report);
+    expect(w.state.sends[1]?.text).toContain(decision.report.replaceAll('**', ''));
     expect(w.journal.view.closed.has(0)).toBe(true);
   } finally { w.journal.close(); }
 });

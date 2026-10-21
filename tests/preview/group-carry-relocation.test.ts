@@ -11,7 +11,12 @@ import { authoritySealKey, sealAuthorityRecord } from './activation-authority.js
 import { appendGroupCarry } from './group-carry.js';
 import { resolveGroupDisclosure } from './group-disclosure.js';
 import { grant } from './group-carry-fixture.js';
+import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 import { openPreviewJournal } from './journal-test-worker.js';
+
+// Telegram echoes displayed text, not the HTML request body. Decode entities after tags
+// so escaped literal angle brackets remain text. This fixture emits only these HTML forms.
+const receiptText = (html: string) => html.replace(/<[^>]*>/gu, '').replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&');
 
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/topic-awareness-live-2026-10-10.json', import.meta.url), 'utf8'));
 
@@ -75,7 +80,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
         : method === 'getChatMemberCount' ? posture === 'wider-audience' ? 3 : 2
           : method === 'getChatMember' ? { status: 'member', user: { id: Number(body.user_id), is_bot: body.user_id === scope.bot } }
             : method === 'getUpdates' ? [recorded.question].filter(u => u.update_id >= Number(body.offset))
-              : { message_id: 100 + sends.length, chat: { id: Number(scope.chat) }, text: body.text };
+              : { message_id: 100 + sends.length, chat: { id: Number(scope.chat) }, text: method === 'sendMessage' ? receiptText(body.text) : body.text };
     response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ ok: true, result }));
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -107,3 +112,13 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(readFileSync(join(original, 'journal.encrypted'))).toEqual(before);
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); rmSync(dir, { recursive: true, force: true }); }
 }, 100000);
+
+it('the Telegram fixture echoes displayed HTML text and still refuses a mismatched receipt', () => {
+  const body = '<b>General</b> &amp; &lt;literal&gt;';
+  const expected = { chat: '42', expectedText: 'General & <literal>', forum: true };
+  const response = (text: string) => ({ kind: 'response', status: 200, bytes: JSON.stringify({ ok: true,
+    result: { message_id: 1, chat: { id: 42 }, text } }) });
+  expect(classifyTelegramSend(response(receiptText(body)), expected)).toEqual({ kind: 'accepted', message: 1 });
+  expect(classifyTelegramSend(response(body), expected).kind).toBe('unknown');
+  expect(classifyTelegramSend(response('Other topic'), expected).kind).toBe('unknown');
+});

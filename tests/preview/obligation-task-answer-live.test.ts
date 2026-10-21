@@ -164,9 +164,9 @@ it('works the cint-L46 deferral: the substantive report waits for the next messa
     // The answer the operator asked for is what reaches them: the three items, not another promise.
     const sent = w.sent.at(-1)!;
     expect(sent).toContain('Follow-up on "');
-    expect(sent).toContain('1. **The backyard vegetable garden**');
-    expect(sent).toContain('2. **The library card renewal (D-2)**');
-    expect(sent).toContain('3. **The shopping-list standing instruction**');
+    expect(sent).toContain('1. <b>The backyard vegetable garden</b>');
+    expect(sent).toContain('2. <b>The library card renewal (D-2)</b>');
+    expect(sent).toContain('3. <b>The shopping-list standing instruction</b>');
     expect(sent).not.toMatch(/next time/iu);
     expect(loopHealth(w.journal.view, w.clock.now).awaitingDelivery).toBe(0);
     expect(w.journal.view.closed.has(Number(key.slice(11)))).toBe(true);

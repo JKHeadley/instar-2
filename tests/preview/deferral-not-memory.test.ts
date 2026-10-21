@@ -1,3 +1,4 @@
+// Captured model bytes stay unchanged; Telegram displays list markers as bullets.
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -95,7 +96,7 @@ it.each(['delivered-reply', 'empty-reply-in-recorded-context'])(
     expect(journal.view.memory).toEqual([]);
     if (row.raw) {
       expect(journal.view.order[0]!.memoryUnresolved).toBe(true);
-      expect(sends[0]).toBe(row.raw.replace(/^PREVIEW — /u, ''));
+      expect(sends[0]).toBe(row.raw.replace(/^PREVIEW — /u, '').replace(/^- /gmu, '• '));
     } else {
       expect(journal.view.order[0]!.memoryUnresolved).toBeUndefined();
       expect(journal.view.order[0]!.failureClass).toBe('empty');

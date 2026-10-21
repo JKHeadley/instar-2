@@ -1,3 +1,4 @@
+// Captured model bytes stay unchanged; Telegram displays list markers as bullets.
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -70,13 +71,13 @@ async function replay(sample: typeof samples[number], readyMs?: number, mode: 'r
     await vi.advanceTimersByTimeAsync(60000); await drain; await worker.minimal();
     if (readyMs === undefined) {
       expect(sample.receipt.at - sample.intake.at).toBeGreaterThan(10000);
-      expect(sends.map(s => s.text)).toEqual([REPLY_ACKNOWLEDGEMENT, sample.intent.text]);
+      expect(sends.map(s => s.text)).toEqual([REPLY_ACKNOWLEDGEMENT, sample.intent.text!.replace(/^- /gmu, '• ')]);
       expect(sends[0]!.at - sample.intake.at).toBeLessThan(10000);
       expect(sends[0]!.at).toBe(sample.receipt.at - 3000 + (mode === 'text' ? 500 : 0));
       expect(sends[1]!.at).toBe(sample.sent.at);
       expect(journal.view.order[0]!.acknowledgementPath).toBe(loseReceipt ? undefined : mode);
       expect(reactions).toEqual([JSON.parse(sample.intake.raw!).message.message_id]);
-    } else expect(sends.map(s => s.text)).toEqual([sample.intent.text]);
+    } else expect(sends.map(s => s.text)).toEqual([sample.intent.text!.replace(/^- /gmu, '• ')]);
     const count = sends.length;
     journal.compact(); journal.close(); journal = openPreviewJournal(path, key);
     await createJournalWorker(journal, ports).drain(); expect(sends).toHaveLength(count);

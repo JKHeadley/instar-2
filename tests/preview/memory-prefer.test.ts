@@ -1,3 +1,4 @@
+// Captured model bytes stay unchanged; Telegram displays list markers as bullets.
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -64,7 +65,7 @@ it.each(['recorded', 'full-path', 'restart', 'jev-unsure', 'jev-undecided', 'sum
       }
       for (let pass = 0; pass < 3 && !w.sends.length; pass++) await w.worker.drain();
       expect(w.journal.view.memory).toEqual([{ ...JSON.parse(capture.answer).memory[0], trigger: id }]);
-      expect(w.sends).toEqual([mode.startsWith('jev-') ? shape('delivered-reply').raw.replace(/^PREVIEW — /u, '') : 'You prefer tea to coffee.']);
+      expect(w.sends).toEqual([mode.startsWith('jev-') ? shape('delivered-reply').raw.replace(/^PREVIEW — /u, '').replace(/^- /gmu, '• ') : 'You prefer tea to coffee.']);
       expect(w.journal.view.turns.get(id)?.memoryPending).toBeUndefined();
       expect(w.records.filter(row => row.kind === 'format-retry')).toEqual([]);
       if (mode.startsWith('jev-')) expect(w.reviewed).toBeGreaterThan(0);
@@ -115,7 +116,7 @@ it.each(['delivered-reply', 'empty-reply-in-recorded-context'])('replays recorde
     expect(w.journal.view.memory).toHaveLength(1);
     expect(w.journal.view.turns.get(id)?.memoryPending).toBeUndefined();
     expect(w.sends.join('\n')).not.toContain(MEMORY_UNDECIDED_REPLY);
-    if (mode === 'delivered-reply') expect(w.sends.join('\n')).toContain(shape(mode).raw.replace(/^PREVIEW — /u, ''));
+    if (mode === 'delivered-reply') expect(w.sends.join('\n')).toContain(shape(mode).raw.replace(/^PREVIEW — /u, '').replace(/^- /gmu, '• '));
   } finally { w.journal.close(); }
 });
 

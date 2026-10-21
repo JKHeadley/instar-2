@@ -1,3 +1,4 @@
+// Captured model bytes stay unchanged; Telegram displays list markers as bullets.
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -49,7 +50,7 @@ for (const sample of captured.cases.slice(0, 3)) it(`real recorded timing ${samp
       expect(acknowledgements[0]!.at).toBeLessThan(readyAt! + sample.timing.review);
       expect(acknowledgements[0]!.replyTo).toBe(sample.raw.message!.message_id); }
     expect(ackReviews).toBe(0);
-    expect(sent.at(-1)?.text).toBe(sample.reply);
+    expect(sent.at(-1)?.text).toBe(sample.reply.replace(/^- /gmu, '• '));
     expect(journal.view.order[0]?.heldNoticeReviewReserved).toBeUndefined();
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
@@ -94,7 +95,7 @@ it('picks up recorded second input and acknowledges it while the first turn stil
     await vi.advanceTimersByTimeAsync(50000); await drain;
     expect(answering).toEqual([first.update, second.update]); expect(peak).toBe(1);
     expect(events.filter(row => row.text === REPLY_ACKNOWLEDGEMENT)).toHaveLength(2);
-    expect(events.filter(row => row.text !== REPLY_ACKNOWLEDGEMENT).map(row => row.text)).toEqual([first.reply, second.reply]);
+    expect(events.filter(row => row.text !== REPLY_ACKNOWLEDGEMENT).map(row => row.text)).toEqual([first.reply, second.reply].map(text => text.replace(/^- /gmu, '• ')));
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -168,7 +169,7 @@ it.each([
     expect(journal.view.order[1]?.reserved).toBe(false);
     await vi.advanceTimersByTimeAsync(40000); await drain;
     expect(answering).toEqual(samples.map(sample => sample.update));
-    expect(sent.filter(row => row.text !== REPLY_ACKNOWLEDGEMENT).map(row => row.text)).toEqual(samples.map(sample => sample.reply));
+    expect(sent.filter(row => row.text !== REPLY_ACKNOWLEDGEMENT).map(row => row.text)).toEqual(samples.map(sample => sample.reply.replace(/^- /gmu, '• ')));
     journal.close(); journal = openPreviewJournal(path, key);
     await createJournalWorker(journal, ports).drain();
     expect(sent).toHaveLength(4); // accepted acknowledgement intents and answers never repeat

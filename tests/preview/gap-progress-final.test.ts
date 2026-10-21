@@ -84,9 +84,9 @@ it.each([1, 2])('a held follow-up cannot replace recorded final answer %i (garde
     expect(w.sent.at(-1)).toBe(HOLDING_REPLY); // Real prior hi, update 46040277, held the library report.
     const before = w.sent.length;
     await w.answer(index);
-    const answer = primary(capture.turns[index]!.answer), parts = splitReply(answer)!;
+    const answer = primary(capture.turns[index]!.answer), parts = splitReply(answer)!.map(part => part.replaceAll('**', ''));
     expect(w.sent.slice(before)).toEqual(parts);
-    if (index === 1) { expect(parts.length).toBeGreaterThan(1); expect(parts.join('\n')).toContain('**December**'); }
+    if (index === 1) { expect(parts.length).toBeGreaterThan(1); expect(parts.join('\n')).toContain('December — Sow:'); }
     else expect(parts.join('\n')).toContain('Byte count: 25 bytes');
     const turn = w.journal.view.order.at(-1)!;
     expect(turn.heldReview).toBeUndefined();
