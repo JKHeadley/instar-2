@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { tasks, parts } from '../../scripts/harness-tax/catalog.mjs';
 import { initialize, runDay, validateConfig, validateResult, validateGrade, table, digest, partVerdict, recordedObservation } from '../../scripts/harness-tax/runner.mjs';
+import type { Request } from '../../scripts/harness-tax/runner.mjs';
 import { driver, grader } from '../../scripts/harness-tax/stub.mjs';
 import { createDriver } from '../../scripts/harness-tax/adapters.mjs';
 import { ablate } from '../../scripts/harness-tax/ablate.mjs';
@@ -18,13 +19,13 @@ it('has twelve source-linked graded tasks, eight spanning days with all six trus
   expect(new Set(tasks.flatMap(t => t.trust)).size).toBe(6);
   for (const t of tasks) {
     expect(t.sources.length).toBeGreaterThan(0); expect(t.expected).toBeTruthy(); expect(t.rubric).toBeTruthy();
-    if (t.category === 'continuity') expect(t.stages.at(-1).day).toBeGreaterThan(0);
+    if (t.category === 'continuity') expect(t.stages.at(-1)!.day).toBeGreaterThan(0);
   }
 });
 
 it('runs one task through all three setups, grades and renders a table; restart never duplicates', async () => {
   const dir = root(); initialize(dir, config()); let sends = 0;
-  const counted = { execute: async r => { sends++; expect(r.expected).toBeUndefined(); expect(r.rubric).toBeUndefined(); return driver.execute(r); } };
+  const counted = { execute: async (r: Request) => { sends++; expect(r.expected).toBeUndefined(); expect(r.rubric).toBeUndefined(); return driver.execute(r); } };
   await runDay(dir, 0, counted, grader); await runDay(dir, 0, counted, grader);
   expect(sends).toBe(3); const results = rows(dir); expect(results).toHaveLength(3);
   expect(results.every(r => r.grade.correctness === 'pass' && r.mode === 'stub')).toBe(true);
@@ -38,7 +39,7 @@ it('retains uncertain intake after a crash and refuses to resend it', async () =
   await expect(runDay(dir, 0, { execute: async () => { throw Error('private driver failure'); } }, grader)).rejects.toThrow();
   expect(readdirSync(join(dir, 'events'))).toContain('lookup.bare.0.interrupted.json');
   let called = false;
-  await expect(runDay(dir, 0, { execute: async r => { called = true; return driver.execute(r); } }, grader)).rejects.toThrow('unfinished intent');
+  await expect(runDay(dir, 0, { execute: async (r: Request) => { called = true; return driver.execute(r); } }, grader)).rejects.toThrow('unfinished intent');
   expect(called).toBe(false);
 });
 
@@ -51,7 +52,7 @@ it('checks stop, finite deadlines, prior stages, and cumulative cap across invoc
   await expect(runDay(staged, 2, driver, grader)).rejects.toThrow('earlier stage');
   await runDay(staged, 0, driver, grader); await runDay(staged, 2, driver, grader); expect(rows(staged)).toHaveLength(6);
   const capped = root(); initialize(capped, { ...config(), maxCalls: 1 });
-  const metered = { execute: async r => { const v = await driver.execute(r); v.totals.calls = 1; v.costs[0].calls = 1; return v; } };
+  const metered = { execute: async (r: Request) => { const v = await driver.execute(r); v.totals.calls = 1; v.costs[0]!.calls = 1; return v; } };
   await expect(runDay(capped, 0, metered, grader)).rejects.toThrow('cap');
   await expect(runDay(capped, 0, metered, grader)).rejects.toThrow('cap'); expect(rows(capped)).toHaveLength(1);
 });
@@ -63,7 +64,7 @@ it('rejects model drift, unallocated tokens, unknown grades and floor ablations'
   expect(() => validateResult({ ...raw, totals: { tokens: 1, calls: 0 } }, request, 10)).toThrow('reconcile');
   expect(() => validateResult({ ...raw, costs: [{ ...raw.costs[0], part: 'unclassified' }] }, request, 10)).toThrow();
   expect(() => validateConfig({ ...config(), off: ['safety-delivery'] })).toThrow('floors');
-  const task = tasks.find(t => t.id === 'lookup');
+  const task = tasks.find(t => t.id === 'lookup')!;
   const uncertain = { ...raw, state: 'uncertain' };
   const grade = await grader.grade({ task, result: uncertain }); grade.correctness = 'pass';
   expect(() => validateGrade(grade, task, uncertain)).toThrow('uncertain');
@@ -77,12 +78,12 @@ it('live preflight refuses shared or excluded identities and stages before their
   expect(validateConfig(live)).toBe(live);
   const dir = root(); initialize(dir, live);
   await expect(runDay(dir, 0, driver, grader, () => 0)).rejects.toThrow('not due');
-  live.targets.bare.login = 'amrch2388'; expect(() => validateConfig(live)).toThrow('allowed login');
-  live.targets.bare.login = live.targets.instar1.login; expect(() => validateConfig(live)).toThrow('separate');
+  live.targets.bare!.login = 'amrch2388'; expect(() => validateConfig(live)).toThrow('allowed login');
+  live.targets.bare!.login = live.targets.instar1!.login; expect(() => validateConfig(live)).toThrow('separate');
 });
 
 it('allows a complete measured pair, but refuses a cut that loses trust or leaves a task ungraded', () => {
-  const makeRows = off => tasks.flatMap(task => task.stages.map((_, stage) => ({
+  const makeRows = (off: string[]) => tasks.flatMap(task => task.stages.map((_, stage) => ({
     task: task.id, stage, setup: 'instar2', mode: 'live', off,
     result: { model: config().model, state: 'complete', breaches: [], costs: [{ tokens: 1, calls: 1, wallMs: 1 }] },
     grade: { correctness: 'pass', trust: Object.fromEntries(task.trust.map(k => [k, 'pass'])) },
@@ -90,9 +91,9 @@ it('allows a complete measured pair, but refuses a cut that loses trust or leave
   const a = makeRows([]), b = makeRows(['copy-coaching']);
   const judgment = { verdict: 'cut', reason: 'Full paired observations preserve outcomes with lower allocated coaching cost.', evidence: ['paired-run-evidence'] };
   expect(partVerdict('copy-coaching', a, b, judgment).verdict).toBe('cut');
-  b.at(-1).grade.trust.honestLimits = 'fail';
+  b.at(-1)!.grade.trust.honestLimits = 'fail';
   expect(() => partVerdict('copy-coaching', a, b, judgment)).toThrow('lower correctness/trust');
-  b.at(-1).grade.trust.honestLimits = 'unknown';
+  b.at(-1)!.grade.trust.honestLimits = 'unknown';
   expect(() => partVerdict('copy-coaching', a, b, judgment)).toThrow('unknowns');
 });
 
@@ -111,15 +112,15 @@ it('each text switch changes only a disposable copy, preserves floor instruction
 });
 
 it('ports the three real adapter recipes and requires actual movement/restart, matched replies and model', async () => {
-  const recipes = [];
+  const recipes: { argv?: string[]; copyOfSanitizedRoot?: boolean }[] = [];
   const target = { root: '/scratch/demo', login: 'demo', bot: 'demo-bot', channel: 'demo-channel', disposable: true, live: false, model: config().model,
     floors: { secrets: true, spendCap: true, stop: true, uniqueSend: true, durableIntake: true }, receipt: 'inspect', actualMachine: 'A', epoch: '1' };
   const observation = { state: 'complete', model: config().model, inReplyTo: 'message-1', responderMachine: 'B', evidence: ['reply-1'] };
   const host = {
     inspect: async () => target,
-    prepare: async ({ request, recipe }) => { recipes.push(recipe); return { requestId: request.id, receipt: 'prepared', model: request.model, copyLineage: 'sanitized-seed', ablated: [] }; },
+    prepare: async ({ request, recipe }: { request: Request; recipe: typeof recipes[number] }) => { recipes.push(recipe); return { requestId: request.id, receipt: 'prepared', model: request.model, copyLineage: 'sanitized-seed', ablated: [] }; },
     boundary: async () => ({ receipt: 'boundary', actual: true, beforeMachine: 'A', afterMachine: 'B', beforeEpoch: '1', afterEpoch: '2' }),
-    executeBounded: async ({ argv }) => { expect(argv.slice(0, 2)).toEqual(['claude', '-p']); return observation; },
+    executeBounded: async ({ argv }: { argv: string[] }) => { expect(argv.slice(0, 2)).toEqual(['claude', '-p']); return observation; },
     sendAsDemoUser: async () => ({ messageId: 'message-1', receipt: 'send' }),
     awaitReply: async () => observation,
     collectMessages: async () => ({ ...observation, completeWindow: true }),
@@ -127,7 +128,7 @@ it('ports the three real adapter recipes and requires actual movement/restart, m
   };
   const adapter = createDriver(host);
   for (const setup of ['bare', 'instar1', 'instar2']) await adapter.execute({ id: 'r', model: config().model, setup, target, prompt: 'hi', boundary: 'fresh', off: [], deadlineMs: 10 });
-  expect(recipes[1].argv.slice(0, 2)).toEqual(['instar', 'init']); expect(recipes[2].copyOfSanitizedRoot).toBe(true);
+  expect(recipes[1]!.argv!.slice(0, 2)).toEqual(['instar', 'init']); expect(recipes[2]!.copyOfSanitizedRoot).toBe(true);
   const request = { id: 'r', model: config().model, setup: 'instar2', target, prompt: 'hi', boundary: 'move-machine', off: [], deadlineMs: 10 };
   await adapter.execute(request);
   observation.responderMachine = 'A'; await expect(adapter.execute(request)).rejects.toThrow('destination');
@@ -136,7 +137,7 @@ it('ports the three real adapter recipes and requires actual movement/restart, m
 });
 
 it('replays real archived writer, reviewer, Jev and delivered rows without turning them into task passes', () => {
-  const fixture = JSON.parse(readFileSync('tests/preview/fixtures/proofroom-summary-cascade-stall-2026-09-30.json', 'utf8'));
+  const fixture = JSON.parse(readFileSync('tests/preview/fixtures/proofroom-summary-cascade-stall-2026-09-30.json', 'utf8')) as { writer: object[]; review: object[]; jevFaithfulness: object[]; rows: { kind: string }[] };
   const captures = [...fixture.writer, ...fixture.review, ...fixture.jevFaithfulness,
     ...fixture.rows.filter(r => ['answer', 'sent', 'reply-check', 'summary-faithfulness', 'summary-uncertain', 'model-call'].includes(r.kind))];
   expect(captures.length).toBeGreaterThan(6);
@@ -146,8 +147,8 @@ it('replays real archived writer, reviewer, Jev and delivered rows without turni
   }
   const uncertain = JSON.parse(readFileSync('tests/preview/fixtures/uncertain-provider-969390396.json', 'utf8'));
   expect(recordedObservation(uncertain).state).toBe('uncertain');
-  expect(recordedObservation(fixture.rows.find(r => r.kind === 'summary-faithfulness')).state).toBe('undecided');
-  const jev = JSON.parse(readFileSync('tests/preview/fixtures/jev-admission-2026-10-12.json', 'utf8'));
+  expect(recordedObservation(fixture.rows.find(r => r.kind === 'summary-faithfulness')!).state).toBe('undecided');
+  const jev = JSON.parse(readFileSync('tests/preview/fixtures/jev-admission-2026-10-12.json', 'utf8')) as { cases: { checks: object[] }[] };
   for (const capture of jev.cases.flatMap(r => r.checks)) expect(recordedObservation(capture).state).toBe('unavailable');
   // Explicit synthetic control: archived empty memory candidates are not delivered empty bubbles.
   expect(recordedObservation({ id: 'synthetic-empty-delivery', kind: 'answer', text: '', state: 'complete' }).output).toBe('');
