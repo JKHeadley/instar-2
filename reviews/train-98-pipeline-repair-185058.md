@@ -24,10 +24,11 @@ Subject (16 paths): generated/capabilities.json, generated/capabilities.md, gene
 
 Decision: train98-repair185058-fixture-clock | Inject the existing clock at the recorded group fixture time so a replay cannot expire with the host calendar; keep real monotonic elapsed time and all activation checks. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-98-repair-185058-PROGRESS.md
 
+Register replay: Owner artifact hash refreshed with the delegated desk scripts; no manual pin edit. Generated outputs rebuilt from 0cffc4cb46c61fc53350f8ec14114a8edb21b111 (shape-only replay, no entering-force authority).
+
 ## Closing block
 
 simplestRobustRoute: This IS the simplest robust route: use the existing renderer for downstream delivery expectations and make the local HTTP receipt match Telegram semantics. No added runtime machinery. Recorded intake guards entry; exact displayed receipt and durable replay guard completion; existing stop, spend, disclosure and uniqueness limits remain.
-Register replay: Owner artifact hash refreshed with the delegated desk scripts; no manual pin edit. Generated outputs rebuilt from 0cffc4cb46c61fc53350f8ec14114a8edb21b111 (shape-only replay, no entering-force authority).
 
 80/20: Target the eight gate-failing test files and required cheap checks; the Studio owns the full-suite rerun. No deployment or independent acceptance claim.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
