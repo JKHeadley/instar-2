@@ -5828,6 +5828,8 @@ export interface PreviewPorts {
   /** One-shot clock boundary; returns cancellation. Tests can advance it without host load. */
   workingActivity?(id: string): WorkingActivity | null;
   acknowledgementTimer?(delayMs: number, run: () => void): () => void;
+  /** Waits between tries of a send the transport proved never reached Telegram; tests pass an instant wait. */
+  sendRetryWait?(delayMs: number): Promise<void>;
   /** Part 18: whether the presence sentinel is enabled this launch (its off-switch); absent means enabled. A disabled
    * family keeps its recorded decisions for audit, but a holding note it marked due earlier no longer goes out. */
   presenceNotes?: boolean;
@@ -6045,10 +6047,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   let wakeTopicDrain: (() => void) | null = null;
   /** Every live send consumes its durable signed intent; a refusal or unknown outcome is recorded, never
    * retried. The one exception is the transport's own proof that it never made the network call: nothing
-   * reached Telegram, so that exact intent is dispatched once more (the no-duplicate floor is untouched —
-   * an outcome that MIGHT have delivered is still never repeated). A second proof settles as a definite
-   * non-delivery with its reason, never as UNKNOWN (Rule 42). */
-  const NOT_SENT_ATTEMPTS = 2;
+   * reached Telegram, so that exact intent is dispatched again (the no-duplicate floor is untouched —
+   * an outcome that MIGHT have delivered is still never repeated). Proof on the last try settles as a definite
+   * non-delivery with its reason, never as UNKNOWN (Rule 42). Walk-24 run A message 6 lost a finished answer to a
+   * connect outage that two back-to-back tries could not outlast, so each further try waits a bounded backoff
+   * (Rule 55: capped, braked by stop); the attempts stay on the same intent and the same proof. */
+  const NOT_SENT_BACKOFF_MS = [2000, 10000, 30000] as const;
+  const NOT_SENT_ATTEMPTS = NOT_SENT_BACKOFF_MS.length + 1;
+  const sendRetryWait = ports.sendRetryWait ?? ((ms: number) => new Promise<void>(done => { setTimeout(done, ms); }));
   const dispatch = async (target: string, provenance: OutboundProvenance | undefined,
     input: { text: string; expectedText: string; chat: string; thread?: number; update: number;
       kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown; current?: () => boolean }, admitted?: () => void): Promise<SettledSendOutcome> => {
@@ -6082,7 +6088,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       finally { if (!original.sendAdmits) observeSendPhase('transportReturnedAt'); }
       if (attempted.kind !== 'not-sent') break;
       measurements.provedNotSentAttempts = attempt + 1;
-      if (attempt + 1 < NOT_SENT_ATTEMPTS) { record(); delete measurements.transportBegunAt; delete measurements.transportReturnedAt; }
+      if (attempt + 1 < NOT_SENT_ATTEMPTS) { record(); delete measurements.transportBegunAt; delete measurements.transportReturnedAt;
+        await sendRetryWait(NOT_SENT_BACKOFF_MS[attempt]!);
+        if (ports.stopped()) break; }
     }
     // No intent means the host refused before admission. The caller keeps the saved answer in its durable hold.
     if (!prepared) return { kind: 'refused', reason: GROUP_DISCLOSURE_HOLD };

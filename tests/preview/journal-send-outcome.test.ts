@@ -79,7 +79,7 @@ it.each(['real-connect-recovery', 'real-connect-persistent', 'real-lost-receipt'
     } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
   }, 60_000);
 
-it('persistent native connection refusal stops after one outer retry and remains refused after restart', async () => {
+it('persistent native connection refusal stops after the bounded outer retries and remains refused after restart', async () => {
   const dir = root();
   try {
     const w = world(dir, input => {
@@ -97,8 +97,8 @@ it('persistent native connection refusal stops after one outer retry and remains
       return classifyTelegramSend(reply, { chat: genesis.chat, expectedText: 'an answer' });
     });
     w.worker.intake([update(1)]); await w.worker.drain();
-    expect(w.seen).toHaveLength(3);
-    expect(w.seen[2]).toMatchObject({ expectedText: REFUSED_SEND_NOTICE });
+    expect(w.seen).toHaveLength(5); // four proven never-sent tries (walk-findings-1020), then the notice
+    expect(w.seen[4]).toMatchObject({ expectedText: REFUSED_SEND_NOTICE });
     expect(w.journal.view.sendOutcomes).toHaveLength(1);
     expect(w.journal.view.sendOutcomes[0]).toMatchObject({ outcome: 'refused',
       reason: expect.stringContaining('ECONNREFUSED/connect') });
@@ -335,7 +335,7 @@ it('the real production transport, refused before its network call, states the s
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-it('dispatches a never-sent reply once more and accepts it; a repeat proof is recorded refused, not UNKNOWN', async () => {
+it('dispatches a never-sent reply again and accepts it; proof on every bounded try is recorded refused, not UNKNOWN', async () => {
   const dir = root();
   try {
     const neverSent = { kind: 'not-sent' as const, reason: 'not sent: transport transport at launch-refused' };
@@ -348,11 +348,11 @@ it('dispatches a never-sent reply once more and accepts it; a repeat proof is re
     expect(once.journal.view.sendOutcomes).toEqual([]); // nothing to record: it was delivered
     expect(sendOutcomeCounts(once.journal.view)).toMatchObject({ accepted: 1, refused: 0, unknown: 0, unknownReasons: {} });
     once.journal.close();
-    // A second proof settles as a definite non-delivery with its reason, and is never dispatched a third time.
+    // Proof on every bounded try settles as a definite non-delivery with its reason, and is never dispatched again.
     const twice = world(dir, input => input.target?.startsWith('delivery-notice:') ? 99 : neverSent);
     twice.worker.intake([update(2)]); await twice.worker.drain();
-    expect(twice.seen).toHaveLength(3);
-    expect(twice.seen[2]).toMatchObject({ expectedText: REFUSED_SEND_NOTICE });
+    expect(twice.seen).toHaveLength(5);
+    expect(twice.seen[4]).toMatchObject({ expectedText: REFUSED_SEND_NOTICE });
     const turn = twice.journal.view.order[1]!;
     expect(turn.sent).toBeUndefined();
     expect(twice.journal.view.sendOutcomes).toEqual([{ target: `reply:${turn.id}`, outcome: 'refused',

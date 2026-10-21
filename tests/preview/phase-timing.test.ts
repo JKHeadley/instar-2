@@ -66,16 +66,13 @@ it.each(['unknown', 'not-sent'] as const)('records %s without widening the send 
     const answer = { target: `reply:${turn.id}`, text: '42' };
     const notice = { target: `delivery-notice:${turn.id}`,
       text: kind === 'unknown' ? UNKNOWN_SEND_NOTICE : REFUSED_SEND_NOTICE };
-    expect(sent).toEqual(kind === 'unknown' ? [answer, notice] : [answer, answer, notice, notice]);
+    expect(sent).toEqual(kind === 'unknown' ? [answer, notice] : [answer, answer, answer, answer, notice, notice, notice, notice]);
     const rows = journal.view.phaseTimings!.filter(row => row.phase === 'send');
     expect(rows.map(row => ({ target: row.id, attempt: row.measurements.attempt,
       provedNotSentAttempts: row.measurements.provedNotSentAttempts }))).toEqual(kind === 'unknown'
       ? [{ target: answer.target, attempt: 1, provedNotSentAttempts: 0 },
         { target: notice.target, attempt: 1, provedNotSentAttempts: 0 }]
-      : [{ target: answer.target, attempt: 1, provedNotSentAttempts: 1 },
-        { target: answer.target, attempt: 2, provedNotSentAttempts: 2 },
-        { target: notice.target, attempt: 1, provedNotSentAttempts: 1 },
-        { target: notice.target, attempt: 2, provedNotSentAttempts: 2 }]);
+      : [answer.target, notice.target].flatMap(target => [1, 2, 3, 4].map(attempt => ({ target, attempt, provedNotSentAttempts: attempt }))));
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
