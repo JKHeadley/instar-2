@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: significant
 Declared tier: significant
 Tier rationale: Two deterministic measurement defects in the staged runner and injected adapter, with real adapter plumbing exercised under injected hosts; no deployed model prompt or parser changes.
-Side effects: A late campaign must wait its actual stage-day gap. Unsupported boundary rows now reach capture and independent grading, cannot pass correctness, and retain preparation costs. No serving runtime or live account changes.
+Side effects: Repair the original unit review metadata and coverage through its latest record edit, including its two subsequent commits. A late campaign must wait its actual stage-day gap. Unsupported boundary rows now reach capture and independent grading, cannot pass correctness, and retain preparation costs. No serving runtime or live account changes.
 Undo and recovery: Revert this repair commit to restore prior code; retain experiment evidence. Reconcile unresolved intents against host receipts without resending. A spacing refusal writes no new intent and is retryable when actually due.
 Multi-machine posture: Deliberately machine-local measurement ledger with one writer. Actual placement verification remains unchanged; moving the runner requires its complete ledger. No shared runtime state added.
 Layer below: Read the complete purpose and rule book, identical to origin/main; existing intent/capture/grading path, actual-boundary checks, README host contract and 1.x .dev/instar/src/core/LiveTestHarness.ts DriverCapabilityError/blocked-outcome distinction. Port the small explicit capability-outcome contract, not the large module or live configuration.
