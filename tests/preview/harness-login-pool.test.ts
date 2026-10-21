@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createHarnessLoginPool, loadHarnessLogins, harnessQuotaLimit, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { harnessGate, harnessLoginPath, migrateHarnessLogin, readHarnessLogin, storeHarnessLogin } from './harness-user.mjs';
 import { classifyProviderFailure } from '../../src/assembly/provider-failure.js';
+import { productionProviderIO } from '../../scripts/production-boot-io.mjs';
 import { openReplyNotices, validAnswerNotices } from './credential-reminders.js';
 
 const roots: string[] = [];
@@ -30,6 +31,28 @@ function fixture(names = ['serving-a', 'serving-b'], changes = {}) {
   return { root, options, manifest, configuration, checked, clock, settings, pool: createHarnessLoginPool(settings) };
 }
 const limit = { state: 'uncertain', failure: { failureClass: 'limit', resetAt: null } };
+
+it('replays train-111 update 367052695: weekly exhaustion preserves refusal and only an admitted alternate can serve', () => {
+  // Exact scrubbed physical result from forum-answer-copy-20261021-112316, call-outcome at 1792607027286.
+  const stdout = readFileSync(new URL('../fixtures/provider-failure/claude-weekly-limit-train-111.json', import.meta.url), 'utf8');
+  const f = fixture(); f.clock.at = 1792607027286;
+  const failure = classifyProviderFailure({ stdout, code: 1, limited: false, now: f.clock.at,
+    calendarResetAt: productionProviderIO.calendarResetAt });
+  expect(failure).toMatchObject({ failureClass: 'limit', resetAt: 1792782000000 });
+  const result = { state: 'rejected', bytes: null, failure };
+  f.pool.observe(f.pool.select(), result);
+  expect(result).toMatchObject({ state: 'rejected', bytes: null });
+  const refused = createHarnessLoginPool({ ...f.settings, validate: () => { throw Error('alternate grant withdrawn'); } });
+  expect(() => refused.select()).toThrow('alternate grant withdrawn');
+  expect(refused.state.switches).toEqual([]);
+  const reopened = createHarnessLoginPool(f.settings);
+  expect(reopened.select().index).toBe(1);
+  expect(reopened.state.holds[0].resetAt).toBe(1792782000000);
+  expect(reopened.state.switches).toHaveLength(1);
+  const single = fixture(['proofroom-only']); single.clock.at = f.clock.at;
+  single.pool.observe(single.pool.select(), result);
+  expect(() => single.pool.select()).toThrow(/no reviewed login/);
+});
 
 it('replays the captured weekly limit: A fails, next call uses B, switch is durable and notice is offered once', () => {
   const f = fixture(), calls = [];
