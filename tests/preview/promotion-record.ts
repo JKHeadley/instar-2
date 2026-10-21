@@ -42,6 +42,14 @@ export const PROMOTION_RECORD: readonly PromotionEntry[] = Object.freeze([
     reason: 'SECOND 72-hour extension: step-check graduation remains unproven; the expired deadline blocks unrelated builds. Graduation itself is the outstanding work.',
     owner: 'the desk: open a graduation item, run tests/preview/jev-step-supervisor-live-test.md and record the ordered graduation evidence, or retire it',
     rollback: 'relaunch the same reviewed command without --step-check true; no step-check frames are written while off' },
+  { capability: 'preview.step-check', decision: 'new-deadline', recordedAt: 1792541508000, by: 'agent (stepcheck-grad-1020)',
+    deadline: 1792800000000, // 2026-10-24 00:00 UTC
+    reason: 'THIRD 72-hour extension (fifth deadline), recorded 2026-10-21: graduation checked and refused for lack of evidence. '
+      + 'No startup proof in any preview or proof-room root shows stepCheck true, so the live procedure has never run, no '
+      + 'stepChecks verdict exists, and test-agent, development-agent and fleet are all missing. Only the offline graduation test passes.',
+    owner: 'the desk with Justin: run tests/preview/jev-step-supervisor-live-test.md in the private preview chat and record test-agent '
+      + 'and development-agent with that trace, or retire step-check; do not extend again without one of those',
+    rollback: 'relaunch the same reviewed command without --step-check true; no step-check frames are written while off' },
 ]);
 
 /** The UTC calendar day of an epoch millisecond (civil-from-days), without an ambient clock. */
