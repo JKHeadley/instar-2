@@ -22,6 +22,7 @@ Decision: codex-tests-1021-version | Advance only the exact reviewed pin after r
 Decision: codex-tests-1021-test-profile | Use codex-dawn-sagemind and test-local gpt-6-astra with authority resolved from grant 121996; leave Justin's live settings untouched. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/codex-tests-1021-PROGRESS.md
 
 Prompt finding: 42faf877ba82 | quoted-evidence | The existing identity assertion quotes unchanged prompt wording; this change alters only the reviewed executable version, with no fixture phrase added to a prompt.
+Prompt review: Reviewed fixture-trigger and neutral-dispatch risks: the provider diff changes only its executable version constant. No prompt, fixture-trigger branch, expected answer phrase or dispatch condition changes. Historical and new recorded bodies exercise the unchanged generic parser; the live assertion uses the existing application reader.
 
 Subject (5 paths): src/assembly/production-codex-provider.ts, src/assembly/README.md, tests/assembly/production-codex-provider.test.ts, tests/e2e/codex-answer-live.test.ts, tests/preview/fixtures/codex-answer-0.156.1.json
 
