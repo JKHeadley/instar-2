@@ -34,8 +34,6 @@ The journal runner's capability briefing is generated from these lines and the f
 - `preview.rolling-summary`: keeps a faithfulness-checked rolling summary of earlier turns.
 - `preview.coherence-check`: checks each reply against remembered earlier turns without a model call.
   Details: checks each reply against remembered earlier turns, without a model call, and records the findings.
-- `preview.step-check`: off unless launched with it; independently checks each business step and changes nothing.
-  Details: off unless the runner is launched with it; records an independent check of each business step and changes nothing.
 
 ## Prerequisites and exact invocation
 
@@ -3513,41 +3511,15 @@ The original audit record remains after withholding an old claim from later
 packets. See [memory-self-description-live-test.md](live-tests-archive/memory-self-description-live-test.md)
 for Justin's supervised check of the answer and held-notice behavior.
 
-### Dark Jev step check
+### Retired Jev step check
 
-The journal launcher accepts `--step-check true`; omission or `false` leaves it off.
-Off mode adds no step-check frames or observation-only fields to other frames,
-including after a previously enabled run, and leaves model packets and send bytes unchanged.
-When enabled, a durable start marker makes only subsequent model answers eligible.
-After a disabled interval, re-enabling also checks eligible work recorded since that
-first start marker; it does not recheck steps that already have a verdict.
-After the ordinary reply path, Jev compares each completed answer and committed
-summary with its journal projection. A completed summary answer rejected by the
-existing summary validation is checked against the recorded failure too. The
-request contains the redacted model output and a bounded snapshot of recorded
-memory changes, reply intent and Telegram API result, or summary effects. It
-asks whether a claimed completed effect lacks journal support. Jev's result is
-`pass`, `violation`, `unsure`, or `unavailable`; the conclusion, score, reason,
-usage when returned, and redacted evidence reservation are encrypted in the
-same journal. `status.stepChecks` and `inspect.stepChecks` expose verdicts without
-the underlying text. An interrupted reservation replays as unavailable without
-repeating Jev. The number of checks is bounded by the existing model-call cap;
-an answer containing a detected secret, or an oversized answer or evidence, is
-recorded as unavailable without Jev disclosure. A stop prevents a
-new Jev dispatch. Verdicts never change a reply, memory decision, summary,
-hold, send, or future model packet. No extra service or store is involved.
-Since build 9 the start marker names the cleanup boundary as well: each reply's
-cleanup Result (its coherence check, memory state and delivery) is checked the
-same way. A journal started before that gains the boundary from a second start
-marker; earlier steps keep their verdicts.
-
-The live private-chat procedure is in
-[jev-step-supervisor-live-test.md](jev-step-supervisor-live-test.md). The dark
-observation's first evaluation target, 2026-09-30, passed without a recorded
-trace, so its graduation deadline is now 2026-10-21, recorded with its reason,
-owner and rollback in the promotion record below. The desk can decide whether
-to keep it on after Justin's script produces a recorded trace. While off, it is
-not a live safety guard.
+The dark Jev step check (`preview.step-check`) was retired on 2026-10-20 by the
+operator's review: it had no live evidence and was never observed working, so
+its graduation deadline is not extended again. It carries no graduation gate or
+deadline, the promotion record below holds the retirement with its reason, and
+no stage is recorded as reached. The journal launcher refuses `--step-check true`
+with a plain message; omission or `false` still runs normally. Journals that
+recorded step-check verdicts earlier still read them in `status.stepChecks`.
 
 ### Promotion record
 
@@ -3556,7 +3528,8 @@ capability graduates: test agent, then development agent, then fleet (Rule 72).
 Each entry is one decision. A stage is reached only after the stages before it,
 and names the durable evidence a reader can open. A new deadline must fall after
 the moment it is recorded, and names its reason, the owner of the next step and
-the rollback. A capability's declared `gate.deadline` must equal the latest
+the rollback. A retirement names its reason and rollback; the capability is then
+declared `retired` with no gate. A capability's declared `gate.deadline` must equal the latest
 deadline in the record; the capability tests fail on any difference, and on a
 deadline past the real clock. `status` adds a `Graduation:` line that shows each
 stage as `recorded`, `observed` or `missing`. `observed` means this runtime

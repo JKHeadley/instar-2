@@ -74,7 +74,8 @@ it('P9-PREVIEW-startup P9-PREVIEW-store-agreements P9-PREVIEW-journal-restore P9
   expect(posture.get('reply-review-reached').last.observed).toMatchObject({ sentAnswers: 1 });
   expect(posture.get('step-check-reached')).toMatchObject({ required: false, posture: 'inactive' });
   expect(status.protection.inventoryGaps).toEqual([]);
-  expect(status.protection.dark).toEqual(['preview.step-check']);
+  expect(status.protection.dark).toEqual([]);
+  expect(status.protection.retired).toEqual(['preview.step-check']);
   expect(status.protection.gap).toEqual([]);
   // Record-referencing declarations wait for a register that can resolve them: reported, never dropped.
   expect(status.protection.pendingRegistration).toContain('preview.reply');
@@ -125,8 +126,21 @@ it('answers the operator status pull with the proof posture', () => {
   const sent = harness.calls().filter(call => call.kind === 'send').map(call => call.text);
   expect(sent).toHaveLength(1);
   expect(sent[0]).toMatch(/Proofs: \d+\/\d+ healthy/u);
-  expect(sent[0]).toMatch(/Capabilities: \d+ confirmed, \d+ unconfirmed, 1 dark \(preview\.step-check\)/u);
+  expect(sent[0]).toMatch(/Capabilities: \d+ confirmed, \d+ unconfirmed, 0 dark, 1 retired \(preview\.step-check\)/u);
+  expect(sent[0]).not.toMatch(/Graduation:|graduation overdue/u);
 }, 60000);
+
+it('refuses a launch with the retired step check turned on, plainly, before polling or sending; off still runs', async () => {
+  const { harness, message } = setup();
+  harness.setUpdates([message(1, 'hello')]);
+  const refused = await harness.runLive(2, ['--step-check', 'true']);
+  expect(refused.status).not.toBe(0);
+  expect(refused.stderr).toContain('preview: the step check is retired (2026-10-20, no live evidence); launch without --step-check true');
+  // Not one Telegram call, not even the identity check: the refusal comes before any polling or sending.
+  expect(existsSync(join(harness.directory, 'telegram.jsonl'))).toBe(false);
+  const off = await harness.runLive(2, ['--step-check', 'false']);
+  expect(off.status, off.stderr).toBe(0);
+}, 120000);
 
 it('an unwritable proof log is reported and retried; intake and replies continue (Rules 14, 95)', () => {
   const { harness, message } = setup();

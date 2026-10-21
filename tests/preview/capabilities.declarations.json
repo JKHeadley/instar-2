@@ -64,15 +64,11 @@
     "schemaVersion": 1,
     "id": "preview.step-check",
     "kind": "features",
-    "status": "dark",
+    "status": "retired",
     "requiredFacts": {
       "metrics": [
         "stepChecks"
-      ],
-      "gate": {
-        "test": "P9-PREVIEW-step-check-graduation",
-        "deadline": 1792540800000
-      }
+      ]
     },
     "profile": {
       "type": "Profile",
@@ -705,7 +701,7 @@
           "stage": "runtime"
         },
         "portion": "its freshness probe reads the verdicts it recorded",
-        "remainder": "dark: off by default; it validates completed answer, cleanup and summary steps only after they happen"
+        "remainder": "dark: off; preview.step-check was retired 2026-10-20 and the launcher refuses --step-check true, so it never runs"
       }
     ]
   }

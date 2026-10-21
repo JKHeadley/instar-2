@@ -1,7 +1,8 @@
 /** The preview's durable promotion record (Rules 38, 72, 73; D18 §12 "a graduated evidence record").
  * A gated capability graduates test agent → development agent → fleet. Each entry is one reviewed decision:
- * a stage reached, named by the durable evidence that shows it, or a new graduation deadline, with its reason,
- * the owner of the next step and the rollback operation. The record is append-only and lands through review,
+ * a stage reached, named by the durable evidence that shows it, a new graduation deadline, with its reason,
+ * the owner of the next step and the rollback operation, or a retirement, with its reason and rollback: a retired
+ * capability carries no graduation gate and no deadline, and its missing stages stay missing. The record is append-only and lands through review,
  * like the declarations it serves; the register's `gate.deadline` for a capability must equal the latest
  * deadline recorded here, so the build check and the operator's status read one fact.
  * An entry is never evidence by itself: a stage names the artifact a reader can open. */
@@ -11,11 +12,14 @@ export type Stage = typeof STAGES[number];
 interface Entry { capability: string; recordedAt: number; by: string }
 export interface StageReached extends Entry { decision: 'stage-reached'; stage: Stage; evidence: string }
 export interface NewDeadline extends Entry { decision: 'new-deadline'; deadline: number; reason: string; owner: string; rollback: string }
-export type PromotionEntry = StageReached | NewDeadline;
+export interface Retired extends Entry { decision: 'retired'; reason: string; rollback: string }
+export type PromotionEntry = StageReached | NewDeadline | Retired;
 
 const DAY = 86_400_000;
 /** 2026-09-28 00:00 UTC. */
 const RECORDED_2026_09_28 = 1790553600000;
+/** 2026-10-20 22:00 PDT (2026-10-21 05:00 UTC), the operator review that retired step-check. */
+const RECORDED_2026_10_20_22_00_PDT = 1792558800000;
 
 export const PROMOTION_RECORD: readonly PromotionEntry[] = Object.freeze([
   { capability: 'preview.step-check', decision: 'new-deadline', recordedAt: RECORDED_2026_09_28, by: 'agent (build unit U1)',
@@ -42,6 +46,10 @@ export const PROMOTION_RECORD: readonly PromotionEntry[] = Object.freeze([
     reason: 'SECOND 72-hour extension: step-check graduation remains unproven; the expired deadline blocks unrelated builds. Graduation itself is the outstanding work.',
     owner: 'the desk: open a graduation item, run tests/preview/jev-step-supervisor-live-test.md and record the ordered graduation evidence, or retire it',
     rollback: 'relaunch the same reviewed command without --step-check true; no step-check frames are written while off' },
+  { capability: 'preview.step-check', decision: 'retired', recordedAt: RECORDED_2026_10_20_22_00_PDT, by: 'agent (stepcheck-retire-1020, desk decision 22:06)',
+    reason: 'retired 2026-10-20 by the operator\'s review (Justin, observer 22:00): no live evidence; never observed working. '
+      + 'The deadline is not extended again. The launcher refuses --step-check true; no stage was reached, so none is recorded.',
+    rollback: 'revert this entry and the declaration\'s retired status through review, with a new graduation gate and deadline' },
 ]);
 
 /** The UTC calendar day of an epoch millisecond (civil-from-days), without an ambient clock. */
@@ -58,17 +66,20 @@ export interface Promotion {
   stages: Record<Stage, { evidence: string; recordedAt: number } | null>;
   /** The latest recorded deadline, or null when the declared one was never moved. */
   deadline: { deadline: number; recordedAt: number; reason: string; owner: string } | null;
+  /** The retirement, when the latest decision retired the capability. */
+  retired: { recordedAt: number; reason: string } | null;
 }
 /** One capability's standing in the record. */
 export function promotionOf(record: readonly PromotionEntry[], capability: string): Promotion {
   const stages: Promotion['stages'] = { 'test-agent': null, 'development-agent': null, fleet: null };
-  let deadline: Promotion['deadline'] = null;
+  let deadline: Promotion['deadline'] = null, retired: Promotion['retired'] = null;
   for (const entry of record) {
     if (entry.capability !== capability) continue;
-    if (entry.decision === 'stage-reached') stages[entry.stage] = { evidence: entry.evidence, recordedAt: entry.recordedAt };
-    else deadline = { deadline: entry.deadline, recordedAt: entry.recordedAt, reason: entry.reason, owner: entry.owner };
+    if (entry.decision === 'stage-reached') { stages[entry.stage] = { evidence: entry.evidence, recordedAt: entry.recordedAt }; retired = null; }
+    else if (entry.decision === 'retired') retired = { recordedAt: entry.recordedAt, reason: entry.reason };
+    else { deadline = { deadline: entry.deadline, recordedAt: entry.recordedAt, reason: entry.reason, owner: entry.owner }; retired = null; }
   }
-  return { stages, deadline };
+  return { stages, deadline, retired };
 }
 
 /** Structural findings over the record itself; each names its rule. */
@@ -87,6 +98,8 @@ export function promotionRecordFindings(record: readonly PromotionEntry[]): stri
       if (earlier.some(stage => !seen.has(stage))) findings.push(`${at}: Rule 72 — ${entry.stage} is reached only after ${earlier.join(' and ')}`);
       if (seen.has(entry.stage)) findings.push(`${at}: Rule 72 — ${entry.stage} is recorded once`);
       reached.set(entry.capability, seen.add(entry.stage));
+    } else if (entry.decision === 'retired') {
+      if (!entry.reason.trim() || !entry.rollback.trim()) findings.push(`${at}: Rule 72 — a retirement records its reason and rollback`);
     } else {
       if (!Number.isSafeInteger(entry.deadline) || entry.deadline <= entry.recordedAt)
         findings.push(`${at}: Rule 72 — a new deadline lies after the moment it is recorded`);

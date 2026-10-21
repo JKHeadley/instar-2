@@ -398,6 +398,8 @@ const take = result => { if (result.kind !== 'Success') throw Error(`preview: ad
 const secretRef = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name });
 // The launcher captures stderr; mirror the durable end reason once, even if cleanup fails.
 let exitReported = false;
+/** A refusal whose fixed text carries no secret, so the operator sees it instead of the suppressed default. */
+class PlainRefusal extends Error {}
 const reportExit = reason => {
   if (!exitReported) { exitReported = true; process.stderr.write(`runner exiting: ${reason}\n`); }
 };
@@ -732,7 +734,9 @@ const stepCheckView = view => ({ total: view.stepChecks.size,
 async function main() {
   const { command, options } = parse(process.argv.slice(2));
   if (options['step-check'] !== undefined && !['true', 'false'].includes(options['step-check'])) throw Error('preview: --step-check must be true or false');
-  const stepCheckEnabled = options['step-check'] === 'true';
+  // Retired 2026-10-20 by the operator's review (promotion record): no live evidence, so it can no longer be turned on.
+  if (options['step-check'] === 'true') throw new PlainRefusal('preview: the step check is retired (2026-10-20, no live evidence); launch without --step-check true');
+  const stepCheckEnabled = false;
   if (options.retrospective !== undefined && !['true', 'false'].includes(options.retrospective)) throw Error('preview: --retrospective must be true or false');
   // On by default: one bounded pass at most hourly, inside the model-attempt cap with a reply reserve.
   const retrospectiveEnabled = options.retrospective !== 'false';
@@ -1195,7 +1199,7 @@ async function main() {
           posture: posture(probeId(item.requiredFacts.proof.replace(/^proofs\.jsonl#/u, ''))) }));
         report.sentinels = joined.sentinels.map(item => ({ id: item.id, status: item.status, freshness: posture(item.requiredFacts.freshnessProbe) }));
         report.protection = { declared: rows.length, inventoryGaps: joined.gaps, pendingRegistration: joined.pending,
-          ...Object.fromEntries(['confirmed', 'unconfirmed', 'unproven', 'gap', 'dark', 'off-in-this-launch'].map(state =>
+          ...Object.fromEntries(['confirmed', 'unconfirmed', 'unproven', 'gap', 'dark', 'retired', 'off-in-this-launch'].map(state =>
             [state, rows.filter(row => row.protection === state).map(row => row.id)])) };
       } catch { report.proofs = 'unavailable: the register inputs or proof log could not be read'; }
       process.stdout.write(`${JSON.stringify(report)}\n`);
@@ -3237,6 +3241,7 @@ async function main() {
 
 try { await main(); } catch (error) {
   reportExit('error (details suppressed)');
-  process.stderr.write(error instanceof AgentPathRefused ? `${error.message}\n` : 'preview refused to start or continue; details suppressed\n');
+  process.stderr.write(error instanceof AgentPathRefused || error instanceof PlainRefusal ? `${error.message}\n`
+    : 'preview refused to start or continue; details suppressed\n');
   process.exitCode = 1;
 }

@@ -24,9 +24,15 @@ const register = { ...s.f.ctx.register, entries: [...s.f.ctx.register.entries, .
 const types = { ...s.f.ctx, register };
 const terms = { owner: 'part-three', derivedFrom: shapeInput().derivedFrom } as ProfileTermsReadPort;
 const classify = (profile: FeatureProfile) => value(deriveProfile(value(decode('Profile', profile, types)), terms, s.f.ctx.preserved));
-const NOW = 1790000000000; // 2026-09-22, before the recorded step-check target
-const STEP_DEADLINE = (DECLARATIONS.find(d => d.id === 'preview.step-check')!.requiredFacts as { gate: { deadline: number } }).gate.deadline;
+const NOW = 1790000000000; // 2026-09-22, before the fixture's graduation deadline
 const inventory = previewInventory(REGISTERED, PENDING);
+// step-check is retired (no gate, no deadline). The Rule 72 deadline machinery is exercised on a fixture of it as it
+// stood before the retirement: dark, gated at its last recorded deadline, read against the record without the retirement.
+const STEP_DEADLINE = Date.UTC(2026, 9, 21);
+const PRE_RETIREMENT = PROMOTION_RECORD.slice(0, -1);
+const asGated = (d: PreviewDeclaration) => d.id !== 'preview.step-check' ? d : { ...d, status: 'dark',
+  requiredFacts: { ...d.requiredFacts, gate: { test: 'P9-PREVIEW-step-check-graduation', deadline: STEP_DEADLINE } } } as PreviewDeclaration;
+const GATED = previewInventory(REGISTERED.map(asGated), PENDING);
 const edit = (id: string, change: (d: PreviewDeclaration) => PreviewDeclaration | null) =>
   previewInventory(DECLARATIONS.flatMap(d => d.id === id ? [change(structuredClone(d))].filter(x => x !== null) : [d]) as PreviewDeclaration[]);
 /** The references a regeneration supplies: probes and fixtures (the part-nine owner manifest) and proof records (a provider). */
@@ -77,7 +83,7 @@ describe('the preview inventory is register input', () => {
   it('each finding fails on its counter-case', () => {
     const cases: [string, (d: PreviewDeclaration) => PreviewDeclaration, RegExp][] = [
       ['preview.reply', d => { const { liveProof: _drop, ...facts } = d.requiredFacts as Record<string, unknown>; return { ...d, requiredFacts: facts } as PreviewDeclaration; }, /Rule 62/u],
-      ['preview.step-check', d => { const { gate: _drop, ...facts } = d.requiredFacts as Record<string, unknown>; return { ...d, requiredFacts: facts } as PreviewDeclaration; }, /Rule 72 — a dark capability needs/u],
+      ['preview.step-check', d => ({ ...d, status: 'dark' }) as PreviewDeclaration, /Rule 72 — a dark capability needs/u],
       ['preview.stop', d => ({ ...d, requiredFacts: { ...d.requiredFacts, metrics: [] } }) as PreviewDeclaration, /Rule 39/u],
       ['preview.held-reply-notice', d => ({ ...d, status: 'dark', requiredFacts: { ...d.requiredFacts, gate: { test: 'x', deadline: NOW + 1 } } }) as PreviewDeclaration, /Rule 76 — a user-facing repair cannot be dark/u],
     ];
@@ -88,20 +94,37 @@ describe('the preview inventory is register input', () => {
     const documentTier = previewInventory(DECLARATIONS);
     documentTier.capabilities.find(c => c.declaration.id === 'preview.reply')!.evidence.unit = ['tests/preview/core-journey-live-test.md'];
     expect(capabilityFindings(documentTier, classify, NOW).join('\n')).toMatch(/Rule 34 — evidence tiers name executed tests/u);
-    expect(capabilityFindings(inventory, classify, STEP_DEADLINE).join('\n')).toMatch(/preview\.step-check: Rule 72 — graduation overdue/u);
+    expect(capabilityFindings(GATED, classify, STEP_DEADLINE, PRE_RETIREMENT).join('\n')).toMatch(/preview\.step-check: Rule 72 — graduation overdue/u);
+    expect(capabilityFindings(GATED, classify, STEP_DEADLINE - 1, PRE_RETIREMENT)).toEqual([]);
   });
   it('enforces graduation deadlines against the real clock (Rule 72: an overdue dark capability fails the build)', () => {
     expect(capabilityFindings(inventory, classify, Date.now()).join("|")).toBe("");
-    // The moved deadline is the promotion record's, and the README states it.
-    expect(promotionOf(PROMOTION_RECORD, 'preview.step-check').deadline?.deadline).toBe(STEP_DEADLINE);
-    expect(new Date(STEP_DEADLINE).toISOString()).toBe('2026-10-21T00:00:00.000Z');
-    expect(readFileSync('tests/preview/README.md', 'utf8')).toContain('its graduation deadline is now 2026-10-21');
+  });
+  it('step-check is retired: no gate, no deadline, so no clock makes it overdue; the README states the retirement', () => {
+    const step = inventory.capabilities.find(c => c.declaration.id === 'preview.step-check')!.declaration;
+    expect(step.status).toBe('retired');
+    expect(step.requiredFacts.gate).toBeUndefined();
+    expect(inventory.sentinels.find(d => d.id === 'preview.sentinel.step-check')!.status).toBe('dark');
+    // Today (the overdue moment of its last deadline) and well after it: nothing to find.
+    for (const at of [Date.UTC(2026, 9, 21), Date.UTC(2026, 9, 21, 5), Date.UTC(2026, 9, 25), Date.UTC(2027, 0, 1)])
+      expect(capabilityFindings(inventory, classify, at), String(at)).toEqual([]);
+    expect(promotionOf(PROMOTION_RECORD, 'preview.step-check').retired).not.toBeNull();
+    const readme = readFileSync('tests/preview/README.md', 'utf8');
+    expect(readme).toContain('was retired on 2026-10-20');
+    expect(readme).not.toMatch(/^- `preview\.step-check`:/mu);
   });
   it('binds the declared deadline to the promotion record, on both sides (Rule 72)', () => {
     const moved: PromotionEntry = { ...PROMOTION_RECORD[0]!, deadline: STEP_DEADLINE + 86_400_000 } as PromotionEntry;
-    expect(capabilityFindings(inventory, classify, NOW, [moved]).join('\n'))
+    expect(capabilityFindings(GATED, classify, NOW, [moved]).join('\n'))
       .toMatch(/preview\.step-check: Rule 72 — the declared graduation deadline differs from the promotion record's latest \(2026-10-22\)/u);
+    expect(capabilityFindings(GATED, classify, NOW, PRE_RETIREMENT)).toEqual([]);
     expect(capabilityFindings(inventory, classify, NOW, PROMOTION_RECORD)).toEqual([]);
+    // A retirement binds both ways: the record retires only a retired, ungated declaration, and a retired declaration
+    // named in the record must end with its retirement.
+    expect(capabilityFindings(GATED, classify, NOW, PROMOTION_RECORD).join('\n'))
+      .toMatch(/preview\.step-check: Rule 72 — the promotion record retires a capability the register still declares dark with a graduation gate/u);
+    expect(capabilityFindings(inventory, classify, NOW, PRE_RETIREMENT).join('\n'))
+      .toMatch(/preview\.step-check: Rule 72 — a retired capability's latest promotion decision must be its retirement/u);
     // With no record entry the declared deadline stands alone; a record for an ungated capability is a finding.
     expect(capabilityFindings(inventory, classify, NOW, [])).toEqual([]);
     const ungated = { capability: 'preview.reply', decision: 'stage-reached', stage: 'test-agent', evidence: 'x', recordedAt: NOW, by: 'desk' } as const;
@@ -204,21 +227,27 @@ describe('capability rows count only enabled, currently proven protection', () =
     expect(capabilityRows(inventory, { ...base, proofs: healthy, liveProofs: [stopProof] }).find(r => r.id === 'preview.stop')!.protection).toBe('confirmed');
     const degraded = new Map(capabilityRows(inventory, { ...base, proofs: healthy.map(p => p.plan === 'reply-delivered' ? posture(p.plan, 'unknown') : p) }).map(r => [r.id, r]));
     expect(degraded.get('preview.reply')!.protection).toBe('unconfirmed');
-    expect(degraded.get('preview.step-check')).toMatchObject({ protection: 'dark', graduation: { deadline: STEP_DEADLINE, overdue: false,
-      stages: { 'test-agent': 'missing', 'development-agent': 'missing', fleet: 'missing' }, deadlineRecorded: { recordedAt: PROMOTION_RECORD.at(-1)!.recordedAt } } });
+    expect(degraded.get('preview.step-check')).toMatchObject({ status: 'retired', enabled: false, protection: 'retired', graduation: null });
     expect(degraded.get('preview.channel-memory')!.protection).toBe('off-in-this-launch');
     expect(degraded.get('preview.memory')!.protection).toBe('unproven');
     const lines = proofStatusLines(healthy, [...degraded.values()]);
-    expect(lines[1]).toMatch(/confirmed, \d+ unconfirmed, 1 dark \(preview\.step-check\)/u);
+    expect(lines[1]).toMatch(/confirmed, \d+ unconfirmed, 0 dark, 1 retired \(preview\.step-check\)/u);
     expect(lines[1]).not.toMatch(/graduation overdue/u);
-    expect(lines[2]).toBe('Graduation: preview.step-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-10-21 (recorded 2026-10-18).');
+    expect(lines).toHaveLength(2);
+    // The pre-retirement fixture still reads as dark with its recorded deadline.
+    const gated = capabilityRows(GATED, { ...base, proofs: healthy, promotions: PRE_RETIREMENT });
+    expect(gated.find(r => r.id === 'preview.step-check')).toMatchObject({ protection: 'dark', graduation: { deadline: STEP_DEADLINE, overdue: false,
+      stages: { 'test-agent': 'missing', 'development-agent': 'missing', fleet: 'missing' }, deadlineRecorded: { recordedAt: PRE_RETIREMENT.at(-1)!.recordedAt } } });
+    const gatedLines = proofStatusLines(healthy, gated);
+    expect(gatedLines[1]).toMatch(/confirmed, \d+ unconfirmed, 1 dark \(preview\.step-check\)/u);
+    expect(gatedLines[2]).toBe('Graduation: preview.step-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-10-21 (recorded 2026-10-18).');
   });
   it('graduation stages come from the promotion record; a passed runtime proof without an entry is observed, not recorded', () => {
     const stepProof = { ...posture('step-check-reached', 'healthy'), capability: 'preview.step-check' };
     const row = (extra: Partial<CapabilityInputs>) =>
-      capabilityRows(inventory, { ...base, ...extra }).find(r => r.id === 'preview.step-check')!;
+      capabilityRows(GATED, { ...base, promotions: PRE_RETIREMENT, ...extra }).find(r => r.id === 'preview.step-check')!;
     expect(row({ proofs: [stepProof] }).graduation!.stages['development-agent']).toBe('observed');
-    const reached: PromotionEntry[] = [...PROMOTION_RECORD,
+    const reached: PromotionEntry[] = [...PRE_RETIREMENT,
       { capability: 'preview.step-check', decision: 'stage-reached', stage: 'test-agent', evidence: 'tests/preview/step-check.test.ts', recordedAt: NOW, by: 'desk' },
       { capability: 'preview.step-check', decision: 'stage-reached', stage: 'development-agent', evidence: 'proofs.jsonl#step-check-reached', recordedAt: NOW, by: 'desk' }];
     const promoted = row({ promotions: reached });
