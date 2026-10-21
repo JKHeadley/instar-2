@@ -78,13 +78,24 @@ it('refuses malformed JSON without including its contents', () => {
   const { root } = fixture(); writeFileSync(join(root, 'model-setting.json'), '{"secret-value":');
   expect(() => buildRunArgv(root)).toThrow('model-setting.json is missing or unreadable');
 });
-it('checks every pool member without replacing the installed-pool selection with CLI flags', () => {
-  const { root, login } = fixture();
-  save(root, 'harness-logins.json', { version: 1, logins: [login, { ...login, profile: join(root, 'second.json') }] });
-  expect(() => buildRunArgv(root)).toThrow(/Run refused:/);
-  save(root, 'second.json', { fixture: true });
-  const argv = buildRunArgv(root); expect(argv).not.toContain('--login-pool'); expect(argv).not.toContain('--login-profile');
-});
+it.each(['profile', 'activation', 'authority', 'toolsActivation', 'sessionActivation'] as const)(
+  'hands off missing secondary %s without replacing or rewriting the installed pool', field => {
+    const { root, login } = fixture();
+    const expected = buildRunArgv(root);
+    save(root, 'harness-logins.json', { version: 1, logins: [login, { ...login, [field]: join(root, 'missing.json') }] });
+    const before = readFileSync(join(root, 'harness-logins.json'));
+    expect(buildRunArgv(root)).toEqual(expected);
+    expect(readFileSync(join(root, 'harness-logins.json'))).toEqual(before);
+    save(root, 'missing.json', { fixture: true });
+    expect(buildRunArgv(root)).toEqual(expected);
+  });
+it.each([null, {}, { profile: 'relative.json' }, { authority: null }, { toolsActivation: '' }, { sessionActivation: 3 }])(
+  'still refuses malformed secondary inventory %j', patch => {
+    const { root, login } = fixture();
+    const secondary = patch === null ? null : Object.keys(patch).length ? { ...login, ...patch } : {};
+    save(root, 'harness-logins.json', { version: 1, logins: [login, secondary] });
+    expect(() => buildRunArgv(root)).toThrow(/Run refused:/);
+  });
 it('requires a session grant only when sessions are requested', () => {
   const { root, login, options } = fixture(); const { sessionActivation: _, ...withoutSession } = login;
   save(root, 'harness-logins.json', { version: 1, logins: [withoutSession] });

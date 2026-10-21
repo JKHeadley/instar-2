@@ -19,9 +19,9 @@ const read = (path, label) => {
     return value;
   } catch { return refuse(`${label} is missing or unreadable`); }
 };
-const pathRecord = (path, label) => {
+const pathRecord = (path, label, requireReadable = true) => {
   if (!text(path) || !isAbsolute(path)) refuse(`${label} needs an absolute record path`);
-  read(path, label);
+  if (requireReadable) read(path, label);
 };
 const defaults = Object.freeze({ 'max-calls': 16, 'max-replies': 16, 'max-turns': 20, 'max-context-bytes': 32768 });
 const required = ['bot-id', 'bot-username', 'operator-sender-id', 'chat-id', 'forum', 'grant-reference',
@@ -61,10 +61,12 @@ export function buildRunArgv(directory) {
   const inventory = read(resolve(root, 'harness-logins.json'), 'harness-logins.json');
   if (inventory.version !== 1 || !Array.isArray(inventory.logins) || inventory.logins.length < 1 || inventory.logins.length > 8)
     refuse('harness-logins.json has an unknown format');
-  for (const login of inventory.logins) {
+  // Rules 15/77/95: secondary availability belongs to per-member runtime admission.
+  // Keep path/schema validation, but do not deny a healthy primary for a missing secondary.
+  for (const [index, login] of inventory.logins.entries()) {
     if (!object(login)) refuse('installed login is malformed');
-    for (const field of ['profile', 'activation', 'authority']) pathRecord(login[field], `installed login ${field}`);
-    for (const field of ['toolsActivation', 'sessionActivation']) if (login[field] !== undefined) pathRecord(login[field], `installed login ${field}`);
+    for (const field of ['profile', 'activation', 'authority']) pathRecord(login[field], `installed login ${field}`, index === 0);
+    for (const field of ['toolsActivation', 'sessionActivation']) if (login[field] !== undefined) pathRecord(login[field], `installed login ${field}`, index === 0);
   }
   const primary = inventory.logins[0];
   if (o['conversation-session'] === 'on' && !primary.sessionActivation) refuse('conversation sessions need their installed activation record');
