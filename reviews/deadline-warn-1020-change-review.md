@@ -14,8 +14,8 @@ Side effects: After 2026-10-24T00:00Z, step-check's expired deadline is printed 
 Undo and recovery: Revert the four source commits and regenerate the register; the overdue check then fails builds again. For the driver, restore driver.py.bak-deadline-warn-1020.
 Multi-machine posture: Shared repository code and generated publication; every machine runs the same check with its own clock. The driver change and its notice file live only on the Studio desk.
 Layer below: Inspected checkDeadlines (src/rulegraph/graph.ts), runRegisterChecks (src/register/workflow.ts), build-register.mjs's build/run and readCommit pinning (an owner lookup reads the committed promotion record through the same pinned `show`), capabilityFindings and proofStatusLines in tests/preview/capabilities.ts (status already says "graduation overdue"), the e2e CLI deadline cases, and the desk driver's paperwork_check, which shows output only on failure.
-Bug class: clock-dependent gate failing unrelated work
-Bug evidence: lanes/stepcheck-grad-1020-PROGRESS.md and the observer's 17:44 note: train-95's 17:06 paperwork "failure" was the step-check deadline passing, not its change.
+Bug class: integration
+Bug evidence: a clock-dependent build gate failed unrelated work; lanes/stepcheck-grad-1020-PROGRESS.md and the observer's 17:44 note: train-95's 17:06 paperwork "failure" was the step-check deadline passing, not its change.
 Hook bypass: none; plain commits, no bypass flags.
 Convergence: none
 Decision: deadline-warn-forced-dark | Overdue is the feature's own failure, not every build's: dark-and-overdue passes with a loud line on every run; soaking-and-overdue fails. The register sees declarations, not train diffs, so "forced dark" is the simplest rule it can check; it keeps the obligation visible without guessing which train touches the feature. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/deadline-warn-1020-PROGRESS.md
