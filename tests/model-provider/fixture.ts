@@ -29,7 +29,7 @@ import { createJudgmentCaptures } from '../../scripts/judgment-captures.mjs';
 export { value, refused };
 export const enc = (v: unknown) => value(canonical(v));
 export function providerFixture(options: { directory?: string; endpoint?: string; credential?: string;
-  route?: Partial<ConfinedProviderRoute>; afterInvoke?: () => void; timeout?: number } = {}) {
+  route?: Partial<ConfinedProviderRoute>; afterInvoke?: () => void; timeout?: number; maxTokens?: number } = {}) {
   const base = setup(); base.grant({ id: 'provider-agent-grant', grantee: base.bob });
   const directory = options.directory ?? mkdtempSync(join(tmpdir(), 'provider-path-'));
   let now = 100, stopped = false, generation = base.run.generation.id;
@@ -125,7 +125,7 @@ export function providerFixture(options: { directory?: string; endpoint?: string
     settlement: { owner: 'part-eight', read: (reference, step) => api.readRunSettlement(reference, step) },
   };
   const graph = value(createRunGraph(deps));
-  const settings = { automaticRetries: 0, maxTokens: 128 }, outputSchema = { type: 'Decision' };
+  const settings = { automaticRetries: 0, maxTokens: options.maxTokens ?? 128 }, outputSchema = { type: 'Decision' };
   const question = { id: 'provider-question', run: { owner: 'part-five' as const, name: 'Run' as const, id: base.id }, step: 'step:provider:semantic:1', ordinal: 0,
     semanticMessage: 'provider:semantic:1', question: 'Should work proceed?', context: 'Recorded task evidence.', evidence: ['e1', 'e2'], deadline: 400 };
   const submitted = enc({ provider: 'test-provider', model: 'model', route: 'route', messages: [{ role: 'user', content: question.question },
@@ -138,7 +138,7 @@ export function providerFixture(options: { directory?: string; endpoint?: string
     running = value(graph.transition({ ...start, step: { ...start.step, operation: { ...start.step.operation, digest: enc(submitted).hash } } }));
   } else running = value(graph.read(base.id));
   const seven = createProviderJudgmentPort({ host: jh, boundary, authority: six, captures, store, context, privateKey, runs: graph,
-    settings, outputSchema, maxTokens: 128, maxCaptureBytes: 65536, timeout: 100, disclosure: 'local-test' });
+    settings, outputSchema, maxTokens: settings.maxTokens, maxCaptureBytes: 65536, timeout: 100, disclosure: 'local-test' });
   const runtime = createVerificationRuntime(vh, createVerificationSpine(vh, author, store));
   const plan = { ...verificationInput('VerificationPlan'), id: 'provider-plan', subject: { ...verificationInput('VerificationPlan').subject, generation },
     bar: { ...verificationInput('VerificationPlan').bar, version: 'provider-bar', sources: ['probe'] } };

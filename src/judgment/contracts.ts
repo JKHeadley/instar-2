@@ -153,6 +153,8 @@ export interface ProviderObservation {
   readonly failure?: Readonly<{ failureClass: 'limit' | 'policy' | 'timeout' | 'transport' | 'unknown'; resetHint: string | null; resetAt: number | null }>;
   readonly providerOperation: string | null;
   readonly usage: { readonly inputTokens: number | null; readonly outputTokens: number | null; readonly charge: number | null;
+    /** Answer-cap quantity after validated thinking exclusion; outputTokens retains total accounting. Absent means use total. */
+    readonly answerTokens?: number;
     readonly source: string; readonly inputComplete?: true };
   readonly retryBlocked: boolean;
   /** Absent observations retain their legacy settlement meaning but cannot be used as answers. */

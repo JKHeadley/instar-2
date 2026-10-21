@@ -345,3 +345,23 @@ it('records refused or limited preflights without their output and preserves thr
   expect(rows).toMatchObject([{ phase: 'version', measurements: { failed: true } }]);
   expect(JSON.stringify(rows)).not.toContain('private failure');
 });
+
+// i1b-opus-1020: Opus 5.5 rejects disabled thinking, so MAX_THINKING_TOKENS=0 leaves it a 2048-token thinking budget,
+// and its retrospective answer (1238 tokens) was classified over the 2048-token cap only because the 2048 thinking
+// tokens were counted with it. The cap bounds the ANSWER; reported thinking is not part of it. Both sides, on the
+// recorded usage and on the probes.
+it('classifies the output cap on the answer tokens, not the reported thinking (recorded Opus retrospective frame)', () => {
+  const recorded = JSON.parse(readFileSync(join(process.cwd(), 'tests/preview/fixtures/thinking-floor-opus-2026-10-20.json'), 'utf8'));
+  const withUsage = usage => JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'answer', usage });
+  const live = subscriptionCallOutcome(physical(withUsage(recorded.recorded.usage)), 27057, 42970, 2048, 16384);
+  expect(live).toMatchObject({ localLimit: null, outputTokens: 3286 });
+  for (const probe of recorded.probes)
+    expect(subscriptionCallOutcome(physical(withUsage(probe.usage)), 10, 5, 2048, 16384).localLimit).toBe(null);
+  // The other side: an answer over the cap stays over it however much thinking is reported beside it.
+  expect(subscriptionCallOutcome(physical(withUsage({ output_tokens: 4097, output_tokens_details: { thinking_tokens: 2048 } })),
+    10, 5, 2048, 16384).localLimit).toBe('output-cap');
+  // A thinking count that is malformed or larger than the whole output proves nothing: the whole output is counted.
+  for (const thinking of [-1, 1.5, '2048', 5000])
+    expect(subscriptionCallOutcome(physical(withUsage({ output_tokens: 3286, output_tokens_details: { thinking_tokens: thinking } })),
+      10, 5, 2048, 16384).localLimit).toBe('output-cap');
+});

@@ -19,6 +19,8 @@ export function observationCheck(v: ProviderObservation, d: ModelDescription): v
   ensure(v.state !== 'complete' || v.bytes !== null, 'complete response lacks bytes');
   ensure(v.providerOperation === null || typeof v.providerOperation === 'string' && v.providerOperation.length <= 256, 'provider operation bound');
   for (const n of [v.usage.inputTokens, v.usage.outputTokens, v.usage.charge]) ensure(n === null || Number.isSafeInteger(n) && n >= 0, 'invalid observed usage');
+  ensure(v.usage.answerTokens === undefined || Number.isSafeInteger(v.usage.answerTokens) && v.usage.answerTokens >= 0
+    && v.usage.outputTokens !== null && v.usage.answerTokens <= v.usage.outputTokens, 'invalid observed answer usage');
   ensure(typeof v.usage.source === 'string' && v.usage.source.length > 0 && v.usage.source.length <= 256, 'usage source or explicit exception required');
   ensure(typeof v.retryBlocked === 'boolean', 'retry observation required');
   if (v.responseEvidence) {
@@ -82,6 +84,9 @@ function snapshotObservation(raw: unknown, d: ModelDescription): ProviderObserva
   const failure = data(raw, 'failure');
   const count = (v: unknown): number | null => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : null;
   const input = data(usage, 'inputTokens'), output = data(usage, 'outputTokens'), charge = data(usage, 'charge'), source = data(usage, 'source');
+  const answer = count(data(usage, 'answerTokens'));
+  const validAnswer = answer !== null && count(output) !== null && answer <= (output as number);
+  const usageFields = ['inputTokens', 'outputTokens', 'charge', 'source'];
   const validCount = (v: unknown) => v === null || count(v) !== null;
   const validText = (v: unknown) => typeof v === 'string' && v.length > 0 && v.length <= 256;
   // Avoid allocating a second unbounded byte array for oversized raw strings.
@@ -90,7 +95,7 @@ function snapshotObservation(raw: unknown, d: ModelDescription): ProviderObserva
   const baseFields = ['state', 'bytes', 'providerOperation', 'usage', 'retryBlocked'];
   const valid = (plain(raw, baseFields) || plain(raw, [...baseFields, 'responseEvidence'])
     || plain(raw, [...baseFields, 'failure']) || plain(raw, [...baseFields, 'failure', 'responseEvidence']))
-    && plain(usage, ['inputTokens', 'outputTokens', 'charge', 'source'])
+    && (plain(usage, usageFields) || plain(usage, [...usageFields, 'answerTokens']) && validAnswer)
     && typeof state === 'string' && ['complete', 'rejected', 'uncertain'].includes(state)
     && (bytes === null || typeof bytes === 'string') && (state !== 'complete' || typeof bytes === 'string')
     && (operation === null || typeof operation === 'string' && operation.length <= 256)
@@ -149,6 +154,7 @@ function snapshotObservation(raw: unknown, d: ModelDescription): ProviderObserva
     bytes: typeof bytes === 'string' && !oversized ? bytes : null,
     providerOperation: typeof operation === 'string' && operation.length <= 256 ? operation : null,
     usage: { inputTokens: count(input), outputTokens: count(output), charge: count(charge),
+      ...(validAnswer ? { answerTokens: answer } : {}),
       source: validText(source) ? source as string : 'invalid usage source; independently valid numeric fields retained' },
     retryBlocked: false,
     ...(failure && typeof failure === 'object' ? { failure: {
