@@ -1,6 +1,6 @@
 # Change review — Recover refused outage notices and report availability honestly
 
-Subject base: 12b4bb203e6a194e61339821ab029677e55226fa
+Subject base: 39d72c391905038ad7da24c51c6c0e8df5732b0f
 Review state: open
 Reviewed content: none
 Outcome: A failed audience admission leaves the outage notice eligible; an admitted uncertain send remains fenced across restart. Unavailable sign-in no longer claims exhausted quota or a known reset.
@@ -28,6 +28,10 @@ Prompt finding: 85544c20941f | protocol-literal | Fixed infrastructure outage se
 Prompt finding: e8708c7fea24 | protocol-literal | Existing source-label disclosure guidance is unchanged by this repair.
 
 Publication: Delegated owner rehash refreshed one preview test source pin. Inventory repin changed zero pins. Register replay from 2179b3f00062865c38a93597c6668d5cbdaefd7c generated seven artifacts with generation sha256:e9cca4433015473b31790daa22cb807aeaf961f0f252fba95ee77bf7f3c4f85d; shape-only, no new runtime authority.
+
+Coverage repair: The original six unit commits (5462c349, f26a0653, d9f622fc, 074ae5fa, 8c40aa27, 12b4bb20) had no change-review record. This record covers the unit from its original parent, including the read-only pool outage observation, host loginCapacity wiring, durable notice projection and compaction, reserved-turn disclosure labeling, and generated pins. The supplied independent review accepted the basic route and five floors but required the two repairs above; this record does not claim convergence.
+
+Decision: limit-repair-review-coverage | Cover the six original unit commits from their parent as well as this repair, closing the Rule 74 coverage gap without changing older records. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/limit-notice-1020-repair-165229-PROGRESS.md
 
 ## Closing block
 
