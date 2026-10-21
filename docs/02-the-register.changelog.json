@@ -1,5 +1,22 @@
 [
   {
+    "revision": 7,
+    "date": "2026-10-20",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "unit-deadline-warn-1020 round 1 repair: align the documented deadline contract with the authorized warning and overdue behavior."
+    },
+    "changes": [
+      {
+        "what": "Describe the 24-hour warning, persistent overdue reporting for dark features, and build failure for overdue soaking features while retaining the graduation obligation.",
+        "why": "The previous promise that every expired deadline fails the build contradicted the deadline-warning implementation.",
+        "commits": ["75def8db"],
+        "ref": "reviews/deadline-warn-1020-repair-change-review.md; unit-deadline-warn-1020 round 1 must-fix 2"
+      }
+    ]
+  },
+  {
     "revision": 6,
     "date": "2026-10-10",
     "status": "draft",
