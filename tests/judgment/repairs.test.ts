@@ -10,6 +10,7 @@ import type { JudgmentAttemptRecord, JudgmentCapturePort, ProviderObservation } 
 import { receiptByteBound } from '../../src/judgment/model-adapter.js';
 import { createJudgmentDoorway } from '../../src/judgment/index.js';
 import { judgmentFixture, refused, value } from './fixture.js';
+import thinkingCapture from '../preview/fixtures/thinking-floor-opus-2026-10-20.json' with { type: 'json' };
 // @ts-expect-error Reference host adapter outside pure core.
 import { createJudgmentCaptures } from '../../scripts/judgment-captures.mjs';
 
@@ -28,6 +29,48 @@ function inputSize(f: ReturnType<typeof judgmentFixture>) {
 }
 
 describe('P7 desk reproductions over real capture/spine/claim ports', { timeout: 30_000 }, () => {
+  it.each([undefined, 0, 9])('retains legacy and valid answer-token usage (%s) through judgment', async answerTokens => {
+    const base = judgmentFixture();
+    const usage = { ...base.observation.usage, ...(answerTokens === undefined ? {} : { answerTokens }) };
+    const f = judgmentFixture({ observation: { ...base.observation, usage } });
+    value(await f.door.judge(f.input, f.start()));
+    expect(receipt(f).usage).toEqual(usage);
+    expect(f.calls).toHaveLength(1);
+  });
+  it('replays recorded Opus retrospective and probe usage through the legacy snapshot', async () => {
+    for (const captured of [thinkingCapture.recorded, ...thinkingCapture.probes]) {
+      const base = judgmentFixture(), total = captured.usage.output_tokens;
+      const usage = { ...base.observation.usage, outputTokens: total,
+        answerTokens: total - captured.usage.output_tokens_details.thinking_tokens };
+      const f = judgmentFixture({ observation: { ...base.observation, usage } });
+      value(await f.door.judge(f.input, f.start()));
+      expect(receipt(f).usage).toEqual(usage);
+      expect(f.calls).toHaveLength(1);
+    }
+  });
+  it.each([-1, 1.5, 10, Number.MAX_SAFE_INTEGER + 1, NaN, Infinity, '9', null, undefined])(
+    'refuses malformed present answer-token metadata (%s), retaining total accounting', async answerTokens => {
+      const base = judgmentFixture();
+      const usage = { ...base.observation.usage, answerTokens };
+      const f = judgmentFixture({ observation: { ...base.observation, usage } as ProviderObservation });
+      refused(await f.door.judge(f.input, f.start()), 'no usable answer');
+      expect(receipt(f)).toMatchObject({ state: 'uncertain', usage: base.observation.usage,
+        limitation: { kind: 'invalid-provider-observation' } });
+      expect(receipt(f).usage).not.toHaveProperty('answerTokens');
+      expect(f.calls).toHaveLength(1);
+    });
+  it('refuses answer tokens without a total and never executes answer-token accessors', async () => {
+    const base = judgmentFixture(); let getters = 0;
+    for (const usage of [{ ...base.observation.usage, outputTokens: null, answerTokens: 0 },
+      { ...base.observation.usage, get answerTokens() { getters++; return 9; } }]) {
+      const f = judgmentFixture({ observation: { ...base.observation, usage } });
+      refused(await f.door.judge(f.input, f.start()), 'no usable answer');
+      expect(receipt(f)).toMatchObject({ state: 'uncertain', usage: { charge: 2 },
+        limitation: { kind: 'invalid-provider-observation' } });
+      expect(f.calls).toHaveLength(1);
+    }
+    expect(getters).toBe(0);
+  });
   it.each(['live', 'foreign', 'malformed'])('P7-NF-22 P7-NF-34 N1 %s lock blocks writes but not verified capture reads', kind => {
     const f = judgmentFixture({ capacity: 8 }); const token = value(f.captures.reserve(8));
     const cap = value(f.captures.putReserved(token, 'receipt'));
