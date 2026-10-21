@@ -60,6 +60,7 @@ import { exhaustedPollReason, pollBackoffMs, pollEndsRun, temporaryPollStatus } 
 import { loopHealth } from './obligations.js';
 import { createReplyTyping, reactionAcknowledgement } from './telegram-acknowledgement.mjs';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
+import { sendFormattedText } from './telegram-markdown.mjs';
 import { authoritySealKey, resolveActivationAuthority, resolveInstallationPolicy, sealAuthorityRecord, singleMachineProfileDigest, SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { deriveProfile } from '../../src/index.js';
 import { PREVIEW_PROOF_PLANS, executeProof, nextDuePlan, probeId, proofPosture, stepCoverage } from './proofs.js';
@@ -2388,14 +2389,20 @@ async function main() {
             }
           }
           outcome = { kind: 'unknown', reason: 'send port failed' };
-          let reply;
-          try { reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
-            body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }),
-              ...(replyTo === undefined ? {} : { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } }),
-              ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }) },
-            timeoutMs: 30000 }, token()); }
-          finally { observeSendPhase?.('transportReturnedAt'); }
-          outcome = classifyTelegramSend(reply, { chat, expectedText, forum: g.forum === true, ...(thread === undefined ? {} : { thread }) });
+          // md-render-1020: the reply's markdown is sent as Telegram HTML formatting. A send Telegram refuses as
+          // unparsable created no message, so it alone is sent once more as plain text, after the same stop and
+          // ownership checks as any dispatch; every other outcome is final.
+          try {
+            outcome = sendFormattedText({ text, expectedText,
+              body: { chat_id: chat, ...(thread === undefined ? {} : { message_thread_id: thread }),
+                ...(replyTo === undefined ? {} : { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } }),
+                ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }) },
+              invoke: body => physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage', body, timeoutMs: 30000 }, token()),
+              classify: (reply, shown) => classifyTelegramSend(reply, { chat, expectedText: shown, forum: g.forum === true,
+                ...(thread === undefined ? {} : { thread }) }),
+              mayResend: () => !workerStop.value && !existsSync(stopPath) && ownerHeld() && !journal.view.stop
+                && wallNow() < journal.view.expires && (!current || current()) });
+          } finally { observeSendPhase?.('transportReturnedAt'); }
           if (reaction && outcome.kind === 'accepted') {
             outcome = { ...outcome, acknowledgementPath: 'text' };
             typing.start(chat, thread, current ?? (() => false),

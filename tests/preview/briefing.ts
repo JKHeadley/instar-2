@@ -161,7 +161,7 @@ export const SOURCE_PINS = Object.freeze({
  * files keep their labels. */
 export const DESK_STATUS_MAX_BYTES = 4096;
 /** Under byte pressure the packet cuts the desk report to this many bytes before any history yields. */
-export const DESK_STATUS_YIELD_BYTES = 512;
+export const DESK_STATUS_YIELD_BYTES = 352;
 export const DESK_STATUS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 export type DeskStatusFile = { text: string | null; modifiedAt: number } | null;
 export function readDeskStatus(path: string): DeskStatusFile {
@@ -248,6 +248,24 @@ export const ANSWER_PROTOCOL = [
 ].join('\n');
 /** Standing answer instructions, identical before and after compaction (Rule 47). */
 export const ANSWER_INSTRUCTIONS = `${MIND_INSTRUCTIONS}\n${SELF_DESCRIPTION}\n${ANSWER_PROTOCOL}`;
+
+/** md-briefing-1020: what the turn's own platform shows of a reply's markdown, said once in its answer instructions so
+ * the model writes for it (a comparison as a short list, not a table or # headings). The renderer (telegram-markdown.mjs;
+ * 1.x SlackMrkdwnFormatter, ported in src/conversation/slack-formatter.ts) stays the safety net. Chosen by the turn id's
+ * platform prefix; runner tasks and maintenance calls get none. Slack lists the converter's own contract; 2.0 Slack replies
+ * are still held, so no live turn carries it yet. */
+export const REPLY_FORMAT_GUIDANCE = Object.freeze({
+  telegram: 'Telegram shows **bold**, *italic*, `code`, ```blocks```, [text](url), short - lists; no tables or # headings, so use a short list.',
+  slack: 'Slack shows **bold**, *italic*, ~~strike~~, `code`, ```blocks```, [text](url), short - lists, > quotes; no tables or # headings, so use a short list.',
+});
+export function replyFormatGuidance(id: string): string {
+  const platform = /^(telegram|slack):/u.exec(id)?.[1] as keyof typeof REPLY_FORMAT_GUIDANCE | undefined;
+  return platform ? REPLY_FORMAT_GUIDANCE[platform] : '';
+}
+/** One answer call's standing instructions: the shared set, the memory-lookup protocol when offered, then the format line. */
+export function answerInstructions(id: string, memoryLookup: boolean): string {
+  return [ANSWER_INSTRUCTIONS, ...memoryLookup ? [MEMORY_LOOKUP_INSTRUCTIONS] : [], replyFormatGuidance(id)].filter(Boolean).join('\n');
+}
 
 /** Offered only while the runner can perform a conversation-memory lookup. */
 export const MEMORY_LOOKUP_INSTRUCTIONS = 'If packet.memoryLookup is "offered" and the question needs a remembered conversation detail the packet does not show, do not answer that it is missing or unknown yet: '

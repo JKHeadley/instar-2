@@ -5,7 +5,7 @@ import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS, READ_BEFORE_ANSWER }
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_NATIVE_SYSTEM_PROMPT,
   SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { CODEX_CONVERSATION_SYSTEM_PROMPT, CODEX_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-codex-provider.js';
-import { ANSWER_INSTRUCTIONS, MEMORY_LOOKUP_INSTRUCTIONS } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, MEMORY_LOOKUP_INSTRUCTIONS, REPLY_FORMAT_GUIDANCE } from './briefing.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { readAnswer } from './answer-reading.js';
 import { parseReplyReviewVerdict, REPLY_RULES, substantiveReply, guidanceReviewRules, replyReviewQuestion, replyReviewContext } from './reply-check.js';
@@ -126,7 +126,8 @@ it('offers the memory lookup protocol exactly when available, equally before and
       const envelope = JSON.parse(prepareJournalEnvelope({ question: 'A question', id: 'telegram:1:update:4',
         context: JSON.stringify({ history: [], continuity, memoryLookup }) }, 'claude-sonnet-5', 'grant:test', 1));
       const instructions = envelope.messages.find((message: { role: string }) => message.role === 'instructions').content;
-      expect(instructions).toBe(memoryLookup === 'offered' ? `${ANSWER_INSTRUCTIONS}\n${MEMORY_LOOKUP_INSTRUCTIONS}` : ANSWER_INSTRUCTIONS);
+      // md-briefing-1020: a Telegram turn's reply-format line follows, in both cases.
+      expect(instructions).toBe(`${memoryLookup === 'offered' ? `${ANSWER_INSTRUCTIONS}\n${MEMORY_LOOKUP_INSTRUCTIONS}` : ANSWER_INSTRUCTIONS}\n${REPLY_FORMAT_GUIDANCE.telegram}`);
       expect(instructions.includes('{"lookup":')).toBe(memoryLookup === 'offered');
     }
   }
