@@ -270,7 +270,7 @@ it.each(recorded.otherShapes.filter(row => ['delivered-reply', 'empty-reply-in-r
   worker.intake([fixture('document')]); await worker.drain();
   expect(calls).toBeGreaterThan(0); expect(journal.view.order[0]?.media).toEqual({ state: 'failed', reason: 'admission-refused' });
   expect(sends.every(text => text.trim().length > 0)).toBe(true);
-  if (sample.kind === 'delivered-reply') expect(sends[0]).toBe(sample.raw.replace(/^PREVIEW — /u, ''));
+  if (sample.kind === 'delivered-reply') expect(sends[0]).toBe(sample.raw.replace(/^PREVIEW — /u, '').replace(/^- /gm, '• '));
   else expect(sample.raw).toBe('');
   journal.close();
 }));
