@@ -1,3 +1,4 @@
+import { renderTelegramHtml, telegramPlainText, parseRefused } from './telegram-markdown.mjs';
 import { reconcileRunCompletion, type RunCompletionItem } from '../../src/rungraph/index.js';
 import { decideProactiveCompaction } from '../../src/awareness/sentinel.js';
 import { WORKING_LIVENESS, WORKING_PROGRESS_CAP, WORKING_SILENCE_MS, currentWorkingActivity, workingProgressDue, type WorkingActivity, type WorkingProgress } from './working-progress.js';
@@ -1052,7 +1053,7 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 5;
+export const JOURNAL_GENERATION = 6;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -1065,7 +1066,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['phase-timing', 'group-carry', 'request-transfer', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1236,7 +1237,7 @@ export type JournalRecord =
     recoveryHeld?: true;
     assessment?: BlockerAssessment;
     waitsOn?: 'operator' | 'external'; recheckAt?: number; usage?: ModelUsage; at: number }
-  | { kind: 'intent'; id: string; text: string; correctionDeferred?: true; body?: string; chat: string; thread?: number; update: number; grant: string; mentionedDates?: string[]; promises?: AgentPromise[];
+  | { kind: 'intent'; id: string; text: string; correctionDeferred?: true; formatting?: ReplyFormatting; body?: string; chat: string; thread?: number; update: number; grant: string; mentionedDates?: string[]; promises?: AgentPromise[];
     /** Rules 6, 20-23, 83, 99: obligations the sent reply itself declares, recorded in the same intent. */
     loops?: ReplyLoop[]; blocker?: ProposedBlocker; blockerRechecks?: BlockerRecheck[];
     /** Obligation work results this sent reply delivers; delivery settles the obligation (Rules 8, 92). */
@@ -1269,6 +1270,7 @@ export type JournalRecord =
      * its first message, and these its later messages (part 2 onward), each signed for its own send target. Each is
      * sent in order, only after the one before it was accepted. */
     parts?: ReplyPart[]; at: number }
+  | { kind: 'send-format-refused'; target: string; response: TelegramFormatRefusal; forward?: ForwardDeclaration; at: number }
   | { kind: 'sent'; id: string; message: number; latencyMs?: number; at: number }
   /** A continuation part's dispatch is about to start: a part started without a receipt is UNKNOWN, never re-sent. */
   | { kind: 'reply-part-start'; id: string; part: number; at: number }
@@ -1389,8 +1391,20 @@ export interface PacketDrop { kind: string; source: string; reason: string }
  * `failed`: custody did not complete; the original stays in the encrypted journal, redacted for
  * every consumer, and no SecretRef exists to spend. Optional: older rows carry none. */
 export type IntakeCustody = { state: 'stored'; arrival: string; capture: string; secrets: string[] } | { state: 'failed' };
-/** One later message of a reply split across several: its plain text, its Telegram body, and its own signed provenance. */
-export interface ReplyPart { text: string; body: string; provenance: OutboundProvenance }
+/** Retained evidence for the single bounded, pre-signed plain alternative. */
+export interface TelegramFormatRefusal { kind: 'response'; status: number; bytes: string }
+export interface ReplyFormatting {
+  shown: string;
+  fallback: { text: string; provenance: OutboundProvenance };
+  refusal?: TelegramFormatRefusal;
+}
+export interface ReplyPart { text: string; body: string; provenance: OutboundProvenance; formatting?: ReplyFormatting }
+/** Exact retained preparation; replay does not invoke the current renderer. */
+export function replyFormatting(view: JournalView, target: string): ReplyFormatting | undefined {
+  const [kind, ...rest] = target.split(':');
+  return kind === 'reply' ? view.turns.get(rest.join(':'))?.formatting
+    : kind === 'reply-part' ? view.turns.get(rest.slice(1).join(':'))?.replyParts?.[Number(rest[0]) - 2]?.formatting : undefined;
+}
 /** Rules 52/87: overlapping answers share one topic cadence, including UNKNOWN intents.
  * A sibling completing after this intake remains in the window, so completion/replay cannot
  * reset its spacing. Answers already complete before intake start a separate window. */
@@ -1416,6 +1430,8 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   mediaClaim?: string;
   /** Part Thirteen §9: the scoped-tool calls of every attempt of this turn's answer, in order (bounded), read by its reply review. */
   toolAttempts?: ToolAttempt[];
+  /** The first message's retained preparation, including any parse refusal. */
+  formatting?: ReplyFormatting;
   /** The later messages of a reply split across several (part 2 onward, in order), with each one's dispatch start and receipt. */
   replyParts?: (ReplyPart & { started?: true; sent?: number; sentAt?: number })[];
   /** Calls the turn made beyond `toolAttempts` (the review bound); the review is told its excerpt is incomplete. */
@@ -3839,6 +3855,14 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
   // generic read (`'state' in row`, `'failureClass' in row`) can fold a newer build's frame into this
   // build's counts and silently move the projection digest the two builds compare.
   if (!KNOWN_FRAME_KINDS.has(row.kind)) { admitForwardFrame(view, row); return; }
+  if (row.kind === 'send-format-refused') {
+    const prepared = replyFormatting(view, row.target), target = sendTarget(view, row.target);
+    if (!prepared || prepared.refusal || !target || target.sent !== undefined
+      || view.sendOutcomes.some(item => item.target === row.target) || !parseRefused(row.response))
+      throw Error('preview journal: format refusal order');
+    prepared.refusal = row.response;
+    return;
+  }
   if (row.kind === 'phase-timing') {
     checkPhaseTiming(row);
     const recent = view.phaseTimings ??= [];
@@ -5146,9 +5170,10 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       addOperatorRequest(view, row.operatorRequest, turn.id, 'reply', turn.thread ?? null, row.text, row.at, row.operatorReview, row.requestScope);
     }
     if (row.parts !== undefined && (!Array.isArray(row.parts) || !row.parts.length || row.parts.length >= MAX_REPLY_PARTS
-      || row.approval !== undefined || row.body === undefined || Buffer.byteLength(row.body) > TELEGRAM_MESSAGE_LIMIT
-      || row.parts.some(part => typeof part.text !== 'string' || !part.text || part.body !== encodeReply(part.text) || !fitsOneMessage(part.text))))
+      || row.approval !== undefined || row.body === undefined || row.formatting === undefined && Buffer.byteLength(row.body) > TELEGRAM_MESSAGE_LIMIT
+      || row.parts.some(part => typeof part.text !== 'string' || !part.text || (part.formatting === undefined && part.body !== encodeReply(part.text)) || !fitsOneMessage(part.text))))
       throw Error('preview journal: reply parts refused');
+    if (row.formatting !== undefined) turn.formatting = structuredClone(row.formatting);
     turn.intent = row.text; turn.intentAt = row.at; turn.intentBody = row.body ?? row.text; view.replies++;
     if (row.parts !== undefined) turn.replyParts = row.parts.map(part => ({ ...part }));
     if (row.correctionDeferred) {
@@ -5392,6 +5417,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
     // made durable before recovery is allowed to consume its causal state.
     if (!readOnly) fsyncSync(fd);
     const append = (incoming: JournalRecord) => {
+      // Additive evidence: old readers still consume the original intent exactly once.
+      if (incoming.kind === 'send-format-refused') incoming = { ...incoming, forward: { generation: 6, additive: true } };
       const row: JournalRecord = view && 'at' in incoming && incoming.at < view.clockFloor
         ? { ...incoming, at: view.clockFloor } : incoming;
       if (readOnly || closed) throw Error('preview journal: reader cannot append');
@@ -5419,6 +5446,16 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       if (row.kind === 'intent' && row.parts !== undefined && row.parts.some((part, index) => !verifyOutbound(part.provenance,
         { target: replyPartTarget(row.id, index + 2), chat: row.chat, ...(row.thread === undefined ? {} : { thread: row.thread }), body: part.body })))
         throw Error('preview journal: outbound provenance refused');
+      if (row.kind === 'intent') {
+        for (const [index, part] of [{ formatting: row.formatting }, ...(row.parts ?? [])].entries()) {
+          const format = part.formatting;
+          if (format !== undefined && (typeof format.shown !== 'string' || !format.fallback
+            || typeof format.fallback.text !== 'string' || format.refusal !== undefined
+            || !verifyOutbound(format.fallback.provenance, { target: index === 0 ? `reply:${row.id}` : replyPartTarget(row.id, index + 1),
+              chat: row.chat, ...(row.thread === undefined ? {} : { thread: row.thread }), body: format.fallback.text })))
+            throw Error('preview journal: plain alternative provenance refused');
+        }
+      }
       // Checked before the durable write: a record its own projection would refuse must never reach the file.
       if (row.kind === 'retro-rerun-reserve') checkRerunReserve(view!, row);
       if (row.kind === 'retro-duty-reserve') checkDutyReserve(view!, row);
@@ -5883,7 +5920,7 @@ export interface PreviewPorts {
     | {state:'uncertain'; safetyCeiling?: 'deadline' | 'calls'; usage?: ModelUsage}>;
   /** Rule 42: a message id (accepted), null (UNKNOWN) or a closed outcome. Rule 89: `provenance`
    * is the journal's signature over exactly `target`, `chat`, `thread` and `text`. */
-  send(input: { text: string; expectedText: string; chat: string; thread?: number; replyTo?: number; update: number;
+  send(input: { text: string; expectedText: string; formatting?: ReplyFormatting; chat: string; thread?: number; replyTo?: number; update: number;
     kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown;
     target?: string; provenance?: OutboundProvenance; admit?: () => void; current?: () => boolean;
     observeSendPhase?: (phase: 'audienceAdmittedAt' | 'transportBegunAt' | 'transportReturnedAt') => void }): Promise<number | null | SendOutcome>;
@@ -6050,7 +6087,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * non-delivery with its reason, never as UNKNOWN (Rule 42). */
   const NOT_SENT_ATTEMPTS = 2;
   const dispatch = async (target: string, provenance: OutboundProvenance | undefined,
-    input: { text: string; expectedText: string; chat: string; thread?: number; update: number;
+    input: { text: string; expectedText: string; formatting?: ReplyFormatting; chat: string; thread?: number; update: number;
       kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown; current?: () => boolean }, admitted?: () => void): Promise<SettledSendOutcome> => {
     const measurements: Record<string, number | boolean> = { sendEnteredAt: ports.now(), provedNotSentAttempts: 0 };
     const observeSendPhase = (phase: 'audienceAdmittedAt' | 'transportBegunAt' | 'transportReturnedAt') => { measurements[phase] = ports.now(); };
@@ -6132,7 +6169,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** The one outbound boundary for every push the worker makes (Rules 52, 87, 106). It dispatches the
    * durable signed intent and returns its closed outcome (Rules 42, 89). */
   const push = (kind: OutboundKind, target: string, provenance: OutboundProvenance | undefined,
-    input: { text: string; expectedText: string; chat: string; thread?: number; update: number; replyMarkup?: unknown; current?: () => boolean }, admitted?: () => void) => {
+    input: { text: string; expectedText: string; formatting?: ReplyFormatting; chat: string; thread?: number; update: number; replyMarkup?: unknown; current?: () => boolean }, admitted?: () => void) => {
     const disposition: OutboundDisposition = OUTBOUND_DISPOSITIONS[kind];
     if (disposition === 'status') throw Error('preview: status is pull-only and never pushed');
     return dispatch(target, provenance, { ...input, kind, disposition }, admitted);
@@ -8406,7 +8443,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       gate();
       const number = index + 2, target = replyPartTarget(turn.id, number);
       journal.append({ kind: 'reply-part-start', id: turn.id, part: number, at: ports.now() });
-      const outcome = await push('reply', target, part.provenance, { text: part.body, expectedText: part.text,
+      const outcome = await push('reply', target, part.provenance, { text: part.body, expectedText: part.formatting?.shown ?? part.text, ...(part.formatting ? { formatting: part.formatting } : {}),
         chat: journal.view.genesis.chat, ...(turn.thread === undefined ? {} : { thread: turn.thread }), update: turn.update });
       if (outcome.kind !== 'accepted') return;
       try { journal.append({ kind: 'reply-part-sent', id: turn.id, part: number, message: outcome.message, at: ports.now() }); }
@@ -9878,8 +9915,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (!split) {
           journal.append({kind:'hold',id:turn.id,reason:'encoded reply size',at:ports.now()}); continue;
         }
-        const body = encodeReply(split[0]!);
-        try { ports.checkOutbound(encodeReply(reply)); if (split.length > 1) for (const part of split) ports.checkOutbound(encodeReply(part)); }
+        // Render before either variant is signed or admitted. The stored preparation, never a future
+        // renderer version, supplies dispatch and resumed continuation parts (Rules 33, 42, 89).
+        const rendered = split.map(text => ({ ...renderTelegramHtml(text), plain: telegramPlainText(text) }));
+        const body = rendered[0]!.html;
+        try { for (const text of new Set([encodeReply(reply), ...rendered.flatMap(part => [part.html, part.plain])])) ports.checkOutbound(text); }
         catch { journal.append({ kind: 'hold', id: turn.id, reason: 'outbound secret refused', at: ports.now() }); continue; }
         const thread = turn.thread === undefined ? {} : { thread: turn.thread };
         // Review is complete: dispatch owns the reply now. Cancel an unadmitted acknowledgement,
@@ -9893,9 +9933,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const approval: ApprovalRequest | undefined = isStopCommand(turn.text) && reply.includes(STOP_CONFIRM_TEXT) && journal.view.stop === null
           ? { id: approvalId(turn.id, 'stop', stopBase), action: 'stop', base: stopBase } : undefined;
         const provenance = journal.signOutbound(speaker, { target: `reply:${turn.id}`, chat: journal.view.genesis.chat, ...thread, body });
-        const parts = split.slice(1).map((text, index) => ({ text, body: encodeReply(text), provenance: journal.signOutbound(speaker,
-          { target: replyPartTarget(turn.id, index + 2), chat: journal.view.genesis.chat, ...thread, body: encodeReply(text) }) }));
-        const admitReply = () => journal.append({ kind: 'intent', id: turn.id, text: reply, body,
+        const formats = rendered.map((part, index): ReplyFormatting => ({ shown: part.shown,
+          fallback: { text: part.plain, provenance: journal.signOutbound(speaker, { target: index === 0 ? `reply:${turn.id}` : replyPartTarget(turn.id, index + 1),
+            chat: journal.view.genesis.chat, ...thread, body: part.plain }) } }));
+        const formatting = formats[0]!;
+        const parts = split.slice(1).map((text, index) => ({ text, body: rendered[index + 1]!.html, formatting: formats[index + 1]!,
+          provenance: journal.signOutbound(speaker, { target: replyPartTarget(turn.id, index + 2),
+            chat: journal.view.genesis.chat, ...thread, body: rendered[index + 1]!.html }) }));
+        const admitReply = () => journal.append({ kind: 'intent', id: turn.id, text: reply, body, formatting,
           ...(correctionDeferred ? { correctionDeferred: true as const } : {}), chat: journal.view.genesis.chat, ...thread, provenance,
           ...(parts.length ? { parts } : {}),
           ...(approval ? { approval } : {}), ...(offer?.request ? { operatorRequest: offer.request, requestScope: 'action' as const } : {}),
@@ -9920,7 +9965,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           update: turn.update, grant: journal.view.genesis.grant, at: intentAt });
         gate();
         const sendStarted = elapsedMs();
-        const outcome = await push(approval ? 'approval' : 'reply', `reply:${turn.id}`, provenance, { text: body, expectedText: split[0]!,
+        const outcome = await push(approval ? 'approval' : 'reply', `reply:${turn.id}`, provenance, { text: body, expectedText: formatting.shown, formatting,
           chat: journal.view.genesis.chat, ...thread, update: turn.update, ...(approval ? { replyMarkup: approvalMarkup(approval.id) } : {}) }, admitReply);
         if (turn.intent === undefined) {
           journal.append({ kind: 'hold', id: turn.id, reason: GROUP_DISCLOSURE_HOLD, at: ports.now() });

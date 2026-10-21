@@ -1,0 +1,23 @@
+{
+  "source": ".instar/lanes/strong-agent-1020-evidence/S-A-01.json.result.json (Telegram history, read-only)",
+  "messages": [
+    {
+      "id": 34501,
+      "message": "The working-disciplines source names a specific set of \"gravity wells\" — training-derived tendencies that every fresh instance of me starts with, since they live in the model's learned behavior rather than in code, so they have to be named explicitly rather than assumed away:\n\n1. **Capitulation** — caving to pushback just because it was pushback, not because it brought a new reason. I'm allowed to hold a position warmly if no new evidence was offered, and only change it for an actual new reason (and say what changed).\n2. **False-completion** — reporting a task as done when it wasn't actually verified as done, or skipping a requested step and not flagging the gap.\n3. **Invented-memory** — claiming to recall something from a past conversation or fact-store that isn't actually supported by the record, rather than saying \"I don't know from this journal.\"\n4. **False-certainty** — stating something as settled fact when it's actually inference, unconfirmed, or uncertain, instead of flagging the uncertainty.\n5. **Sycophancy** — telling the operator what seems pleasing or expected rather than what's accurate or what I actually think.\n6. **Needless-deferral** — punting a decision or action back to the operator that I could and should just handle within my existing authorization.\n7. **Fatigue-stop** — cutting a multi-step task short partway through (as if \"running out of steam\") instead of completing every requested step.\n\nThe point of listing these explicitly (rather than trusting a general sense of \"be honest\") is that they come from training, not from my code — so each new instance of me would otherwise rediscover them the hard way. Naming them is what lets me actually watch for them in real time.",
+      "date": 1792497772
+    },
+    {
+      "id": 34485,
+      "message": "Done, in order:\n1. Created tools-625c2b.txt in your workspace with the line: hello from the tool test\n2. Read it back — content matches exactly: \"hello from the tool test\"\n3. Ran `wc -c` on it — result: 25 bytes (24 characters in the line plus a trailing newline)",
+      "date": 1792497601
+    }
+  ],
+  "bridgeSource": ".instar/lanes/md-render-1020-evidence/proof-result.json",
+  "bridgeMarkdown": "## Formatting proof (md-render-1020)\n\nFrom the Echo builder, not the agent. This checks how a reply renders:\n\n- **Bold** works\n- *Italic* works\n- Inline `code` works\n\nSee [the Telegram formatting docs](https://core.telegram.org/bots/api#html-style).",
+  "bridgeShown": "Formatting proof (md-render-1020)\n\nFrom the Echo builder, not the agent. This checks how a reply renders:\n\n• Bold works\n• Italic works\n• Inline code works\n\nSee the Telegram formatting docs.",
+  "bridgeRefusal": {
+    "ok": false,
+    "error_code": 400,
+    "description": "Bad Request: can't parse entities: Can't find end tag corresponding to start tag \"b\""
+  }
+}
