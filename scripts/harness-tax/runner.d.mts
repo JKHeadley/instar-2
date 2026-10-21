@@ -25,5 +25,5 @@ export function validateResult(result: unknown, request: Request, wallMs: number
 export function validateGrade(grade: unknown, task: Task, result: unknown): Grade;
 export function runDay(root: string, day: number, driver: Driver, grader: Grader, now?: () => number): Promise<void>;
 export function recordedObservation(row: object): { id: unknown; kind: string; digest: string; state: string; output: unknown; usage: unknown };
-export function table(rows: object[]): string;
+export function table(rows: object[], verdicts?: { part: string; verdict: string; reason: string; evidence: string[] }[]): string;
 export function partVerdict(part: string, baseline: object[], ablated: object[], judgment: { verdict: string; reason: string; evidence: string[] }): { part: string; kind: string; verdict: string; reason: string; evidence: string[] };

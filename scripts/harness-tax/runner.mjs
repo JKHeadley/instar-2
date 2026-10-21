@@ -178,14 +178,18 @@ export function recordedObservation(row) {
     usage: row.usage ?? row.result?.usage ?? row.uncertainUsage ?? null };
 }
 
-export function table(rows) {
+export function table(rows, verdicts = []) {
   const cell = value => String(value ?? 'unknown').replaceAll('|', '\\|').replaceAll('\n', ' ');
-  const lines = ['| Task / stage | Setup | Evidence | Correct | Trust | Wall ms | Tokens | Calls | Breaches | Cost attribution |',
-    '|---|---|---|---|---|---:|---:|---:|---|---|'];
-  for (const r of rows) lines.push('| ' + [ `${r.task}/${r.stage}`, r.setup, r.mode, r.grade.correctness,
-    trustDimensions.map(k => `${k}=${r.grade.trust[k] ?? 'n/a'}`).join('; '), Math.round(r.result.wallMs),
+  const lines = ['| Task / stage | Setup | Variant | Evidence | Correct | Trust | Wall ms | Tokens | Calls | Breaches | Cost attribution | Part judgment |',
+    '|---|---|---|---|---|---|---:|---:|---:|---|---|---|'];
+  for (const r of rows) lines.push('| ' + [ `${r.task}/${r.stage}`, r.setup, r.off?.length ? `off:${r.off.join(',')}` : 'baseline', r.mode, r.grade.correctness,
+    trustDimensions.map(k => `${k}=${r.grade.trust[k] ?? 'n/a'}`).join('; '), r.result.wallMs.toFixed(3),
     r.result.totals.tokens, r.result.totals.calls, r.result.breaches.join(', ') || 'none observed',
     [...r.result.costs, { ...r.grade.cost, part: 'grading' }].map(c => `${c.part} (${parts.find(p => p.id === c.part).kind}): ${c.tokens ?? '?'} tokens, ${c.calls ?? '?'} calls, ${c.wallMs === null ? '?' : Math.round(c.wallMs)} ms`).join('; '),
+    [...new Set(r.result.costs.map(c => c.part))].map(id => {
+      const v = verdicts.find(v => v.part === id);
+      return v ? `${id}: ${v.verdict}; ${v.reason}; evidence=${v.evidence.join(',')}` : `${id}: change (collect paired live evidence; current evidence=${r.mode})`;
+    }).join('; '),
   ].map(cell).join(' | ') + ' |');
   return lines.join('\n') + '\n';
 }
@@ -218,7 +222,7 @@ export function partVerdict(partId, baseline, ablated, judgment) {
 
 async function main() {
   const [command, rootArg, arg] = process.argv.slice(2), root = rootArg && resolve(rootArg);
-  if (!root) fail('usage: runner.mjs init|run|report ROOT CONFIG.json|DAY');
+  if (!root) fail('usage: runner.mjs init|run|report|compare ROOT CONFIG.json|DAY|OFF_ROOT [JUDGMENTS.json]');
   if (command === 'init') return initialize(root, read(arg));
   if (command === 'run') {
     const { config } = read(join(root, 'experiment.json'));
@@ -229,9 +233,16 @@ async function main() {
     return runDay(root, Number(arg), driver, grader);
   }
   if (command === 'report') {
-    const { readdirSync } = await import('node:fs');
     const rows = readdirSync(join(root, 'events')).filter(n => n.endsWith('.result.json')).sort().map(n => read(join(root, 'events', n)));
     process.stdout.write(table(rows)); return;
+  }
+  if (command === 'compare') {
+    const loadRows = directory => readdirSync(join(directory, 'events')).filter(n => n.endsWith('.result.json')).sort().map(n => read(join(directory, 'events', n)));
+    const baseline = loadRows(root), ablated = loadRows(resolve(arg)).filter(r => r.setup === 'instar2');
+    const judgments = read(process.argv[5]);
+    if (!Array.isArray(judgments)) fail('judgments must be an array');
+    const verified = judgments.map(j => partVerdict(j.part, baseline.filter(r => r.setup === 'instar2'), ablated, j));
+    process.stdout.write(table([...baseline, ...ablated], verified)); return;
   }
   fail('unknown command');
 }

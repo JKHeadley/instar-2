@@ -181,6 +181,13 @@ repeat variability. Infrastructure is never cut just for costing time/tokens.
 Without live paired evidence the disposition is `change` with reason
 `measurement needed`, not a claim that a part harms the model.
 
+The report includes a variant and part-judgment column. After independent review,
+write an array of `{part,verdict,reason,evidence}` objects to a desk JSON file and
+run `node scripts/harness-tax/runner.mjs compare BASE_ROOT OFF_ROOT JUDGMENTS.json`.
+It validates the paired judgments and renders one combined table. Unjudged parts
+remain `change (collect paired live evidence)`, an outstanding measurement rather
+than an instruction to remove infrastructure.
+
 ## Correction tags and A/B switches
 
 `parts` in `catalog.mjs` lists three independently removable coaching parts with
