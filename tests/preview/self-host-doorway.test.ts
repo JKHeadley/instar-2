@@ -1,5 +1,6 @@
 // @ts-nocheck -- physical IO only is replaced; registered adapters and provider owners are real.
 // Regression: J-proofroom2-j-binding-1021-20261021-195327 refused Codex before any provider call.
+import { COMPLETE_REQUESTED_WORK } from '../../src/assembly/tool-answer-guidance.js';
 import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
@@ -12,7 +13,7 @@ import { dispatchOwnedProvider, providerStores } from './self-host-owners.ts';
 import { encoded, inputMeasurements, requireInputBound } from './stage2-provider.js';
 import { successiveWorld, offlineProfile } from './successive-fixture.js';
 
-// Preserve the recorded policy/prompt before the reviewed memory-supersession guidance.
+// Preserve the recorded policy before the reviewed memory-supersession and complete-work guidance.
 const HISTORICAL_MEMORY = 'When two active memory items both fit the question but conflict, or are about different people or things, ask one short question that names a detail telling them apart. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
 
 const roots = [];
@@ -60,7 +61,9 @@ it('reaches the registered Codex doorway with the recorded 0.156.1 transport and
   const doorway = subscriptionDoorway(doorwayId), policy = doorway.policyFor(model, doorway.conversationFraming);
   expect(policy.system).toContain(MEMORY_DISAMBIGUATION);
   expect(policy.system).not.toContain(HISTORICAL_MEMORY);
-  const historical = { ...policy, system: policy.system.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY) };
+  expect(policy.system).toContain(COMPLETE_REQUESTED_WORK);
+  const historical = { ...policy, system: policy.system
+    .replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace(COMPLETE_REQUESTED_WORK, '') };
   expect(encoded(historical).hash).toBe(regression.invocationPolicyDigest);
   expect(f.input.activation.invocationPolicyDigest).not.toBe(regression.invocationPolicyDigest);
   await f.dispatch(provider);

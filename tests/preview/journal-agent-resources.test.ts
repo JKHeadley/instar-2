@@ -171,8 +171,8 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     // Rule 56: the answered exchanges verified the exact provider-reported id (the preflight, with no prompt, is not
     // observed: had it been, its missing result frame would read unavailable); the unreachable Jev route is an unavailable reading.
     expect(status.doorways.models).toEqual([
-      expect.objectContaining({ doorway: 'preview-subscription', model: world.model, state: 'verified', fresh: true,
-        age: expect.stringMatching(/ ms of doorway-verification-age \(preview-subscription\//u) }),
+      expect.objectContaining({ doorway: 'claude-code-subscription', model: world.model, state: 'verified', fresh: true,
+        age: expect.stringMatching(/ ms of doorway-verification-age \(claude-code-subscription\//u) }),
       expect.objectContaining({ doorway: 'typesafe-jev', state: 'unavailable', fresh: false })]);
     expect(status.doorways.fresh).toBe(false);
     // The standing check ran from the poll cycle, with no status request needed.
