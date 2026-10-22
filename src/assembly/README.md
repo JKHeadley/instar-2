@@ -386,11 +386,23 @@ slot), durable unique intents and the existing retrospective review population. 
 are not retried. The journal and its replicated ownership path own the durable cadence; the
 activity projection is deliberately ephemeral and must be freshly observed after a restart.
 The session driver's optional activity observation carries only the owned claim, capture digest,
-observation time and existing typed wait signature. Empty captures are unknown. The preview's
-existing presence cycle records each registered work subject even while its ordinary lane is busy;
-unchanged observed activity becomes an advisory stall after one minute. Registered helper waits,
-unavailable observations and advancing work never authorize a restart or termination. The existing
-step deadline, result receipt, stop, resource owner and effect identities remain authoritative.
+observation time, typed wait signature and active/idle/indeterminate classification. Empty captures
+and older adapters without classification are unknown. The existing presence cycle records every
+registered work subject even while its ordinary lane is busy. A quiet indeterminate frame raises a
+hedged signal after one minute; an unchanged active indicator has the 1.x ninety-minute backstop.
+Fresh helper waits and affirmative idle frames suppress the signal; idle never proves a result.
+Changing frames, unknown observations and missed observation windows reset corroboration. These
+observations survive journal replay and appear on the bounded status surface without a new push.
+They never authorize a restart or termination. The existing step deadline, result receipt, stop,
+resource owner and effect identities remain authoritative.
+
+The admitted throttle continuation uses the 1.x SessionWatchdog settle rule: fresh quiet throttle
+frames must stay identical throughout its existing thirty-second backoff. Activity or changed
+frames reset corroboration, including across driver restart; older records without a fingerprint
+start a fresh observation. The original deadline and one-continuation limit remain unchanged.
+StallTriageNurse's outcome check is held by the existing result-and-Stop receipt boundary: a changed
+screen or an empty reply is not a recovered answer. This ports the useful observation/recovery
+behavior without importing legacy timers, direct messages or pane-wide interruptions.
 
 ## Native connection retry exhaustion
 

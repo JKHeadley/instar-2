@@ -20,7 +20,7 @@ export interface SessionRecord {
   readonly turnCloseEvidence?: string | null;
   /** One neutral continuation per admitted turn; intent survives host loss before input.
    * The original deadline remains the brake and open-turn/reaper exclusion. */
-  readonly rateRecovery?: Readonly<{ dueAt: number; state: 'waiting' | 'sending' | 'accepted'; submittedAt?: number }> | null;
+  readonly rateRecovery?: Readonly<{ dueAt: number; state: 'waiting' | 'sending' | 'accepted'; submittedAt?: number; fingerprint?: string | null }> | null;
   /** Observed native retry pressure, tied to this turn; call liability stays with the owner. */
   readonly connectionRetry?: Readonly<{ turnStartedAt: number; attempt: number }> | null;
   readonly deadlineHalt?: Readonly<{ deadline: number; at: number }>;
@@ -52,6 +52,12 @@ export interface SessionIO {
   transcriptExists(framework: SessionFramework, id: string, cwd: string, configHome: string): boolean;
   armDeadline(name: string, identity: string, deadline: number): void;
 }
+/** Adapter-owned observations, never terminal content or authority to interrupt a worker. */
+export interface SessionActivityObservation {
+  readonly subject: string; readonly at: number; readonly progress: string | null; readonly wait: string | null;
+  /** Absent on older adapters: cannot corroborate a stall. Idle is not proof of completion. */
+  readonly activity?: 'active' | 'idle' | 'indeterminate' | 'unknown';
+}
 export interface ProductionSessionConfig {
   readonly operatorOwnUse: true; readonly confinement: 'unconfined' | 'admitted'; readonly framework: SessionFramework;
   readonly executable: string; readonly cwd: string; readonly home: string; readonly configHome: string;
@@ -61,7 +67,7 @@ export interface ProductionSessionConfig {
   readonly protectedSessions: readonly string[]; readonly hookScript?: string;
   /** Advisory activity for registered work; a changed pane is activity, never proof of completion.
    * The owner records it in its existing work observation cycle. No terminal bytes leave this port. */
-  readonly observeActivity?: (observation: Readonly<{ subject: string; at: number; progress: string | null; wait: string | null }>) => void;
+  readonly observeActivity?: (observation: SessionActivityObservation) => void;
   /** Conversation replies require the authenticated lifecycle receipt, never pane heuristics. */
   readonly requireTurnHook?: boolean;
   /** Required exactly in `admitted` mode: the admission/completion command for a session's claim (its own
@@ -168,12 +174,17 @@ export function classifyPaneReadiness(capture: string): 'ready' | 'menu' | 'not-
   if (/[❯›]/.test(text) || /(?:bypass permissions|shift\+tab to cycle|ctrl\+c to exit)/i.test(text)) return 'ready';
   return 'not-ready';
 }
+/** ActiveWorkSilenceSentinel A1: a visible input box is not an idle worker.
+ * This is adapter evidence only (Rules 26/30/86), never a semantic stuck verdict. */
+export function classifyPaneActive(capture: string): boolean {
+  return /(?:esc|ctrl\+c) to interrupt|\bworking(?:…|\.\.\.|\s*\()|\bgenerating\b|[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/i.test(tail(capture, 8));
+}
 /** A prompt can remain visible throughout work; only a changed, quiet idle frame closes a turn. */
 export function classifyPaneIdle(capture: string, framework: SessionFramework): boolean {
   const lines = tail(capture, 8).split('\n').filter(line => !/^[─━]+$/u.test(line))
     .map(line => line.replace(/^⏵⏵\s*/u, ''));
   if (classifyPaneReadiness(capture) !== 'ready') return false;
-  if (/(?:esc|ctrl\+c) to interrupt|\bworking(?:…|\.\.\.|\s*\()|\bgenerating\b|[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/i.test(lines.join('\n'))) return false;
+  if (classifyPaneActive(capture)) return false;
   const prompt = framework === 'codex-cli' ? /^[❯›>]\s*$/ : /^[❯›]\s*$/;
   const promptIndex = lines.map(line => prompt.test(line)).lastIndexOf(true);
   return promptIndex >= 0 && lines.slice(promptIndex + 1)
@@ -584,7 +595,9 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         const pane = capture(session.name);
         try {
           config.observeActivity?.({ subject: session.claim, at: config.now(), progress: pane.trim() ? digestOf(pane) : null,
-            wait: classifyStuckSignature(pane) });
+            wait: classifyPaneActive(pane) ? null : classifyStuckSignature(pane),
+            activity: !pane.trim() ? 'unknown' : classifyPaneActive(pane) ? 'active'
+              : classifyPaneIdle(pane, config.framework) ? 'idle' : 'indeterminate' });
         } catch { /* An advisory observer cannot fail the worker; its last sample becomes stale/unknown. */ }
         const rate = session.rateRecovery;
         if (rate && session.turnDeadline !== null && config.now() >= session.turnDeadline) {
@@ -627,14 +640,25 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
             && config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1)?.state === 'accepted')) {
           if (!rate && config.now() + 30_000 < session.turnDeadline) {
             config.io.save(replaceSession(config.io.load(), { ...session,
-              rateRecovery: { dueAt: config.now() + 30_000, state: 'waiting' },
+              rateRecovery: { dueAt: config.now() + 30_000, state: 'waiting', fingerprint: digestOf(pane) },
               turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
                 .flatMap(row => row.receiptId ? [row.receiptId] : []), turnStartedAt: config.now() }));
             return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit recovery waiting' };
           }
-          if (rate?.state === 'waiting' && classifyStuckSignature(pane) !== null) {
-            if (config.now() < rate.dueAt || !classifyPaneIdle(pane, config.framework)
-              || classifyStuckSignature(pane) !== 'rate-limited')
+          if (rate?.state === 'waiting' && !throttled && rate.fingerprint !== null)
+            config.io.save(replaceSession(config.io.load(), { ...session,
+              rateRecovery: { ...rate, fingerprint: null, dueAt: config.now() + 30_000 } }));
+          if (rate?.state === 'waiting' && throttled) {
+            // Port of SessionWatchdog/evaluateThrottleSettle: intervening output or an
+            // active frame restarts corroboration. The original deadline never moves.
+            // Legacy waiting records lack a fingerprint and must observe afresh too.
+            const fingerprint = throttled && classifyPaneIdle(pane, config.framework) ? digestOf(pane) : null;
+            if (fingerprint === null || fingerprint !== rate.fingerprint) {
+              if (fingerprint !== rate.fingerprint) config.io.save(replaceSession(config.io.load(), { ...session,
+                rateRecovery: { ...rate, fingerprint, dueAt: config.now() + 30_000 } }));
+              return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit recovery waiting' };
+            }
+            if (config.now() < rate.dueAt)
               return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit recovery waiting' };
             // Durable before touching the terminal. Capture old Stop receipts so none can
             // close the continued turn; the driver still requires its normal completion evidence.
