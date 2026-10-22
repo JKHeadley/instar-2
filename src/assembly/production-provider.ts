@@ -803,6 +803,9 @@ export interface SubscriptionDoorway {
   readonly id: string;
   /** The provider a route through this doorway must declare. */
   readonly provider: string;
+  /** Rule 56: null means no successful exchange; an empty list means the adapter
+   * observed success but the provider did not report a model id. Never infer it. */
+  exchangeModels(stdout: string): readonly string[] | null;
   readonly contract: SubscriptionDoorwayContract;
   /** Strength of the account/source evidence this adapter can establish. */
   readonly sourceStrength: ProviderAdapterEvidenceContract['strength'];
@@ -859,6 +862,17 @@ function registerDoorways(entries: Readonly<Record<string, SubscriptionDoorway>>
 }
 export const SUBSCRIPTION_DOORWAYS: Readonly<Record<string, SubscriptionDoorway>> = registerDoorways({
   'claude-code-subscription': Object.freeze({ id: 'claude-code-subscription', provider: 'anthropic', sourceStrength: 'observation',
+    exchangeModels: (stdout: string): readonly string[] | null => {
+      let frame: Record<string, unknown>;
+      try {
+        const parsed: unknown = JSON.parse(stdout);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+        frame = parsed as Record<string, unknown>;
+      } catch { return null; }
+      if (frame.type !== 'result' || frame.is_error !== false) return null;
+      return frame.modelUsage && typeof frame.modelUsage === 'object' && !Array.isArray(frame.modelUsage)
+        ? Object.keys(frame.modelUsage).filter(key => key.length <= 128).slice(0, 8) : [];
+    },
     contract: Object.freeze({ parserReference: 'claude-code-json-result', parserVersion: '1', terminalReasonField: 'subtype',
       successfulFinalReplyReasons: Object.freeze(['success']) }),
     framings: Object.freeze(['preview-decision-system-v2', SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_TOOLS_FRAMING]),

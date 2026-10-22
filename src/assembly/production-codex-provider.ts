@@ -490,6 +490,13 @@ export const CODEX_SUBSCRIPTION_CONTRACT: SubscriptionDoorwayContract = Object.f
   successfulFinalReplyReasons: Object.freeze(['turn.completed']) });
 export function codexSubscriptionDoorway(): SubscriptionDoorway {
   return Object.freeze({ id: CODEX_SUBSCRIPTION_DOORWAY_ID, provider: 'openai', sourceStrength: 'attestation',
+    exchangeModels: (stdout: string): readonly string[] | null => {
+      const frames = parseCodexEventStream(stdout, CODEX_TOOL_ITEM_TYPES);
+      // The recorded CLI stream reports completion, not the serving model id.
+      // This supports configured-route evidence only, never provider-reported.
+      return frames.terminal === 'turn.completed' && !frames.malformed && !frames.failureText
+        && frames.disallowedItems.length === 0 && frames.thread && frames.answer?.trim() ? [] : null;
+    },
     contract: CODEX_SUBSCRIPTION_CONTRACT,
     framings: Object.freeze([CODEX_CONVERSATION_FRAMING, CODEX_TOOLS_FRAMING]),
     conversationFraming: CODEX_CONVERSATION_FRAMING,
