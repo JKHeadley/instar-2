@@ -15,7 +15,8 @@ Undo and recovery: Revert this commit to restore the prior test expectations; ru
 Multi-machine posture: Test-only and portable; no new state, transport, ownership, or replication semantics. Host-specific integration acceptance remains with the Studio pipeline.
 Layer below: Checked subscriptionConversationPolicy and codexConversationPolicy, memory-answer-guidance, existing historical deferral replay translation, recorded self-host activation and capability prompts. Recomputed hashes using the repository TypeScript loader; translating Claude memory wording alone reproduces its old digest.
 Bug class: unit
-Bug evidence: reproducer=The supplied fast-train-128-8b1c7f7c excerpt identifies the four exact failing assertions; the complete four touched files are rerun with one worker in train-128-repair-policy-tests.log.
+Bug evidence: reproducer=tests/preview/self-host-doorway.test.ts
+Verification: The supplied fast-train-128-8b1c7f7c excerpt identifies all four failures. The four complete changed test files passed (47 tests) in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-128-repair-policy-tests.log; typecheck also passed. This record covers the correction from prose to a resolvable reproducer path in its Bug evidence field.
 Hook bypass: none
 Convergence: none
 
