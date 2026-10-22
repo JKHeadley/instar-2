@@ -65,6 +65,12 @@ receive the operator's messages in the group. Group replies are visible to the g
 Keep only one active polling root per bot. If reusing the private chat's bot, stop that runner
 before starting the forum root; keep its private journal intact for a later private-mode restart.
 
+The live tool-authority reader verifies a stable snapshot of the operator message log, provenance
+ledger and topic bindings. An append during a read triggers one complete reread; two moving
+snapshots or malformed/unreadable evidence still withdraw tools. Sealed grants and revocations
+are read after the snapshot, and expiry is resolved on every check. A snapshot retry never
+repeats a model call or reuses a stale authority verdict.
+
 The encrypted genesis stores `forum: true`, `chat`, `bot`, and `operator`. Mode cannot be changed on an
 existing journal. General (absent topic or topic 1) has one identity; other topics retain their exact
 Telegram thread ID. Conversation/session keys include bot, group and topic, while one durable poll
