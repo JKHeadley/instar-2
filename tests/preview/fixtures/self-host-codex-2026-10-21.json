@@ -1,0 +1,11 @@
+{
+  "source": "J-proofroom2-j-binding-1021-20261021-195327",
+  "update": 6235249,
+  "doorway": "codex-cli-subscription",
+  "model": "gpt-6-astra",
+  "version": "0.156.1",
+  "invocationPolicyDigest": "sha256:7f0022b32691031f540c0c0e91e1c00bd8082fcbe127261e2b7e4b12616855c4",
+  "registeredValidator": "PASS",
+  "helperRefusal": "subscription exact model absent",
+  "physicalExecutions": 0
+}
