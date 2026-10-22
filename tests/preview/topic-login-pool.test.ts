@@ -232,7 +232,7 @@ it('the shipped configuration captures each topic account for launch, observatio
   const source = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
   const factory = source.split('      const configurationFor = ')[1].split('\n      const defaultBinding = ')[0]
     .replaceAll('import.meta.url', JSON.stringify(new URL('./journal-agent.mjs', import.meta.url).href));
-  const drivers = [], observed = [], admitted = [], stopped = [], bound = [];
+  const drivers = [], observed = [], admitted = [], stopped = [], bound = [], activities = [];
   const recovery = [{ kind: 'dispatch-intent', claim: 'prior-claim' }];
   const journal = { view: { expires: 100000, order: [] }, sessionWorkRecords: () => recovery };
   const env = { join, conversationSession: true, sessionAdapter: {}, sha256: () => 'a'.repeat(64), conversationOf: () => 'operator', g: {}, journal,
@@ -243,6 +243,7 @@ it('the shipped configuration captures each topic account for launch, observatio
     sessionLimits: { deadlineMs: 10000, maxSessions: 2, pollMs: 25, maxResultBytes: 65536, maxStepsPerLaunch: 10, maxCallsPerStep: 20 },
     gate: { base: () => '/gate' }, sessionConnectors: new Map(), framework: 'claude-code', project: '/scope',
     required: () => 'model', options: {}, context: {}, wallNow: () => 1000, fileURLToPath: url => url.pathname,
+    workingActivities: { observeSession: (session, result) => activities.push({ session, result }) },
     observeHarnessSessionLimit: (_pool, entry, result) => { observed.push(entry.index); return result; }, loginPool: {},
     loginRuntimes: new Map([[0, { check: () => {} }], [1, { check: () => {} }]]),
     doorway: { id: 'doorway', session: { admit: async input => { admitted.push(input.profile.reference); } } },
@@ -253,7 +254,8 @@ it('the shipped configuration captures each topic account for launch, observatio
   const entry = index => ({ index, profile: { reference: `login-${index}`, executable: '/cli', home: `/home-${index}`, configDirectory: `/config-${index}` } });
   let selected = 0;
   const binding = index => ({ entry: () => entry(index === null ? selected : index),
-    physical: () => ({ inboxDirectory: '/inbox', transcriptExists: () => true }), harness: () => null,
+    physical: () => ({ inboxDirectory: '/inbox', transcriptExists: () => true,
+      load: () => ({ sessions: [{ identity: `worker-${index === null ? selected : index}`, login: index === null ? selected : index }] }) }), harness: () => null,
     authorized: () => true, stopped: () => false, admissionIO: () => ({}) });
   let resumed = false;
   const a = make('7', binding(0));
@@ -269,7 +271,10 @@ it('the shipped configuration captures each topic account for launch, observatio
   expect(drivers.slice(-2).map(config => config.configHome)).toEqual(['/config-1', '/config-0']);
   expect(drivers.at(-2).continuationRequired()).toBe(true); expect(drivers.at(-2).io.transcriptExists()).toBe(false);
   expect(bound).toEqual(['claim-8']); expect(resumed).toBe(true);
-  db.observe({}); da.observe({}); expect(observed).toEqual([1, 0]);
+  db.observe({ processIdentity: 'worker-1' }); da.observe({ processIdentity: 'worker-0' });
+  expect(observed).toEqual([1, 0]);
+  expect(activities).toEqual([{ session: { identity: 'worker-1', login: 1 }, result: {} },
+    { session: { identity: 'worker-0', login: 0 }, result: {} }]);
   await b.resources.admit(); await a.resources.admit(); expect(admitted).toEqual(['login-1', 'login-0']);
   db.stop({ claim: 'claim-8', incarnation: 'epoch-2' });
   expect(stopped).toEqual([{ claim: 'claim-8', incarnation: 'epoch-2' }]);
