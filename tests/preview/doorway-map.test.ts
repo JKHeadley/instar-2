@@ -200,7 +200,8 @@ it('keeps Codex failed, partial, malformed and empty exchanges unverified, and l
   const empty = events.map(event => JSON.stringify(event.type === 'item.completed' && event.item.type === 'agent_message'
     ? { ...event, item: { ...event.item, text: '' } } : event)).join('\n');
   for (const stdout of [recorded.streams.turnFailed!, events.slice(0, 2).map(event => JSON.stringify(event)).join('\n'),
-    complete.stdout + 'not JSON\n', empty, '']) {
+    complete.stdout + 'not JSON\n', empty, '',
+    JSON.stringify({ type: 'error', message: 'recorded failure' }) + '\n' + complete.stdout]) {
     expect(subscriptionExchange({ ...complete, stdout }, 'bad', doorway)).toMatchObject({ ok: false, reason: 'error-frame' });
   }
   // Successful tool exchanges also prove reachability; this is not an answer-admission decision.
