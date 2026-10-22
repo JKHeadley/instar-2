@@ -1,0 +1,24 @@
+{
+  "provenance": {
+    "source": "signin-port-1022b normal Chrome PID 84209, native CLI PID 84188",
+    "recordedAt": "2026-10-22",
+    "journal": "rollout-2026-10-22T13-52-02-01a16562-97ff-75a2-976c-a50ff28eaa12.jsonl:357",
+    "shape": "Exact redacted origin/path/title/button/body observation; URL query was never recorded. Guard timing is from normal-chrome-browser SKILL.md section 4, not a captured script."
+  },
+  "page": {
+    "origin": "https://claude.ai",
+    "path": "/oauth/authorize",
+    "title": "Claude",
+    "buttons": [
+      {
+        "text": "Authorize",
+        "disabled": true
+      },
+      {
+        "text": "Decline",
+        "disabled": false
+      }
+    ],
+    "text": "Claude Code would like to connect to your Claude chat account\nYour account will be used to:\n\nAccess your Anthropic profile information\n\nContribute to your Claude subscription usage\n\nAccess your Claude Code sessions\n\nUse and manage your connectors\n\nUpload files on your behalf\n\nAccess and manage your plugins\n\nYour privacy settings apply to coding sessions\nAuthorize\nDecline\nLogged in as justin@sagemindai.io\nSwitch account"
+  }
+}

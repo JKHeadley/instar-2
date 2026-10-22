@@ -8,6 +8,7 @@ import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { parseClaudeSigninUrl } from './claude-signin-repair.mjs';
+import { waitForSigninAuthorization } from './claude-signin-authorize.mjs';
 
 const PROFILE = 'https://api.anthropic.com/api/oauth/profile';
 const USAGE = 'https://api.anthropic.com/api/oauth/usage';
@@ -72,13 +73,14 @@ const execute = (file, args, options = {}) => new Promise((resolve, reject) => {
 });
 
 // PlainChromeReloginBrowser's pid-addressed Apple Event transport, narrowed to
-// navigation of the blank tab we just opened. URL goes over stdin, never argv.
-const NAVIGATE = `ObjC.import('Foundation');
+// the tab we just opened. Page code (including the URL/state) goes over stdin,
+// never argv, following 1.x PlainChromeReloginBrowser's transport.
+const PAGE_SCRIPT = `ObjC.import('Foundation');
 function fc(s){return (s.charCodeAt(0)<<24)|(s.charCodeAt(1)<<16)|(s.charCodeAt(2)<<8)|s.charCodeAt(3);}
 function run(args){
  const D=$.NSAppleEventDescriptor;
  const data=$.NSFileHandle.fileHandleWithStandardInput.readDataToEndOfFile;
- const url=$.NSString.alloc.initWithDataEncoding(data,$.NSUTF8StringEncoding).js;
+ const code=$.NSString.alloc.initWithDataEncoding(data,$.NSUTF8StringEncoding).js;
  function spec(want,form,value,from){const r=D.recordDescriptor;
  r.setDescriptorForKeyword(D.descriptorWithTypeCode(fc(want)),fc('want'));
  r.setDescriptorForKeyword(D.descriptorWithEnumCode(fc(form)),fc('form'));
@@ -87,12 +89,22 @@ function run(args){
  const tab=spec('prop','prop',D.descriptorWithTypeCode(fc('acTa')),spec('cwin','indx',D.descriptorWithInt32(1),null));
  const ev=D.appleEventWithEventClassEventIDTargetDescriptorReturnIDTransactionID(fc('CrSu'),fc('ExJa'),D.descriptorWithProcessIdentifier(Number(args[0])),-1,0);
  ev.setParamDescriptorForKeyword(tab,fc('----'));
- const code='(()=>{if(location.href!=="about:blank")return "refused";location.href='+JSON.stringify(url)+';return "opened"})()';
  ev.setParamDescriptorForKeyword(D.descriptorWithString(code),fc('JvSc'));
  const reply=ev.sendEventWithOptionsTimeoutError(3,5,null);
  if(!reply||reply.isNil())return 'unavailable';const out=reply.paramDescriptorForKeyword(fc('----'));
  return out&&!out.isNil()&&out.stringValue?out.stringValue.js:'unavailable';
 }`;
+
+export async function evaluateSigninBrowser(pid, browser, code, signal, run = execute) {
+  if (signal?.aborted) throw Error('signin-browser-stopped');
+  const command = await run('/bin/ps', ['-p', String(pid), '-o', 'args=']);
+  if (!command.startsWith('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome ')
+    || !`${command.trim()} `.includes(`--user-data-dir=${browser} `) || command.includes('--type='))
+    throw Error('signin-browser-process-differs');
+  if (signal?.aborted) throw Error('signin-browser-stopped');
+  return (await run('/usr/bin/osascript', ['-l', 'JavaScript', '-e', PAGE_SCRIPT, String(pid)],
+    { input: code, signal })).trim();
+}
 
 export async function openSigninBrowser(url, browser, signal, run = execute) {
   if (signal?.aborted || parseClaudeSigninUrl(`${url}\n`) !== url) throw Error('signin-browser-url-refused');
@@ -103,14 +115,11 @@ export async function openSigninBrowser(url, browser, signal, run = execute) {
     try { match = /^(.*)-(\d+)$/u.exec(readlinkSync(join(browser, 'SingletonLock'))); } catch { /* Chrome is starting. */ }
     if (match && match[1] === hostname() && Number.isSafeInteger(Number(match[2])) && Number(match[2]) > 1) {
       const pid = Number(match[2]);
-      const command = await run('/bin/ps', ['-p', String(pid), '-o', 'args=']);
-      if (!command.startsWith('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome ')
-        || !`${command.trim()} `.includes(`--user-data-dir=${browser} `) || command.includes('--type='))
-        throw Error('signin-browser-process-differs');
-      if (signal?.aborted) throw Error('signin-browser-stopped');
-      const result = await run('/usr/bin/osascript', ['-l', 'JavaScript', '-e', NAVIGATE, String(pid)], { input: url, signal });
-      if (result.trim() !== 'opened') throw Error('signin-browser-navigation-unavailable');
-      return;
+      const code = `(() => { if (location.href !== 'about:blank') return 'refused';
+        location.href = ${JSON.stringify(url)}; return 'opened'; })()`;
+      if (await evaluateSigninBrowser(pid, browser, code, signal, run) !== 'opened')
+        throw Error('signin-browser-navigation-unavailable');
+      return pid;
     }
     await delay(500);
   }
@@ -133,11 +142,11 @@ export function validateSigninBrowser(binding, profile) {
   return binding.directory;
 }
 
-/** One CLI, one normal Chrome launch, bounded lifetime; no CDP, headless flags,
- * synthetic input, page bypass or arbitrary command from config.
- * The person completes the offered sign-in controls in their account's profile. */
+/** One CLI, one normal Chrome launch, bounded lifetime; no CDP or headless flags.
+ * The offered Claude consent uses the measured main-world focus guard. Other
+ * provider sign-in controls stay with the existing account browser flow. */
 export async function runClaudeSignin({ profile, browser, directory, signal, onPid = () => {}, openBrowser,
-  spawnCli = spawn }) {
+  spawnCli = spawn, runBrowser = execute, pause }) {
   if (signal.aborted) return { kind: 'unfinished' };
   if (process.platform !== 'darwin' && !openBrowser) throw Error('signin-normal-browser-platform-unavailable');
   if (`sha256:${signinDigest(readFileSync(profile.executable))}` !== profile.artifact
@@ -162,7 +171,16 @@ export async function runClaudeSignin({ profile, browser, directory, signal, onP
     // No unlink and no signal: normal Chrome recovers its own stale local lock.
   }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
-  const launch = openBrowser ?? (url => openSigninBrowser(url, browser, signal));
+  const browserController = new AbortController();
+  const browserSignal = AbortSignal.any([signal, browserController.signal]);
+  const launch = openBrowser ?? (async url => {
+    const pid = await openSigninBrowser(url, browser, browserSignal, runBrowser);
+    const result = await waitForSigninAuthorization({ expectedAccount: profile.expectedAccount,
+      state: new URL(url).searchParams.get('state'), signal: browserSignal,
+      evaluate: code => evaluateSigninBrowser(pid, browser, code, browserSignal, runBrowser),
+      pause: pause ?? (ms => delay(ms, undefined, { signal: browserSignal })) });
+    if (result !== 'clicked' && !browserSignal.aborted) throw Error('signin-authorization-unfinished');
+  });
   return await new Promise(resolve => {
     let text = '', opened = false, opening = Promise.resolve(), settled = false, stopping = false, launchFailed = false;
     const child = spawnCli(profile.executable, ['auth', 'login'], { cwd: directory,
@@ -172,6 +190,7 @@ export async function runClaudeSignin({ profile, browser, directory, signal, onP
     const stop = () => {
       if (settled) return;
       stopping = true;
+      browserController.abort();
       child.kill('SIGTERM');
       if (!killTimer) killTimer = setTimeout(() => { if (!settled) child.kill('SIGKILL'); }, 2000);
     };
@@ -188,7 +207,12 @@ export async function runClaudeSignin({ profile, browser, directory, signal, onP
       const url = parseClaudeSigninUrl(text.slice(0, text.lastIndexOf('\n') + 1));
       if (url) {
         opened = true;
-        opening = launch(url).catch(() => { launchFailed = true; stop(); });
+        opening = launch(url).catch(() => {
+          // A native exit cancels the read/wait still in flight. That cleanup is
+          // not a browser failure; an actual failed action while alive still is.
+          if (settled && browserSignal.aborted) return;
+          launchFailed = true; stop();
+        });
       }
     };
     child.stdout.on('data', capture); child.stderr.on('data', capture);
@@ -198,6 +222,7 @@ export async function runClaudeSignin({ profile, browser, directory, signal, onP
     async function finish(ok) {
       if (settled) return;
       settled = true; clearTimeout(timer); clearTimeout(killTimer); signal.removeEventListener('abort', abort);
+      browserController.abort();
       text = ''; child.stdin.destroy(); await opening;
       resolve({ kind: ok && !launchFailed ? 'complete' : 'unfinished' });
     }

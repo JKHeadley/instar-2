@@ -64,8 +64,14 @@ terminal. The native CLI runs `auth login` in a separate private home and stores
 credential in its own macOS Keychain slot. Chrome opens in the background at a blank
 page; a PID-bound Apple Event navigates that blank page, receiving the authorization
 URL over stdin rather than a process argument. The profile must already permit
-JavaScript from Apple Events. This uses neither a debugging connection nor synthetic
-presence. A local stale Chrome lock is left for Chrome to recover only after its
+JavaScript from Apple Events. On the expected account's Claude Code authorization
+page, Instar sends the measured anti-misclick guard's window-focus event in the page's
+main world, waits two seconds, rechecks the account and OAuth state, and clicks the
+enabled **Authorize** button once. It does not move OS focus or change the button's
+disabled state. A different identity or state, blocked script injection, a stopped
+repair or a still-disabled button prevents the click. Google sign-in and provider
+challenges remain in the existing browser flow. A local stale Chrome lock is left
+for Chrome to recover only after its
 exact PID is confirmed absent; a live or unidentifiable owner is refused.
 It leaves the browser window
 open; it never closes a browser which may now belong to the person signing in.
@@ -94,7 +100,10 @@ sign-in retry. Wrong-identity refusals remain held.
 
 `scripts/claude-signin-repair.mjs` ports the small 1.x repair sequence and incident
 record. `scripts/claude-signin-io.mjs` owns the Claude/native browser, Keychain and
-fixed HTTPS boundaries. `scripts/harness-signin.mjs` connects the installed account,
+fixed HTTPS boundaries. `scripts/claude-signin-authorize.mjs` owns the narrow
+account/state-bound consent step, with bounded read-only polling while the CLI is
+alive and no retry of an uncertain click. `scripts/harness-signin.mjs` connects the
+installed account,
 durable record and existing custody; `instar2 signin` is its owner surface. The pool
 reads the same record. `scripts/claude-signin-service.mjs` adapts the 1.x
 SubscriptionReloginService approval/unattended policy and its existing dashboard
@@ -103,6 +112,8 @@ record. State and browser profiles are deliberately machine-local; credentials a
 never transferred to peers. The native browser/Keychain transport in this slice is
 macOS-only. The unbound assisted command still requires browser interaction on the
 Mac; only the installed-service path uses the existing phone approval surface.
-Live acceptance of this continuation remains incomplete: the scratch proof reached
-the correct Claude account, whose Authorize control remained disabled. No completed
-real sign-in or unattended end-to-end result is claimed.
+Live acceptance remains incomplete. The disabled-button regression now has a
+recorded-page replay and is wired into native sign-in. The required fresh scratch
+sign-in and phone approval proof have not completed: the permitted account was
+serving an active session at the latest eligibility check. No unattended end-to-end
+result is claimed, and the existing 1.x phone service is unchanged by this fix.
