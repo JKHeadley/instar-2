@@ -354,7 +354,8 @@ it('replays recorded summary/Jev/review/delivered/empty-context shapes unchanged
 it('a delegated session rate-limit observation selects B for the next step; other pauses do not', () => {
   const f = fixture(), a = f.pool.select('session');
   for (const observation of [{ kind: 'Refused' }, { kind: 'Success', value: { phase: 'launched', detail: 'rate-limited' } },
-    { kind: 'Success', value: { phase: 'pause-observed', detail: 'context-wedge' } }]) {
+    { kind: 'Success', value: { phase: 'pause-observed', detail: 'context-wedge' } },
+    { kind: 'Success', value: { phase: 'pause-observed', detail: 'provider-throttled' } }]) {
     expect(observeHarnessSessionLimit(f.pool, a, observation)).toBe(observation);
     expect(f.pool.select('session')).toBe(a);
   }

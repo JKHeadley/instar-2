@@ -66,7 +66,7 @@ Its tests include the real production session driver over simulated physical I/O
 not a live harness or Telegram proof. The journal launcher wiring below is step 1;
 foundation intake/effect/judgment integration remains in the later plan steps.
 
-An admitted session at an unclosed idle quota wall retains its accepted input and original
+An admitted session at an unclosed idle quota wall or captured terminal server throttle retains its accepted input and original
 turn deadline while the driver waits 30 seconds, then submits at most one neutral
 continuation of the same turn. The existing journal records intent before terminal
 input; an uncertain submission is never retried, including after host restart.
@@ -85,6 +85,20 @@ callers pass their current result presence to the driver; pane text cannot inven
 accepted input starts its own compaction episode, so a past completed compaction does
 not exclude later turns from throttle recovery. Busy resumed work remains active under
 the original deadline even when old quota text remains visible.
+
+The server-throttle classifier ports 1.x `rateLimitDetection` and `IdleErrorClassifier`:
+native retry countdowns, quoted errors and errors followed by newer output are excluded.
+Provider capacity produces `provider-throttled`; only account quota produces `rate-limited`
+and changes the login selected for a subsequent call. The model never changes.
+A fresh durable recovery wait reaches the host's existing progress-notice doorway even
+before a tool call. It explains that the model service is limiting requests and the
+message is saved. The first explanation may send after ten seconds of conversational
+silence; later progress keeps the existing cadence and four-message cap. The existing
+progress timer checks at most every five seconds so a thirty-second wait is observable.
+Every notice retains infrastructure provenance, the reply/spend budget, secret checks,
+stop and durable intent-before-send; an unknown delivery consumes the episode. This
+ports `RateLimitSentinel`'s bounded wait visibility without its private notification
+callback or transcript-growth completion claim. Fast recovery produces no stale notice.
 
 The host must call `close()` at shutdown, expiry or idle stop. Closing waits for
 pending admission to return before releasing its lease, preventing a late resource

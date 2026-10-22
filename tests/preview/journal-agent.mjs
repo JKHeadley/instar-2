@@ -2692,6 +2692,8 @@ async function main() {
             continuationReady: identity => driver.continuationReady(identity),
             deliver: input => driver.deliver(input), recoverContext: (identity, pending) => driver.recoverContext(identity, pending), observe: input => {
               const observed = driver.observe(input);
+              if (conversationSession) workingActivities.observeSession(
+                binding.physical().load().sessions.find(row => row.identity === input.processIdentity), observed);
               // Reuse the session adapter's existing typed rate-limit observation. The step remains
               // uncertain and is never replayed; a subsequent step/call selects another reviewed login.
               return observeHarnessSessionLimit(loginPool, binding.entry(), observed);

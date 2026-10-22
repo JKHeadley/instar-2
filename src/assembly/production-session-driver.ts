@@ -197,15 +197,31 @@ export function classifyWedgeTail(capture: string): 'thinking-block-400' | 'aup-
   if (aup.test(live) && capture.split('\n').filter(line => aup.test(line)).length > 1) return 'aup-rejection';
   return null;
 }
-export function classifyStuckSignature(capture: string): 'policy-wedge' | 'context-wedge' | 'rate-limited' | 'context-too-long' | null {
+export function classifyStuckSignature(capture: string): 'policy-wedge' | 'context-wedge' | 'rate-limited' | 'provider-throttled' | 'context-too-long' | null {
   const wedge = classifyWedgeTail(capture);
   if (wedge) return wedge === 'aup-rejection' ? 'policy-wedge' : 'context-wedge';
   const live = tail(capture);
   // A usage-percentage warning also names the reset time; only an actual limit hit pauses work.
   if (/you['’]?ve (?:hit|reached) your (?:(?:session|usage|5-hour|weekly) )?limit\b|usage limit reached/i.test(live)) return 'rate-limited';
+  if (classifyProviderThrottle(capture)) return 'provider-throttled';
   if (/conversation (?:is )?too long|prompt is too long|error during compaction[^.\n]{0,40}too long|press esc twice to go up a few messages/i.test(live)
     && !/conversation compacted|paused for context compaction|compaction[^.\n]{0,20}resumed/i.test(live)) return 'context-too-long';
   return null;
+}
+/** Port of 1.x rateLimitDetection + IdleErrorClassifier: provider capacity is not
+ * account quota. Only a terminal API frame qualifies; native retries still own work.
+ * Completion remains the authenticated result/Stop pair, never this text signal. */
+function classifyProviderThrottle(capture: string): boolean {
+  const live = tail(capture, 20);
+  if (/retrying in\s+\d+/i.test(live)) return false;
+  const lines = live.split('\n');
+  const prompt = lines.lastIndexOf('❯');
+  if (prompt < 0 || !classifyPaneIdle(capture, 'claude-code')) return false;
+  const output = lines.slice(0, prompt).filter(line => !/^[─━]+$/.test(line));
+  // Like exhausted-connection frames below, discard only trailing native status,
+  // here the completion decoration documented by the 1.x throttle incident.
+  if (/^✻ Churned for \d+m \d+s$/u.test(output.at(-1) ?? '')) output.pop();
+  return /^(?:⏺\s+|⎿\s+)?API Error: (?:Server is temporarily limiting requests \(not your usage limit\) · Rate limited|Repeated 529 Overloaded errors\. The API is at capacity\.)$/i.test(output.at(-1) ?? '');
 }
 /** Native retries own backoff and never receive a second prompt. The captured 2.1.280
  * exhausted 529 has no Stop receipt: recognize only its final error at a quiet prompt,
@@ -609,7 +625,8 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           return { phase: 'uncertain' as const, evidence: session.identity, detail: 'rate-limit continuation delivery uncertain; no resend' };
         if (config.requireTurnHook && session.turnCloseEvidence)
           return { phase: 'output-observed' as const, evidence: session.turnCloseEvidence, detail: 'recorded Stop hook closed turn' };
-        const throttled = classifyStuckSignature(pane) === 'rate-limited';
+        const throttle = classifyStuckSignature(pane);
+        const throttled = throttle === 'rate-limited' || throttle === 'provider-throttled';
         const hook = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
           && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
         // A throttle can emit Stop without completing work. A bounded result plus Stop
@@ -675,7 +692,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           if (rate?.state === 'accepted' && throttled) {
             if (!classifyPaneIdle(pane, config.framework) || config.now() < rate.submittedAt! + 5_000)
               return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit continuation pending' };
-            return { phase: 'pause-observed' as const, evidence: session.identity, detail: 'rate-limited' };
+            return { phase: 'pause-observed' as const, evidence: session.identity, detail: throttle! };
           }
         }
         if (session.turnDeadline !== null && config.now() >= session.turnDeadline) {

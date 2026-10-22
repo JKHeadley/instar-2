@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error -- host composition module is JavaScript, exercised at runtime.
 import { observeInstalledSessionLogin } from '../preview/installed-harness-logins.mjs';
+// @ts-expect-error Host-only JavaScript projection.
+import { createWorkingActivities } from '../preview/working-activity.mjs';
 import { sessionLoginNotices, type SessionLoginObservation } from '../preview/credential-reminders.js';
 import { CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
 import { SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
@@ -96,6 +98,67 @@ const rateConfig = { turnDeadlineMs: 120_000, requireTurnHook: true,
   confinement: 'admitted' as const, toolAdmission: { command: () => '/hook', timeoutSeconds: 10 },
   modelGate: () => 'http://127.0.0.1:1234/' + 'a'.repeat(32) + '/claim' };
 const recordedLimit = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8')).result as string;
+const throttleFixture = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/server-throttle.json', import.meta.url), 'utf8')) as {
+  result: string; overloaded: string; pane: string;
+};
+const recordedThrottle = throttleFixture.result;
+// Documented 1.x incident context, with a constructed supported quiet footer (not a new capture).
+const quietThrottlePane = throttleFixture.pane.replace(' · esc to interrupt', '')
+  .replace('  ⎿ Tip: Use /btw to ask a quick side question\n', '');
+it.each([...[recordedThrottle, `  ⎿  ${recordedThrottle}`, throttleFixture.overloaded]
+  .map(throttle => `${throttle}\n❯ `), quietThrottlePane])(
+  'ports recorded 1.x server throttle %s into bounded recovery without poisoning account quota', pane => {
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  expect(classifyPaneIdle(pane, 'claude-code')).toBe(true);
+  f.changePane(pane);
+  const activities = createWorkingActivities({ now: f.config.now, read: () => '' });
+  activities.observe('input', 'topic', 'start');
+  const observe = (driver = f.driver) => {
+    const result = driver.observe({ operation: 'deliver', processIdentity: id });
+    activities.observeSession(f.journal.sessions[0], result);
+    return value(result);
+  };
+  expect(observe()).toMatchObject({ phase: 'launched', detail: 'rate-limit recovery waiting' });
+  expect(classifyStuckSignature(pane)).toBe('provider-throttled');
+  expect(activities.current('input')).toMatchObject({ wait: 'rate-limit', running: false });
+  expect(value(f.driver.observeIdle(id))).toBeNull();
+  f.hook(1001); f.time(1001);
+  expect(observe().phase).toBe('launched'); // a throttle Stop is not completion
+  const sends = f.sends;
+  f.time(30_999); expect(observe().phase).toBe('launched'); expect(f.sends).toBe(sends);
+  f.time(31_000);
+  const restarted = createProductionSessionDriver(f.config);
+  expect(observe(restarted).detail).toBe('rate-limit continuation submitted');
+  expect(activities.current('input')).toBeNull();
+  expect(f.journal.sessions[0]?.turnDeadline).toBe(121_000);
+  f.time(36_000); const after = f.sends;
+  expect(observe(restarted)).toMatchObject({ phase: 'pause-observed', detail: 'provider-throttled' });
+  expect(observe(restarted).phase).toBe('pause-observed'); expect(f.sends).toBe(after);
+  expect(f.journal.deliveries).toHaveLength(1);
+});
+
+it('does not recover server throttle quotations, native retries, old output or completed turns', () => {
+  for (const pane of [`quoted: ${recordedThrottle}\n❯ `, `${recordedThrottle}\nRetrying in 7s · attempt 3/10\n❯ `,
+    `${recordedThrottle}\nA completed answer.\n❯ `, `> ${recordedThrottle}\n❯ `,
+    throttleFixture.pane,
+    quietThrottlePane.replace(recordedThrottle, `quoted: ${recordedThrottle}`),
+    quietThrottlePane.replace(recordedThrottle, `> ${recordedThrottle}`),
+    quietThrottlePane.replace('✻ Churned', 'Retrying in 7s · attempt 3/10\n✻ Churned'),
+    quietThrottlePane.replace('✻ Churned', 'A completed answer.\n✻ Churned'),
+    quietThrottlePane.replace('✻ Churned for 7m 43s', '✻ Churned for 7m 43s\nA completed answer.'),
+    quietThrottlePane.replace('✻ Churned for 7m 43s', '✻ Churned for 7m 43s — quoted output')]) {
+    expect(classifyStuckSignature(pane)).toBeNull();
+    const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+    f.changePane(pane);
+    expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).detail).toBe('session live; turn still open');
+    expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
+  }
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  f.changePane(quietThrottlePane); f.hook(1001); f.time(1001);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id, resultAvailable: true })).phase).toBe('output-observed');
+  expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
+});
+
 it('continues a throttled turn once after backoff, preserving its intake and original deadline across driver restart', () => {
   const f = fixture('claude-code', rateConfig);
   const id = f.launch(); value(f.deliver(id));
@@ -271,7 +334,7 @@ it('replays recorded summary, Jev, review, delivered and empty shapes across the
     value(driver.observe({ operation: 'deliver', processIdentity: id }));
     expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
     expect(f.sends).toBe(sends);
-    f.changePane(`${recordedLimit}\n❯ `); f.hook(1000);
+    f.changePane(quietThrottlePane); f.hook(1000);
     const worker = { launch: id, incarnation: 'inc', claim: 'topic' };
     const delivery = { ...worker, operation: 'deliver', text: 'hello', digest: hash('hello'),
       resultPath: '/work/result', maxBytes: 100_000 };
@@ -280,6 +343,7 @@ it('replays recorded summary, Jev, review, delivered and empty shapes across the
       ? [{ kind: 'reply', delivery: 'deliver', text: row.raw, digest: hash(row.raw) },
         { kind: 'turn-end', delivery: 'deliver', state: 'completed' }] : []);
     expect(f.journal.sessions[0]?.turnDeadline).toBe(row.raw.trim() ? null : 121_000);
+    expect(f.journal.sessions[0]?.rateRecovery?.state ?? null).toBe(row.raw.trim() ? null : 'waiting');
     expect(f.sends).toBe(sends);
   }
 });
