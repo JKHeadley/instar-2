@@ -1366,13 +1366,13 @@ it.each(['reply', 'stop', 'deadline'] as const)('restoration yields to the real 
 });
 
 
-it('restarts throttle corroboration when recorded working frames interrupt the quiet window', () => {
+it.each([recordedLimit, recordedThrottle])('restarts throttle corroboration when recorded working frames interrupt %s', throttle => {
   const captured = JSON.parse(readFileSync(new URL('../preview/fixtures/work-silence-terminal-2026-10-14.json', import.meta.url), 'utf8'));
   const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
   const observe = () => value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
-  const quiet = `${recordedLimit}\n❯ `;
+  const quiet = `${throttle}\n❯ `;
   f.changePane(quiet); observe(); const sends = f.sends;
-  f.time(30_000); f.changePane(`${recordedLimit}\n${captured.captures[1].capture}`);
+  f.time(30_000); f.changePane(`${throttle}\n${captured.captures[1].capture}`);
   expect(observe().phase).toBe('launched'); expect(f.sends).toBe(sends);
   f.time(31_000); f.changePane(quiet);
   expect(observe().phase).toBe('launched'); expect(f.sends).toBe(sends);
@@ -1397,7 +1397,7 @@ it('exports active and idle corroboration from recorded frames without claiming 
 });
 
 
-it('replays real journal results through corroborated recovery without counting an empty bubble as recovered', async () => {
+it.each([recordedLimit, recordedThrottle])('replays real journal results through corroborated %s recovery without counting an empty bubble as recovered', async throttle => {
   const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8'));
   const captures = JSON.parse(readFileSync(new URL('../preview/fixtures/work-silence-terminal-2026-10-14.json', import.meta.url), 'utf8')).captures;
   for (const row of recorded.otherShapes as { kind: string; id: string; raw: string }[]) {
@@ -1410,9 +1410,9 @@ it('replays real journal results through corroborated recovery without counting 
     const delivery = { ...worker, operation: 'deliver', text: 'hello', digest: hash('hello'), resultPath: '/work/result', maxBytes: 100_000 };
     await adapter.deliver(delivery);
     const observe = () => adapter.observe({ ...worker, delivery, cursor: 0, limit: 2 });
-    const quiet = `${recordedLimit}\n❯ `;
+    const quiet = `${throttle}\n❯ `;
     f.changePane(quiet); await observe(); const sends = f.sends;
-    f.time(30_000); f.changePane(`${recordedLimit}\n${captures[1].capture}`);
+    f.time(30_000); f.changePane(`${throttle}\n${captures[1].capture}`);
     expect((await observe()).observations, row.id).toEqual([]);
     f.time(31_000); f.changePane(quiet); await observe();
     expect(f.sends, row.id).toBe(sends);
