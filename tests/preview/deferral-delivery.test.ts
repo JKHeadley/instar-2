@@ -8,6 +8,11 @@ import { OBLIGATION_WORK_QUESTION, OBLIGATION_WORK_QUESTION_TOOLS, obligationDec
 import { readAnswer } from './answer-reading.js';
 import { loopHealth } from './obligations.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
+
+// Preserve the capture's historical prompt hash; only the reviewed memory wording changed.
+const HISTORICAL_MEMORY = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
+const capturedSystem = SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY);
 
 const capture = JSON.parse(readFileSync(new URL('./fixtures/deferral-delivery-2026-10-18.json', import.meta.url), 'utf8')) as {
   bot: string; operator: string; cases: { update: number; at: number; message: string;
@@ -98,7 +103,9 @@ it('keeps genuine unfinished work and external dependencies open (constructed ne
 it('binds the new instruction to both complete recorded provider envelopes', () => {
   for (const sample of capture.cases) {
     expect(sample.after.question).toBe(OBLIGATION_WORK_QUESTION_TOOLS);
-    expect(sample.after.systemSha256).toBe(createHash('sha256').update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).digest('hex'));
+    expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.split(MEMORY_DISAMBIGUATION)).toHaveLength(2);
+    expect(sample.after.systemSha256).toBe(createHash('sha256').update(capturedSystem).digest('hex'));
+    expect(sample.after.systemSha256).not.toBe(createHash('sha256').update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).digest('hex'));
     const input = JSON.parse(sample.before.input);
     input.messages[0].content = OBLIGATION_WORK_QUESTION_TOOLS;
     expect(createHash('sha256').update(JSON.stringify(input)).digest('hex')).toBe(sample.after.inputSha256);
