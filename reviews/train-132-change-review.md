@@ -58,6 +58,9 @@ Decision: train-132-run-loader | Keep update independent of the TypeScript loade
 
 Publication: Standard repin/build/rehash/replay refreshed the seven generated outputs at source 2c9bb9538fcb557846dedd07d503593929be33e9 after the verified run-loader repair; authority remains shape-only and the native certificate is unchanged.
 
+Pipeline repair: Restored the eleven decisions and their original reasons at the referenced absolute desk report path from this review at 913a7af4b61c84a56781f9e2b7058905fada8126. The report explicitly identifies reconstructed provenance; no original verification transcript, full-run result or native certificate renewal is asserted. This is a machine-local desk-evidence repair with no runtime change. The existing report reader and Rule 102 validator were inspected. Missing report yields eleven findings; a report omitting one ID still yields one. The actual checker confirms all eleven missing-report failures are resolved. Removing the report would reinstate the refusal; preserve the committed decision record for recovery.
+Decision: train-132-p2-repair-report | Restore the exact missing desk report from the committed decision rows; retain honest provenance instead of inventing original verification evidence. Record the repair in this existing composition review because a standalone empty-subject review is refused. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-132-p2-repair-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges with local overlap repairs and existing regeneration tools. No new machinery. Existing custody/authority admission is the start guard, recorded accepted exchange is the end guard, and secrets/spend/stop/intake/send floors remain limits. Member reports retain their live evidence; this composition claims offline verification only.
