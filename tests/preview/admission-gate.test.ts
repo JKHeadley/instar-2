@@ -11,7 +11,7 @@ import { modelGateLaunch } from '../../src/assembly/production-session-driver.js
 // @ts-expect-error the checkpoint stays plain JavaScript
 import { canonical, createAdmissionGate, createToolEffectOwner, toolOperation } from './admission-gate.mjs';
 // @ts-expect-error the hook's decision stays plain JavaScript
-import { admitToolCallEffect } from './tool-admission.mjs';
+import { admitToolCall, admitToolCallEffect } from './tool-admission.mjs';
 
 const RECORDED = JSON.parse(readFileSync(join(__dirname, 'fixtures/model-gate-requests-2026-10-03.json'), 'utf8')) as Record<string,
   { modelCalls: number; requests: [string, string][] }>;
@@ -141,4 +141,22 @@ it('persists conversation charges before forwarding and refuses a failed durable
   expect((await w.send(url)).status).toBe(400);
   expect(reserved).toEqual([1]); expect(w.received).toHaveLength(1);
   expect(w.gate.state('claim-durable')).toMatchObject({ calls: 1, refused: true, refusalReason: 'reservation-unavailable' });
+});
+
+it('routes a new wake to the installed checkpoint, which still refuses absent authority and closed claims', async () => {
+  const w = await world({ held: () => 'clear' });
+  w.gate.open('claim-wake', { framework: 'claude-code', allowance: 2, edge: w.edge });
+  const gate = w.gate.base('claim-wake');
+  const call = { tool_name: 'ScheduleWakeup', tool_use_id: 'wake-1',
+    tool_input: { delaySeconds: 60, prompt: 'continue admitted work', reason: 'wait', noop: true } };
+  const config = { gate, maxCalls: 50, operations: [] };
+  const decision = admitToolCall(call, config, 1, {});
+  expect(decision).toMatchObject({ decision: 'gate', kind: 'effect' });
+  const ask = async () => JSON.parse((await w.send(`${gate}/admit`, 'POST', JSON.stringify({ ...call, kind: decision.kind, phase: 'pre' }))).body);
+  expect(await ask()).toMatchObject({ decision: 'deny', doorway: { disposition: 'refused' } });
+  expect(w.gate.state('claim-wake')).toMatchObject({ toolPreparations: 0 });
+  w.gate.close('claim-wake');
+  expect(await ask()).toMatchObject({ decision: 'deny', reason: expect.stringContaining('closed') });
+  expect(admitToolCall(call, config, 51, {})).toMatchObject({ decision: 'deny', reason: expect.stringContaining('call cap') });
+  expect(w.received).toEqual([]);
 });

@@ -521,11 +521,13 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
   if (n > config.maxCalls) return deny(`per-step call cap ${config.maxCalls} reached (call ${n})`);
   // Claude Code 2.1.280: stop:true only cancels this session's dynamic loop;
   // it returns before the scheduling branch. Normalize to that exact operation.
-  // A new harness wake has no durable host work item or reserved future model
-  // turns (Rules 2/8/60/68). Use the existing host promises/reminders instead.
+  // New wakes on checkpointed routes go to the existing effect owner (Rule 103).
+  // Without that checkpoint, durable host work and future model reservations
+  // cannot be enforced here (Rules 2/8/60/68); use host promises/reminders.
   // This is a lifecycle/budget refusal, not an effect needing operator sign-off.
   if (tool === 'ScheduleWakeup') return input.stop === true
     ? { decision: 'allow', reason: 'harness bookkeeping: cancel this session\'s dynamic wakeups', updatedInput: { stop: true } }
+    : typeof config.gate === 'string' ? effect('schedule')
     : deny('No harness wake was scheduled: future turns need durable host work and a spend reservation (Rules 2, 8, 60, 68). '
       + 'For requested later work, use the response\'s promises and dated-request protocol so Instar records and wakes it. '
       + 'Do not claim a wake is saved before that record is admitted. Continue unrelated work; this tool refusal is not '

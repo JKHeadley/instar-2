@@ -138,6 +138,11 @@ it('a checkpointed route sends consequential tools and delegations to its checkp
   // category here), and a network read the route admits is allowed.
   const gated = { gate: 'http://127.0.0.1:4100/x/claim', delegation: true, networkReads: true };
   expect(call('mcp__x__y', {}, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
+  const wake = { delaySeconds: 60, prompt: 'continue admitted work', reason: 'wait', noop: true };
+  expect(call('ScheduleWakeup', wake, gated)).toEqual({ decision: 'gate', kind: 'effect', reason: 'the effect owner decides' });
+  expect(call('ScheduleWakeup', wake)).toMatchObject({ decision: 'deny', kind: 'budget' });
+  expect(call('ScheduleWakeup', { ...wake, stop: true }, gated)).toMatchObject({ decision: 'allow', updatedInput: { stop: true } });
+  for (const stop of [false, 'true']) expect(call('ScheduleWakeup', { ...wake, stop }, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
   expect(call('SendMessage', { to: 'x', message: 'y' }, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
   expect(call('Bash', { command: 'ls', dangerouslyDisableSandbox: true }, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
   expect(call('Agent', { prompt: 'x' }, gated)).toMatchObject({ decision: 'gate', kind: 'delegation' });
