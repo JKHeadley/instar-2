@@ -25,3 +25,4 @@ simplestRobustRoute: retain the existing durable journal, worker and lane, remem
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Pin maintenance: the delegated desk repin updates the existing grounding inventory hashes for inherited rungraph/index.ts and transport/index.ts and its checker digest. Owner-reference hashes required no changes. Register outputs are replayed from committed source. The native macOS certificate mismatch is left for the Studio as the charter requires; its declaration is untouched.
+Register replay source: 797cff149881bfec23693553a9310f22ea1a4dc1. Generated artifacts contain the committed wake repair and grounding pins.
