@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: a Codex room's shipped self-host helper validates and dispatches through its registered Codex adapter, including exact invocation policy, system text, provider identity and raw terminal evidence. The recorded group J run refused before any provider call because the helper applied Claude's validator. The owner composition also assumed a Claude JSON result when materializing evidence; it now uses the terminal reader registered by the route's adapter. Existing registrations retain their historical JSON-result reading and historical stage-two callers retain their default framing.
 Affected rules: 2, 26, 30, 34, 36, 41, 42, 43, 44, 45, 49, 58, 70, 74, 75, 95, 101, 105, 111, 113, 115, 116.
-Affected floors: secrets remain inside the same profile custodian; spend and attempt caps, stop checks, durable intake and prepared/claimed/consumed reservations are unchanged; self-host sends no conversation reply. No new authority or fallback is introduced. The raw terminal reader is registered once on the frozen route by its adapter, not accepted from a model response. Raw and answer digests and the exact source/terminal authority facts remain checked before admitted response evidence is emitted.
+Affected floors: secrets remain inside the same profile custodian; spend and attempt caps, stop checks, durable intake, no duplicate sends and prepared/claimed/consumed reservations are unchanged; self-host sends no conversation reply. No new authority or fallback is introduced. The raw terminal reader is registered once on the frozen route by its adapter, not accepted from a model response. Raw and answer digests and the exact source/terminal authority facts remain checked before admitted response evidence is emitted.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
@@ -22,7 +22,16 @@ Prompt review: model-facing composition, with no prompt wording or answer-parser
 Decision: registered-doorway | reuse the same validator, policy, source/terminal contract and provider constructor as the live runner; expose adapter-owned system text so prompt measurement and invocation hashes describe what is actually sent | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/selfhost-codex-1021-PROGRESS.md
 Decision: terminal-reader | extend the existing immutable route evidence registration with its adapter-owned raw reader; the simpler Claude-only JSON parse demonstrably fails on the recorded Codex JSONL stream after dispatch | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/selfhost-codex-1021-PROGRESS.md
 
+Decision: register-replay | regenerate the seven derived source-generation pins from certified source commit 289352803e5c8a40c685c118677559196f77958b using the existing replay generator; no runtime authority is created | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/selfhost-codex-1021-PROGRESS.md
+
+Prompt finding: 0d4664ea9de7 | protocol-literal | Existing standing-trust instruction is quoted in self-description provenance tests; no wording or semantic trigger is changed.
+Prompt finding: 14d7eeccc218 | protocol-literal | Existing workspace and public-read authority instruction is quoted by the self-description tests; this change only exposes the adapter-owned system text.
+Prompt finding: 9781075d458e | protocol-literal | Existing refusal-reporting instruction is asserted by self-description tests, with no fixture-derived answer gate.
+Prompt finding: 45e37ea2e9e9 | protocol-literal | Historical capability instruction is quoted for provenance comparisons; no prompt wording is derived from the fixture.
+Prompt finding: b1bb3946362d | protocol-literal | Existing Claude agent identity instruction is asserted by act-first tests; identity wording is unchanged.
+Prompt finding: 42faf877ba82 | protocol-literal | Existing Codex agent identity instruction is asserted by act-first tests; identity wording is unchanged.
+Prompt finding: 450c79237a95 | protocol-literal | Existing conflicting-memory guidance is asserted by journal-people tests; the instruction and its interpretation are unchanged.
+
 simplestRobustRoute: this is the simplest robust route: reuse registered adapters and the existing owner dispatch, add only the adapter-owned system-text access and route-bound terminal reading needed to remove the two measured Claude assumptions. No second provider execution path, new model call, heuristic completion check or authority bypass. Start guards are exact activation/profile/model plus stop; limits are the existing attempt, prompt, token and resource caps; completion remains the tested and exercised installed package. The actual unattended group J result is recorded in the absolute lanes progress report before submission.
 80/20: author submission; independent landing review belongs to the desk. The separate accepted-Decision verification path is not expanded by this self-host change.
 VERDICT: author submission; no independent convergence claim
-Decision: register-replay | regenerate the seven derived source-generation pins from certified source commit 289352803e5c8a40c685c118677559196f77958b using the existing replay generator; no runtime authority is created | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/selfhost-codex-1021-PROGRESS.md
