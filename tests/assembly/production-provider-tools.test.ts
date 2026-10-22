@@ -118,3 +118,243 @@ it('tells the model it has the whole tool set and how each call is bounded, and 
   expect(completion.policy.args[prompt]).toContain(oldMemory);
   expect({ ...current, args: current.args.map((arg, index) => index === prompt
     ? completion.policy.args[prompt].replace(closedSet, '').replace(oldMemory, MEMORY_DISAMBIGUATION).replace('do all your reasoning there.', 'give a brief decision rationale supported by the relevant evidence.') : arg) })
+    .toEqual(current);
+  expect({ ...completion.policy, args: completion.policy.args.map((arg: string, index: number) => index === prompt ? current.args[prompt] : arg) })
+    .toEqual(current);
+  expect(guidanceOnlyPolicyPins(current)).toBe(guidanceOnlyPolicyPins(completion.policy));
+  expect(hash(completion.policy)).toBe(completion.digest);
+  expect(completion.digest).not.toBe(previous.digest);
+});
+
+it('writes settings that refuse every read from the root down except the scratch volume and the runtime, writes outside the volume, network and unix sockets, with the mandatory hook on both events', () => {
+  const turn: SubscriptionToolTurn = { scratch: '/r/tool-turns/a-0/vol', workspace: '/r/tool-turns/a-0/vol/ws', stateDirectory: '/r/tool-turns/a-0/state',
+    deniedRoots: ['/r', '/profile/home'], hook: { node: '/usr/local/bin/node', script: '/repo/tests/preview/tool-admission-hook.mjs' } };
+  const settings = JSON.parse(subscriptionToolSettings(turn, '/profile/home'));
+  expect(settings.disableAllHooks).toBe(false);
+  // Claude Code 2.1.280 reads `denyRead` as regions and `allowRead` as reopenings inside them: with the root denied, only the
+  // listed paths are readable (review round 1, finding 1: a neighbouring temporary file was readable under the old list).
+  expect(settings.sandbox).toEqual({ enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false,
+    network: { allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false },
+    filesystem: { allowWrite: ['/r/tool-turns/a-0/vol'],
+      denyWrite: ['/tmp/claude', '/private/tmp/claude', '/profile/home/.npm/_logs', '/profile/home/.claude/debug'],
+      denyRead: ['/'], allowRead: ['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS, '/var'] } });
+  // With the turn's network checkpoint, the one reachable place is its loopback port, and its tools' locations are readable.
+  const netted = JSON.parse(subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/usr/local/bin', '/Library/Developer/CommandLineTools'] } }, '/profile/home'));
+  expect(netted.sandbox.network).toEqual({ allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false, httpProxyPort: 40001 });
+  expect(netted.sandbox.filesystem.allowRead).toEqual(['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS, '/var', '/usr/local/bin', '/Library/Developer/CommandLineTools']);
+  expect(settings.sandbox.network.httpProxyPort).toBeUndefined();
+  for (const port of [0, 70000, 1.5]) expect(() => subscriptionToolSettings({ ...turn, egress: { port, reads: [] } }, '/profile/home')).toThrow(/egress checkpoint port/u);
+  // A tool location may never reopen the runner root, the login home or the admission state.
+  expect(() => subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/r'] } }, '/profile/home')).toThrow(/under a readable path/u);
+  expect(() => subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/profile'] } }, '/profile/home')).toThrow(/under a readable path/u);
+  expect(() => subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/usr/local bin'] } }, '/profile/home')).toThrow(/absolute and plain/u);
+  // Nothing in the runtime list holds user, session or runner data, and the host's own configuration is not on it
+  // (w4-t2boundary, plan #615: /private/etc left the list, so a tool reads the machinery a command runs on and no more).
+  for (const read of SUBSCRIPTION_TOOL_RUNTIME_READS) expect(read).toMatch(/^\/(bin|sbin|usr\/(bin|sbin|lib|libexec|share)|System|private\/var\/select|dev)$/u);
+  expect(SUBSCRIPTION_TOOL_RUNTIME_READS).not.toContain('/private/etc');
+  // The link spelling reopens only the root-level symlink itself (w4-toolpaths): it resolves on this platform to the
+  // directory holding a listed read, so nothing behind it that is not separately listed becomes readable. `/etc` was
+  // such an entry while /private/etc was listed; it is not, so neither spelling of the hosts file is reopened.
+  expect(SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS).toEqual(['/var']);
+  expect(settings.permissions).toEqual({ allow: [...SUBSCRIPTION_TOOL_NAMES] });
+  for (const [event, mode] of [['PreToolUse', 'pre'], ['PostToolUse', 'post'], ['SubagentStart', 'child-start'], ['SubagentStop', 'child-stop']] as const)
+    expect(settings.hooks[event]).toEqual([{ matcher: '*', hooks: [{ type: 'command',
+      command: `/usr/local/bin/node /repo/tests/preview/tool-admission-hook.mjs ${mode} /r/tool-turns/a-0/state` }] }]);
+  // Refused shapes: the admission state inside the volume, a hook a tool could rewrite, a path needing quoting, a workspace
+  // off its volume, and a denied root, the state or the home under a readable path.
+  const home = '/profile/home';
+  expect(() => subscriptionToolSettings({ ...turn, stateDirectory: '/r/tool-turns/a-0/vol/state' }, home)).toThrow(/outside the workspace/u);
+  // The root's MCP servers: each is allowed by name, and its launch configuration must lie in the admission state.
+  const mcp = JSON.parse(subscriptionToolSettings({ ...turn, mcp: { config: '/r/tool-turns/a-0/state/mcp.json', servers: ['dummy'] } }, home));
+  expect(mcp.permissions.allow).toEqual([...SUBSCRIPTION_TOOL_NAMES, 'mcp__dummy']);
+  expect(() => subscriptionToolSettings({ ...turn, mcp: { config: '/r/tool-turns/a-0/vol/ws/mcp.json', servers: ['dummy'] } }, home)).toThrow(/MCP configuration/u);
+  expect(() => subscriptionToolSettings({ ...turn, mcp: { config: '/r/tool-turns/a-0/state/mcp.json', servers: ['a b'] } }, home)).toThrow(/MCP configuration/u);
+  // A runner-private directory under a denied root (the harness user's hand-off) is accepted; anywhere else is not.
+  expect(() => subscriptionToolSettings({ ...turn, mcp: { config: '/r/tool-turns/a-0/private/mcp.json', servers: ['dummy'] } }, home)).not.toThrow();
+  expect(() => subscriptionToolSettings({ ...turn, mcp: { config: '/elsewhere/mcp.json', servers: ['dummy'] } }, home)).toThrow(/MCP configuration/u);
+  expect(() => subscriptionToolSettings({ ...turn, hook: { ...turn.hook, script: '/r/tool-turns/a-0/vol/hook.mjs' } }, home)).toThrow(/outside the workspace/u);
+  expect(() => subscriptionToolSettings({ ...turn, workspace: '/r/a b/ws' }, home)).toThrow(/absolute and plain/u);
+  expect(() => subscriptionToolSettings({ ...turn, workspace: '/r/../ws' }, home)).toThrow(/absolute and plain/u);
+  expect(() => subscriptionToolSettings({ ...turn, workspace: '/r/tool-turns/a-0/ws' }, home)).toThrow(/inside its scratch volume/u);
+  expect(() => subscriptionToolSettings({ ...turn, deniedRoots: ['/usr/share/runner'] }, home)).toThrow(/under a readable path/u);
+  expect(() => subscriptionToolSettings(turn, '/private/var/select/home')).toThrow(/under a readable path/u);
+  // A mount point too long for the harness's per-user temporary directory would push it to the shared /tmp/claude-<uid>.
+  expect(() => subscriptionToolSettings({ ...turn, scratch: '/r/tool-turns/0123456789abcdef-0/vol', workspace: '/r/tool-turns/0123456789abcdef-0/vol/ws' }, home))
+    .toThrow(/too long for the harness temporary directory/u);
+});
+
+function fixture(options: { outputTokens?: number } = {}) {
+  const f = factsFixture(), root = realpathSync(mkdtempSync(join(RUNNER_TMP_ROOT, 'subscription-tools-'))); roots.push(root);
+  const home = join(root, 'home'), configDirectory = join(root, 'config'), workingDirectory = join(root, 'work');
+  // The scratch volume's mount point is short (the harness temporary directory must fit 44 bytes), as the runner allocates it.
+  const scratch = realpathSync(mkdtempSync('/private/tmp/itt-')); roots.push(scratch);
+  const workspace = join(scratch, 'ws'), stateDirectory = join(root, 'turn', 'state');
+  for (const path of [home, configDirectory, workingDirectory, workspace, stateDirectory]) mkdirSync(path, { recursive: true, mode: 0o700 });
+  const executable = join(root, 'synthetic-cli.mjs'), report = join(root, 'commands.jsonl');
+  const status = { loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', analyticsDisabled: true,
+    projectsDirectory: `${configDirectory}/projects`, configDirectory, email: 'synthetic@example.invalid',
+    orgId: 'synthetic-organization', orgName: 'synthetic', subscriptionType: 'max' };
+  const answer = JSON.stringify({ ...f.decisionInput(), conclusion: { ...f.decisionInput().conclusion, subject: 'preview-stage2-answer', predicate: 'answer-text', value: '11' } });
+  const terminal = JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: answer, num_turns: 4,
+    session_id: 'synthetic-call', usage: { input_tokens: 10, output_tokens: options.outputTokens ?? 300 }, total_cost_usd: 0.05 });
+  const source = `#!${process.execPath}\nimport {appendFileSync} from 'node:fs';
+    let stdin='';for await(const chunk of process.stdin)stdin+=chunk;
+    appendFileSync(${JSON.stringify(report)},JSON.stringify({args:process.argv.slice(2),cwd:process.cwd(),stdin,tmpdir:process.env.CLAUDE_CODE_TMPDIR??null,
+      memory:process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY??null,compact:process.env.DISABLE_AUTO_COMPACT??null,
+      maxOut:process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS??null})+'\\n');
+    if(process.argv[2]==='--version')process.stdout.write('2.1.280 (Claude Code)\\n');
+    else if(process.argv[2]==='auth')process.stdout.write(${JSON.stringify(JSON.stringify(status))});
+    else process.stdout.write(${JSON.stringify(terminal)});\n`;
+  writeFileSync(executable, source); chmodSync(executable, 0o700);
+  let hooksDisabled: boolean | null = false;
+  const physical = createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => false });
+  const io = { ...physical, managedHooksDisabled: () => hooksDisabled };
+  const seed = { type: 'ProviderSubscriptionProfile' as const, schemaVersion: 1 as const, reference: 'subscription-login',
+    home, configDirectory, workingDirectory, expectedAccount: status.email, organization: status.orgId, plan: 'max' as const,
+    executable, artifact: `sha256:${createHash('sha256').update(source).digest('hex')}`, version: '2.1.280',
+    activationReference: 'activation:synthetic', loginProfileIdentity: '', managedConfigurationDigest: '' };
+  const profile: ProviderSubscriptionProfile = Object.freeze({ ...seed, ...physical.inspectSubscriptionProfile(seed) });
+  const model = 'claude-synthetic-exact-1';
+  const activation = (framing: string): SubscriptionActivationRecord => ({ type: 'SubscriptionActivationRecord', schemaVersion: 1,
+    reference: profile.activationReference, waiver: 'synthetic-waiver', p11: 'synthetic-p11', reviewedHead: 'synthetic-head',
+    trial: 'synthetic-trial', baseConfigurationDigest: hash('synthetic-config'), profileDigest: hash(profile),
+    executable, artifact: profile.artifact, version: profile.version, model,
+    invocationPolicyDigest: hash(framing === SUBSCRIPTION_TOOLS_FRAMING ? subscriptionToolsPolicy(model) : subscriptionConversationPolicy(model)),
+    expectedAccount: profile.expectedAccount, observedAccount: profile.expectedAccount, authSource: 'claude.ai',
+    operatorAssertion: 'synthetic-assertion', assertedAt: 1, observer: 'synthetic-observer', observedAt: 2, method: 'synthetic-observation',
+    safeCaptureReference: 'capture:synthetic', extraUsage: 'operator-asserted/unobservable', extraUsageReason: 'synthetic reason here',
+    subscriptionLimit: 'unobservable', subscriptionLimitReason: 'synthetic limit reason', acceptedResiduals: ['synthetic residual'],
+    expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY });
+  const ctx = { ...f.ctx.decode, register: { ...f.ctx.decode.register, entries: [...f.ctx.decode.register.entries, 'preview'] } };
+  const toolTurn: SubscriptionToolTurn = { scratch, workspace, stateDirectory, deniedRoots: [root],
+    hook: { node: process.execPath, script: join(process.cwd(), 'tests/preview/tool-admission-hook.mjs') } };
+  const input = (framing: string = SUBSCRIPTION_TOOLS_FRAMING, turn: SubscriptionToolTurn | null = toolTurn) => ({
+    provider: 'anthropic', model, route: 'subscription-preview', disclosure: 'supervised preview',
+    credential: value(decode('SecretRef', { type: 'SecretRef', schemaVersion: 1, vault: 'preview', name: profile.reference }, ctx)),
+    context: { ...ctx, site: f.c.site, preserved: f.c.preserved }, profile, activation: activation(framing), io, now: () => 1000,
+    active: () => true, resolveProfile: () => profile, framing: framing as typeof SUBSCRIPTION_TOOLS_FRAMING,
+    ...(turn ? { toolTurn: turn } : {}), adapterEvidenceContract: {
+      reference: profile.activationReference, version: hash(profile), parserReference: 'claude-code-json-result', parserVersion: '1',
+      endpoint: profile.loginProfileIdentity, account: profile.expectedAccount, credentialReference: profile.reference,
+      controller: 'synthetic-recorder', sourceEvidence: ['synthetic-source'], terminalEvidence: 'synthetic-terminal',
+      terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'], strength: 'observation' as const,
+      maxMetadataBytes: 8192, maxRawTerminalBytes: 65536, maxCaptureBytes: 1048576 } });
+  const policy = subscriptionToolsPolicy(model);
+  const bounds = { operation: 'operation:synthetic', deadline: 400000, timeout: 5000, maxOutputBytes: policy.maxOutputBytes,
+    maxTokens: policy.maxTokens, maxCharge: 0, automaticRetries: 0 as const };
+  return { root, workspace, stateDirectory, workingDirectory, toolTurn, input, bounds, answer, model, profile, activation,
+    disableHooks: (value: boolean | null) => { hooksDisabled = value; },
+    commands: () => { try { return readFileSync(report, 'utf8').trim().split('\n').map(line => JSON.parse(line)); } catch { return []; } } };
+}
+
+it('runs the model command in the turn workspace with the per-turn settings appended; preflights stay in the empty work directory', async () => {
+  const f = fixture();
+  const route = value(createClaudeCodeSubscriptionRoute(f.input()));
+  const observed = await route.invoke('{"question":"wc"}', f.bounds);
+  expect(observed).toMatchObject({ state: 'complete', bytes: f.answer, usage: { outputTokens: 300, charge: null } });
+  const commands = f.commands();
+  expect(commands.map(c => c.cwd)).toEqual([f.workingDirectory, f.workingDirectory, f.workspace]);
+  // No kept session given: the harness persists nothing.
+  expect(commands[2].args).toEqual([...subscriptionToolsPolicy(f.model).args, '--settings', subscriptionToolSettings(f.toolTurn, f.profile.home),
+    '--no-session-persistence']);
+  expect(commands[2].stdin).toBe('{"question":"wc"}');
+  // A tool route points the harness's temporary directory at the turn's volume (its preflights share the one environment), and
+  // turns off the harness's own memory and its silent compaction.
+  expect(commands.map(c => c.tmpdir)).toEqual([f.toolTurn.scratch, f.toolTurn.scratch, f.toolTurn.scratch]);
+  expect(commands.map(c => [c.memory, c.compact])).toEqual([['1', '1'], ['1', '1'], ['1', '1']]);
+});
+
+// Plan #612 (live rc-2 proof room 1, updates 715674595 and 715674603): under a per-message cap of 2048 the CLI cut a long
+// answer and resumed it in a second message, and the JSON result carried only that last fragment. The tool route's
+// per-message cap is its own whole-turn bound, so the CLI never splits an answer the provider would admit; the
+// single-call routes keep 2048 (production-provider-subscription.test.ts). The total the provider admits is unchanged.
+it('gives the tool turn a per-message output cap equal to the route bound, and still refuses a frame over that bound', async () => {
+  const f = fixture(), policy = subscriptionToolsPolicy(f.model);
+  expect(policy.maxTokens).toBe(SUBSCRIPTION_MAX_OUTPUT_TOKENS * SUBSCRIPTION_TOOL_LIMITS.maxTurns);
+  expect(await value(createClaudeCodeSubscriptionRoute(f.input())).invoke('{"question":"long"}', f.bounds)).toMatchObject({ state: 'complete' });
+  expect(f.commands().map(c => c.maxOut)).toEqual(Array(3).fill(String(policy.maxTokens)));
+  const over = fixture({ outputTokens: policy.maxTokens + 1 });
+  expect(await value(createClaudeCodeSubscriptionRoute(over.input())).invoke('{"question":"long"}', over.bounds))
+    .toMatchObject({ state: 'uncertain', bytes: null });
+});
+
+it('starts or resumes the kept session the runner names, on the model command only, and refuses a malformed session id', async () => {
+  const f = fixture(), id = '0f4c2b1e-8d7a-4c3b-9e2f-1a2b3c4d5e6f';
+  for (const resume of [false, true]) {
+    const turn = { ...f.toolTurn, session: { id, resume } };
+    expect(await value(createClaudeCodeSubscriptionRoute({ ...f.input(), toolTurn: turn })).invoke('{"question":"s"}', f.bounds)).toMatchObject({ state: 'complete' });
+  }
+  const models = f.commands().filter(c => c.stdin.length > 0);
+  expect(models.map(c => c.args.slice(-2))).toEqual([['--session-id', id], ['--resume', id]]);
+  for (const c of f.commands().filter(c => c.stdin.length === 0)) expect(c.args).not.toContain(id);
+  expect(createClaudeCodeSubscriptionRoute({ ...f.input(), toolTurn: { ...f.toolTurn, session: { id: '--continue', resume: true } } }).kind).toBe('Refused');
+});
+
+it('loads the root\'s MCP servers from the admission state for the model command only, never in the digest-bound policy', async () => {
+  const f = fixture();
+  const config = join(f.stateDirectory, 'mcp.json');
+  writeFileSync(config, JSON.stringify({ mcpServers: { dummy: { command: '/usr/bin/true' } } }));
+  const turn = { ...f.toolTurn, mcp: { config, servers: ['dummy'] } };
+  const route = value(createClaudeCodeSubscriptionRoute({ ...f.input(), toolTurn: turn }));
+  expect(await route.invoke('{"question":"mcp"}', f.bounds)).toMatchObject({ state: 'complete' });
+  const commands = f.commands();
+  expect(commands[2].args).toEqual([...subscriptionToolsPolicy(f.model).args, '--mcp-config', config, '--settings', subscriptionToolSettings(turn, f.profile.home),
+    '--no-session-persistence']);
+  // The preflights carry no MCP configuration, and the policy (what the activation binds) keeps its empty one.
+  for (const command of commands.slice(0, 2)) expect(command.args).not.toContain(config);
+  expect(subscriptionToolsPolicy(f.model).args).not.toContain(config);
+});
+
+it('refuses a tool turn when managed policy may disable the hook, when the framing and turn differ, or when a path is not canonical', async () => {
+  const f = fixture();
+  for (const disabled of [true, null]) {
+    f.disableHooks(disabled);
+    expect(createClaudeCodeSubscriptionRoute(f.input()).kind).toBe('Refused');
+  }
+  f.disableHooks(false);
+  expect(createClaudeCodeSubscriptionRoute(f.input(SUBSCRIPTION_TOOLS_FRAMING, null)).kind).toBe('Refused');
+  expect(createClaudeCodeSubscriptionRoute(f.input(SUBSCRIPTION_CONVERSATION_FRAMING, f.toolTurn)).kind).toBe('Refused');
+  const link = join(f.root, 'link-ws'); symlinkSync(f.workspace, link);
+  expect(createClaudeCodeSubscriptionRoute(f.input(SUBSCRIPTION_TOOLS_FRAMING, { ...f.toolTurn, workspace: link })).kind).toBe('Refused');
+  // The positive neighbour: the same input with hooks observed on is admitted.
+  expect(createClaudeCodeSubscriptionRoute(f.input()).kind).toBe('Success');
+  expect(f.commands()).toHaveLength(0);
+});
+
+it('admits the tool policy only under an activation bound to it: a conversation activation cannot launch tools', () => {
+  const f = fixture();
+  expect(() => validateSubscriptionActivation(f.activation(SUBSCRIPTION_CONVERSATION_FRAMING), f.profile, f.model, 1000,
+    SUBSCRIPTION_TOOLS_FRAMING)).toThrow(/policy differs/u);
+  expect(() => validateSubscriptionActivation(f.activation(SUBSCRIPTION_TOOLS_FRAMING), f.profile, f.model, 1000,
+    SUBSCRIPTION_TOOLS_FRAMING)).not.toThrow();
+});
+
+// Recorded user requests through the real adapter and its existing process stub. This proves
+// delivery of the guidance, not that a fresh model obeys it; no live provider is invoked.
+it('delivers complete-step/full-set guidance with the recorded T/t1 and c1 requests on both answer paths', async () => {
+  const tools = JSON.parse(readFileSync(new URL('../preview/fixtures/tool-verification-2026-10-15.json', import.meta.url), 'utf8'));
+  const fullSet = JSON.parse(readFileSync(new URL('../preview/fixtures/completion-full-set-2026-10-15.json', import.meta.url), 'utf8'));
+  const requests = [
+    { id: tools.cases[0].tools.operation, question: tools.cases[0].question },
+    { id: fullSet.intake.id, question: fullSet.intake.text },
+  ];
+  expect(requests.map(row => row.id)).toEqual(['telegram:8994258214:update:715676307', 'telegram:8993213212:update:46040043']);
+  for (const framing of [SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_CONVERSATION_FRAMING]) {
+    const f = fixture();
+    const route = value(createClaudeCodeSubscriptionRoute(f.input(framing,
+      framing === SUBSCRIPTION_TOOLS_FRAMING ? f.toolTurn : null)));
+    for (const request of requests) {
+      const envelope = prepareJournalEnvelope({ ...request, context: JSON.stringify({ history: [] }) }, f.model, 'grant:test', 1);
+      expect(await route.invoke(envelope, { ...f.bounds, maxTokens: framing === SUBSCRIPTION_TOOLS_FRAMING
+        ? subscriptionToolsPolicy(f.model).maxTokens : subscriptionConversationPolicy(f.model).maxTokens })).toMatchObject({ state: 'complete' });
+      const command = f.commands().at(-1)!;
+      const system = after(command.args, '--system-prompt')!;
+      expect(system.split(COMPLETE_REQUESTED_WORK)).toHaveLength(2);
+      expect(system).toContain('every item in a requested count or full set');
+      expect(system).toContain('say which were not done and why');
+      expect(JSON.parse(command.stdin).messages.find((message: { role: string }) => message.role === 'user').content)
+        .toBe(request.question);
+      expect(system.includes('You have no tools')).toBe(framing === SUBSCRIPTION_CONVERSATION_FRAMING);
+    }
+  }
+});

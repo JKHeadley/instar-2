@@ -105,3 +105,10 @@ it('binds the new instruction to both complete recorded provider envelopes', () 
     expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).not.toContain(HISTORICAL_MEMORY);
     expect(sample.after.systemSha256).toBe(createHash('sha256')
       .update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.')).digest('hex'));
+    const input = JSON.parse(sample.before.input);
+    input.messages[0].content = OBLIGATION_WORK_QUESTION_TOOLS;
+    expect(createHash('sha256').update(JSON.stringify(input)).digest('hex')).toBe(sample.after.inputSha256);
+    expect(JSON.parse(read(sample.before.output, sample.before.id)).outcome).toBe('continue');
+    expect(JSON.parse(read(sample.after.output, sample.before.id)).outcome).toBe('report');
+  }
+});
