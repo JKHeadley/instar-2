@@ -172,7 +172,7 @@ it('at the configured quota threshold switches before dispatch; below, stale or 
   expect(harnessQuotaLimit(originalHome, a, 95, f.clock.at, 'unreviewed-account')).toBeNull();
   originalHome.accounts[0].identityDrifted = true;
   expect(harnessQuotaLimit(originalHome, a, 95, f.clock.at, 'reviewed-account')).toBeNull();
-  const pool = createHarnessLoginPool({ ...f.settings, usage: () => document() });
+  const pool = createHarnessLoginPool({ ...f.settings, usage: () => ({ version: 1, accounts: [...document().accounts, capacity(f).accounts[1]] }) });
   expect(pool.select().index).toBe(1);
   expect(pool.state.switches[0].reason).toBe('usage-threshold');
   // Once A's observed window resets, exhausted B can select A again without widening the list.
@@ -422,7 +422,7 @@ it('excludes an unavailable member without renumbering holds/history, records on
   f.clock.at += 1;
   const reading = capacity(f);
   const recovered = createHarnessLoginPool({ ...f.settings, usage: () => reading });
-  expect(recovered.status()).toContain('fresh usage, switches at 95%');
+  expect(recovered.status()).toContain('fresh usage, switches at 80%');
 });
 
 it('a threshold observed while A is in flight affects only the next dispatch, with one result per accepted message', async () => {
@@ -457,4 +457,81 @@ it('retained admission profiles cannot replace live profiles for dispatchable me
   retained.logins[1].unavailable = 'profile missing';
   writeFileSync(f.options['login-pool'], JSON.stringify(retained));
   expect(loadHarnessLogins(f.options).identity).toBe(f.configuration.identity);
+});
+
+// R36: the snapshot comes from the recorded 1.x endpoint; mutations below are
+// explicit boundary neighbors, never represented as additional live captures.
+it.each(['fiveHour', 'sevenDay'])('ports the 1.x lag-aware 80% ceiling before the old 95% wall (%s)', window => {
+  const f = fixture();
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/pool-quota-2026-10-21.json', import.meta.url), 'utf8'));
+  f.clock.at = Date.parse(recorded.snapshot.measuredAt);
+  let pct = 79.99;
+  const usage = () => ({ version: 1, accounts: f.configuration.entries.map((entry, index) => ({
+    email: entry.profile.expectedAccount, configHome: entry.profile.configDirectory,
+    lastQuota: { ...recorded.snapshot, [window]: { ...recorded.snapshot[window], utilizationPct: index === 0 ? pct : 20 } },
+  })) });
+  const pool = createHarnessLoginPool({ ...f.settings, usage });
+  expect(pool.selectSession(0).index).toBe(0);
+  pct = 80;
+  expect(pool.selectSession(0).index).toBe(1);
+  expect(pool.state.handoffAttempts).toHaveLength(1);
+  expect(pool.state.switches).toHaveLength(0); // Prepared is not completed.
+});
+
+it.each([65, 65.01, 79, null])('requires the 1.x destination headroom; all-hot stays on a still-usable source (target=%s)', target => {
+  const f = fixture(); let source = 80;
+  const reading = () => ({ version: 1, accounts: capacity(f).accounts.map((account, index) => ({ ...account,
+    lastQuota: index === 1 && target === null ? null : { ...account.lastQuota,
+      fiveHour: { ...account.lastQuota.fiveHour, utilizationPct: index === 0 ? source : target },
+      sevenDay: { ...account.lastQuota.sevenDay, utilizationPct: index === 0 ? source : target } },
+  })) });
+  const pool = createHarnessLoginPool({ ...f.settings, usage: reading });
+  expect(pool.selectSession(0)?.index).toBe(target === 65 ? 1 : 0);
+  if (target !== 65) {
+    expect(pool.state.handoffAttempts ?? []).toHaveLength(0);
+    source = 95; expect(pool.selectSession(0)).toBeNull();
+    pool.observe(f.configuration.entries[0], limit); source = 10;
+    expect(pool.selectSession(0)).toBeNull(); // Unknown provider hold never becomes an all-hot exception.
+  }
+});
+
+it('rechecks the cooler-target margin for a prepared move without another attempt', () => {
+  const f = fixture(); let target = 65;
+  const reading = () => ({ version: 1, accounts: capacity(f).accounts.map((account, index) => ({ ...account,
+    lastQuota: { ...account.lastQuota, sevenDay: { ...account.lastQuota.sevenDay, utilizationPct: index === 0 ? 80 : target } },
+  })) });
+  const pool = createHarnessLoginPool({ ...f.settings, usage: reading });
+  expect(pool.selectSession(0).index).toBe(1);
+  expect(pool.readySession(1).index).toBe(1);
+  target = 65.01; expect(pool.readySession(1)).toBeNull();
+  expect(pool.state.handoffAttempts).toHaveLength(1);
+});
+
+it('ports use-before-reset scoring and tries the next admitted cooler member if the winner withdraws', () => {
+  const f = fixture(['a', 'b', 'c']);
+  const reading = { version: 1, accounts: capacity(f).accounts.map((account, index) => ({ ...account,
+    lastQuota: { ...account.lastQuota,
+      fiveHour: { utilizationPct: index === 0 ? 80 : 60, resetsAt: new Date(f.clock.at + (index === 2 ? 1800000 : 3600000)).toISOString() },
+      sevenDay: { utilizationPct: 10, resetsAt: new Date(f.clock.at + 86400000).toISOString() } },
+  })) };
+  const pool = createHarnessLoginPool({ ...f.settings, usage: () => reading });
+  expect(pool.selectSession(0).index).toBe(2);
+  const next = createHarnessLoginPool({ ...f.settings, usage: () => reading, validate: entry => {
+    if (entry.index === 2) throw Error('withdrawn');
+  } });
+  expect(next.selectSession(0).index).toBe(1);
+});
+
+it('prefers fresh live quota and preserves a legacy snapshot age when telemetry cannot be read', async () => {
+  const f = fixture(); let live = capacity(f);
+  const file = capacity(f); file.accounts[0].lastQuota.sevenDay.utilizationPct = 80;
+  const reader = { read: () => live, refresh: async () => {} };
+  let pool = createHarnessLoginPool({ ...f.settings, quotaReader: reader, usage: () => file });
+  await pool.refresh(); expect(pool.selectSession(0).index).toBe(0);
+  live = { version: 1, accounts: [] };
+  expect(pool.selectSession(0).index).toBe(1);
+  // An unavailable collector never turns a five-minute-old file into current room.
+  f.clock.at += 300001;
+  pool = createHarnessLoginPool({ ...f.settings, quotaReader: reader, usage: () => file });
+  expect(pool.readySession(1)).toBeNull();
 });
