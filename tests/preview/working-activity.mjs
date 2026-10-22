@@ -71,17 +71,26 @@ export function createWorkingActivities({ read, now }) {
         }
       }
     },
-    // 1.x RateLimitSentinel's immediate wait notice, projected into the existing
+    // 1.x RateLimitSentinel/SocketDisconnectSentinel wait notices, projected into the existing
     // durable progress doorway. No send authority or private notification store.
     observeSession(session, observation) {
       if (!session) return;
       const waiting = observation.kind === 'Success' && observation.value.phase === 'launched'
         && observation.value.detail === 'rate-limit recovery waiting' && session.rateRecovery?.state === 'waiting';
-      const episode = waiting ? `${session.identity}:${session.rateRecovery.dueAt}` : null;
+      const reconnecting = observation.kind === 'Success' && observation.value.phase === 'launched'
+        && observation.value.detail === 'connection recovery waiting'
+        && Number.isSafeInteger(session.turnStartedAt) && session.connectionRetry?.turnStartedAt === session.turnStartedAt
+        && Number.isSafeInteger(session.connectionRetry.attempt) && session.connectionRetry.attempt >= 1
+        && session.connectionRetry.attempt <= 10;
+      // One episode per worker turn, not one per retry/countdown frame. The durable
+      // progress intent dedupes across adapter restart and UNKNOWN delivery too.
+      const wait = reconnecting ? 'connection' : 'rate-limit';
+      const episode = reconnecting ? `${session.identity}:${session.turnStartedAt}`
+        : waiting ? `${session.identity}:${session.rateRecovery.dueAt}` : null;
       const claim = session.claim;
       for (const state of active.values()) if (state.claim === claim)
-        state.wait = episode === null ? null : { step: createHash('sha256').update(`rate:${claim}:${episode}`).digest('hex'),
-          text: 'bounded rate-limit recovery', wait: 'rate-limit', running: false, observedAt: now() };
+        state.wait = episode === null ? null : { step: createHash('sha256').update(`${reconnecting ? 'connection' : 'rate'}:${claim}:${episode}`).digest('hex'),
+          text: reconnecting ? 'bounded connection recovery' : 'bounded rate-limit recovery', wait, running: false, observedAt: now() };
     },
     current(operation) {
       const state = active.get(operation);
