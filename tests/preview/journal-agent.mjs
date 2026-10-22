@@ -92,6 +92,7 @@ import { createLocalTranscriber } from '../../scripts/local-transcriber.mjs';
 import { prepareMediaInput, invokeMediaTurn, protectMediaBytes, openConversationMedia } from './media-understanding.mjs';
 import { createMediaAdmission } from './media-admission.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery, sessionLoginNotices, sessionLoginStatus } from './credential-reminders.js';
+import { reapNotices } from './reap-notices.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
 import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, untilStopped, waitWorking } from './live-sentinels.js';
 import { SENTINEL_FAMILIES } from './sentinel-record.js';
@@ -2168,6 +2169,10 @@ async function main() {
         notices.push(...sessionLoginNotices([...sessionLoginObservations.values()], now));
         try { notices.push(...credentialNotices(dueCredentialReminders(createSecretCustody(root, key(), wallNow).records(), now), now)); } catch { /* status shows it */ }
         try { notices.push(...doorwayNotices(readDoorwayMap(doorwaysPath), now)); } catch { /* status shows it */ }
+        // Reply-only delivery: the historical closure survives relaunch; the journal spends its key once.
+        const noticeTurn = turn === undefined ? undefined : journal.view.turns.get(turn);
+        if (noticeTurn) notices.push(...reapNotices(journal.view.reapHistory, journal.view.order, turn,
+          noticeTurn.thread === undefined ? 'main' : String(noticeTurn.thread)));
         return notices;
       },
       // Rules 9, 96, 114: this runner's current work and the other owned runners beside it, read at each operator turn.

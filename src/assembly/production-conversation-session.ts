@@ -588,7 +588,10 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         && input.delivery.incarnation === state.incarnation);
       if (!current.length || current.some(input => input.outcome?.state !== 'complete')) return null;
       const admission = config.io.admissionState(state.claim);
-      if (!admission || admission.refused || admission.openDelegations.length) return null;
+      // A ready prompt cannot settle an effect with no known outcome.
+      // Rules 26/68: keep that work even if its model turn already ended.
+      if (!admission || admission.refused || admission.openDelegations.length
+        || admission.uncertainEffects !== 0) return null;
       return digest(JSON.stringify([state.worker, state.inputs, calls(), state.claimCalls]));
     };
     const assessIdle = async (reason: 'pressure' | 'idle'): Promise<boolean> => {

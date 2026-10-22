@@ -98,8 +98,8 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
               persist({ edge }); config.append(edge); persist({ reserved: true });
             }
             ensure(state.reserved, 'shared reservation interrupted; reconciliation required');
-            config.append({ ...record, parent: state.edge!.id, drawsOn: state.edge!.id });
-          } else config.append(record);
+            config.append({ ...record, topic, parent: state.edge!.id, drawsOn: state.edge!.id });
+          } else config.append(record.type === 'SessionWorkEdge' ? { ...record, topic } : record);
         },
         io: { ...io,
           // All calls are durably charged by the existing dispatch checkpoint. A

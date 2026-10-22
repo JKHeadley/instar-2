@@ -45,7 +45,7 @@ function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | '
     createAdapter: () => adapter,
     io: { clearResult: () => {}, readResult: () => null, modelCalls: () => used, wait: async ms => { clock += ms; },
       prepareAdmission: (_claim, edge) => { admissions.push(edge); }, closeAdmission: claim => { closed.push(claim); },
-      admissionState: () => ({ refused, refusalReason: refused ? 'calls' : null, openDelegations: [] }) },
+      admissionState: () => ({ refused, refusalReason: refused ? 'calls' : null, openDelegations: [], uncertainEffects: 0 }) },
     resources: { admit: async () => ({ attach: async () => {}, release: async () => { releases++; return releaseOK; } }) },
     context: f.c, now: () => clock, stopped: () => stopped, append: row => { edges.push(row); },
     parent: 'run-1', owner: 'machine-1', placement: 'local', transport: 'fake', workingScope: '/scope',
@@ -316,7 +316,7 @@ it('process renewal never extends the already admitted parent lifetime', async (
 
 it.each(['gap', 'wrong-delivery', 'wrong-digest', 'oversize', 'open-child'] as const)('retains uncertainty for %s evidence', async problem => {
   const f = fixture({ maxResultBytes: problem === 'oversize' ? 2 : 65536 });
-  if (problem === 'open-child') f.config.io.admissionState = () => ({ refused: false, openDelegations: [f.admissions[0]!] });
+  if (problem === 'open-child') f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, openDelegations: [f.admissions[0]!] });
   const observe = f.adapter.observe;
   f.adapter.observe = async input => {
     const result = await observe(input);
@@ -691,6 +691,20 @@ it('idle cleanup confirms, waits through grace, and records only lost warm avail
   await f.port.close();
 });
 
+it.each([undefined, 0, 1])('idle cleanup requires observed zero uncertain effects (%s)', async uncertainEffects => {
+  const f = fixture(); Object.assign(f.config, { deadlineMs: 200000 }); await f.port.run(f.request('one'));
+  f.config.io.admissionState = () => ({ refused: false, openDelegations: [],
+    ...(uncertainEffects === undefined ? {} : { uncertainEffects }) });
+  Object.assign(f.adapter, { observeIdle: async () => 'frame:one' });
+  expect(await f.port.retireIdle('pressure')).toBe(false);
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(uncertainEffects === 0);
+  expect(f.counts().stops).toBe(uncertainEffects === 0 ? 1 : 0);
+  expect(f.state().worker === null).toBe(uncertainEffects === 0);
+  expect(f.state().inputs[0]?.outcome?.state).toBe('complete');
+  await f.port.close();
+});
+
 it.each(['changed', 'unknown', 'child', 'new-input'] as const)('idle cleanup aborts grace for %s', async reason => {
   const f = fixture(); Object.assign(f.config, { deadlineMs: 200000 }); await f.port.run(f.request('one'));
   let frame: string | null = 'frame:one';
@@ -698,7 +712,7 @@ it.each(['changed', 'unknown', 'child', 'new-input'] as const)('idle cleanup abo
   await f.port.retireIdle('pressure'); f.advance(30000); await f.port.retireIdle('pressure');
   if (reason === 'changed') frame = 'frame:two';
   if (reason === 'unknown') frame = null;
-  if (reason === 'child') f.config.io.admissionState = () => ({ refused: false, openDelegations: [f.edges[0] as SessionWorkEdge] });
+  if (reason === 'child') f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, openDelegations: [f.edges[0] as SessionWorkEdge] });
   if (reason === 'new-input') await f.port.run(f.request('two'));
   f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
   expect(f.counts().stops).toBe(0);
@@ -709,6 +723,26 @@ it('idle cleanup keeps an adapter without affirmative idle evidence', async () =
   const f = fixture(); Object.assign(f.config, { deadlineMs: 200000 }); await f.port.run(f.request('one'));
   f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
   expect(f.counts().stops).toBe(0); await f.port.close();
+});
+
+it.each(capturedShapes.otherShapes.flatMap(sample => [undefined, 1].map(outstanding => ({ ...sample, outstanding }))))('idle cleanup keeps uncertain effects ($outstanding) after recorded $kind ($id), then reassesses when settled', async sample => {
+  const f = fixture(); Object.assign(f.config, { deadlineMs: 200000, allowanceDeadline: 400000 }); f.answer(sample.raw);
+  await f.port.run(f.request(sample.id));
+  Object.assign(f.adapter, { observeIdle: async () => 'ready-after-recorded-turn' });
+  await f.port.retireIdle('pressure'); f.advance(30000); await f.port.retireIdle('pressure');
+  let outstanding = sample.outstanding;
+  // toolPreparations is a cumulative generation, not an in-flight counter. It
+  // deliberately stays nonzero after settlement and must not prevent idle cleanup.
+  f.config.io.admissionState = () => ({ refused: false, openDelegations: [], toolPreparations: 1, ...(outstanding === undefined ? {} : { uncertainEffects: outstanding }) });
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
+  expect(f.counts().stops).toBe(0);
+  expect(f.state().idleCleanup?.candidate).toBeNull();
+  outstanding = 0;
+  expect(await f.port.retireIdle('pressure')).toBe(false);
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(Boolean(sample.raw.trim()));
+  if (sample.raw.trim()) expect(f.state().inputs[0]!.reply).toBe(sample.raw);
+  await f.port.close();
 });
 
 
@@ -761,7 +795,7 @@ it('recorded worker edges remain protected while their work is open', async () =
   const f = fixture(); Object.assign(f.config, { deadlineMs: 200000 }); await f.port.run(f.request('one'));
   Object.assign(f.adapter, { observeIdle: async () => 'frame' });
   await f.port.retireIdle('pressure'); f.advance(30000); await f.port.retireIdle('pressure');
-  f.config.io.admissionState = () => ({ refused: false, openDelegations: [edge] });
+  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, openDelegations: [edge] });
   f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
   expect(f.counts().stops).toBe(0); await f.port.close();
 });

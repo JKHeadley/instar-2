@@ -71,6 +71,22 @@ request to convergence first; the operator then reviews a concise plain-language
 decides only the direction-, value-, and policy-level questions, which each PR lists explicitly.
 The agent carries responsibility for technical correctness; merging still records the approval.
 
+## Idle worker cleanup
+
+The conversation owner reclaims a worker only after repeated affirmative idle observations
+and a separate grace period. New activity, open helper work, uncertain effects or missing
+evidence keep it running. Pressure shortens confirmation, never those protections. The
+harness adapter rechecks the exact worker before closure; an unexplained failure pauses
+automatic cleanup. Conversation history and accepted input remain durable.
+
+Each confirmed cleanup stays in the session-work journal. A short system note on the next
+ordinary answer with room explains the lost warm availability, once per batch in that
+conversation. Held answers and unknown send receipts prevent duplicate notices. The existing
+status pull also shows current lost availability. No new notification topic or send loop is
+created. `tests/preview/reap-notices.ts` supplies the journal projection and notice formatter;
+the normal journal reply path owns delivery. Legacy records without a verified topic remain
+in the log but produce no topic notice.
+
 ## Where test temp files go
 
 Vitest runs put their temporary files on RAM-backed storage so the durable-storage tests never
