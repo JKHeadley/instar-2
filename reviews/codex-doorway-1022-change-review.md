@@ -30,6 +30,8 @@ Prompt finding: b1bb3946362d | protocol-literal | Unchanged instruction text; no
 
 Subject (8 paths): src/assembly/README.md, src/assembly/production-codex-provider.ts, src/assembly/production-provider.ts, tests/preview/README.md, tests/preview/doorway-map.test.ts, tests/preview/doorway-map.ts, tests/preview/fixtures/codex-doorway-train-127-2026-10-22.json, tests/preview/journal-agent.mjs
 
+Validation: Failing historical train-127 regression first (7 pass / 1 fail, error-frame), then 10/10 map tests pass. Two targeted batches pass: 52 and 162 tests; typecheck/build pass. Fresh Codex proof room 4 capability update 46040443 is api-accepted and present in Telegram, with no false unavailable route; the actual codex-cli-subscription/gpt-6-astra map entry is verified. Browser timestamp suffix is checked separately from the exact journal reply; no resend. All evidence and final pushed-head gates are in PROGRESS. Architecture has only the charter-exempt native macOS certificate mismatch; desk owns recertification. Source pins are checked separately, never hidden by editing declarations.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: select the existing adapter id and delegate exchange-format interpretation to that adapter. Codex reuses its parser; Claude keeps its existing modelUsage extraction. This prevents the named false error-frame and false route identity without a new probe, retry, store or service. Installed identity starts unverified; complete exchange, physical exit, local-limit and aging guards remain. Real unattended proof is recorded in PROGRESS.
