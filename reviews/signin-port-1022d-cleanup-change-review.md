@@ -23,6 +23,8 @@ Convergence: none
 Decision: signin-owned-browser-cleanup | Port the existing 1.x bounded exact-PID close into native finish, retaining ownership before startup readiness so failures also clean up; do not add a reaper. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/signin-port-1022d-repair-150351-PROGRESS.md
 Decision: signin-phone-studio-evidence | Keep MUST-FIX 2 open for the desk's isolated scratch-bound service and real operator approval: this WSL builder has read-only Studio access and cannot manufacture that evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/signin-port-1022d-repair-150351-PROGRESS.md
 
+Review bookkeeping: Corrected inherited signin-port-1022c bug-class syntax and signin-port-1022d required fields/base so the earlier register and native commits are covered. Their recorded live evidence and open phone finding are preserved, never relabelled as fresh proof.
+
 Register refresh: Replayed the register at the cleanup source commit using scripts/build-register.mjs; generated source pins now describe the changed adapter. The delegated owner-manifest and support-inventory repin tools found no changed pins.
 
 ## Closing block
