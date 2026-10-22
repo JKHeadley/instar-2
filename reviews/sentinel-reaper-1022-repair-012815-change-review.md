@@ -23,7 +23,9 @@ Prompt review: No prompt, semantic parser, model route or model acceptance chang
 Prompt finding: 0725f0150c56 | quoted-evidence | Unchanged briefing fixture; no prompt changes or new semantic authority — fixture-phrase src/assembly/production-conversation-session.ts <- tests/assembly/production-conversation-session.test.ts: "use them to answer and act within that role; a tool refusal remains a refusal."
 Prompt finding: 27d7720e7977 | quoted-evidence | Unchanged briefing fixture; no prompt changes or new semantic authority — fixture-phrase src/assembly/production-conversation-session.ts <- tests/assembly/production-conversation-session.test.ts: "this memory and work record"
 
-Subject (2 paths): src/assembly/production-conversation-session.ts, tests/assembly/production-conversation-session.test.ts
+Publication: Rebuilt generated register/source artifacts with scripts/build-register.mjs --replay --commit 2a50b75689f6953d1d4f327e483bc7b1a138e8e5. Delegated owner-manifest and inventory repin tools reported zero changes. No pin was hand-edited.
+
+Subject (9 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, src/assembly/production-conversation-session.ts, tests/assembly/production-conversation-session.test.ts
 
 ## Closing block
 
