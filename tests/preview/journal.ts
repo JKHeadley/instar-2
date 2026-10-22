@@ -1,3 +1,7 @@
+import { createPromiseStore, recordCommitments, closeCommitment, recordReplyLoop, schedulePromise, promiseRetryDelay as workRetryDelay, COMMITMENT_WAITS_ON } from '../../src/rungraph/promises.js';
+import type { CommitmentNote as CoreCommitmentNote, CommitmentClosure, CommitmentWaitsOn, ReplyLoop } from '../../src/rungraph/promises.js';
+export { COMMITMENT_WAITS_ON, OBLIGATION_FORMAT_RETRIES, OBLIGATION_FORMAT_RETRY_MS } from '../../src/rungraph/promises.js';
+export type { CommitmentClosure, CommitmentWaitsOn, ReplyLoop } from '../../src/rungraph/promises.js';
 import { renderTelegramHtml, telegramPlainText, parseRefused } from './telegram-markdown.mjs';
 import { reconcileRunCompletion, type RunCompletionItem } from '../../src/rungraph/index.js';
 import { decideProactiveCompaction } from '../../src/awareness/sentinel.js';
@@ -791,20 +795,7 @@ export interface PersonMerge { left: number; right: number; trigger: string; con
  * asked is the turn's authenticated sender) or the agent said it would do or remember (`in: 'reply'`,
  * quoted from its own answer). The model only selects: the quote is an exact substring of that side
  * of the source turn, and the side is checked, never repaired. Its id is its position in `JournalView.commitments`. */
-export interface CommitmentNote { in: 'message' | 'reply'; source: string; quote: string;
-  sources?: { source: string; quote: string }[]; agentPromise?: AgentPromise;
-  /** Rule 83: declared at creation for every source; absent only on records written before it was required. */
-  owner?: 'agent'; waitsOn?: CommitmentWaitsOn;
-  /** What an agent-declared loop in its own reply records (Rules 6, 22): a deferral, a judgment gap or a promise. */
-  loop?: ReplyLoop['kind'];
-  /** Exact operator request to deliver this result without another message; absent means no initiated send. */
-  deliveryRequest?: string }
-/** What an open commitment waits on; `nothing` is an explicit declaration, never a default. */
-export const COMMITMENT_WAITS_ON = ['nothing', 'operator', 'external', 'date'] as const;
-export type CommitmentWaitsOn = typeof COMMITMENT_WAITS_ON[number];
-/** An obligation the agent itself declared in a reply it actually sent: work it deferred, an
- * answerable judgment it owns, or a promise. The quote is an exact clause of the sent reply. */
-export interface ReplyLoop { kind: 'deferral' | 'judgment' | 'promise'; quote: string; waitsOn: CommitmentWaitsOn; deliveryRequest?: string }
+export type CommitmentNote = CoreCommitmentNote<DatedItem>;
 /** Rule 93: a standing operator directive, admitted through the core Directive lifecycle. It has
  * no expiry; only a verified operator completion or supersession closes it, citing its cause. */
 export interface DirectiveNote { source: string; quote: string; at: number; supersedes?: number;
@@ -941,8 +932,6 @@ export interface RejectedObligations { loops?: number; blocker?: true; blockerRe
   /** Fulfillment claims the one support rule refused, kept visible instead of dropped (Rules 2, 10). */
   fulfills?: number }
 interface CommitmentSource { id: number; source: string; quote: string }
-/** A later operator message, quoted exactly, that says commitment `id` is done, withdrawn or no longer needed. */
-export interface CommitmentClosure { id: number; source: string; quote: string }
 /** A message from the agent's own stored conversation log. Body text never supplies identity.
  * `source` stays a field so journals keep their channel keys; older journals may hold inert `email`
  * items from a removed import route, which replay skips (never recalled or acted on). */
@@ -2310,10 +2299,6 @@ const attachableReport = (work: ObligationWork | undefined) => pendingReport(wor
  * or a malformed answer, and neither decided anything. What such a step was given to answer is therefore neither
  * answered nor consumed. Known format misses get only the bounded accelerated retries below. */
 const noAccount = (outcome: ObligationOutcome | undefined) => outcome === 'uncertain' || outcome === 'failed';
-export const OBLIGATION_FORMAT_RETRY_MS = 2 * 60_000, OBLIGATION_FORMAT_RETRIES = 2;
-/** Only known format misses accelerate; the lifetime cap cannot reset on a restart or a good result. */
-const workRetryDelay = (work: ObligationWork, revisit: number) => work.failureClass === 'malformed'
-  && (work.formatFailures ?? 0) <= OBLIGATION_FORMAT_RETRIES ? Math.min(revisit, OBLIGATION_FORMAT_RETRY_MS) : revisit;
 /** Rules 8, 22, 46, 92, 99, 102: each open agent-owned obligation that the agent can act on without anyone else,
  * with the slot its next scheduled work step is due. Derived from durable state only; the verified operator's own
  * message (or the agent's reply to it) is the authority, so a probe or another sender's message never schedules work. */
@@ -2327,34 +2312,15 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
   view.commitments.forEach((note, id) => {
     const source = view.turns.get(note.source), key = `commitment:${id}`, work = view.obligationWork[key];
     if (!commitmentOpen(view, id) || !source || !operatorTurn(view, source) || !(note.owner === 'agent' || note.agentPromise)) return;
-    const waits = commitmentWaitsOn(view, id), due = note.agentPromise?.due;
-    // Work that concluded it waits on someone keeps a bounded reassessment: an operator dependency is reassessed at
-    // the verified operator's next message after that result (it may supply what is needed), an outside one on the
-    // revisit cadence. The work result stays the one current account of the dependency until a later result replaces it.
-    // An interrupted (uncertain) reassessment keeps that dependency and retries on the revisit cadence, never at once.
-    const resume = work?.waitsOn !== undefined && work.inFlight === undefined ? work.waitsOn === 'operator'
-      ? Math.max(work.lastSlot + 1, work.outcome === 'uncertain' ? work.last + revisit : 0,
-        view.order.slice(work.turnsSeen ?? view.order.length)
-          .find(turn => verifiedOperatorTurn(view, turn) && !probeTurn(view, turn))?.at ?? Infinity)
-      : work.last + revisit : undefined;
-    // Rules 8, 46, 83: every wait declared at creation carries the revisit cadence, `nothing` included. A dependency
-    // the reply itself declared names no need, and nothing records what would ever satisfy it, so scheduling only
-    // `nothing` and a dated promise left an agent-owned loop open with no cadence at all: it was never worked, never
-    // waiting work, and not owned work (live D1b, room two, 2026-10-04 23:33, declared waitsOn `operator`). Its first
-    // step is what records the real dependency and its need; from that result on, `resume` above governs, so an
-    // operator dependency then waits for the operator's next message instead of the cadence.
-    const first = waits === 'date' && due?.day ? wallEpoch(due.day, due.time ?? '09:00', due.zone)
-      : note.waitsOn === 'nothing' && note.deliveryRequest ? source.sentAt ?? source.at
-        : note.waitsOn !== undefined ? source.at + revisit : undefined;
-    // A result a review withheld from the reply is owned work again, due at once (an attempt that accounted for
-    // nothing on the revisit cadence): left as a finished result, it was attached and withheld again on every reply
-    // and never drained.
-    const rework = work?.withheld !== undefined && work.inFlight === undefined && !pendingReport(work)
-      ? Math.max(work.lastSlot + 1, noAccount(work.outcome) ? work.last + workRetryDelay(work, revisit) : work.withheld.at) : undefined;
-    // A started step stays scheduled whatever dependency its predecessor left, so interrupted-start recovery owns it.
-    if (work?.inFlight === undefined && first === undefined && resume === undefined && rework === undefined && !pendingReport(work)) return;
-    items.push({ key, kind: 'commitment', id, slot: work?.recoveryHeld ? Infinity : work?.inFlight ?? rework ?? resume ?? next(key, first ?? Infinity), inFlight: work?.inFlight !== undefined,
-      awaitingDelivery: attachableReport(work), deliveryUnknown: pendingReport(work) && !attachableReport(work) });
+    const due = note.agentPromise?.due;
+    const item = schedulePromise({ id, openedAt: source.at, ...(source.sentAt === undefined ? {} : { sentAt: source.sentAt }),
+      ...(note.waitsOn === undefined ? {} : { waitsOn: note.waitsOn }),
+      dueAt: commitmentWaitsOn(view, id) === 'date' && due?.day
+        ? due.resolution ? Date.parse(due.resolution.instant) : wallEpoch(due.day, due.time ?? '09:00', due.zone) : null,
+      deliveryRequested: note.deliveryRequest !== undefined,
+      nextOperatorAt: work?.waitsOn === 'operator' ? view.order.slice(work.turnsSeen ?? view.order.length)
+        .find(turn => verifiedOperatorTurn(view, turn) && !probeTurn(view, turn))?.at ?? null : null, work }, revisit);
+    if (item) items.push(item);
   });
   openBlockers(view).forEach(({ id, note }) => {
     const source = view.turns.get(note.source), key = `blocker:${id}`, work = view.obligationWork[key];
@@ -2371,6 +2337,13 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
 /** Work steps due now: never one in flight or one whose result still waits to reach the operator. */
 export const dueObligationWork = (view: JournalView, now: number) =>
   obligationSchedule(view).filter(item => !item.inFlight && !item.awaitingDelivery && !item.deliveryUnknown && item.slot <= now);
+/** Earliest actionable work anchor; timers are hints, never work or send authority. */
+export function nextObligationAt(view: JournalView): number | null {
+  if (view.stop || !obligationCapacity(view)) return null;
+  const slots = obligationSchedule(view).filter(item => !item.inFlight && !item.awaitingDelivery && !item.deliveryUnknown
+    && Number.isSafeInteger(item.slot)).map(item => item.slot);
+  return slots.length ? Math.min(...slots) : null;
+}
 /** Completed results waiting for a reply to carry them: the reply-only grant has no unsolicited send. */
 export const pendingReports = (view: JournalView, topic?: { thread: number | undefined }) => obligationSchedule(view).filter(item => item.awaitingDelivery)
   .map(item => { const note = item.kind === 'commitment' ? view.commitments[item.id]! : view.blockers[item.id]!;
@@ -2704,16 +2677,7 @@ function applyIntentObligations(view: JournalView, turn: Turn, row: Extract<Jour
     // A sentence the answer declared both as a promise and as a loop is one commitment: an undated promise note written
     // just before takes the loop's declared wait, so `nothing` schedules its work (plan #461) instead of being dropped.
     // A dated promise keeps the date its own words name.
-    for (const loop of row.loops) {
-      const note = view.commitments.find(item => item.in === 'reply' && item.source === turn.id && item.quote === loop.quote);
-      if (!note) view.commitments.push({ in: 'reply', source: turn.id, quote: loop.quote, owner: 'agent', waitsOn: loop.waitsOn, loop: loop.kind,
-        ...(loop.deliveryRequest === undefined ? {} : { deliveryRequest: loop.deliveryRequest }) });
-      else {
-        if (note.agentPromise && !note.agentPromise.due && note.waitsOn === undefined)
-          Object.assign(note, { owner: 'agent', waitsOn: loop.waitsOn, loop: loop.kind });
-        if (loop.deliveryRequest !== undefined) note.deliveryRequest = loop.deliveryRequest;
-      }
-    }
+    for (const loop of row.loops) recordReplyLoop(view, turn.id, loop);
   }
   if (row.blocker !== undefined) {
     // The answer frame validated its shape and range; the send must still quote it and precede its recheck.
@@ -3480,17 +3444,17 @@ function settleDeliveredReply(view: JournalView, turn: Turn, message: number, at
   for (const [key, work] of Object.entries(view.obligationWork)) if (work.report?.boundTo === turn.id && work.report.delivered === undefined) {
     work.report.delivered = turn.id;
     const id = Number(key.slice(11));
-    if (key.startsWith('commitment:') && !view.closed.has(id) && !completionPending(view, id)) view.closed.set(id, { id, source: turn.id, quote: work.report.text });
+    if (key.startsWith('commitment:') && !view.closed.has(id) && !completionPending(view, id)) closeCommitment(view, { id, source: turn.id, quote: work.report.text });
   }
   // An API-accepted reply closes the promises the model said it carries out; a legacy
   // intent (no fulfills field) keeps the closure rule it was recorded under.
   if (turn.intentFulfills !== undefined) {
-    for (const id of turn.intentFulfills) if (!view.closed.has(id) && !completionPending(view, id)) view.closed.set(id, { id, source: turn.id, quote: turn.intent! });
+    for (const id of turn.intentFulfills) if (!view.closed.has(id) && !completionPending(view, id)) closeCommitment(view, { id, source: turn.id, quote: turn.intent! });
   } else for (const [id, note] of view.commitments.entries()) if (note.agentPromise && !view.closed.has(id) && !completionPending(view, id)
     && note.source !== turn.id && view.turns.get(note.source)!.update < turn.update
     && (!note.agentPromise.due || dueState(note.agentPromise.due, at) === 'due'
       || dueState(note.agentPromise.due, at) === 'overdue')
-    && legacyFulfillsReminder(note.agentPromise, turn.intent!)) view.closed.set(id, { id, source: turn.id, quote: turn.intent! });
+    && legacyFulfillsReminder(note.agentPromise, turn.intent!)) closeCommitment(view, { id, source: turn.id, quote: turn.intent! });
 }
 function sentOperatorRequest(view: JournalView, carrier: string, via: OperatorRequestState['via'], message: number): void {
   const state = view.operatorRequests.find(item => item.carrier === carrier && item.via === via && item.message === undefined);
@@ -4350,7 +4314,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (view.stepCheckStarted) view.stepChecks.set(`summary:${row.through}`, {});
     if (row.commitments?.some(note => note.owner !== undefined && (note.owner !== 'agent' || !COMMITMENT_WAITS_ON.includes(note.waitsOn!))))
       throw Error('preview journal: undeclared commitment dependency');
-    if (row.commitments) view.commitments.push(...row.commitments);
+    if (row.commitments) recordCommitments(view, row.commitments);
     if (row.commitmentRefusals !== undefined) {
       if (!Number.isSafeInteger(row.commitmentRefusals) || row.commitmentRefusals < 1) throw Error('preview journal: invalid commitment refusal count');
       view.commitmentRefusals += row.commitmentRefusals;
@@ -4361,7 +4325,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
         || note.sources?.some(item => item.source === link.source)) throw Error('preview journal: invalid commitment source');
       (note.sources ??= []).push({ source: link.source, quote: link.quote });
     }
-    for (const closure of row.closed ?? []) if (closure.id < view.commitments.length && !view.closed.has(closure.id)) view.closed.set(closure.id, closure);
+    for (const closure of row.closed ?? []) if (closure.id < view.commitments.length && !view.closed.has(closure.id)) closeCommitment(view, closure);
     // An accepted summary is what a byte hold waits for (Rule 2): its turn is retried, never latched.
     for (const turn of view.heldTurns) if (turn.held === 'prompt overflow' || turn.held === 'context overflow'
       || turn.held?.startsWith('summary unavailable:')
@@ -4989,7 +4953,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       if (!Array.isArray(row.deliveryCancels) || row.deliveryCancels.length > 5
         || row.deliveryCancels.some(item => !deliveryCancellationSupported(view, turn, item)))
         throw Error('preview journal: result withdrawal refused');
-      for (const item of row.deliveryCancels) view.closed.set(item.id, item);
+      for (const item of row.deliveryCancels) closeCommitment(view, item);
     }
     settleTokens(view, `answer:${row.id}`, row.usage);
     if (row.lastNamedPerson !== undefined && (row.lastNamedPerson.trim() !== row.lastNamedPerson
@@ -5212,7 +5176,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
         throw Error('preview journal: continuity account refused');
       turn.continuity = account;
     }
-    for (const promise of row.promises ?? []) view.commitments.push({ in: 'reply', source: turn.id, quote: promise.quote, agentPromise: promise });
+    for (const promise of row.promises ?? []) recordCommitments(view, [{ in: 'reply', source: turn.id, quote: promise.quote, agentPromise: promise }]);
     applyIntentObligations(view, turn, row);
     for (const key of row.mentionedDates ?? []) view.mentionedDates.add(key);
     // Legacy (removed requested summaries): an older summary reply that carried due reminders and sibling summaries.
@@ -5361,7 +5325,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, forwardFrames: [], turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, operatorRequests: [], capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, forwardFrames: [], turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, operatorRequests: [], capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], ...createPromiseStore<DatedItem>(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -5474,7 +5438,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, forwardFrames: [], turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, operatorRequests: [], capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, forwardFrames: [], turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, operatorRequests: [], capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], ...createPromiseStore<DatedItem>(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
       } else project(view!, row, systemCheck);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && compactable() && size > Math.max(compactBytes, snapshotBase * 2)) compact();

@@ -223,3 +223,14 @@ or post-preparation rewrite is allowed. Zero declared subscription demand retain
 actual charge/quiescence and one unresolved original obligation. The 300000-ms original owner
 window never renews the trial or a burned attempt. `slice-manifest.json.previewStage2` inventories
 the additive offline evidence and waived preview modules; this does not activate the dark slice.
+
+`next-due.ts` exports an injected next-due wake for durable owner schedules. It
+keeps one timer, replaces it when the earliest deadline changes, rejects stale
+callbacks and re-reads the owner before requesting work. It ports the
+schedule/re-read procedure from 1.x PromiseBeacon; wall clock and timer operations
+are host ports, never ambient core I/O. Timers are disposable hints rebuilt from
+the journal on restart, not authoritative queues or effect permissions. The
+existing ordinary lane owns retries/backoff, capacity, stop and ownership. A
+successful job or newly admitted intake refreshes the wake; normal host cycles
+remain recovery opportunities. Shutdown cancels the timer. Native timer overflow
+and an early callback re-arm without dispatching work before its absolute instant.
