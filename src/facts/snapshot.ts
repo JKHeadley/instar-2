@@ -2,9 +2,9 @@
 import { compareHistoricalReads, consumeResult, decode } from '../index.js';
 import type { ConstitutionalValue, DecodeContext, HistoricalRead, Inventory, Json, Result, Scope } from '../index.js';
 import { boundary, encoding, same, take } from './boundary.js';
-import { bodyConstitutionalFields, causalStanding, decodeBody, migrateBody, validateRepair } from './admission.js';
+import { bodyConstitutionalFields, causalStanding, decodeBody, validateRepair } from './admission.js';
 import { decodeEnvelope, schemaFor } from './envelope.js';
-import { decodeHistoricalBody, historicalAuthority, historicalScope } from './historical.js';
+import { decodeHistoricalBody, historicalAuthority, historicalMigration, historicalScope } from './historical.js';
 import type { HistoricalScope } from './historical.js';
 import { reconcileAuthority } from './store.js';
 import { validateConflictFact } from './conflicts.js';
@@ -60,7 +60,7 @@ function factStatus(input: FactEnvelope, c: FactContext, scope: HistoricalScope)
     const recorded = validateConflictFact(fact, c);
     if (recorded) { conflicts.push(recorded); taint.add('contested'); }
     reconciled.taint.forEach(t => taint.add(t)); conflicts.push(...reconciled.conflicts);
-    const migrated = migrateBody(fact, c, fact.body); body = migrated.body;
+    const migrated = historicalMigration(fact, c, scope); body = migrated.body;
     const schema = schemaFor(c, fact.kind, migrated.version);
     const hasLiveOrigin = c.decode.provenance && same(c.decode.provenance, fact.provenance)
       || c.decode.principals?.some(p => same(p.provenance, fact.provenance));
@@ -76,7 +76,10 @@ function factStatus(input: FactEnvelope, c: FactContext, scope: HistoricalScope)
       // With an owned field the decode is left to current(), which runs it on every derivation.
       const inputs: LiveDecode = { decode: standing.decode, subject: schema.scope };
       if (Object.values(schema.fields).some(f => f.kind === 'owned')) live = inputs;
-      else constitutional = liveConstitutional(fact, c, inputs);
+      // A body with no constitutional fields always has an empty live manifest;
+      // historical validation already checked its plain fields. Owned decoders above
+      // still run live on every derivation, including their failure behavior.
+      else if (Object.values(schema.fields).some(f => f.kind === 'constitutional')) constitutional = liveConstitutional(fact, c, inputs);
     }
   });
   consumeResult(semantic, { Success: () => {}, Refused: refusal => {

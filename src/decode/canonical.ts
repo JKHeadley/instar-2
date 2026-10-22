@@ -13,12 +13,12 @@ export function snapshot(input: unknown, seen = new Set<object>(), depth = 0): J
   const proto = Object.getPrototypeOf(input);
   if (proto !== Object.prototype && proto !== Array.prototype && proto !== null) throw new Error('non-data prototype');
   seen.add(input);
-  const descriptors = Object.getOwnPropertyDescriptors(input);
-  if (Reflect.ownKeys(input).some(k => typeof k !== 'string')) throw new Error('symbol field');
+  const keys = Reflect.ownKeys(input);
+  if (keys.some(k => typeof k !== 'string')) throw new Error('symbol field');
   const out: Record<string, Json> = Object.create(null) as Record<string, Json>;
-  for (const key of Object.keys(descriptors).sort()) {
+  for (const key of (keys as string[]).sort()) {
     if (Array.isArray(input) && key === 'length') continue;
-    const descriptor = descriptors[key]!;
+    const descriptor = Object.getOwnPropertyDescriptor(input, key)!;
     if (!('value' in descriptor) || !descriptor.enumerable) throw new Error('accessor or hidden field');
     out[key] = snapshot(descriptor.value, seen, depth + 1);
   }
@@ -32,14 +32,25 @@ export function snapshot(input: unknown, seen = new Set<object>(), depth = 0): J
   }
   return out;
 }
-export function canonicalText(input: unknown): string {
+// Only for data already captured by snapshot/the canonical boundary. This is a byte
+// encoder, not an admission path; public canonicalText always snapshots untrusted input.
+export function canonicalSnapshotText(input: Json): string {
   const encode = (value: Json): string => {
     if (value === null || typeof value !== 'object') return JSON.stringify(value);
     if (Array.isArray(value)) return `[${value.map(encode).join(',')}]`;
     const record = value as Record<string, Json>;
     return `{${Object.keys(record).sort().map(key => `${JSON.stringify(key)}:${encode(record[key]!)}`).join(',')}}`;
   };
-  return encode(snapshot(input));
+  return encode(input);
+}
+export function canonicalText(input: unknown): string { return canonicalSnapshotText(snapshot(input)); }
+// Equality of two already captured JSON trees is canonical-byte equality without
+// allocating both encodings. Untrusted input must pass snapshot() before this call.
+export function sameSnapshot(a: Json, b: Json): boolean {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
+  const left = a as Record<string, Json>, right = b as Record<string, Json>, keys = Object.keys(left);
+  return keys.length === Object.keys(right).length && keys.every(key => Object.hasOwn(right, key) && sameSnapshot(left[key]!, right[key]!));
 }
 export function hashText(bytes: string): Hash { return `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}`; }
 export function canonical(input: unknown, preserved = 'input://caller'): Result<{ bytes: string; hash: Hash }> {
