@@ -18,10 +18,12 @@ it('waits for payload readiness while heartbeating, and never injects a kill wit
 #define _DEFAULT_SOURCE
 #include <sys/socket.h>
 #include <sys/wait.h>
+#include <sys/mman.h>
 #include <poll.h>
 #include <unistd.h>
 #include <signal.h>
 #include <stdint.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,11 +33,13 @@ static char self_path[] = "test", uid_s[] = "1", gid_s[] = "1";
 typedef struct { int reason; int status; int detail; pid_t worker; uint64_t wall_ms; int started; } run_t;
 typedef struct { pid_t pid; int link; } guard_t;
 static int mode;
-static unsigned slow_start_us = 650000;
+static _Atomic uint64_t *injected_clock;
+static uint64_t startup_ms = 13000;
+static int send_ready = 1;
 static uint64_t now_ms(void) {
+  if (mode == 4) return atomic_load(injected_clock);
   struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
-  uint64_t real = (uint64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000;
-  return mode == 4 ? real * 20 : real; /* slow startup without host load or a long test */
+  return (uint64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000;
 }
 static uint64_t mach_continuous_time(void) { return now_ms(); }
 static uint64_t ms_to_ticks(uint64_t ms) { return ms; }
@@ -59,10 +63,11 @@ static int spawn_guard(guard_t *g, char *const argv[], int channel) {
     if (worker < 0) _exit(2);
     if (worker == 0) {
       close(sp[1]); close(release[1]);
-      usleep(mode == 4 ? slow_start_us : 350000); /* mode 4: initially 13s on the injected clock */
+      usleep(350000); /* exceeds the old guessed 100ms, without CPU load */
       char go; if (read(release[0], &go, 1) != 1) _exit(4);
       close(release[0]);
-      if (mode == 0 || mode == 4) { if (write(channel, "R", 1) != 1) _exit(4); }
+      if (mode == 4) atomic_store(injected_clock, startup_ms);
+      if (mode == 0 || (mode == 4 && send_ready)) { if (write(channel, "R", 1) != 1) _exit(4); }
       else if (mode == 2) { if (write(channel, "X", 1) != 1) _exit(4); }
       if (mode != 1) close(channel);
       for (;;) pause();
@@ -122,11 +127,16 @@ int main(void) {
   const char *profile = "-";
   char *kill_ready[] = { "probe", NULL };
   run_t r;
+  injected_clock = mmap(NULL, sizeof *injected_clock, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
+  if (injected_clock == MAP_FAILED) return 7;
+  atomic_init(injected_clock, 0);
   if (${outsideKill} || r.reason != 0 || !WIFSIGNALED(r.status) || WTERMSIG(r.status) != SIGKILL) return 5;
   printf("slow-start reason=%d signal=%d\\n", r.reason, WTERMSIG(r.status));
-  slow_start_us = 2000000; /* 40s: readiness is beyond the shipped observation ceiling */
+  atomic_store(injected_clock, 0);
+  startup_ms = 40000; send_ready = 0; /* startup still incomplete beyond the observation ceiling */
   if (${outsideKill} || r.reason != 30) return 6;
   printf("expired-start reason=%d signal=%d\\n", r.reason, WTERMSIG(r.status));
+  munmap(injected_clock, sizeof *injected_clock);
   return check_controls();
 }
 `);
