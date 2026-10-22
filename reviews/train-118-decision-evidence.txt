@@ -1,0 +1,23 @@
+Train-118 decision evidence — reconstructed reporting excerpt
+
+Source: reviews/train-118-change-review.md at 53cbf7168466a36ba992c5d235ebad8fd10caaf6.
+The original absolute desk report was absent when the pipeline checked Rule 102.
+This excerpt reports the seven surviving decisions without inventing the lost
+report or asserting that historical verification was rerun during this repair.
+Complete member evidence remains in reviews/train-118-codex-recall-1021s-report.txt
+and reviews/train-118-rules-13-56-1021s-report.txt. This file is a committed review
+evidence snapshot; operational PROGRESS records live only in the desk lanes.
+
+Decision: train-118-memory | Ordinary merge of exactly 4dfc4cf64496478cef6bc1194ec135347c4ef0b4 fast-forwarded. Member evidence: reviews/train-118-codex-recall-1021s-report.txt.
+
+Decision: train-118-doorway | Ordinary merge of exactly 7d16e57d4957f7f227803912e38c61c7b64a7692 retains adapter-owned discovery. Member evidence: reviews/train-118-rules-13-56-1021s-report.txt.
+
+Decision: train-118-A | Keep both behaviors in auto-merged providers. Retain first-member native certificate, without claiming it certifies the combined bytes. Report explicit desk-owned R105 exception; do not fabricate certification.
+
+Decision: train-118-B | Create branch at exact live base 588332d9d0839cd504bee2819e297cd6222a2ef9; no branch relocation or main merge. Both reviewed heads included; none left out.
+
+Decision: train-118-D | Offline isolated tests only, live opt-ins removed. Report host-dependent failures; leave native certificate renewal to the Studio under the explicit charter exception.
+
+Decision: train-118-desk | Temporarily retain first-member generated outputs to commit merged source, then regenerate all outputs from that commit via repin/build/rehash/replay. No generated hand-merge. Repin/rehash changed zero pins; context constants unchanged.
+
+Decision: train-118-pins | Direct-importer replay found deferral-delivery, deferral-finish and inrole-memory-live comparing immutable historical prompt hashes to the current provider. Translate only the reviewed memory wording back for the historical hash, assert current guidance occurs once and differs, preserve capture bytes and all envelope/outcome assertions.
