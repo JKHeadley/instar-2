@@ -9,12 +9,16 @@ import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { readAnswer } from './answer-reading.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS } from '../../src/assembly/tool-answer-guidance.js';
+import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
+
+// These immutable captures precede the reviewed same-fact supersession guidance.
+const HISTORICAL_MEMORY = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
 
 // These provider captures predate train-41's requested-step verification guidance.
 // Preserve the captures; the dedicated guidance tests cover the added instruction.
 // Recorded captures predate the 2026-10-13 single-machine ruling; the current prompt drops only this sentence.
 const CLOSED_SET_SENTENCE = 'Irreversible outward sends remain outside the one-machine closed set. ';
-const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
+const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
 
 // Captured read-only from the failed forum answer copy, update 715675751. The
 // three new outputs are real, bounded model replays of that same recorded packet.
@@ -22,6 +26,8 @@ const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_
 const capture = JSON.parse(readFileSync(new URL('./fixtures/literal-copy-715675751.json', import.meta.url), 'utf8'));
 
 it('retains the delivered error and captured copying guidance while replay uses current capability guidance', () => {
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.split(MEMORY_DISAMBIGUATION)).toHaveLength(2);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).not.toContain(HISTORICAL_MEMORY);
   expect(capture.original.update).toBe(715675751);
   expect(capture.original.sent).toBe(347);
   expect(capture.original.question).toContain('probe-7d09d28a');
