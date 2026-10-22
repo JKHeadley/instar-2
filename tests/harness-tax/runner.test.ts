@@ -222,3 +222,42 @@ it('replays real archived writer, reviewer, Jev and delivered rows without turni
   // Explicit synthetic control: archived empty memory candidates are not delivered empty bubbles.
   expect(recordedObservation({ id: 'synthetic-empty-delivery', kind: 'answer', text: '', state: 'complete' }).output).toBe('');
 });
+
+for (const [boundary, identity, error] of [
+  ['move-machine', 'Machine', 'seat never moved'],
+  ['restart', 'Epoch', 'process never restarted'],
+  ['compact', 'Context', 'context was not compacted'],
+]) {
+  it(`requires both ${boundary} identities before dispatch, preserving distinct pairs`, async () => {
+    const target = { root: '/scratch/demo', disposable: true, live: false, model: config().model,
+      floors: { secrets: true, spendCap: true, stop: true, uniqueSend: true, durableIntake: true },
+      receipt: 'inspect', actualMachine: 'A', epoch: 'A' };
+    let receipt: Record<string, unknown> = {};
+    let sends = 0;
+    const host = {
+      inspect: async () => target,
+      prepare: async ({ request }: { request: Request }) => ({ requestId: request.id, receipt: 'prepared', model: request.model }),
+      boundary: async () => ({ receipt: 'boundary', actual: true, ...receipt }),
+      sendAsDemoUser: async () => { sends++; return { messageId: 'message', receipt: 'sent' }; },
+      awaitReply: async () => ({ state: 'complete', model: config().model, inReplyTo: 'message', responderMachine: 'A' }),
+      meter: async () => ({ breaches: [], totals: { tokens: 0, calls: 0 }, costs: [] }),
+    };
+    const adapter = createDriver(host);
+    const request = { id: 'boundary-check', model: config().model, setup: 'instar1', target, prompt: 'hi', boundary, deadlineMs: 10 };
+    for (const side of ['before', 'after']) {
+      for (const invalid of [undefined, null, '', '   ', 1, true, {}, []]) {
+        receipt = { [`before${identity}`]: 'old', [`after${identity}`]: 'A' };
+        if (invalid === undefined) delete receipt[`${side}${identity}`];
+        else receipt[`${side}${identity}`] = invalid;
+        await expect(adapter.execute(request)).rejects.toThrow(error);
+        expect(sends).toBe(0);
+      }
+    }
+    receipt = { [`before${identity}`]: 'A', [`after${identity}`]: 'A' };
+    await expect(adapter.execute(request)).rejects.toThrow(error);
+    expect(sends).toBe(0);
+    receipt = { [`before${identity}`]: 'old', [`after${identity}`]: 'A' };
+    expect((await adapter.execute(request)).state).toBe('complete');
+    expect(sends).toBe(1);
+  });
+}

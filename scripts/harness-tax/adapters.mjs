@@ -6,6 +6,11 @@ import { digest } from './runner.mjs';
 
 function requireThat(condition, message) { if (!condition) throw Error(`harness-tax adapter: ${message}`); }
 
+function distinctIdentities(before, after) {
+  return typeof before === 'string' && before.trim().length > 0
+    && typeof after === 'string' && after.trim().length > 0 && before !== after;
+}
+
 export function createDriver(host) {
   return { async execute(request, { signal } = {}) {
     request = { ...request, signal }; // host ports must honour cancellation and the installed stop latch
@@ -30,9 +35,9 @@ export function createDriver(host) {
         'unsupported boundary lacks evidence');
     } else {
       requireThat(boundary.receipt && boundary.actual === true, 'simulated boundary is not live evidence');
-      if (request.boundary === 'move-machine') requireThat(boundary.beforeMachine !== boundary.afterMachine && boundary.afterMachine, 'seat never moved');
-      if (request.boundary === 'restart') requireThat(boundary.beforeEpoch !== boundary.afterEpoch && boundary.afterEpoch, 'process never restarted');
-      if (request.boundary === 'compact') requireThat(boundary.beforeContext !== boundary.afterContext && boundary.afterContext, 'context was not compacted');
+      if (request.boundary === 'move-machine') requireThat(distinctIdentities(boundary.beforeMachine, boundary.afterMachine), 'seat never moved');
+      if (request.boundary === 'restart') requireThat(distinctIdentities(boundary.beforeEpoch, boundary.afterEpoch), 'process never restarted');
+      if (request.boundary === 'compact') requireThat(distinctIdentities(boundary.beforeContext, boundary.afterContext), 'context was not compacted');
     }
     let observation;
     if (unsupported) {
