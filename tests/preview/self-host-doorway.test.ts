@@ -53,7 +53,13 @@ it('reaches the registered Codex doorway with the recorded 0.156.1 transport and
   const f = fixture(), provider = await doorwayProvider(f.input);
   expect(provider.doorway).toBe(doorwayId);
   expect(f.input.profile.version).toBe(regression.version);
-  expect(f.input.activation.invocationPolicyDigest).toBe(regression.invocationPolicyDigest);
+  // The capture predates the reviewed rationale wording. Preserve its digest and
+  // reconstruct only that historical sentence; the dispatched owner binds today's policy.
+  const current = subscriptionDoorway(doorwayId).policyFor(model, subscriptionDoorway(doorwayId).conversationFraming);
+  const historical = { ...current, system: current.system.replace(
+    'give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.') };
+  expect(encoded(historical).hash).toBe(regression.invocationPolicyDigest);
+  expect(f.input.activation.invocationPolicyDigest).not.toBe(regression.invocationPolicyDigest);
   await f.dispatch(provider);
   expect(f.state.calls).toBe(1);
   const facts = providerStores(f.root)[0].facts;
