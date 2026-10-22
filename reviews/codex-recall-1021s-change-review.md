@@ -4,7 +4,7 @@ Subject base: 588332d9d0839cd504bee2819e297cd6222a2ef9
 Review state: open
 Reviewed content: none
 Outcome: A later direct same-fact statement selects the existing update action rather than becoming a competing current memory; current recall uses the successor and retains dated history.
-Affected rules: Purpose constraints 2 and 3; Rules 7, 10, 12, 30, 34, 36, 49, 58, 70, 74, 85, 93, 96, 101, 111, 113, 116.
+Affected rules: Purpose constraints 2 and 3; Rules 7, 10, 12, 26, 30, 34, 36, 37, 49, 58, 70, 74, 85, 93, 96, 101, 105, 111, 113, 115, 116.
 Affected floors: secrets — unchanged redaction/custody; spend cap — unchanged reservations and bounded repair; stop — unchanged; no duplicate sends — existing durable intent, restart replay sends once; durable intake — unchanged encrypted journal.
 Operator questions: none
 Suggested tier: critical
@@ -56,8 +56,10 @@ Prompt finding: f6d7f3274c85 | protocol-literal | Shared semantic instruction is
 
 Prompt finding: feadb66b8ad1 | protocol-literal | Shared semantic instruction is asserted at its consumers; no captured desk word, update ID or expected answer is a prompt trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "any live authentication secret reaching anyone but the verified operator who sup"
 
-Publication: Shape-only register outputs are regenerated from each final source commit. No runtime authority or conformance assertion changes. The new wording stays within the existing fixed-context floor and reply-review reserve; historical prompt comparison tests translate only the declared memory instruction change and retain original captured bytes.
+Publication: Shape-only register outputs are regenerated from each final source commit. Runtime authority and supported capability status remain unchanged; the native certificate renewal below binds that existing status to fresh contract evidence. The new wording stays within the existing fixed-context floor and reply-review reserve; historical prompt comparison tests translate only the declared memory instruction change and retain original captured bytes.
 Publication coverage: This record includes register publication d2856b01 and the final topic-awareness historical-packet comparison. That comparison restores only the reviewed conflict instruction from its immutable capture; its original full-packet digest stays fixed. Register inputs remain unchanged by this test-only follow-up.
+
+Native certificate repair: After the desk rejected the previously documented R105 exception, ran the declared native contract on this Studio's exact declared Node 24.14.1 executable. The named contract passed before renewal. Before/after measurements matched across the complete 269-file composition and runtime. Renewed only the conformance value to sha256:1d4c004f8c2e5564f387d4db73e42d3dd0161ecdf4f022b757c199539de29b7a; supported status, runtime, entry points and evidence reference remain unchanged. Evidence is /Users/dabombstudio/.instar/agents/echo/.instar/lanes/codex-recall-1021s-certificate-renewal.json with its named-contract log. This uses real confined native launches and captured provider frames in isolated temporary roots, with no live login, bot or chat. Stop, refusal, timeout, charged attempts and installation are exercised by the contract. No additional model-facing or runtime behavior changes. The certificate and dependent register must be renewed again if composition bytes change; reverting this evidence alone restores the stale-certificate failure. This is Darwin-specific conformance evidence, not live conversation acceptance or an independent review verdict.
 
 ## Closing block
 
