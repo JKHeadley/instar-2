@@ -112,15 +112,55 @@ it('discards missing or unreadable records and recovers without retaining stale 
   expect(f.check(h).kind).toBe('resolved');
 });
 
-it('does not cache a snapshot whose files changed during the read', () => {
+it('rereads a moving snapshot before withdrawing a live first call', () => {
   const f = fixture(); let changed = false;
   const h = host((...args) => {
     const bytes = readFileSync(...args);
-    if (!changed) { changed = true; appendFileSync(join(f.directory, 'telegram-messages.jsonl'), '\n'); }
+    if (!changed && String(args[0]).startsWith(f.directory)) { changed = true; appendFileSync(join(f.directory, 'telegram-messages.jsonl'), '\n'); }
     return bytes;
   });
-  expect(h.operatorRecords(f.directory)).toBeNull();
+  // An unrelated append is not a revoked grant. Resolve only from a fresh stable read.
   expect(f.check(h).kind).toBe('resolved');
+});
+
+it('bounds a continuously moving snapshot to two reads and retains no stale grant', () => {
+  const f = fixture(); let reads = 0, moving = false;
+  const h = host((...args) => {
+    const bytes = readFileSync(...args);
+    if (String(args[0]).startsWith(f.directory)) {
+      reads++;
+      if (moving) appendFileSync(join(f.directory, 'telegram-messages.jsonl'), '\n');
+    }
+    return bytes;
+  });
+  expect(f.check(h).kind).toBe('resolved');
+  moving = true; reads = 0;
+  appendFileSync(join(f.directory, 'telegram-messages.jsonl'), '\n');
+  expect(h.operatorRecords(f.directory)).toBeNull();
+  expect(reads).toBe(6);
+  moving = false;
+  expect(f.check(h).kind).toBe('resolved');
+});
+
+it('validates the replacement evidence and revocations after a snapshot reread', () => {
+  for (const change of ['duplicate', 'revocation']) {
+    const f = fixture(); let changed = false;
+    const h = host((...args) => {
+      const bytes = readFileSync(...args);
+      if (!changed && String(args[0]).startsWith(f.directory)) {
+        changed = true;
+        const path = join(f.directory, 'telegram-messages.jsonl');
+        appendFileSync(path, change === 'duplicate' ? `${readFileSync(path, 'utf8').split('\n')[0]}\n` : '\n');
+        if (change === 'revocation') {
+          const { seal: _, ...record } = f.record;
+          f.seal({ ...record, revocations: [{ grantId: record.grants[0].id, at: f.now,
+            by: record.grants[0].grantor, source: 'revoked during snapshot read' }] });
+        }
+      }
+      return bytes;
+    });
+    expect(() => f.check(h)).toThrow(change === 'duplicate' ? /authenticated operator message/u : /revoked or expired/u);
+  }
 });
 
 it('never reuses one directory\'s evidence for another or caches a failed parse', () => {
