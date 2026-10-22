@@ -10,7 +10,7 @@ retains the request.
 If the captured native retry state persists through the normal two-minute
 conversation silence window, the existing progress lane can send one line:
 
-> The model connection was interrupted. Your message is saved; Instar is waiting for the current reconnect attempts.
+> The model request is being retried. Your message is saved; Instar is waiting for those attempts to finish.
 
 This line reports a wait, not successful recovery. Its identity belongs to the
 worker and turn, so changing retry numbers cannot produce repeated notices.

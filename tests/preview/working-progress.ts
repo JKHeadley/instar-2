@@ -1,6 +1,6 @@
 /** Rule 87: deadlines are relative to durable intake, never a fresh allowance on restart. */
 export const WORKING_RATE_LIMIT = 'The model service is limiting requests. Your message is saved; Instar is waiting briefly before continuing.';
-export const WORKING_CONNECTION = 'The model connection was interrupted. Your message is saved; Instar is waiting for the current reconnect attempts.';
+export const WORKING_CONNECTION = 'The model request is being retried. Your message is saved; Instar is waiting for those attempts to finish.';
 export const WORKING_LIVENESS = 'Still here; your answer is not ready yet.';
 export const WORKING_PROGRESS_CAP = 4;
 export const WORKING_SILENCE_MS = 120_000;
