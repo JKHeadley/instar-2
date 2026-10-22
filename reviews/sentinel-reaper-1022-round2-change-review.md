@@ -24,6 +24,9 @@ Prompt review: No model-facing behavior changes. Existing captured summary, unce
 Evidence: Absolute lanes reports sentinel-reaper-1022-round2-journal.json (40/40), sentinel-reaper-1022-round2-idle.json (30 selected idle cases), sentinel-reaper-1022-round2-native-before.json (named contract before renewal), sentinel-reaper-1022-round2-native-after.json (full native file after renewal), and sentinel-reaper-1022-round2-composition-certified.json. Full-suite results remain the Studio pipeline's responsibility.
 Scope: Actual unit base 588332d9d0839cd504bee2819e297cd6222a2ef9; row-23 idle cleanup slice. This review covers only the repair after 8e4c1cca, not all commits since origin/main.
 
+Generated evidence: Replayed existing publication against source commit 653345fcb06b72a921c0887b3d968a96c71c84cb. This record covers both source repairs and the subsequent seven generated files.
+Deferral: generated/register.json:1 | not-a-deferral=existing descriptions carried through deterministic register replay; no new commitment
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: add one settled-effects fixture field, run the existing native contract on the exact composition/runtime, update its measured certificate, and replay existing register publication. Start guard is matching runtime and complete closure; end guards are passing integration, native contract and architecture evidence. Unknown effects retain the worker; all five floors stay enforced. No new machinery or live-model completion claim.
