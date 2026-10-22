@@ -53,7 +53,9 @@ it('reaches the registered Codex doorway with the recorded 0.156.1 transport and
   const f = fixture(), provider = await doorwayProvider(f.input);
   expect(provider.doorway).toBe(doorwayId);
   expect(f.input.profile.version).toBe(regression.version);
-  expect(f.input.activation.invocationPolicyDigest).toBe(regression.invocationPolicyDigest);
+  // The captured failure names the old policy; dispatch requires the current reviewed policy.
+  expect(f.input.activation.invocationPolicyDigest).not.toBe(regression.invocationPolicyDigest);
+  expect(f.input.activation.invocationPolicyDigest).toBe('sha256:def8bb7290a51bbd7b64862718090db760940c75966de4cd0334a41a2e33eb42');
   await f.dispatch(provider);
   expect(f.state.calls).toBe(1);
   const facts = providerStores(f.root)[0].facts;
@@ -65,10 +67,11 @@ it('reaches the registered Codex doorway with the recorded 0.156.1 transport and
   expect(binding).toMatchObject({ doorway: doorwayId, invocationPolicyDigest: f.input.activation.invocationPolicyDigest });
 });
 
-it.each(['model', 'policy', 'profile', 'expired', 'stopped', 'unknown-doorway'])('refuses %s before physical execution', async kind => {
+it.each(['model', 'policy', 'recorded-policy', 'profile', 'expired', 'stopped', 'unknown-doorway'])('refuses %s before physical execution', async kind => {
   const f = fixture(), input = { ...f.input, activation: { ...f.input.activation } };
   if (kind === 'model') input.model = 'gpt-other-exact';
   if (kind === 'policy') input.activation.invocationPolicyDigest = encoded('other').hash;
+  if (kind === 'recorded-policy') input.activation.invocationPolicyDigest = regression.invocationPolicyDigest;
   if (kind === 'profile') input.profile = Object.freeze({ ...input.profile, expectedAccount: 'another@example.invalid' });
   if (kind === 'expired') input.now = () => input.activation.expiresAt;
   if (kind === 'stopped') f.state.stopped = true;
