@@ -16,7 +16,7 @@ export function recordIdleReap(history: ReapHistory | undefined, edge: SessionWo
 
 /** Rules 52/63/87/89: one infrastructure line in this conversation's next answer;
  * no standalone send, other-topic disclosure, transcript text or process details.
- * A consumed cumulative occurrence key covers the preceding batch. The existing
+ * A consumed occurrence-range key covers exactly its batch. The existing
  * send funnel reserves keys for held answers and unknown receipts, even on restart. */
 export function reapNotices(history: ReapHistory | undefined, turns: readonly NoticeTurn[], current: string, topic: string): ReplyNotice[] {
   const total = history?.[topic]?.total ?? 0;
@@ -24,14 +24,23 @@ export function reapNotices(history: ReapHistory | undefined, turns: readonly No
   const prefix = `reap:${topic}:`;
   const prior = turns.flatMap(turn => turn.answerNotices ?? []).filter(notice => notice.key.startsWith(prefix));
   const open = new Set(openReplyNotices(turns, prior, current).map(notice => notice.key));
-  let covered = 0;
+  const covered: { first: number; last: number }[] = [];
   for (const notice of prior) {
-    const count = Number(notice.key.slice(prefix.length));
-    if (!open.has(notice.key) && Number.isSafeInteger(count) && count > covered && count <= total) covered = count;
+    const match = /^([1-9][0-9]*)-([1-9][0-9]*)$/u.exec(notice.key.slice(prefix.length));
+    if (open.has(notice.key) || !match) continue;
+    const first = Number(match[1]), last = Number(match[2]);
+    if (Number.isSafeInteger(first) && Number.isSafeInteger(last) && first <= last && last <= total) covered.push({ first, last });
   }
-  const count = total - covered;
-  if (!count) return [];
-  return [{ key: `${prefix}${total}`,
+  // Offer the oldest contiguous gap. A newer sent batch cannot consume an older
+  // held batch whose final intent later omits the note. One answer still carries one line.
+  let first = 1, last = total;
+  for (const range of covered.sort((a, b) => a.first - b.first)) {
+    if (range.first > first) { last = range.first - 1; break; }
+    first = Math.max(first, range.last + 1);
+  }
+  if (first > last) return [];
+  const count = last - first + 1;
+  return [{ key: `${prefix}${first}-${last}`,
     line: `System note: idle cleanup closed ${count} worker${count === 1 ? '' : 's'} in this conversation to free capacity. `
       + 'The next message after cleanup needs a worker start. Your conversation history and accepted messages were kept.' }];
 }

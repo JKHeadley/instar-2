@@ -57,6 +57,16 @@ it('offers a notice again when the final send intent did not include it', () => 
     .toEqual(notices);
 });
 
+it('does not lose an older held batch when a newer batch sends before the older notice is removed', () => {
+  const history = project([...occurrence(1), ...occurrence(2), ...occurrence(3)]);
+  const first = reapNotices(project([...occurrence(1), ...occurrence(2)]), [], 'first', '7');
+  const held: NoticeTurn = { id: 'first', answerNotices: first };
+  const second = reapNotices(history, [held], 'second', '7');
+  const sent: NoticeTurn = { id: 'second', answerNotices: second, intent: second[0]!.line, sent: 42 };
+  const repaired = reapNotices(history, [{ ...held, intent: 'The held answer was replaced without a notice.' }, sent], 'third', '7');
+  expect(repaired).toEqual(first);
+});
+
 it('keeps other topics and unknown legacy topic bindings private', () => {
   const records = [...occurrence(1, '8'), ...occurrence(2, 'main'), ...occurrence(3, null)];
   expect(reapNotices(project(records), [], 'answer', '7')).toEqual([]);
