@@ -56,6 +56,7 @@ import { retrospectivePlan, retrospectivePopulation, validateRetrospective, repl
   dutiesLeftUninspected, dutyFollowUpPacket, mergeDutyFollowUp, retroCallReserve, retroFollowUpReason, RETROSPECTIVE_DUTIES,
   type RetroPass, type RetroSiblingEvidence, type RetrospectiveDuty } from './retrospective.js';
 import { openReplyNotices, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
+import { recordIdleReap, type ReapHistory } from './reap-notices.js';
 import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, operatorRequestText, operatorResultText, operatorReviewBodyText, operatorReviewRequestText,
   operatorRequestTarget, operatorYesAuthority, parseOperatorAction, proposeOperatorRequest, proposeRetractRequest, wellFormedRequest, OPERATOR_REQUEST_MS,
   OPERATOR_YES_AUTHORITY, RETRACT_UPDATES_LIMIT, validRetractUpdates, type ChatCandidate, type ExplicitYesStatus, type OperatorActionProposal, type OperatorRequest, type ProposalState,
@@ -1582,6 +1583,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   obligationWork: Record<string, ObligationWork>; rejectedObligations: number;
   /** Open registered children, including helpers; replay and snapshots retain ownership without a new store. */
   activeSessionWork?: Record<string, SessionWorkEdge>;
+  /** Confirmed cleanup occurrences, independent of current worker availability. */
+  reapHistory?: ReapHistory;
   changeHistory: RecordedChange[]; undos: { change: number; trigger: string; at: number }[];
 
 
@@ -2559,7 +2562,11 @@ function projectSessionWork(view: JournalView, record: SessionWorkEdge | Session
     && view.calls + record.budget.calls > view.limits.maxCalls) throw Error('preview journal: session work call cap');
   const active = view.activeSessionWork ?? (view.activeSessionWork = {});
   if (record.type === 'SessionWorkEdge') active[record.id] = record;
-  else delete active[record.edge];
+  else {
+    const history = recordIdleReap(view.reapHistory, active[record.edge], record);
+    if (history) view.reapHistory = history;
+    delete active[record.edge];
+  }
   // A delegation inside a step draws on its parent's reservation (the model-dispatch checkpoint counts its calls there).
   if (record.type === 'SessionWorkEdge' && record.drawsOn !== undefined) return;
   // A close whose child made more model calls than its edge reserved charges the excess, so the remaining

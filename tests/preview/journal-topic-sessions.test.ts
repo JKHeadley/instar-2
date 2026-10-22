@@ -19,6 +19,7 @@ import { value } from '../facts/fixtures.js';
 import { nestedSessionWorkEdge, nestedSessionWorkClose } from '../../src/assembly/production-session-work.js';
 import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { readAnswer } from './answer-reading.js';
+import { reapNotices } from './reap-notices.js';
 import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, ModelNotStarted, ModelDisclosureRefused, createModelLaunchBoundary,
   type PreviewPorts } from './journal-test-worker.js';
 const roots: string[] = [];
@@ -103,6 +104,7 @@ function fixture(forum = false, prepared = false, maxSessions = 2, timeZone = 'A
   };
   const worker = createJournalWorker(journal, { timeZone, topicConcurrency: maxSessions, groupDisclosure: async () => verifiedAudience, now: () => now, stopped: () => false, model, modelBatch: async inputs => { if (batchFailure) throw batchFailure; return modelBatch(inputs); }, collectModel,
     statusLines: () => port.idleCleanupStatus?.() ?? [],
+    replyNotices: turn => turn === undefined ? [] : reapNotices(journal.view.reapHistory, journal.view.order, turn, topicOf(turn)),
     sources: () => evidence ? [evidence] : [],
     prepareModel: input => prepared ? prepareJournalEnvelope(input, 'offline-model', 'grant:offline', now, 262144) : JSON.stringify(input), checkOutbound: () => {},
     send: async input => {
@@ -576,5 +578,32 @@ it('confirmed idle closure is journaled and reaches the existing status reply wi
     expect(f.port.idleCleanupStatus?.()).toEqual([]);
     expect(f.journal.sessionWorkRecords().filter(row => row.type === 'SessionWorkEdgeClose' && row.id.endsWith(':idle-close'))).toHaveLength(1);
     expect(f.deliveries.at(-1)?.input.text).toContain('berth K4');
+  } finally { await f.close(); }
+});
+
+it('explains a recorded answer worker’s idle cleanup once on the next answer, after relaunch', async () => {
+  const captured = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8'));
+  const reply = captured.otherShapes.find((row: { kind: string }) => row.kind === 'delivered-reply').raw as string;
+  const f = fixture(false, false, 2, 'America/Los_Angeles', 600000);
+  try {
+    f.reply(reply); f.worker.intake([update(201, 'Continue here.')]); await f.worker.drain();
+    f.advance(500); await f.port.maintain(); f.advance(120000); await f.port.maintain();
+    f.advance(30000); await f.port.maintain();
+    expect(f.sent).toHaveLength(1); expect(f.live()).toBe(0);
+    f.worker.intake([update(202, 'Continue again.')]); await f.worker.drain();
+    expect(f.live()).toBe(1);
+    expect(f.sent.at(-1)?.text).toContain('System note: idle cleanup closed 1 worker in this conversation');
+    expect(f.journal.view.order.at(-1)?.answerNotices).toHaveLength(1);
+    f.worker.intake([update(203, 'One more answer.')]); await f.worker.drain();
+    expect(f.sent.at(-1)?.text).not.toContain('System note: idle cleanup');
+    expect(f.sent).toHaveLength(3);
+    f.journal.compact();
+    const reopened = openPreviewJournal(join(f.root, 'journal.encrypted'), new Uint8Array(32).fill(61));
+    try {
+      expect(reopened.view.order[1]?.answerNotices).toEqual(f.journal.view.order[1]?.answerNotices);
+      expect(reopened.view.reapHistory).toEqual(f.journal.view.reapHistory);
+      expect(reapNotices(reopened.view.reapHistory, reopened.view.order, 'another-answer', 'main')).toEqual([]);
+    }
+    finally { reopened.close(); }
   } finally { await f.close(); }
 });

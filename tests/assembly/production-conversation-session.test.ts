@@ -711,6 +711,26 @@ it('idle cleanup keeps an adapter without affirmative idle evidence', async () =
   expect(f.counts().stops).toBe(0); await f.port.close();
 });
 
+it.each(capturedShapes.otherShapes)('idle cleanup keeps uncertain effects after recorded $kind ($id), then reassesses when settled', async sample => {
+  const f = fixture(); Object.assign(f.config, { deadlineMs: 200000, allowanceDeadline: 400000 }); f.answer(sample.raw);
+  await f.port.run(f.request(sample.id));
+  Object.assign(f.adapter, { observeIdle: async () => 'ready-after-recorded-turn' });
+  await f.port.retireIdle('pressure'); f.advance(30000); await f.port.retireIdle('pressure');
+  let outstanding = 1;
+  // toolPreparations is a cumulative generation, not an in-flight counter. It
+  // deliberately stays nonzero after settlement and must not prevent idle cleanup.
+  f.config.io.admissionState = () => ({ refused: false, openDelegations: [], toolPreparations: 1, uncertainEffects: outstanding });
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
+  expect(f.counts().stops).toBe(0);
+  expect(f.state().idleCleanup?.candidate).toBeNull();
+  outstanding = 0;
+  expect(await f.port.retireIdle('pressure')).toBe(false);
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(false);
+  f.advance(30000); expect(await f.port.retireIdle('pressure')).toBe(Boolean(sample.raw.trim()));
+  if (sample.raw.trim()) expect(f.state().inputs[0]!.reply).toBe(sample.raw);
+  await f.port.close();
+});
+
 
 it.each(['refused', 'uncertain', 'throw'] as const)('idle actuator %s retains capacity, with durable inhibition only for unexplained failures', async mode => {
   const f = fixture(); Object.assign(f.config, { deadlineMs: 200000 }); await f.port.run(f.request('one'));
