@@ -41,7 +41,7 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16, lifetime = 200
     io: { modelCalls: () => { throw Error('must not count another topic transcript'); }, wait: tick,
       readResult: () => null, clearResult: () => {}, prepareAdmission: (_claim, edge) => { expect(edge.topic).toMatch(/^(?:main|[1-9][0-9]*)$/u);
         expect(nestedSessionWorkEdge(edge, { id: 'nested-check', tool: 'Task' }, now).topic).toBe(edge.topic); }, closeAdmission: () => {},
-      admissionState: () => ({ refused: false, openDelegations: [] }) },
+      admissionState: () => ({ refused: false, openDelegations: [], uncertainEffects: 0 }) },
     createAdapter: topic => ({
       describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false }),
       launch: async input => { const worker = { launch: `worker-${launches.length}`, claim: input.claim, incarnation: input.incarnation };
