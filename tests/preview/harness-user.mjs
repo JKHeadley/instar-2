@@ -171,7 +171,33 @@ export function installTmp(user = HARNESS_USER, runner = runnerUser(), grant = g
  * cannot be used. The custody must be the runner's alone (owner, modes; readiness also has the kernel confirm the harness
  * user cannot open it) and bound to this profile's account, organization and plan. */
 export function readHarnessLogin(profile, path = harnessLoginPath(profile)) {
+  const record = readLoginRecord(profile, path, false);
+  let repair;
+  try {
+    const stat = lstatSync(`${path}.signin.json`);
+    if (!stat.isFile() || stat.uid !== process.getuid() || (stat.mode & 0o077) !== 0 || stat.size > 262144)
+      throw Error('sign-in repair record unavailable');
+    repair = JSON.parse(readFileSync(`${path}.signin.json`, 'utf8'));
+    if (!repair || typeof repair !== 'object' || Array.isArray(repair)) throw Error('sign-in repair record unavailable');
+  } catch (error) {
+    if (error.code !== 'ENOENT' || record.signinBinding) throw Error('sign-in repair record unavailable');
+  }
+  if (repair && (repair.phase !== 'succeeded' || repair.reference !== profile.reference
+    || repair.account !== profile.expectedAccount || repair.binding !== record.signinBinding
+    || repair.credentialDigest !== createHash('sha256').update(record.token).digest('hex')
+    || !Number.isSafeInteger(repair.expiresAt) || repair.expiresAt <= Date.now()))
+    throw Error('sign-in repair is not verified and current');
+  return record.token;
+}
+/** Fixed provider sign-in inspection only: permits probing an expired/held
+ * credential, never supplying it to a model or publishing it as repaired. */
+export function readHarnessLoginForSignin(profile, path = harnessLoginPath(profile)) {
   return readLoginRecord(profile, path, false).token;
+}
+/** Non-secret receipt binding for sign-in recovery and its loss detector. */
+export function harnessSigninBinding(profile, path = harnessLoginPath(profile)) {
+  const record = readLoginRecord(profile, path, false);
+  return record.signinBinding ?? null;
 }
 function readLoginRecord(profile, path, legacy) {
   const own = typeof process.getuid === 'function' ? process.getuid() : -1;

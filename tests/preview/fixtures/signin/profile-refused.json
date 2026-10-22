@@ -1,0 +1,6 @@
+{
+  "source": "GET https://api.anthropic.com/api/oauth/profile with deliberately invalid synthetic credential; no real account opened",
+  "capturedAt": "2026-10-22T20:27:36.078Z",
+  "status": 401,
+  "body": "{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\",\"message\":\"Invalid bearer token\"},\"request_id\":\"req_011CgHuUrps7iQUYPTGmBCDm\"}"
+}

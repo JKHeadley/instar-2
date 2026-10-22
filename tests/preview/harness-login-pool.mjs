@@ -6,6 +6,8 @@ import { readFileSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { durablePreviewWrite } from './durable-write.js';
 import { harnessLoginPath } from './harness-user.mjs';
+import { readHarnessSignin } from '../../scripts/harness-signin.mjs';
+import { remainingText } from './credential-reminders.js';
 
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const read = path => readFileSync(path, 'utf8');
@@ -131,7 +133,7 @@ function matchingUsageAccount(document, entry) {
  * No timer retries: an exhausted profile becomes eligible after a provider/reading reset time.
  * Unknown resets recover from newer matched readings with capacity in both quota windows. */
 export function createHarnessLoginPool({ configuration, statePath, now, validate,
-  machine = 'local', unavailable = new Map(), readText = read, write = durablePreviewWrite, previouslyLaunched = () => false, quotaReader = null, usage = () => configuration.usageFile
+  machine = 'local', unavailable = new Map(), readRepair = readHarnessSignin, readText = read, write = durablePreviewWrite, previouslyLaunched = () => false, quotaReader = null, usage = () => configuration.usageFile
     ? JSON.parse(readText(configuration.usageFile)) : null }) {
   const { entries, identity } = configuration;
   // 1.x ProactiveSwapMonitor's lag-aware ceiling reserves 20 percentage points
@@ -222,7 +224,12 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
         persist({ ...state, holds });
       }
     }
-    const signedOut = new Set(entries.filter(entry => matchingUsageAccount(reading, entry)?.status === 'needs-reauth').map(entry => entry.index));
+    const repairState = new Map(entries.map(entry => [entry.index, readRepair(entry.profile)]));
+    const signedOut = new Set(entries.filter(entry => {
+      const repair = repairState.get(entry.index);
+      if (repair && repair.phase !== 'succeeded') return true;
+      return matchingUsageAccount(reading, entry)?.status === 'needs-reauth';
+    }).map(entry => entry.index));
     const repairs = entries.filter(entry => signedOut.has(entry.index) && !(state.signinRepairs ?? []).some(item => item.index === entry.index));
     if (repairs.length) persist({ ...state, signinRepairs: [...(state.signinRepairs ?? []),
       ...repairs.map(entry => ({ index: entry.index, account: entry.profile.expectedAccount, machine, at }))] });
@@ -293,7 +300,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     readySession: current => select('session', current, true, true),
     signinRepairs: () => (state.signinRepairs ?? []).map(item => ({
       key: `login-signin:${identity}:${item.index}:${item.machine}`, account: item.account, machine: item.machine,
-      profile: entries[item.index].profile.reference, action: 'desk: run /subscription-signin for this account and machine',
+      profile: entries[item.index].profile.reference, action: 'instar2 signin <installation-directory> <installed-profile-reference>',
     })),
     observe(entry, result) {
       if (entries[entry?.index] !== entry) fail('observation names an unreviewed login');
@@ -302,12 +309,25 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       hold(entry, { reason: 'provider-limit', observedAt: now(), resetAt: Number.isSafeInteger(reset) && reset > now() ? reset : null });
     },
     notices: () => [
+      ...entries.flatMap(entry => {
+        const repair = readRepair(entry.profile);
+        const stage = repair?.reminders?.filter(at => at <= now()).length - 1;
+        return repair?.phase === 'succeeded' && Number.isSafeInteger(repair.expiresAt) && stage >= 0 ? [{
+          key: `credential:signin:${entry.profile.reference}:${repair.expiresAt}:${stage}`,
+          line: `Approved model sign-in ${entry.index + 1} ${remainingText(repair.expiresAt - now())}. Renew this account's sign-in with the installation's sign-in command.`,
+        }] : [];
+      }),
       ...state.switches.filter(event => event.reason !== 'member-unavailable').map(event => ({ key: `doorway:harness-login:${state.noticeIdentity ?? identity}:${event.sequence}`,
         line: `The model login reached its ${event.reason === 'usage-threshold' ? 'configured usage threshold' : 'usage limit'}. I switched to the next approved login for this runner.` })),
       ...(state.exclusions ?? []).map(({ index }) => ({ key: `doorway:harness-login:${identity}:unavailable:${index}`,
         line: `Approved model login ${index + 1} was unavailable and was removed from selection. See status for current login availability.` })),
     ],
-    status: () => harnessLoginPoolStatus(configuration, state, unavailable, observedUsage, now),
+    status: () => harnessLoginPoolStatus(configuration, state, unavailable, observedUsage, now)
+      + entries.flatMap(entry => {
+        const repair = readRepair(entry.profile);
+        return repair ? [` Sign-in ${entry.index + 1}: ${repair.phase}; ${repair.reason}.`
+          + (repair.expiresAt ? ` Credential expires at ${repair.expiresAt}.` : '')] : [];
+      }).join(''),
     get state() { return structuredClone(state); },
   });
 }
@@ -331,7 +351,7 @@ export function harnessLoginPoolStatus(configuration, state, unavailable, usage,
   const last = state.switches.at(-1);
   return `Model login pool: using approved login ${state.active + 1} of ${entries.length}. ` + members.join(' | ')
     + (state.handoffAttempts?.at(-1)?.phase === 'prepared' ? ' A continuing-session login move was prepared but is not confirmed.' : '')
-    + (state.signinRepairs?.length ? ` Recorded sign-in repair items: ${state.signinRepairs.map(item => `${item.account} on ${item.machine}; desk /subscription-signin`).join(' | ')}.` : '')
+    + (state.signinRepairs?.length ? ` Recorded sign-in repair items: ${state.signinRepairs.map(item => `${item.account} on ${item.machine}; instar2 signin`).join(' | ')}.` : '')
     + (last ? ` Last switch: ${last.from} to ${last.to}, ${last.reason}, at ${last.at}.` : ' Last switch: none.');
 }
 
