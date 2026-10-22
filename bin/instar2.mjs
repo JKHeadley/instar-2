@@ -5,9 +5,16 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 register('../scripts/slice-ts-loader.mjs', import.meta.url);
 const [command, root = join(homedir(), '.instar2'), ...extra] = process.argv.slice(2);
-if (command !== 'setup' || extra.length) {
-  process.stderr.write('Usage: instar2 setup [installation-directory]\n');
+if (!['setup', 'run'].includes(command) || extra.length) {
+  process.stderr.write('Usage: instar2 <setup|run> [installation-directory]\n');
   process.exitCode = 1;
+} else if (command === 'run') {
+  const { runProduct, RunRefused } = await import('../scripts/product-run.mjs');
+  try { await runProduct(root); }
+  catch (error) {
+    process.stderr.write(`${error instanceof RunRefused ? error.message : 'Run refused: installation could not be read; details suppressed.'}\n`);
+    process.exitCode = 1;
+  }
 } else {
   const { runOnboarding } = await import('../scripts/onboarding.mjs');
   const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
