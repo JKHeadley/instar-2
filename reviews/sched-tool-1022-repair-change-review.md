@@ -22,7 +22,7 @@ Decision: sched-tool-checkpoint-authority | Preserve the existing effect route w
 Prompt review: No prompt or refusal wording changes. The repair changes when the existing refusal is used. Recorded train-133 and historical writer, summary uncertainty, Jev undecided/unsure, reply-review and empty reply shapes replay through the existing regression suite; those are historical transport evidence, not a fresh live wake execution.
 
 1.x reuse: Retains the built-in harness tool and host-owned scheduling/effect separation already inspected in the parent unit's toolAccess.ts, SessionManager.ts and JobScheduler.ts review. No transplanted scheduler or new reviewer.
-Verification: Targeted tool-admission, admission-gate and sched-tool-replay tests: 32 passed. The new gated neighbor reaches the checkpoint, which refuses absent authority and a closed claim. Both stop forms, ungated wake refusal and call cap are covered. Remaining final gates are recorded in the progress report.
+Verification: Targeted tool-admission, admission-gate and sched-tool-replay tests: 32 passed. The new gated neighbor reaches the checkpoint, which refuses absent authority and a closed claim. Both stop forms, ungated wake refusal and call cap are covered. Typecheck, build and standalone architecture checks pass. The desk repin scripts require no owner/inventory changes; generated register outputs refresh the source graph at 6345a0defb9d229f1f6c8eb978af24619109dad5. Final gate outcomes are recorded in the progress report.
 
 ## Closing block
 
