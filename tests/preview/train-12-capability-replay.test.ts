@@ -6,6 +6,7 @@ import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { createHash } from 'node:crypto';
 import { ANSWER_INSTRUCTIONS, LITERAL_COPY_INSTRUCTIONS, capabilitySentence, SELF_DESCRIPTION, SELF_IDENTITY } from './briefing.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { MEMORY_DISAMBIGUATION, MEMORY_SUPERSESSION } from '../../src/assembly/memory-answer-guidance.js';
 import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS } from '../../src/assembly/tool-answer-guidance.js';
 import { CLAIM_EVIDENCE_GUIDANCE } from './answer-provenance.js';
 import { readAnswer } from './answer-reading.js';
@@ -13,7 +14,8 @@ import { readAnswer } from './answer-reading.js';
 // These captures predate requested-work guidance and removal of the one-machine send restriction.
 // Reconstruct their historical prompt without changing the captured evidence or current abilities.
 const historicalSendRestriction = 'Irreversible outward sends remain outside the one-machine closed set. ';
-const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '')
+const HISTORICAL_MEMORY = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
+const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '')
   .replace('The effect doorway reports', `${historicalSendRestriction}The effect doorway reports`);
 
 const evidence = JSON.parse(readFileSync(new URL('./fixtures/train-12-capability-2026-10-12.json', import.meta.url), 'utf8'));
@@ -45,6 +47,10 @@ async function rendered(value: string, question: string) {
 }
 
 it('retains live paraphrase and malformed-key failures beside the fixed-sample rendered replays', async () => {
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.split(MEMORY_DISAMBIGUATION)).toHaveLength(2);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain(MEMORY_SUPERSESSION);
+  expect(MEMORY_DISAMBIGUATION).toContain('Quotes/imports or concurrent claims do not supersede');
+  expect(MEMORY_DISAMBIGUATION).toContain('Clarify only unresolved alternatives or ambiguous subjects');
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).not.toContain(historicalSendRestriction);
   expect(evidence.original.update).toBe(715675606);
   expect(evidence.original.judge).toMatchObject({ verdict: 'FAIL', reason: 'rendered tools/outbound sentence missing, altered or duplicated' });
