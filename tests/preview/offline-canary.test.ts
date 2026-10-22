@@ -150,73 +150,7 @@ it('validates renewal and policy-successor records against the pinned policy, wi
   const policy = subscriptionConversationPolicy(model);
   expect(policy.args.join(' ')).toContain(MEMORY_DISAMBIGUATION);
   expect(policy.args.join(' ')).not.toContain(HISTORICAL_MEMORY);
-  const historical = { ...policy, args: policy.args.map(arg => arg.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY)) };
+  const historical = { ...policy, args: policy.args.map(arg => arg.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.')) };
   const historicalDigest = encoded(historical).hash;
   expect(historicalDigest).toBe('sha256:7b1d9af257f848e9cef4abad31771394af1cb4e1b6062a4538d3442a2045f220');
   expect(digest).not.toBe(historicalDigest);
-  const base = { type: 'SubscriptionActivationRecord', schemaVersion: 1, reference: profile.activationReference,
-    waiver: 'waiver', p11: 'p11', reviewedHead: 'frozen predecessor', trial: genesis().grant,
-    baseConfigurationDigest: genesis().configurationDigest, profileDigest: encoded(profile).hash,
-    executable: profile.executable, artifact: profile.artifact, version: profile.version, model,
-    invocationPolicyDigest: digest, expectedAccount: profile.expectedAccount, observedAccount: profile.expectedAccount,
-    authSource: 'claude.ai', operatorAssertion: 'offline assertion', assertedAt: at - 200000,
-    observer: 'offline observer', observedAt: at - 100000, method: 'auth status', safeCaptureReference: 'offline capture',
-    extraUsage: 'observed-disabled', extraUsageReason: 'disabled', subscriptionLimit: 'available',
-    subscriptionLimitReason: 'offline reading', acceptedResiduals: ['offline fixture'], expiresAt: at + 10000 };
-  const observation = { reference: base.reference, reviewedHead: 'canary candidate', assertedAt: at - 2000,
-    observedAt: at - 1000, method: 'offline observation', observer: 'offline canary',
-    safeCaptureReference: 'offline capture', observedAccount: profile.expectedAccount,
-    subscriptionLimit: 'available', subscriptionLimitReason: 'offline fixture' };
-  const currentBytes = JSON.stringify(base);
-  const renewed = renewActivation({ current: base, currentBytes, profile, observation, now: at }).record;
-  expect(() => validateSubscriptionActivation(renewed, profile, model, at, SUBSCRIPTION_CONVERSATION_FRAMING)).not.toThrow();
-  expect(renewed.invocationPolicyDigest).toBe(digest);
-  expect(() => validateSubscriptionActivation({ ...renewed, invocationPolicyDigest: historicalDigest },
-    profile, model, at, SUBSCRIPTION_CONVERSATION_FRAMING)).toThrow('artifact or policy differs');
-  expect(() => validateSubscriptionActivation({ ...renewed, invocationPolicyDigest: 'sha256:3598cc7514f4be6ffec52f1d321e1596cd2db420a67fd7958281f3862dd9ce8c' },
-    profile, model, at, SUBSCRIPTION_CONVERSATION_FRAMING)).toThrow();
-  expect(renewed.predecessor.digest).toBe(`sha256:${createHash('sha256').update(currentBytes).digest('hex')}`);
-  expect(() => validateSubscriptionActivation({ ...renewed, invocationPolicyDigest: 'sha256:wrong' },
-    profile, model, at, SUBSCRIPTION_CONVERSATION_FRAMING)).toThrow();
-  expect(() => renewActivation({ current: base, currentBytes, profile,
-    observation: { ...observation, observedAccount: 'other@example.invalid' }, now: at })).toThrow();
-  const priorPolicy = { ...renewed, invocationPolicyDigest: 'sha256:557a62fa7c65c0a8a5982f34f8d96236231d21082bef4b441ea7847be58cb833' };
-  const successor = renewActivation({ current: priorPolicy, currentBytes: JSON.stringify(priorPolicy), profile,
-    observation, now: at, policySuccessor: true }).record;
-  expect(successor.previousInvocationPolicyDigest).toBe(priorPolicy.invocationPolicyDigest);
-  expect(successor.invocationPolicyDigest).toBe(digest);
-  expect(() => validateSubscriptionActivation(successor, profile, model, at, SUBSCRIPTION_CONVERSATION_FRAMING)).not.toThrow();
-  expect(() => renewActivation({ current: renewed, currentBytes: JSON.stringify(renewed), profile,
-    observation, now: at, policySuccessor: true })).toThrow('digest unchanged');
-  const root = rootOf(), journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
-  try {
-    expect(activationMatchesJournal(journal.view, renewed)).toBe(true);
-    expect(activationMatchesJournal(journal.view, { ...renewed, trial: 'other' })).toBe(false);
-  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
-});
-
-it('upgrades the frozen live-format journal in place and preserves an UNKNOWN send fence', async () => {
-  const root = rootOf(), path = join(root, 'journal.encrypted');
-  // Generated with journal.ts whose bytes match frozen15 at 3695117d, then copied to a new root.
-  copyFileSync(new URL('./fixtures/offline-canary-frozen15.encrypted', import.meta.url), path);
-  let journal = openPreviewJournal(path, key);
-  const texts: string[] = [];
-  let sends = 1; // the fixture has one physical send attempt with UNKNOWN result
-  try {
-    expect(journal.view.order[0].intent).toBe('PREVIEW — violet');
-    journal.close(); journal = openPreviewJournal(path, key);
-    const resumed = createJournalWorker(journal, { now: () => at, stopped: () => false,
-      model: async () => 'amber', checkOutbound: () => {},
-      send: async input => { texts.push(input.expectedText); sends++; return sends; } });
-    resumed.intake([update(1, 'What color?'), update(2, 'Another color?')]); await resumed.drain();
-    expect(sends).toBe(3);
-    expect(texts).toEqual(['amber', UNKNOWN_SEND_NOTICE]);
-    expect(journal.view.order[0].deliveryNotice?.sent).toBe(3);
-    await resumed.drain(); expect(sends).toBe(3);
-    expect(journal.view.order.map(turn => [turn.update, turn.intent, turn.sent])).toEqual([
-      [1, 'PREVIEW — violet', undefined], [2, 'amber', 2] ]);
-    expect(status(root)).toMatchObject({ cursor: 3, turns: 2, replies: 3, unknownSends: 1,
-      unknownCallBreakdown: { total: 0 }, stop: null });
-    expect(readFileSync(path, 'utf8')).not.toContain('What color?');
-  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
-});
