@@ -22,6 +22,8 @@ Prompt review: No new prompt or output parser is authored by this repair; live p
 Decision: train129p2-repair-import-union | Keep both independent import groups, preserving both parent behaviors with no new abstraction. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-129-p2-repair-100432-PROGRESS.md
 Decision: train129p2-repair-native-certificate | Retain the branch declaration without forging a certificate for merged bytes; disclose the permitted R105 mismatch for the Studio contract run. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-129-p2-repair-100432-PROGRESS.md
 
+Deferral: generated/register.json:1 | not-a-deferral=regenerated descriptions preserve existing tracked capabilities and their evidence
+
 ## Closing block
 
 simplestRobustRoute: Union the independent imports and reuse the delegated owner-pin and register generators. This is the simplest robust route; it adds no machinery or authority and preserves both parents and their changelog histories. Existing floors remain the start and limit guards; targeted tests and the Studio gate judge the result. No autonomous completion claim is made.
