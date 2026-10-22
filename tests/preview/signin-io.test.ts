@@ -18,12 +18,12 @@ function disk() {
 }
 it.each([true, false])('runs the native process in a separate private home, including prompt newline=%s', async newline => {
   const f = disk(), executable = join(f.root, 'fixture-cli');
-  const capture = readFileSync(new URL('./fixtures/signin/claude-login-studio.txt', import.meta.url), 'utf8');
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/signin/claude-login-studio.json', import.meta.url), 'utf8')).terminal;
   writeFileSync(executable, '#!/usr/bin/python3\nimport os,sys,time,json\n'
     + 'assert sys.argv[1:]==["auth","login"]\nassert os.environ["BROWSER"]=="true"\n'
     + 'assert os.environ["CLAUDE_CONFIG_DIR"].endswith("/repair/config")\n'
     + 'assert os.environ["HOME"].endswith("/repair/home")\n'
-    + `sys.stdout.write(${JSON.stringify(newline ? `${capture.trimEnd()}\n` : capture.trimEnd())}); sys.stdout.flush(); time.sleep(.1)\n`, { mode: 0o700 });
+    + `sys.stdout.write(${JSON.stringify(newline ? `${capture}\n` : capture)}); sys.stdout.flush(); time.sleep(.1)\n`, { mode: 0o700 });
   f.profile.executable = executable; f.profile.artifact = `sha256:${signinDigest(readFileSync(executable))}`;
   const openBrowser = vi.fn(async () => {}), onPid = vi.fn();
   const result = await runClaudeSignin({ ...f, directory: join(f.root, 'repair'), signal: new AbortController().signal, openBrowser, onPid });
