@@ -81,8 +81,10 @@ repair or a still-disabled button prevents the click. Google sign-in and provide
 challenges remain in the existing browser flow. A local stale Chrome lock is left
 for Chrome to recover only after its
 exact PID is confirmed absent; a live or unidentifiable owner is refused.
-It leaves the browser window
-open; it never closes a browser which may now belong to the person signing in.
+Completion, stop and failure close the dedicated browser launched by this attempt.
+Cleanup rechecks the exact PID and profile before termination, waits a bounded
+grace period, and escalates only against that same rechecked process. An existing
+browser is never adopted or closed; uncertain cleanup leaves the repair unfinished.
 
 Before publishing the replacement, Instar checks the provider's live account and
 organization identity and makes one authenticated quota call. A successful CLI exit
@@ -98,7 +100,7 @@ later sign-out observation or a usage hold. Continuing workers are not killed or
 restarted by this command. Their next ordinary admission reads the restored custody.
 
 Each invocation has a ten-minute ceiling. Stop or a changed installed binding aborts
-the CLI and prevents publication. Process termination targets only the CLI it
+the CLI and prevents publication. Process termination targets only the CLI and dedicated browser it
 started. An interrupted browser step is re-observed before any publication, never
 blindly started again. A normal unsuccessful attempt can be re-entered to verify a
 credential that arrived late. A process crash leaves its account/browser locks

@@ -125,9 +125,15 @@ it.each(['continue', 'stop', 'native-exit', 'browser-error', 'missing-prompt', '
       const result = await p.evaluate(options.input);
       return result;
     });
+    let browserAlive = true;
+    const signalBrowser = vi.fn((pid, signal) => {
+      expect(pid).toBe(process.pid);
+      if (!browserAlive) throw Object.assign(Error('gone'), { code: 'ESRCH' });
+      if (signal === 'SIGTERM') { browserAlive = false; rmSync(join(root, 'SingletonLock')); }
+    });
     const result = await runClaudeSignin({ profile: { executable, artifact: `sha256:${signinDigest(readFileSync(executable))}`,
       expectedAccount: 'justin@sagemindai.io' }, directory: join(root, 'scratch'), browser: root,
-      signal: p.controller.signal, runBrowser,
+      signal: p.controller.signal, runBrowser, signalBrowser,
       pause: async ms => {
         if (outcome === 'stop') p.controller.abort();
         else if (outcome === 'native-exit') { child.emit('close', 0); throw Error('aborted'); }
@@ -141,5 +147,7 @@ it.each(['continue', 'stop', 'native-exit', 'browser-error', 'missing-prompt', '
     expect(writes).toEqual(['continue', 'stdin-error'].includes(outcome) ? ['synthetic-code#REDACTED\n'] : []);
     expect(JSON.stringify(runBrowser.mock.calls.map(c => c.slice(0, 2)))).not.toContain('REDACTED');
     expect(child.stdin.destroyed).toBe(true);
+    expect(browserAlive).toBe(false);
+    expect(signalBrowser).toHaveBeenCalledWith(process.pid, 'SIGTERM');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -172,3 +172,59 @@ it('ordinary custody cannot bypass a pending repair, a missing receipt, or expir
   expect(() => readHarnessLogin(f.profile, custody)).toThrow();
   unlinkSync(receiptPath); expect(() => readHarnessLogin(f.profile, custody)).toThrow();
 });
+
+it.each(['complete', 'startup-failure', 'stop'])('releases an owned browser on %s and admits the next repair', async outcome => {
+  const { EventEmitter } = await import('node:events');
+  const { PassThrough } = await import('node:stream');
+  const f = disk(), controller = new AbortController();
+  f.profile.executable = realpathSync('/bin/echo');
+  f.profile.artifact = `sha256:${signinDigest(readFileSync(f.profile.executable))}`;
+  const terminal = JSON.parse(readFileSync(new URL('./fixtures/signin/claude-login-studio.json', import.meta.url), 'utf8')).terminal;
+  let alive = false, launches = 0, child;
+  const signalBrowser = vi.fn((pid, signal) => {
+    expect(pid).toBe(process.pid);
+    if (!alive) throw Object.assign(Error('gone'), { code: 'ESRCH' });
+    if (signal === 'SIGTERM') { alive = false; unlinkSync(join(f.browser, 'SingletonLock')); }
+  });
+  const runBrowser = async (file, args, options) => {
+    if (file === '/usr/bin/open') {
+      launches++; alive = true; symlinkSync(`${hostname()}-${process.pid}`, join(f.browser, 'SingletonLock'));
+      return '';
+    }
+    if (file === '/bin/ps') return `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=${f.browser} about:blank`;
+    if (outcome === 'startup-failure') return 'occupied';
+    if (outcome === 'stop') controller.abort();
+    else child.emit('close', 0);
+    return 'blank';
+  };
+  for (let attempt = 0; attempt < (outcome === 'stop' ? 1 : 2); attempt++) {
+    const result = await runClaudeSignin({ ...f, directory: join(f.root, 'repair'), signal: controller.signal,
+      runBrowser, signalBrowser, spawnCli: () => {
+        child = Object.assign(new EventEmitter(), { stdin: new PassThrough(), stdout: new PassThrough(),
+          stderr: new PassThrough(), kill: () => queueMicrotask(() => child.emit('close', 1)) });
+        queueMicrotask(() => child.stdout.write(terminal)); return child;
+      } });
+    expect(result.kind).toBe(outcome === 'complete' ? 'complete' : 'unfinished');
+    expect(alive).toBe(false);
+  }
+  expect(launches).toBe(outcome === 'stop' ? 1 : 2);
+  expect(signalBrowser.mock.calls.filter(c => c[1] === 'SIGTERM')).toHaveLength(launches);
+});
+
+it.each(['gone', 'other-profile', 'helper', 'reused-before-kill', 'stubborn', 'permission'])('owned cleanup rechecks identity and bounds escalation: %s', async outcome => {
+  const { closeSigninBrowser } = await import('../../scripts/claude-signin-io.mjs');
+  const f = disk(); let checks = 0;
+  const run = vi.fn(async () => {
+    checks++;
+    if (outcome === 'permission') throw Error('unavailable');
+    const profile = outcome === 'other-profile' || outcome === 'reused-before-kill' && checks > 1 ? `${f.browser}-other` : f.browser;
+    return `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=${profile} ${outcome === 'helper' ? '--type=renderer' : 'about:blank'}`;
+  });
+  const signalProcess = vi.fn(() => { if (outcome === 'gone') throw Object.assign(Error('gone'), { code: 'ESRCH' }); });
+  const pause = vi.fn(async () => {});
+  expect(await closeSigninBrowser(12345, f.browser, run, signalProcess, pause)).toBe(outcome === 'gone');
+  const signals = signalProcess.mock.calls.filter(c => c[1] !== 0);
+  expect(signals).toEqual(outcome === 'stubborn' ? [[12345, 'SIGTERM'], [12345, 'SIGKILL']]
+    : outcome === 'reused-before-kill' ? [[12345, 'SIGTERM']] : []);
+  expect(pause.mock.calls.length).toBe(outcome === 'stubborn' ? 60 : outcome === 'reused-before-kill' ? 50 : 0);
+});

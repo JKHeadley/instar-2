@@ -96,27 +96,60 @@ function run(args){
  return out&&!out.isNil()&&out.stringValue?out.stringValue.js:'unavailable';
 }`;
 
-export async function evaluateSigninBrowser(pid, browser, code, signal, run = execute) {
-  if (signal?.aborted) throw Error('signin-browser-stopped');
+async function checkSigninBrowser(pid, browser, run) {
   const command = await run('/bin/ps', ['-p', String(pid), '-o', 'args=']);
   if (!command.startsWith('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome ')
     || !`${command.trim()} `.includes(`--user-data-dir=${browser} `) || command.includes('--type='))
     throw Error('signin-browser-process-differs');
+}
+
+export async function evaluateSigninBrowser(pid, browser, code, signal, run = execute) {
+  if (signal?.aborted) throw Error('signin-browser-stopped');
+  await checkSigninBrowser(pid, browser, run);
   if (signal?.aborted) throw Error('signin-browser-stopped');
   return (await run('/usr/bin/osascript', ['-l', 'JavaScript', '-e', PAGE_SCRIPT, String(pid)],
     { input: code, signal })).trim();
 }
 
+// PlainChromeReloginBrowser.close: exact owned PID, TERM, bounded grace, KILL.
+// Recheck the profile/process before each signal; a reused PID is never ours.
+export async function closeSigninBrowser(pid, browser, run = execute,
+  signalProcess = (pid, signal) => process.kill(pid, signal), pause = delay) {
+  if (!Number.isSafeInteger(pid) || pid <= 1) return false;
+  const absent = () => {
+    try { signalProcess(pid, 0); return false; }
+    catch (error) { if (error.code === 'ESRCH') return true; throw error; }
+  };
+  try {
+    if (absent()) return true;
+    await checkSigninBrowser(pid, browser, run);
+    signalProcess(pid, 'SIGTERM');
+    for (let attempt = 0; attempt < 50; attempt++) {
+      if (absent()) return true;
+      await pause(100);
+    }
+    await checkSigninBrowser(pid, browser, run);
+    signalProcess(pid, 'SIGKILL');
+    for (let attempt = 0; attempt < 10; attempt++) {
+      if (absent()) return true;
+      await pause(100);
+    }
+  } catch (error) { if (error.code === 'ESRCH') return true; }
+  return false; // Cleanup uncertainty must not become a complete repair.
+}
+
 export async function openSigninBrowser(url, browser, signal, run = execute,
-  pause = ms => delay(ms, undefined, { signal })) {
+  pause = ms => delay(ms, undefined, { signal }), onOwned = () => {}) {
   if (signal?.aborted || parseClaudeSigninUrl(`${url}\n`) !== url) throw Error('signin-browser-url-refused');
   await run('/usr/bin/open', ['-g', '-na', '/Applications/Google Chrome.app', '--args',
     `--user-data-dir=${browser}`, '--no-first-run', '--no-default-browser-check', '--disable-sync', 'about:blank']);
-  for (let attempt = 0; attempt < 60 && !signal?.aborted; attempt++) {
+  for (let attempt = 0; attempt < 60; attempt++) {
     let match;
     try { match = /^(.*)-(\d+)$/u.exec(readlinkSync(join(browser, 'SingletonLock'))); } catch { /* Chrome is starting. */ }
     if (match && match[1] === hostname() && Number.isSafeInteger(Number(match[2])) && Number(match[2]) > 1) {
       const pid = Number(match[2]);
+      onOwned(pid);
+      if (signal?.aborted) throw Error('signin-browser-stopped');
       // Chrome publishes its lock before the first window accepts Apple Events.
       // Poll only a read; never repeat navigation after an uncertain outcome.
       let ready;
@@ -134,6 +167,7 @@ export async function openSigninBrowser(url, browser, signal, run = execute,
         throw Error('signin-browser-navigation-unavailable');
       return pid;
     }
+    if (signal?.aborted) throw Error('signin-browser-stopped');
     await pause(500);
   }
   throw Error('signin-browser-start-unavailable');
@@ -159,9 +193,9 @@ export function validateSigninBrowser(binding, profile) {
  * The offered Claude consent uses the measured main-world focus guard. Other
  * provider sign-in controls stay with the existing account browser flow. */
 export async function runClaudeSignin({ profile, browser, directory, signal, onPid = () => {}, openBrowser,
-  spawnCli = spawn, runBrowser = execute, pause }) {
+  spawnCli = spawn, runBrowser = execute, pause, signalBrowser, cleanupPause }) {
   if (signal.aborted) return { kind: 'unfinished' };
-  if (process.platform !== 'darwin' && !openBrowser) throw Error('signin-normal-browser-platform-unavailable');
+  if (process.platform !== 'darwin' && !openBrowser && runBrowser === execute) throw Error('signin-normal-browser-platform-unavailable');
   if (`sha256:${signinDigest(readFileSync(profile.executable))}` !== profile.artifact
     || realpathSync(profile.executable) !== profile.executable) throw Error('signin-executable-changed');
   mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -186,8 +220,9 @@ export async function runClaudeSignin({ profile, browser, directory, signal, onP
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   const browserController = new AbortController();
   const browserSignal = AbortSignal.any([signal, browserController.signal]);
+  let ownedBrowserPid;
   const launch = openBrowser ?? (async url => {
-    const pid = await openSigninBrowser(url, browser, browserSignal, runBrowser);
+    const pid = await openSigninBrowser(url, browser, browserSignal, runBrowser, undefined, pid => { ownedBrowserPid = pid; });
     const page = { expectedAccount: profile.expectedAccount,
       state: new URL(url).searchParams.get('state'), signal: browserSignal,
       evaluate: code => evaluateSigninBrowser(pid, browser, code, browserSignal, runBrowser),
@@ -251,7 +286,9 @@ export async function runClaudeSignin({ profile, browser, directory, signal, onP
       settled = true; clearTimeout(timer); clearTimeout(killTimer); signal.removeEventListener('abort', abort);
       browserController.abort();
       text = ''; child.stdin.destroy(); await opening;
-      resolve({ kind: ok && !launchFailed ? 'complete' : 'unfinished' });
+      const released = ownedBrowserPid === undefined || await closeSigninBrowser(ownedBrowserPid, browser,
+        runBrowser, signalBrowser, cleanupPause);
+      resolve({ kind: ok && !launchFailed && released ? 'complete' : 'unfinished' });
     }
   });
 }
