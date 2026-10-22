@@ -444,7 +444,7 @@ it.each(['Can you remember that?', 'Please remember that.'])
 it('carries two distinct people into the reply call and sends one short clarification for an unnamed Sam', async () => {
   const root = origin();
   try {
-    const instruction = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question';
+    const instruction = 'If the question leaves different people or things ambiguous, ask one short clarifying question';
     expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain(instruction);
     const policy = subscriptionConversationPolicy('claude-opus-5-5');
     expect(policy.args[policy.args.indexOf('--system-prompt') + 1]).toBe(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);

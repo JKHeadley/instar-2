@@ -20,6 +20,11 @@ Claude, Codex and native tool turns: acquire missing information through existin
 authorized reads, cite it, and report actual failed attempts. It changes no tool
 authority or resource limit; text-only turns retain their no-tools instruction.
 
+`memory-answer-guidance.ts` gives all conversation framings and the journal's answer,
+repair and summary paths one supersession rule: the operator's later direct statement
+of the same fact wins, with old values retained as history. The model distinguishes
+updates from genuine ambiguity; existing source validation admits the memory change.
+
 `production-codex-provider.ts` admits the reviewed native Codex CLI 0.156.1
 through an exact executable digest, version, subscription profile and activation
 policy. Historical 0.149.1 captures remain labeled with their original version;
