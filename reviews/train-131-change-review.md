@@ -7,8 +7,8 @@ Outcome: Preserve the exact live product composition and record inclusion of the
 Affected rules: 1, 26, 34, 37, 49, 69, 74, 90, 101, 102, 111, 112, 113, 116
 Affected floors: secrets — no custody or credentials changed; spend cap — no model calls or budget changes; stop — unchanged; no duplicate sends — no sends made or send paths changed; durable intake — journal behavior unchanged.
 Operator questions: none
-Suggested tier: routine
-Declared tier: routine
+Suggested tier: critical
+Declared tier: ordinary
 Tier rationale: The exact member is already an ancestor; only generated provenance changes. No product source, prompt, test or governing declaration changes.
 Side effects: Generated register provenance now identifies the exact live base. The group-e desk repairs remain external Studio files identified by the member report; this branch does not package or redeploy those files.
 Undo and recovery: Revert the generated provenance refresh and replay at the chosen reviewed composition. Keep the member's historical desk evidence and original interruption artifacts; no runtime rollback or resend is needed.
