@@ -49,9 +49,6 @@ Decision: train-118-B | Create branch at exact live base 588332d9d0839cd504bee28
 Decision: train-118-D | Offline isolated tests only, live opt-ins removed. Report host-dependent failures; leave native certificate renewal to the Studio under the explicit charter exception. | reported=reviews/train-118-decision-evidence.txt
 Decision: train-118-desk | Temporarily retain first-member generated outputs to commit merged source, then regenerate all outputs from that commit via repin/build/rehash/replay. No generated hand-merge. Repin/rehash changed zero pins; context constants unchanged. | reported=reviews/train-118-decision-evidence.txt
 Decision: train-118-pins | Direct-importer replay found deferral-delivery, deferral-finish and inrole-memory-live comparing immutable historical prompt hashes to the current provider. Translate only the reviewed memory wording back for the historical hash, assert current guidance occurs once and differs, preserve capture bytes and all envelope/outcome assertions. | reported=reviews/train-118-decision-evidence.txt
-simplestRobustRoute: This is the simplest robust route: two ordinary reviewed merges and the existing regeneration chain. No new machinery. Verified source admission and registered adapter selection are start guards; historical supersession and truthful configured-route observations are end guards. All five floors remain enforced. Offline replay is not a new live-completion claim; complete member reports retain their separate Studio evidence.
-80/20: Only specified tests and direct source importers, one worker, foreground bounded chunks. No full suite or load generation.
-VERDICT: author submission for desk gate; not independent convergence or live acceptance
 
 ## Pipeline repair — decision report availability
 
@@ -60,3 +57,7 @@ The native build refused seven Rule 102 decisions because their absolute desk re
 Repair side effects and recovery: The evidence excerpt adds a durable copy of existing decision text. Revert the repair commit to restore the original references, retaining the desk reconstruction for local diagnosis. No source pins, generated declarations, authority, model prompts or safety floors change. This remains an open author review, not an independent convergence verdict.
 
 Repair simplestRobustRoute: This is the simplest robust route: use the existing report resolver and preserve seven already-recorded decisions in committed review evidence. Merely recreating the absolute file would leave a fresh checkout dependent on desk-local state. No validator weakening or new machinery is needed. Missing evidence must still fail; complete evidence must resolve. No autonomous shipped-path completion is claimed.
+
+simplestRobustRoute: This is the simplest robust route: two ordinary reviewed merges and the existing regeneration chain. No new machinery. Verified source admission and registered adapter selection are start guards; historical supersession and truthful configured-route observations are end guards. All five floors remain enforced. Offline replay is not a new live-completion claim; complete member reports retain their separate Studio evidence.
+80/20: Only specified tests and direct source importers, one worker, foreground bounded chunks. No full suite or load generation.
+VERDICT: author submission for desk gate; not independent convergence or live acceptance
