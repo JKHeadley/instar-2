@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHarnessLoginPool, loadHarnessLogins, harnessQuotaLimit, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { harnessGate, harnessLoginPath, migrateHarnessLogin, readHarnessLogin, storeHarnessLogin } from './harness-user.mjs';
+import { createClaudePoolQuota } from '../../scripts/claude-pool-quota.mjs';
 import { classifyProviderFailure } from '../../src/assembly/provider-failure.js';
 import { openReplyNotices, validAnswerNotices } from './credential-reminders.js';
 
@@ -336,6 +337,17 @@ it('replays recorded summary/Jev/review/delivered/empty-context shapes unchanged
     recovered.observe(next, returned);
     expect(JSON.stringify(returned), row.id).toBe(before);
     expect(recovered.select()).toBe(next); expect(recovered.state.switches).toHaveLength(1);
+    const soft = fixture(); let reading = capacity(soft);
+    for (const account of reading.accounts) account.lastQuota.fiveHour.utilizationPct = 80;
+    const continuing = createHarnessLoginPool({ ...soft.settings, usage: () => reading });
+    expect(continuing.selectSession(0)?.index, row.id).toBe(0);
+    reading = null; soft.clock.at += 60000;
+    const current = continuing.selectSession(0);
+    expect(current?.index, row.id).toBe(0);
+    continuing.observe(current, returned);
+    expect(JSON.stringify(returned), row.id).toBe(before);
+    expect(continuing.state.holds, row.id).toEqual({});
+    expect(continuing.state.handoffAttempts ?? [], row.id).toEqual([]);
   }
 });
 
@@ -493,6 +505,91 @@ it.each([65, 65.01, 79, null])('requires the 1.x destination headroom; all-hot s
     pool.observe(f.configuration.entries[0], limit); source = 10;
     expect(pool.selectSession(0)).toBeNull(); // Unknown provider hold never becomes an all-hot exception.
   }
+});
+
+it.each(['http-500', 'stale'])('soft all-hot pressure preserves current dispatch after %s telemetry', async failure => {
+  const f = fixture(); let failing = false, calls = 0;
+  const reader = createClaudePoolQuota({ entries: f.configuration.entries, now: f.settings.now,
+    stopped: () => false, validate: () => {}, credential: () => 'synthetic-quota-only',
+    fetchImpl: async () => {
+      calls++;
+      return failing ? new Response('', { status: 500 }) : new Response(JSON.stringify({
+        five_hour: { utilization: 80, resets_at: new Date(f.clock.at + 3600000).toISOString() },
+        seven_day: { utilization: 80, resets_at: new Date(f.clock.at + 86400000).toISOString() },
+      }));
+    } });
+  const settings = { ...f.settings, quotaReader: reader };
+  const pool = createHarnessLoginPool(settings);
+  await pool.refresh(); expect(pool.selectSession(0)?.index).toBe(0);
+  failing = true;
+  f.clock.at += failure === 'stale' ? 300001 : 60000;
+  if (failure === 'http-500') await pool.refresh();
+  expect(pool.selectSession(0)?.index).toBe(0);
+  expect(pool.state.holds).toEqual({});
+  expect(pool.state.handoffAttempts ?? []).toEqual([]);
+  expect(pool.readySession(1)).toBeNull(); // Unknown is never destination capacity.
+  expect(createHarnessLoginPool(settings).selectSession(0)?.index).toBe(0);
+  if (failure === 'http-500') {
+    for (const elapsed of [60000, 120000]) {
+      f.clock.at += elapsed; await pool.refresh();
+      expect(pool.selectSession(0)?.index).toBe(0);
+    }
+    const before = calls;
+    f.clock.at += 60000; await pool.refresh();
+    expect(calls).toBe(before); // Collector breaker does not become a dispatch breaker.
+    expect(pool.selectSession(0)?.index).toBe(0);
+  }
+  expect(createHarnessLoginPool({ ...settings, validate: () => { throw Error('stop or authority withdrawn'); } })
+    .selectSession(0)).toBeNull();
+  pool.observe(f.configuration.entries[0], limit);
+  expect(pool.selectSession(0)).toBeNull(); // Real provider limits still bind.
+});
+
+it.each(['fiveHour', 'sevenDay'])('fresh partial live %s outranks older complete compatibility capacity', window => {
+  const f = fixture(), live = capacity(f), fallback = capacity(f, f.clock.at - 60000);
+  for (const document of [live, fallback]) document.accounts[0].lastQuota.fiveHour.utilizationPct = 99;
+  for (const part of ['fiveHour', 'sevenDay']) fallback.accounts[1].lastQuota[part].utilizationPct = 20;
+  delete live.accounts[1].lastQuota[window === 'fiveHour' ? 'sevenDay' : 'fiveHour'];
+  live.accounts[1].lastQuota[window].utilizationPct = 100;
+  const settings = { ...f.settings, quotaReader: { read: () => live }, usage: () => fallback };
+  const pool = createHarnessLoginPool(settings);
+  expect(pool.selectSession(0)).toBeNull();
+  expect(pool.state.handoffAttempts ?? []).toEqual([]);
+  expect(pool.state.holds[1]).toMatchObject({ reason: 'usage-threshold', observedAt: f.clock.at });
+  // A partial low reading also cannot invent the missing destination window.
+  live.accounts[1].lastQuota[window].utilizationPct = 20;
+  const low = fixture();
+  const partial = createHarnessLoginPool({ ...settings, statePath: low.settings.statePath });
+  expect(partial.selectSession(0)).toBeNull();
+  expect(partial.state.holds[1]).toBeUndefined();
+  expect(partial.state.handoffAttempts ?? []).toEqual([]);
+});
+
+it.each([70, 95])('configured cutoff %s remains held after telemetry disappears', thresholdPercent => {
+  const f = fixture(['serving-a', 'serving-b'], { thresholdPercent });
+  let reading = capacity(f);
+  for (const account of reading.accounts) account.lastQuota.fiveHour.utilizationPct = thresholdPercent;
+  const pool = createHarnessLoginPool({ ...f.settings, usage: () => reading });
+  expect(pool.selectSession(0)).toBeNull();
+  reading = null; f.clock.at += 60000;
+  expect(pool.selectSession(0)).toBeNull();
+  expect(createHarnessLoginPool(f.settings).selectSession(0)).toBeNull();
+});
+
+it.each([80, 95])('five prepared attempts bound moves while preserving usable source at %s', source => {
+  const f = fixture(), reading = capacity(f);
+  reading.accounts[0].lastQuota.fiveHour.utilizationPct = source;
+  const settings = { ...f.settings, usage: () => reading };
+  const pool = createHarnessLoginPool(settings);
+  for (let count = 0; count < 5; count++) expect(pool.selectSession(0)?.index).toBe(1);
+  const reopened = createHarnessLoginPool(settings);
+  expect(reopened.selectSession(0)?.index ?? null).toBe(source === 80 ? 0 : null);
+  expect(reopened.state.handoffAttempts).toHaveLength(5);
+  f.clock.at += 600000;
+  reading.accounts[0].lastQuota.measuredAt = new Date(f.clock.at).toISOString();
+  reading.accounts[1].lastQuota.measuredAt = new Date(f.clock.at).toISOString();
+  expect(reopened.selectSession(0)?.index).toBe(1);
+  expect(reopened.state.handoffAttempts).toHaveLength(6);
 });
 
 it('rechecks the cooler-target margin for a prepared move without another attempt', () => {
