@@ -63,6 +63,8 @@ Native certificate repair: After the desk rejected the previously documented R10
 
 ## Closing block
 
+Certificate publication: All 10 native contract tests passed after renewal, including exact certificate, journal restart, refusal/timeout, stop and injected-delay checks. Architecture now passes with no R105 exception. The existing generator replayed source e672735a7a809b59c522ec5382c9ab51fcff81e5 into generation sha256:7a1e1f87a0551169c12583f0303a9778b827e8099f39b6d19f6459de9bdf64e9; this record covers that publication as well as the renewal.
+
 simplestRobustRoute: This is the simplest robust route: remove contradictory instructions and reuse the existing update action. An explicit instruction shared by both providers and the journal prevents the named failure where a later direct same-fact statement is treated as unresolved conflict merely because it lacks correction wording. No store, classifier, extra model call or migration is added. Start guard: verified direct source and model judgment of matching scope. End guard: source-validated historical replacement, only the new value current after reopen. All five existing floors hold. Fresh unattended bounded model replays and exact recorded decisions run through the shipped journal worker; live Telegram acceptance remains the desk gate.
 80/20: The recorded reproducer fails before guidance repair. Targeted decision, provider, history, ambiguity and packet-budget tests plus required gates cover the change. The independent desk owns convergence; no independent verdict is asserted.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
