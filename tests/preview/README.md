@@ -3913,6 +3913,9 @@ servers (Part Thirteen §9,
   existing promises and dated-request protocol. The refusal stays in the tool trace; it creates no effect-doorway
   approval notice in an unrelated answer. `sched-tool-replay.test.ts` replays train-133 update 367053122 through
   this decision and the journal send path, including restart without a duplicate send.
+  The doorway map uses the selected subscription adapter id. A locally enforced timeout preserves earlier exchange
+  evidence rather than claiming provider unavailability; the normal freshness window still expires. A different
+  provider-reported model remains `changed` with its observed ids, never silently treated as the configured model.
   A web read of a loopback, private or
   local-name host is refused; a tool the hook does not classify is refused. Each call takes one of
   the step's 32 slots (shared with the turn's subagents) by exclusive create, so overlapping calls cannot exceed the
