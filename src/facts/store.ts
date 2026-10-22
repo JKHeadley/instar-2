@@ -2,7 +2,7 @@
 import { consumeResult } from '../index.js';
 import type { Json, Result } from '../index.js';
 import { boundary, encoding, frozen, object, requireFact, take } from './boundary.js';
-import { causalIndex, causalStanding, decodeBody, extendsChain, historyOf, validateRepair, validateSchemas } from './admission.js';
+import { causalIndex, causalStanding, chainAdmission, decodeBody, extendsChain, historyOf, validateRepair, validateSchemas } from './admission.js';
 import type { CausalIndex } from './admission.js';
 import { decodeEnvelope, factId, genesisHash, signEnvelope } from './envelope.js';
 import type { AuthorityTaint, CausalFrontier, ConflictClass, DurabilityState, FactContext, FactEnvelope } from './contracts.js';
@@ -87,9 +87,9 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
     }
     requireFact(raw.length - cached.length <= (recovery.verificationBudget ?? Number.MAX_SAFE_INTEGER), 'verification budget exhausted', 'budget-exhausted');
     const facts: FactEnvelope[] = [...cached];
+    const admitChain = chainAdmission({ ...context, facts: [...context.facts, ...facts] });
     for (const input of raw.slice(cached.length)) {
-      const at = { ...context, facts: [...context.facts, ...facts] };
-      const fact = take(decodeEnvelope(input, at, 'replication')); extendsChain(fact, at); facts.push(fact); recovery.onVerified?.(fact);
+      const fact = take(decodeEnvelope(input, context, 'replication')); admitChain(fact); facts.push(fact); recovery.onVerified?.(fact);
     }
     cached = facts;
     verifiedRaw = raw.slice(); // a private copy: an adapter may later reorder or replace slots in its own array

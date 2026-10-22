@@ -5,7 +5,7 @@ import { boundary, encoding, frozen, object, requireFact, take } from '../facts/
 import type { FactBoundary } from '../facts/boundary.js';
 import type { AuthorityTaint, CausalFrontier, ConflictClass, FactEnvelope, LineagePosition } from '../facts/contracts.js';
 import { comparePosition, foldKey } from '../facts/envelope.js';
-import { causalCone } from '../facts/admission.js';
+import { causalCone, causalIndex, historyOf } from '../facts/admission.js';
 import { snapshotCurrent } from '../facts/snapshot.js';
 import type { FactSnapshot, FactStatus } from '../facts/snapshot.js';
 import { openCache, signCache } from '../facts/cache.js';
@@ -102,9 +102,6 @@ function validate(def: ProjectionDefinition, generation: ProjectionGeneration): 
   }
   return { definition, generation: gen };
 }
-function concurrent(a: FactEnvelope, b: FactEnvelope, facts: readonly FactEnvelope[]): boolean {
-  return !causalCone(a, facts).some(f => f.id === b.id) && !causalCone(b, facts).some(f => f.id === a.id);
-}
 export function foldProjection(def: ProjectionDefinition, input: FactSnapshot, generation: ProjectionGeneration, context: FactBoundary): Result<ProjectedView> {
   return boundary('ProjectionFold', null, context, () => {
     requireFact(snapshotCurrent(input), 'fold requires current admitted status snapshot', 'integrity');
@@ -132,7 +129,9 @@ export function foldProjection(def: ProjectionDefinition, input: FactSnapshot, g
             && next.predecessors.frontier[machine]?.epoch === prior.segment.epoch && next.predecessors.frontier[machine]?.position === prior.segment.position, 'incomplete lineage prefix');
       }
     }
-    for (const fact of facts) causalCone(fact, facts);
+    const causal = causalIndex(facts);
+    for (const fact of facts) if (!causal.frontierOf(fact)) causalCone(fact, facts);
+    const follows = (later: FactEnvelope, earlier: FactEnvelope) => historyOf(later, facts, causal)(earlier.id) !== undefined;
     for (const fact of facts) {
       requireFact(Object.hasOwn(gen.lineages, fact.machine), 'fact from unknown lineage');
       const prev = foldedThrough[fact.machine]; if (!prev || comparePosition(fact.segment, prev) > 0) foldedThrough[fact.machine] = { epoch: fact.segment.epoch, position: fact.segment.position };
@@ -145,10 +144,18 @@ export function foldProjection(def: ProjectionDefinition, input: FactSnapshot, g
       return result;
     };
     const excluded = new Set(rows.filter(r => r.conflicts.some(c => c.kind === 'poison-fact' || c.kind === 'immutable-disagreement')).map(r => r.fact.id)), corrections: { original: string; replacement: string }[] = [];
+    // Build the replacement lookup once, as 1.x's snapshot materializer does for
+    // record keys. Source order and all correction/retraction decisions stay intact.
+    const correctionsByTarget = new Map<string, FactEnvelope[]>();
+    for (const fact of facts) {
+      const target = object(fact.body).corrects;
+      if (typeof target !== 'string') continue;
+      const rows = correctionsByTarget.get(target) ?? []; rows.push(fact); correctionsByTarget.set(target, rows);
+    }
     for (const original of facts) {
-      const replacements = facts.filter(f => object(f.body).corrects === original.id && !excluded.has(f.id) && !isRetracted(f.id));
-      for (const replacement of replacements) requireFact(replacement.kind === original.kind && causalCone(replacement, facts).some(f => f.id === original.id), 'correction must follow same-kind original');
-      const heads = replacements.filter(a => !replacements.some(b => b.id !== a.id && causalCone(b, facts).some(p => p.id === a.id)));
+      const replacements = (correctionsByTarget.get(original.id) ?? []).filter(f => !excluded.has(f.id) && !isRetracted(f.id));
+      for (const replacement of replacements) requireFact(replacement.kind === original.kind && follows(replacement, original), 'correction must follow same-kind original');
+      const heads = replacements.filter(a => !replacements.some(b => b.id !== a.id && follows(b, a)));
       if (heads.length > 1) {
         const ids = heads.map(f => f.id).sort(); conflicts.push({ key: `correction:${original.id}`, kind: 'concurrent-correction', facts: ids, detail: 'concurrent corrections require resolution' });
         taint.add('contested'); excluded.add(original.id); heads.forEach(f => excluded.add(f.id));
@@ -176,8 +183,8 @@ export function foldProjection(def: ProjectionDefinition, input: FactSnapshot, g
       const d = group.decision, members = group.rows;
       const data = members.map(f => resolveField(object(dedup.get(f.id)!.body), d.value)!);
       if (d.merge === 'exclusive-singleton') {
-        const heads = members.filter(a => !members.some(b => a.id !== b.id && causalCone(b, facts).some(f => f.id === a.id)));
-        if (heads.some((a, i) => heads.slice(i + 1).some(b => concurrent(a, b, facts)))) {
+        const heads = members.filter(a => !members.some(b => a.id !== b.id && follows(b, a)));
+        if (heads.some((a, i) => heads.slice(i + 1).some(b => !follows(a, b) && !follows(b, a)))) {
           conflicts.push({ key: `exclusive:${key}`, kind: 'immutable-disagreement', facts: heads.map(f => f.id).sort(), detail: 'concurrent singleton writers; no presentation winner' }); taint.add('contested');
         } else if (heads[0]) values[key] = resolveField(object(dedup.get(heads[0].id)!.body), d.value)!;
       } else if (d.merge === 'set-union') values[key] = [...new Map(data.map(v => [encoding(v).bytes, v])).entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, v]) => v);
@@ -287,7 +294,8 @@ export function rebuildProjection(def: ProjectionDefinition, snapshot: FactSnaps
     // Completeness remains mandatory on resume; a certified prefix replaces folding,
     // never the causal/vector proof. Any non-incremental repair uses an earlier checkpoint.
     const facts = entries.map(e => e.fact);
-    for (const f of facts) { requireFact(Object.hasOwn(gen.lineages, f.machine), 'fact from unknown lineage'); causalCone(f, facts); }
+    const causal = causalIndex(facts);
+    for (const f of facts) { requireFact(Object.hasOwn(gen.lineages, f.machine), 'fact from unknown lineage'); if (!causal.frontierOf(f)) causalCone(f, facts); }
     for (const machine of new Set(facts.map(f => f.machine))) {
       const line = facts.filter(f => f.machine === machine).sort((a, b) => comparePosition(a.segment, b.segment));
       requireFact(line[0]!.segment.epoch === 0 && line[0]!.segment.position === 0, 'incomplete resume prefix');

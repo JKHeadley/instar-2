@@ -169,7 +169,7 @@
       },
       "artifact": {
         "path": "src/projections/fold.ts",
-        "hash": "sha256:93acec0deb9edd168345c285850d1a7bc3f2f02967f0f3277b035b0be6463750"
+        "hash": "sha256:0202188ad4cb7a10052abd43a8e096a94086693244169cdef80a2f3916dcbe6a"
       }
     },
     {
@@ -180,7 +180,7 @@
       },
       "artifact": {
         "path": "src/facts/store.ts",
-        "hash": "sha256:5953d79226ac943ce7b7aa0d6b803e12e683228cb747175a35341fd523bec4b1"
+        "hash": "sha256:c935e487c9bf374078edf0698c4af83c43d34fb06d23bd63067c4cf260a5c391"
       }
     },
     {
