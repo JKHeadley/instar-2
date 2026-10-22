@@ -3,8 +3,9 @@
     "repository": "JKHeadley/instar",
     "commit": "2d12a2a9a4fa2d0eb1280abdbd573234913ceb6b",
     "path": "tests/unit/rate-limit-detection.test.ts",
-    "provenance": "1.x captured user screenshot (result) and Claude Code error reference (overloaded); original update id not recorded by the source. Terminal prompt is a test harness addition."
+    "provenance": "1.x captured user screenshot (result), Claude Code error reference (overloaded), and documented 2026-05-30 paneWithInputBox() incident context (pane). Original update id not recorded by the source. Quiet-footer variants are constructed neighbors, not new live captures."
   },
   "result": "API Error: Server is temporarily limiting requests (not your usage limit) · Rate limited",
-  "overloaded": "API Error: Repeated 529 Overloaded errors. The API is at capacity."
+  "overloaded": "API Error: Repeated 529 Overloaded errors. The API is at capacity.",
+  "pane": "  ⎿  Loaded .worktrees/mentor-stagea-prompt-bound/CLAUDE.md\n  ⎿  API Error: Server is temporarily limiting requests (not your usage limit) · Rate limited\n✻ Churned for 7m 43s\n\n────────────────────────────────────────────────────────────────────────────────\n❯ \n────────────────────────────────────────────────────────────────────────────────\n  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt\n  ⎿ Tip: Use /btw to ask a quick side question\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
 }

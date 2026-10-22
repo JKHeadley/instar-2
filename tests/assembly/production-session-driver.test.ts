@@ -98,12 +98,19 @@ const rateConfig = { turnDeadlineMs: 120_000, requireTurnHook: true,
   confinement: 'admitted' as const, toolAdmission: { command: () => '/hook', timeoutSeconds: 10 },
   modelGate: () => 'http://127.0.0.1:1234/' + 'a'.repeat(32) + '/claim' };
 const recordedLimit = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8')).result as string;
-const recordedThrottle = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/server-throttle.json', import.meta.url), 'utf8')).result as string;
-it.each([recordedThrottle, `  ⎿  ${recordedThrottle}`,
-  JSON.parse(readFileSync(new URL('../fixtures/provider-failure/server-throttle.json', import.meta.url), 'utf8')).overloaded as string])(
-  'ports recorded 1.x server throttle %s into bounded recovery without poisoning account quota', throttle => {
+const throttleFixture = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/server-throttle.json', import.meta.url), 'utf8')) as {
+  result: string; overloaded: string; pane: string;
+};
+const recordedThrottle = throttleFixture.result;
+// Documented 1.x incident context, with a constructed supported quiet footer (not a new capture).
+const quietThrottlePane = throttleFixture.pane.replace(' · esc to interrupt', '')
+  .replace('  ⎿ Tip: Use /btw to ask a quick side question\n', '');
+it.each([...[recordedThrottle, `  ⎿  ${recordedThrottle}`, throttleFixture.overloaded]
+  .map(throttle => `${throttle}\n❯ `), quietThrottlePane])(
+  'ports recorded 1.x server throttle %s into bounded recovery without poisoning account quota', pane => {
   const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
-  f.changePane(`${throttle}\n❯ `);
+  expect(classifyPaneIdle(pane, 'claude-code')).toBe(true);
+  f.changePane(pane);
   const activities = createWorkingActivities({ now: f.config.now, read: () => '' });
   activities.observe('input', 'topic', 'start');
   const observe = (driver = f.driver) => {
@@ -111,8 +118,8 @@ it.each([recordedThrottle, `  ⎿  ${recordedThrottle}`,
     activities.observeSession(f.journal.sessions[0], result);
     return value(result);
   };
-  expect(classifyStuckSignature(`${throttle}\n❯ `)).toBe('provider-throttled');
   expect(observe()).toMatchObject({ phase: 'launched', detail: 'rate-limit recovery waiting' });
+  expect(classifyStuckSignature(pane)).toBe('provider-throttled');
   expect(activities.current('input')).toMatchObject({ wait: 'rate-limit', running: false });
   expect(value(f.driver.observeIdle(id))).toBeNull();
   f.hook(1001); f.time(1001);
@@ -132,11 +139,22 @@ it.each([recordedThrottle, `  ⎿  ${recordedThrottle}`,
 
 it('does not recover server throttle quotations, native retries, old output or completed turns', () => {
   for (const pane of [`quoted: ${recordedThrottle}\n❯ `, `${recordedThrottle}\nRetrying in 7s · attempt 3/10\n❯ `,
-    `${recordedThrottle}\nA completed answer.\n❯ `, `> ${recordedThrottle}\n❯ `]) {
+    `${recordedThrottle}\nA completed answer.\n❯ `, `> ${recordedThrottle}\n❯ `,
+    throttleFixture.pane,
+    quietThrottlePane.replace(recordedThrottle, `quoted: ${recordedThrottle}`),
+    quietThrottlePane.replace(recordedThrottle, `> ${recordedThrottle}`),
+    quietThrottlePane.replace('✻ Churned', 'Retrying in 7s · attempt 3/10\n✻ Churned'),
+    quietThrottlePane.replace('✻ Churned', 'A completed answer.\n✻ Churned'),
+    quietThrottlePane.replace('✻ Churned for 7m 43s', '✻ Churned for 7m 43s\nA completed answer.'),
+    quietThrottlePane.replace('✻ Churned for 7m 43s', '✻ Churned for 7m 43s — quoted output')]) {
     expect(classifyStuckSignature(pane)).toBeNull();
+    const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+    f.changePane(pane);
+    expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).detail).toBe('session live; turn still open');
+    expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
   }
   const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
-  f.changePane(`${recordedThrottle}\n❯ `); f.hook(1001); f.time(1001);
+  f.changePane(quietThrottlePane); f.hook(1001); f.time(1001);
   expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id, resultAvailable: true })).phase).toBe('output-observed');
   expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
 });
@@ -316,7 +334,7 @@ it('replays recorded summary, Jev, review, delivered and empty shapes across the
     value(driver.observe({ operation: 'deliver', processIdentity: id }));
     expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
     expect(f.sends).toBe(sends);
-    f.changePane(`${recordedLimit}\n❯ `); f.hook(1000);
+    f.changePane(quietThrottlePane); f.hook(1000);
     const worker = { launch: id, incarnation: 'inc', claim: 'topic' };
     const delivery = { ...worker, operation: 'deliver', text: 'hello', digest: hash('hello'),
       resultPath: '/work/result', maxBytes: 100_000 };
@@ -325,6 +343,7 @@ it('replays recorded summary, Jev, review, delivered and empty shapes across the
       ? [{ kind: 'reply', delivery: 'deliver', text: row.raw, digest: hash(row.raw) },
         { kind: 'turn-end', delivery: 'deliver', state: 'completed' }] : []);
     expect(f.journal.sessions[0]?.turnDeadline).toBe(row.raw.trim() ? null : 121_000);
+    expect(f.journal.sessions[0]?.rateRecovery?.state ?? null).toBe(row.raw.trim() ? null : 'waiting');
     expect(f.sends).toBe(sends);
   }
 });

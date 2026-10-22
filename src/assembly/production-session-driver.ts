@@ -207,6 +207,9 @@ function classifyProviderThrottle(capture: string): boolean {
   const prompt = lines.lastIndexOf('❯');
   if (prompt < 0 || !classifyPaneIdle(capture, 'claude-code')) return false;
   const output = lines.slice(0, prompt).filter(line => !/^[─━]+$/.test(line));
+  // Like exhausted-connection frames below, discard only trailing native status,
+  // here the completion decoration documented by the 1.x throttle incident.
+  if (/^✻ Churned for \d+m \d+s$/u.test(output.at(-1) ?? '')) output.pop();
   return /^(?:⏺\s+|⎿\s+)?API Error: (?:Server is temporarily limiting requests \(not your usage limit\) · Rate limited|Repeated 529 Overloaded errors\. The API is at capacity\.)$/i.test(output.at(-1) ?? '');
 }
 /** Native retries own backoff and never receive a second prompt. The captured 2.1.280
