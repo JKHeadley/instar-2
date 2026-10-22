@@ -34,15 +34,35 @@ declare const providerCustodyBrand: unique symbol;
 export type ProviderCustodyProof = Readonly<{ [providerCustodyBrand]: true }>;
 const productionCustody = new WeakMap<ConfinedProviderRoute, ProviderCustodyProof>();
 const responseEvidenceBounds = new WeakMap<ConfinedProviderRoute, ProviderResponseEvidence['contract']>();
+/** Adapter-owned reading of captured terminal bytes; never a claim supplied by the model. */
+interface ProviderTerminalReading {
+  readonly complete: boolean; readonly answer: string | null; readonly providerReason: string;
+  readonly errored: boolean; readonly cancelled: boolean; readonly timedOut: boolean;
+  readonly truncated: boolean; readonly toolCall: boolean;
+}
+type TerminalReader = (text: string, reasonField: string) => ProviderTerminalReading;
+const responseTerminalReaders = new WeakMap<ConfinedProviderRoute, TerminalReader>();
+/** Historical JSON-result registrations retain their exact terminal reading. */
+const readJsonResultTerminal: TerminalReader = (text, reasonField) => {
+  const frame = JSON.parse(text) as Record<string, unknown>;
+  const transformed = frame.structured_output === undefined ? frame.result : JSON.stringify(frame.structured_output);
+  const actualReason = frame[reasonField], providerReason = typeof actualReason === 'string' ? actualReason : 'unsupported';
+  const reason = providerReason.toLowerCase();
+  return { complete: frame.type === 'result' && typeof actualReason === 'string', answer: typeof transformed === 'string' ? transformed : null,
+    providerReason, errored: frame.is_error !== false, cancelled: reason.includes('cancel'), timedOut: reason.includes('timeout'),
+    truncated: reason.includes('length') || reason.includes('limit') || reason.includes('truncat'),
+    toolCall: reason.includes('tool') || reason.includes('function') };
+};
 
 /** Owner-internal route registration. It is deliberately not re-exported from
  * the assembly barrel: only the route factory can attach approved finite caps. */
 export function registerProviderResponseEvidenceBounds(route: ConfinedProviderRoute,
-  contract: ProviderResponseEvidence['contract']): void {
+  contract: ProviderResponseEvidence['contract'], readTerminal: TerminalReader = readJsonResultTerminal): void {
   ensure(Object.isFrozen(route) && !responseEvidenceBounds.has(route), 'immutable response evidence route required');
   for (const value of [contract.maxMetadataBytes, contract.maxRawTerminalBytes, contract.maxCaptureBytes])
     ensure(Number.isSafeInteger(value) && value > 0, 'finite positive response evidence bound required');
   responseEvidenceBounds.set(route, freeze(contract));
+  responseTerminalReaders.set(route, readTerminal);
 }
 
 /** GRANT U4-A: owner-internal registration; never export through assembly/index. */
@@ -278,21 +298,15 @@ export function createConfinedProviderInvocation(route: ConfinedProviderRoute, a
     const raw = Buffer.from(draft.terminal.rawBase64, 'base64');
     ensure(raw.toString('base64') === draft.terminal.rawBase64
       && `sha256:${createHash('sha256').update(raw).digest('hex')}` === draft.terminal.rawDigest, 'raw terminal bytes or digest differ');
-    let frame: Record<string, unknown> | undefined, extracted: string | undefined;
+    let reading: ProviderTerminalReading = { complete: false, answer: null, providerReason: 'unsupported',
+      errored: true, cancelled: false, timedOut: false, truncated: false, toolCall: false };
     try {
-      frame = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw)) as Record<string, unknown>;
-      const transformed = frame.structured_output === undefined ? frame.result : JSON.stringify(frame.structured_output);
-      if (typeof transformed === 'string') extracted = transformed;
-    } catch { /* The bounded raw return is retained, but cannot issue affirmative completion Evidence. */ }
-    const actualReason = frame?.[draft.basis.terminalReasonField];
-    const providerReason = typeof actualReason === 'string' ? actualReason : '';
-    const reasonClass = providerReason.toLowerCase();
-    const errored = frame?.is_error !== false;
-    const cancelled = reasonClass.includes('cancel');
-    const timedOut = reasonClass.includes('timeout');
-    const truncated = reasonClass.includes('length') || reasonClass.includes('limit') || reasonClass.includes('truncat');
-    const toolCall = reasonClass.includes('tool') || reasonClass.includes('function');
-    const terminalAllowed = frame?.type === 'result' && !errored && extracted === answer
+      const reader = responseTerminalReaders.get(route);
+      ensure(reader, 'registered response terminal reader absent');
+      reading = reader(new TextDecoder('utf-8', { fatal: true }).decode(raw), draft.basis.terminalReasonField);
+    } catch { /* Retain raw bytes; unreadable evidence cannot establish completion. */ }
+    const { providerReason, errored, cancelled, timedOut, truncated, toolCall } = reading;
+    const terminalAllowed = reading.complete && !errored && reading.answer === answer
       && draft.basis.successfulFinalReplyReasons.includes(providerReason)
       && !cancelled && !timedOut && !truncated && !toolCall;
     const rawCapture = putReserved(capacities.raw, Buffer.from(raw).toString('base64'));

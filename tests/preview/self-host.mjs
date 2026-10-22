@@ -146,13 +146,13 @@ const summary = item => ({ tool: item.tool, code: item.code ?? null, refused: it
  * route is constructed per attempt by the provider owners, never called here.
  */
 export async function doorwayProvider({ doorwayId, io, profile, activation, model, stopped, now = () => Date.now() }) {
-  const { DEFAULT_SUBSCRIPTION_DOORWAY, SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionDoorway, validateSubscriptionActivation } = await import('../../src/assembly/production-provider.js');
+  const { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway } = await import('../../src/assembly/production-provider.js');
   const { stage2InvocationBinding, stage2RouteFactory } = await import('./stage2-provider.js');
-  const doorway = subscriptionDoorway(doorwayId ?? DEFAULT_SUBSCRIPTION_DOORWAY), framing = SUBSCRIPTION_CONVERSATION_FRAMING;
+  const doorway = subscriptionDoorway(doorwayId ?? DEFAULT_SUBSCRIPTION_DOORWAY), framing = doorway.conversationFraming;
   if (stopped()) throw Error('self-host: subscription preview stopped or revoked');
-  validateSubscriptionActivation(activation, profile, model, now(), framing);
-  return Object.freeze({ doorway: doorway.id, model, framing, invocationBinding: stage2InvocationBinding({ activation, profile, model, framing }),
-    routeFactory: stage2RouteFactory({ activation, profile, model, io, now, active: () => !stopped(), framing, create: doorway.create }) });
+  doorway.validateActivation(activation, profile, model, now(), framing);
+  return Object.freeze({ doorway: doorway.id, model, framing, invocationBinding: stage2InvocationBinding({ activation, profile, model, framing, doorwayId: doorway.id }),
+    routeFactory: stage2RouteFactory({ activation, profile, model, io, now, active: () => !stopped(), framing, doorwayId: doorway.id }) });
 }
 
 /**
