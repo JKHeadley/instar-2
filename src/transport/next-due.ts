@@ -24,7 +24,13 @@ export function createNextDueWake(ports: NextDueWakePorts) {
       if (closed || ticket !== generation) return;
       disarm();
       const current = ports.next();
-      if (current !== null && Number.isSafeInteger(current) && current <= ports.now()) ports.wake();
+      if (current !== null && Number.isSafeInteger(current) && current <= ports.now()) {
+        // Rule 55: consume this deadline before requesting work. A completion refresh
+        // after pre-start refusal must not create a 1-ms retry loop. The ordinary
+        // periodic cycle still revisits it; a changed deadline gets a fresh wake.
+        armed = current;
+        ports.wake();
+      }
       else refresh();
     });
   };

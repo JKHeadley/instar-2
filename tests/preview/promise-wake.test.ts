@@ -96,7 +96,26 @@ it('coalesces a due wake behind busy work and still obeys owner/peer admission',
     wake: () => { lane.submit(async () => { calls++; next = null; }, true); } });
   wake.refresh(); fire(); expect(calls).toBe(0);
   release(); await lane.settle(); expect(calls).toBe(1);
-  current = false; next = 100; wake.refresh(); fire(); await lane.settle(); expect(calls).toBe(1);
-  current = true; wake.refresh(); fire(); await lane.settle(); expect(calls).toBe(2);
+  current = false; next = 99; wake.refresh(); fire(); await lane.settle(); expect(calls).toBe(1);
+  // The ordinary cycle retries admission; completion refresh cannot retry a consumed deadline.
+  current = true; lane.submit(async () => { calls++; next = null; });
+  await lane.settle(); expect(calls).toBe(2);
+  wake.close();
+});
+
+it('consumes unchanged deadlines before synchronous refresh but wakes changed deadlines', () => {
+  let now = 100, next: number | null = 100, calls = 0;
+  const timers: { ms: number; fire(): void }[] = [];
+  const wake = createNextDueWake({ now: () => now, next: () => next,
+    after: (ms, fire) => { timers.push({ ms, fire }); return () => {}; },
+    wake: () => { calls++; wake.refresh(); } });
+  wake.refresh(); timers[0]!.fire();
+  for (let i = 0; i < 20; i++) wake.refresh();
+  expect(calls).toBe(1); expect(timers).toHaveLength(1);
+  next = 200; wake.refresh(); expect(timers[1]!.ms).toBe(100);
+  now = 200; timers[1]!.fire(); expect(calls).toBe(2);
+  next = 150; wake.refresh(); timers[2]!.fire(); expect(calls).toBe(3);
+  next = null; wake.refresh(); next = 150; wake.refresh();
+  timers[3]!.fire(); expect(calls).toBe(4);
   wake.close();
 });
