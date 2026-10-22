@@ -8,6 +8,8 @@ import { createJournalWorker, openPreviewJournal } from './journal-test-worker.j
 import { prepareJournalEnvelope, toolPreparation } from './journal-envelope.js';
 import { createHash } from 'node:crypto';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
+const HISTORICAL_MEMORY = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
 import { COMPLETE_REQUESTED_WORK } from '../../src/assembly/tool-answer-guidance.js';
 import { readAnswer } from './answer-reading.js';
 
@@ -21,9 +23,10 @@ const genesis = { kind: 'genesis' as const, bot: '8994258214', chat: '-100436755
   maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 32768, cursor: 0 };
 
 for (const recorded of fixture.cases) it(`replays real update ${recorded.update} through intake, answer and restart`, async () => {
-  // Preserve the captured digest; identity and completion guidance were added afterward.
+  // Preserve the captured digest; identity, completion and memory supersession guidance were added afterward.
   // Check outside the model port: the worker records thrown model errors as unknown outcomes.
-  const capturedSystem = SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(
+  expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.split(MEMORY_DISAMBIGUATION)).toHaveLength(2);
+  const capturedSystem = SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace(
     "You are an Instar 2.0 agent,", 'You are Instar,').replace(COMPLETE_REQUESTED_WORK, '');
   expect(createHash('sha256').update(capturedSystem).digest('hex')).toBe(recorded.systemSha256);
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'inrole-memory-'))), path = join(root, 'journal');
