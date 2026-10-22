@@ -4,8 +4,8 @@ import type { ConstitutionalValue, DecodeContext, HistoricalRead, Json, Result, 
 import { boundary, encoding, fields, frozen, object, requireFact, same, string, take } from './boundary.js';
 import { causalCone, causalIndex, causalStanding, migrateBody } from './admission.js';
 import type { CausalIndex } from './admission.js';
-import { decodeFrame, hashBytes, schemaFor } from './envelope.js';
 import { snapshot } from '../decode/canonical.js';
+import { decodeFrame, factId, hashBytes, schemaFor } from './envelope.js';
 import { contextBoundary } from './contracts.js';
 import type { AuthorityTaint, FactContext, FactEnvelope } from './contracts.js';
 import { decodeOwnedBody } from './owned.js';
@@ -29,6 +29,23 @@ const decodedByContent = new Map<string, DecodedBody & { envelope: string }>();
 export interface HistoricalScope {
   readonly context: FactContext; readonly index: CausalIndex; tables?: string;
   positions?: { readonly grants: ReadonlyMap<object, number>; readonly revocations: ReadonlyMap<object, number> };
+}
+type HistoryEntry = { readonly id: string; readonly records: readonly HistoricalRead<ConstitutionalValue>[] };
+type AncestorBody = { readonly history: readonly HistoryEntry[]; readonly body: HistoricalBody };
+// Private, operation-local products, never a caller-supplied certificate. Only ancestors
+// decoded under their own causal standing enter here. Sparse history retains constitutional
+// records in the original depth-first order; ordinary messages add no history entries.
+const ancestorBodies = new WeakMap<HistoricalScope, Map<string, AncestorBody>>();
+const migratedBodies = new WeakMap<HistoricalScope, Map<FactEnvelope, ReturnType<typeof migrateBody>>>();
+// Status and historical decoding consume the same migration in one read-only
+// operation. Keep that exact record's result only until the operation is discarded.
+export function historicalMigration(fact: FactEnvelope, context: FactContext, scope: HistoricalScope): ReturnType<typeof migrateBody> {
+  if (scope.context !== context) return migrateBody(fact, context, fact.body);
+  const bodies = migratedBodies.get(scope) ?? new Map<FactEnvelope, ReturnType<typeof migrateBody>>();
+  migratedBodies.set(scope, bodies);
+  let migrated = bodies.get(fact);
+  if (!migrated) { migrated = migrateBody(fact, context, fact.body); bodies.set(fact, migrated); }
+  return migrated;
 }
 // GRANT M3-E: the memo fingerprint keeps the exact canonical bytes of its composite input, but a
 // component object that is runtime-verified deep-frozen (and so can never change) is encoded once
@@ -172,22 +189,60 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
       return [...grants, ...revocations].every(i => i !== undefined) ? `at:${encoding({ now: c.now ?? null, grants, revocations }).hash}`
         : `full:${encoding({ now: c.now ?? null, grants: c.grants ?? [], revocations: c.revocations ?? [] }).hash}`;
     };
-    const read = (record: FactEnvelope, c: DecodeContext): HistoricalBody => {
+    const ancestors = ancestorBodies.get(scope) ?? new Map<string, AncestorBody>();
+    ancestorBodies.set(scope, ancestors);
+    const parents = (record: FactEnvelope): FactEnvelope[] => [
+      ...[record.predecessors.inSegment, ...record.predecessors.required].filter(id => id !== null),
+      ...Object.entries(record.predecessors.frontier).map(([machine, p]) => factId({ machine, ...p })),
+    ].map(id => causal.byId.get(id)!);
+    const mergedHistory = (dependencies: readonly FactEnvelope[]): HistoryEntry[] => {
+      const entries = new Map<string, HistoryEntry>();
+      for (const parent of dependencies) {
+        const decoded = ancestors.get(parent.id)!;
+        for (const entry of decoded.history) if (!entries.has(entry.id)) entries.set(entry.id, entry);
+        if (decoded.body.records.length && !entries.has(parent.id)) entries.set(parent.id, { id: parent.id, records: decoded.body.records });
+      }
+      return [...entries.values()];
+    };
+    const indexedHistory = (record: FactEnvelope): readonly HistoricalRead<ConstitutionalValue>[] => {
+      // frontierOf has already proved the complete dependency graph. An explicit stack
+      // retains the old postorder without imposing the host's call-stack limit on memory.
+      const dependencies = parents(record);
+      for (const parent of dependencies) {
+        if (ancestors.has(parent.id)) continue;
+        const pending = [{ fact: parent, parents: parents(parent), next: 0 }];
+        while (pending.length) {
+          const frame = pending[pending.length - 1]!;
+          if (frame.next < frame.parents.length) {
+            const next = frame.parents[frame.next++]!;
+            if (!ancestors.has(next.id)) pending.push({ fact: next, parents: parents(next), next: 0 });
+          } else {
+            const history = mergedHistory(frame.parents);
+            const body = read(frame.fact, causalStanding(frame.fact, context, false, causal).decode, history.flatMap(e => e.records));
+            ancestors.set(frame.fact.id, { history, body }); pending.pop();
+          }
+        }
+      }
+      return mergedHistory(dependencies).flatMap(e => e.records);
+    };
+    const read = (record: FactEnvelope, c: DecodeContext, preparedHistory?: readonly HistoricalRead<ConstitutionalValue>[]): HistoricalBody => {
       const cached = cache.get(record.id); if (cached) return cached;
       const heads = causal.coneHeads(record);
       const fingerprint = hashBytes(`${shared(c) ? scope.tables ??= tables(c) : tables(c)}|${standing(c)}|${
         heads ? `heads:${heads.join(',')}` : `cone:${causalCone(record, context.facts).map(f => f.contentHash).sort().join(',')}`}`);
       const byContent = decodedByContent.get(record.id);
-      const reused = byContent?.envelope === envelopeBytes(record) ? byContent : undefined;
+      const reused = byContent && byContent.envelope === envelopeBytes(record) ? byContent : undefined;
       if (reused?.fingerprint === fingerprint && reused.owners === context.ownedBodies && reused.migrations === context.migrations) {
         cache.set(record.id, reused.body); issued.set(record.id, reused.body.records); return reused.body;
       }
       const history: HistoricalRead<ConstitutionalValue>[] = [];
-      for (const ancestor of causalCone(record, context.facts)) {
+      if (preparedHistory) history.push(...preparedHistory);
+      else if (causal.frontierOf(record)) history.push(...indexedHistory(record));
+      else for (const ancestor of causalCone(record, context.facts)) {
         read(ancestor, causalStanding(ancestor, context, false, causal).decode);
         history.push(...issued.get(ancestor.id)!);
       }
-      const checked = take(decodeFrame(record, context)), bytes = envelopeBytes(record), reference = `origin:${record.id}`;
+      const checked = take(decodeFrame(record, context)), bytes = checked.bytes, reference = `origin:${record.id}`;
       const captures = { ...c.captures, [reference]: bytes };
       const captureStatuses = Object.fromEntries(Object.entries(context.captures).map(([ref, capture]) => {
         if (capture.status !== 'available') delete captures[ref];
@@ -208,7 +263,7 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
         const identity = take(readHistorical(type, record[path], { ...pin, path: [path] }, hc));
         history.push(identity); unavailable ||= identity.unavailableCaptures.length > 0;
       }
-      const migrated = migrateBody(record, context, record.body);
+      const migrated = historicalMigration(record, context, scope);
       const schema = schemaFor(context, record.kind, migrated.version), body = object(migrated.body);
       fields(body, Object.keys(schema.fields).filter(k => !schema.optional?.includes(k)), schema.optional);
       for (const [name, field] of Object.entries(schema.fields)) {
@@ -250,7 +305,7 @@ export function decodeHistoricalBody(fact: FactEnvelope, context: FactContext, d
       const result: HistoricalBody = { fields: out, records: own, grants, revocations, taint: unavailable ? ['evidence-unavailable'] : [] };
       issued.set(record.id, own); cache.set(record.id, result);
       const decoded: DecodedBody = { fingerprint, owners: context.ownedBodies, migrations: context.migrations, body: frozen(result) };
-      decodedByContent.set(record.id, { ...decoded, envelope: envelopeBytes(record) }); return result;
+      decodedByContent.set(record.id, { ...decoded, envelope: bytes }); return result;
     };
     return read(fact, decoderContext);
   });

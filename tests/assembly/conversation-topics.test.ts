@@ -24,6 +24,7 @@ async function until(test: () => boolean) { for (let i = 0; i < 500 && !test(); 
 function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16, lifetime = 2000) {
   let state: ConversationTopicsState | null = null, now = 1000, live = 0, peak = 0, stopped = false, authorized = true, saveFails = false;
   let batchOutput: string | undefined, evidenceUnreadable = false;
+  let uncertainEffects: number | undefined = 0;
   const refusedClose = new Set<string>(), failedClose = new Set<string>();
   const exited = new Set<string>(), held = new Set<string>(), launches: { topic: string; worker: HarnessWorkerHandle }[] = [];
   const delivered: { topic: string; input: HarnessInputDelivery }[] = [], closed: string[] = [];
@@ -41,7 +42,7 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16, lifetime = 200
     io: { modelCalls: () => { throw Error('must not count another topic transcript'); }, wait: tick,
       readResult: () => null, clearResult: () => {}, prepareAdmission: (_claim, edge) => { expect(edge.topic).toMatch(/^(?:main|[1-9][0-9]*)$/u);
         expect(nestedSessionWorkEdge(edge, { id: 'nested-check', tool: 'Task' }, now).topic).toBe(edge.topic); }, closeAdmission: () => {},
-      admissionState: () => ({ refused: false, openDelegations: [] }) },
+      admissionState: () => ({ refused: false, openDelegations: [], ...(uncertainEffects === undefined ? {} : { uncertainEffects }) }) },
     createAdapter: topic => ({
       describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false }),
       launch: async input => { const worker = { launch: `worker-${launches.length}`, claim: input.claim, incarnation: input.incarnation };
@@ -71,6 +72,7 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16, lifetime = 200
   return { get port() { return port; }, config, request, held, exited, refusedClose, failedClose, launches, delivered, closed, edges,
     batchOutput: (text: string) => { batchOutput = text; },
     unreadableEvidence: () => { evidenceUnreadable = true; },
+    uncertainEffects: (count: number | undefined) => { uncertainEffects = count; },
     state: () => state!, counts: () => ({ live, peak }), advance: (ms: number) => { now += ms; },
     stop: () => { stopped = true; }, revoke: () => { authorized = false; }, failSave: () => { saveFails = true; },
     restart: (allowanceDeadline = config.allowanceDeadline) => { port = value(createConversationTopicsPort({ ...config, allowanceDeadline })); } };
@@ -119,6 +121,22 @@ it('idle maintenance retires a worker without resetting its spent allowance or c
   expect(f.state().topics.main?.spent).toBe(1);
   await f.port.run(f.request('main:b')); expect(f.launches).toHaveLength(2);
   expect(f.state().topics.main?.inputs[0]?.cursor).toBe(2); await f.port.close();
+});
+
+it.each([undefined, 1])('idle cleanup retains unknown or unsettled effects (%s) until exact settlement', async count => {
+  const f = fixture(2, 6, 16, 600000); Object.assign(f.config, { idleMs: 500 });
+  await f.port.run(f.request('main:a'));
+  f.uncertainEffects(count);
+  f.advance(500); await f.port.maintain();
+  f.advance(120000); await f.port.maintain();
+  f.advance(30000); await f.port.maintain();
+  expect(f.closed).toHaveLength(0); expect(f.counts().live).toBe(1);
+  f.uncertainEffects(0);
+  await f.port.maintain(); f.advance(120000); await f.port.maintain();
+  f.advance(30000); await f.port.maintain();
+  expect(f.closed).toHaveLength(1); expect(f.counts().live).toBe(0);
+  expect(f.state().topics.main?.spent).toBe(1);
+  await f.port.close();
 });
 
 it('every topic shares one allowance, renewed only after exhaustion and idle retirement', async () => {

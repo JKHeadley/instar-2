@@ -38,6 +38,22 @@ describe('origin-pinned historical principal and provenance reads', () => {
     const f = fixture(); const pin = f.historyPin(f.alice);
     for (const input of [null, undefined, new Proxy({}, { ownKeys() { throw new Error('trap'); } })]) expect(() => refused(readHistorical('VerifiedPrincipal', input, pin, f.ctx), '')).not.toThrow();
   });
+  it('a warmed signed origin still checks changed key permissions, owner, bytes and field shape', () => {
+    const f = fixture(), pin = f.historyPin(f.alice), original = clone(f.alice);
+    value(readHistorical('VerifiedPrincipal', original, pin, f.ctx));
+    for (const changed of [{ methods: [] }, { owner: 'machine:wrong' }, { publicKey: 'invalid key' }]) {
+      const context = { ...f.ctx, register: { ...f.ctx.register,
+        keys: { ...f.ctx.register.keys, host: { ...f.ctx.register.keys.host!, ...changed } } } };
+      refused(readHistorical('VerifiedPrincipal', original, pin, context), '');
+    }
+    expect(value(readHistorical('VerifiedPrincipal', original, pin, f.ctx)).view).toEqual(original);
+    refused(readHistorical('VerifiedPrincipal', { ...original, kind: 'agent' }, pin, f.ctx), 'origin pin');
+    const captured = f.captures[pin.capture.reference]!;
+    f.captures[pin.capture.reference] = captured.replace('alice', 'other');
+    refused(readHistorical('VerifiedPrincipal', original, pin, f.ctx), 'capture');
+    f.captures[pin.capture.reference] = captured;
+    expect(value(readHistorical('VerifiedPrincipal', original, pin, f.ctx)).view).toEqual(original);
+  });
   it('R3 historical body validation composes through verified dependency wrappers', () => {
     const f = fixture(); const grantPin = f.historyPin(f.g); const authPin = f.historyPin(f.authorization);
     const context = { register: f.ctx.register, captures: f.captures, preserved: f.ctx.preserved, now: f.now };

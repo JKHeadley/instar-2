@@ -31,3 +31,6 @@ export type { AgentTransportPort, AgentTransportEnvelope, AgentEnvelopeKind, Age
 
 export { reconcileRunCompletion, RUN_COMPLETION_LIMIT } from './completion.js';
 export type { RunCompletionItem } from './completion.js';
+
+export { createPromiseStore, recordCommitments, closeCommitment, recordReplyLoop, schedulePromise, promiseRetryDelay, COMMITMENT_WAITS_ON, OBLIGATION_FORMAT_RETRIES, OBLIGATION_FORMAT_RETRY_MS } from './promises.js';
+export type { PromiseStore, CommitmentNote, CommitmentClosure, CommitmentWaitsOn, AgentPromise, ReplyLoop, PromiseWork, PromiseScheduleInput, ScheduledPromise } from './promises.js';

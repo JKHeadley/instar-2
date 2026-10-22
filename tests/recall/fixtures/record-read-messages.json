@@ -1,0 +1,39 @@
+{
+  "source": "lanes/fixtures-userwalk-1013; proofroom2-ps-20261011-020358; train-18 0de16e3c; intake text only",
+  "files": {
+    "f4-queued-requests.json": "3809a3bc750d51eef1cb2df86e66275420e9efcce3ad40a22d04a2d84b73ad3f",
+    "f6-capability-inventory.json": "76527959dfd2954b420f83c895b5963da873b075c028f7174a56107d9c9b4ece"
+  },
+  "messages": [
+    {
+      "frame": 443,
+      "update": 6233125,
+      "text": "Could you look up today's weather in Portland, Oregon? Tell me whether I should bring a raincoat and where you checked.",
+      "at": 1791907282835
+    },
+    {
+      "frame": 447,
+      "update": 6233126,
+      "text": "Also look up the opening hours for Powell's City of Books today. I may pop in after lunch; please include your source.",
+      "at": 1791907288468
+    },
+    {
+      "frame": 737,
+      "update": 6233132,
+      "text": "For the neighbor invitation, Saturday at 10 would work.",
+      "at": 1791907711942
+    },
+    {
+      "frame": 741,
+      "update": 6233133,
+      "text": "Actually make that 11, and mention kids are welcome.",
+      "at": 1791907717265
+    },
+    {
+      "frame": 349,
+      "update": 6233122,
+      "text": "What can you help me with day to day, and what can't you actually do yet?",
+      "at": 1791907116454
+    }
+  ]
+}

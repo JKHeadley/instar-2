@@ -1,0 +1,54 @@
+# Change review — train 129 phase two live merge repair
+
+Subject base: d8e92f3876efce4e750d7941596e6c46c5eba229
+Review state: open
+Reviewed content: none
+Outcome: Merge live 0f228c99 into train-129-p2, preserving the obligation wake and promise core alongside live quota selection, memory guidance and working-progress behavior.
+Affected rules: 26, 37, 49, 74, 90, 101, 102, 105, 111, 112, 113, 116.
+Affected floors: secrets — retain secret custody and quota credential redaction; spend cap — retain existing admission; stop — retain stopped quota and wake checks; no duplicate sends — retain journal intent settlement; durable intake — retain journal persistence.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Merge of previously reviewed runtime changes; resolution itself unions independent imports and regenerates dependent evidence.
+Side effects: Both journal consumers now load all required dependencies. The combined composition invalidates the byte-bound Darwin native certificate; the Studio must renew it through its real contract.
+Undo and recovery: Revert the merge on this branch and regenerate dependent publication. Keep both parent histories; never claim either old certificate proves the combined composition.
+Multi-machine posture: Preserves existing cross-machine ownership and durable journal behavior. Local tests run in WSL; Darwin conformance remains Studio-owned.
+Layer below: Reviewed both conflict hunks, existing promise core and transport wake exports, live quota reader and shared memory guidance; inspected native declaration conflict and generated-register provenance.
+Bug class: none
+Bug evidence: Pipeline refused the two import conflicts before any assertions ran. Typecheck and targeted obligation, quota, captured recall and progress tests exercise the combined imports.
+Hook bypass: none
+Convergence: none
+Prompt review: No new prompt or output parser is authored by this repair; live prompt changes and their captured evidence retain their imported review records. Conflict resolution only retains imports required by both parent implementations.
+Decision: train129p2-repair-import-union | Keep both independent import groups, preserving both parent behaviors with no new abstraction. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-129-p2-repair-100432-PROGRESS.md
+Decision: train129p2-repair-native-certificate | Retain the branch declaration without forging a certificate for merged bytes; disclose the permitted R105 mismatch for the Studio contract run. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-129-p2-repair-100432-PROGRESS.md
+
+Deferral: generated/register.json:1 | not-a-deferral=regenerated descriptions preserve existing tracked capabilities and their evidence
+
+Prompt finding: 0abb3dc96311 | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "an unresolved date or unrecorded scheduling claim is no admitted reminder."
+Prompt finding: 0d4664ea9de7 | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "run without another yes. the operator can tighten or revoke trust through setup-"
+Prompt finding: 14d7eeccc218 | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
+Prompt finding: 4106b49fff07 | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase tests/preview/journal.ts <- tests/preview/topic-awareness.test.ts: "you attempted nothing outside this reply, so never call an avenue tried; a missi"
+Prompt finding: 42faf877ba82 | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase src/assembly/production-codex-provider.ts <- tests/preview/act-first.test.ts: "you are an instar 2.0 agent,"
+Prompt finding: 45e37ea2e9e9 | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "tools: full claude code set"
+Prompt finding: 5b486d8bd247 | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "prioritize verdicts; do not repeat rules or context."
+Prompt finding: 5fa1a20c4031 | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "an illustrative or quoted literal the verified operator explicitly requested or "
+Prompt finding: 7c45ffbe90ad | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "loops the deferrals, judgments and promises it will track, dated this turn's adm"
+Prompt finding: 849db3a6296a | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
+Prompt finding: 95e349aaf4ac | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "via the doorway's four tests; standing grants need no new approval."
+Prompt finding: 9781075d458e | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "the effect doorway reports any refusal and its reason; say so plainly."
+Prompt finding: aef7d91bef51 | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "give each listed rule, and no others, one verdict"
+Prompt finding: b1bb3946362d | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase src/assembly/production-provider.ts <- tests/preview/act-first.test.ts: "you are an instar 2.0 agent,"
+Prompt finding: b288d6ef1604 | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "keep reasoning under 400 characters and all json under 4000 so every verdict fit"
+Prompt finding: d531743e1e12 | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase src/assembly/memory-answer-guidance.ts <- tests/preview/journal-people.test.ts: "clarify only unresolved alternatives or ambiguous subjects"
+Prompt finding: e769ca9dd959 | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "pass means no breach; violation means a breach, named in its reason."
+Prompt finding: e8708c7fea24 | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
+Prompt finding: f6d7f3274c85 | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "restating a recorded, still-open limit needs no duplicate record. a capability n"
+Prompt finding: feadb66b8ad1 | protocol-literal | Preserved parent instruction or protocol asserted at its consumer, not a fixture-derived semantic classifier; this merge only unions imports. fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "any live authentication secret reaching anyone but the verified operator who sup"
+Skip: tests/preview/pool-quota-live.test.ts:23 | scope=preserved live-provider test requires the explicitly enabled Studio credential environment; this merge adds no skip
+
+## Closing block
+
+simplestRobustRoute: Union the independent imports and reuse the delegated owner-pin and register generators. This is the simplest robust route; it adds no machinery or authority and preserves both parents and their changelog histories. Existing floors remain the start and limit guards; targeted tests and the Studio gate judge the result. No autonomous completion claim is made.
+80/20: Run typecheck, targeted tests and cheap gate checks; leave full-suite execution and native Darwin renewal to the Studio as directed.
+VERDICT: author submission; no independent verdict asserted

@@ -1,8 +1,9 @@
-import { verify } from 'node:crypto';
+import { verifySignature } from './signature.js';
+import { createOriginCache } from './origin-cache.js';
 import type * as T from '../types/values.js';
 import type { CaptureInput, DecodeContext, FactEnvelopeReference } from '../types/ports.js';
 import { bindRecordSubject, consumeResult, errorDetail, evaluateGrantLiveness, recordSubject, refusal, seal, success, trusted } from '../types/internal.js';
-import { canonicalText, hashText, snapshot } from './canonical.js';
+import { canonicalSnapshotText, canonicalText, hashText, sameSnapshot, snapshot } from './canonical.js';
 import { decode } from './decode.js';
 import { rehydrateConflict } from './rehydrate.js';
 import { compareHistorical, readEvidence } from '../types/operations.js';
@@ -56,6 +57,10 @@ export interface HistoricalComparisonContext extends Pick<DecodeContext, 'regist
   readonly recordSubjects: Readonly<Record<string, unknown>>;
 }
 const records = new WeakMap<object, T.ConstitutionalValue>();
+// Private, bounded proof of exact signed-origin bytes, never a decoded historical
+// value. Key permissions/owner, capture hash, path, dependencies and standing remain
+// current checks on every read. Clearing this memo only repeats cryptographic work.
+const origins = createOriginCache<Record<string, unknown>>(64 * 1024 * 1024, 32768);
 function take<V>(result: T.Result<V>): V {
   return consumeResult(result, { Success: v => v, Refused: r => { throw new Error(r.detail); } });
 }
@@ -71,25 +76,29 @@ export function readHistorical<N extends keyof T.Inventory>(type: N, input: unkn
     const bytes = context.captures[pin.capture.reference]; const key = context.register.keys[pin.machineKeyId];
     if (typeof bytes !== 'string' || hashText(bytes) !== pin.capture.hash || !key || key.algorithm !== 'ed25519' || !key.methods.includes('fact-envelope'))
       return refusal('historical origin key or capture failed', context.preserved, 'integrity');
-    const envelope = snapshot(JSON.parse(bytes));
+    const cached = origins.get(bytes, key.publicKey);
+    const envelope = cached ?? snapshot(JSON.parse(bytes));
     if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope) || (envelope as Record<string, unknown>).id !== pin.origin.id)
       return refusal('historical origin identity differs from signed envelope', context.preserved, 'integrity');
     const frame = envelope as Record<string, unknown>;
     if (typeof frame.type !== 'string' || !frame.type || !Number.isSafeInteger(frame.schemaVersion) || Number(frame.schemaVersion) < 1
       || typeof frame.machine !== 'string' || !frame.machine || typeof key.owner !== 'string' || frame.machine !== key.owner)
       return refusal('historical envelope domain or machine/key owner mismatch', context.preserved, 'integrity');
-    const preimage = Object.fromEntries(Object.entries(frame).filter(([field]) => field !== 'contentHash' && field !== 'signature'));
-    if (frame.contentHash !== hashText(canonicalText(preimage))) return refusal('historical envelope contentHash does not bind its preimage', context.preserved, 'integrity');
-    if (typeof frame.signature !== 'string' || !/^[a-f0-9]{128}$/.test(frame.signature)
-      || !verify(null, Buffer.from(String(frame.contentHash), 'utf8'), key.publicKey, Buffer.from(frame.signature, 'hex')))
-      return refusal('historical envelope signature over contentHash failed', context.preserved, 'integrity');
+    if (!cached) {
+      const preimage = Object.fromEntries(Object.entries(frame).filter(([field]) => field !== 'contentHash' && field !== 'signature'));
+      if (frame.contentHash !== hashText(canonicalSnapshotText(preimage as T.Json))) return refusal('historical envelope contentHash does not bind its preimage', context.preserved, 'integrity');
+      if (typeof frame.signature !== 'string' || !/^[a-f0-9]{128}$/.test(frame.signature)
+        || !verifySignature(String(frame.contentHash), key.publicKey, frame.signature))
+        return refusal('historical envelope signature over contentHash failed', context.preserved, 'integrity');
+      origins.remember(bytes, key.publicKey, frame);
+    }
     let selected: unknown = envelope;
     for (const field of pin.path) {
       if (!selected || typeof selected !== 'object' || !Object.hasOwn(selected, field)) return refusal('historical path is absent from signed origin', context.preserved);
       selected = (selected as Record<string, unknown>)[field];
     }
     const shape = snapshot(input);
-    if (canonicalText(shape) !== canonicalText(selected)) return refusal('historical record differs from origin pin (including provenance class)', context.preserved, 'integrity');
+    if (!sameSnapshot(shape, selected as T.Json)) return refusal('historical record differs from origin pin (including provenance class)', context.preserved, 'integrity');
 
     const values: T.ConstitutionalValue[] = [];
     const session: HistoricalSession = { issued: new WeakSet(), unavailable: new Map(), statuses: context.captureStatuses ?? {}, ...(context.now ? { now: context.now } : {}) };

@@ -139,12 +139,24 @@ export function historyOf(fact: FactEnvelope, facts: readonly FactEnvelope[], in
     return x && x.id !== fact.id && head && comparePosition(x.segment, head) <= 0 ? x : undefined;
   };
 }
-export function extendsChain(fact: FactEnvelope, context: FactContext): void {
-  const sameId = context.facts.find(f => f.id === fact.id);
-  requireFact(!sameId, 'id already admitted; origin may not reuse ids');
-  const owned = context.facts.filter(f => f.machine === fact.machine).sort((a, b) => comparePosition(a.segment, b.segment));
-  const head = owned.at(-1);
-  if (!head) requireFact(fact.segment.epoch === 0 && fact.segment.position === 0 && fact.prevInSegment === context.genesis.hash, 'invalid genesis link');
+// Adapted from 1.x StoreSnapshot's single-pass per-origin watermark accumulation:
+// keep only the verified head and identity set while loading. Unlike a snapshot cursor,
+// every retained frame still passes decodeEnvelope and every chain link is checked.
+export function chainAdmission(context: FactContext): (fact: FactEnvelope) => void {
+  const ids = new Set(context.facts.map(f => f.id)), heads = new Map<string, FactEnvelope>();
+  for (const fact of context.facts) {
+    const head = heads.get(fact.machine);
+    if (!head || comparePosition(fact.segment, head.segment) >= 0) heads.set(fact.machine, fact);
+  }
+  return fact => {
+    requireFact(!ids.has(fact.id), 'id already admitted; origin may not reuse ids');
+    requireChainExtension(fact, heads.get(fact.machine), context.genesis.hash);
+    ids.add(fact.id); heads.set(fact.machine, fact);
+  };
+}
+export function extendsChain(fact: FactEnvelope, context: FactContext): void { chainAdmission(context)(fact); }
+function requireChainExtension(fact: FactEnvelope, head: FactEnvelope | undefined, genesis: string): void {
+  if (!head) requireFact(fact.segment.epoch === 0 && fact.segment.position === 0 && fact.prevInSegment === genesis, 'invalid genesis link');
   else if (fact.segment.epoch === head.segment.epoch) {
     requireFact(fact.segment.position === head.segment.position + 1 && fact.predecessors.inSegment === head.id && fact.prevInSegment === head.contentHash, 'segment gap or fork', 'integrity');
   } else {
