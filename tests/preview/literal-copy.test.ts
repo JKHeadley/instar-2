@@ -1,3 +1,5 @@
+import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
+const HISTORICAL_MEMORY = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -14,7 +16,7 @@ import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS } from '../../src/ass
 // Preserve the captures; the dedicated guidance tests cover the added instruction.
 // Recorded captures predate the 2026-10-13 single-machine ruling; the current prompt drops only this sentence.
 const CLOSED_SET_SENTENCE = 'Irreversible outward sends remain outside the one-machine closed set. ';
-const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
+const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
 
 // Captured read-only from the failed forum answer copy, update 715675751. The
 // three new outputs are real, bounded model replays of that same recorded packet.
@@ -39,6 +41,8 @@ it('retains the delivered error and captured copying guidance while replay uses 
   expect(capture.instructions).toContain(LITERAL_COPY_INSTRUCTIONS);
   expect(capture.instructions.replace(historicalSelfDescription, SELF_DESCRIPTION)
     .replace(LITERAL_COPY_INSTRUCTIONS, `${LITERAL_COPY_INSTRUCTIONS}\n${CLAIM_EVIDENCE_GUIDANCE}`)).toBe(ANSWER_INSTRUCTIONS);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain(MEMORY_DISAMBIGUATION);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).not.toContain(HISTORICAL_MEMORY);
   expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(historicalToolsSystem);
   expect(LITERAL_COPY_INSTRUCTIONS).not.toContain('probe');
   expect(capture.runs).toHaveLength(3);
