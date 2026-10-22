@@ -591,7 +591,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
       // A ready prompt cannot settle an effect with no known outcome.
       // Rules 26/68: keep that work even if its model turn already ended.
       if (!admission || admission.refused || admission.openDelegations.length
-        || (admission.uncertainEffects ?? 0) !== 0) return null;
+        || admission.uncertainEffects !== 0) return null;
       return digest(JSON.stringify([state.worker, state.inputs, calls(), state.claimCalls]));
     };
     const assessIdle = async (reason: 'pressure' | 'idle'): Promise<boolean> => {
