@@ -7,6 +7,7 @@ import { createJournalWorker, obligationSchedule, openPreviewJournal,
   OBLIGATION_WORK_QUESTION, OBLIGATION_WORK_QUESTION_TOOLS } from './journal-test-worker.js';
 import { readAnswer } from './answer-reading.js';
 import { loopHealth } from './obligations.js';
+import { MEMORY_DISAMBIGUATION, MEMORY_SUPERSESSION } from '../../src/assembly/memory-answer-guidance.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 
 const capture = JSON.parse(readFileSync(new URL('./fixtures/deferral-finish-2026-10-17.json', import.meta.url), 'utf8')) as {
@@ -21,7 +22,16 @@ function read(raw: string, id: string) {
   return result.value;
 }
 
+// The 2026-10-17 recording predates shared memory supersession. Translate only that
+// declared instruction change for provenance; the recorded bytes and hash remain intact.
+const HISTORICAL_MEMORY = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
+const capturedSystem = SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY);
+
 it('preserves recorded provider provenance and both merged work instructions', () => {
+  expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.split(MEMORY_DISAMBIGUATION)).toHaveLength(2);
+  expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain(MEMORY_SUPERSESSION);
+  expect(MEMORY_DISAMBIGUATION).toContain('Quotes/imports or concurrent claims do not supersede');
+  expect(MEMORY_DISAMBIGUATION).toContain('Clarify only unresolved alternatives or ambiguous subjects');
   for (const sample of capture.cases) {
     // The recording predates completion accounting. Keep its bytes honest: the merged
     // question inserts the checklist and scheduled-preparation paragraphs before the runner-task suffix.
@@ -32,7 +42,7 @@ it('preserves recorded provider provenance and both merged work instructions', (
     expect(OBLIGATION_WORK_QUESTION.endsWith(suffix)).toBe(true);
     const added = OBLIGATION_WORK_QUESTION.slice(prefix.length, -suffix.length);
     expect(createHash('sha256').update(added).digest('hex')).toBe('ec59dcb92ff6ed9e57e0ce21fac10dc7b78bec02f481c48306d03707001ba0b7');
-    expect(sample.after.systemSha256).toBe(createHash('sha256').update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).digest('hex'));
+    expect(sample.after.systemSha256).toBe(createHash('sha256').update(capturedSystem).digest('hex'));
     const envelope = JSON.parse(sample.after.input);
     expect(envelope.messages[0].content).toBe(sample.after.question);
     const packet = JSON.parse(envelope.messages.find((item: { role: string }) => item.role === 'context').content).packet;
