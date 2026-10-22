@@ -18,6 +18,7 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none; core.hooksPath unset, common hooks directory contains sample hooks only.
 Convergence: none
+Validation: 503 targeted tests passed; 11 opt-in live tests were skipped. The final receipt/cause amendment passed its 132 targeted tests. Typecheck, build and architecture checks passed. Source register regenerated from b466450ac19d78df854e7d51d3fb6244138226ff; no certificate or declaration was altered to hide a finding. Real sign-in and phone-surface acceptance are unproved.
 Prompt review: No model prompt or semantic model-output parser changed. Terminal text is an owner surface. Recorded inputs include the 1.x Mac Mini auth-login capture, a real HTTP 401 captured with a deliberately invalid synthetic credential, and the existing real OAuth usage response. The existing pool suite retains summary, uncertain summary, Jev undecided/unsure, reply-review, delivered-reply and empty-reply fixture replay.
 Decision: signin-port-native | Use the provider's own isolated auth-login client, a normal profile-bound Chrome launch, live identity plus quota read and existing custody; never reimplement OAuth or accept CLI success as authority. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/signin-port-1022s-PROGRESS.md
 Decision: signin-port-receipt | Keep the receipt at the custody boundary so direct/singleton consumers cannot bypass a pool-only hold. A credential's receipt binding detects loss after promotion. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/signin-port-1022s-PROGRESS.md
