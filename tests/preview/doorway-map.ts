@@ -110,19 +110,14 @@ export const writeDoorwayMap = (path: string, map: DoorwayMap): void => durableP
 
 /** Content-free discovery at the subscription exchange: the exit, result frame and reported model ids only. */
 export function subscriptionExchange(result: { code: number | null; limited: boolean; localLimit?: string | null; stdout: string },
-  operation: string): ExchangeObservation | null {
+  operation: string, exchangeModels: (stdout: string) => readonly string[] | null): ExchangeObservation | null {
   // A local ceiling or capacity refusal says nothing about the provider route.
   if (result.limited && result.localLimit !== 'timeout') return null;
   if (result.limited) return { ok: false, reason: 'timeout', evidence: `exchange:${operation}` };
-  const frame = ((): { type?: unknown; is_error?: unknown; modelUsage?: unknown } | null => {
-    try { const parsed: unknown = JSON.parse(result.stdout); return parsed && typeof parsed === 'object' ? parsed : null; }
-    catch { return null; }
-  })();
-  if (result.code !== 0 || frame?.type !== 'result' || frame.is_error !== false)
+  const models = result.code === 0 ? exchangeModels(result.stdout) : null;
+  if (result.code !== 0 || models === null)
     return { ok: false, reason: result.code !== 0 ? 'exit' : 'error-frame', evidence: `exchange:${operation}` };
-  const usage = frame.modelUsage && typeof frame.modelUsage === 'object' && !Array.isArray(frame.modelUsage)
-    ? Object.keys(frame.modelUsage).filter(key => key.length <= 128).slice(0, 8) : [];
-  return { ok: true, reportedModels: usage, evidence: `exchange:${operation}` };
+  return { ok: true, reportedModels: models, evidence: `exchange:${operation}` };
 }
 
 /** Qualified internal usage against what the provider actually reported. A reserved
