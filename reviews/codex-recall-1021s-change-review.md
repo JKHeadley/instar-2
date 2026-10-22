@@ -29,9 +29,10 @@ Prompt finding: 9781075d458e | protocol-literal | Existing runtime protocol word
 Prompt finding: b1bb3946362d | protocol-literal | Existing runtime protocol wording asserted at its consumer; no captured fact or expected semantic answer is used as a trigger — fixture-phrase src/assembly/production-provider.ts <- tests/preview/act-first.test.ts: "you are an instar 2.0 agent,"
 Prompt finding: e8708c7fea24 | protocol-literal | Existing runtime protocol wording asserted at its consumer; no captured fact or expected semantic answer is used as a trigger — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 
-Subject (12 paths): src/assembly/README.md, src/assembly/memory-answer-guidance.ts, src/assembly/production-codex-provider.ts, src/assembly/production-provider.ts, tests/assembly/production-provider-subscription.test.ts, tests/assembly/production-provider-tools.test.ts, tests/preview/README.md, tests/preview/codex-recall.test.ts, tests/preview/fixtures/codex-recall-2026-10-21.json, tests/preview/fixtures/codex-recall-fixed-2026-10-21.json, tests/preview/journal-people.test.ts, tests/preview/journal.ts
 
 Decision: shared-precedence | Use one pure semantic instruction across providers and journal paths; keep the existing update validator and projection. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/codex-recall-1021s-PROGRESS.md
+
+Publication: Regenerated seven shape-only register outputs from source commit 478f73d3a23d611f02db1884139afa894631a52b; generation sha256:f05166c897e7de8f151e5dfd9acd9aad47c63a0872fcc8d7ea04439290d41a2f. No runtime authority or conformance assertion changed.
 
 ## Closing block
 
