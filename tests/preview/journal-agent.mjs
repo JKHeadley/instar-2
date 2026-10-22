@@ -3184,7 +3184,7 @@ async function main() {
         // Only the model command is the exchange: it alone carries the prepared prompt on stdin; the
         // version and auth preflights send none and print no result frame.
         if (typeof input.stdin === 'string' && input.stdin.length > 0)
-          observeDoorway('preview-subscription', options.model, subscriptionExchange(result, operation));
+          observeDoorway('preview-subscription', options.model, subscriptionExchange(result, operation, doorway.exchangeModels));
         return result;
       } };
       const io = observedSubscriptionIO(physicalIO, policy, operation, row => journal.append(row),
