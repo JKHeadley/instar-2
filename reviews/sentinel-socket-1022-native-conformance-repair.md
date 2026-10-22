@@ -23,6 +23,8 @@ Deferral: generated/register.json:1 | not-a-deferral=mechanically replayed regis
 
 Scope: This repair renews evidence only. The prior review covers the unit changes from 4a2635bc2064d5eaec5e451360634eeabecaad9d; it does not recertify the entire inherited train range. Current-head Telegram delivery of the new line remains separate from recorded-frame replay and native harness conformance, under Rules 34/62/70/76. No model prompt, output parser or acceptance decision changes in this repair.
 
+Publication: Replayed from source commit 10def5e1894c31d720fad9e56225cb6d3f9af4c0; generation sha256:da11801517f00996d313d4d687096e3f8eda8093d63ef061160aac2c71c88c16. The desk rehash and chain repin changed zero pins. Direct declaration consumer tests passed 5/5; build and typecheck exited 0. Publication is shape-only and grants no runtime authority.
+
 simplestRobustRoute: Run the existing native contract on the declared runtime through the desk renewal helper, accept only the stale certificate assertion before renewal, require ten passing cases afterward, and replay publication. This is that route; no new mechanism, gate exception, runtime behavior or reduction of ability.
 80/20: Before/after native contract, declaration consumer checks, typecheck, architecture and wiring lint, publication replay check, change-review check and required pinned READY checks. The Studio pipeline owns the full suite.
 VERDICT: author submission; this record asserts no independent verdict
