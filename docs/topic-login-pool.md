@@ -7,18 +7,20 @@ account until its correlated turn end; another idle topic can move independently
 The physical driver's stop receives the exact claim and incarnation from that
 host. Account switching never calls an unscoped stop.
 
-Selection reuses the account-pool logic from step1e and Instar 1.x: a measured limit at
+Selection reuses the account-pool logic from step1e and Instar 1.x: placement pressure at
 80% or the configured threshold if lower, both fresh destination quota windows,
-identity-matched readings, durable reset holds, and at most five prepared moves
+identity-matched readings, durable configured-cutoff/provider holds, and at most five prepared moves
 per ten minutes. The 1.x 80% ceiling leaves reporting-lag and finishing-turn room
 before the existing cutoff. A continuing-session destination must have another
 15 percentage points of headroom. Among eligible members, the 1.x scheduler's
 headroom divided by time-to-reset score prefers capacity that would expire soon.
 Prepared destinations recheck the same margin. Unknown quota does not make a proactive alternative account eligible;
 a healthy current account with unknown usage retains provider-limit behavior.
-When no cooler destination exists, the 1.x all-hot brake keeps a source with fresh
-usage below its configured cutoff (at most 95%) working; it never overrides a
-provider limit, unavailable identity, or unknown source reading. Otherwise input stays queued and the ordinary host tick
+Placement pressure is ephemeral: failed or stale telemetry defers the optimization
+and leaves ordinary current-account dispatch available. When no cooler destination
+exists or the move-attempt bound is reached, the all-hot brake keeps an admitted
+source working. Neither path overrides a configured-cutoff hold, provider limit or
+unavailable identity. Otherwise input stays queued and the ordinary host tick
 retries within the existing parent lifetime. Stop and the shared spend allowance
 still apply. Sign-in repair items are recorded for the desk, never executed here.
 
@@ -37,7 +39,9 @@ The status surface reports both windows and their measurement time.
 Missing fields stay unknown, including a partial window that 1.x formerly coerced
 to zero. HTTP 401/403 can mean missing usage scope; they do not declare the model
 login signed out. A configured 1.x `usageFile` remains a compatibility source when
-live telemetry is unknown, with its original account binding and measurement time.
+live windows are unavailable, with its original account binding and measurement time.
+A fresh partial live observation retains its known window; an older complete snapshot
+cannot replace it or supply the missing destination window.
 An inference-only setup token may not authorize the usage endpoint. Such an
 installation needs its account's telemetry-capable OAuth credential in the existing
 custody or a fresh configured snapshot; this port does not acquire additional scope
