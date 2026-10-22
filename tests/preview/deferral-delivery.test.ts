@@ -1,3 +1,5 @@
+import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
+const HISTORICAL_MEMORY = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
 import { expect, it } from 'vitest';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -98,7 +100,11 @@ it('keeps genuine unfinished work and external dependencies open (constructed ne
 it('binds the new instruction to both complete recorded provider envelopes', () => {
   for (const sample of capture.cases) {
     expect(sample.after.question).toBe(OBLIGATION_WORK_QUESTION_TOOLS);
-    expect(sample.after.systemSha256).toBe(createHash('sha256').update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).digest('hex'));
+    // Translate only the reviewed supersession wording; retain original capture and digest.
+    expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain(MEMORY_DISAMBIGUATION);
+    expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).not.toContain(HISTORICAL_MEMORY);
+    expect(sample.after.systemSha256).toBe(createHash('sha256')
+      .update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY)).digest('hex'));
     const input = JSON.parse(sample.before.input);
     input.messages[0].content = OBLIGATION_WORK_QUESTION_TOOLS;
     expect(createHash('sha256').update(JSON.stringify(input)).digest('hex')).toBe(sample.after.inputSha256);
