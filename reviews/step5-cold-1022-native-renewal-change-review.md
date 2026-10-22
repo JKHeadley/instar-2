@@ -22,6 +22,8 @@ Decision: cold-native-renewal | On the desk's explicit repair request, execute i
 
 Evidence: The guarded renewal completed successfully on Darwin with node 24.14.1: before 9/10 with only the stale certificate assertion failed; after 10/10 passed. It re-declared only the conformance digest to sha256:a4f06f147aa860b0ae2c92cb748057a9cd6bd7cb2260ba3a83199b26864fdf31, covering 272 composition files. JSON reports are retained at the Bug evidence path.
 
+Publication: Seven replay register outputs regenerated from source a4be9fa76132258fc50f4eb8742b9b5eb9d52dff, generation sha256:2bcd923daa35404ffc5aa17c52a1f65b126365a7e03d98d19ba311ee32123fe9. The owner-manifest rehash tool found zero stale pins. Architecture checks pass without exceptions.
+
 simplestRobustRoute: Reuse the desk's existing native contract and repository digest functions, followed by register replay. The before run may fail only the stale-certificate assertion; all ten cases must pass after renewal. No new mechanism or certificate bypass.
 80/20: Targeted ten-case native proof before and after, then architecture, lint, register and required pinned tests on the pushed head; the pipeline owns the full suite.
 VERDICT: author submission; independent desk acceptance pending
