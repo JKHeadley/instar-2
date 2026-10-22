@@ -471,7 +471,12 @@ export function createCodexSubscriptionRoute(input:
           retryBlocked: false, responseEvidenceDraft: draft };
       } catch { return uncertain(); }
     } }));
-    registerProviderResponseEvidenceBounds(route, contract);
+    registerProviderResponseEvidenceBounds(route, contract, (text, reasonField) => {
+      const frames = parseCodexEventStream(text);
+      return { complete: reasonField === 'type' && frames.terminal === 'turn.completed' && !frames.malformed,
+        answer: frames.answer, providerReason: frames.terminal, errored: frames.terminal !== 'turn.completed' || frames.malformed,
+        cancelled: false, timedOut: false, truncated: false, toolCall: frames.disallowedItems.length > 0 || frames.toolItems > 0 };
+    });
     return route;
   });
 }
@@ -484,7 +489,7 @@ export const CODEX_SUBSCRIPTION_CONTRACT: SubscriptionDoorwayContract = Object.f
   parserReference: 'codex-exec-jsonl-events', parserVersion: '1', terminalReasonField: 'type',
   successfulFinalReplyReasons: Object.freeze(['turn.completed']) });
 export function codexSubscriptionDoorway(): SubscriptionDoorway {
-  return Object.freeze({ id: CODEX_SUBSCRIPTION_DOORWAY_ID, provider: 'openai',
+  return Object.freeze({ id: CODEX_SUBSCRIPTION_DOORWAY_ID, provider: 'openai', sourceStrength: 'attestation',
     contract: CODEX_SUBSCRIPTION_CONTRACT,
     framings: Object.freeze([CODEX_CONVERSATION_FRAMING, CODEX_TOOLS_FRAMING]),
     conversationFraming: CODEX_CONVERSATION_FRAMING,
@@ -495,6 +500,7 @@ export function codexSubscriptionDoorway(): SubscriptionDoorway {
       harness: 'codex', confinedShell: true }),
     policyFor: (model: string, framing: string): SubscriptionPolicyBounds =>
       codexSubscriptionPolicyFor(model, framing).policy,
+    systemFor: (model: string, framing: string): string => codexSubscriptionPolicyFor(model, framing).system,
     validateActivation: validateCodexActivation,
     create: createCodexSubscriptionRoute,
     session: Object.freeze({ framing: CODEX_SESSION_FRAMING, framework: 'codex-cli' as const, harness: 'codex',

@@ -328,16 +328,21 @@ const operatorRecords = directory => {
   // only a trailing fragment still being appended is left out.
   const lines = name => readFileSync(join(directory, name), 'utf8').split('\n').slice(0, -1).filter(Boolean).map(line => JSON.parse(line));
   try {
-    const before = identity();
-    if (operatorRecordsCache?.directory === directory && operatorRecordsCache.identity === before)
-      return operatorRecordsCache.records;
-    operatorRecordsCache = null;
-    const records = { messages: lines('telegram-messages.jsonl'), provenance: lines('asp-classifications.jsonl'),
-      bindings: JSON.parse(readFileSync(join(directory, 'state', 'topic-operators.json'), 'utf8')) };
-    // A concurrent append/replacement must not leave a mixed snapshot cached as current.
-    if (identity() !== before) return null;
-    operatorRecordsCache = { directory, identity: before, records };
-    return records;
+    // A writer may append while we read. Take at most two whole snapshots: only
+    // a stable one can establish authority; persistent churn still fails closed.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const before = identity();
+      if (operatorRecordsCache?.directory === directory && operatorRecordsCache.identity === before)
+        return operatorRecordsCache.records;
+      operatorRecordsCache = null;
+      const records = { messages: lines('telegram-messages.jsonl'), provenance: lines('asp-classifications.jsonl'),
+        bindings: JSON.parse(readFileSync(join(directory, 'state', 'topic-operators.json'), 'utf8')) };
+      // A concurrent append/replacement must not leave a mixed snapshot cached as current.
+      if (identity() !== before) continue;
+      operatorRecordsCache = { directory, identity: before, records };
+      return records;
+    }
+    return null;
   } catch { operatorRecordsCache = null; return null; }
 };
 /** Rules 94/98/103/104: the activation is exercised only under a recorded operator authority that
@@ -348,10 +353,12 @@ const operatorRecords = directory => {
  * invocation policy the activation names: a grant recorded for a policy class covers it only then. */
 const requireAuthority = (options, activation, activationPath, view, now, policy = undefined) => {
   const path = options['authority-record'] ?? join(dirname(resolve(activationPath)), 'activation-authority.json');
+  const records = operatorRecords(options['operator-records']);
+  // Read revocations after the snapshot, including any bounded reread.
   let record = null;
   try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { record = null; }
   const resolution = resolveActivationAuthority(activation, record, view.genesis.operator, view.genesis.expires, now,
-    operatorRecords(options['operator-records']), authoritySealKey(key()), policy);
+    records, authoritySealKey(key()), policy);
   if (resolution.kind !== 'resolved') throw Error(`preview: ${resolution.reason}`);
   return resolution;
 };

@@ -368,7 +368,7 @@ export async function dispatchOwnedProvider({ root, task, question, conversation
   const fd = openSync(owners, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); }
   const start = now();
   const owner = createProviderOwners({ directory, invocationBinding: provider.invocationBinding, ownerNow: now, active: () => !stopped(),
-    start, deadline: start + OWNER_WINDOW_MS, model: provider.model, framing: provider.framing, question, conversation,
+    start, deadline: start + OWNER_WINDOW_MS, model: provider.model, framing: provider.framing, doorwayId: provider.doorway, question, conversation,
     replyCharge: 1, registerEntries: ['preview'], routeFactory: provider.routeFactory });
   const operation = () => owner.all().find(fact => fact.kind === 'transport-AdmissionReservation')?.body.record.operation ?? null;
   let request;
