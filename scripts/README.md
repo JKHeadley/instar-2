@@ -1,5 +1,10 @@
 # Build, check and host scripts
 
+`harness-tax/runner.mjs` compares twelve source-linked tasks across bare Claude Code,
+1.x and 2.0 through isolated host adapters. Its [guide](harness-tax/README.md) covers
+staged continuity, correctness/trust grading, per-part cost attribution and copy-only
+A/B switches. The built-in stub proves plumbing without using a model login.
+
 Build adapters and repository checks (the register build `build-register.mjs`, `check-architecture.mjs`, the contract-map checks) plus the host-side adapters the launchers load at runtime: `production-boot.mjs` and `production-boot-io.mjs` (the fixed installation's OS ports), `transport-file-storage.mjs`, `effect-file-captures.mjs`, `effect-replica-storage.mjs`, `judgment-captures.mjs`, `host-watch.mjs`, the host watchdog launcher, and `approval-surface.mjs`, the operator's own approval page process, with `operator-dashboard.mjs`, its dashboard, which the runner also serves read-only behind the operator's existing dashboard PIN through `operator-dashboard-readonly.mjs` (Rule 81's floors are checked on both by `check-dashboard-floors.mjs`). Durable writers declare their stores beside them in `*.declarations.json`.
 
 `phone-route-proof.mjs` evaluates a recorded preview status for Rules 79/82. Run it with the deployed
