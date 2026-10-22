@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { nextObligationAt } from './journal.js';
+import { createNextDueWake } from '../../src/transport/index.js';
 import { createWorkingActivities, readWorkingAdmission } from './working-activity.mjs';
 import { AgentPathRefused, assertAgentPaths } from '../../scripts/agent-paths.mjs';
 import { prepareSessionConnectors, conversationAccountActions, admitSessionConnector } from './session-connectors.mjs';
@@ -1470,6 +1472,7 @@ async function main() {
     return;
   }
   const versionCheck = createSubscriptionVersionCheck();
+  let dueWake = null;
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false, startupFailure = null;
   let handoff = null, reservedAtLaunch = new Set(), ownerClaim = null, installation = null, installUpdate = null;
   // Rule 15 / Eleven §5: the installed shape's evidence, set once the activation is validated at launch.
@@ -2986,7 +2989,7 @@ async function main() {
     const lane = createOrdinaryLane({ elapsed: clock.elapsed,
       peerCurrent: () => !signalled && !workerStop.value && !existsSync(stopPath) && !journal.view.stop
         && ownerHeld() && activationMatchesJournal(journal.view, activation) && (shared === null || shared.peerCurrent()),
-      after: summarizeLater });
+      after: () => { summarizeLater(); dueWake?.refresh(); } });
     // A message past every bound waits at Telegram; later presses behind it are re-read after this pause.
     const waitHeld = async () => {
       const until = clock.elapsed() + 3000;
@@ -3041,6 +3044,14 @@ async function main() {
           try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
         } }, wake);
     };
+    // One disposable wake reconstructed from Five's durable promise/work population.
+    // It only requests work; result delivery still waits for the withdrawal-aware post-poll pass.
+    dueWake = createNextDueWake({ now: wallNow,
+      next: () => signalled || workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires
+        || !ownerHeld() || !activationMatchesJournal(journal.view, activation) ? null : nextObligationAt(journal.view),
+      after: (ms, fire) => { const timer = setTimeout(fire, ms); timer.unref(); return () => clearTimeout(timer); },
+      wake: () => workCycle(false, true) });
+    dueWake.refresh();
     // Plan #548, the desk's live check only: with --telegram-cut-file, while that file holds a future epoch-ms every
     // poll fails as an unreachable connection without a network call. Never passed to the operator's runner.
     const cutFile = options['telegram-cut-file'] ?? null;
@@ -3119,6 +3130,7 @@ async function main() {
       // Updates this journal already recorded come back until the shared cursor passes them; only the new ones are taken.
       const batch = shared ? updates.result.filter(update => !(update?.update_id < journal.view.cursor)) : updates.result;
       worker.intake(batch);
+      dueWake.refresh();
       // An approved phone stop latches in the journal; the loop ends without another effect.
       if (journal.view.stop) break;
       if (shared) {
@@ -3150,6 +3162,7 @@ async function main() {
       if (worker.intakeHeld() || shared && batch.length === 0 && updates.result.length > 0) await waitHeld();
 
     }
+    dueWake.close();
     // The bounded shutdown awaits (provider timeouts) are progress, not a hang.
     const tailBeat = setInterval(hostBeat, 5000);
     try {
@@ -3217,6 +3230,7 @@ async function main() {
     reportExit(`paused by signal ${signalName}`);
   }
   finally {
+    dueWake?.close();
     try {
       // Rules 2, 42: a launch refused before it launched is still a launch with a recorded end. The
       // scrubbed reason is written while this process holds the root's writer lease (a composition or

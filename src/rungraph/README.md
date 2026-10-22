@@ -176,3 +176,25 @@ Stops, expired windows, failed or uncertain attempts retain the checklist. No ne
 store, send authority, retry or model call is introduced. Older records without a
 checklist retain their original meaning. This helper does not change RunExit or
 claim that unreported filesystem work has been discovered.
+
+## Promise projection and scheduling
+
+`promises.ts` owns the commitment projection, stable identities, declaration joins,
+retained closures and exact work schedule. It ports CommitmentTracker's separate
+owner/dependency and single-writer lifecycle, plus PromiseBeacon's durable cadence
+anchors, from JKHeadley/instar main `2d12a2a9a4fa2d0eb1280abdbd573234913ceb6b`.
+The existing encrypted journal is the storage/admission adapter: it validates on a
+copy, fsyncs the enclosing fact, then applies the projection. No second store or
+wire migration exists; old frames and snapshots retain their identities and meaning.
+Calendar resolution stays in the adapter; a recorded absolute instant retains its
+seconds. A completed report is separate from a confirmed delivery. Unknown work
+and sends remain owned, and closures retain their source evidence.
+
+Six's injected `createNextDueWake` reconstructs one disposable timer from this
+schedule after restart. The shipped host feeds its existing bounded ordinary lane,
+which retains current ownership, peer durability, stop, expiry and spend checks.
+A due time requests work only. Explicitly requested results still pass the normal
+withdrawal-aware delivery path after successful intake; a date alone grants no send.
+Promise state follows the shared journal; each host's timer is deliberately local.
+This is the journal-backed promise slice, not a claim that the separate signed
+RunGraph due-item contract or every Part 18 sentinel is implemented.

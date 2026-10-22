@@ -16,3 +16,6 @@ export type { ThreadlineIdentity, ThreadlinePeerKeys } from './threadline-custod
 export type { ResourceSetSpine } from './resource-set.js';
 export { createResourceSetAuthority, createResourceSetSpine, registerResourceSetBodies, resourceSetSchemas, resourceSetRows,
   resourceDomainHead, resourceDebited, resourceSetFactKind, setDomains } from './resource-set.js';
+
+export { createNextDueWake } from './next-due.js';
+export type { NextDueWakePorts } from './next-due.js';

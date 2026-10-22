@@ -1,3 +1,4 @@
+import { recordCommitments, type AgentPromise as CoreAgentPromise } from '../../src/rungraph/promises.js';
 /** The preview's own promises. Whether a reply promises something, and whether a
  * later reply carries a promise out, is the answering model's reading (Rule 10);
  * code only checks exact values: the quoted sentence is in the reply actually
@@ -6,8 +7,7 @@ import type { CommitmentNote } from './journal.js';
 import { parseDatedItem, type DatedItem } from './dated-memory.js';
 
 /** `promised` marks a model-proposed promise; the other actions are legacy journal rows. */
-export interface AgentPromise { quote: string; action: 'promised' | 'remind' | 'check' | 'follow up' | 'send' | 'tell' | 'update' | 'keep';
-  owner: 'agent'; waitsOn: 'next-relevant-reply'; due?: DatedItem }
+export type AgentPromise = CoreAgentPromise<DatedItem>;
 export interface PromiseProposal { quote: string; when?: string }
 export interface FulfillmentProposal { id: number; quote: string }
 export const AGENT_PROMISE_LIMIT = 5;
@@ -94,8 +94,8 @@ export function reconcilePromises(commitments: CommitmentNote[], closed: Readonl
         && !note.agentPromise.due) Object.assign(note, { owner: 'agent', waitsOn: 'nothing' });
       continue;
     }
-    commitments.push({ in: 'reply', source, quote: promise.quote, owner: 'agent',
-      waitsOn: promise.due ? 'date' : 'nothing', agentPromise: promise });
+    recordCommitments({ commitments }, [{ in: 'reply', source, quote: promise.quote, owner: 'agent',
+      waitsOn: promise.due ? 'date' : 'nothing', agentPromise: promise }]);
   }
 }
 
