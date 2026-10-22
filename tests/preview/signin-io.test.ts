@@ -2,8 +2,8 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { runClaudeSignin, signinDigest, validateSigninBrowser, readSigninEndpoint } from '../../scripts/claude-signin-io.mjs';
+import { hostname, tmpdir } from 'node:os';
+import { openSigninBrowser, runClaudeSignin, signinDigest, validateSigninBrowser, readSigninEndpoint } from '../../scripts/claude-signin-io.mjs';
 import { readHarnessSignin } from '../../scripts/harness-signin.mjs';
 import { createHarnessLoginPool } from './harness-login-pool.mjs';
 import { readHarnessLogin, readHarnessLoginForSignin } from './harness-user.mjs';
@@ -16,14 +16,14 @@ function disk() {
   const profile = { reference: 'signin-test', expectedAccount: 'a@example.invalid', organization: 'org', plan: 'max' };
   return { root, browser, profile };
 }
-it('runs the native process in a separate private home and opens the recorded URL once', async () => {
+it.each([true, false])('runs the native process in a separate private home, including prompt newline=%s', async newline => {
   const f = disk(), executable = join(f.root, 'fixture-cli');
-  const capture = readFileSync(new URL('./fixtures/signin/claude-login.txt', import.meta.url), 'utf8');
+  const capture = readFileSync(new URL('./fixtures/signin/claude-login-studio.txt', import.meta.url), 'utf8');
   writeFileSync(executable, '#!/usr/bin/python3\nimport os,sys,time,json\n'
     + 'assert sys.argv[1:]==["auth","login"]\nassert os.environ["BROWSER"]=="true"\n'
     + 'assert os.environ["CLAUDE_CONFIG_DIR"].endswith("/repair/config")\n'
     + 'assert os.environ["HOME"].endswith("/repair/home")\n'
-    + `sys.stdout.write(${JSON.stringify(capture)}); sys.stdout.flush(); time.sleep(.1)\n`, { mode: 0o700 });
+    + `sys.stdout.write(${JSON.stringify(newline ? `${capture.trimEnd()}\n` : capture.trimEnd())}); sys.stdout.flush(); time.sleep(.1)\n`, { mode: 0o700 });
   f.profile.executable = executable; f.profile.artifact = `sha256:${signinDigest(readFileSync(executable))}`;
   const openBrowser = vi.fn(async () => {}), onPid = vi.fn();
   const result = await runClaudeSignin({ ...f, directory: join(f.root, 'repair'), signal: new AbortController().signal, openBrowser, onPid });
@@ -40,12 +40,37 @@ it('does not attach to an already-open profile, including Chrome’s dangling Si
     openBrowser, spawnCli })).rejects.toThrow('signin-browser-in-use');
   expect(spawnCli).not.toHaveBeenCalled();
 });
+it('lets normal Chrome recover its own local stale lock only after the exact PID is absent', async () => {
+  const f = disk(); f.profile.executable = realpathSync('/bin/echo');
+  f.profile.artifact = `sha256:${signinDigest(readFileSync(f.profile.executable))}`;
+  expect(() => process.kill(2147483647, 0)).toThrow();
+  symlinkSync(`${hostname()}-2147483647`, join(f.browser, 'SingletonLock'));
+  // No provider URL: echo terminates unfinished. Reaching it proves admission,
+  // and Chrome's lock remains untouched for Chrome itself to recover.
+  const onPid = vi.fn();
+  expect(await runClaudeSignin({ ...f, directory: join(f.root, 'repair'), signal: new AbortController().signal,
+    openBrowser: vi.fn(), onPid })).toEqual({ kind: 'unfinished' });
+  expect(onPid).toHaveBeenCalledTimes(1);
+});
 it('requires an exact, private, dedicated browser binding', () => {
   const f = disk();
   expect(validateSigninBrowser({ account: f.profile.expectedAccount, directory: f.browser }, f.profile)).toBe(f.browser);
   expect(() => validateSigninBrowser({ account: 'other@example.invalid', directory: f.browser }, f.profile)).toThrow();
   chmodSync(f.browser, 0o755);
   expect(() => validateSigninBrowser({ account: f.profile.expectedAccount, directory: f.browser }, f.profile)).toThrow();
+});
+it('opens normal Chrome in the background and passes the authorization URL only over stdin', async () => {
+  const f = disk(), url = 'https://claude.ai/oauth/authorize?response_type=code&state=synthetic-private-state';
+  symlinkSync(`${hostname()}-${process.pid}`, join(f.browser, 'SingletonLock'));
+  const run = vi.fn(async file => file === '/bin/ps'
+    ? `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=${f.browser} about:blank`
+    : file === '/usr/bin/osascript' ? 'opened\n' : '');
+  await openSigninBrowser(url, f.browser, new AbortController().signal, run);
+  expect(run.mock.calls[0][1]).toContain('-g'); expect(run.mock.calls[0][1]).toContain('about:blank');
+  expect(JSON.stringify(run.mock.calls.map(c => c.slice(0, 2)))).not.toContain('synthetic-private-state');
+  expect(run.mock.calls[2][2].input).toBe(url);
+  run.mockImplementation(async file => file === '/bin/ps' ? 'another process' : '');
+  await expect(openSigninBrowser(url, f.browser, new AbortController().signal, run)).rejects.toThrow('process-differs');
 });
 it('detects a missing repair record from the credential it promoted, and validates receipt/custody agreement', () => {
   const f = disk(), custody = join(f.root, 'login.json'), state = join(f.root, 'repair.json');

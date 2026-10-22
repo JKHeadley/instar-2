@@ -3,8 +3,10 @@
 // CredentialIdentityOracle/OAuthRefresher (live identity and scoped Keychain).
 import { createHash } from 'node:crypto';
 import { execFile, spawn } from 'node:child_process';
-import { lstatSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
+import { lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { parseClaudeSigninUrl } from './claude-signin-repair.mjs';
 
 const PROFILE = 'https://api.anthropic.com/api/oauth/profile';
@@ -62,10 +64,58 @@ export async function verifySigninUse(token, options) {
 }
 
 const execute = (file, args, options = {}) => new Promise((resolve, reject) => {
-  execFile(file, args, { encoding: 'utf8', timeout: 5000, maxBuffer: 65536, ...options }, (error, stdout) => {
+  const { input, ...settings } = options;
+  const child = execFile(file, args, { encoding: 'utf8', timeout: 5000, maxBuffer: 65536, ...settings }, (error, stdout) => {
     if (error) reject(Error('signin-native-operation-unavailable')); else resolve(stdout);
   });
+  child.stdin.end(input);
 });
+
+// PlainChromeReloginBrowser's pid-addressed Apple Event transport, narrowed to
+// navigation of the blank tab we just opened. URL goes over stdin, never argv.
+const NAVIGATE = `ObjC.import('Foundation');
+function fc(s){return (s.charCodeAt(0)<<24)|(s.charCodeAt(1)<<16)|(s.charCodeAt(2)<<8)|s.charCodeAt(3);}
+function run(args){
+ const D=$.NSAppleEventDescriptor;
+ const data=$.NSFileHandle.fileHandleWithStandardInput.readDataToEndOfFile;
+ const url=$.NSString.alloc.initWithDataEncoding(data,$.NSUTF8StringEncoding).js;
+ function spec(want,form,value,from){const r=D.recordDescriptor;
+ r.setDescriptorForKeyword(D.descriptorWithTypeCode(fc(want)),fc('want'));
+ r.setDescriptorForKeyword(D.descriptorWithEnumCode(fc(form)),fc('form'));
+ r.setDescriptorForKeyword(value,fc('seld'));r.setDescriptorForKeyword(from||D.nullDescriptor,fc('from'));
+ return r.coerceToDescriptorType(fc('obj '));}
+ const tab=spec('prop','prop',D.descriptorWithTypeCode(fc('acTa')),spec('cwin','indx',D.descriptorWithInt32(1),null));
+ const ev=D.appleEventWithEventClassEventIDTargetDescriptorReturnIDTransactionID(fc('CrSu'),fc('ExJa'),D.descriptorWithProcessIdentifier(Number(args[0])),-1,0);
+ ev.setParamDescriptorForKeyword(tab,fc('----'));
+ const code='(()=>{if(location.href!=="about:blank")return "refused";location.href='+JSON.stringify(url)+';return "opened"})()';
+ ev.setParamDescriptorForKeyword(D.descriptorWithString(code),fc('JvSc'));
+ const reply=ev.sendEventWithOptionsTimeoutError(3,5,null);
+ if(!reply||reply.isNil())return 'unavailable';const out=reply.paramDescriptorForKeyword(fc('----'));
+ return out&&!out.isNil()&&out.stringValue?out.stringValue.js:'unavailable';
+}`;
+
+export async function openSigninBrowser(url, browser, signal, run = execute) {
+  if (signal?.aborted || parseClaudeSigninUrl(`${url}\n`) !== url) throw Error('signin-browser-url-refused');
+  await run('/usr/bin/open', ['-g', '-na', '/Applications/Google Chrome.app', '--args',
+    `--user-data-dir=${browser}`, '--no-first-run', '--no-default-browser-check', '--disable-sync', 'about:blank']);
+  for (let attempt = 0; attempt < 60 && !signal?.aborted; attempt++) {
+    let match;
+    try { match = /^(.*)-(\d+)$/u.exec(readlinkSync(join(browser, 'SingletonLock'))); } catch { /* Chrome is starting. */ }
+    if (match && match[1] === hostname() && Number.isSafeInteger(Number(match[2])) && Number(match[2]) > 1) {
+      const pid = Number(match[2]);
+      const command = await run('/bin/ps', ['-p', String(pid), '-o', 'args=']);
+      if (!command.startsWith('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome ')
+        || !`${command.trim()} `.includes(`--user-data-dir=${browser} `) || command.includes('--type='))
+        throw Error('signin-browser-process-differs');
+      if (signal?.aborted) throw Error('signin-browser-stopped');
+      const result = await run('/usr/bin/osascript', ['-l', 'JavaScript', '-e', NAVIGATE, String(pid)], { input: url, signal });
+      if (result.trim() !== 'opened') throw Error('signin-browser-navigation-unavailable');
+      return;
+    }
+    await delay(500);
+  }
+  throw Error('signin-browser-start-unavailable');
+}
 
 /** The browser mapping is installed by the account owner, never guessed from
  * Chrome's ambient/default profile or copied from another account. */
@@ -84,7 +134,7 @@ export function validateSigninBrowser(binding, profile) {
 }
 
 /** One CLI, one normal Chrome launch, bounded lifetime; no CDP, headless flags,
- * Apple Events, synthetic input, page bypass or arbitrary command from config.
+ * synthetic input, page bypass or arbitrary command from config.
  * The person completes the offered sign-in controls in their account's profile. */
 export async function runClaudeSignin({ profile, browser, directory, signal, onPid = () => {}, openBrowser,
   spawnCli = spawn }) {
@@ -101,12 +151,18 @@ export async function runClaudeSignin({ profile, browser, directory, signal, onP
       throw Error('signin-staging-not-private');
   }
   // Never attach to or close an existing Chrome owned by another activity.
-  try { lstatSync(join(browser, 'SingletonLock')); throw Error('signin-browser-in-use'); }
+  try {
+    const lock = join(browser, 'SingletonLock'); lstatSync(lock);
+    const match = /^(.*)-(\d+)$/u.exec(readlinkSync(lock));
+    if (!match || match[1] !== hostname() || !Number.isSafeInteger(Number(match[2])) || Number(match[2]) <= 1)
+      throw Error('signin-browser-in-use');
+    let absent = false;
+    try { process.kill(Number(match[2]), 0); } catch (error) { absent = error.code === 'ESRCH'; }
+    if (!absent) throw Error('signin-browser-in-use');
+    // No unlink and no signal: normal Chrome recovers its own stale local lock.
+  }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
-  const launch = openBrowser ?? (async url => {
-    await execute('/usr/bin/open', ['-na', '/Applications/Google Chrome.app', '--args',
-      `--user-data-dir=${browser}`, '--no-first-run', '--no-default-browser-check', '--disable-sync', url]);
-  });
+  const launch = openBrowser ?? (url => openSigninBrowser(url, browser, signal));
   return await new Promise(resolve => {
     let text = '', opened = false, opening = Promise.resolve(), settled = false, stopping = false, launchFailed = false;
     const child = spawnCli(profile.executable, ['auth', 'login'], { cwd: directory,
@@ -126,8 +182,10 @@ export async function runClaudeSignin({ profile, browser, directory, signal, onP
     const capture = bytes => {
       text += bytes.toString('utf8');
       if (text.length > 65536) { stop(); return; }
-      if (opened || signal.aborted || !text.endsWith('\n')) return;
-      const url = parseClaudeSigninUrl(text);
+      if (opened || signal.aborted) return;
+      // readline leaves its paste prompt unterminated. Parse complete lines,
+      // not whether the most recent chunk happened to end in a newline.
+      const url = parseClaudeSigninUrl(text.slice(0, text.lastIndexOf('\n') + 1));
       if (url) {
         opened = true;
         opening = launch(url).catch(() => { launchFailed = true; stop(); });
@@ -149,8 +207,11 @@ export async function runClaudeSignin({ profile, browser, directory, signal, onP
 /** 1.x OAuthRefresher's exact non-default per-slot Keychain service. The CLI
  * stores first; only then do we read. Never open the ambient/default service. */
 export async function readSigninCandidate(directory, exec = execute) {
+  return readSigninCandidateConfig(join(directory, 'config'), exec);
+}
+export async function readSigninCandidateConfig(config, exec = execute) {
   try {
-    const service = `Claude Code-credentials-${signinDigest(join(directory, 'config')).slice(0, 8)}`;
+    const service = `Claude Code-credentials-${signinDigest(config).slice(0, 8)}`;
     const raw = await exec('/usr/bin/security', ['find-generic-password', '-s', service, '-w']);
     const candidate = JSON.parse(raw).claudeAiOauth;
     if (typeof candidate?.accessToken !== 'string' || !/^[\x21-\x7e]{16,4096}$/u.test(candidate.accessToken)

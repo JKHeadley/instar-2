@@ -48,7 +48,8 @@ export function installHarnessLogin({ root, options, verify }) {
   const index = logins.findIndex(item => (item.admittedProfile ?? read(item.profile)).reference === profile.reference);
   const quotaLogin = row.quotaLogin ?? logins[index]?.quotaLogin;
   const admitted = { ...row, ...(quotaLogin ? { quotaLogin } : {}),
-    ...(logins[index]?.signinBrowser ? { signinBrowser: logins[index].signinBrowser } : {}), admittedProfile: profile };
+    ...(logins[index]?.signinBrowser ? { signinBrowser: logins[index].signinBrowser } : {}),
+    ...(logins[index]?.signinService ? { signinService: logins[index].signinService } : {}), admittedProfile: profile };
   if (index < 0) logins.push(admitted); else logins[index] = admitted;
   if (logins.length > 8) throw Error('preview: at most eight installed harness logins');
   // A fresh authenticated admission must supersede a cached preparation exclusion, even

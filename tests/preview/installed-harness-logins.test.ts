@@ -91,6 +91,19 @@ it('single login preserves launch options and an explicit profile overrides a tw
   expect(installedHarnessLaunch({ root: f.root, options, prepare: never })).toEqual({ options, mode: 'explicit-profile' });
 });
 
+it('retains the owner-installed phone repair binding through re-admission and build preparation', () => {
+  const f = fixture(); f.install(f.logins[0]); f.install(f.logins[1]);
+  const path = join(f.root, 'harness-logins.json'), inventory = read(path);
+  const signinService = { accountId: 'member-a', machineId: 'machine-a', profileId: 'browser-a',
+    account: 'member-a@example.invalid', url: 'http://127.0.0.1:4042/',
+    dashboardUrl: 'https://operator.example.invalid/dashboard', tokenFile: '/private/owner/api-token' };
+  inventory.logins[0].signinService = signinService;
+  writeFileSync(path, JSON.stringify(inventory));
+  f.install(f.logins[0]);
+  expect(read(path).logins[0].signinService).toEqual(signinService);
+  expect(read(f.prepare()).logins[0].signinService).toEqual(signinService);
+});
+
 it('unauthenticated login is not installed; another member cannot inherit primary authority; missing secondary drops only that member', () => {
   const f = fixture(); f.install(f.logins[0]);
   f.authenticated.delete('member-b'); expect(() => f.install(f.logins[1])).toThrow('not authenticated');

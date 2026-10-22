@@ -1,0 +1,8 @@
+{
+  "capturedAt": "2026-10-22T21:03:12.839Z",
+  "source": "Mac Studio scratch auth login, signin-port-1022b, native CLI PID 84188",
+  "capture": "claude-login-studio.txt",
+  "redactions": "client_id, code_challenge and state query values replaced with REDACTED; no credential was obtained",
+  "shape": "The native paste prompt has no trailing newline. Its preceding authorization URL is a complete line.",
+  "outcome": "Browser reached Claude authorize as the expected account; Authorize remained disabled. No successful sign-in claimed."
+}

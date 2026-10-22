@@ -53,11 +53,13 @@ export async function repairHarnessSignin(ports) {
     record('detected', 'provider-auth-refused');
   }
   try {
-    if (state.phase === 'detected') {
+    if (state.phase === 'detected' || state.phase === 'service-waiting') {
       if (guard()) return state;
-      record('browser-driving');
+      record(ports.externalRepair ? 'service-waiting' : 'browser-driving');
       const result = await ports.login();
       if (guard()) return state;
+      if (result.kind === 'pending') return record('service-waiting', result.reason);
+      if (result.kind === 'held') return record('service-waiting', result.reason);
       if (result.kind !== 'complete') return record('waiting', 'sign-in-unfinished');
     }
     // 1.x recoverUncertain: only credential observation can advance an interrupted

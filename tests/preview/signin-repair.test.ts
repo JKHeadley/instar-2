@@ -66,6 +66,18 @@ it('retains a refused authenticated-use result without promoting', async () => {
   expect((await repairHarnessSignin(f.ports)).phase).toBe('waiting');
   expect(f.ports.promote).not.toHaveBeenCalled();
 });
+it('a pending phone approval cannot reach identity or publication; a later service completion still needs both checks', async () => {
+  const f = fixture();
+  f.ports.externalRepair = true;
+  f.ports.login.mockResolvedValueOnce({ kind: 'pending', reason: 'phone-approval-required' })
+    .mockResolvedValueOnce({ kind: 'complete' });
+  expect((await repairHarnessSignin(f.ports)).phase).toBe('service-waiting');
+  expect(f.state().events.some(e => e.phase === 'browser-driving')).toBe(false);
+  expect(f.ports.identity).not.toHaveBeenCalled(); expect(f.ports.promote).not.toHaveBeenCalled();
+  f.ports.authenticatedUse.mockResolvedValue({ kind: 'unknown' });
+  expect((await repairHarnessSignin(f.ports)).phase).toBe('waiting');
+  expect(f.ports.identity).toHaveBeenCalledTimes(1); expect(f.ports.promote).not.toHaveBeenCalled();
+});
 it('a stop during identity verification prevents the authenticated call and promotion', async () => {
   const f = fixture(); f.ports.identity.mockImplementation(async () => { f.stop(); return { kind: 'match' }; });
   expect((await repairHarnessSignin(f.ports)).phase).toBe('stopped');

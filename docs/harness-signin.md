@@ -1,5 +1,46 @@
 # Repairing an installed Claude login
 
+On an installation using the existing Instar 1.x subscription service, the agent
+starts the command below and the operator taps **Repair sign-in** in that service's
+**Subscriptions** account × machine cell from their phone. Its existing dashboard
+unlock and one-use repair approval remain in charge. An already-authorized
+unattended policy still runs without another approval. The adapter never approves
+as the operator, changes that policy, or starts a competing browser.
+
+The installation owner binds that service in the login's `harness-logins.json` row:
+
+```json
+{
+  "signinService": {
+    "account": "owner@example.com",
+    "accountId": "installed-account-id",
+    "machineId": "installed-local-machine-id",
+    "profileId": "installed-browser-profile-id",
+    "url": "http://127.0.0.1:4042/",
+    "dashboardUrl": "https://operator.example.com/dashboard#subscriptions",
+    "tokenFile": "/absolute/private/service-api-token"
+  }
+}
+```
+
+These are installation values, not fields the phone user fills in. The token file
+contains the existing service API bearer, is owned by the installation user and
+has mode 0600. It is never an operator PIN or approval session. The profile's
+`configDirectory` must name the same private native config home as that service's
+account. The normal `signinBrowser` binding still identifies its dedicated browser.
+Installation updates retain both bindings. This adapter requires an existing 1.x
+service with its phone surface and repair machinery installed; it does not create
+or configure that service.
+
+The command waits up to ten minutes for that exact repair and continues after the
+phone approval. It only reads the service. A changed account, config home, browser
+profile, incident or input digest remains held. An unavailable or observe-only
+service never falls back to a second local browser. Existing active incidents may
+be observed; an old completed incident cannot stand for a new failure. After a
+timeout the agent can invoke the same command to observe the retained episode.
+The service's completion still requires the independent provider identity and
+authenticated-use checks below before the replacement reaches 2.0 custody.
+
 The installation owner can run:
 
 ```sh
@@ -17,11 +58,16 @@ actual authentication refusal starts sign-in. A missing credential, unavailable
 network or missing endpoint permission remains unknown. A different account or
 organization is held for the installation owner to reconcile.
 
-Sign-in opens normal Chrome with that account's profile. Complete the provider's
+Without a service binding, the original assisted command opens normal Chrome with that account's profile. Complete the provider's
 offered controls there. No password, token or code is printed or requested in the
 terminal. The native CLI runs `auth login` in a separate private home and stores its
-credential in its own macOS Keychain slot. This implementation uses neither a
-debugging connection nor synthetic browser input. It leaves the browser window
+credential in its own macOS Keychain slot. Chrome opens in the background at a blank
+page; a PID-bound Apple Event navigates that blank page, receiving the authorization
+URL over stdin rather than a process argument. The profile must already permit
+JavaScript from Apple Events. This uses neither a debugging connection nor synthetic
+presence. A local stale Chrome lock is left for Chrome to recover only after its
+exact PID is confirmed absent; a live or unidentifiable owner is refused.
+It leaves the browser window
 open; it never closes a browser which may now belong to the person signing in.
 
 Before publishing the replacement, Instar checks the provider's live account and
@@ -50,7 +96,13 @@ sign-in retry. Wrong-identity refusals remain held.
 record. `scripts/claude-signin-io.mjs` owns the Claude/native browser, Keychain and
 fixed HTTPS boundaries. `scripts/harness-signin.mjs` connects the installed account,
 durable record and existing custody; `instar2 signin` is its owner surface. The pool
-reads the same record, and a credential's receipt binding detects a lost completion
+reads the same record. `scripts/claude-signin-service.mjs` adapts the 1.x
+SubscriptionReloginService approval/unattended policy and its existing dashboard
+repair-cell route without acquiring approval authority. A credential's receipt binding detects a lost completion
 record. State and browser profiles are deliberately machine-local; credentials are
 never transferred to peers. The native browser/Keychain transport in this slice is
-macOS-only and assisted. It does not claim unattended or phone-complete sign-in.
+macOS-only. The unbound assisted command still requires browser interaction on the
+Mac; only the installed-service path uses the existing phone approval surface.
+Live acceptance of this continuation remains incomplete: the scratch proof reached
+the correct Claude account, whose Authorize control remained disabled. No completed
+real sign-in or unattended end-to-end result is claimed.

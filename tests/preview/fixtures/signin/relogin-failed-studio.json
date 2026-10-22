@@ -1,0 +1,32 @@
+{
+  "capturedAt": "2026-10-22T21:11:27.127Z",
+  "source": "1.x local subscription-relogin; sagemind-justin; episode d62a5bee-b224-4d4e-8fbd-a949f4aca253",
+  "redactions": "Account, machine and browser ids replaced; other episode fields retained.",
+  "episode": {
+    "id": "d62a5bee-b224-4d4e-8fbd-a949f4aca253",
+    "sourceEpisodeId": 3,
+    "accountId": "account-a",
+    "machineId": "machine-a",
+    "mode": "approval",
+    "state": "failed",
+    "inputDigest": "sha256:e365a0090c10289562be65e669fa6a46af3e2790e8b0e04fa656a37e795e0493",
+    "profileId": "browser-a",
+    "framework": "claude-code",
+    "provider": "anthropic",
+    "attemptCount": 3,
+    "reissueCount": 0,
+    "approvedAt": "2026-09-24T19:18:42.400Z",
+    "approvalExpiresAt": "2026-09-24T19:33:42.400Z",
+    "startedAt": "2026-09-24T19:18:42.401Z",
+    "finishedAt": "2026-09-24T19:22:29.557Z",
+    "nextAttemptAt": "2026-10-23T10:57:33.164Z",
+    "failureClass": "attempt-budget-exhausted",
+    "version": 46,
+    "createdAt": "2026-09-24T02:22:51.000Z",
+    "updatedAt": "2026-10-22T10:57:33.188Z",
+    "loginMethod": "password",
+    "slowRetryCount": 0,
+    "loginCreatedAt": "2026-09-24T19:21:37.097Z",
+    "slowRetryHeld": false
+  }
+}

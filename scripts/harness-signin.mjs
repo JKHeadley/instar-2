@@ -6,14 +6,17 @@ import { durablePreviewWrite } from '../tests/preview/durable-write.js';
 import { reminderSchedule } from '../tests/preview/secret-custody.js';
 import { harnessLoginPath, harnessSigninBinding, readHarnessLoginForSignin } from '../tests/preview/harness-user.mjs';
 import { repairHarnessSignin } from './claude-signin-repair.mjs';
+import { createSigninService, waitForSigninService } from './claude-signin-service.mjs';
 import { inspectSignin, readSigninCandidate, runClaudeSignin, signinDigest, validateSigninBrowser,
   verifySigninIdentity, verifySigninUse } from './claude-signin-io.mjs';
 
 export const signinStatePath = profile => `${harnessLoginPath(profile)}.signin.json`;
-const phases = ['detected', 'browser-driving', 'identity-verifying', 'auth-verifying', 'promoting', 'succeeded', 'waiting', 'stopped', 'refused'];
+const phases = ['detected', 'service-waiting', 'browser-driving', 'identity-verifying', 'auth-verifying', 'promoting', 'succeeded', 'waiting', 'stopped', 'refused'];
 const reasons = new Set([...phases, 'stop-or-binding-withdrawn', 'repair-time-budget-exhausted', 'provider-auth-refused',
   'sign-in-unfinished', 'wrong-identity', 'wrong-existing-identity', 'identity-unavailable', 'authenticated-use-unavailable',
-  'identity-and-authenticated-use-verified', 'repair-operation-unavailable']);
+  'identity-and-authenticated-use-verified', 'repair-operation-unavailable', 'phone-approval-required', 'phone-action-required',
+  'repair-service-running', 'repair-service-binding-differs', 'repair-service-unavailable', 'repair-service-incident-unavailable',
+  'repair-service-observe-only', 'repair-service-approval-unavailable', 'repair-service-refused']);
 export function readHarnessSignin(profile, path = signinStatePath(profile), custodyPath = harnessLoginPath(profile)) {
   try {
     const stat = lstatSync(path);
@@ -64,7 +67,9 @@ export async function runHarnessSignin(rootInput, reference, io = {}) {
     catch { return false; }
   };
   const controller = new AbortController();
-  const stopped = () => controller.signal.aborted || existsSync(join(root, 'preview-stop.json')) || !current();
+  const service = row.signinService ? createSigninService(row.signinService, profile, { signal: controller.signal }) : null;
+  const stopped = () => controller.signal.aborted || existsSync(join(root, 'preview-stop.json')) || !current()
+    || service !== null && !service.current();
   if (stopped()) return { phase: 'stopped', reason: 'stop-or-binding-withdrawn' };
   // The existing custody directory is already private and owner-bound. Do not
   // invent custody for a profile which has never been installed there.
@@ -77,12 +82,16 @@ export async function runHarnessSignin(rootInput, reference, io = {}) {
   const abort = () => controller.abort();
   process.once('SIGINT', abort); process.once('SIGTERM', abort);
   try {
-    mkdirSync(browserLock, { mode: 0o700 }); browserLocked = true;
+    // The 1.x service already owns its browser lock. Never take a competing lock
+    // or launch a second browser while observing that service's repair.
+    if (!service) { mkdirSync(browserLock, { mode: 0o700 }); browserLocked = true; }
     let previous = readHarnessSignin(profile, path);
     if (previous && (previous.phase === 'unknown' || previous.binding !== binding)) throw Error('signin-record-binding-differs');
     if (previous?.events.length > 1000) throw Error('signin-history-capacity');
+    let serviceReceipt = previous?.serviceReceipt ?? null;
     const write = state => {
       previous = { ...state, reference, account: profile.expectedAccount, binding, browser,
+        ...(service ? { serviceReceipt } : {}),
         admission: { root, row, profile, browser, by: `local-installer:uid:${process.getuid()}` } };
       durablePreviewWrite(path, previous);
     };
@@ -92,11 +101,16 @@ export async function runHarnessSignin(rootInput, reference, io = {}) {
     timer = setInterval(() => { if (stopped() || Date.now() >= deadline) controller.abort(); }, 250);
     let candidate = null;
     const candidateNow = async () => {
-      const next = await readSigninCandidate(directory);
+      if (service) {
+        const observation = await service.observe(serviceReceipt, previous.startedAt);
+        if (observation.kind !== 'complete') return null;
+      }
+      const next = await (service ? service.candidate() : readSigninCandidate(directory));
       return next && next.expiresAt > Date.now() + 5000 ? next : null;
     };
     const transport = { signal: controller.signal };
     const result = await repairHarnessSignin({ now: Date.now, stopped, current,
+      externalRepair: service !== null,
       read: () => previous, write,
       inspect: async () => {
         // Missing/unreadable custody is MissingLoginSessionDetector's SIGNAL,
@@ -105,6 +119,16 @@ export async function runHarnessSignin(rootInput, reference, io = {}) {
         catch { return { kind: 'unknown' }; }
       },
       login: async () => {
+        if (service) {
+          return waitForSigninService({ observe: service.observe, receipt: serviceReceipt, since: previous.startedAt,
+            stopped,
+            save: receipt => {
+              serviceReceipt = receipt;
+              // Retain the selected episode before another read or publication.
+              write(previous);
+            },
+            notice: () => io.write?.(`Repair sign-in from Subscriptions on your phone: ${service.link}\n`) });
+        }
         io.write?.('Complete the sign-in in this account’s normal Chrome window. No password or code belongs in this terminal.\n');
         return runClaudeSignin({ profile, browser, directory, signal: controller.signal,
           onPid: pid => { if (Number.isSafeInteger(pid)) durablePreviewWrite(join(directory, 'process.json'), { pid, at: Date.now() }); } });
