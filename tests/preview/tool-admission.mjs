@@ -161,7 +161,8 @@ export const FILE_TOOLS = Object.freeze(['Read', 'Write', 'Edit', 'NotebookEdit'
 const SEARCH_TOOLS = Object.freeze(['Glob', 'Grep']);
 /** The subagent tool under both names the pinned harness accepts. */
 export const SUBAGENT_TOOLS = Object.freeze(['Agent', 'Task']);
-/** Tools that, if they ever reached the hook, would act outward: each is the effect doorway's, named by its effect. */
+/** Outward-capable tools, also checked for held secrets. ScheduleWakeup has a
+ * stop-only bookkeeping branch and a new-wake budget refusal below; the rest reach the effect doorway. */
 export const OUTWARD_TOOLS = Object.freeze({ SendMessage: 'send', PushNotification: 'send', RemoteTrigger: 'network-write',
   DesignSync: 'network-write', CronCreate: 'schedule', CronDelete: 'schedule', ScheduleWakeup: 'schedule', Monitor: 'unsandboxed' });
 /** The harness's own bookkeeping: no effect outside the turn's process and workspace. */
@@ -518,6 +519,17 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
     return verdict.admitted ? { decision: 'allow', reason: verdict.reason, kind, doorway } : { ...deny(verdict.reason, kind), doorway }; };
   if (!Number.isSafeInteger(n) || n < 1) return deny('admission count unavailable');
   if (n > config.maxCalls) return deny(`per-step call cap ${config.maxCalls} reached (call ${n})`);
+  // Claude Code 2.1.280: stop:true only cancels this session's dynamic loop;
+  // it returns before the scheduling branch. Normalize to that exact operation.
+  // A new harness wake has no durable host work item or reserved future model
+  // turns (Rules 2/8/60/68). Use the existing host promises/reminders instead.
+  // This is a lifecycle/budget refusal, not an effect needing operator sign-off.
+  if (tool === 'ScheduleWakeup') return input.stop === true
+    ? { decision: 'allow', reason: 'harness bookkeeping: cancel this session\'s dynamic wakeups', updatedInput: { stop: true } }
+    : deny('No harness wake was scheduled: future turns need durable host work and a spend reservation (Rules 2, 8, 60, 68). '
+      + 'For requested later work, use the response\'s promises and dated-request protocol so Instar records and wakes it. '
+      + 'Do not claim a wake is saved before that record is admitted. Continue unrelated work; this tool refusal is not '
+      + 'an operator-approval requirement or a blocker for an unrelated answer.', 'budget');
   // A file tool or search is decided on the file its path resolves to, against the turn's read or write set, and the
   // harness is handed that resolved path, so re-pointing the presented alias after this check does not redirect the call.
   // The resolved file or a directory on its path, changed after this check, still can: an OPEN race this check does not

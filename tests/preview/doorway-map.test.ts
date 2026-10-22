@@ -21,9 +21,10 @@ it('discovers the real Codex exchange through its registered adapter without inv
   expect(doorwayFreshness(standingDoorwayCheck(map, 1100), 1100)).toMatchObject({ fresh: true });
   expect(discoverExchange(capture, 'wrong-adapter', subscriptionDoorway('claude-code-subscription').exchangeModels))
     .toMatchObject({ ok: false, reason: 'error-frame' });
-  for (const result of [{ ...capture, code: 1 }, { ...capture, limited: true, localLimit: 'timeout' }])
+  for (const result of [{ ...capture, code: 1 }])
     expect(discoverExchange(result, 'failed', doorway.exchangeModels)).toMatchObject({ ok: false });
   expect(discoverExchange({ ...capture, limited: true, localLimit: 'capacity' }, 'local', doorway.exchangeModels)).toBeNull();
+  expect(discoverExchange({ ...capture, limited: true, localLimit: 'timeout' }, 'local', doorway.exchangeModels)).toBeNull();
   for (const stdout of ['', capture.stdout.replace('turn.completed', 'turn.failed'), capture.stdout + '\nnot-json',
     capture.stdout.replace('agent_message', 'unregistered_item')])
     expect(discoverExchange({ ...capture, stdout }, 'incomplete', doorway.exchangeModels)).toMatchObject({ ok: false });
@@ -106,7 +107,7 @@ it('discovers the subscription outcome from the exchange, ignoring local resourc
   expect(subscriptionExchange({ code: 0, limited: false, stdout: JSON.stringify({ type: 'result', is_error: true }) }, 'op'))
     .toMatchObject({ ok: false, reason: 'error-frame' });
   expect(subscriptionExchange({ code: 1, limited: false, stdout: '' }, 'op')).toMatchObject({ ok: false, reason: 'exit' });
-  expect(subscriptionExchange({ code: null, limited: true, localLimit: 'timeout', stdout: '' }, 'op')).toMatchObject({ ok: false, reason: 'timeout' });
+  expect(subscriptionExchange({ code: null, limited: true, localLimit: 'timeout', stdout: '' }, 'op')).toBeNull();
   expect(subscriptionExchange({ code: null, limited: true, localLimit: 'memory', stdout: '' }, 'op')).toBeNull();
   expect(subscriptionExchange({ code: null, limited: true, localLimit: 'capacity', stdout: '' }, 'op')).toBeNull();
 });

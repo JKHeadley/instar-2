@@ -55,6 +55,21 @@ const hook = (state: string, input: string, preset?: number, mode = 'pre') => {
 };
 const j = (tool_name: string, tool_input: object) => JSON.stringify({ tool_name, tool_input, tool_use_id: `toolu_${tool_name}` });
 
+it('runs stop-only ScheduleWakeup through the executable hook and preserves the new-wake refusal', () => {
+  const { state } = turn();
+  const stopped = hook(state, j('ScheduleWakeup', { stop: true, delaySeconds: 60, prompt: 'ignored' }));
+  expect(stopped.status).toBe(0);
+  expect(JSON.parse(stopped.stdout).hookSpecificOutput).toMatchObject({ permissionDecision: 'allow', updatedInput: { stop: true } });
+  expect(hook(state, JSON.stringify({ tool_name: 'ScheduleWakeup', tool_use_id: 'toolu_ScheduleWakeup',
+    tool_response: { stopped: true, cancelledWakeups: 0 } }), undefined, 'post').status).toBe(0);
+  const refused = hook(state, j('ScheduleWakeup', { delaySeconds: 60, prompt: 'later', reason: 'wait', noop: true }));
+  expect(JSON.parse(refused.stdout).hookSpecificOutput).toMatchObject({ permissionDecision: 'deny',
+    permissionDecisionReason: expect.stringContaining('durable host work') });
+  const trace = toolTrace(readFileSync(join(state, 'admission.jsonl'), 'utf8').trim().split('\n'));
+  expect(trace).toMatchObject({ consistent: true, admitted: 1, refused: 1 });
+  expect(trace.calls.every((call: { doorway?: unknown }) => call.doorway === undefined)).toBe(true);
+});
+
 it('decides every layer-A case of the spike through the real executable hook; shell commands are admitted for the sandbox to bound', () => {
   const { ws: WS, outside: OUT, state } = turn();
   const cases: [string, string, string, number?, number?][] = [
@@ -513,7 +528,7 @@ it('decides every tool of the harness\'s built-in set by its class at the hook: 
   expect(decide('EnterWorktree', { path: '/Users/x/repo' })).toMatchObject({ decision: 'deny', kind: 'scope' });
   // Consequential: each goes to the effect doorway by its kind, which the single-machine profile refuses.
   for (const [tool, kind] of [['SendMessage', 'send'], ['PushNotification', 'send'], ['RemoteTrigger', 'network-write'], ['DesignSync', 'network-write'],
-    ['CronCreate', 'schedule'], ['CronDelete', 'schedule'], ['ScheduleWakeup', 'schedule'], ['Monitor', 'unsandboxed']] as const)
+    ['CronCreate', 'schedule'], ['CronDelete', 'schedule'], ['Monitor', 'unsandboxed']] as const)
     expect([tool, decide(tool, { command: 'x' })]).toMatchObject([tool, { decision: 'deny', kind,
       reason: expect.stringContaining(`effect doorway refused tool:${kind} (${tool})`),
       doorway: { effect: `tool:${kind}`, target: tool, disposition: 'refused' } }]);

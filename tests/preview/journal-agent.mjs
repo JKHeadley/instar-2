@@ -2846,7 +2846,7 @@ async function main() {
     // Rule 56: the installed routes' exact model ids, merged into the durable map.
     doorwayMapPath = doorwaysPath;
     writeDoorwayMap(doorwaysPath, standingDoorwayCheck(installDoorways(readDoorwayMap(doorwaysPath), [
-      { id: 'preview-subscription', billing: 'subscription', model: options.model, priceReason: 'the subscription route reports no billed charge' },
+      { id: doorway.id, billing: 'subscription', model: options.model, priceReason: 'the subscription route reports no billed charge' },
       { id: 'typesafe-jev', billing: 'metered', model: JEV_MODEL, priceReason: 'the Jev route reports no price' }], wallNow()), wallNow()));
     // Rule 100: installed credentials' identity and known fixed expiry. Values stay in their custody.
     const recordedAt = wallNow();
@@ -3220,7 +3220,7 @@ async function main() {
         // Only the model command is the exchange: it alone carries the prepared prompt on stdin; the
         // version and auth preflights send none and print no result frame.
         if (typeof input.stdin === 'string' && input.stdin.length > 0)
-          observeDoorway('preview-subscription', options.model, subscriptionExchange(result, operation, doorway.exchangeModels));
+          observeDoorway(doorway.id, options.model, subscriptionExchange(result, operation, doorway.exchangeModels));
         return result;
       } };
       const io = observedSubscriptionIO(physicalIO, policy, operation, row => journal.append(row),
