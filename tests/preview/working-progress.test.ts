@@ -561,3 +561,12 @@ it('batched inputs sharing a native reconnect episode receive one explanation', 
     expect(f.progress().map(row => row.text)).toEqual([WORKING_CONNECTION]);
   } finally { f.release('Done.'); await f.drain; f.journal.close(); }
 });
+
+it.each([0, 11, 1.5, NaN])('keeps invalid native retry count %s out of the notice projection', attempt => {
+  const activities = createWorkingActivities({ now: () => 1000, read: () => '' });
+  activities.observe('input', 'claim', 'start');
+  activities.observeSession({ claim: 'claim', identity: 'worker', turnStartedAt: 900,
+    connectionRetry: { turnStartedAt: 900, attempt } },
+  { kind: 'Success', value: { phase: 'launched', detail: 'connection recovery waiting' } });
+  expect(activities.current('input')).toBeNull();
+});
