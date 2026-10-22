@@ -1452,3 +1452,14 @@ it('a different adapter pause after throttle waiting is preserved without a cont
   expect(observe()).toMatchObject({ phase: 'pause-observed', detail: 'policy-wedge' });
   expect(f.sends).toBe(sends);
 });
+
+
+it('exposes the recorded native reconnect wait without adding input or extending its deadline', () => {
+  const { f, id } = retryingSocket(), sends = f.sends;
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })))
+    .toMatchObject({ phase: 'launched', detail: 'connection recovery waiting' });
+  expect(f.sends).toBe(sends);
+  expect(f.journal.sessions[0]!.turnDeadline).toBe(2000);
+  f.changePane('ordinary work\n❯ ');
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).detail).not.toBe('connection recovery waiting');
+});

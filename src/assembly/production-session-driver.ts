@@ -709,6 +709,9 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           const previous = session.connectionRetry?.turnStartedAt === session.turnStartedAt ? session.connectionRetry.attempt : 0;
           if (Number(retry[1]) > previous) config.io.save(replaceSession(config.io.load(), { ...session,
             connectionRetry: { turnStartedAt: session.turnStartedAt, attempt: Number(retry[1]) } }));
+          // SocketDisconnectSentinel's bounded-wait signal, behind this harness adapter.
+          // Native backoff owns recovery; a second Enter/nudge could repeat effects.
+          return { phase: 'launched' as const, evidence: session.identity, detail: 'connection recovery waiting' };
         }
         // Keep the original deadline and delivery. This is an uncertain terminal failure,
         // never a successful close or permission to replay a tool, send or owner input.
