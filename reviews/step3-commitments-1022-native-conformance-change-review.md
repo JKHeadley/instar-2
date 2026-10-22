@@ -21,6 +21,8 @@ Convergence: none
 Decision: certify-current-native | reuse the existing native contract and digest functions on the declared runtime, then replay publication; the stale certificate is not accepted as current evidence | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step3-commitments-1022-repair-PROGRESS.md
 Deferral: generated/register.json:1 | not-a-deferral=deterministically replayed register descriptions introduce no new deferred work
 
+Register publication: replayed from certificate commit 832c50e153fb90ac755e9bd46e8ab6867c2dbb3f, generation sha256:285f816f3e4fabcd39deae2440c95628cdd6aaa979ef249704c31bf033f629ff; register wiring reports issues: [] with its static-analysis residual disclosed. Existing owner pins are current.
+
 Scope: The accepted retry repair remains intact. The distinct Five-owned dated-reminder REGISTER/READ/CLOSE contract and holder activation remain disclosed D18 residue; neither is claimed or merged into the wake, and a date grants no send authority. No model-facing change is introduced in this repair.
 
 simplestRobustRoute: Run the existing native contract, bind its successful evidence to the measured current runtime and complete composition, then use existing register publication. This is that route, with no new test framework or capability restriction. Start guards are successful contract and exact runtime/closure; end guards are matching adapter/architecture conformance and cheap gates; the five effect and admission floors remain unchanged. No new live acceptance claim.
