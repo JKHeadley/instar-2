@@ -57,6 +57,7 @@ Prompt finding: f6d7f3274c85 | protocol-literal | Shared semantic instruction is
 Prompt finding: feadb66b8ad1 | protocol-literal | Shared semantic instruction is asserted at its consumers; no captured desk word, update ID or expected answer is a prompt trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "any live authentication secret reaching anyone but the verified operator who sup"
 
 Publication: Shape-only register outputs are regenerated from each final source commit. No runtime authority or conformance assertion changes. The new wording stays within the existing fixed-context floor and reply-review reserve; historical prompt comparison tests translate only the declared memory instruction change and retain original captured bytes.
+Publication coverage: This record includes register publication d2856b01 and the final topic-awareness historical-packet comparison. That comparison restores only the reviewed conflict instruction from its immutable capture; its original full-packet digest stays fixed. Register inputs remain unchanged by this test-only follow-up.
 
 ## Closing block
 
