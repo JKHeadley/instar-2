@@ -98,7 +98,9 @@ it('keeps genuine unfinished work and external dependencies open (constructed ne
 it('binds the new instruction to both complete recorded provider envelopes', () => {
   for (const sample of capture.cases) {
     expect(sample.after.question).toBe(OBLIGATION_WORK_QUESTION_TOOLS);
-    expect(sample.after.systemSha256).toBe(createHash('sha256').update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).digest('hex'));
+    // Preserve the recorded prompt digest; this capture predates brief-rationale wording.
+    expect(sample.after.systemSha256).toBe(createHash('sha256').update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT
+      .replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.')).digest('hex'));
     const input = JSON.parse(sample.before.input);
     input.messages[0].content = OBLIGATION_WORK_QUESTION_TOOLS;
     expect(createHash('sha256').update(JSON.stringify(input)).digest('hex')).toBe(sample.after.inputSha256);

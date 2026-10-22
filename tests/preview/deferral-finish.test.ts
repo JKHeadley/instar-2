@@ -32,7 +32,9 @@ it('preserves recorded provider provenance and both merged work instructions', (
     expect(OBLIGATION_WORK_QUESTION.endsWith(suffix)).toBe(true);
     const added = OBLIGATION_WORK_QUESTION.slice(prefix.length, -suffix.length);
     expect(createHash('sha256').update(added).digest('hex')).toBe('ec59dcb92ff6ed9e57e0ce21fac10dc7b78bec02f481c48306d03707001ba0b7');
-    expect(sample.after.systemSha256).toBe(createHash('sha256').update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).digest('hex'));
+    // Preserve the recorded prompt digest; this capture predates brief-rationale wording.
+    expect(sample.after.systemSha256).toBe(createHash('sha256').update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT
+      .replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.')).digest('hex'));
     const envelope = JSON.parse(sample.after.input);
     expect(envelope.messages[0].content).toBe(sample.after.question);
     const packet = JSON.parse(envelope.messages.find((item: { role: string }) => item.role === 'context').content).packet;

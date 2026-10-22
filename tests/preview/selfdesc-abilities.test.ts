@@ -119,8 +119,9 @@ it('binds the repaired answer and its explicitly reviewed identity and standing 
   expect(capture.question).toBe('What can you do for me here?');
   expect(renderedNote(capture.note)).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
   expect(currentInstructions(capture.instructions).replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
-  // Preserve historical prompt bytes; requested-step guidance is covered by act-first.test.ts.
-  expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, ''));
+  // Preserve historical prompt bytes; current guidance is covered by act-first and prompt-rationale tests.
+  expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '')
+    .replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.'));
   const reading = readAnswer(capture.raw, { wrapped: 'accept' });
   expect(reading.ok).toBe(true);
   if (!reading.ok) throw Error(reading.defect);
@@ -229,7 +230,8 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
     .replace('Respond with one flat JSON object', 'First complete needed reads through the actual harness tool interface; '
       + 'the JSON format below applies only to your final answer. Respond with one flat JSON object')
     .replace(oldGrant, standingTrust)
-    .replace("You are Instar, speaking", "You are an Instar 2.0 agent, speaking"))
+    .replace("You are Instar, speaking", "You are an Instar 2.0 agent, speaking")
+    .replace('do all your reasoning there.', 'give a brief decision rationale supported by the relevant evidence.'))
     .toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(current.runs.map(run => run.kind)).toEqual(['worst', 'chain']);
   for (const run of current.runs) {
@@ -302,8 +304,9 @@ it('replays five recorded answers with the rendered paragraph verbatim and diges
   expect(capture.question).toBe('What can you do for me here?');
   // Preserve the prior instruction as historical evidence; only its self-description clause was superseded.
   expect(currentInstructions(capture.instructions).replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
-  // Preserve historical prompt bytes; requested-step guidance is covered by act-first.test.ts.
-  expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, ''));
+  // Preserve historical prompt bytes; current guidance is covered by act-first and prompt-rationale tests.
+  expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '')
+    .replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.'));
   expect(capture.runs).toHaveLength(5);
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits);
   const sentence = capabilitySentence(capture.limits);
@@ -342,8 +345,9 @@ it('binds every unchanged-question capability replay and its PASS or FAIL judgme
   expect(capture.recordedUserMessage).toEqual({ role: 'user', content: capture.question });
   expect(capture.recordedInputSha256).toBe('1f88dc781981771069954ea14617717942b77476acce76805d300344565a4b1a');
   expect(currentInstructions(capture.instructions).replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
-  // Preserve historical prompt bytes; requested-step guidance is covered by act-first.test.ts.
-  expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, ''));
+  // Preserve historical prompt bytes; current guidance is covered by act-first and prompt-rationale tests.
+  expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '')
+    .replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.'));
   expect(capture.runs).toHaveLength(10);
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits);
   const sentence = capabilitySentence(capture.limits);

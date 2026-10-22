@@ -670,8 +670,15 @@ from the successor root. Changing or deleting the activation file closes the rou
 
 ### What the model receives each turn
 
-The system prompt is `SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT` (framing `preview-conversation-v1`,
-1886 bytes). It is separately bound from the v2 one-shot framing, whose reconstruction is unchanged.
+The system prompt is `SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT` (framing `preview-conversation-v1`).
+It is separately bound from the v2 one-shot framing, whose reconstruction is unchanged.
+Its flat JSON response begins with `reasoning`, a brief decision rationale supported by relevant
+evidence. This requests an explanation of the decision, not the model's full internal reasoning.
+The subscription conversation, tools and native prompts and both Codex prompts share this wording;
+the JSON field and readers remain the same. A wording change moves the full invocation-policy
+digest and needs a conversation policy-successor activation through `renew-activation.mjs
+--policy-successor`. Existing tools policy classes still apply only when their unchanged checkpoint
+pins match; a grant for one exact digest does not authorize a new one.
 Stdin is the exact canonical Seven envelope: the operator's current message as `role:user`, and as
 `role:context` the canonical `{bindings, packet}`. The packet (`successive-context-v1`) holds:
 

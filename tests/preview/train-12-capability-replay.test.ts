@@ -10,10 +10,11 @@ import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS } from '../../src/ass
 import { CLAIM_EVIDENCE_GUIDANCE } from './answer-provenance.js';
 import { readAnswer } from './answer-reading.js';
 
-// These captures predate requested-work guidance and removal of the one-machine send restriction.
+// These captures predate requested-work/brief-rationale guidance and removal of the one-machine send restriction.
 // Reconstruct their historical prompt without changing the captured evidence or current abilities.
 const historicalSendRestriction = 'Irreversible outward sends remain outside the one-machine closed set. ';
 const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '')
+  .replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.')
   .replace('The effect doorway reports', `${historicalSendRestriction}The effect doorway reports`);
 
 const evidence = JSON.parse(readFileSync(new URL('./fixtures/train-12-capability-2026-10-12.json', import.meta.url), 'utf8'));
