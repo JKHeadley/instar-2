@@ -15,7 +15,7 @@ Undo and recovery: Revert this repair's test and generated-reference commits tog
 Multi-machine posture: Test-only and machine-local execution, deliberately; no shared state or ownership protocol changes. The launcher resource fixture requires the Studio's shell/resource behavior; WSL /bin/sh rejects ulimit -u before the tested doorway assertion.
 Layer below: Inspected production-codex-provider.ts, memory-answer-guidance.ts and the historical provider at a1381600, the recorded self-host-codex-2026-10-21.json update 6235249, journal-agent.mjs observeDoorway(doorway.id), successive-fixture.ts registered adapter, and production-boot-io.mjs plus limit-exec.sh. Tests run against real provider owners and captured transport bytes; host-specific failures are reported separately, never a pass.
 Bug class: integration
-Bug evidence: reproducer=tests/preview/self-host-doorway.test.ts,tests/preview/journal-agent-resources.test.ts
+Bug evidence: reproducer=tests/preview/self-host-doorway.test.ts
 Hook bypass: none
 Convergence: none
 Prompt review: No model-facing prompt, parser, acceptance or refusal logic changes. Current guidance is asserted present in the current policy and reversed only to verify the historical fixture hash. Existing captured-shape replays remain intact.
