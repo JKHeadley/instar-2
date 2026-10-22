@@ -28,7 +28,7 @@ Prompt finding: 4106b49fff07 | quoted-evidence | Unchanged pre-existing prompt t
 Prompt finding: 849db3a6296a | quoted-evidence | Unchanged pre-existing prompt text; these tests pin the delivered briefing and do not grant the reaper authority from words — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
 Prompt finding: e8708c7fea24 | quoted-evidence | Unchanged pre-existing prompt text; these tests pin the delivered briefing and do not grant the reaper authority from words — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 
-Subject (10 paths): README.md, src/assembly/conversation-topics.ts, src/assembly/production-conversation-session.ts, tests/assembly/production-conversation-session.test.ts, tests/preview/credential-reminders.ts, tests/preview/journal-agent.mjs, tests/preview/journal-topic-sessions.test.ts, tests/preview/journal.ts, tests/preview/reap-notices.test.ts, tests/preview/reap-notices.ts
+Subject (17 paths): README.md, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, src/assembly/conversation-topics.ts, src/assembly/production-conversation-session.ts, tests/assembly/production-conversation-session.test.ts, tests/preview/credential-reminders.ts, tests/preview/journal-agent.mjs, tests/preview/journal-topic-sessions.test.ts, tests/preview/journal.ts, tests/preview/reap-notices.test.ts, tests/preview/reap-notices.ts
 
 ## Closing block
 
