@@ -14,8 +14,8 @@ Side effects: Split runs assign self-host-doorway.test.ts to the macOS half; uns
 Undo and recovery: Revert this commit to restore the old inventory and its demonstrated missing-entry failure; no product state recovery is needed.
 Multi-machine posture: Shared test inventory routes a test reaching sandbox-exec to the macOS runner; no product state or replication changes.
 Layer below: tests/platform/macos-only.mjs follows relative imports to tests/preview/self-host-harness.mjs, which spawns /usr/bin/sandbox-exec. vitest.config.ts consumes the inventory for both split modes. The existing test proves missing and stale drift and portable-file exclusion.
-Bug class: integration
-Bug evidence: reproducer=tests/platform/macos-only.test.ts
+Bug class: none
+Bug evidence: Test inventory metadata maintenance only; the unchanged tests/platform/macos-only.test.ts reproduced the missing-entry failure before the inventory addition and passes all four cases afterward. No product integration or runtime behavior changes; the red/green results are recorded in the repair progress report.
 Hook bypass: none
 Convergence: none
 Decision: train119-macos-inventory | Add the missing sorted inventory entry using the existing detector and split consumer; retain the test and all checks. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-119-p2-repair-PROGRESS.md
