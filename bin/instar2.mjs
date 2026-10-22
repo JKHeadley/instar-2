@@ -21,6 +21,7 @@ if (command === 'update') {
   process.stderr.write('Usage: instar2 <setup|run> [installation-directory] | update [installation-directory] [--release <tag>]\n');
   process.exitCode = 1;
 } else if (command === 'run') {
+  register('../scripts/slice-ts-loader.mjs', import.meta.url);
   const { runProduct, RunRefused } = await import('../scripts/product-run.mjs');
   try { await runProduct(root); }
   catch (error) {
