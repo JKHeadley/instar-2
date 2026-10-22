@@ -1,0 +1,64 @@
+{
+  "source": "Native Claude Code 2.1.303, isolated PTY + loopback scripted provider, 2026-10-22; captured PreToolUse -> PermissionRequest -> PostToolUse. No real model/account or operator chat. Synthetic Write target; native hook envelopes verbatim.",
+  "events": [
+    {
+      "session_id": "aa1e690e-e0f5-47cc-81d1-27e8f72f26dc",
+      "transcript_path": "/Volumes/instar-test-ram/tmp/sentinel-prompt-1022/sentinel-permission-native-yuSwHQ/config/projects/-Volumes-instar-test-ram-tmp-sentinel-prompt-1022-sentinel-permission-native-yuSwHQ-work/aa1e690e-e0f5-47cc-81d1-27e8f72f26dc.jsonl",
+      "cwd": "/Volumes/instar-test-ram/tmp/sentinel-prompt-1022/sentinel-permission-native-yuSwHQ/work",
+      "prompt_id": "a5736688-e9a8-42f7-a880-d2f4f7a56dd4",
+      "permission_mode": "default",
+      "effort": {
+        "level": "medium"
+      },
+      "hook_event_name": "PreToolUse",
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "/Volumes/instar-test-ram/tmp/sentinel-prompt-1022/sentinel-permission-native-yuSwHQ/work/answer.txt",
+        "content": "permission-proof\n"
+      },
+      "tool_use_id": "toolu_permission_probe"
+    },
+    {
+      "session_id": "aa1e690e-e0f5-47cc-81d1-27e8f72f26dc",
+      "transcript_path": "/Volumes/instar-test-ram/tmp/sentinel-prompt-1022/sentinel-permission-native-yuSwHQ/config/projects/-Volumes-instar-test-ram-tmp-sentinel-prompt-1022-sentinel-permission-native-yuSwHQ-work/aa1e690e-e0f5-47cc-81d1-27e8f72f26dc.jsonl",
+      "cwd": "/Volumes/instar-test-ram/tmp/sentinel-prompt-1022/sentinel-permission-native-yuSwHQ/work",
+      "prompt_id": "a5736688-e9a8-42f7-a880-d2f4f7a56dd4",
+      "permission_mode": "default",
+      "effort": {
+        "level": "medium"
+      },
+      "hook_event_name": "PermissionRequest",
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "/Volumes/instar-test-ram/tmp/sentinel-prompt-1022/sentinel-permission-native-yuSwHQ/work/answer.txt",
+        "content": "permission-proof\n"
+      }
+    },
+    {
+      "session_id": "aa1e690e-e0f5-47cc-81d1-27e8f72f26dc",
+      "transcript_path": "/Volumes/instar-test-ram/tmp/sentinel-prompt-1022/sentinel-permission-native-yuSwHQ/config/projects/-Volumes-instar-test-ram-tmp-sentinel-prompt-1022-sentinel-permission-native-yuSwHQ-work/aa1e690e-e0f5-47cc-81d1-27e8f72f26dc.jsonl",
+      "cwd": "/Volumes/instar-test-ram/tmp/sentinel-prompt-1022/sentinel-permission-native-yuSwHQ/work",
+      "prompt_id": "a5736688-e9a8-42f7-a880-d2f4f7a56dd4",
+      "permission_mode": "default",
+      "effort": {
+        "level": "medium"
+      },
+      "hook_event_name": "PostToolUse",
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "/Volumes/instar-test-ram/tmp/sentinel-prompt-1022/sentinel-permission-native-yuSwHQ/work/answer.txt",
+        "content": "permission-proof\n"
+      },
+      "tool_response": {
+        "type": "create",
+        "filePath": "/Volumes/instar-test-ram/tmp/sentinel-prompt-1022/sentinel-permission-native-yuSwHQ/work/answer.txt",
+        "content": "permission-proof\n",
+        "structuredPatch": [],
+        "originalFile": null,
+        "userModified": false
+      },
+      "tool_use_id": "toolu_permission_probe",
+      "duration_ms": 16
+    }
+  ]
+}

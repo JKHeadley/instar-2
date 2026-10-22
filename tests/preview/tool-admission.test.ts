@@ -297,7 +297,8 @@ it('strips the harness messaging socket and token from every admitted shell comm
   expect(unstripped.stdout.trim()).toBe('2');
   // A file tool is admitted unchanged: no rewritten input.
   const read = hook(state, j('Read', { file_path: join(state, '..', 'ws', 'in.txt') }));
-  expect(read).toMatchObject({ status: 0, decision: 'allow', stdout: '' });
+  expect(read).toMatchObject({ status: 0, decision: 'allow' });
+  expect(JSON.parse(read.stdout).hookSpecificOutput).not.toHaveProperty('updatedInput');
 });
 
 it('records each call and its result; a result with no admitted call before it makes the trace inconsistent', () => {
@@ -722,4 +723,19 @@ it('replays the shell-network live runs: their shell calls reach the recorded ad
     }
     if (name === 'shellnet-reads') expect(discovered.size).toBe(1);
   }
+});
+
+it('answers each admitted recorded call with an explicit one-call allow, never a standing grant', () => {
+  const { state, ws } = turn();
+  const rows = readFileSync(join(SPIKE, 'b1-hook', 'admission.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  const original = rows.find(row => row.tool === 'Read' && row.decision === 'allow');
+  expect(original).toBeDefined();
+  const input = { ...original.input, file_path: join(ws, 'in.txt') };
+  const answer = hook(state, j('Read', input));
+  expect(answer.decision).toBe('allow');
+  expect(JSON.parse(answer.stdout)).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse',
+    permissionDecision: 'allow', permissionDecisionReason: 'ordinary file read' } });
+  const denied = hook(state, j('Write', { ...input, file_path: join(ws, '..', 'outside', 'recorded.txt') }));
+  expect(denied.decision).toBe('deny');
+  expect(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecision).toBe('deny');
 });

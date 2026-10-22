@@ -434,7 +434,7 @@ export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: strin
     && (within(turn.mcp.config, turn.stateDirectory) || turn.deniedRoots.some(root => within(turn.mcp!.config, root)))
     && turn.mcp.servers.length > 0 && turn.mcp.servers.every(name => /^[A-Za-z0-9_-]{1,64}$/u.test(name))),
   'tool turn: MCP configuration lies in the admission state or a denied root, with plain server names');
-  const hook = (mode: 'pre' | 'post' | 'child-start' | 'child-stop') => [{ matcher: '*', hooks: [{ type: 'command',
+  const hook = (mode: 'pre' | 'post' | 'permission' | 'child-start' | 'child-stop') => [{ matcher: '*', hooks: [{ type: 'command',
     command: `${turn.hook.node} ${turn.hook.script} ${mode} ${turn.stateDirectory}` }] }];
   return JSON.stringify({
     disableAllHooks: false,
@@ -445,7 +445,7 @@ export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: strin
       filesystem: { allowWrite: [turn.scratch], denyWrite: [...subscriptionToolDefaultWrites(home)],
         denyRead: ['/'], allowRead: [turn.scratch, ...SUBSCRIPTION_TOOL_RUNTIME_READS, ...SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS, ...egressReads] } },
     permissions: { allow: [...SUBSCRIPTION_TOOL_NAMES, ...(turn.mcp?.servers ?? []).map(name => `mcp__${name}`)] },
-    hooks: { PreToolUse: hook('pre'), PostToolUse: hook('post'), SubagentStart: hook('child-start'), SubagentStop: hook('child-stop') },
+    hooks: { PreToolUse: hook('pre'), PermissionRequest: hook('permission'), PostToolUse: hook('post'), SubagentStart: hook('child-start'), SubagentStop: hook('child-stop') },
   });
 }
 /** Extended thinking off for every subscription call. Claude Code 2.1.280 maps

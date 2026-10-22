@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The mandatory hook of a tool turn or a delegated session. argv: <pre|post|child-start|child-stop> <stateDirectory>. The
+// The mandatory hook of a tool turn or a delegated session. argv: <pre|permission|post|child-start|child-stop> <stateDirectory>. The
 // state directory (outside the workspace, never readable or writable by a tool) holds the turn's config (workspace, call
 // cap, subagent budget, MCP reads, the installation's closed operation set, the effect policy, and the host checkpoint's
 // address when the route has one), the per-step call and subagent slots and the admission record.
@@ -17,16 +17,24 @@ import { lookup } from 'node:dns/promises';
 import { connect, isIP } from 'node:net';
 import { join } from 'node:path';
 import { admitToolCall, CODEX_NETWORK_READ_TOOLS, DELEGATION_TOOLS, DELEGATION_WAIT_TOOLS, HELD_CHECK_MAX_BYTES, hookOutput, outwardText, OUTWARD_TOOLS,
-  RECORD_EXCERPT_CHARS, SUBAGENT_TOOLS, webReadHost } from './tool-admission.mjs';
+  RECORD_EXCERPT_CHARS, SUBAGENT_TOOLS, webReadHost, permissionInputDigest, permissionPromptCandidate } from './tool-admission.mjs';
 
 const NETWORK_TOOLS = Object.freeze(['WebFetch', 'WebSearch', ...CODEX_NETWORK_READ_TOOLS]);
 const [mode, stateDirectory] = process.argv.slice(2);
 const childRow = mode === 'child-start' || mode === 'child-stop';
-const refuse = error => { process.stderr.write(`tool admission refused: ${error?.message ?? error}`); process.exit(childRow ? 0 : 2); };
+const permissionMode = mode === 'permission';
+const refuse = error => {
+  if (permissionMode) {
+    process.stdout.write(JSON.stringify(hookOutput({ decision: 'deny',
+      reason: 'This exact call needs current tool admission; permission recovery could not verify it and approved nothing.' }, 'PermissionRequest')));
+    process.exit(0);
+  }
+  process.stderr.write(`tool admission refused: ${error?.message ?? error}`); process.exit(childRow ? 0 : 2);
+};
 process.on('uncaughtException', refuse); process.on('unhandledRejection', refuse);
 let raw = '';
 for await (const chunk of process.stdin) raw += chunk;
-const call = JSON.parse(raw);
+let call = JSON.parse(raw);
 const config = JSON.parse(readFileSync(join(stateDirectory, 'config.json'), 'utf8'));
 const record = (row, durable = false) => {
   const path = join(stateDirectory, 'admission.jsonl');
@@ -79,7 +87,24 @@ if (mode === 'post') {
   }
   process.exit(0);
 }
-if (mode !== 'pre') throw Error('unknown hook mode');
+let permissionCandidate = null;
+if (permissionMode) {
+  if (typeof config.gate !== 'string') throw Error('permission recovery requires the live admission checkpoint');
+  const rows = readFileSync(join(stateDirectory, 'admission.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  permissionCandidate = permissionPromptCandidate(call, rows);
+  if (!permissionCandidate) throw Error('no unique current ordinary call');
+  // One attempt per exact call, durable before returning any approval. A crash or a
+  // repeated prompt remains a refusal; neither can create a second authorization.
+  const directory = join(stateDirectory, 'permission-responses');
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const fd = openSync(join(directory, permissionInputDigest(permissionCandidate.id)), 'wx', 0o600);
+  try { writeSync(fd, 'claimed\n'); fsyncSync(fd); } finally { closeSync(fd); }
+  for (const path of [directory, stateDirectory]) {
+    const dir = openSync(path, 'r'); try { fsyncSync(dir); } finally { closeSync(dir); }
+  }
+  call = { ...call, tool_use_id: permissionCandidate.id, tool_input: permissionCandidate.input };
+}
+if (mode !== 'pre' && !permissionMode) throw Error('unknown hook mode');
 // Hook processes overlap when the harness runs calls in parallel, so a count is not a read-modify-write:
 // each call takes the lowest free slot by exclusive create, which the filesystem makes atomic. No more
 // than `max` calls can ever hold a slot; a call that finds every slot taken is call max + 1. (On a checkpointed route the
@@ -94,7 +119,7 @@ const takeSlot = (name, max) => {
   return max + 1;
 };
 const bound = value => Number.isSafeInteger(value) && value >= 0 ? value : 0;
-const n = takeSlot('slots', bound(config.maxCalls));
+const n = permissionCandidate ? permissionCandidate.n : takeSlot('slots', bound(config.maxCalls));
 // A subagent slot is spent only by a call that would otherwise be admitted, so a refused shape never uses up the budget.
 // A subagent's own subagent takes a slot of the same budget (Rule 114: the turn's one reservation covers the whole tree).
 const child = SUBAGENT_TOOLS.includes(call.tool_name) && n <= bound(config.maxCalls)
@@ -137,6 +162,9 @@ if (target.host !== null && !isIP(target.host)) {
 // `exists` does not follow symlinks, so a dangling link is present and then refused as unresolvable (resolvedPath).
 const exists = path => { try { lstatSync(path); return true; } catch { return false; } };
 let decision = heldDecision ?? admitToolCall(call, config, n, { exists, realpath: realpathSync, addresses: () => addresses }, child, Date.now());
+if (permissionMode && (decision.decision !== 'allow' || decision.kind !== undefined || decision.doorway !== undefined
+  || permissionInputDigest(decision.updatedInput ?? call.tool_input) !== permissionCandidate.effective))
+  throw Error('current scope or exact effective input differs');
 if (heldDecision !== null) { /* refused before anything else was decided or done for it */ }
 else if (decision.decision === 'gate') {
   const kind = decision.kind;
@@ -151,10 +179,11 @@ else if (decision.decision === 'gate') {
   catch (error) { live = { decision: 'deny', reason: `admission checkpoint unreachable: ${error?.message ?? error}` }; }
   if (live.decision !== 'allow') decision = { decision: 'deny', reason: live.reason, kind: 'stop' };
 }
-record({ phase: 'pre', id: call.tool_use_id, n, tool: call.tool_name, input: heldDecision === null ? clip(call.tool_input) : JSON.stringify('[withheld: an outward request the held-secret check refused]'), decision: decision.decision,
+record({ phase: permissionMode ? 'permission-response' : 'pre', ...(decision.decision === 'allow' && typeof call.session_id === 'string' && typeof call.prompt_id === 'string'
+  ? { permission: { session: call.session_id, prompt: call.prompt_id, original: permissionInputDigest(call.tool_input), effective: permissionInputDigest(decision.updatedInput ?? call.tool_input) } } : {}), id: call.tool_use_id, n, tool: call.tool_name, input: heldDecision === null ? clip(call.tool_input) : JSON.stringify('[withheld: an outward request the held-secret check refused]'), decision: decision.decision,
   reason: decision.reason, ...(decision.kind ? { kind: decision.kind } : {}), ...(decision.kind === 'subagent' ? { child } : {}),
   ...(typeof call.agent_id === 'string' && call.agent_id ? { agent: call.agent_id } : {}), ...(decision.doorway ? { doorway: decision.doorway } : {}) },
-  decision.doorway !== undefined);
-const output = hookOutput(decision);
+  decision.decision === 'allow' || decision.doorway !== undefined);
+const output = hookOutput(decision, permissionMode ? 'PermissionRequest' : 'PreToolUse');
 if (output) process.stdout.write(JSON.stringify(output));
 process.exit(0);
