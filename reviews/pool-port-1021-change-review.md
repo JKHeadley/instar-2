@@ -1,6 +1,6 @@
 # Change review — live quota and pre-wall login selection
 
-Subject base: 588332d9
+Subject base: 588332d9d0839cd504bee2819e297cd6222a2ef9
 Review state: open
 Reviewed content: none
 Outcome: Read each admitted Claude login's live five-hour and weekly quota, then move a continuing conversation to a cooler admitted login at a safe turn boundary before the configured wall, preserving the selected model.
@@ -23,6 +23,7 @@ Decision: pool-port-1021-read | Port the fixed read-only endpoint and snapshot m
 Decision: pool-port-1021-selection | Feed the existing durable pool and serialized topic handoff; port the 80% ceiling, cooler-target and all-hot brakes and reset scoring, keeping model/authority/spend unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/pool-port-1021-PROGRESS.md
 Decision: pool-port-1021-custody | Use each member's inference custody or explicit quotaLogin reference in the same existing account-bound custody format; preserve unknown on telemetry authorization failure and retain the fresh configured legacy snapshot route. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/pool-port-1021-PROGRESS.md
 Decision: pool-port-1021-proof | Failing recorded-shape boundary first; fake-clock slow read and real disposable transcript/journal tests; live read only on the permitted test account, no borrowing excluded accounts to complete the copy proof. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/pool-port-1021-PROGRESS.md
+Skip: tests/preview/pool-quota-live.test.ts:23 | scope=Real two-login copy proof requires explicit allocated test credentials and a fresh isolated root; executed with INSTAR_POOL_COPY_PROOF on the Studio and passed. Offline runs never open live custody.
 
 simplestRobustRoute: This is the simplest route through existing custody, pool and topic handoff. A small adapter supplies the missing live observation. The 1.x headroom/all-hot brakes prevent swaps into nearly full accounts and premature loss of reachability; existing reset holds and attempt caps prevent oscillation without another ledger. Start guards are current account/grant/owner and fresh quota; end guards are correlated turn end, exact retirement and retained native/journal continuation. Stop, shared spending and original intake/send identity remain enforced. The two-login live copy completed both turns and closed both workers; serving deployment remains desk-owned.
 80/20: Targeted collector/pool/installer/topic/journal/launcher tests, recorded shapes, architecture and pinned READY checks; no full suite or Studio load test. Live acceptance is reported separately from disposable tests.
