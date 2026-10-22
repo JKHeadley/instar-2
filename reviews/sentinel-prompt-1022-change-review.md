@@ -4,7 +4,7 @@ Subject base: 4a2635bc2064d5eaec5e451360634eeabecaad9d
 Review state: open
 Reviewed content: none
 Outcome: An admitted tool call gets an explicit one-call answer. Native permission requests consume one exact unfinished ordinary admission after current scope and stop revalidation; unresolved terminal menus become bounded visible waits without keystrokes or work termination.
-Affected rules: 1, 4, 10, 26, 29, 30, 32, 34, 36, 42, 49, 52, 55, 57, 59, 60, 63, 64, 70, 74, 76, 86, 87, 95, 98, 101, 103, 104, 111, 113, 116
+Affected rules: 1, 4, 10, 26, 29, 30, 32, 34, 36, 42, 49, 52, 55, 57, 59, 60, 63, 64, 70, 74, 76, 86, 87, 95, 98, 101, 103, 104, 105, 111, 113, 115, 116
 Affected floors: secrets — hashes and fixed notice text, no terminal disclosure, existing held-secret check; spend cap — existing slot reused and live checkpoint consulted, no model calls added; stop — current checkpoint and worker checks; no duplicate sends — effect doorway unchanged, no terminal reinjection, atomic durable one-use response; durable intake — original input and deadline retained
 Operator questions: none
 Suggested tier: significant
@@ -26,6 +26,9 @@ Prompt finding: 45e37ea2e9e9 | protocol-literal | Unchanged existing harness pro
 Prompt finding: 9781075d458e | protocol-literal | Unchanged existing harness protocol text; only permission hook wiring changes in this source — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "the effect doorway reports any refusal and its reason; say so plainly."
 Prompt finding: b1bb3946362d | protocol-literal | Unchanged existing harness protocol text; only permission hook wiring changes in this source — fixture-phrase src/assembly/production-provider.ts <- tests/preview/act-first.test.ts: "you are an instar 2.0 agent,"
 
+
+Publication and native certificate: On the Studio, the existing desk merge-live-conformance.mjs --renew procedure ran the real native contract before and after renewal: 9/10 before (only stale certificate), 10/10 after. Its automatic declaration now binds sha256:1c0b6d67da759de8a8569ceffd9535a6aaea7ba80ffc78232df69d6e9dde05ee. Evidence is under /Users/dabombstudio/.instar/agents/echo/.instar/lanes/sentinel-prompt-1022-native-renewal/. No blind pin replacement or supported-runtime change. Register replay publication grants no runtime authority.
+Decision: native-renewal | Because this builder is on the declared Studio runtime, use the desk’s existing before/after contract procedure to renew actual evidence and satisfy the final lint gate; do not leave or conceal stale evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sentinel-prompt-1022-PROGRESS.md
 
 ## Closing block
 
