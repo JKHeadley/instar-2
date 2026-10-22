@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { memoryReport } from './memory-export.js';
 import { readAnswer } from './answer-reading.js';
-import { MEMORY_DISAMBIGUATION, MEMORY_UPDATE_DECISION } from '../../src/assembly/memory-answer-guidance.js';
+import { MEMORY_DISAMBIGUATION, MEMORY_SUPERSESSION, MEMORY_UPDATE_DECISION } from '../../src/assembly/memory-answer-guidance.js';
 import { CODEX_CONVERSATION_SYSTEM_PROMPT, CODEX_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-codex-provider.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 
@@ -45,7 +45,7 @@ it('replays the recorded Codex conflict and gives supersession precedence at the
     expect(packet.memoryCandidates).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: capture.turns[0].id, message: JSON.parse(capture.turns[0].raw).message.text })
     ]));
-    expect(packet.memoryDecision).toContain('A later direct statement by the same operator about the same fact supersedes the earlier value');
+    expect(packet.memoryDecision).toContain(MEMORY_SUPERSESSION);
     expect(packet.conflictDecision).toContain('Only genuinely unresolved alternatives');
     expect(packet.conflictDecision).not.toContain('or two active clauses about one subject that disagree');
   } finally { w.journal.close(); }

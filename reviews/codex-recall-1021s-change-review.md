@@ -18,7 +18,7 @@ Bug class: user-facing
 Bug evidence: reproducer=tests/preview/codex-recall.test.ts; live=tests/preview/fixtures/codex-recall-fixed-2026-10-21.json
 Hook bypass: none; core.hooksPath is unset and the shared hooks directory contains sample hooks only.
 Convergence: none
-Prompt review: Shared semantic guidance contains no captured desk words, update IDs or keyword triggers. It puts supersession before conflict detection in system, answer, repair and summary instructions. Existing exact source/quote admission boundaries remain. Historical model bytes stay unchanged; fresh outputs are separately labelled. Seven bounded gpt-6-astra subscription calls on the designated test login exercised updates, post-restart recall, an unrelated fact and a quotation. No Telegram effect was dispatched; desk owns live-surface gate acceptance.
+Prompt review: Shared semantic guidance contains no captured desk words, update IDs or keyword triggers. It puts supersession before conflict detection in system, answer, repair and summary instructions. Existing exact source/quote admission boundaries remain. Historical model bytes stay unchanged; fresh outputs are separately labelled. Two bounded seven-call gpt-6-astra subscription replays (initial wording and compact final wording) on the designated test login exercised updates, post-restart recall, an unrelated fact and a quotation. No Telegram effect was dispatched; desk owns live-surface gate acceptance.
 Prompt finding: 0d4664ea9de7 | protocol-literal | Existing runtime protocol wording asserted at its consumer; no captured fact or expected semantic answer is used as a trigger — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "run without another yes. the operator can tighten or revoke trust through setup-"
 Prompt finding: 14d7eeccc218 | protocol-literal | Existing runtime protocol wording asserted at its consumer; no captured fact or expected semantic answer is used as a trigger — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
 Prompt finding: 4106b49fff07 | protocol-literal | Existing runtime protocol wording asserted at its consumer; no captured fact or expected semantic answer is used as a trigger — fixture-phrase tests/preview/journal.ts <- tests/preview/topic-awareness.test.ts: "you attempted nothing outside this reply, so never call an avenue tried; a missi"
@@ -32,7 +32,31 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing runtime protocol word
 
 Decision: shared-precedence | Use one pure semantic instruction across providers and journal paths; keep the existing update validator and projection. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/codex-recall-1021s-PROGRESS.md
 
-Publication: Regenerated seven shape-only register outputs from source commit 478f73d3a23d611f02db1884139afa894631a52b; generation sha256:f05166c897e7de8f151e5dfd9acd9aad47c63a0872fcc8d7ea04439290d41a2f. No runtime authority or conformance assertion changed.
+Prompt finding: 0abb3dc96311 | protocol-literal | Shared semantic instruction is asserted at its consumers; no captured desk word, update ID or expected answer is a prompt trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "an unresolved date or unrecorded scheduling claim is no admitted reminder."
+
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Shared semantic instruction is asserted at its consumers; no captured desk word, update ID or expected answer is a prompt trigger — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "tools: full claude code set"
+
+Prompt finding: 5b486d8bd247 | protocol-literal | Shared semantic instruction is asserted at its consumers; no captured desk word, update ID or expected answer is a prompt trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "prioritize verdicts; do not repeat rules or context."
+
+Prompt finding: 5fa1a20c4031 | protocol-literal | Shared semantic instruction is asserted at its consumers; no captured desk word, update ID or expected answer is a prompt trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "an illustrative or quoted literal the verified operator explicitly requested or "
+
+Prompt finding: 7c45ffbe90ad | protocol-literal | Shared semantic instruction is asserted at its consumers; no captured desk word, update ID or expected answer is a prompt trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "loops the deferrals, judgments and promises it will track, dated this turn's adm"
+
+Prompt finding: 95e349aaf4ac | protocol-literal | Shared semantic instruction is asserted at its consumers; no captured desk word, update ID or expected answer is a prompt trigger — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "via the doorway's four tests; standing grants need no new approval."
+
+Prompt finding: aef7d91bef51 | protocol-literal | Shared semantic instruction is asserted at its consumers; no captured desk word, update ID or expected answer is a prompt trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "give each listed rule, and no others, one verdict"
+
+Prompt finding: b288d6ef1604 | protocol-literal | Shared semantic instruction is asserted at its consumers; no captured desk word, update ID or expected answer is a prompt trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "keep reasoning under 400 characters and all json under 4000 so every verdict fit"
+
+Prompt finding: d531743e1e12 | protocol-literal | Shared semantic instruction is asserted at its consumers; no captured desk word, update ID or expected answer is a prompt trigger — fixture-phrase src/assembly/memory-answer-guidance.ts <- tests/preview/journal-people.test.ts: "clarify only unresolved alternatives or ambiguous subjects"
+
+Prompt finding: e769ca9dd959 | protocol-literal | Shared semantic instruction is asserted at its consumers; no captured desk word, update ID or expected answer is a prompt trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "pass means no breach; violation means a breach, named in its reason."
+
+Prompt finding: f6d7f3274c85 | protocol-literal | Shared semantic instruction is asserted at its consumers; no captured desk word, update ID or expected answer is a prompt trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "restating a recorded, still-open limit needs no duplicate record. a capability n"
+
+Prompt finding: feadb66b8ad1 | protocol-literal | Shared semantic instruction is asserted at its consumers; no captured desk word, update ID or expected answer is a prompt trigger — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "any live authentication secret reaching anyone but the verified operator who sup"
+
+Publication: Shape-only register outputs are regenerated from each final source commit. No runtime authority or conformance assertion changes. The new wording stays within the existing fixed-context floor and reply-review reserve; historical prompt comparison tests translate only the declared memory instruction change and retain original captured bytes.
 
 ## Closing block
 

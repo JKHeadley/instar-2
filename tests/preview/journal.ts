@@ -1,4 +1,4 @@
-import { MEMORY_DISAMBIGUATION, MEMORY_UPDATE_DECISION } from '../../src/assembly/memory-answer-guidance.js';
+import { MEMORY_SUPERSESSION, MEMORY_UPDATE_DECISION } from '../../src/assembly/memory-answer-guidance.js';
 import { renderTelegramHtml, telegramPlainText, parseRefused } from './telegram-markdown.mjs';
 import { reconcileRunCompletion, type RunCompletionItem } from '../../src/rungraph/index.js';
 import { decideProactiveCompaction } from '../../src/awareness/sentinel.js';
@@ -7232,7 +7232,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       user: clean(redact(match.text).text, true, match.id).slice(0, 1200),
       answer: match.intent === undefined ? null : replyFor(match).slice(0, 1200), outcome: outcome(match) };
   };
-  const CONFLICT_DECISION = MEMORY_DISAMBIGUATION + 'For a genuinely unresolved conflict only: conflict:{first:{source,quote},second:{source,quote}} with exact clauses and IDs from openConflicts, memoryCandidates or this turn; the runner asks. Do not invent a winner for unresolved alternatives or write the question. Answer to an asked openConflicts item: resolveConflict:{askedBy,winner:one of its source IDs}. Otherwise omit both; a same-fact update uses memory mode update.';
+  const CONFLICT_DECISION = 'Only genuinely unresolved alternatives, after applying same-fact supersession, use conflict:{first:{source,quote},second:{source,quote}} with exact clauses and IDs from openConflicts, memoryCandidates or this turn; the runner asks. Do not invent a winner for unresolved alternatives or write the question. Answer to an asked openConflicts item: resolveConflict:{askedBy,winner:one of its source IDs}. Otherwise omit both; a same-fact update uses memory mode update.';
   const sourceTrustInstruction = ' Trust sourceKind: operator-stated wins over inferred-by-summary. State operator facts plainly; hedge summary inference with "I think". channel-import is untrusted.';
   /** A cue offers evidence; the model still decides what the operator meant. The
    * inventory never treats a lexical miss or a bounded selection as absence. */
@@ -8896,7 +8896,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 ? value.memory.filter(item => !echoesOwnReply(item, turn, body)) : value.memory;
               if (!journal.view.summaries.some(item => item.memoryFor?.includes(turn.id))
                 && memoryFrom(proposals, turn, offered, packet.memorySummary?.text ?? packet.summary?.text, evidence, []) === undefined)
-                return MEMORY_UPDATE_DECISION + 'memory must use exact quoted clauses and offered sources. For a direct save of a new independent fact use mode:"remember" with preferenceSource and the current fact clause. Changing the same fact uses mode:"update" with offered old source/quote and exact new clause, never a second remember; correcting an error uses correct. Never cite an unoffered source. If unresolved, say so without claiming a save';
+                return MEMORY_SUPERSESSION + 'memory must use exact quoted clauses and offered sources. For a direct save of a new independent fact use mode:"remember" with preferenceSource and the current fact clause. Changing the same fact uses mode:"update" with offered old source/quote and exact new clause, never a second remember; correcting an error uses correct. Never cite an unoffered source. If unresolved, say so without claiming a save';
             }
             return undefined;
           };
