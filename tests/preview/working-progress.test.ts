@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type PreviewPorts } from './journal-test-worker.js';
 // @ts-expect-error Host-only JavaScript reader.
 import { admissionActivity, createWorkingActivities } from './working-activity.mjs';
-import { WORKING_LIVENESS, currentWorkingActivity, workingProgressDue, type WorkingActivity } from './working-progress.js';
+import { WORKING_RATE_LIMIT, WORKING_LIVENESS, currentWorkingActivity, workingProgressDue, type WorkingActivity } from './working-progress.js';
 
 const roots: string[] = [];
 afterEach(() => { vi.useRealTimers(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -380,5 +380,84 @@ it('6234450: the recorded 572-second foreground tool gets liveness during work, 
     await vi.advanceTimersByTimeAsync(1200000);
     expect(f.progress()).toHaveLength(1);
     expect(f.sent.at(-1)?.text).toContain('572 seconds');
+  } finally { f.release('Done.'); await f.drain; f.journal.close(); }
+});
+
+it('tells a waiting user plainly before the bounded retry, once even across unknown delivery and restart', async () => {
+  const f = fixture({ receipt: null, activityPort: () => ({ step: 'rate:captured-episode', text: 'bounded recovery', wait: 'rate-limit', observedAt: Date.now() }) });
+  try {
+    await f.enteredPromise; await vi.advanceTimersByTimeAsync(25_000);
+    expect(f.progress().map(row => row.text)).toEqual([WORKING_RATE_LIMIT]);
+    await vi.advanceTimersByTimeAsync(300_000); expect(f.progress()).toHaveLength(1);
+    f.release('Done.'); await f.drain;
+    f.journal.compact(); f.journal.close();
+    const reopened = openPreviewJournal(f.path, f.key);
+    try { await createJournalWorker(reopened, f.ports).drain(); expect(f.progress()).toHaveLength(1); }
+    finally { reopened.close(); }
+  } finally { f.release('Done.'); await f.drain; f.journal.close(); }
+});
+
+it('projects a fresh durable recovery wait without pretending a tool is running', () => {
+  let now = 1000;
+  const activity = createWorkingActivities({ now: () => now, read: () => '' });
+  activity.observe('input', 'claim', 'start');
+  const session = { claim: 'claim', identity: 'exact-worker', rateRecovery: { state: 'waiting', dueAt: 31000 } };
+  const waiting = { kind: 'Success', value: { phase: 'launched', detail: 'rate-limit recovery waiting' } };
+  activity.observeSession(session, waiting);
+  expect(activity.current('input')).toMatchObject({ wait: 'rate-limit', running: false, observedAt: 1000 });
+  now = 11001; expect(activity.current('input')).toBeNull();
+  activity.observeSession(session, waiting);
+  expect(activity.current('input')?.wait).toBe('rate-limit');
+  activity.observeSession(session, { kind: 'Success', value: { phase: 'output-observed', detail: 'done' } }); expect(activity.current('input')).toBeNull();
+  activity.observeSession(session, waiting); activity.observe('input', null, 'end');
+  expect(activity.current('input')).toBeNull();
+});
+
+it.each(shapes)('recorded $kind ($id) traverses the throttle wait notice and terminates without empty sends', async shape => {
+  const activities = createWorkingActivities({ now: () => Date.now(), read: () => '' });
+  const session = { claim: 'claim', identity: 'captured-worker', rateRecovery: { state: 'waiting', dueAt: 31000 } };
+  const f = fixture({ recorded: shape, activityPort: () => {
+    activities.observeSession(session, { kind: 'Success', value: { phase: 'launched', detail: 'rate-limit recovery waiting' } });
+    return activities.current('input');
+  } });
+  activities.observe('input', 'claim', 'start');
+  try {
+    await f.enteredPromise; expect(f.context()).toContain(JSON.stringify(shape.raw));
+    await vi.advanceTimersByTimeAsync(25_000);
+    expect(f.progress().map(row => row.text)).toEqual([WORKING_RATE_LIMIT]);
+    activities.observe('input', null, 'end');
+    f.release(shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw)
+      : shape.kind === 'delivered-reply' || shape.kind === 'empty-reply-in-recorded-context' ? shape.raw : 'Recorded evidence reviewed.');
+    await f.drain; await vi.advanceTimersByTimeAsync(300_000);
+    expect(f.progress()).toHaveLength(1); expect(f.sent.every(row => row.text.trim())).toBe(true);
+  } finally { f.release('Done.'); await f.drain; f.journal.close(); }
+});
+
+it.each(['stale', 'completed', 'refused', 'stopped'])('does not announce a %s recovery observation', async mode => {
+  const activities = createWorkingActivities({ now: () => Date.now(), read: () => '' });
+  const f = fixture({ activityPort: () => activities.current('input') });
+  activities.observe('input', 'claim', 'start');
+  activities.observeSession({ claim: 'claim', identity: 'worker', rateRecovery: { state: 'waiting', dueAt: 31000 } },
+    mode === 'refused' ? { kind: 'Refused' } : { kind: 'Success', value: { phase: mode === 'completed' ? 'output-observed' : 'launched', detail: 'rate-limit recovery waiting' } });
+  try {
+    await f.enteredPromise;
+    if (mode === 'stopped') f.ports.stopped = () => true;
+    await vi.advanceTimersByTimeAsync(25_000); expect(f.progress()).toHaveLength(0);
+  } finally { f.release('Done.'); await f.drain; f.journal.close(); }
+});
+
+it.each([false, true])('rate-limit wait preserves the final reply slot (batched=%s)', async batch => {
+  const f = fixture({ batch, cap: 2, activityPort: () => ({ step: 'rate:episode', text: 'recovery', wait: 'rate-limit', observedAt: Date.now() }) });
+  try {
+    await f.enteredPromise; await vi.advanceTimersByTimeAsync(25_000);
+    expect(f.progress()).toHaveLength(0);
+  } finally { f.release('Done.'); await f.drain; f.journal.close(); }
+});
+
+it('batched inputs sharing one recovery get one early wait explanation', async () => {
+  const f = fixture({ batch: true, activityPort: () => ({ step: 'rate:episode', text: 'recovery', wait: 'rate-limit', observedAt: Date.now() }) });
+  try {
+    await f.enteredPromise; await vi.advanceTimersByTimeAsync(25_000);
+    expect(f.progress().map(row => row.text)).toEqual([WORKING_RATE_LIMIT]);
   } finally { f.release('Done.'); await f.drain; f.journal.close(); }
 });

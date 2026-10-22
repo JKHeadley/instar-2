@@ -1,0 +1,31 @@
+# Change review — Explain bounded throttle waits
+
+Subject base: 588332d9d0839cd504bee2819e297cd6222a2ef9
+Review state: open
+Reviewed content: none
+Outcome: A captured temporary server throttle gets the existing one delayed continuation, and an operator waiting through recovery receives one plain explanation through the durable progress doorway. Only account quota changes next-call login selection.
+Affected rules: 1, 26, 30, 32, 34, 36, 42, 46, 49, 52, 55, 59, 60, 61, 63, 68, 70, 74, 76, 87, 89, 101, 102, 111, 113, 116
+Affected floors: secrets — fixed content through existing outbound checks; spend cap — original session admission and reply budget; stop — original driver and outbound checks; no duplicate sends — existing durable nudge and notice intents, unknown outcomes never repeated; durable intake — original input retained
+Operator questions: none
+Suggested tier: critical
+Declared tier: significant
+Tier rationale: Changes observable recovery and infrastructure replies without changing authority, the model or prompts.
+Side effects: A terminal provider-capacity error can now consume the already-bounded single recovery call. The first recovery explanation may send after ten seconds of conversational silence; subsequent progress retains the existing topic cadence, four-message cap and reserved answer slot. The existing progress timer samples at most every five seconds so the thirty-second recovery is visible. Native retries, busy work, quotations and later output do not initiate recovery. Only the captured terminal forms are recognized; unknown provider forms remain unknown.
+Undo and recovery: Disable new throttle detection and wait emissions while retaining the journal reader for early progress rows, then regenerate publication pins. The previous release enforces a two-minute minimum when replaying progress and cannot directly read the new early rows; do not roll that reader back against a journal containing them. Session journal schema is unchanged; old progress rows remain readable by this release. No credential, installation or account migration is required. Never resend an uncertain continuation or notice on rollback. The existing original turn deadline still bounds recovery.
+Multi-machine posture: Deliberately machine-local physical observation, tied to the exact worker and original durable recovery due time. Existing conversation ownership fencing and durable journal own effects; no new peer takeover, credential transfer or cross-machine writer.
+Layer below: 1.x RateLimitSentinel.ts, rateLimitDetection.ts and IdleErrorClassifier.ts; 2.0 session exclusive journal, Stop/result correlation, open-turn idle-reaper veto, original deadline watchdog, next-call login-pool typed observation, progress intent/receipt projection and outbound budget/stop/provenance.
+Bug class: integration
+Bug evidence: reproducer=tests/assembly/production-session-driver.test.ts; tests/preview/working-progress.test.ts
+Hook bypass: none; core.hooksPath unset and common hooks directory inspected, samples only
+Convergence: none
+Prompt review: No new or changed model instructions. Captured provider terminal text is an adapter signal, never semantic authority. Real recorded summary, uncertain, Jev undecided/unsure, reply-review, delivered and empty candidate shapes are replayed through the new wait notice path; none becomes permission to replay an effect.
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged pre-existing instruction asserted by its existing test, not a new fixture-derived instruction — fixture-phrase tests/preview/journal.ts <- tests/preview/topic-awareness.test.ts: "you attempted nothing outside this reply, so never call an avenue tried; a missi"
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged pre-existing instruction asserted by its existing test, not a new fixture-derived instruction — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged pre-existing instruction asserted by its existing test, not a new fixture-derived instruction — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
+Decision: sentinel-port | Reuse the 1.x captured terminal discriminator and bounded notice behavior inside the already-ported 2.0 one-attempt recovery. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sentinel-ratelimit-1022-PROGRESS.md
+Decision: sentinel-capacity | Distinguish temporary provider capacity from account quota; retain existing next-call account selection only for quota. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sentinel-ratelimit-1022-PROGRESS.md
+Decision: sentinel-notice | Reuse durable progress intent and delivery, with one early fixed explanation; no private sender or notification store. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sentinel-ratelimit-1022-PROGRESS.md
+
+simplestRobustRoute: This is the simplest robust route: port the two recorded provider error forms into the existing driver recovery and project its durable waiting state into the existing progress doorway. The small discriminator prevents a temporary service throttle from being missed or mistaken for exhausted account quota. The early observation prevents the existing two-minute progress timer from missing a thirty-second wait. Start guards are the exact admitted worker, accepted input, idle terminal error, no competing compaction owner and room before the original deadline. End guards are authenticated result/Stop or honest pause/uncertainty. Limits remain one continuation, thirty-second backoff, original deadline, stop and model/effect/reply budgets. No new service, store, model call for classification, or how-to-work prompt. No live user acceptance or independent convergence is claimed; desk acceptance remains required.
+80/20: Red-before-green captured-shape regression plus both sides of detection, restart/no-resend, deadline/reaper controls, notice freshness/cap/stop/batching and recorded model-output replays. Verification outputs are retained in PROGRESS.
+VERDICT: author submission; independent review belongs to the desk
