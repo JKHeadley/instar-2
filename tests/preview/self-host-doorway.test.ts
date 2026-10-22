@@ -78,7 +78,7 @@ it.each(['model', 'policy', 'profile', 'expired', 'stopped', 'unknown-doorway'])
 });
 
 // These real owner-store replays use the repository's bounded 90-second test deadline.
-// A separate 30-second override timed out correct 31–56-second WSL executions.
+// A separate 30-second override timed out 31–56-second WSL owner-store executions.
 it.each(plans.recorded)('replays the real self-host plan $label through Codex and its provider owners', async row => {
   const f = fixture(); f.answer(row.output);
   const result = await f.dispatch();
