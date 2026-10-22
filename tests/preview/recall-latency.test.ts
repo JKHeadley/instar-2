@@ -155,8 +155,20 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     const capture = JSON.parse(readFileSync(new URL('./fixtures/inrole-memory-live-2026-10-11.json', import.meta.url), 'utf8'));
     const recordedGuide = capture.cases[0].memoryDecision as string;
     expect(historical.memoryDecision).toContain('mode:"remember"');
+    expect(historical.memoryDecision).toContain("The operator's latest direct statement of the same fact wins without correction wording; keep history.");
+    expect(historical.memoryDecision).toContain('never to add a second current value of the same fact');
     historical.memoryDecision = 'Return memory:[] unless the verified operator corrects, forgets or sets reply style. '
       + recordedGuide.slice(recordedGuide.indexOf('Each memory item'));
+    // Same-fact supersession also changed conflict guidance. Restore only its recorded
+    // predecessor for the historical hashes; assert the current decision before restoring it.
+    const dates = JSON.parse(readFileSync(new URL('./fixtures/reminder-relative-1013.json', import.meta.url), 'utf8'));
+    const reservation = dates.frames.find((row: { frame: number }) => row.frame === 400);
+    const recordedPacket = JSON.parse(JSON.parse(reservation.prompt).messages
+      .find((message: { role: string }) => message.role === 'context').content).packet;
+    expect(historical.conflictDecision).toContain('Only genuinely unresolved alternatives, after applying same-fact supersession');
+    expect(historical.conflictDecision).toContain('Do not invent a winner for unresolved alternatives');
+    expect(historical.conflictDecision).toContain('a same-fact update uses memory mode update');
+    historical.conflictDecision = recordedPacket.conflictDecision;
     // Restore only the reviewed recall-prose trim, keeping the historical hash
     // and every unrelated packet byte fixed. The current instruction still binds exact evidence.
     expect(historical.capability).toContain('For recall, state a remembered detail only when the offered journal evidence supports that exact detail');

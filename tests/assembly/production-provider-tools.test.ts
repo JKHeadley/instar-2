@@ -17,6 +17,7 @@ import { createClaudeCodeSubscriptionRoute, subscriptionConversationPolicy, subs
 import type { SubscriptionActivationRecord, SubscriptionToolTurn } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { COMPLETE_REQUESTED_WORK } from '../../src/assembly/tool-answer-guidance.js';
+import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
 import { guidanceOnlyPolicyPins } from '../preview/tools-policy-class.js';
 import { prepareJournalEnvelope } from '../preview/journal-envelope.js';
 import { factsFixture, value } from '../facts/fixtures.js';
@@ -107,12 +108,16 @@ it('tells the model it has the whole tool set and how each call is bounded, and 
   const [previous, completion] = captures.builds;
   expect(previous.digest).toBe('sha256:5fed4bcfd823d950c1444a008a9c11d40824671dd8e68aa2f5908ed8534a2926');
   expect(hash(previous.policy)).toBe(previous.digest);
-  // The captured completion policy differs from today's only by that removed sentence in the system prompt, so it stays
-  // inside the sealed guidance-only class (its pins blank the prompt prose) and needs no new grant.
+  // The removed closed-set sentence and shared supersession guidance are prompt-only changes:
+  // the sealed guidance-only class still binds all launch, authority and resource fields.
   const closedSet = 'Irreversible outward sends remain outside the one-machine closed set. ';
   const current = subscriptionToolsPolicy('claude-sonnet-5'), prompt = current.args.indexOf('--system-prompt') + 1;
   expect(completion.policy.args[prompt].split(closedSet)).toHaveLength(2);
-  expect({ ...current, args: current.args.map((arg, index) => index === prompt ? completion.policy.args[prompt].replace(closedSet, '') : arg) })
+  const oldMemory = 'If two active memory items match the question but disagree, or refer to different people or things, '
+    + 'ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
+  expect(completion.policy.args[prompt]).toContain(oldMemory);
+  expect({ ...current, args: current.args.map((arg, index) => index === prompt
+    ? completion.policy.args[prompt].replace(closedSet, '').replace(oldMemory, MEMORY_DISAMBIGUATION) : arg) })
     .toEqual(current);
   expect({ ...completion.policy, args: completion.policy.args.map((arg: string, index: number) => index === prompt ? current.args[prompt] : arg) })
     .toEqual(current);
