@@ -17,11 +17,11 @@ import type { JudgmentHost, JudgmentCapturePort } from '../../src/judgment/index
 import { providerEffectSchemas, providerEffectMigrations, registerProviderEffectBodies, effectSchemas, registerEffectBodies,
   createEffectSpine, installOperationDefinition, consumeEffectSettlement } from '../../src/effects/index.js';
 import type { EffectHost, EffectSettlement, ProviderEffectDoorway } from '../../src/effects/index.js';
-import { subscriptionPolicyFor } from '../../src/assembly/production-provider.js';
+import { subscriptionDoorway, DEFAULT_SUBSCRIPTION_DOORWAY } from '../../src/assembly/production-provider.js';
 import { createProductionProviderOwners } from '../../src/assembly/production-provider-owners.js';
 import { admitAcceptedProviderReply, createProductionRunAdmission } from '../../src/transport/index.js';
 import { runIdFor } from '../../src/rungraph/index.js';
-import { STAGE2_SETTINGS, STAGE2_OUTPUT_SCHEMA, STAGE2_DISCLOSURE, OWNER_WINDOW_MS, stage2Description, decisionContext, submittedEnvelope, requireInputBound } from './stage2-provider.js';
+import { STAGE2_SETTINGS, STAGE2_OUTPUT_SCHEMA, STAGE2_DISCLOSURE, OWNER_WINDOW_MS, stage2Policy, stage2Description, decisionContext, submittedEnvelope, requireInputBound } from './stage2-provider.js';
 import { factsFixture } from '../facts/fixtures.js';
 import { verificationSchemas, registerVerificationBodies } from '../../src/verification/index.js';
 import type { VerificationHost } from '../../src/verification/index.js';
@@ -43,7 +43,7 @@ export function createProviderOwners(options: any) {
   const stopped = () => !options.active() || now() >= options.deadline;
   const generation = base.run.generation.id;
   // `framing` is optional: absent, the historical one-shot v2 framing and its 4096-byte bound are unchanged.
-  const description = stage2Description(options.model, options.framing);
+  const description = stage2Description(options.model, options.framing, options.doorwayId);
   const register = { ...base.ctx.decode.register, entries: [...base.ctx.decode.register.entries, 'provider-call', options.model, description.route, 'ordinary-reply', 'reply-route', ...options.registerEntries ?? []] };
   const dc = { ...base.ctx.decode, register }, boundary = { site: base.c.site, preserved: base.c.preserved, register };
   if (options.seed) {
@@ -206,7 +206,7 @@ export function createProviderOwners(options: any) {
     question: question.question, context: question.context, floor: base.floor, evidence: question.evidence,
     point: 'judgment', generation }).bytes;
   const groundAndStart = () => {
-    requireInputBound(question.question, question.context, submitted, options.framing);
+    requireInputBound(question.question, question.context, submitted, options.framing, options.doorwayId);
     if (!all().some(f => f.kind === 'run-opening')) value(graph.open(base.run));
     const ready = value(graph.read(base.id));
     if (ready.pending.length) return ready;
@@ -316,8 +316,9 @@ export function verifyInvocationBinding(facts, readCapture, requestFact, prepare
   const e = value(decode('Evidence', wire, { ...context, captures: { ...context.captures, [wire.capture.reference]: captured } }));
   const v = e.claim.value;
   // The recorded framing selects the exact policy and system prompt; the historical v2 framing when absent.
-  const { policy, system } = subscriptionPolicyFor(q.model, v.framing ?? undefined);
-  const binding = { activationReference: v.activationReference, activationDigest: v.activationDigest,
+  const { policy, system } = stage2Policy(q.model, v.framing ?? undefined, v.doorway);
+  check(q.provider === subscriptionDoorway(v.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY).provider);
+  const binding = { ...(v.doorway === undefined ? {} : { doorway: v.doorway }), activationReference: v.activationReference, activationDigest: v.activationDigest,
     profileDigest: v.profileDigest, invocationPolicyDigest: enc(policy).hash,
     systemPromptDigest: hashBytes(system), framing: policy.framing, invocationPolicy: policy };
   check(e.id === `proof:${bindingPredicate}:${q.id}` && e.claim.subject === q.id
@@ -343,6 +344,6 @@ export function verifyInvocationBinding(facts, readCapture, requestFact, prepare
     check(f.segment.position > fact.segment.position);
   const stdin = readCapture(q.submitted);
   check(enc(stdin).hash === q.inputDigest);
-  requireInputBound('', '', stdin, policy.framing);
+  requireInputBound('', '', stdin, policy.framing, v.doorway);
   return binding;
 }

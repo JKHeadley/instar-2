@@ -807,6 +807,8 @@ export interface SubscriptionDoorway {
    * observed success but the provider did not report a model id. Never infer it. */
   exchangeModels(stdout: string): readonly string[] | null;
   readonly contract: SubscriptionDoorwayContract;
+  /** Strength of the account/source evidence this adapter can establish. */
+  readonly sourceStrength: ProviderAdapterEvidenceContract['strength'];
   /** The framings this doorway serves; a client selects one of these or none. */
   readonly framings: readonly string[];
   /** The framing an operator answer turn runs on. Every doorway has one. */
@@ -819,6 +821,8 @@ export interface SubscriptionDoorway {
    * own turn limit), and whether the hook confines the shell itself (when the harness's own sandbox is not used). */
   readonly toolTurn: Readonly<{ system: string; maxCalls: number; harness: string | null; confinedShell: boolean }> | null;
   policyFor(model: string, framing: string): SubscriptionPolicyBounds;
+  /** Exact adapter-owned instructions, for prompt measurement and invocation evidence. */
+  systemFor(model: string, framing: string): string;
   /** Rule 56: this doorway's own activation check — its CLI version, model shape, sign-in source and
    * invocation policy digest. A client never validates an activation for a doorway it did not ask. */
   validateActivation(record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfileRef,
@@ -857,7 +861,7 @@ function registerDoorways(entries: Readonly<Record<string, SubscriptionDoorway>>
   return Object.freeze(entries);
 }
 export const SUBSCRIPTION_DOORWAYS: Readonly<Record<string, SubscriptionDoorway>> = registerDoorways({
-  'claude-code-subscription': Object.freeze({ id: 'claude-code-subscription', provider: 'anthropic',
+  'claude-code-subscription': Object.freeze({ id: 'claude-code-subscription', provider: 'anthropic', sourceStrength: 'observation',
     exchangeModels: (stdout: string): readonly string[] | null => {
       let frame: Record<string, unknown>;
       try {
@@ -877,6 +881,7 @@ export const SUBSCRIPTION_DOORWAYS: Readonly<Record<string, SubscriptionDoorway>
       harness: null, confinedShell: false }),
     policyFor: (model: string, framing: string): SubscriptionPolicyBounds =>
       subscriptionPolicyFor(model, asSubscriptionFraming(framing)).policy,
+    systemFor: (model: string, framing: string): string => subscriptionPolicyFor(model, asSubscriptionFraming(framing)).system,
     validateActivation: (record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfileRef,
       model: string, now: number, framing: string, journalEnd?: number) =>
       validateSubscriptionActivation(record, profile, model, now, asSubscriptionFraming(framing), journalEnd),
