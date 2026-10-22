@@ -63,7 +63,7 @@ function fixture(forum = false, prepared = false, maxSessions = 2, timeZone = 'A
     currentActionFacts: async operation => { beforeFacts?.(); beforeFacts = undefined; return readFacts(operation); },
     resources: { admit: async () => { live++; return { attach: async () => {}, release: async () => { live--; return true; } }; } },
     io: { modelCalls: () => 0, wait: tick, readResult: () => null, clearResult: () => {},
-      prepareAdmission: () => {}, closeAdmission: () => {}, admissionState: () => ({ refused: false, openDelegations: [] }) },
+      prepareAdmission: () => {}, closeAdmission: () => {}, admissionState: () => ({ refused: false, openDelegations: [], uncertainEffects: 0 }) },
     createAdapter: topic => ({
       describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false }),
       launch: async input => { launches.push(topic); return { launch: `worker-${launches.length}`, claim: input.claim, incarnation: input.incarnation }; },
