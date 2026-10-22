@@ -71,9 +71,22 @@ export function createWorkingActivities({ read, now }) {
         }
       }
     },
+    // 1.x RateLimitSentinel's immediate wait notice, projected into the existing
+    // durable progress doorway. No send authority or private notification store.
+    observeSession(session, observation) {
+      if (!session) return;
+      const waiting = observation.kind === 'Success' && observation.value.phase === 'launched'
+        && observation.value.detail === 'rate-limit recovery waiting' && session.rateRecovery?.state === 'waiting';
+      const episode = waiting ? `${session.identity}:${session.rateRecovery.dueAt}` : null;
+      const claim = session.claim;
+      for (const state of active.values()) if (state.claim === claim)
+        state.wait = episode === null ? null : { step: createHash('sha256').update(`rate:${claim}:${episode}`).digest('hex'),
+          text: 'bounded rate-limit recovery', wait: 'rate-limit', running: false, observedAt: now() };
+    },
     current(operation) {
       const state = active.get(operation);
       const time = now();
+      if (state?.wait && state.wait.observedAt <= time && time - state.wait.observedAt <= 10_000) return state.wait;
       if (!state || state.observedAt === null || state.observedAt > time || time - state.observedAt > 10_000) return null;
       // An open admitted occurrence plus a fresh session observation supports liveness,
       // not a claim of productivity. Keep its identity: the send path consumes it once.

@@ -20,6 +20,11 @@ Claude, Codex and native tool turns: acquire missing information through existin
 authorized reads, cite it, and report actual failed attempts. It changes no tool
 authority or resource limit; text-only turns retain their no-tools instruction.
 
+`memory-answer-guidance.ts` gives all conversation framings and the journal's answer,
+repair and summary paths one supersession rule: the operator's later direct statement
+of the same fact wins, with old values retained as history. The model distinguishes
+updates from genuine ambiguity; existing source validation admits the memory change.
+
 `production-codex-provider.ts` admits the reviewed native Codex CLI 0.156.1
 through an exact executable digest, version, subscription profile and activation
 policy. Historical 0.149.1 captures remain labeled with their original version;
@@ -61,7 +66,7 @@ Its tests include the real production session driver over simulated physical I/O
 not a live harness or Telegram proof. The journal launcher wiring below is step 1;
 foundation intake/effect/judgment integration remains in the later plan steps.
 
-An admitted session at an unclosed idle quota wall retains its accepted input and original
+An admitted session at an unclosed idle quota wall or captured terminal server throttle retains its accepted input and original
 turn deadline while the driver waits 30 seconds, then submits at most one neutral
 continuation of the same turn. The existing journal records intent before terminal
 input; an uncertain submission is never retried, including after host restart.
@@ -80,6 +85,20 @@ callers pass their current result presence to the driver; pane text cannot inven
 accepted input starts its own compaction episode, so a past completed compaction does
 not exclude later turns from throttle recovery. Busy resumed work remains active under
 the original deadline even when old quota text remains visible.
+
+The server-throttle classifier ports 1.x `rateLimitDetection` and `IdleErrorClassifier`:
+native retry countdowns, quoted errors and errors followed by newer output are excluded.
+Provider capacity produces `provider-throttled`; only account quota produces `rate-limited`
+and changes the login selected for a subsequent call. The model never changes.
+A fresh durable recovery wait reaches the host's existing progress-notice doorway even
+before a tool call. It explains that the model service is limiting requests and the
+message is saved. The first explanation may send after ten seconds of conversational
+silence; later progress keeps the existing cadence and four-message cap. The existing
+progress timer checks at most every five seconds so a thirty-second wait is observable.
+Every notice retains infrastructure provenance, the reply/spend budget, secret checks,
+stop and durable intent-before-send; an unknown delivery consumes the episode. This
+ports `RateLimitSentinel`'s bounded wait visibility without its private notification
+callback or transcript-growth completion claim. Fast recovery produces no stale notice.
 
 The host must call `close()` at shutdown, expiry or idle stop. Closing waits for
 pending admission to return before releasing its lease, preventing a late resource
@@ -386,11 +405,23 @@ slot), durable unique intents and the existing retrospective review population. 
 are not retried. The journal and its replicated ownership path own the durable cadence; the
 activity projection is deliberately ephemeral and must be freshly observed after a restart.
 The session driver's optional activity observation carries only the owned claim, capture digest,
-observation time and existing typed wait signature. Empty captures are unknown. The preview's
-existing presence cycle records each registered work subject even while its ordinary lane is busy;
-unchanged observed activity becomes an advisory stall after one minute. Registered helper waits,
-unavailable observations and advancing work never authorize a restart or termination. The existing
-step deadline, result receipt, stop, resource owner and effect identities remain authoritative.
+observation time, typed wait signature and active/idle/indeterminate classification. Empty captures
+and older adapters without classification are unknown. The existing presence cycle records every
+registered work subject even while its ordinary lane is busy. A quiet indeterminate frame raises a
+hedged signal after one minute; an unchanged active indicator has the 1.x ninety-minute backstop.
+Fresh helper waits and affirmative idle frames suppress the signal; idle never proves a result.
+Changing frames, unknown observations and missed observation windows reset corroboration. These
+observations survive journal replay and appear on the bounded status surface without a new push.
+They never authorize a restart or termination. The existing step deadline, result receipt, stop,
+resource owner and effect identities remain authoritative.
+
+The admitted throttle continuation uses the 1.x SessionWatchdog settle rule: fresh quiet throttle
+frames must stay identical throughout its existing thirty-second backoff. Activity or changed
+frames reset corroboration, including across driver restart; older records without a fingerprint
+start a fresh observation. The original deadline and one-continuation limit remain unchanged.
+StallTriageNurse's outcome check is held by the existing result-and-Stop receipt boundary: a changed
+screen or an empty reply is not a recovered answer. This ports the useful observation/recovery
+behavior without importing legacy timers, direct messages or pane-wide interruptions.
 
 ## Native connection retry exhaustion
 

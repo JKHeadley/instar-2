@@ -1,3 +1,4 @@
+import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
 import { expect, it } from 'vitest';
 import { readFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,10 +11,12 @@ import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS } from '../../src/ass
 import { CLAIM_EVIDENCE_GUIDANCE } from './answer-provenance.js';
 import { readAnswer } from './answer-reading.js';
 
-// These captures predate requested-work guidance and removal of the one-machine send restriction.
+// These captures predate memory-supersession/requested-work guidance and removal of the one-machine send restriction.
 // Reconstruct their historical prompt without changing the captured evidence or current abilities.
+const HISTORICAL_MEMORY = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
+
 const historicalSendRestriction = 'Irreversible outward sends remain outside the one-machine closed set. ';
-const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '')
+const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '')
   .replace('The effect doorway reports', `${historicalSendRestriction}The effect doorway reports`);
 
 const evidence = JSON.parse(readFileSync(new URL('./fixtures/train-12-capability-2026-10-12.json', import.meta.url), 'utf8'));
@@ -45,6 +48,8 @@ async function rendered(value: string, question: string) {
 }
 
 it('retains live paraphrase and malformed-key failures beside the fixed-sample rendered replays', async () => {
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain(MEMORY_DISAMBIGUATION);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).not.toContain(HISTORICAL_MEMORY);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).not.toContain(historicalSendRestriction);
   expect(evidence.original.update).toBe(715675606);
   expect(evidence.original.judge).toMatchObject({ verdict: 'FAIL', reason: 'rendered tools/outbound sentence missing, altered or duplicated' });

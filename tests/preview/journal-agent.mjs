@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { nextObligationAt } from './journal.js';
 import { createNextDueWake } from '../../src/transport/index.js';
+import { createClaudePoolQuota } from '../../scripts/claude-pool-quota.mjs';
 import { createWorkingActivities, readWorkingAdmission } from './working-activity.mjs';
 import { AgentPathRefused, assertAgentPaths } from '../../scripts/agent-paths.mjs';
 import { prepareSessionConnectors, conversationAccountActions, admitSessionConnector } from './session-connectors.mjs';
@@ -1789,6 +1790,8 @@ async function main() {
         [`harness login ${index}`, () => [readHarnessLogin(profile)]],
         [`harness profile login ${index}`, () => harnessCredentialValues(profile.configDirectory)],
       ])),
+      ...Object.fromEntries((loginConfiguration?.entries ?? []).filter(entry => entry.quotaLogin).map(entry =>
+        [`harness quota login ${entry.index}`, () => [readHarnessLogin(entry.profile, entry.quotaLogin)]])),
     });
     const heldSecretValues = () => heldSecrets().values;
     // Plans #446, #451: the register's public entries (names, labels, custody, expiry, renewal standing and step), given
@@ -1884,6 +1887,7 @@ async function main() {
       try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
       assertLiveJudgment(judgment, 'preview-subscription');
       if (shared !== null && !await peerHolds()) throw Error('preview: activation stopped');
+      if (!selectedLogin) await loginPool?.refresh();
       const selected = selectedLogin ?? selectLogin(Boolean(toolTurn));
       const route = modelRoute(id, toolTurn, selected), start = performance.now();
       const inputRef = judgment === 'answer' && journal.view.turns.get(id)?.prompt === prepared
@@ -2016,6 +2020,7 @@ async function main() {
     };
     // Part Thirteen §9 (docs/17-harness-adapters): an eligible answer or work step runs as one scoped-tool turn (tool-turn.mjs runToolTurn).
     const invokeTools = async (prepared, id) => {
+      await loginPool?.refresh();
       const selected = selectLogin(true), profile = selected.profile;
       const runtime = loginRuntimes.get(selected.index);
       const turnHarness = runtime?.harness ?? harness;
@@ -2150,6 +2155,7 @@ async function main() {
         recoverSessionWork: id => conversationSession ? null : sessionWork?.port.collect(id.replaceAll(':', '-')) ?? null,
         sessionWork: async ({ question, context: packet, id }) => {
           await requireGroupDisclosure(journal.view);
+          await loginPool?.refresh();
           sessionWork.select?.();
           const outcome = await sessionWork.port.run({ operation: id.replaceAll(':', '-'), question, context: packet,
             authority: sessionWork.authority });
@@ -2555,7 +2561,10 @@ async function main() {
           unavailable.set(entry.index, 'activation, authority or authentication unavailable');
         }
       }
-      loginPool = createHarnessLoginPool({ configuration: loginConfiguration, unavailable,
+      const quotaReader = createClaudePoolQuota({ entries: loginConfiguration.entries, now: wallNow,
+        stopped: mediaStopped, credential: entry => readHarnessLogin(entry.profile, entry.quotaLogin),
+        validate: entry => { const runtime = loginRuntimes.get(entry.index); runtime.check(false); runtime.harness.current(); } });
+      loginPool = createHarnessLoginPool({ configuration: loginConfiguration, unavailable, quotaReader,
         statePath: join(root, 'harness-login-pool.json'), now: wallNow,
         previouslyLaunched: () => harnessPoolPreviouslyLaunched(runsPath, [loginConfiguration.identity, ...loginConfiguration.legacyIdentities]),
         validate: (entry, tools) => { const runtime = loginRuntimes.get(entry.index); runtime.check(tools); runtime.harness.current(); } });
@@ -2691,6 +2700,8 @@ async function main() {
             continuationReady: identity => driver.continuationReady(identity),
             deliver: input => driver.deliver(input), recoverContext: (identity, pending) => driver.recoverContext(identity, pending), observe: input => {
               const observed = driver.observe(input);
+              if (conversationSession) workingActivities.observeSession(
+                binding.physical().load().sessions.find(row => row.identity === input.processIdentity), observed);
               // Reuse the session adapter's existing typed rate-limit observation. The step remains
               // uncertain and is never replayed; a subsequent step/call selects another reviewed login.
               return observeHarnessSessionLimit(loginPool, binding.entry(), observed);
@@ -3209,7 +3220,7 @@ async function main() {
         // Only the model command is the exchange: it alone carries the prepared prompt on stdin; the
         // version and auth preflights send none and print no result frame.
         if (typeof input.stdin === 'string' && input.stdin.length > 0)
-          observeDoorway('preview-subscription', options.model, subscriptionExchange(result, operation));
+          observeDoorway('preview-subscription', options.model, subscriptionExchange(result, operation, doorway.exchangeModels));
         return result;
       } };
       const io = observedSubscriptionIO(physicalIO, policy, operation, row => journal.append(row),

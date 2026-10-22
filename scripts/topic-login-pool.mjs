@@ -16,6 +16,7 @@ export function createTopicLoginHandoff({ topic, pool, entries, store, physical,
   const current = () => entries[state.selected];
   return Object.freeze({ current,
     async prepareTurn({ claim, retire }) {
+      await pool.refresh();
       // A pool completion is durable before the topic snapshot. Reconcile that fact
       // before selecting against current capacity; completion is not a fresh admission.
       const completed = state.pending && (pool.state.handoffs ?? []).find(move => move.id === `${topic}:${state.sequence}`);

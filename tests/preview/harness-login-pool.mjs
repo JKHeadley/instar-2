@@ -31,7 +31,7 @@ export function loadHarnessLogins(options, readText = read) {
   if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 100) fail('threshold must be above zero and at most 100');
   const entries = rows.map((row, index) => {
     if (!row || !['profile', 'activation'].every(key => typeof row[key] === 'string' && (!manifest || isAbsolute(row[key])))) fail('paths must be absolute');
-    for (const key of ['authority', 'toolsActivation', 'sessionActivation'])
+    for (const key of ['authority', 'toolsActivation', 'sessionActivation', 'quotaLogin'])
       if (row[key] !== undefined && (typeof row[key] !== 'string' || !isAbsolute(row[key]))) fail('grant paths must be absolute');
     if (row.usageAccount !== undefined && (typeof row.usageAccount !== 'string' || !/^[a-z0-9-]{1,128}$/u.test(row.usageAccount)))
       fail('usage account id is malformed');
@@ -131,9 +131,25 @@ function matchingUsageAccount(document, entry) {
  * No timer retries: an exhausted profile becomes eligible after a provider/reading reset time.
  * Unknown resets recover from newer matched readings with capacity in both quota windows. */
 export function createHarnessLoginPool({ configuration, statePath, now, validate,
-  machine = 'local', unavailable = new Map(), readText = read, write = durablePreviewWrite, previouslyLaunched = () => false, usage = () => configuration.usageFile
+  machine = 'local', unavailable = new Map(), readText = read, write = durablePreviewWrite, previouslyLaunched = () => false, quotaReader = null, usage = () => configuration.usageFile
     ? JSON.parse(readText(configuration.usageFile)) : null }) {
   const { entries, identity } = configuration;
+  // 1.x ProactiveSwapMonitor's lag-aware ceiling reserves 20 percentage points
+  // for delayed provider reporting and a turn finishing before its safe boundary.
+  // A lower installation threshold still wins; the model is never an input here.
+  const threshold = Math.min(configuration.threshold, 80);
+  const observedUsage = () => {
+    let fallback = null;
+    try { fallback = usage(); } catch { /* Keep live telemetry when an imported snapshot is unreadable. */ }
+    if (!quotaReader) return fallback;
+    const live = quotaReader.read();
+    return { version: 1, accounts: entries.map(entry => {
+      const observed = matchingUsageAccount(live, entry);
+      // A known live window remains evidence even when its companion is unknown.
+      return harnessQuotaReading(live, entry.profile, now(), entry.usageAccount)?.windows.some(Boolean)
+        ? observed : matchingUsageAccount(fallback, entry) ?? observed;
+    }) };
+  };
   let state;
   try { state = JSON.parse(readText(statePath)); }
   catch (error) {
@@ -191,14 +207,16 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
   const select = (tools = false, current = state.active, requireRoom = false, onlyCurrent = false) => {
     const at = now();
     let reading = null;
-    try { reading = usage(); } catch { /* A failed quota observation cannot create a limit. */ }
+    try { reading = observedUsage(); } catch { /* A failed quota observation cannot create a limit. */ }
     for (const entry of entries) {
       const quota = harnessQuotaReading(reading, entry.profile, at, entry.usageAccount);
+      // R95: only the configured cutoff creates a durable availability hold.
+      // The 80% placement optimization below depends on the current observation.
       const limit = quotaLimit(quota, configuration.threshold);
       if (limit) hold(entry, { ...limit, observedAt: quota.at });
       const previous = state.holds[entry.index];
       if (previous?.resetAt === null && quota && quota.at > previous.observedAt
-        && quota.windows.every(window => window && window.utilizationPct < configuration.threshold)) {
+        && quota.windows.every(window => window && window.utilizationPct < threshold)) {
         const holds = { ...state.holds };
         delete holds[entry.index];
         persist({ ...state, holds });
@@ -209,33 +227,52 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     if (repairs.length) persist({ ...state, signinRepairs: [...(state.signinRepairs ?? []),
       ...repairs.map(entry => ({ index: entry.index, account: entry.profile.expectedAccount, machine, at }))] });
     const limited = index => state.holds[index] && (state.holds[index].resetAt === null || state.holds[index].resetAt > at);
-    if (!limited(current) && !unavailable.has(current) && !signedOut.has(current)) {
-      const quota = harnessQuotaReading(reading, entries[current].profile, at, entries[current].usageAccount);
-      if (onlyCurrent && (!quota || !quota.windows.every(window => window && window.utilizationPct < configuration.threshold))) return null;
+    const source = harnessQuotaReading(reading, entries[current].profile, at, entries[current].usageAccount);
+    const pressure = quotaLimit(source, threshold);
+    const reason = limited(current) ? state.holds[current].reason : pressure?.reason;
+    const usable = !limited(current) && !unavailable.has(current) && !signedOut.has(current);
+    if (usable && !pressure) {
+      if (onlyCurrent && (!source || !source.windows.every(window => window && window.utilizationPct <= Math.max(0, threshold - 15)))) return null;
       return admitted(entries[current], tools, requireRoom);
     }
     if (onlyCurrent) return null;
-    for (let offset = 1; offset < entries.length; offset++) {
-      const index = (current + offset) % entries.length;
+    // 1.x QuotaAwareScheduler: drain usable headroom before its soonest reset.
+    // Fresh, complete windows are mandatory for a proactive destination (QuotaTracker).
+    const candidates = entries.filter(entry => entry.index !== current).map(entry => {
+      const quota = harnessQuotaReading(reading, entry.profile, at, entry.usageAccount);
+      const complete = quota && quota.windows.every(Boolean);
+      const utilization = complete ? Math.max(...quota.windows.map(window => window.utilizationPct)) : null;
+      const hours = complete ? Math.max(0.25, (Math.min(...quota.windows.map(window => window.resetAt)) - at) / 3_600_000) : Infinity;
+      return { index: entry.index, quota, utilization, score: complete ? (100 - utilization) / hours : -1 };
+    }).sort((a, b) => b.score - a.score || a.index - b.index);
+    for (const { index, quota, utilization } of candidates) {
       if (limited(index) || unavailable.has(index) || signedOut.has(index)) continue;
-      const quota = harnessQuotaReading(reading, entries[index].profile, at, entries[index].usageAccount);
-      if (requireRoom && (!quota || !quota.windows.every(window => window && window.utilizationPct < configuration.threshold))) continue;
+      if (requireRoom && (!quota || !quota.windows.every(window => window && window.utilizationPct <= Math.max(0, threshold - 15)))) continue;
+      // 1.x SwapAntiThrash target-headroom brake. Durable cutoff/provider holds and
+      // the existing five-attempt cap prevent reversals without a new swap ledger.
+      if (reason === 'usage-threshold'
+        && (utilization === null || utilization > Math.max(0, threshold - 15))) continue;
       // 1.x SessionRefresh's five-attempt / ten-minute brake, durable across host restarts.
-      if (requireRoom && (state.handoffAttempts ?? []).filter(event => at - event.at < 600_000).length >= 5) return null;
+      if (requireRoom && (state.handoffAttempts ?? []).filter(event => at - event.at < 600_000).length >= 5) break;
       const next = admitted(entries[index], tools, requireRoom);
-      if (!next) return null;
+      if (!next) continue;
       const event = { from: entries[current].profile.reference, to: next.profile.reference,
-        reason: unavailable.has(current) || signedOut.has(current) ? 'member-unavailable' : state.holds[current].reason, at, sequence: state.switches.length + 1 };
+        reason: unavailable.has(current) || signedOut.has(current) ? 'member-unavailable' : reason, at, sequence: state.switches.length + 1 };
       if (requireRoom) persist({ ...state, handoffAttempts: [...(state.handoffAttempts ?? []),
         { ...event, sequence: (state.handoffAttempts?.length ?? 0) + 1, phase: 'prepared' }] });
       else persist({ ...state, active: index, switches: [...state.switches, event] });
       return next;
     }
+    // 1.x all-hot brake: optimization must not strand usable work simply because
+    // no cooler destination exists or the attempt bound is reached. Cutoff/provider
+    // holds still bind, and ordinary authority/stop admission is always rechecked.
+    if (usable) return admitted(entries[current], tools, requireRoom);
     if (requireRoom) return null;
     fail('has no reviewed login with available capacity');
   };
   return Object.freeze({
     select,
+    refresh: () => quotaReader?.refresh() ?? Promise.resolve(),
     registerTopic(topic) {
       if (!(state.topicLogins ?? []).includes(topic)) persist({ ...state, topicLogins: [...(state.topicLogins ?? []), topic] });
     },
@@ -270,7 +307,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       ...(state.exclusions ?? []).map(({ index }) => ({ key: `doorway:harness-login:${identity}:unavailable:${index}`,
         line: `Approved model login ${index + 1} was unavailable and was removed from selection. See status for current login availability.` })),
     ],
-    status: () => harnessLoginPoolStatus(configuration, state, unavailable, usage, now),
+    status: () => harnessLoginPoolStatus(configuration, state, unavailable, observedUsage, now),
     get state() { return structuredClone(state); },
   });
 }
@@ -287,7 +324,8 @@ export function harnessLoginPoolStatus(configuration, state, unavailable, usage,
       + (unavailable.has(entry.index) ? `unavailable (${unavailable.get(entry.index)})`
         : held && (held.resetAt === null || held.resetAt > at)
           ? `hold ${held.reason}, reset ${held.resetAt ?? 'unknown'}` : 'no observed hold')
-      + (quota?.windows.some(Boolean) ? `; fresh usage, switches at ${configuration.threshold}%`
+      + (quota?.windows.some(Boolean) ? `; fresh usage, switches at ${Math.min(configuration.threshold, 80)}%`
+        + `; five-hour ${quota.windows[0]?.utilizationPct ?? 'unknown'}%, weekly ${quota.windows[1]?.utilizationPct ?? 'unknown'}%, measured at ${quota.at}`
         : '; usage stale or unavailable, switching only after a typed limit reply');
   });
   const last = state.switches.at(-1);

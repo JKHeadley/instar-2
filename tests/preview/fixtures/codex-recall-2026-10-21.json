@@ -1,0 +1,38 @@
+{
+  "source": {
+    "root": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/preview-trial-root/proofroom1-ps-20261021-162627",
+    "results": "deskaccepted-fail-preswitch-train-113-588332d9-20261021-162627/FIRST-proofroom-ps",
+    "commit": "588332d9d0839cd504bee2819e297cd6222a2ef9",
+    "model": "gpt-6-astra",
+    "note": "Read-only exact intake and model bytes; the brief names absent 162252, this archive holds its specified update IDs."
+  },
+  "turns": [
+    {
+      "id": "telegram:8813073094:update:367052734",
+      "update": 367052734,
+      "at": 1792625358179,
+      "raw": "{\"update_id\":367052734,\"message\":{\"message_id\":1208,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"language_code\":\"en\"},\"chat\":{\"id\":7812716706,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"type\":\"private\"},\"date\":1792625358,\"text\":\"Please remember that the desk test word is orchid-f8bcd3d9bd5a.\"}}",
+      "output": "{\"reasoning\":\"The operator explicitly requested a fact save; the memory field records that request without claiming persistence has completed.\",\"reply\":\"The desk test word is orchid-f8bcd3d9bd5a.\",\"memory\":[{\"mode\":\"remember\",\"source\":\"telegram:8813073094:update:367052734\",\"quote\":\"Please remember that the desk test word is orchid-f8bcd3d9bd5a.\"}],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+      "delivered": "Saved the requested fact.",
+      "answerReason": "The operator explicitly requested a fact save; the memory field records that request without claiming persistence has completed."
+    },
+    {
+      "id": "telegram:8813073094:update:367052735",
+      "update": 367052735,
+      "at": 1792625382553,
+      "raw": "{\"update_id\":367052735,\"message\":{\"message_id\":1210,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"language_code\":\"en\"},\"chat\":{\"id\":7812716706,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"type\":\"private\"},\"date\":1792625382,\"text\":\"Please remember that the desk test word is orchid-cdb0bc5a47dc.\"}}",
+      "output": "{\"reasoning\":\"The supplied journal and current request give different values for the same desk test word, without explicitly identifying a correction. The conflict needs resolution before a memory change.\",\"reply\":\"There’s already a different desk test word on record; please clarify which one to keep.\",\"conflict\":{\"first\":{\"source\":\"telegram:8813073094:update:367052734\",\"quote\":\"Please remember that the desk test word is orchid-f8bcd3d9bd5a.\"},\"second\":{\"source\":\"telegram:8813073094:update:367052735\",\"quote\":\"Please remember that the desk test word is orchid-cdb0bc5a47dc.\"}},\"memory\":[],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+      "delivered": "Understood—the desk test word is now orchid-cdb0bc5a47dc.",
+      "answerReason": "The supplied journal and current request give different values for the same desk test word, without explicitly identifying a correction. The conflict needs resolution before a memory change."
+    },
+    {
+      "id": "telegram:8813073094:update:367052737",
+      "update": 367052737,
+      "at": 1792625517165,
+      "raw": "{\"update_id\":367052737,\"message\":{\"message_id\":1214,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"language_code\":\"en\"},\"chat\":{\"id\":7812716706,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"type\":\"private\"},\"date\":1792625517,\"text\":\"What is the desk test word? Please repeat the exact word.\"}}",
+      "output": "{\"reasoning\":\"The supplied journal marks both desk test words current and records an unresolved conflict.\",\"reply\":\"Which desk test word should I use: orchid-f8bcd3d9bd5a or orchid-cdb0bc5a47dc?\",\"conflict\":{\"first\":{\"source\":\"telegram:8813073094:update:367052734\",\"quote\":\"Please remember that the desk test word is orchid-f8bcd3d9bd5a.\"},\"second\":{\"source\":\"telegram:8813073094:update:367052735\",\"quote\":\"Please remember that the desk test word is orchid-cdb0bc5a47dc.\"}}}",
+      "delivered": "Which desk test word is correct: orchid-f8bcd3d9bd5a or orchid-cdb0bc5a47dc? Both are recorded in your October 21, 2026 messages (#367052734 and #367052735).",
+      "answerReason": "The supplied journal marks both desk test words current and records an unresolved conflict."
+    }
+  ]
+}

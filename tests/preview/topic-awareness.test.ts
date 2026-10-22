@@ -139,6 +139,11 @@ it('keeps private-chat packet bytes from afa6be39 apart from the reviewed memory
     const reservation = dates.frames.find((row: { frame: number }) => row.frame === 400);
     const recordedPacket = JSON.parse(JSON.parse(reservation.prompt).messages
       .find((message: { role: string }) => message.role === 'context').content).packet;
+    // Same-fact supersession changes this instruction, not the topic packet.
+    // Restore its captured wording while retaining the original whole-packet pin.
+    expect(historical.conflictDecision).toContain('Only genuinely unresolved alternatives, after applying same-fact supersession');
+    expect(historical.conflictDecision).toContain('a same-fact update uses memory mode update');
+    historical.conflictDecision = recordedPacket.conflictDecision;
     historical.datedDecision = recordedPacket.datedDecision;
     delete historical.datedClock;
     // Owed-result delivery adds an exact request and withdrawal declaration; restore only

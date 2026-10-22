@@ -38,6 +38,8 @@ it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', '
     return row;
   });
   const manifest = join(directory, 'pool.json'); writeFileSync(manifest, JSON.stringify({ version: 1, logins }));
+  const quota = join(directory, 'quota.mjs');
+  writeFileSync(quota, `export const createClaudePoolQuota = () => ({ refresh: async () => {}, read: () => ({version:1, accounts:[]}) });`);
   const harness = join(directory, 'harness.mjs'), io = join(directory, 'io.mjs'), loader = join(directory, 'loader.mjs');
   writeFileSync(harness, `export * from ${JSON.stringify(absolute('tests/preview/harness-user.mjs'))};
 import { harnessGate as gate, migrateHarnessLogin, readHarnessLogin as read, harnessLoginPath } from ${JSON.stringify(absolute('tests/preview/harness-user.mjs'))};
@@ -73,6 +75,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
  }});`);
   writeFileSync(loader, `export async function resolve(specifier,context,next){
  if(context.parentURL?.endsWith('/journal-agent.mjs')){
+  if(specifier.endsWith('/claude-pool-quota.mjs'))return {url:${JSON.stringify(pathToFileURL(quota).href)},shortCircuit:true};
   if(specifier.endsWith('/harness-user.mjs'))return {url:${JSON.stringify(pathToFileURL(harness).href)},shortCircuit:true};
   if(specifier.endsWith('/production-boot-io.mjs'))return {url:${JSON.stringify(pathToFileURL(io).href)},shortCircuit:true};
  }
@@ -120,9 +123,12 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       if (missingCustody) rmSync(harnessLoginPath(JSON.parse(readFileSync(logins[1].profile, 'utf8')), join(directory, 'custody')));
       if (mode === 'fresh') {
         const usageFile = join(directory, 'usage.json');
-        const a = JSON.parse(readFileSync(logins[0].profile, 'utf8'));
-        writeFileSync(usageFile, JSON.stringify({ version: 1, accounts: [{ email: a.expectedAccount, configHome: a.configDirectory,
-          lastQuota: { measuredAt: new Date().toISOString(), fiveHour: { utilizationPct: 95, resetsAt: new Date(Date.now() + 600000).toISOString() } } }] }));
+        writeFileSync(usageFile, JSON.stringify({ version: 1, accounts: logins.map((row, index) => {
+          const a = JSON.parse(readFileSync(row.profile, 'utf8')), utilizationPct = index === 0 ? 80 : 20;
+          const window = { utilizationPct, resetsAt: new Date(Date.now() + 600000).toISOString() };
+          return { email: a.expectedAccount, configHome: a.configDirectory,
+            lastQuota: { measuredAt: new Date().toISOString(), fiveHour: window, sevenDay: window } };
+        }) }));
         const prepared = JSON.parse(readFileSync(registry.preparedManifest, 'utf8'));
         writeFileSync(registry.preparedManifest, JSON.stringify({ ...prepared, usageFile }));
       }
@@ -188,7 +194,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     if (pooled) {
       expect(report.harnessLoginPool.members).toEqual(['serving-a', 'serving-b']);
       expect(report.harnessLoginPool.active).toBe(missing ? 0 : 1);
-      expect(report.harnessLoginPool.status).toContain(mode === 'fresh' ? 'switches at 95%' : 'switching only after a typed limit reply');
+      expect(report.harnessLoginPool.status).toContain(mode === 'fresh' ? 'switches at 80%' : 'switching only after a typed limit reply');
     } else expect(report.harnessLoginPool).toBeNull();
     const before = readFileSync(calls, 'utf8');
     // Primary withdrawal stops restart before any call. Secondary failure is isolated above.

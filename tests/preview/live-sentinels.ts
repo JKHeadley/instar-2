@@ -16,6 +16,7 @@
  * ordinary pass that builds a fresh packet for the open message; a context wall (input too long for its context) is
  * handed to the summary pass, the runner's own compaction. */
 import { createHash } from 'node:crypto';
+import type { SessionActivityObservation } from '../../src/assembly/production-session-driver.js';
 import { decideContext, type GroundedReceipt, type SentinelConfig, type SessionObservation, type StuckSignature } from '../../src/awareness/sentinel.js';
 import { decidePresence, type PresenceCause, type PresenceConfig, type PresenceTurn } from '../../src/sentinels/presence.js';
 import { decidePromises, type PromiseConfig, type PromiseObservation } from '../../src/sentinels/promise.js';
@@ -43,7 +44,7 @@ export interface LiveSentinelPorts {
   /** Promise follow-through: run the owner's bounded step for this promise. */
   actOnPromise(id: string): void;
   /** Fresh local observations of registered children; absence means unknown, never dead. */
-  workActivity?(): readonly { subject: string; at: number; progress: string | null; wait: string | null }[];
+  workActivity?(): readonly SessionActivityObservation[];
   config?: { context?: Partial<SentinelConfig>; presence?: Partial<PresenceConfig>; promise?: Partial<PromiseConfig> };
 }
 export interface LiveSentinelReport {
@@ -113,6 +114,8 @@ export function promiseObservations(view: JournalView): PromiseObservation[] {
 /** Advisory silence threshold, below the existing ten-minute step deadline. No new kill/retry authority. */
 export const WORK_SILENCE_MS = 60_000;
 export const WORK_OBSERVATION_FRESH_MS = 5_000;
+/** ActiveWorkSilenceSentinel A5 default, ported from 1.x: signal only, not a kill ceiling. */
+export const WORK_FROZEN_INDICATOR_MS = 90 * 60_000;
 
 /** All registered work, independent of inbound turns. Unknown or known waits cannot establish a stall.
  * Per-subject activity resets only that subject's clock; a pane change is not a delivered result. */
@@ -120,21 +123,26 @@ export function workSilenceObservations(view: JournalView, now: number,
   activity: ReturnType<NonNullable<LiveSentinelPorts['workActivity']>> = []): WorkSilenceView {
   const previous = view.sentinels?.work ?? {}, next: WorkSilenceView = {};
   const observe = (id: string, openedAt: number, progress: string | null, wait: string | null,
-    unknown: boolean, actionNeeded = false) => {
+    unknown: boolean, actionNeeded = false, activity?: SessionActivityObservation['activity']) => {
     const prior = previous[id];
     // Unknown time is never accumulated as proof of silence on the next successful observation.
     const lastProgressAt = Math.min(now, !prior || prior.state === 'unknown' || prior.state === 'waiting'
-      || progress !== prior.progress ? now : prior.lastProgressAt);
+      || progress !== prior.progress || activity !== prior.activity
+      || now - prior.observedAt > WORK_SILENCE_MS + WORK_OBSERVATION_FRESH_MS ? now : prior.lastProgressAt);
+    const silenceMs = activity === 'active' ? WORK_FROZEN_INDICATOR_MS : WORK_SILENCE_MS;
     const state = actionNeeded ? 'action-needed' : unknown ? 'unknown' : wait !== null ? 'waiting'
-      : now - lastProgressAt >= WORK_SILENCE_MS ? 'stalled' : 'observing';
+      : now - lastProgressAt >= silenceMs ? 'stalled' : 'observing';
     const detail = actionNeeded ? 'The last attempt has no confirmed result; existing bounded work must reconcile it.'
       : unknown ? 'Current worker activity is unavailable; no death or recovery inferred.'
-        : wait ?? (state === 'stalled' ? 'No observed progress; existing admitted work limits still apply.'
-          : 'Observing registered work; activity is not completion.');
+        : wait ?? (state === 'stalled' ? activity === 'active'
+          ? 'The same working frame persisted for 90 minutes; this could be a long task or a frozen indicator. No recovery is inferred.'
+          : 'No observed progress; work may be stuck or waiting beyond what the observer can see. Existing admitted limits still apply.'
+          : activity === 'active' ? 'A working indicator is present; observing for changes, not claiming a result.'
+            : 'Observing registered work; activity is not completion.');
     // Record transitions/activity immediately and a proof of looking once per minute, not every poll.
-    next[id] = prior && prior.state === state && prior.progress === progress && prior.detail === detail
+    next[id] = prior && prior.state === state && prior.progress === progress && prior.activity === activity && prior.detail === detail
       && now - prior.observedAt < WORK_SILENCE_MS ? prior
-      : { progress, lastProgressAt: Math.max(Math.min(openedAt, now), lastProgressAt), observedAt: now, state, detail: clip(detail) };
+      : { progress, lastProgressAt: Math.max(Math.min(openedAt, now), lastProgressAt), observedAt: now, state, detail: clip(detail), ...(activity === undefined ? {} : { activity }) };
   };
   // Keep the full request in the journal; share the promise observer's bounded, stable identity.
   const requestIds = new Map(openRequests(view).map(item => [`request:${item.source}:${item.quote}`, requestId(item)]));
@@ -154,9 +162,13 @@ export function workSilenceObservations(view: JournalView, now: number,
     const seen = activity.find(row => row.subject === edge.child);
     const fresh = seen !== undefined && seen.progress !== null && seen.at <= now && now - seen.at <= WORK_OBSERVATION_FRESH_MS;
     const helpers = edges.some(child => child.parent === edge.id);
+    // ActiveWorkSilenceSentinel A1/A2: corroborate through the adapter, keep helpers
+    // and affirmative idle workers, and never interpret missing classification as a wedge.
     observe(edge.id, edge.openedAt, fresh ? seen.progress : null,
-      helpers ? 'Waiting on a registered helper; parent silence does not establish failure.' : fresh ? seen.wait : null,
-      !fresh);
+      helpers ? 'Waiting on a registered helper; parent silence does not establish failure.'
+        : fresh && seen.activity === 'idle' && seen.wait === null ? 'The worker is at an idle prompt; the result still requires independent confirmation.'
+          : fresh ? seen.wait : null,
+      !fresh || seen.activity === undefined || seen.activity === 'unknown', false, seen?.activity);
   }
   return next;
 }
@@ -172,7 +184,9 @@ export function createLiveSentinels(journal: { readonly view: JournalView; appen
     if (stopped() || !ports.families.has('presence')) return;
     try {
       const now = ports.now(), prior = journal.view.sentinels;
-      const work = workSilenceObservations(journal.view, now, ports.workActivity?.());
+      let activity: readonly SessionActivityObservation[] = [];
+      try { activity = ports.workActivity?.() ?? []; } catch { failures.presence++; }
+      const work = workSilenceObservations(journal.view, now, activity);
       if (JSON.stringify(prior?.work ?? {}) === JSON.stringify(work)) return;
       journal.append({ kind: 'sentinel', family: 'presence', presence: prior?.presence ?? {}, work, events: [], at: now });
     } catch { failures.presence++; }
@@ -284,7 +298,7 @@ export function sentinelStatusLines(view: JournalView): string[] {
   const report = sentinelReport(view), episode = report.context?.episode;
   return [
     ...Object.entries(report.work).filter(([, row]) => ['stalled', 'action-needed', 'unknown', 'waiting'].includes(row.state))
-      .slice(0, 5).map(([id, row]) => `Work ${id}: ${row.state}. ${row.detail}`),
+      .slice(0, 5).map(([id, row]) => `Work ${id}: ${row.state === 'stalled' ? 'may be stalled' : row.state}. ${row.detail}`),
     `Sentinels: context ${episode ? `${episode.kind} episode ${episode.status}` : 'no episode'}; presence watching ${report.presence.watching} unanswered (${report.presence.holdingNoteDue.length} holding note${report.presence.holdingNoteDue.length === 1 ? '' : 's'} due); promises ${report.promise.overdueReported.length} overdue reported, ${report.promise.waiting.length} waiting on someone else, ${report.promise.workRequested} with work requested.`,
   ];
 }
