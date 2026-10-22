@@ -1,3 +1,5 @@
+import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
+const HISTORICAL_MEMORY = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -32,7 +34,11 @@ it('preserves recorded provider provenance and both merged work instructions', (
     expect(OBLIGATION_WORK_QUESTION.endsWith(suffix)).toBe(true);
     const added = OBLIGATION_WORK_QUESTION.slice(prefix.length, -suffix.length);
     expect(createHash('sha256').update(added).digest('hex')).toBe('ec59dcb92ff6ed9e57e0ce21fac10dc7b78bec02f481c48306d03707001ba0b7');
-    expect(sample.after.systemSha256).toBe(createHash('sha256').update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).digest('hex'));
+    // Translate only the reviewed supersession wording; retain original capture and digest.
+    expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain(MEMORY_DISAMBIGUATION);
+    expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).not.toContain(HISTORICAL_MEMORY);
+    expect(sample.after.systemSha256).toBe(createHash('sha256')
+      .update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY)).digest('hex'));
     const envelope = JSON.parse(sample.after.input);
     expect(envelope.messages[0].content).toBe(sample.after.question);
     const packet = JSON.parse(envelope.messages.find((item: { role: string }) => item.role === 'context').content).packet;

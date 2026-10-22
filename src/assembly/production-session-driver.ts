@@ -20,7 +20,7 @@ export interface SessionRecord {
   readonly turnCloseEvidence?: string | null;
   /** One neutral continuation per admitted turn; intent survives host loss before input.
    * The original deadline remains the brake and open-turn/reaper exclusion. */
-  readonly rateRecovery?: Readonly<{ dueAt: number; state: 'waiting' | 'sending' | 'accepted'; submittedAt?: number }> | null;
+  readonly rateRecovery?: Readonly<{ dueAt: number; state: 'waiting' | 'sending' | 'accepted'; submittedAt?: number; fingerprint?: string | null }> | null;
   /** Observed native retry pressure, tied to this turn; call liability stays with the owner. */
   readonly connectionRetry?: Readonly<{ turnStartedAt: number; attempt: number }> | null;
   readonly deadlineHalt?: Readonly<{ deadline: number; at: number }>;
@@ -52,6 +52,12 @@ export interface SessionIO {
   transcriptExists(framework: SessionFramework, id: string, cwd: string, configHome: string): boolean;
   armDeadline(name: string, identity: string, deadline: number): void;
 }
+/** Adapter-owned observations, never terminal content or authority to interrupt a worker. */
+export interface SessionActivityObservation {
+  readonly subject: string; readonly at: number; readonly progress: string | null; readonly wait: string | null;
+  /** Absent on older adapters: cannot corroborate a stall. Idle is not proof of completion. */
+  readonly activity?: 'active' | 'idle' | 'indeterminate' | 'unknown';
+}
 export interface ProductionSessionConfig {
   readonly operatorOwnUse: true; readonly confinement: 'unconfined' | 'admitted'; readonly framework: SessionFramework;
   readonly executable: string; readonly cwd: string; readonly home: string; readonly configHome: string;
@@ -61,7 +67,7 @@ export interface ProductionSessionConfig {
   readonly protectedSessions: readonly string[]; readonly hookScript?: string;
   /** Advisory activity for registered work; a changed pane is activity, never proof of completion.
    * The owner records it in its existing work observation cycle. No terminal bytes leave this port. */
-  readonly observeActivity?: (observation: Readonly<{ subject: string; at: number; progress: string | null; wait: string | null }>) => void;
+  readonly observeActivity?: (observation: SessionActivityObservation) => void;
   /** Conversation replies require the authenticated lifecycle receipt, never pane heuristics. */
   readonly requireTurnHook?: boolean;
   /** Required exactly in `admitted` mode: the admission/completion command for a session's claim (its own
@@ -168,12 +174,17 @@ export function classifyPaneReadiness(capture: string): 'ready' | 'menu' | 'not-
   if (/[❯›]/.test(text) || /(?:bypass permissions|shift\+tab to cycle|ctrl\+c to exit)/i.test(text)) return 'ready';
   return 'not-ready';
 }
+/** ActiveWorkSilenceSentinel A1: a visible input box is not an idle worker.
+ * This is adapter evidence only (Rules 26/30/86), never a semantic stuck verdict. */
+export function classifyPaneActive(capture: string): boolean {
+  return /(?:esc|ctrl\+c) to interrupt|\bworking(?:…|\.\.\.|\s*\()|\bgenerating\b|[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/i.test(tail(capture, 8));
+}
 /** A prompt can remain visible throughout work; only a changed, quiet idle frame closes a turn. */
 export function classifyPaneIdle(capture: string, framework: SessionFramework): boolean {
   const lines = tail(capture, 8).split('\n').filter(line => !/^[─━]+$/u.test(line))
     .map(line => line.replace(/^⏵⏵\s*/u, ''));
   if (classifyPaneReadiness(capture) !== 'ready') return false;
-  if (/(?:esc|ctrl\+c) to interrupt|\bworking(?:…|\.\.\.|\s*\()|\bgenerating\b|[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/i.test(lines.join('\n'))) return false;
+  if (classifyPaneActive(capture)) return false;
   const prompt = framework === 'codex-cli' ? /^[❯›>]\s*$/ : /^[❯›]\s*$/;
   const promptIndex = lines.map(line => prompt.test(line)).lastIndexOf(true);
   return promptIndex >= 0 && lines.slice(promptIndex + 1)
@@ -186,15 +197,31 @@ export function classifyWedgeTail(capture: string): 'thinking-block-400' | 'aup-
   if (aup.test(live) && capture.split('\n').filter(line => aup.test(line)).length > 1) return 'aup-rejection';
   return null;
 }
-export function classifyStuckSignature(capture: string): 'policy-wedge' | 'context-wedge' | 'rate-limited' | 'context-too-long' | null {
+export function classifyStuckSignature(capture: string): 'policy-wedge' | 'context-wedge' | 'rate-limited' | 'provider-throttled' | 'context-too-long' | null {
   const wedge = classifyWedgeTail(capture);
   if (wedge) return wedge === 'aup-rejection' ? 'policy-wedge' : 'context-wedge';
   const live = tail(capture);
   // A usage-percentage warning also names the reset time; only an actual limit hit pauses work.
   if (/you['’]?ve (?:hit|reached) your (?:(?:session|usage|5-hour|weekly) )?limit\b|usage limit reached/i.test(live)) return 'rate-limited';
+  if (classifyProviderThrottle(capture)) return 'provider-throttled';
   if (/conversation (?:is )?too long|prompt is too long|error during compaction[^.\n]{0,40}too long|press esc twice to go up a few messages/i.test(live)
     && !/conversation compacted|paused for context compaction|compaction[^.\n]{0,20}resumed/i.test(live)) return 'context-too-long';
   return null;
+}
+/** Port of 1.x rateLimitDetection + IdleErrorClassifier: provider capacity is not
+ * account quota. Only a terminal API frame qualifies; native retries still own work.
+ * Completion remains the authenticated result/Stop pair, never this text signal. */
+function classifyProviderThrottle(capture: string): boolean {
+  const live = tail(capture, 20);
+  if (/retrying in\s+\d+/i.test(live)) return false;
+  const lines = live.split('\n');
+  const prompt = lines.lastIndexOf('❯');
+  if (prompt < 0 || !classifyPaneIdle(capture, 'claude-code')) return false;
+  const output = lines.slice(0, prompt).filter(line => !/^[─━]+$/.test(line));
+  // Like exhausted-connection frames below, discard only trailing native status,
+  // here the completion decoration documented by the 1.x throttle incident.
+  if (/^✻ Churned for \d+m \d+s$/u.test(output.at(-1) ?? '')) output.pop();
+  return /^(?:⏺\s+|⎿\s+)?API Error: (?:Server is temporarily limiting requests \(not your usage limit\) · Rate limited|Repeated 529 Overloaded errors\. The API is at capacity\.)$/i.test(output.at(-1) ?? '');
 }
 /** Native retries own backoff and never receive a second prompt. The captured 2.1.280
  * exhausted 529 has no Stop receipt: recognize only its final error at a quiet prompt,
@@ -584,7 +611,9 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         const pane = capture(session.name);
         try {
           config.observeActivity?.({ subject: session.claim, at: config.now(), progress: pane.trim() ? digestOf(pane) : null,
-            wait: classifyStuckSignature(pane) });
+            wait: classifyPaneActive(pane) ? null : classifyStuckSignature(pane),
+            activity: !pane.trim() ? 'unknown' : classifyPaneActive(pane) ? 'active'
+              : classifyPaneIdle(pane, config.framework) ? 'idle' : 'indeterminate' });
         } catch { /* An advisory observer cannot fail the worker; its last sample becomes stale/unknown. */ }
         const rate = session.rateRecovery;
         if (rate && session.turnDeadline !== null && config.now() >= session.turnDeadline) {
@@ -596,7 +625,8 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           return { phase: 'uncertain' as const, evidence: session.identity, detail: 'rate-limit continuation delivery uncertain; no resend' };
         if (config.requireTurnHook && session.turnCloseEvidence)
           return { phase: 'output-observed' as const, evidence: session.turnCloseEvidence, detail: 'recorded Stop hook closed turn' };
-        const throttled = classifyStuckSignature(pane) === 'rate-limited';
+        const throttle = classifyStuckSignature(pane);
+        const throttled = throttle === 'rate-limited' || throttle === 'provider-throttled';
         const hook = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
           && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
         // A throttle can emit Stop without completing work. A bounded result plus Stop
@@ -627,14 +657,25 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
             && config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1)?.state === 'accepted')) {
           if (!rate && config.now() + 30_000 < session.turnDeadline) {
             config.io.save(replaceSession(config.io.load(), { ...session,
-              rateRecovery: { dueAt: config.now() + 30_000, state: 'waiting' },
+              rateRecovery: { dueAt: config.now() + 30_000, state: 'waiting', fingerprint: digestOf(pane) },
               turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
                 .flatMap(row => row.receiptId ? [row.receiptId] : []), turnStartedAt: config.now() }));
             return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit recovery waiting' };
           }
-          if (rate?.state === 'waiting' && classifyStuckSignature(pane) !== null) {
-            if (config.now() < rate.dueAt || !classifyPaneIdle(pane, config.framework)
-              || classifyStuckSignature(pane) !== 'rate-limited')
+          if (rate?.state === 'waiting' && !throttled && rate.fingerprint !== null)
+            config.io.save(replaceSession(config.io.load(), { ...session,
+              rateRecovery: { ...rate, fingerprint: null, dueAt: config.now() + 30_000 } }));
+          if (rate?.state === 'waiting' && throttled) {
+            // Port of SessionWatchdog/evaluateThrottleSettle: intervening output or an
+            // active frame restarts corroboration. The original deadline never moves.
+            // Legacy waiting records lack a fingerprint and must observe afresh too.
+            const fingerprint = throttled && classifyPaneIdle(pane, config.framework) ? digestOf(pane) : null;
+            if (fingerprint === null || fingerprint !== rate.fingerprint) {
+              if (fingerprint !== rate.fingerprint) config.io.save(replaceSession(config.io.load(), { ...session,
+                rateRecovery: { ...rate, fingerprint, dueAt: config.now() + 30_000 } }));
+              return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit recovery waiting' };
+            }
+            if (config.now() < rate.dueAt)
               return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit recovery waiting' };
             // Durable before touching the terminal. Capture old Stop receipts so none can
             // close the continued turn; the driver still requires its normal completion evidence.
@@ -651,7 +692,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           if (rate?.state === 'accepted' && throttled) {
             if (!classifyPaneIdle(pane, config.framework) || config.now() < rate.submittedAt! + 5_000)
               return { phase: 'launched' as const, evidence: session.identity, detail: 'rate-limit continuation pending' };
-            return { phase: 'pause-observed' as const, evidence: session.identity, detail: 'rate-limited' };
+            return { phase: 'pause-observed' as const, evidence: session.identity, detail: throttle! };
           }
         }
         if (session.turnDeadline !== null && config.now() >= session.turnDeadline) {

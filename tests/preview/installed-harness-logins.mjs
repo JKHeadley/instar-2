@@ -21,6 +21,7 @@ const rowOf = options => ({ profile: options['login-profile'], activation: optio
   authority: options['authority-record'] ?? join(dirname(options['activation-record']), 'activation-authority.json'),
   ...(options['tools-activation'] ? { toolsActivation: options['tools-activation'] } : {}),
   ...(options['session-work-activation'] ? { sessionActivation: options['session-work-activation'] } : {}),
+  ...(options['quota-login'] ? { quotaLogin: options['quota-login'] } : {}),
   ...(options['usage-account'] ? { usageAccount: options['usage-account'] } : {}) });
 const optionsOf = (options, row) => ({ ...options, 'login-profile': row.profile, 'activation-record': row.activation,
   'authority-record': row.authority, 'tools-activation': row.toolsActivation, 'session-work-activation': row.sessionActivation });
@@ -35,7 +36,7 @@ const inventory = root => {
  * it updates that member in place; it never reorders members or changes the primary anchor. */
 export function installHarnessLogin({ root, options, verify }) {
   const row = rowOf(options);
-  for (const key of ['profile', 'activation', 'authority', 'toolsActivation', 'sessionActivation'])
+  for (const key of ['profile', 'activation', 'authority', 'toolsActivation', 'sessionActivation', 'quotaLogin'])
     if (row[key] !== undefined && !isAbsolute(row[key])) throw Error('preview: installed login paths must be absolute');
   const profile = read(row.profile);
   verify(row, profile); // Existing custody/activation/authority checks, before recording admission.
@@ -45,7 +46,8 @@ export function installHarnessLogin({ root, options, verify }) {
     ({ ...entry, profile: profilePath, admittedProfile: profile })) : [...prior.logins];
   if (imported) for (const entry of imported.entries) verify({ ...entry, profile: entry.profilePath }, entry.profile);
   const index = logins.findIndex(item => (item.admittedProfile ?? read(item.profile)).reference === profile.reference);
-  const admitted = { ...row, admittedProfile: profile };
+  const quotaLogin = row.quotaLogin ?? logins[index]?.quotaLogin;
+  const admitted = { ...row, ...(quotaLogin ? { quotaLogin } : {}), admittedProfile: profile };
   if (index < 0) logins.push(admitted); else logins[index] = admitted;
   if (logins.length > 8) throw Error('preview: at most eight installed harness logins');
   // A fresh authenticated admission must supersede a cached preparation exclusion, even

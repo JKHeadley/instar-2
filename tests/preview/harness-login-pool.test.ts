@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHarnessLoginPool, loadHarnessLogins, harnessQuotaLimit, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { harnessGate, harnessLoginPath, migrateHarnessLogin, readHarnessLogin, storeHarnessLogin } from './harness-user.mjs';
+import { createClaudePoolQuota } from '../../scripts/claude-pool-quota.mjs';
 import { classifyProviderFailure } from '../../src/assembly/provider-failure.js';
 import { openReplyNotices, validAnswerNotices } from './credential-reminders.js';
 
@@ -172,7 +173,7 @@ it('at the configured quota threshold switches before dispatch; below, stale or 
   expect(harnessQuotaLimit(originalHome, a, 95, f.clock.at, 'unreviewed-account')).toBeNull();
   originalHome.accounts[0].identityDrifted = true;
   expect(harnessQuotaLimit(originalHome, a, 95, f.clock.at, 'reviewed-account')).toBeNull();
-  const pool = createHarnessLoginPool({ ...f.settings, usage: () => document() });
+  const pool = createHarnessLoginPool({ ...f.settings, usage: () => ({ version: 1, accounts: [...document().accounts, capacity(f).accounts[1]] }) });
   expect(pool.select().index).toBe(1);
   expect(pool.state.switches[0].reason).toBe('usage-threshold');
   // Once A's observed window resets, exhausted B can select A again without widening the list.
@@ -336,13 +337,25 @@ it('replays recorded summary/Jev/review/delivered/empty-context shapes unchanged
     recovered.observe(next, returned);
     expect(JSON.stringify(returned), row.id).toBe(before);
     expect(recovered.select()).toBe(next); expect(recovered.state.switches).toHaveLength(1);
+    const soft = fixture(); let reading = capacity(soft);
+    for (const account of reading.accounts) account.lastQuota.fiveHour.utilizationPct = 80;
+    const continuing = createHarnessLoginPool({ ...soft.settings, usage: () => reading });
+    expect(continuing.selectSession(0)?.index, row.id).toBe(0);
+    reading = null; soft.clock.at += 60000;
+    const current = continuing.selectSession(0);
+    expect(current?.index, row.id).toBe(0);
+    continuing.observe(current, returned);
+    expect(JSON.stringify(returned), row.id).toBe(before);
+    expect(continuing.state.holds, row.id).toEqual({});
+    expect(continuing.state.handoffAttempts ?? [], row.id).toEqual([]);
   }
 });
 
 it('a delegated session rate-limit observation selects B for the next step; other pauses do not', () => {
   const f = fixture(), a = f.pool.select('session');
   for (const observation of [{ kind: 'Refused' }, { kind: 'Success', value: { phase: 'launched', detail: 'rate-limited' } },
-    { kind: 'Success', value: { phase: 'pause-observed', detail: 'context-wedge' } }]) {
+    { kind: 'Success', value: { phase: 'pause-observed', detail: 'context-wedge' } },
+    { kind: 'Success', value: { phase: 'pause-observed', detail: 'provider-throttled' } }]) {
     expect(observeHarnessSessionLimit(f.pool, a, observation)).toBe(observation);
     expect(f.pool.select('session')).toBe(a);
   }
@@ -422,7 +435,7 @@ it('excludes an unavailable member without renumbering holds/history, records on
   f.clock.at += 1;
   const reading = capacity(f);
   const recovered = createHarnessLoginPool({ ...f.settings, usage: () => reading });
-  expect(recovered.status()).toContain('fresh usage, switches at 95%');
+  expect(recovered.status()).toContain('fresh usage, switches at 80%');
 });
 
 it('a threshold observed while A is in flight affects only the next dispatch, with one result per accepted message', async () => {
@@ -457,4 +470,166 @@ it('retained admission profiles cannot replace live profiles for dispatchable me
   retained.logins[1].unavailable = 'profile missing';
   writeFileSync(f.options['login-pool'], JSON.stringify(retained));
   expect(loadHarnessLogins(f.options).identity).toBe(f.configuration.identity);
+});
+
+// R36: the snapshot comes from the recorded 1.x endpoint; mutations below are
+// explicit boundary neighbors, never represented as additional live captures.
+it.each(['fiveHour', 'sevenDay'])('ports the 1.x lag-aware 80% ceiling before the old 95% wall (%s)', window => {
+  const f = fixture();
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/pool-quota-2026-10-21.json', import.meta.url), 'utf8'));
+  f.clock.at = Date.parse(recorded.snapshot.measuredAt);
+  let pct = 79.99;
+  const usage = () => ({ version: 1, accounts: f.configuration.entries.map((entry, index) => ({
+    email: entry.profile.expectedAccount, configHome: entry.profile.configDirectory,
+    lastQuota: { ...recorded.snapshot, [window]: { ...recorded.snapshot[window], utilizationPct: index === 0 ? pct : 20 } },
+  })) });
+  const pool = createHarnessLoginPool({ ...f.settings, usage });
+  expect(pool.selectSession(0).index).toBe(0);
+  pct = 80;
+  expect(pool.selectSession(0).index).toBe(1);
+  expect(pool.state.handoffAttempts).toHaveLength(1);
+  expect(pool.state.switches).toHaveLength(0); // Prepared is not completed.
+});
+
+it.each([65, 65.01, 79, null])('requires the 1.x destination headroom; all-hot stays on a still-usable source (target=%s)', target => {
+  const f = fixture(); let source = 80;
+  const reading = () => ({ version: 1, accounts: capacity(f).accounts.map((account, index) => ({ ...account,
+    lastQuota: index === 1 && target === null ? null : { ...account.lastQuota,
+      fiveHour: { ...account.lastQuota.fiveHour, utilizationPct: index === 0 ? source : target },
+      sevenDay: { ...account.lastQuota.sevenDay, utilizationPct: index === 0 ? source : target } },
+  })) });
+  const pool = createHarnessLoginPool({ ...f.settings, usage: reading });
+  expect(pool.selectSession(0)?.index).toBe(target === 65 ? 1 : 0);
+  if (target !== 65) {
+    expect(pool.state.handoffAttempts ?? []).toHaveLength(0);
+    source = 95; expect(pool.selectSession(0)).toBeNull();
+    pool.observe(f.configuration.entries[0], limit); source = 10;
+    expect(pool.selectSession(0)).toBeNull(); // Unknown provider hold never becomes an all-hot exception.
+  }
+});
+
+it.each(['http-500', 'stale'])('soft all-hot pressure preserves current dispatch after %s telemetry', async failure => {
+  const f = fixture(); let failing = false, calls = 0;
+  const reader = createClaudePoolQuota({ entries: f.configuration.entries, now: f.settings.now,
+    stopped: () => false, validate: () => {}, credential: () => 'synthetic-quota-only',
+    fetchImpl: async () => {
+      calls++;
+      return failing ? new Response('', { status: 500 }) : new Response(JSON.stringify({
+        five_hour: { utilization: 80, resets_at: new Date(f.clock.at + 3600000).toISOString() },
+        seven_day: { utilization: 80, resets_at: new Date(f.clock.at + 86400000).toISOString() },
+      }));
+    } });
+  const settings = { ...f.settings, quotaReader: reader };
+  const pool = createHarnessLoginPool(settings);
+  await pool.refresh(); expect(pool.selectSession(0)?.index).toBe(0);
+  failing = true;
+  f.clock.at += failure === 'stale' ? 300001 : 60000;
+  if (failure === 'http-500') await pool.refresh();
+  expect(pool.selectSession(0)?.index).toBe(0);
+  expect(pool.state.holds).toEqual({});
+  expect(pool.state.handoffAttempts ?? []).toEqual([]);
+  expect(pool.readySession(1)).toBeNull(); // Unknown is never destination capacity.
+  expect(createHarnessLoginPool(settings).selectSession(0)?.index).toBe(0);
+  if (failure === 'http-500') {
+    for (const elapsed of [60000, 120000]) {
+      f.clock.at += elapsed; await pool.refresh();
+      expect(pool.selectSession(0)?.index).toBe(0);
+    }
+    const before = calls;
+    f.clock.at += 60000; await pool.refresh();
+    expect(calls).toBe(before); // Collector breaker does not become a dispatch breaker.
+    expect(pool.selectSession(0)?.index).toBe(0);
+  }
+  expect(createHarnessLoginPool({ ...settings, validate: () => { throw Error('stop or authority withdrawn'); } })
+    .selectSession(0)).toBeNull();
+  pool.observe(f.configuration.entries[0], limit);
+  expect(pool.selectSession(0)).toBeNull(); // Real provider limits still bind.
+});
+
+it.each(['fiveHour', 'sevenDay'])('fresh partial live %s outranks older complete compatibility capacity', window => {
+  const f = fixture(), live = capacity(f), fallback = capacity(f, f.clock.at - 60000);
+  for (const document of [live, fallback]) document.accounts[0].lastQuota.fiveHour.utilizationPct = 99;
+  for (const part of ['fiveHour', 'sevenDay']) fallback.accounts[1].lastQuota[part].utilizationPct = 20;
+  delete live.accounts[1].lastQuota[window === 'fiveHour' ? 'sevenDay' : 'fiveHour'];
+  live.accounts[1].lastQuota[window].utilizationPct = 100;
+  const settings = { ...f.settings, quotaReader: { read: () => live }, usage: () => fallback };
+  const pool = createHarnessLoginPool(settings);
+  expect(pool.selectSession(0)).toBeNull();
+  expect(pool.state.handoffAttempts ?? []).toEqual([]);
+  expect(pool.state.holds[1]).toMatchObject({ reason: 'usage-threshold', observedAt: f.clock.at });
+  // A partial low reading also cannot invent the missing destination window.
+  live.accounts[1].lastQuota[window].utilizationPct = 20;
+  const low = fixture();
+  const partial = createHarnessLoginPool({ ...settings, statePath: low.settings.statePath });
+  expect(partial.selectSession(0)).toBeNull();
+  expect(partial.state.holds[1]).toBeUndefined();
+  expect(partial.state.handoffAttempts ?? []).toEqual([]);
+});
+
+it.each([70, 95])('configured cutoff %s remains held after telemetry disappears', thresholdPercent => {
+  const f = fixture(['serving-a', 'serving-b'], { thresholdPercent });
+  let reading = capacity(f);
+  for (const account of reading.accounts) account.lastQuota.fiveHour.utilizationPct = thresholdPercent;
+  const pool = createHarnessLoginPool({ ...f.settings, usage: () => reading });
+  expect(pool.selectSession(0)).toBeNull();
+  reading = null; f.clock.at += 60000;
+  expect(pool.selectSession(0)).toBeNull();
+  expect(createHarnessLoginPool(f.settings).selectSession(0)).toBeNull();
+});
+
+it.each([80, 95])('five prepared attempts bound moves while preserving usable source at %s', source => {
+  const f = fixture(), reading = capacity(f);
+  reading.accounts[0].lastQuota.fiveHour.utilizationPct = source;
+  const settings = { ...f.settings, usage: () => reading };
+  const pool = createHarnessLoginPool(settings);
+  for (let count = 0; count < 5; count++) expect(pool.selectSession(0)?.index).toBe(1);
+  const reopened = createHarnessLoginPool(settings);
+  expect(reopened.selectSession(0)?.index ?? null).toBe(source === 80 ? 0 : null);
+  expect(reopened.state.handoffAttempts).toHaveLength(5);
+  f.clock.at += 600000;
+  reading.accounts[0].lastQuota.measuredAt = new Date(f.clock.at).toISOString();
+  reading.accounts[1].lastQuota.measuredAt = new Date(f.clock.at).toISOString();
+  expect(reopened.selectSession(0)?.index).toBe(1);
+  expect(reopened.state.handoffAttempts).toHaveLength(6);
+});
+
+it('rechecks the cooler-target margin for a prepared move without another attempt', () => {
+  const f = fixture(); let target = 65;
+  const reading = () => ({ version: 1, accounts: capacity(f).accounts.map((account, index) => ({ ...account,
+    lastQuota: { ...account.lastQuota, sevenDay: { ...account.lastQuota.sevenDay, utilizationPct: index === 0 ? 80 : target } },
+  })) });
+  const pool = createHarnessLoginPool({ ...f.settings, usage: reading });
+  expect(pool.selectSession(0).index).toBe(1);
+  expect(pool.readySession(1).index).toBe(1);
+  target = 65.01; expect(pool.readySession(1)).toBeNull();
+  expect(pool.state.handoffAttempts).toHaveLength(1);
+});
+
+it('ports use-before-reset scoring and tries the next admitted cooler member if the winner withdraws', () => {
+  const f = fixture(['a', 'b', 'c']);
+  const reading = { version: 1, accounts: capacity(f).accounts.map((account, index) => ({ ...account,
+    lastQuota: { ...account.lastQuota,
+      fiveHour: { utilizationPct: index === 0 ? 80 : 60, resetsAt: new Date(f.clock.at + (index === 2 ? 1800000 : 3600000)).toISOString() },
+      sevenDay: { utilizationPct: 10, resetsAt: new Date(f.clock.at + 86400000).toISOString() } },
+  })) };
+  const pool = createHarnessLoginPool({ ...f.settings, usage: () => reading });
+  expect(pool.selectSession(0).index).toBe(2);
+  const next = createHarnessLoginPool({ ...f.settings, usage: () => reading, validate: entry => {
+    if (entry.index === 2) throw Error('withdrawn');
+  } });
+  expect(next.selectSession(0).index).toBe(1);
+});
+
+it('prefers fresh live quota and preserves a legacy snapshot age when telemetry cannot be read', async () => {
+  const f = fixture(); let live = capacity(f);
+  const file = capacity(f); file.accounts[0].lastQuota.sevenDay.utilizationPct = 80;
+  const reader = { read: () => live, refresh: async () => {} };
+  let pool = createHarnessLoginPool({ ...f.settings, quotaReader: reader, usage: () => file });
+  await pool.refresh(); expect(pool.selectSession(0).index).toBe(0);
+  live = { version: 1, accounts: [] };
+  expect(pool.selectSession(0).index).toBe(1);
+  // An unavailable collector never turns a five-minute-old file into current room.
+  f.clock.at += 300001;
+  pool = createHarnessLoginPool({ ...f.settings, quotaReader: reader, usage: () => file });
+  expect(pool.readySession(1)).toBeNull();
 });

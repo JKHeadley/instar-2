@@ -1,4 +1,5 @@
 // @ts-nocheck -- the canary exercises the shipped JavaScript CLI and encrypted preview journal.
+import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
 import { expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -14,6 +15,9 @@ import { encoded } from './stage2-provider.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY,
   subscriptionConversationPolicy, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
+
+// Preserve the recorded policy/prompt before the reviewed memory-supersession guidance.
+const HISTORICAL_MEMORY = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
 
 const key = new Uint8Array(32).fill(43);
 const at = 1790512800000; // Fixed 2026-09-27 clock; no wall-clock activation assumptions.
@@ -143,7 +147,13 @@ it('validates renewal and policy-successor records against the pinned policy, wi
     loginProfileIdentity: 'offline-identity', executable: '/offline/cli', artifact: 'sha256:offline',
     version: '2.1.280', activationReference: 'offline-activation', managedConfigurationDigest: 'sha256:offline' };
   const digest = encoded(subscriptionConversationPolicy(model)).hash;
-  expect(digest).toBe('sha256:7b1d9af257f848e9cef4abad31771394af1cb4e1b6062a4538d3442a2045f220');
+  const policy = subscriptionConversationPolicy(model);
+  expect(policy.args.join(' ')).toContain(MEMORY_DISAMBIGUATION);
+  expect(policy.args.join(' ')).not.toContain(HISTORICAL_MEMORY);
+  const historical = { ...policy, args: policy.args.map(arg => arg.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY)) };
+  const historicalDigest = encoded(historical).hash;
+  expect(historicalDigest).toBe('sha256:7b1d9af257f848e9cef4abad31771394af1cb4e1b6062a4538d3442a2045f220');
+  expect(digest).not.toBe(historicalDigest);
   const base = { type: 'SubscriptionActivationRecord', schemaVersion: 1, reference: profile.activationReference,
     waiver: 'waiver', p11: 'p11', reviewedHead: 'frozen predecessor', trial: genesis().grant,
     baseConfigurationDigest: genesis().configurationDigest, profileDigest: encoded(profile).hash,
@@ -161,6 +171,8 @@ it('validates renewal and policy-successor records against the pinned policy, wi
   const renewed = renewActivation({ current: base, currentBytes, profile, observation, now: at }).record;
   expect(() => validateSubscriptionActivation(renewed, profile, model, at, SUBSCRIPTION_CONVERSATION_FRAMING)).not.toThrow();
   expect(renewed.invocationPolicyDigest).toBe(digest);
+  expect(() => validateSubscriptionActivation({ ...renewed, invocationPolicyDigest: historicalDigest },
+    profile, model, at, SUBSCRIPTION_CONVERSATION_FRAMING)).toThrow('artifact or policy differs');
   expect(() => validateSubscriptionActivation({ ...renewed, invocationPolicyDigest: 'sha256:3598cc7514f4be6ffec52f1d321e1596cd2db420a67fd7958281f3862dd9ce8c' },
     profile, model, at, SUBSCRIPTION_CONVERSATION_FRAMING)).toThrow();
   expect(renewed.predecessor.digest).toBe(`sha256:${createHash('sha256').update(currentBytes).digest('hex')}`);

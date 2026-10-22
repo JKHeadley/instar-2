@@ -1,3 +1,5 @@
+import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
+const HISTORICAL_MEMORY = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { expect, it } from 'vitest';
@@ -19,7 +21,7 @@ const fixture = () => JSON.parse(readFileSync(new URL('./fixtures/act-first-2026
 };
 // Historical captures predate the identity prefix and requested-step guidance.
 // Preserve those bytes; check the added guidance on the current routes below.
-const capturedSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(
+const capturedSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace(
   "You are an Instar 2.0 agent,", 'You are Instar,').replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
 const decode = (run: Capture) => {
   const reading = readAnswer(JSON.parse(run.raw).result, { wrapped: 'accept' });
@@ -101,7 +103,7 @@ it('replays recorded tool results and final replies under their exact historical
   expect(captured.runs.map(run => run.name)).toEqual(['requested-verification', 'no-verification-needed']);
   for (const run of captured.runs) {
     // The recorded run predates only this full-set clause. Preserve the capture verbatim.
-    expect(run.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(
+    expect(run.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace(
       COMPLETE_REQUESTED_WORK, ''));
     const answer = decode(run);
     const trace = toolTrace(run.admission.trim().split('\n').filter(Boolean));

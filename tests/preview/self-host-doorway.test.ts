@@ -1,5 +1,6 @@
 // @ts-nocheck -- physical IO only is replaced; registered adapters and provider owners are real.
 // Regression: J-proofroom2-j-binding-1021-20261021-195327 refused Codex before any provider call.
+import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,6 +11,9 @@ import { doorwayProvider, SELF_HOST_QUESTION, selfHostPrompt } from './self-host
 import { dispatchOwnedProvider, providerStores } from './self-host-owners.ts';
 import { encoded, inputMeasurements, requireInputBound } from './stage2-provider.js';
 import { successiveWorld, offlineProfile } from './successive-fixture.js';
+
+// Preserve the recorded policy/prompt before the reviewed memory-supersession guidance.
+const HISTORICAL_MEMORY = 'When two active memory items both fit the question but conflict, or are about different people or things, ask one short question that names a detail telling them apart. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
 
 const roots = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
@@ -53,7 +57,12 @@ it('reaches the registered Codex doorway with the recorded 0.156.1 transport and
   const f = fixture(), provider = await doorwayProvider(f.input);
   expect(provider.doorway).toBe(doorwayId);
   expect(f.input.profile.version).toBe(regression.version);
-  expect(f.input.activation.invocationPolicyDigest).toBe(regression.invocationPolicyDigest);
+  const doorway = subscriptionDoorway(doorwayId), policy = doorway.policyFor(model, doorway.conversationFraming);
+  expect(policy.system).toContain(MEMORY_DISAMBIGUATION);
+  expect(policy.system).not.toContain(HISTORICAL_MEMORY);
+  const historical = { ...policy, system: policy.system.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY) };
+  expect(encoded(historical).hash).toBe(regression.invocationPolicyDigest);
+  expect(f.input.activation.invocationPolicyDigest).not.toBe(regression.invocationPolicyDigest);
   await f.dispatch(provider);
   expect(f.state.calls).toBe(1);
   const facts = providerStores(f.root)[0].facts;
@@ -65,10 +74,11 @@ it('reaches the registered Codex doorway with the recorded 0.156.1 transport and
   expect(binding).toMatchObject({ doorway: doorwayId, invocationPolicyDigest: f.input.activation.invocationPolicyDigest });
 });
 
-it.each(['model', 'policy', 'profile', 'expired', 'stopped', 'unknown-doorway'])('refuses %s before physical execution', async kind => {
+it.each(['model', 'policy', 'historical-policy', 'profile', 'expired', 'stopped', 'unknown-doorway'])('refuses %s before physical execution', async kind => {
   const f = fixture(), input = { ...f.input, activation: { ...f.input.activation } };
   if (kind === 'model') input.model = 'gpt-other-exact';
   if (kind === 'policy') input.activation.invocationPolicyDigest = encoded('other').hash;
+  if (kind === 'historical-policy') input.activation.invocationPolicyDigest = regression.invocationPolicyDigest;
   if (kind === 'profile') input.profile = Object.freeze({ ...input.profile, expectedAccount: 'another@example.invalid' });
   if (kind === 'expired') input.now = () => input.activation.expiresAt;
   if (kind === 'stopped') f.state.stopped = true;

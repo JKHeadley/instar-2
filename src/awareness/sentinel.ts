@@ -22,7 +22,7 @@
  * `stopped` suppresses every action.
  */
 
-export type StuckSignature = 'context-too-long' | 'context-wedge' | 'rate-limited' | 'policy-wedge' | null;
+export type StuckSignature = 'context-too-long' | 'context-wedge' | 'rate-limited' | 'provider-throttled' | 'policy-wedge' | null;
 export interface GroundedReceipt { readonly at: number; readonly source: string; readonly digest: string; readonly resetId?: string; readonly sessionId?: string | null }
 export interface ResetReceipt { readonly at: number; readonly source: string; readonly id: string; readonly sessionId?: string | null }
 export interface DeliveryReceipt { readonly at: number; readonly operation: string; readonly lastInboundMessageId: string | null; readonly sessionId?: string | null }

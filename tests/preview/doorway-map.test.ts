@@ -7,6 +7,44 @@ import { doorwayNotices } from './credential-reminders.js';
 import type { DoorwayMap } from './doorway-map.js';
 import { DOORWAY_FRESH_MS, doorwayFreshness, installDoorways, observeExchange, standingDoorwayCheck, subscriptionExchange } from './doorway-map.js';
 import { modelEntryFresh } from '../../src/register/index.js';
+import codexCapture from './fixtures/codex-answer-0.156.1.json' with { type: 'json' };
+import recordedStreams from './codex-recorded-frames.json' with { type: 'json' };
+import recordedShapes from './fixtures/retrospective-duty-followup-train-1-2026-10-08.json' with { type: 'json' };
+
+it('discovers the real Codex exchange through its registered adapter without inventing a provider model id', () => {
+  const doorway = subscriptionDoorway('codex-cli-subscription');
+  const capture = codexCapture.captures.find(row => row.args[0] === 'exec')!;
+  const observed = subscriptionExchange(capture, 'recorded-codex', doorway);
+  expect(observed).toEqual({ ok: true, reportedModels: [], evidence: 'exchange:recorded-codex' });
+  const routes = [{ ...installed[0]!, model: codexCapture.model }];
+  const map = observeExchange(installDoorways(null, routes), 'preview-subscription', codexCapture.model, observed!, 1000);
+  expect(map.doorways[0]!.models[0]).toMatchObject({ state: 'verified', strength: 'configured-route', verifiedAt: 1000 });
+  expect(doorwayFreshness(standingDoorwayCheck(map, 1100), 1100)).toMatchObject({ fresh: true });
+  expect(subscriptionExchange(capture, 'wrong-adapter', subscriptionDoorway('claude-code-subscription')))
+    .toMatchObject({ ok: false, reason: 'error-frame' });
+  for (const result of [{ ...capture, code: 1 }, { ...capture, limited: true, localLimit: 'timeout' }])
+    expect(subscriptionExchange(result, 'failed', doorway)).toMatchObject({ ok: false });
+  expect(subscriptionExchange({ ...capture, limited: true, localLimit: 'capacity' }, 'local', doorway)).toBeNull();
+  for (const stdout of ['', capture.stdout.replace('turn.completed', 'turn.failed'), capture.stdout + '\nnot-json',
+    capture.stdout.replace('agent_message', 'unregistered_item')])
+    expect(subscriptionExchange({ ...capture, stdout }, 'incomplete', doorway)).toMatchObject({ ok: false });
+});
+
+it('never mistakes recorded model judgments or delivered text for successful provider framing', () => {
+  // Actual proof-room writer/reviewer/Jev outputs, including undecided/uncertain
+  // decisions, are payloads. Only the adapter's terminal envelope can verify a route.
+  expect(recordedShapes.otherShapes.map(row => row.kind)).toEqual(['summary-writer', 'summary-uncertain',
+    'jev-undecided', 'jev-unsure', 'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
+  for (const id of ['claude-code-subscription', 'codex-cli-subscription']) {
+    const parse = subscriptionDoorway(id).exchangeModels;
+    for (const row of recordedShapes.otherShapes) expect(parse(row.raw), `${id}: ${row.kind} ${row.id}`).toBeNull();
+  }
+  const parse = subscriptionDoorway('codex-cli-subscription').exchangeModels;
+  expect(parse(recordedStreams.streams.ok)).toEqual([]);
+  expect(parse(recordedStreams.streams.decision)).toEqual([]);
+  expect(parse(recordedStreams.streams.turnFailed)).toBeNull();
+
+});
 
 const installed = [{ id: 'preview-subscription', billing: 'subscription' as const, model: 'claude-opus-4-8', priceReason: 'charge not reported by the subscription route' },
   { id: 'typesafe-jev', billing: 'metered' as const, model: 'jev-1.13.0', priceReason: 'no price reported by the route' }];

@@ -1,0 +1,110 @@
+{
+  "source": {
+    "report": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/codex-recall-1021s-live-final/report.json",
+    "model": "gpt-6-astra",
+    "profile": "codex-dawn-tests-1021",
+    "finished": "2026-10-22T00:12:32.021Z",
+    "mode": "bounded isolated model replay; no Telegram sends or production activation changes",
+    "seed": "codex-recall-2026-10-21.json update 367052734; exact recorded answer replayed. Subsequent outputs are fresh model calls through the final compact system/packet and the real journal worker."
+  },
+  "cases": [
+    {
+      "name": "recorded-update",
+      "second": "Please remember that the desk test word is orchid-cdb0bc5a47dc.",
+      "calls": [
+        {
+          "ordinal": 1,
+          "id": "telegram:8813073094:update:367052735",
+          "promptSha256": "c5ca3ad45d5df8d0a160fc99745c80994d9020ba0ca9133a628e838dc26aa42b",
+          "output": "{\"reasoning\":\"The operator supplied a new value for the existing desk test word, so this is a same-fact update. No persistence claim is made.\",\"reply\":\"The desk test word is orchid-cdb0bc5a47dc.\",\"memory\":[{\"mode\":\"update\",\"source\":\"telegram:8813073094:update:367052734\",\"quote\":\"Please remember that the desk test word is orchid-f8bcd3d9bd5a.\",\"replacement\":\"Please remember that the desk test word is orchid-cdb0bc5a47dc.\"}],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+          "inputTokens": 31201,
+          "outputTokens": 191
+        },
+        {
+          "ordinal": 2,
+          "id": "telegram:8813073094:update:367052737",
+          "promptSha256": "71d5192887de31938b369cef3d8b711b9cb206c05925e517e231c147b9ad172b",
+          "output": "{\"reasoning\":\"The latest direct operator statement supports the exact word.\",\"reply\":\"orchid-cdb0bc5a47dc\\nSource: main chat, turn 367052735, 2026-10-21 16:29 PDT.\",\"memory\":[],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[],\"memoryList\":true}",
+          "inputTokens": 30433,
+          "outputTokens": 194
+        }
+      ],
+      "delivered": [
+        "Saved the requested fact.",
+        "Now: Please remember that the desk test word is orchid-cdb0bc5a47dc. Was: Please remember that the desk test word is orchid-f8bcd3d9bd5a.",
+        "Here are 1 active memory items I have about you (newest first):\n1. Please remember that the desk test word is orchid-cdb0bc5a47dc.\n   To correct or forget this, quote the item and tell me what to change or forget."
+      ]
+    },
+    {
+      "name": "explicit-now",
+      "second": "The desk test word is now orchid-cdb0bc5a47dc.",
+      "calls": [
+        {
+          "ordinal": 3,
+          "id": "telegram:8813073094:update:367052735",
+          "promptSha256": "440ddd9554d92ca855b9e7e71d9f2e69973c613520bd5886e8a7356307417646",
+          "output": "{\"reasoning\":\"The operator supplied a new value for the same fact, so the existing memory should be updated.\",\"reply\":\"The desk test word is now orchid-cdb0bc5a47dc.\",\"memory\":[{\"mode\":\"update\",\"source\":\"telegram:8813073094:update:367052734\",\"quote\":\"Please remember that the desk test word is orchid-f8bcd3d9bd5a.\",\"replacement\":\"The desk test word is now orchid-cdb0bc5a47dc.\"}],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+          "inputTokens": 30323,
+          "outputTokens": 121
+        },
+        {
+          "ordinal": 4,
+          "id": "telegram:8813073094:update:367052737",
+          "promptSha256": "f1c6e2043394c29b8c58607c426bcb38efd9fc3f17e63c55447a6990a46dfd56",
+          "output": "{\"reasoning\":\"The latest direct operator statement supplies the exact current word; recall requires no memory change.\",\"reply\":\"orchid-cdb0bc5a47dc\\nSource: main chat, turn 367052735, 2026-10-21 16:29 PDT.\",\"memory\":[],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[],\"memoryList\":true}",
+          "inputTokens": 30425,
+          "outputTokens": 151
+        }
+      ],
+      "delivered": [
+        "Saved the requested fact.",
+        "Now: The desk test word is now orchid-cdb0bc5a47dc. Was: Please remember that the desk test word is orchid-f8bcd3d9bd5a.",
+        "Here are 1 active memory items I have about you (newest first):\n1. The desk test word is now orchid-cdb0bc5a47dc.\n   To correct or forget this, quote the item and tell me what to change or forget."
+      ]
+    },
+    {
+      "name": "unrelated",
+      "second": "Please remember that my spare key is with Morgan.",
+      "calls": [
+        {
+          "ordinal": 5,
+          "id": "telegram:8813073094:update:367052735",
+          "promptSha256": "8ed26cf9212a0964878392c585a69ae845f6bb5fe55fc539c29f56e7d920adf2",
+          "output": "{\"reasoning\":\"The operator requested a new fact be remembered; no existing fact conflicts with it.\",\"reply\":\"Your spare key is with Morgan.\",\"memory\":[{\"mode\":\"remember\",\"source\":\"telegram:8813073094:update:367052735\",\"quote\":\"Please remember that my spare key is with Morgan.\"}],\"dated\":[],\"lastNamedPerson\":\"Morgan\",\"personAttributes\":[]}",
+          "inputTokens": 30317,
+          "outputTokens": 139
+        }
+      ],
+      "delivered": [
+        "Saved the requested fact.",
+        "Saved the requested fact."
+      ]
+    },
+    {
+      "name": "quoted",
+      "second": "A forwarded note says \u201cthe desk test word is orchid-cdb0bc5a47dc.\u201d This is a quotation, not my instruction to change it.",
+      "calls": [
+        {
+          "ordinal": 6,
+          "id": "summary:367052735",
+          "promptSha256": "bc7340009f6b42e74ad3b32be52b1e11b46824fed0b6a0151b3fcc0a23cd3d32",
+          "output": "{\"reasoning\":\"The forwarded quotation does not authorize a memory change. Preserve the operator's original fact and distinguish accepted and pending reply outcomes.\",\"summary\":\"In main chat on 2026-10-21 at 16:29 PDT, the operator requested saving the desk test word recorded in memoryItems. The assistant answered \\\"Saved the requested fact.\\\"; Telegram API accepted that answer, but independent storage verification is not supplied. In the next message, in the same conversation and minute, the operator reported a forwarded note saying \u201cthe desk test word is orchid-cdb0bc5a47dc.\u201d The operator explicitly identified this as a quotation, not an instruction to change the saved fact. That message has no answer yet and its outcome is pending.\",\"memory\":[],\"people\":[],\"personAttributes\":[],\"commitments\":[{\"in\":\"message\",\"quote\":\"Please remember that the desk test word is orchid-f8bcd3d9bd5a.\",\"waitsOn\":\"nothing\"}],\"closed\":[],\"memoryDisposition\":\"none\",\"questions\":[],\"memoryItems\":[{\"source\":\"telegram:8813073094:update:367052734\",\"quote\":\"the desk test word is orchid-f8bcd3d9bd5a.\"}],\"concepts\":[{\"source\":\"telegram:8813073094:update:367052734\",\"terms\":[\"recall\",\"saved fact\",\"verification token\"]},{\"source\":\"telegram:8813073094:update:367052735\",\"terms\":[\"reported speech\",\"unchanged memory\",\"unauthorized correction\",\"imported content\"]}]}",
+          "inputTokens": 30248,
+          "outputTokens": 444
+        },
+        {
+          "ordinal": 7,
+          "id": "telegram:8813073094:update:367052735",
+          "promptSha256": "0faf43b04124c8eef9d5dd5a17752985db06442dfd7154cd081a9687f28b6060",
+          "output": "{\"reasoning\":\"The operator explicitly identifies the forwarded text as a quotation, so it supplies no memory change or conflicting instruction.\",\"reply\":\"Understood. The forwarded note is quoted material, not a change to the desk test word.\",\"memory\":[],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]}",
+          "inputTokens": 30374,
+          "outputTokens": 234
+        }
+      ],
+      "delivered": [
+        "Saved the requested fact.",
+        "Understood. The forwarded note is quoted material, not a change to the desk test word."
+      ]
+    }
+  ]
+}

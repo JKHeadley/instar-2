@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error -- host composition module is JavaScript, exercised at runtime.
 import { observeInstalledSessionLogin } from '../preview/installed-harness-logins.mjs';
+// @ts-expect-error Host-only JavaScript projection.
+import { createWorkingActivities } from '../preview/working-activity.mjs';
 import { sessionLoginNotices, type SessionLoginObservation } from '../preview/credential-reminders.js';
 import { CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
 import { SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
@@ -96,6 +98,67 @@ const rateConfig = { turnDeadlineMs: 120_000, requireTurnHook: true,
   confinement: 'admitted' as const, toolAdmission: { command: () => '/hook', timeoutSeconds: 10 },
   modelGate: () => 'http://127.0.0.1:1234/' + 'a'.repeat(32) + '/claim' };
 const recordedLimit = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8')).result as string;
+const throttleFixture = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/server-throttle.json', import.meta.url), 'utf8')) as {
+  result: string; overloaded: string; pane: string;
+};
+const recordedThrottle = throttleFixture.result;
+// Documented 1.x incident context, with a constructed supported quiet footer (not a new capture).
+const quietThrottlePane = throttleFixture.pane.replace(' · esc to interrupt', '')
+  .replace('  ⎿ Tip: Use /btw to ask a quick side question\n', '');
+it.each([...[recordedThrottle, `  ⎿  ${recordedThrottle}`, throttleFixture.overloaded]
+  .map(throttle => `${throttle}\n❯ `), quietThrottlePane])(
+  'ports recorded 1.x server throttle %s into bounded recovery without poisoning account quota', pane => {
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  expect(classifyPaneIdle(pane, 'claude-code')).toBe(true);
+  f.changePane(pane);
+  const activities = createWorkingActivities({ now: f.config.now, read: () => '' });
+  activities.observe('input', 'topic', 'start');
+  const observe = (driver = f.driver) => {
+    const result = driver.observe({ operation: 'deliver', processIdentity: id });
+    activities.observeSession(f.journal.sessions[0], result);
+    return value(result);
+  };
+  expect(observe()).toMatchObject({ phase: 'launched', detail: 'rate-limit recovery waiting' });
+  expect(classifyStuckSignature(pane)).toBe('provider-throttled');
+  expect(activities.current('input')).toMatchObject({ wait: 'rate-limit', running: false });
+  expect(value(f.driver.observeIdle(id))).toBeNull();
+  f.hook(1001); f.time(1001);
+  expect(observe().phase).toBe('launched'); // a throttle Stop is not completion
+  const sends = f.sends;
+  f.time(30_999); expect(observe().phase).toBe('launched'); expect(f.sends).toBe(sends);
+  f.time(31_000);
+  const restarted = createProductionSessionDriver(f.config);
+  expect(observe(restarted).detail).toBe('rate-limit continuation submitted');
+  expect(activities.current('input')).toBeNull();
+  expect(f.journal.sessions[0]?.turnDeadline).toBe(121_000);
+  f.time(36_000); const after = f.sends;
+  expect(observe(restarted)).toMatchObject({ phase: 'pause-observed', detail: 'provider-throttled' });
+  expect(observe(restarted).phase).toBe('pause-observed'); expect(f.sends).toBe(after);
+  expect(f.journal.deliveries).toHaveLength(1);
+});
+
+it('does not recover server throttle quotations, native retries, old output or completed turns', () => {
+  for (const pane of [`quoted: ${recordedThrottle}\n❯ `, `${recordedThrottle}\nRetrying in 7s · attempt 3/10\n❯ `,
+    `${recordedThrottle}\nA completed answer.\n❯ `, `> ${recordedThrottle}\n❯ `,
+    throttleFixture.pane,
+    quietThrottlePane.replace(recordedThrottle, `quoted: ${recordedThrottle}`),
+    quietThrottlePane.replace(recordedThrottle, `> ${recordedThrottle}`),
+    quietThrottlePane.replace('✻ Churned', 'Retrying in 7s · attempt 3/10\n✻ Churned'),
+    quietThrottlePane.replace('✻ Churned', 'A completed answer.\n✻ Churned'),
+    quietThrottlePane.replace('✻ Churned for 7m 43s', '✻ Churned for 7m 43s\nA completed answer.'),
+    quietThrottlePane.replace('✻ Churned for 7m 43s', '✻ Churned for 7m 43s — quoted output')]) {
+    expect(classifyStuckSignature(pane)).toBeNull();
+    const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+    f.changePane(pane);
+    expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).detail).toBe('session live; turn still open');
+    expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
+  }
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  f.changePane(quietThrottlePane); f.hook(1001); f.time(1001);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id, resultAvailable: true })).phase).toBe('output-observed');
+  expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
+});
+
 it('continues a throttled turn once after backoff, preserving its intake and original deadline across driver restart', () => {
   const f = fixture('claude-code', rateConfig);
   const id = f.launch(); value(f.deliver(id));
@@ -271,7 +334,7 @@ it('replays recorded summary, Jev, review, delivered and empty shapes across the
     value(driver.observe({ operation: 'deliver', processIdentity: id }));
     expect(f.journal.sessions[0]?.rateRecovery).toBeNull();
     expect(f.sends).toBe(sends);
-    f.changePane(`${recordedLimit}\n❯ `); f.hook(1000);
+    f.changePane(quietThrottlePane); f.hook(1000);
     const worker = { launch: id, incarnation: 'inc', claim: 'topic' };
     const delivery = { ...worker, operation: 'deliver', text: 'hello', digest: hash('hello'),
       resultPath: '/work/result', maxBytes: 100_000 };
@@ -280,6 +343,7 @@ it('replays recorded summary, Jev, review, delivered and empty shapes across the
       ? [{ kind: 'reply', delivery: 'deliver', text: row.raw, digest: hash(row.raw) },
         { kind: 'turn-end', delivery: 'deliver', state: 'completed' }] : []);
     expect(f.journal.sessions[0]?.turnDeadline).toBe(row.raw.trim() ? null : 121_000);
+    expect(f.journal.sessions[0]?.rateRecovery?.state ?? null).toBe(row.raw.trim() ? null : 'waiting');
     expect(f.sends).toBe(sends);
   }
 });
@@ -1299,4 +1363,92 @@ it.each(['reply', 'stop', 'deadline'] as const)('restoration yields to the real 
     expect(requested).toBe(true);
     expect(f.calls.filter(row => row[0] === 'send-keys' && row.includes('Enter'))).toHaveLength(outcome === 'reply' ? 2 : 1);
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); }
+});
+
+
+it.each([recordedLimit, recordedThrottle])('restarts throttle corroboration when recorded working frames interrupt %s', throttle => {
+  const captured = JSON.parse(readFileSync(new URL('../preview/fixtures/work-silence-terminal-2026-10-14.json', import.meta.url), 'utf8'));
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  const observe = () => value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  const quiet = `${throttle}\n❯ `;
+  f.changePane(quiet); observe(); const sends = f.sends;
+  f.time(30_000); f.changePane(`${throttle}\n${captured.captures[1].capture}`);
+  expect(observe().phase).toBe('launched'); expect(f.sends).toBe(sends);
+  f.time(31_000); f.changePane(quiet);
+  expect(observe().phase).toBe('launched'); expect(f.sends).toBe(sends);
+  f.time(60_999); observe(); expect(f.sends).toBe(sends);
+  f.time(61_000); expect(observe().detail).toBe('rate-limit continuation submitted');
+  expect(f.sends).toBeGreaterThan(sends);
+  expect(f.journal.sessions[0]?.turnDeadline).toBe(121_000);
+  expect(f.journal.deliveries).toHaveLength(1);
+});
+
+it('exports active and idle corroboration from recorded frames without claiming a result', () => {
+  const captures = JSON.parse(readFileSync(new URL('../preview/fixtures/work-silence-terminal-2026-10-14.json', import.meta.url), 'utf8')).captures;
+  const idle = JSON.parse(readFileSync(new URL('../fixtures/claude-idle-2.1.280.json', import.meta.url), 'utf8')).pane.capture;
+  const observations: Parameters<NonNullable<ProductionSessionConfig['observeActivity']>>[0][] = [];
+  const f = fixture('claude-code', { requireTurnHook: true, observeActivity: row => observations.push(row) });
+  const id = f.launch(); value(f.deliver(id));
+  for (const pane of [captures[0].capture, captures[1].capture, idle]) {
+    f.changePane(pane);
+    expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).phase).toBe('launched');
+  }
+  expect(observations).toMatchObject([{ activity: 'unknown' }, { activity: 'active' }, { activity: 'idle' }]);
+});
+
+
+it.each([recordedLimit, recordedThrottle])('replays real journal results through corroborated %s recovery without counting an empty bubble as recovered', async throttle => {
+  const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8'));
+  const captures = JSON.parse(readFileSync(new URL('../preview/fixtures/work-silence-terminal-2026-10-14.json', import.meta.url), 'utf8')).captures;
+  for (const row of recorded.otherShapes as { kind: string; id: string; raw: string }[]) {
+    const f = fixture('claude-code', rateConfig); let result: string | null = null;
+    const adapter = createSessionConversationAdapter({ createDriver: () => f.driver, resolveDelivery: () => undefined,
+      io: { clearResult: () => undefined, readResult: () => result, modelCalls: () => 2,
+        prepareAdmission: () => undefined, admissionState: () => ({ refused: false, openDelegations: [] }),
+        closeAdmission: () => undefined, wait: async () => undefined } });
+    const worker = await adapter.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test', incarnation: 'inc', workingScope: '/work' });
+    const delivery = { ...worker, operation: 'deliver', text: 'hello', digest: hash('hello'), resultPath: '/work/result', maxBytes: 100_000 };
+    await adapter.deliver(delivery);
+    const observe = () => adapter.observe({ ...worker, delivery, cursor: 0, limit: 2 });
+    const quiet = `${throttle}\n❯ `;
+    f.changePane(quiet); await observe(); const sends = f.sends;
+    f.time(30_000); f.changePane(`${throttle}\n${captures[1].capture}`);
+    expect((await observe()).observations, row.id).toEqual([]);
+    f.time(31_000); f.changePane(quiet); await observe();
+    expect(f.sends, row.id).toBe(sends);
+    f.time(61_000); expect((await observe()).observations, row.id).toEqual([]);
+    expect(f.journal.sessions[0]?.rateRecovery?.state, row.id).toBe('accepted');
+    expect(f.sends, row.id).toBe(sends + 2); // one literal continuation and its Enter
+    result = row.raw; f.time(61_001); f.hook(61_001);
+    expect((await observe()).observations, row.id).toEqual(row.raw.trim()
+      ? [{ kind: 'reply', delivery: 'deliver', text: row.raw, digest: hash(row.raw) },
+        { kind: 'turn-end', delivery: 'deliver', state: 'completed' }] : []);
+    expect(f.journal.sessions[0]?.turnDeadline, row.id).toBe(row.raw.trim() ? null : 121_000);
+    expect(f.journal.deliveries, row.id).toHaveLength(1);
+  }
+});
+
+it.each(['changed', 'legacy', 'absent'] as const)('requires fresh unchanged throttle evidence after %s output', state => {
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  const observe = (driver = f.driver) => value(driver.observe({ operation: 'deliver', processIdentity: id }));
+  const quiet = `${recordedLimit}\n❯ `;
+  f.changePane(quiet); observe(); const sends = f.sends;
+  if (state === 'legacy') f.config.io.save({ ...f.journal, sessions: f.journal.sessions.map(row => ({ ...row,
+    rateRecovery: { dueAt: 31_000, state: 'waiting' } })) });
+  f.time(31_000); f.changePane(state === 'absent' ? '' : state === 'changed' ? `new line\n${quiet}` : quiet);
+  observe(); expect(f.sends).toBe(sends);
+  f.time(32_000); f.changePane(quiet); observe(); expect(f.sends).toBe(sends);
+  f.time(62_000); expect(observe(createProductionSessionDriver(f.config)).detail).toBe('rate-limit continuation submitted');
+  expect(f.journal.sessions[0]?.turnDeadline).toBe(121_000);
+});
+
+
+it('a different adapter pause after throttle waiting is preserved without a continuation', () => {
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  const observe = () => value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+  f.changePane(`${recordedLimit}\n❯ `); observe(); const sends = f.sends;
+  f.time(31_000);
+  f.changePane('appears to violate our Usage Policy\nappears to violate our Usage Policy\n❯ ');
+  expect(observe()).toMatchObject({ phase: 'pause-observed', detail: 'policy-wedge' });
+  expect(f.sends).toBe(sends);
 });

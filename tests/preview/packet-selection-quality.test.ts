@@ -97,7 +97,10 @@ it('measures labelled minimal recall on the actual bounded model packets', () =>
     // for sentences copied from the reply. cint-L2 with the live repair merged: measured mean 11011 (occam's
     // removals offset the repair's additions). w3-memcorr: memoryDecision states the exact memory item shape on
     // operator packets (Rule 7, live K13b; +580 bytes each): measured mean 11269.
-    expect(result.packetBytesMean).toBeLessThanOrEqual(11370);
+    // train-128: reviewed same-fact supersession guidance composes at a measured mean of 11418
+    // (+48 over the previous regression bound). Recall/precision and the 18000-byte packet limit
+    // above are unchanged, as is the separate default-context fixed-prompt guard.
+    expect(result.packetBytesMean).toBeLessThanOrEqual(11418);
     expect(rows.find(row => row.question.startsWith('Which clinic'))?.picked).toContain(0);
     const agenda = worker.probe('What should I know about upcoming plans?');
     if ('reason' in agenda) throw Error(agenda.reason);

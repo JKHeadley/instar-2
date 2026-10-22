@@ -241,10 +241,14 @@ it.each([false, true])('imports quota source and threshold with explicit usage o
   const next = read(f.prepare());
   expect(next.thresholdPercent).toBe(80);
   expect(next.usageFile).toBe(override ? replacement : usageFile);
-  const at = Date.now(), profile = read(f.logins[0].profile);
-  const reading = utilizationPct => ({ version: 1, accounts: [{ email: profile.expectedAccount,
-    configHome: profile.configDirectory, lastQuota: { measuredAt: new Date(at).toISOString(),
-      fiveHour: { utilizationPct, resetsAt: new Date(at + 600000).toISOString() } } }] });
+  const at = Date.now();
+  const reading = utilizationPct => ({ version: 1, accounts: f.logins.map((row, index) => {
+    const profile = read(row.profile), pct = index === 0 ? utilizationPct : 20;
+    return { email: profile.expectedAccount, configHome: profile.configDirectory,
+      lastQuota: { measuredAt: new Date(at).toISOString(),
+        fiveHour: { utilizationPct: pct, resetsAt: new Date(at + 600000).toISOString() },
+        sevenDay: { utilizationPct: pct, resetsAt: new Date(at + 600000).toISOString() } } };
+  }) });
   writeFileSync(usageFile, JSON.stringify(reading(99)));
   writeFileSync(next.usageFile, JSON.stringify(reading(79)));
   const selected = installedHarnessLaunch({ root: f.root, options: { model: f.world.model, 'harness-user': 'offline' }, prepare: () => f.prepare() });
@@ -375,4 +379,12 @@ it('a singleton keeps the launch session grant and an installed grant remains th
     .toBe('/installed/session.json');
   expect(installedHarnessLaunch({ root: f.root, options, prepare }).options['session-work-activation'])
     .toBe('/reviewed/session.json');
+});
+
+it('retains each account-bound quota custody reference through import and build preparation', () => {
+  const f = fixture(), path = join(f.root, 'quota-logins.json');
+  const logins = f.logins.map((row, index) => ({ ...row, quotaLogin: join(f.root, `private-quota-${index}.json`) }));
+  writeFileSync(path, JSON.stringify({ version: 1, logins }));
+  installHarnessLogin({ root: f.root, options: { ...f.options(f.logins[0]), 'login-pool': path }, verify: f.verify });
+  expect(read(f.prepare()).logins.map(row => row.quotaLogin)).toEqual(logins.map(row => row.quotaLogin));
 });

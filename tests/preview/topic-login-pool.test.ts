@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { conversationSessionAnswer } from './conversation-session-answer.js';
 import { createHarnessLoginPool } from './harness-login-pool.mjs';
+import { createClaudePoolQuota } from '../../scripts/claude-pool-quota.mjs';
 import { createTopicLoginHandoff } from '../../scripts/topic-login-pool.mjs';
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 import { createConversationHostStore } from '../../scripts/conversation-host-store.mjs';
@@ -17,7 +18,7 @@ afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, 
 const hash = text => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const tick = () => new Promise(resolve => setTimeout(resolve, 1));
 async function until(test) { for (let n = 0; n < 500 && !test(); n++) await tick(); expect(test()).toBe(true); }
-function fixture() {
+function fixture(liveQuota = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'topic-pool-'))); roots.push(root);
   const project = join(root, 'scope'); mkdirSync(project);
   let now = 1000000, stopped = false, failCopy = false, failCommit = false, failAdmit = false, failValidate = false;
@@ -27,8 +28,17 @@ function fixture() {
     status, lastQuota: { measuredAt: new Date(now).toISOString(), fiveHour: { utilizationPct: pct, resetsAt: new Date(now + 3600000).toISOString() },
       sevenDay: { utilizationPct: pct, resetsAt: new Date(now + 3600000).toISOString() } } });
   let usage = { version: 1, accounts: entries.map(entry => quota(entry, 20)) };
-  const settings = { configuration: { entries, threshold: 95, identity: 'fixture', current: () => true },
-    machine: 'test-linux', statePath: join(root, 'pool.json'), now: () => now, validate: entry => { if (failValidate && entry.index === 1) throw Error('destination login unavailable'); }, usage: () => usage };
+  const raw = JSON.parse(readFileSync(new URL('./fixtures/claude-usage-2026-10-22.json', import.meta.url), 'utf8'));
+  let pressured = 0;
+  const quotaReader = liveQuota ? createClaudePoolQuota({ entries, now: () => now, stopped: () => stopped,
+    validate: () => {}, credential: entry => String(entry.index),
+    fetchImpl: async (_url, request) => {
+      const body = structuredClone(raw);
+      if (pressured && request.headers.Authorization === 'Bearer 0') body.seven_day.utilization = pressured;
+      return new Response(JSON.stringify(body));
+    } }) : null;
+  const settings = { quotaReader, configuration: { entries, threshold: 95, identity: 'fixture', current: () => true },
+    machine: 'test-linux', statePath: join(root, 'pool.json'), now: () => now, validate: entry => { if (failValidate && entry.index === 1) throw Error('destination login unavailable'); }, usage: () => liveQuota ? null : usage };
   let pool = createHarnessLoginPool(settings);
   const physical = entry => { const io = createProductionSessionIO({ stateDirectory: join(root, 'physical'), tmuxPath: '/synthetic',
     home: entry.profile.configDirectory, configHome: entry.profile.configDirectory, cwd: project });
@@ -86,6 +96,7 @@ function fixture() {
   const request = operation => ({ operation, question: operation, context: 'recorded topic history', authority: 'grant' });
   return { get port() { return port; }, request, entries, quota, settings, get pool() { return pool; }, physical, project, transcript, writeTranscript,
     handoffFor, handoffs, stores, held, deliveries, launches, closes, edges, state: () => state, reply: text => { answer = text; },
+    pressure: (pct = 80) => { pressured = pct; },
     usage: accounts => { usage = { version: 1, accounts }; }, advance: ms => { now += ms; },
     failCopy: value => { failCopy = value; }, failCommit: value => { failCommit = value; }, failAdmit: value => { failAdmit = value; },
     failValidate: value => { failValidate = value; },
@@ -116,8 +127,8 @@ it('moves only an idle topic; the in-flight topic finishes on A then moves, with
 });
 
 it.each(['copy', 'commit'])('recovers the durable switch after a crash at %s without replay or a second completed move', async point => {
-  const f = fixture(); await f.port.run(f.request('7:first'));
-  f.usage([f.quota(f.entries[0], 95), f.quota(f.entries[1], 20)]);
+  const f = fixture(true); await f.port.run(f.request('7:first'));
+  f.pressure(95); f.advance(60_000);
   if (point === 'copy') f.failCopy(true); else f.failCommit(true);
   await expect(f.port.maintain()).rejects.toThrow('crash');
   expect(f.stores.get('7').load().pending).toMatchObject({ from: 0, to: 1 });
@@ -221,7 +232,7 @@ it('the shipped configuration captures each topic account for launch, observatio
   const source = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
   const factory = source.split('      const configurationFor = ')[1].split('\n      const defaultBinding = ')[0]
     .replaceAll('import.meta.url', JSON.stringify(new URL('./journal-agent.mjs', import.meta.url).href));
-  const drivers = [], observed = [], admitted = [], stopped = [], bound = [];
+  const drivers = [], observed = [], admitted = [], stopped = [], bound = [], activities = [];
   const recovery = [{ kind: 'dispatch-intent', claim: 'prior-claim' }];
   const journal = { view: { expires: 100000, order: [] }, sessionWorkRecords: () => recovery };
   const env = { join, conversationSession: true, sessionAdapter: {}, sha256: () => 'a'.repeat(64), conversationOf: () => 'operator', g: {}, journal,
@@ -232,6 +243,7 @@ it('the shipped configuration captures each topic account for launch, observatio
     sessionLimits: { deadlineMs: 10000, maxSessions: 2, pollMs: 25, maxResultBytes: 65536, maxStepsPerLaunch: 10, maxCallsPerStep: 20 },
     gate: { base: () => '/gate' }, sessionConnectors: new Map(), framework: 'claude-code', project: '/scope',
     required: () => 'model', options: {}, context: {}, wallNow: () => 1000, fileURLToPath: url => url.pathname,
+    workingActivities: { observeSession: (session, result) => activities.push({ session, result }) },
     observeHarnessSessionLimit: (_pool, entry, result) => { observed.push(entry.index); return result; }, loginPool: {},
     loginRuntimes: new Map([[0, { check: () => {} }], [1, { check: () => {} }]]),
     doorway: { id: 'doorway', session: { admit: async input => { admitted.push(input.profile.reference); } } },
@@ -242,7 +254,8 @@ it('the shipped configuration captures each topic account for launch, observatio
   const entry = index => ({ index, profile: { reference: `login-${index}`, executable: '/cli', home: `/home-${index}`, configDirectory: `/config-${index}` } });
   let selected = 0;
   const binding = index => ({ entry: () => entry(index === null ? selected : index),
-    physical: () => ({ inboxDirectory: '/inbox', transcriptExists: () => true }), harness: () => null,
+    physical: () => ({ inboxDirectory: '/inbox', transcriptExists: () => true,
+      load: () => ({ sessions: [{ identity: `worker-${index === null ? selected : index}`, login: index === null ? selected : index }] }) }), harness: () => null,
     authorized: () => true, stopped: () => false, admissionIO: () => ({}) });
   let resumed = false;
   const a = make('7', binding(0));
@@ -258,7 +271,10 @@ it('the shipped configuration captures each topic account for launch, observatio
   expect(drivers.slice(-2).map(config => config.configHome)).toEqual(['/config-1', '/config-0']);
   expect(drivers.at(-2).continuationRequired()).toBe(true); expect(drivers.at(-2).io.transcriptExists()).toBe(false);
   expect(bound).toEqual(['claim-8']); expect(resumed).toBe(true);
-  db.observe({}); da.observe({}); expect(observed).toEqual([1, 0]);
+  db.observe({ processIdentity: 'worker-1' }); da.observe({ processIdentity: 'worker-0' });
+  expect(observed).toEqual([1, 0]);
+  expect(activities).toEqual([{ session: { identity: 'worker-1', login: 1 }, result: {} },
+    { session: { identity: 'worker-0', login: 0 }, result: {} }]);
   await b.resources.admit(); await a.resources.admit(); expect(admitted).toEqual(['login-1', 'login-0']);
   db.stop({ claim: 'claim-8', incarnation: 'epoch-2' });
   expect(stopped).toEqual([{ claim: 'claim-8', incarnation: 'epoch-2' }]);
@@ -266,8 +282,8 @@ it('the shipped configuration captures each topic account for launch, observatio
 
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8'));
 it.each(recorded.otherShapes)('the pool replacement carries recorded $kind ($id) unchanged to the existing consumer', async row => {
-  const f = fixture(); await f.port.run(f.request('7:first'));
-  f.usage([f.quota(f.entries[0], 95), f.quota(f.entries[1], 20)]);
+  const f = fixture(true); await f.port.run(f.request('7:first'));
+  f.pressure(95); f.advance(60_000);
   // Writer/Jev/review outputs remain quoted context. Historical delivered/empty
   // replies also exercise the answer field with their exact recorded bytes.
   const output = ['delivered-reply', 'empty-reply-in-recorded-context'].includes(row.kind)
@@ -411,4 +427,17 @@ it('keeps manifest and pool persistence errors distinct from destination validat
   expect(() => pool.selectSession(0)).toThrow('pool persistence failed');
   f.failValidate(true);
   expect(() => f.pool.select()).toThrow('destination login unavailable');
+});
+
+it('refreshes recorded live quota at the shipped topic boundary and resumes the same transcript before 95%', async () => {
+  const f = fixture(true);
+  await f.port.run(f.request('7:first'));
+  const id = f.launches[0].id;
+  f.pressure(); f.advance(60_000);
+  await f.port.run(f.request('7:second'));
+  expect(f.launches.at(-1)).toMatchObject({ login: 1, id, resume: true });
+  expect(f.pool.state.handoffs).toHaveLength(1);
+  expect(f.pool.state.handoffs[0].continuity).toBe('transcript');
+  expect(f.deliveries.map(row => row.input.operation)).toEqual(['7:first', '7:second']);
+  await f.port.close();
 });
