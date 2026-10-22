@@ -491,6 +491,13 @@ export const CODEX_SUBSCRIPTION_CONTRACT: SubscriptionDoorwayContract = Object.f
 export function codexSubscriptionDoorway(): SubscriptionDoorway {
   return Object.freeze({ id: CODEX_SUBSCRIPTION_DOORWAY_ID, provider: 'openai', sourceStrength: 'attestation',
     contract: CODEX_SUBSCRIPTION_CONTRACT,
+    exchangeModels: (stdout: string): readonly string[] | null => {
+      const frames = parseCodexEventStream(stdout, CODEX_TOOL_ITEM_TYPES);
+      // exec JSONL reports the completed exchange but no provider model id. Keep that weaker
+      // configured-route evidence explicit; a thread start or empty/failed reply cannot verify it.
+      return frames.terminal === 'turn.completed' && !frames.malformed && frames.thread
+        && frames.answer?.trim() && frames.disallowedItems.length === 0 ? [] : null;
+    },
     framings: Object.freeze([CODEX_CONVERSATION_FRAMING, CODEX_TOOLS_FRAMING]),
     conversationFraming: CODEX_CONVERSATION_FRAMING,
     // Rule 30: the same scoped-tool answer route as the Claude doorway, its safeguards enforced at the admission

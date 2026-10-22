@@ -4440,3 +4440,13 @@ its reply review, with no new store, watcher or model call. A compact rendering 
 self-state counts pays for the fixed instructions within the existing context floor.
 `self-unblock.test.ts` replays recorded update 46039927 and the recorded uncertain/review/
 empty-output shapes; live account behavior still requires the desk's proof-room check.
+
+## Doorway map observations
+
+The runner installs the selected subscription doorway's registry id and configured
+model in `doorway-map.json`. Each adapter interprets its own real exchange format;
+Codex completion verifies the configured route without claiming a provider-reported
+model id. Failed exchanges, local ceilings and stale evidence retain their existing
+meaning. Replaced doorway entries remain retired history and do not appear as active
+unavailable models in status, capability context or reply notices. Restarting an
+existing root applies this reconciliation without another store or probe.

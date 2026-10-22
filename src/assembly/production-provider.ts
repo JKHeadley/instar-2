@@ -804,6 +804,9 @@ export interface SubscriptionDoorway {
   /** The provider a route through this doorway must declare. */
   readonly provider: string;
   readonly contract: SubscriptionDoorwayContract;
+  /** Rule 56: a successful exchange's reported model ids, [] when only the configured route is
+   * known, or null for an incomplete/failed frame. Physical exit and local limits are checked by the caller. */
+  exchangeModels(stdout: string): readonly string[] | null;
   /** Strength of the account/source evidence this adapter can establish. */
   readonly sourceStrength: ProviderAdapterEvidenceContract['strength'];
   /** The framings this doorway serves; a client selects one of these or none. */
@@ -861,6 +864,17 @@ export const SUBSCRIPTION_DOORWAYS: Readonly<Record<string, SubscriptionDoorway>
   'claude-code-subscription': Object.freeze({ id: 'claude-code-subscription', provider: 'anthropic', sourceStrength: 'observation',
     contract: Object.freeze({ parserReference: 'claude-code-json-result', parserVersion: '1', terminalReasonField: 'subtype',
       successfulFinalReplyReasons: Object.freeze(['success']) }),
+    exchangeModels: (stdout: string): readonly string[] | null => {
+      try {
+        const frame: unknown = JSON.parse(stdout);
+        if (!frame || typeof frame !== 'object' || Array.isArray(frame)) return null;
+        const result = frame as Record<string, unknown>;
+        if (result.type !== 'result' || result.is_error !== false) return null;
+        const usage = result.modelUsage;
+        return usage && typeof usage === 'object' && !Array.isArray(usage)
+          ? Object.keys(usage).filter(key => key.length <= 128).slice(0, 8) : [];
+      } catch { return null; }
+    },
     framings: Object.freeze(['preview-decision-system-v2', SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_TOOLS_FRAMING]),
     conversationFraming: SUBSCRIPTION_CONVERSATION_FRAMING, toolsFraming: SUBSCRIPTION_TOOLS_FRAMING,
     toolTurn: Object.freeze({ system: SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls,
