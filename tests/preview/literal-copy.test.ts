@@ -8,13 +8,16 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { readAnswer } from './answer-reading.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { MEMORY_DISAMBIGUATION, MEMORY_SUPERSESSION } from '../../src/assembly/memory-answer-guidance.js';
 import { COMPLETE_REQUESTED_WORK, COMPLETE_REQUESTED_STEPS } from '../../src/assembly/tool-answer-guidance.js';
 
 // These provider captures predate train-41's requested-step verification guidance.
 // Preserve the captures; the dedicated guidance tests cover the added instruction.
 // Recorded captures predate the 2026-10-13 single-machine ruling; the current prompt drops only this sentence.
 const CLOSED_SET_SENTENCE = 'Irreversible outward sends remain outside the one-machine closed set. ';
-const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
+// The captured system also predates shared memory supersession.
+const HISTORICAL_MEMORY = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
+const historicalToolsSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
 
 // Captured read-only from the failed forum answer copy, update 715675751. The
 // three new outputs are real, bounded model replays of that same recorded packet.
@@ -39,6 +42,10 @@ it('retains the delivered error and captured copying guidance while replay uses 
   expect(capture.instructions).toContain(LITERAL_COPY_INSTRUCTIONS);
   expect(capture.instructions.replace(historicalSelfDescription, SELF_DESCRIPTION)
     .replace(LITERAL_COPY_INSTRUCTIONS, `${LITERAL_COPY_INSTRUCTIONS}\n${CLAIM_EVIDENCE_GUIDANCE}`)).toBe(ANSWER_INSTRUCTIONS);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.split(MEMORY_DISAMBIGUATION)).toHaveLength(2);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain(MEMORY_SUPERSESSION);
+  expect(MEMORY_DISAMBIGUATION).toContain('Quotes/imports or concurrent claims do not supersede');
+  expect(MEMORY_DISAMBIGUATION).toContain('Clarify only unresolved alternatives or ambiguous subjects');
   expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(historicalToolsSystem);
   expect(LITERAL_COPY_INSTRUCTIONS).not.toContain('probe');
   expect(capture.runs).toHaveLength(3);

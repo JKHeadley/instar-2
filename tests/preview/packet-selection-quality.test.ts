@@ -2,7 +2,12 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { MEMORY_UPDATE_DECISION } from '../../src/assembly/memory-answer-guidance.js';
 import { createJournalWorker, importChannelItems, openPreviewJournal } from './journal.js';
+
+// Preserve the selection benchmark independently of reviewed instruction growth.
+const HISTORICAL_MEMORY_UPDATE = 'Changed same fact: update with offered old source/quote and exact new clause; keep history. Errors use correct. ';
+const HISTORICAL_CONFLICT = 'Answer to an asked openConflicts item: resolveConflict:{askedBy,winner:one of its source IDs}. An unasked openConflicts item relevant here, or two active clauses about one subject that disagree: conflict:{first:{source,quote},second:{source,quote}} with exact clauses and IDs from openConflicts, memoryCandidates or this turn; the runner asks. Never pick a fact or write the question; otherwise omit both.';
 
 const now = 1_790_000_000_000;
 const facts = [
@@ -62,22 +67,34 @@ it('measures labelled minimal recall on the actual bounded model packets', () =>
       text: 'Earlier conversations covered a dentist visit, travel documents, a flight, Mira, gardening and the dog.', at: now });
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
       model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
-    let truePositive = 0, selected = 0, expected = 0, bytes = 0;
+    let truePositive = 0, selected = 0, expected = 0, bytes = 0, historicalBytes = 0;
     const rows = corpus.map(({ question, ideal }) => {
       const probe = worker.probe(question);
       if ('reason' in probe) throw Error(`${question}: ${probe.reason}`);
-      const packet = JSON.parse(probe.context) as { historyMode: string; recalled?: { id: string }[] };
+      const packet = JSON.parse(probe.context) as { historyMode: string; memoryDecision: string; conflictDecision?: string; recalled?: { id: string }[] };
       expect(packet.historyMode).toBe('summary-plus-recent');
       const picked = (packet.recalled ?? []).map(item => Number(item.id.split(':').at(-1)) - 1);
       const wanted = new Set(ideal);
       const hits = picked.filter(index => wanted.has(index)).length;
       truePositive += hits; selected += picked.length; expected += ideal.length;
       const packetBytes = Buffer.byteLength(probe.context); bytes += packetBytes;
+      expect(packetBytes).toBeLessThanOrEqual(journal.view.limits.maxBytes);
+      const historical = { ...packet };
+      if (packet.memoryDecision.includes(MEMORY_UPDATE_DECISION)) {
+        expect(packet.memoryDecision.split(MEMORY_UPDATE_DECISION)).toHaveLength(2);
+        historical.memoryDecision = packet.memoryDecision.replace(MEMORY_UPDATE_DECISION, HISTORICAL_MEMORY_UPDATE);
+      }
+      if (packet.conflictDecision !== undefined) {
+        expect(packet.conflictDecision).toContain('after applying same-fact supersession');
+        historical.conflictDecision = HISTORICAL_CONFLICT;
+      }
+      historicalBytes += Buffer.byteLength(JSON.stringify(historical));
       return { question, ideal, picked, precision: picked.length ? hits / picked.length : 0,
         recall: hits / ideal.length, packetBytes };
     });
     const result = { precision: truePositive / selected, recall: truePositive / expected,
-      packetBytesMean: Math.round(bytes / corpus.length), rows };
+      packetBytesMean: Math.round(bytes / corpus.length),
+      historicalInstructionBytesMean: Math.round(historicalBytes / corpus.length), rows };
     process.stdout.write(`${JSON.stringify(result)}\n`);
     expect(result.recall).toBe(1);
     // int13: the two turns before a terse follow-up stay recalled; one question gains one such turn (measured 12/61).
@@ -97,7 +114,10 @@ it('measures labelled minimal recall on the actual bounded model packets', () =>
     // for sentences copied from the reply. cint-L2 with the live repair merged: measured mean 11011 (occam's
     // removals offset the repair's additions). w3-memcorr: memoryDecision states the exact memory item shape on
     // operator packets (Rule 7, live K13b; +580 bytes each): measured mean 11269.
-    expect(result.packetBytesMean).toBeLessThanOrEqual(11370);
+    // Compare the same selected packet with only the reviewed memory/conflict wording restored.
+    // Current packet bytes are reported above and every actual packet retains its runtime bound.
+    expect(result.historicalInstructionBytesMean).toBeLessThanOrEqual(11370);
+    expect(result.packetBytesMean - result.historicalInstructionBytesMean).toBe(272);
     expect(rows.find(row => row.question.startsWith('Which clinic'))?.picked).toContain(0);
     const agenda = worker.probe('What should I know about upcoming plans?');
     if ('reason' in agenda) throw Error(agenda.reason);
@@ -150,7 +170,7 @@ it.each([
       model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
     const probe = worker.probe(question);
     if ('reason' in probe) throw Error(probe.reason);
-    const packet = JSON.parse(probe.context) as { historyMode: string; recalled?: { id: string }[]; dropped?: unknown[] };
+    const packet = JSON.parse(probe.context) as { historyMode: string; memoryDecision: string; conflictDecision?: string; recalled?: { id: string }[]; dropped?: unknown[] };
     expect(packet.historyMode).toBe('summary-plus-recent');
     expect((packet.recalled ?? []).map(item => item.id)).toEqual(expect.arrayContaining([
       'telegram:12345678:update:1', 'telegram:12345678:update:2',

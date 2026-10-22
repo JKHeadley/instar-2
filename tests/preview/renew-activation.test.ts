@@ -41,10 +41,10 @@ const conversation = (record, p = profile, now = NOW) =>
 it('pins the reviewed expiry and completion policy while keeping expiry out of invocation policies', () => {
   expect(SUBSCRIPTION_PREVIEW_EXPIRY).toBe(Date.UTC(2026, 10, 12, 21, 40));
   expect(SUBSCRIPTION_PREVIEW_EXPIRY - PRIOR_EXPIRY).toBe(31 * 24 * 3600 * 1000 + 3600 * 1000);
-  // The completion wording changes the policy, so existing installations need a policy-successor record.
+  // The completion and memory wording change the policy, so existing installations need a policy-successor record.
   // The expiry itself never enters an invocation policy.
   expect(encoded(subscriptionConversationPolicy(model)).hash)
-    .toBe('sha256:7b1d9af257f848e9cef4abad31771394af1cb4e1b6062a4538d3442a2045f220');
+    .toBe('sha256:e37f3dc22da0ed80e8eb69bc5be320babb6586f3a72b47474a8fafc41763f0d1');
   expect(JSON.stringify([subscriptionConversationPolicy(model), subscriptionInvocationPolicy(model)]))
     .not.toMatch(new RegExp(`${PRIOR_EXPIRY}|${SUBSCRIPTION_PREVIEW_EXPIRY}`));
 });
@@ -53,6 +53,7 @@ it('renews into a record this build accepts and refuses the old record', () => {
   const { record, profile: successor } = renewActivation({ current, currentBytes, profile, observation, now: NOW });
   expect(successor).toBeNull();
   expect(() => conversation(record)).not.toThrow();
+  expect(() => conversation({ ...record, invocationPolicyDigest: 'sha256:7b1d9af257f848e9cef4abad31771394af1cb4e1b6062a4538d3442a2045f220' })).toThrow('artifact or policy differs');
   expect(record).toMatchObject({ ...observation, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY, profileDigest: current.profileDigest,
     invocationPolicyDigest: current.invocationPolicyDigest, waiver: current.waiver, acceptedResiduals: current.acceptedResiduals,
     predecessor: { reference: current.reference, digest: `sha256:${createHash('sha256').update(currentBytes).digest('hex')}` } });
