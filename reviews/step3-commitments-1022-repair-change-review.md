@@ -4,7 +4,7 @@ Subject base: d4fb29d6d798a3467e4b9b54584583c5e925f310
 Review state: open
 Reviewed content: none
 Outcome: an unchanged overdue promise gets one disposable wake; completion refresh after pre-start refusal cannot create an immediate retry loop. The ordinary cycle can still retry and advance the promise.
-Affected rules: 5, 8, 32, 49, 55, 61, 70, 74, 83, 101, 102, 111, 113, 116
+Affected rules: 5, 8, 32, 49, 55, 61, 70, 74, 83, 101, 102, 111, 113, 115, 116
 Affected floors: secrets — existing redaction and journal custody; spend cap — existing reservations unchanged; stop — lane admission unchanged; no duplicate sends — original durable delivery identities unchanged; durable intake — journal append and projection unchanged.
 Operator questions: none
 Suggested tier: critical
@@ -21,7 +21,7 @@ Convergence: none
 Decision: consume-due-deadline | retain the fired deadline before requesting work so unchanged completion refresh is inert; reuse the periodic cycle for retries rather than adding a retry service | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/step3-commitments-1022-repair-012824-PROGRESS.md
 
 
-Pin maintenance: the delegated desk repin updates the existing grounding inventory hashes for inherited rungraph/index.ts and transport/index.ts and its checker digest. Owner-reference hashes required no changes. Register outputs are replayed from committed source. The native macOS certificate mismatch is left for the Studio as the charter requires; its declaration is untouched.
+Pin maintenance: the delegated desk repin updates the existing grounding inventory hashes for inherited rungraph/index.ts and transport/index.ts and its checker digest. Owner-reference hashes required no changes. Register outputs are replayed from committed source. The retry change also affects the byte-bound native composition under Rule 115. The earlier Laptop handoff left its certificate stale; a handoff exception is not current conformance evidence. The round-2 Studio repair renews that evidence through the existing native contract and digest procedure; see reviews/step3-commitments-1022-native-conformance-change-review.md.
 Register replay source: 797cff149881bfec23693553a9310f22ea1a4dc1. Generated artifacts contain the committed wake repair and grounding pins.
 
 Review maintenance: repair the original unit record's missing prompt review/dispositions and action-literal deferral disposition, and restore its closing fields to the final three lines. No prompt, fixture or product behavior changes in this maintenance.
