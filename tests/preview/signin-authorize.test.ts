@@ -99,11 +99,16 @@ it('reobserves a failed read during navigation, but never retries an uncertain c
     signal: q.controller.signal, expectedAccount: 'justin@sagemindai.io', state: 'fixture-state' })).rejects.toThrow();
   expect(q.clicks).toEqual(['Authorize']);
 });
-it.each(['continue', 'stop', 'native-exit', 'browser-error'])('the shipped native flow drives the recorded consent page; focus wait=%s', async outcome => {
+it.each(['continue', 'stop', 'native-exit', 'browser-error', 'missing-prompt', 'stdin-error'])('the shipped native flow drives the recorded consent page; focus wait=%s', async outcome => {
   const p = page(), root = realpathSync(mkdtempSync(join(tmpdir(), 'signin-authorize-')));
   const child = Object.assign(new EventEmitter(), { pid: 1234, stdin: new PassThrough(),
     stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn(() => { queueMicrotask(() => child.emit('close', 1)); }) });
   const terminal = JSON.parse(readFileSync(new URL('./fixtures/signin/claude-login-studio.json', import.meta.url), 'utf8')).terminal;
+  const writes = [];
+  child.stdin.on('data', bytes => {
+    writes.push(bytes.toString());
+    queueMicrotask(() => outcome === 'stdin-error' ? child.stdin.emit('error', Error('EPIPE')) : child.emit('close', 0));
+  });
   p.location.search = '?state=REDACTED';
   try {
     symlinkSync(`${hostname()}-${process.pid}`, join(root, 'SingletonLock'));
@@ -114,9 +119,10 @@ it.each(['continue', 'stop', 'native-exit', 'browser-error'])('the shipped nativ
     const runBrowser = vi.fn(async (file, args, options) => {
       if (file === '/usr/bin/open') { symlinkSync(`${hostname()}-${process.pid}`, join(root, 'SingletonLock')); return ''; }
       if (file === '/bin/ps') return `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=${root} about:blank`;
+      if (options.input.includes("location.href ===")) return 'blank';
       if (options.input.includes("location.href !== 'about:blank'")) return 'opened';
+      if (options.input.includes('p.select-all.text-code')) return 'synthetic-code#REDACTED';
       const result = await p.evaluate(options.input);
-      if (result === 'clicked') queueMicrotask(() => child.emit('close', 0));
       return result;
     });
     const result = await runClaudeSignin({ profile: { executable, artifact: `sha256:${signinDigest(readFileSync(executable))}`,
@@ -128,9 +134,11 @@ it.each(['continue', 'stop', 'native-exit', 'browser-error'])('the shipped nativ
         else if (outcome === 'browser-error') throw Error('synthetic-private-error');
         else await p.pause(ms);
       },
-      spawnCli: () => { queueMicrotask(() => child.stdout.write(terminal)); return child; } });
+      spawnCli: () => { queueMicrotask(() => child.stdout.write(outcome === 'missing-prompt'
+        ? terminal.replace('Paste code here if prompted > ', 'not ready') : terminal)); return child; } });
     expect(result.kind).toBe(['continue', 'native-exit'].includes(outcome) ? 'complete' : 'unfinished');
-    expect(p.events).toEqual(['focus']); expect(p.clicks).toEqual(outcome === 'continue' ? ['Authorize'] : []);
+    expect(p.events).toEqual(['focus']); expect(p.clicks).toEqual(['continue', 'missing-prompt', 'stdin-error'].includes(outcome) ? ['Authorize'] : []);
+    expect(writes).toEqual(['continue', 'stdin-error'].includes(outcome) ? ['synthetic-code#REDACTED\n'] : []);
     expect(JSON.stringify(runBrowser.mock.calls.map(c => c.slice(0, 2)))).not.toContain('REDACTED');
     expect(child.stdin.destroyed).toBe(true);
   } finally { rmSync(root, { recursive: true, force: true }); }

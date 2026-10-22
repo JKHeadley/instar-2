@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { parseClaudeSigninUrl } from './claude-signin-repair.mjs';
 import { waitForSigninAuthorization } from './claude-signin-authorize.mjs';
+import { readSigninCode } from './claude-signin-code.mjs';
 
 const PROFILE = 'https://api.anthropic.com/api/oauth/profile';
 const USAGE = 'https://api.anthropic.com/api/oauth/usage';
@@ -106,7 +107,8 @@ export async function evaluateSigninBrowser(pid, browser, code, signal, run = ex
     { input: code, signal })).trim();
 }
 
-export async function openSigninBrowser(url, browser, signal, run = execute) {
+export async function openSigninBrowser(url, browser, signal, run = execute,
+  pause = ms => delay(ms, undefined, { signal })) {
   if (signal?.aborted || parseClaudeSigninUrl(`${url}\n`) !== url) throw Error('signin-browser-url-refused');
   await run('/usr/bin/open', ['-g', '-na', '/Applications/Google Chrome.app', '--args',
     `--user-data-dir=${browser}`, '--no-first-run', '--no-default-browser-check', '--disable-sync', 'about:blank']);
@@ -115,13 +117,24 @@ export async function openSigninBrowser(url, browser, signal, run = execute) {
     try { match = /^(.*)-(\d+)$/u.exec(readlinkSync(join(browser, 'SingletonLock'))); } catch { /* Chrome is starting. */ }
     if (match && match[1] === hostname() && Number.isSafeInteger(Number(match[2])) && Number(match[2]) > 1) {
       const pid = Number(match[2]);
+      // Chrome publishes its lock before the first window accepts Apple Events.
+      // Poll only a read; never repeat navigation after an uncertain outcome.
+      let ready;
+      try { ready = await evaluateSigninBrowser(pid, browser,
+        `location.href === 'about:blank' ? 'blank' : 'occupied'`, signal, run); }
+      catch (error) {
+        if (error.message !== 'signin-native-operation-unavailable') throw error;
+        // A stale lock's absent PID or a not-yet-scriptable window is read-only.
+      }
+      if (ready === 'occupied') throw Error('signin-browser-navigation-unavailable');
+      if (ready !== 'blank') { await pause(500); continue; }
       const code = `(() => { if (location.href !== 'about:blank') return 'refused';
         location.href = ${JSON.stringify(url)}; return 'opened'; })()`;
       if (await evaluateSigninBrowser(pid, browser, code, signal, run) !== 'opened')
         throw Error('signin-browser-navigation-unavailable');
       return pid;
     }
-    await delay(500);
+    await pause(500);
   }
   throw Error('signin-browser-start-unavailable');
 }
@@ -152,8 +165,8 @@ export async function runClaudeSignin({ profile, browser, directory, signal, onP
   if (`sha256:${signinDigest(readFileSync(profile.executable))}` !== profile.artifact
     || realpathSync(profile.executable) !== profile.executable) throw Error('signin-executable-changed');
   mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const home = join(directory, 'home'), config = join(directory, 'config');
-  for (const path of [directory, home, config]) {
+  const config = join(directory, 'config');
+  for (const path of [directory, config]) {
     mkdirSync(path, { recursive: true, mode: 0o700 });
     const stat = lstatSync(path);
     if (!stat.isDirectory() || stat.uid !== process.getuid() || (stat.mode & 0o077) !== 0)
@@ -175,16 +188,23 @@ export async function runClaudeSignin({ profile, browser, directory, signal, onP
   const browserSignal = AbortSignal.any([signal, browserController.signal]);
   const launch = openBrowser ?? (async url => {
     const pid = await openSigninBrowser(url, browser, browserSignal, runBrowser);
-    const result = await waitForSigninAuthorization({ expectedAccount: profile.expectedAccount,
+    const page = { expectedAccount: profile.expectedAccount,
       state: new URL(url).searchParams.get('state'), signal: browserSignal,
       evaluate: code => evaluateSigninBrowser(pid, browser, code, browserSignal, runBrowser),
-      pause: pause ?? (ms => delay(ms, undefined, { signal: browserSignal })) });
+      pause: pause ?? (ms => delay(ms, undefined, { signal: browserSignal })) };
+    const result = await waitForSigninAuthorization(page);
     if (result !== 'clicked' && !browserSignal.aborted) throw Error('signin-authorization-unfinished');
+    if (browserSignal.aborted) return;
+    const code = await readSigninCode(page);
+    if (!code && !browserSignal.aborted) throw Error('signin-code-unavailable');
+    return code;
   });
   return await new Promise(resolve => {
     let text = '', opened = false, opening = Promise.resolve(), settled = false, stopping = false, launchFailed = false;
     const child = spawnCli(profile.executable, ['auth', 'login'], { cwd: directory,
-      env: { PATH: '/usr/bin:/bin', HOME: home, CLAUDE_CONFIG_DIR: config, BROWSER: 'true' },
+      // 1.x isolates CLAUDE_CONFIG_DIR, not the OS user home: security resolves
+      // the user's Keychain through HOME. An empty HOME cannot save a login.
+      env: { PATH: '/usr/bin:/bin', HOME: process.env.HOME, CLAUDE_CONFIG_DIR: config, BROWSER: 'true' },
       stdio: ['pipe', 'pipe', 'pipe'] });
     let killTimer;
     const stop = () => {
@@ -207,7 +227,13 @@ export async function runClaudeSignin({ profile, browser, directory, signal, onP
       const url = parseClaudeSigninUrl(text.slice(0, text.lastIndexOf('\n') + 1));
       if (url) {
         opened = true;
-        opening = launch(url).catch(() => {
+        opening = launch(url).then(code => {
+          if (!code || settled || browserSignal.aborted) return;
+          // 1.x readiness-before-paste, narrowed to this process's private pipe.
+          if (!text.trimEnd().endsWith('Paste code here if prompted >') || !child.stdin.writable)
+            throw Error('signin-native-paste-not-ready');
+          child.stdin.write(`${code}\n`); // Once, in memory; native custody precedes verification.
+        }).catch(() => {
           // A native exit cancels the read/wait still in flight. That cleanup is
           // not a browser failure; an actual failed action while alive still is.
           if (settled && browserSignal.aborted) return;
@@ -216,6 +242,7 @@ export async function runClaudeSignin({ profile, browser, directory, signal, onP
       }
     };
     child.stdout.on('data', capture); child.stderr.on('data', capture);
+    child.stdin.on('error', stop);
     child.on('error', () => finish(false));
     child.on('close', code => finish(code === 0 && opened && !signal.aborted && !stopping));
     try { onPid(child.pid); } catch { stop(); }

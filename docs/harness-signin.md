@@ -60,15 +60,23 @@ organization is held for the installation owner to reconcile.
 
 Without a service binding, the original assisted command opens normal Chrome with that account's profile. Complete the provider's
 offered controls there. No password, token or code is printed or requested in the
-terminal. The native CLI runs `auth login` in a separate private home and stores its
-credential in its own macOS Keychain slot. Chrome opens in the background at a blank
+terminal. The native CLI runs `auth login` with a separate private `CLAUDE_CONFIG_DIR` and
+stores its credential in that config directory's own macOS Keychain slot. It retains
+the OS user's `HOME` so macOS can resolve the login Keychain; replacing `HOME` with
+an empty directory prevents the native CLI from saving the login. Chrome opens in the background at a blank
 page; a PID-bound Apple Event navigates that blank page, receiving the authorization
-URL over stdin rather than a process argument. The profile must already permit
+URL over stdin rather than a process argument. A bounded read-only wait lets
+Chrome replace a stale lock and create its first scriptable blank tab; a different
+process or occupied tab refuses, and uncertain navigation is never retried. The profile must already permit
 JavaScript from Apple Events. On the expected account's Claude Code authorization
 page, Instar sends the measured anti-misclick guard's window-focus event in the page's
 main world, waits two seconds, rechecks the account and OAuth state, and clicks the
 enabled **Authorize** button once. It does not move OS focus or change the button's
-disabled state. A different identity or state, blocked script injection, a stopped
+disabled state. On the provider's authentication-code callback page, the code is
+read only from the offered code element, checked against this CLI's OAuth state,
+and passed once through the waiting CLI's stdin. The code stays in memory. A
+missing paste prompt, changed callback, stop or failed pipe prevents completion.
+A different identity or state, blocked script injection, a stopped
 repair or a still-disabled button prevents the click. Google sign-in and provider
 challenges remain in the existing browser flow. A local stale Chrome lock is left
 for Chrome to recover only after its
@@ -100,7 +108,8 @@ sign-in retry. Wrong-identity refusals remain held.
 
 `scripts/claude-signin-repair.mjs` ports the small 1.x repair sequence and incident
 record. `scripts/claude-signin-io.mjs` owns the Claude/native browser, Keychain and
-fixed HTTPS boundaries. `scripts/claude-signin-authorize.mjs` owns the narrow
+fixed HTTPS boundaries. `scripts/claude-signin-code.mjs` owns the bounded, state-bound callback read.
+`scripts/claude-signin-authorize.mjs` owns the narrow
 account/state-bound consent step, with bounded read-only polling while the CLI is
 alive and no retry of an uncertain click. `scripts/harness-signin.mjs` connects the
 installed account,
@@ -112,8 +121,10 @@ record. State and browser profiles are deliberately machine-local; credentials a
 never transferred to peers. The native browser/Keychain transport in this slice is
 macOS-only. The unbound assisted command still requires browser interaction on the
 Mac; only the installed-service path uses the existing phone approval surface.
-Live acceptance remains incomplete. The disabled-button regression now has a
-recorded-page replay and is wired into native sign-in. The required fresh scratch
-sign-in and phone approval proof have not completed: the permitted account was
-serving an active session at the latest eligibility check. No unattended end-to-end
-result is claimed, and the existing 1.x phone service is unchanged by this fix.
+The native path has completed a fresh scratch login as the permitted real account,
+including the focus guard, code handoff, provider identity check, authenticated
+quota call and one bounded real inference. Scratch custody was then deleted and
+the original login independently remained valid. The phone-service adapter still
+requires a separate live approval proof on a scratch-bound service; the existing
+live service maps the account to its serving config. Native completion does not
+establish phone-path completion.

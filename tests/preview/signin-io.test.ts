@@ -17,13 +17,13 @@ function disk() {
   const profile = { reference: 'signin-test', expectedAccount: 'a@example.invalid', organization: 'org', plan: 'max' };
   return { root, browser, profile };
 }
-it.each([true, false])('runs the native process in a separate private home, including prompt newline=%s', async newline => {
+it.each([true, false])('isolates native config while retaining the OS Keychain home, prompt newline=%s', async newline => {
   const f = disk(), executable = join(f.root, 'fixture-cli');
   const capture = JSON.parse(readFileSync(new URL('./fixtures/signin/claude-login-studio.json', import.meta.url), 'utf8')).terminal;
   writeFileSync(executable, '#!/usr/bin/python3\nimport os,sys,time,json\n'
     + 'assert sys.argv[1:]==["auth","login"]\nassert os.environ["BROWSER"]=="true"\n'
     + 'assert os.environ["CLAUDE_CONFIG_DIR"].endswith("/repair/config")\n'
-    + 'assert os.environ["HOME"].endswith("/repair/home")\n'
+    + `assert os.environ["HOME"]==${JSON.stringify(process.env.HOME)}\n`
     + `sys.stdout.write(${JSON.stringify(newline ? `${capture}\n` : capture)}); sys.stdout.flush(); time.sleep(.1)\n`, { mode: 0o700 });
   f.profile.executable = executable; f.profile.artifact = `sha256:${signinDigest(readFileSync(executable))}`;
   const openBrowser = vi.fn(async () => {}), onPid = vi.fn();
@@ -63,18 +63,52 @@ it('requires an exact, private, dedicated browser binding', () => {
 it('opens normal Chrome in the background and passes the authorization URL only over stdin', async () => {
   const f = disk(), url = 'https://claude.ai/oauth/authorize?response_type=code&state=synthetic-private-state';
   symlinkSync(`${hostname()}-${process.pid}`, join(f.browser, 'SingletonLock'));
-  const run = vi.fn(async file => file === '/bin/ps'
+  const run = vi.fn(async (file, args, options) => file === '/bin/ps'
     ? `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=${f.browser} about:blank`
-    : file === '/usr/bin/osascript' ? 'opened\n' : '');
+    : file === '/usr/bin/osascript' ? (options.input.includes('location.href = ') ? 'opened\n' : 'blank') : '');
   await openSigninBrowser(url, f.browser, new AbortController().signal, run);
   expect(run.mock.calls[0][1]).toContain('-g'); expect(run.mock.calls[0][1]).toContain('about:blank');
   expect(JSON.stringify(run.mock.calls.map(c => c.slice(0, 2)))).not.toContain('synthetic-private-state');
   const location = { href: 'about:blank' };
-  expect(runInNewContext(run.mock.calls[2][2].input, { location })).toBe('opened');
+  expect(runInNewContext(run.mock.calls[4][2].input, { location })).toBe('opened');
   expect(location.href).toBe(url);
-  expect(runInNewContext(run.mock.calls[2][2].input, { location })).toBe('refused');
+  expect(runInNewContext(run.mock.calls[4][2].input, { location })).toBe('refused');
   run.mockImplementation(async file => file === '/bin/ps' ? 'another process' : '');
   await expect(openSigninBrowser(url, f.browser, new AbortController().signal, run)).rejects.toThrow('process-differs');
+});
+it.each(['window-unavailable', 'stale-lock-pid'])('waits for the newly launched Chrome tab before navigating once: %s', async startup => {
+  const f = disk(), url = 'https://claude.ai/oauth/authorize?response_type=code&state=synthetic-private-state';
+  symlinkSync(`${hostname()}-${process.pid}`, join(f.browser, 'SingletonLock'));
+  let ready = false, navigations = 0;
+  const pause = vi.fn(async () => { ready = true; });
+  const run = vi.fn(async (file, args, options) => {
+    if (file === '/bin/ps' && !ready && startup === 'stale-lock-pid') throw Error('signin-native-operation-unavailable');
+    if (file === '/bin/ps') return `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=${f.browser} about:blank`;
+    if (file !== '/usr/bin/osascript') return '';
+    if (!ready) return 'unavailable'; // Startup neighbor: Chrome can publish its lock before a scriptable window.
+    if (options.input.includes('location.href = ')) { navigations++; return 'opened'; }
+    return 'blank';
+  });
+  await expect(openSigninBrowser(url, f.browser, new AbortController().signal, run, pause)).resolves.toBe(process.pid);
+  expect(pause).toHaveBeenCalledWith(500); expect(navigations).toBe(1);
+});
+it.each(['occupied', 'never-ready', 'stop', 'uncertain-navigation'])('bounds startup and never repeats navigation: %s', async outcome => {
+  const f = disk(), controller = new AbortController();
+  symlinkSync(`${hostname()}-${process.pid}`, join(f.browser, 'SingletonLock'));
+  let navigations = 0;
+  const pause = vi.fn(async () => { if (outcome === 'stop') controller.abort(); });
+  const run = vi.fn(async (file, args, options) => {
+    if (file === '/bin/ps') return `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=${f.browser} about:blank`;
+    if (file !== '/usr/bin/osascript') return '';
+    if (options.input.includes('location.href = ')) {
+      navigations++; throw Error('signin-native-operation-unavailable');
+    }
+    return outcome === 'occupied' ? 'occupied' : outcome === 'uncertain-navigation' ? 'blank' : 'unavailable';
+  });
+  await expect(openSigninBrowser('https://claude.ai/oauth/authorize?response_type=code&state=fixture',
+    f.browser, controller.signal, run, pause)).rejects.toThrow();
+  expect(navigations).toBe(outcome === 'uncertain-navigation' ? 1 : 0);
+  expect(pause).toHaveBeenCalledTimes(outcome === 'never-ready' ? 60 : outcome === 'stop' ? 1 : 0);
 });
 it('detects a missing repair record from the credential it promoted, and validates receipt/custody agreement', () => {
   const f = disk(), custody = join(f.root, 'login.json'), state = join(f.root, 'repair.json');

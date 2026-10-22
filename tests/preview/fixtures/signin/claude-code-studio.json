@@ -1,0 +1,28 @@
+{
+  "provenance": {
+    "capturedAt": "2026-10-22T21:44:33.777Z",
+    "nativePid": 44601,
+    "browserPid": 44615,
+    "source": "real scratch signin-port-1022d; only authentication code removed"
+  },
+  "page": {
+    "origin": "https://platform.claude.com",
+    "path": "/oauth/code/callback",
+    "title": "Authentication code | Claude Platform",
+    "heading": "Authentication code",
+    "instruction": "Paste this into Claude Code:",
+    "codeElement": [
+      {
+        "tag": "P",
+        "className": "rr-mask break-all text-code text-primary select-all",
+        "text": "REDACTED"
+      }
+    ],
+    "buttons": [
+      {
+        "text": "\nCopy code",
+        "disabled": false
+      }
+    ]
+  }
+}
