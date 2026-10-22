@@ -1,4 +1,5 @@
 // @ts-nocheck -- desk renewal script and journal CLI are exercised as shipped JavaScript.
+import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
 import { expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -12,6 +13,9 @@ import { encoded } from './stage2-provider.js';
 import { renewActivation } from './renew-activation.mjs';
 import { activationMatchesJournal, openPreviewJournal, renewJournalExpiry } from './journal.js';
 import { offlineOperatorMessage, writeOperatorRecords } from './successive-fixture.js';
+
+// Preserve the recorded policy/prompt before the reviewed memory-supersession guidance.
+const HISTORICAL_MEMORY = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
 
 const PRIOR_EXPIRY = 1791837600000; // 2026-10-12T20:40:00Z, the record being renewed (itself renewed from 2026-09-28).
 const PRIOR_COMMIT = 'a735faee'; // live runner-frozen-cint-L33 build.
@@ -41,10 +45,17 @@ const conversation = (record, p = profile, now = NOW) =>
 it('pins the reviewed expiry and completion policy while keeping expiry out of invocation policies', () => {
   expect(SUBSCRIPTION_PREVIEW_EXPIRY).toBe(Date.UTC(2026, 10, 12, 21, 40));
   expect(SUBSCRIPTION_PREVIEW_EXPIRY - PRIOR_EXPIRY).toBe(31 * 24 * 3600 * 1000 + 3600 * 1000);
-  // Completion and memory-supersession wording change the policy, requiring a policy-successor record.
+  // The completion wording changes the policy, so existing installations need a policy-successor record.
   // The expiry itself never enters an invocation policy.
-  expect(encoded(subscriptionConversationPolicy(model)).hash)
-    .toBe('sha256:e37f3dc22da0ed80e8eb69bc5be320babb6586f3a72b47474a8fafc41763f0d1');
+  const policy = subscriptionConversationPolicy(model);
+  expect(policy.args.join(' ')).toContain(MEMORY_DISAMBIGUATION);
+  expect(policy.args.join(' ')).not.toContain(HISTORICAL_MEMORY);
+  const historical = { ...policy, args: policy.args.map(arg => arg.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY)) };
+  const historicalDigest = encoded(historical).hash;
+  expect(historicalDigest).toBe('sha256:7b1d9af257f848e9cef4abad31771394af1cb4e1b6062a4538d3442a2045f220');
+  expect(encoded(policy).hash).not.toBe(historicalDigest);
+  expect(() => conversation({ ...current, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY,
+    invocationPolicyDigest: historicalDigest })).toThrow('artifact or policy differs');
   expect(JSON.stringify([subscriptionConversationPolicy(model), subscriptionInvocationPolicy(model)]))
     .not.toMatch(new RegExp(`${PRIOR_EXPIRY}|${SUBSCRIPTION_PREVIEW_EXPIRY}`));
 });
