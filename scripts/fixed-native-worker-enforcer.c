@@ -814,7 +814,10 @@ static int feasibility(const char *which, const char *profile, const char *scrat
     run_t n[6] = {0};
     char *slow[] = { self_path, "probe", "sleep", NULL };
     char *kill_ready[] = { self_path, "probe", "kill-ready", NULL };
-    int okn = run_guarded_fault(&n[0], "-", "-", profile, 10000, kill_ready, FAULT_KILL) == 0
+    /* Include the traced sandbox startup in the observation budget, as for the
+     * memory crossing below. Readiness still triggers the kill immediately; this
+     * ceiling is not a delay or a change to any installed guard's deadline. */
+    int okn = run_guarded_fault(&n[0], "-", "-", profile, 30000, kill_ready, FAULT_KILL) == 0
               && WIFSIGNALED(n[0].status) && WTERMSIG(n[0].status) == SIGKILL && n[0].reason == END_WORKER;
     int deadline_ok = run_guarded(&n[1], "-", "-", profile, 300, slow) == 0 && n[1].reason == END_DEADLINE;
     int lapse_ok = run_guarded_fault(&n[2], "-", "-", profile, 10000, slow, FAULT_SILENT) == 0 && n[2].reason == END_LAPSE;
