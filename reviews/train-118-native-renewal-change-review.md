@@ -26,8 +26,16 @@ Evidence retained under /Users/dabombstudio/.instar/agents/echo/.instar/lanes/: 
 
 Subject (8 paths): src/assembly/harness.declarations.json, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
+## READY gate follow-up — 2026-10-21
+
+The next desk failure excerpt showed architecture passing, wiring issues=[], register check=true, and two passing preview files before test output stopped. The launcher also runs eight pinned test files but its repair message names only lint and register; it retained no exit code for this attempt. A concurrent gate recorded exit 143 and a concurrent review recorded signal 15, while macOS logged a pkill invocation at 21:11:27, one second before this gate reported failure. These observations suggest external interruption; they do not establish which signal, if any, ended this particular run. No failing assertion was supplied.
+
+On unchanged pushed head 15ca5cb8d84474c64bde2e6518cc425d08bb25fa, the complete pinned selector was run in the foreground with nice -n 10 and --maxWorkers 1. All 120 tests in eight files passed, exit 0, in 319.39 seconds. The register end-to-end file passed all six cases, including invalid CLI inputs, missing owner wiring, ambient bridge rejection, stale artifacts and edited generated output. Evidence: train-118-repair-pinned.log and train-118-repair-pinned-result.json under the absolute desk lanes directory named above; the result records the command, starting SHA, PID 56042 and exit status. Bounded interruption diagnostics are retained in train-118-repair-interruption-evidence.json and train-118-repair-interruption-system.log. This is a fresh passing targeted run, not a reinterpretation of the interrupted attempt or a full-suite result.
+
+This follow-up corrects the earlier verification omission: the builder had run the targeted native contract and cheap checks without completing the charter's pinned READY tests. No executable defect reproduced, so this commit adds the verification record only. The final committed head will receive the same required checks before READY; those exact-head results belong in the desk progress record. No test, checkpoint, timeout, declaration or product behavior changes in this follow-up.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: run the existing named native contract on its declared runtime, verify the same complete composition before and after execution, renew only its conformance value, and replay the existing register. Exact runtime and complete closure are start guards; the contract and architecture check are end guards; existing secrets, spend, stop, uniqueness and durability checkpoints remain the limit guards. No new machinery or autonomous-production claim.
-80/20: One declaration value and its generated publication repair the failed gate. Only the targeted native contract file ran; no full suite or load generation. The existing injected slow path tests deadline independence without loading the Studio.
+80/20: One declaration value and its generated publication repair the R105 failure. Verification covers the targeted native contract and all eight pinned READY files; no full suite or load generation. The existing injected slow path tests deadline independence without loading the Studio. The interrupted follow-up adds evidence rather than an unsupported executable change.
 VERDICT: author submission; no independent convergence verdict is asserted.
