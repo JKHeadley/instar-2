@@ -56,6 +56,8 @@ Decision: train-132-historical | Retain captured fixture bytes and compose both 
 
 Decision: train-132-run-loader | Keep update independent of the TypeScript loader while registering it before run, as setup already does; the real-runner missing-custody test caught the missing registration after composing both CLI branches. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-132-p2-PROGRESS.md
 
+Publication: Standard repin/build/rehash/replay refreshed the seven generated outputs at source 2c9bb9538fcb557846dedd07d503593929be33e9 after the verified run-loader repair; authority remains shape-only and the native certificate is unchanged.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges with local overlap repairs and existing regeneration tools. No new machinery. Existing custody/authority admission is the start guard, recorded accepted exchange is the end guard, and secrets/spend/stop/intake/send floors remain limits. Member reports retain their live evidence; this composition claims offline verification only.
