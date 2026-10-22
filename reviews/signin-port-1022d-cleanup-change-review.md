@@ -14,12 +14,16 @@ Side effects: Successful cleanup now closes this attempt's dedicated Chrome. TER
 Undo and recovery: Revert this repair to restore the earlier behavior; no schema or credential migration. An unresolved process remains visible through the existing profile lock and blocks adoption. No lock is deleted by product cleanup and no unrelated process is signalled.
 Multi-machine posture: Machine-local browser PID and profile ownership, deliberately. No peer signaling, credential copying or serving-account remapping.
 Layer below: Read local Instar 1.x src/core/PlainChromeReloginBrowser.ts close (TERM, five-second grace, KILL) and AnthropicReloginBrowserDriver.ts abort/finally close. Reuse that lifecycle in the small native adapter with the existing exact profile/process check before each signal. The service-bound harness branch still delegates to waitForSigninService, not this native helper.
-Bug class: lifecycle
-Bug evidence: Independent review reproduced first invocation complete, second invocation signin-browser-in-use with one browser launch. Added shipped-function regression performs two consecutive repairs against the same profile, with cleanup asserted after each. Recorded consent replay asserts cleanup on success, stop, native exit, browser failure, missing paste readiness and stdin failure. Startup failure also releases ownership before navigation succeeds. Negative neighbors cover another profile, helper process, PID changed before escalation, permission failure and stubborn process bounds.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/signin-io.test.ts
+
+Lifecycle evidence: Independent review reproduced first invocation complete, second invocation signin-browser-in-use with one browser launch. Added shipped-function regression performs two consecutive repairs against the same profile, with cleanup asserted after each. Recorded consent replay asserts cleanup on success, stop, native exit, browser failure, missing paste readiness and stdin failure. Startup failure also releases ownership before navigation succeeds. Negative neighbors cover another profile, helper process, PID changed before escalation, permission failure and stubborn process bounds.
 Hook bypass: none
 Convergence: none
 Decision: signin-owned-browser-cleanup | Port the existing 1.x bounded exact-PID close into native finish, retaining ownership before startup readiness so failures also clean up; do not add a reaper. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/signin-port-1022d-repair-150351-PROGRESS.md
 Decision: signin-phone-studio-evidence | Keep MUST-FIX 2 open for the desk's isolated scratch-bound service and real operator approval: this WSL builder has read-only Studio access and cannot manufacture that evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/signin-port-1022d-repair-150351-PROGRESS.md
+
+Register refresh: Replayed the register at the cleanup source commit using scripts/build-register.mjs; generated source pins now describe the changed adapter. The delegated owner-manifest and support-inventory repin tools found no changed pins.
 
 ## Closing block
 
