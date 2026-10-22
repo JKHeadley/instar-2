@@ -30,6 +30,7 @@ Deferral: generated/register.json:1 | not-a-deferral=Derived register publicatio
 Publication: Register regenerated from 78670a1745fe9d2e02d56b33ed3e2fcbee65235e; 293 entries, 117 rules, shape-only replay.
 Deferral: src/rungraph/promises.ts:9 | not-a-deferral=The existing follow up action discriminator is a promise type, not postponed work; carry the member disposition.
 Skip: tests/recall/cold-start.test.ts:38 | quarantine=docs/defects/cold-start-20k-timing-flake.md
+Decision: train-129-pool-fixture | The merged uncertain-effect veto correctly keeps unknown state. Update the topic-pool settled fixture to explicitly report zero and prove undefined/one remain kept until exact zero. No runtime guard changed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-129-p2-PROGRESS.md
 Verification: Targeted changed tests, direct importers, journal tests and pinned gate; exact commands and results in progress report.
 simplestRobustRoute: This is the simplest robust route: ordinary reviewed merges and existing desk regeneration. No new runtime machinery. Existing authorization and ownership are start guards; durable admitted outcomes and send receipts are end guards; bounded timers/caches preserve resource floors. This submission claims offline composition evidence, not a fresh unattended live acceptance.
 80/20: Foreground one-worker targeted checks only, no full suite or live probes; native certification stays with the Studio.
