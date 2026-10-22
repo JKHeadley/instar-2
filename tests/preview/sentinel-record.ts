@@ -2,6 +2,7 @@
  * changed something. It carries the family's whole new decision state and the events that tick produced, so a
  * replay rebuilds exactly what each sentinel decided and why, and the status surfaces read it from the journal.
  * Nothing here decides anything; the pure decisions live in src/awareness/sentinel.ts and src/sentinels/. */
+import type { SessionActivityObservation } from '../../src/assembly/production-session-driver.js';
 import type { SentinelState } from '../../src/awareness/sentinel.js';
 import type { PresenceState } from '../../src/sentinels/presence.js';
 import type { PromiseState } from '../../src/sentinels/promise.js';
@@ -11,6 +12,7 @@ export const SENTINEL_FAMILIES: readonly SentinelFamily[] = Object.freeze(['cont
 export interface SentinelEventRow { event: string; subject: string; detail: string; operation?: string }
 export interface WorkSilenceState {
   progress: string | null; lastProgressAt: number; observedAt: number;
+  activity?: SessionActivityObservation['activity'];
   state: 'observing' | 'stalled' | 'waiting' | 'unknown' | 'action-needed'; detail: string;
 }
 export type WorkSilenceView = Record<string, WorkSilenceState>;
@@ -47,6 +49,7 @@ export function checkSentinelRecord(row: SentinelRecord, turnExists: (id: string
     for (const [id, entry] of Object.entries(row.work!))
       if (!short(id) || !(entry.progress === null || short(entry.progress)) || !short(entry.detail)
         || ![entry.lastProgressAt, entry.observedAt].every(value => value !== null && time(value))
+        || entry.activity !== undefined && !['active', 'idle', 'indeterminate', 'unknown'].includes(entry.activity)
         || entry.lastProgressAt > entry.observedAt || entry.observedAt > row.at
         || !['observing', 'stalled', 'waiting', 'unknown', 'action-needed'].includes(entry.state)) bad();
   }

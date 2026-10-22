@@ -624,7 +624,7 @@ it('the journal reserves an edge\'s whole call liability against the call cap, a
   } finally { journal.close(); }
 });
 
-it('a recorded frozen worker with no inbound turn becomes visibly stalled and returns the existing bounded uncertain outcome', async () => {
+it('a recorded working indicator stays advisory until the existing bounded uncertain outcome', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'silence-work-'))); roots.push(root);
   const key = new Uint8Array(32).fill(7), path = join(root, 'journal.encrypted');
   let clock = 1_000_000;
@@ -643,7 +643,8 @@ it('a recorded frozen worker with no inbound turn becomes visibly stalled and re
       tick: now => { clock = now; sentinel.observeWork(); states.push(...Object.values(journal.view.sentinels?.work ?? {}).map(row => row.state)); } });
     expect(journal.view.order).toHaveLength(0);
     const outcome = await w.port.run(w.request('requested-task'));
-    expect(states).toContain('stalled');
+    expect(states).toContain('observing');
+    expect(states).not.toContain('stalled');
     expect(outcome).toMatchObject({ state: 'uncertain', detail: 'session work deadline exceeded' });
     expect(outcome.text).toBeUndefined();
     expect(w.live.size).toBe(0);
@@ -654,7 +655,7 @@ it('a recorded frozen worker with no inbound turn becomes visibly stalled and re
     journal.close();
     const reopened = openPreviewJournal(path, key);
     expect(reopened.view.activeSessionWork).toEqual({});
-    expect(Object.values(reopened.view.sentinels?.work ?? {}).some(row => row.state === 'stalled')).toBe(true);
+    expect(Object.values(reopened.view.sentinels?.work ?? {}).some(row => row.state === 'observing')).toBe(true);
     reopened.close();
   } finally { journal.close(); }
 });

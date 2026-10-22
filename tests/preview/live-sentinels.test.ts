@@ -11,6 +11,7 @@ import { SENTINEL_FAMILIES, type SentinelFamily } from './sentinel-record.js';
 import { defaultSentinelConfig } from '../../src/awareness/sentinel.js';
 import { defaultPresenceConfig } from '../../src/sentinels/presence.js';
 import { defaultPromiseConfig } from '../../src/sentinels/promise.js';
+import { classifyPaneActive, classifyPaneIdle } from '../../src/assembly/production-session-driver.js';
 import type { SessionWorkEdge } from '../../src/assembly/production-session-work.js';
 import { createJournalShipper, localReplicaClient, openReplicaStore } from './journal-replication.js';
 
@@ -415,7 +416,7 @@ it('observes every registered child without inbound turns; advancing work, waits
       w.journal.append({ kind: 'session-work', record: edge(id), at: START });
     w.journal.append({ kind: 'session-work', record: edge('helper', 'parent'), at: START });
     const updateActivity = (slow: string) => { activity = ['frozen', 'slow', 'wait', 'parent', 'helper'].map(subject => ({
-      subject, at: w.clock.now, progress: subject === 'slow' ? slow : subject, wait: subject === 'wait' ? 'rate-limited' : null })); };
+      subject, at: w.clock.now, activity: 'indeterminate' as const, progress: subject === 'slow' ? slow : subject, wait: subject === 'wait' ? 'rate-limited' : null })); };
     updateActivity('a'); w.sentinels.observeWork();
     w.clock.now += WORK_SILENCE_MS / 2; updateActivity('b'); w.sentinels.observeWork();
     w.clock.now += WORK_SILENCE_MS / 2; updateActivity('c'); w.sentinels.observeWork();
@@ -424,7 +425,7 @@ it('observes every registered child without inbound turns; advancing work, waits
       wait: { state: 'waiting' }, unknown: { state: 'unknown' }, parent: { state: 'waiting' } });
     // An unchanged helper can itself be reported stalled; that grants no right to kill it or its parent.
     expect(w.effects).toEqual([]);
-    expect(sentinelStatusLines(w.journal.view).join(' ')).toContain('Work frozen: stalled');
+    expect(sentinelStatusLines(w.journal.view).join(' ')).toContain('Work frozen: may be stalled');
     const before = structuredClone(w.journal.view.sentinels?.work);
     const charged = w.journal.view.calls;
     w.journal.compact();
@@ -453,7 +454,7 @@ it.each([100, 500])('accepted %i-byte reminders retain observation of the reques
   const quote = 'remind me today at 11 am to '.padEnd(bytes, 'x');
   let observedAt = START;
   const w = harness({ families: ['presence'], model: requestModel,
-    workActivity: () => [{ subject: 'frozen', at: observedAt, progress: 'unchanged', wait: null }] });
+    workActivity: () => [{ subject: 'frozen', at: observedAt, progress: 'unchanged', wait: null, activity: 'indeterminate' }] });
   try {
     w.worker.intake([update(1, quote)]); await w.worker.drain();
     const requests = openRequests(w.journal.view);
@@ -547,5 +548,58 @@ it('reports an unresolved obligation truthfully and clears that signal while its
     w.journal.view.obligationWork['commitment:0'] = { ...work, outcome: 'waiting', waitsOn: 'operator' };
     expect(workSilenceObservations(w.journal.view, START + WORK_SILENCE_MS)['commitment:0']).toMatchObject({ state: 'waiting',
       detail: 'Waiting on operator.' });
+  } finally { w.close(); }
+});
+
+
+it('corroborates recorded active and idle frames before reporting silence, with a finite frozen-indicator backstop', () => {
+  const captured = JSON.parse(readFileSync(new URL('./fixtures/work-silence-terminal-2026-10-14.json', import.meta.url), 'utf8'));
+  const idle = JSON.parse(readFileSync(new URL('../fixtures/claude-idle-2.1.280.json', import.meta.url), 'utf8')).pane.capture;
+  let pane: string = captured.captures[1].capture, unavailable = false;
+  const w = harness({ families: ['presence'], workActivity: () => {
+    if (unavailable) throw Error('activity source unavailable');
+    return [{ subject: 'child', at: w.clock.now,
+    progress: pane.trim() ? createHash('sha256').update(pane).digest('hex') : null, wait: null,
+    activity: !pane.trim() ? 'unknown' : classifyPaneActive(pane) ? 'active'
+      : classifyPaneIdle(pane, 'claude-code') ? 'idle' : 'indeterminate' }]; } });
+  try {
+    w.journal.append({ kind: 'session-work', at: START, record: { type: 'SessionWorkEdge', schemaVersion: 1,
+      id: 'work', parent: 'launch', child: 'child', scope: '/work', owner: 'machine-a', authority: 'grant:existing',
+      budget: { steps: 1, calls: 1, tokens: null, maxResultBytes: 1024, deadline: START + 14_400_000 },
+      exitTest: 'one result', placement: 'machine-a', transport: 'existing session', resultDestination: '/work/result', openedAt: START } });
+    w.sentinels.observeWork();
+    w.clock.now += WORK_SILENCE_MS; w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work?.work).toMatchObject({ state: 'observing' });
+    // Advancing real frame resets the backstop. Repeated fresh observations use an injected clock, no load.
+    pane = captured.captures[2].capture; w.sentinels.observeWork();
+    for (let minute = 1; minute < 90; minute++) {
+      w.clock.now += WORK_SILENCE_MS; w.sentinels.observeWork();
+      expect(w.journal.view.sentinels?.work?.work?.state).toBe('observing');
+    }
+    w.journal.compact(); w.reopen(); // timer survives a journal reopen
+    w.clock.now += WORK_SILENCE_MS; w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work?.work).toMatchObject({ state: 'stalled' });
+    expect(sentinelStatusLines(w.journal.view).join(' ')).toContain('may be stalled');
+    expect(sentinelStatusLines(w.journal.view).join(' ')).toContain('could be a long task');
+    expect(w.effects).toEqual([]);
+    unavailable = true; w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work?.work?.state).toBe('unknown');
+    expect(w.sentinels.failures().presence).toBe(1);
+    unavailable = false;
+    pane = idle; w.clock.now += WORK_SILENCE_MS; w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work?.work?.state).toBe('waiting');
+    expect(Object.keys(w.journal.view.activeSessionWork ?? {})).toEqual(['work']);
+    pane = captured.captures[0].capture; w.clock.now += WORK_SILENCE_MS; w.sentinels.observeWork();
+    expect(w.journal.view.sentinels?.work?.work?.state).toBe('unknown');
+    const legacy = { subject: 'child', at: w.clock.now, progress: 'legacy', wait: null };
+    expect(workSilenceObservations(w.journal.view, w.clock.now, [legacy]).work?.state).toBe('unknown');
+    pane = captured.captures[1].capture; w.sentinels.observeWork();
+    w.clock.now += 90 * WORK_SILENCE_MS; w.sentinels.observeWork();
+    // An unobserved gap is not ninety minutes of evidence; a fresh sample starts over.
+    expect(w.journal.view.sentinels?.work?.work).toMatchObject({ state: 'observing', lastProgressAt: w.clock.now });
+    const prior = w.journal.view.sentinels!;
+    expect(() => w.journal.append({ kind: 'sentinel', family: 'presence', presence: prior.presence, events: [],
+      work: { work: { ...prior.work!.work!, activity: 'invented' as never } }, at: w.clock.now }))
+      .toThrow('sentinel record refused');
   } finally { w.close(); }
 });
