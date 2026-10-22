@@ -77,12 +77,14 @@ it.each(['model', 'policy', 'profile', 'expired', 'stopped', 'unknown-doorway'])
   expect(f.state.calls).toBe(0);
 });
 
+// These real owner-store replays use the repository's bounded 90-second test deadline.
+// A separate 30-second override timed out correct 31–56-second WSL executions.
 it.each(plans.recorded)('replays the real self-host plan $label through Codex and its provider owners', async row => {
   const f = fixture(); f.answer(row.output);
   const result = await f.dispatch();
   expect(JSON.parse(result.answer).package.namespace).toBe('agent.word-count');
   expect(f.state.calls).toBe(1);
-}, 30_000);
+});
 
 it.each(corpus.otherShapes)('preserves the recorded $kind ($id) through the selected doorway', async row => {
   const f = fixture(); f.answer(row.raw);
@@ -97,7 +99,7 @@ it.each(corpus.otherShapes)('preserves the recorded $kind ($id) through the sele
     expect(observed).toMatchObject({ state: 'complete', bytes: row.raw, responseEvidence: {
       eligibility: 'admitted', contract: { parserReference: 'codex-exec-jsonl-events' }, terminal: { providerReason: 'turn.completed' } } });
   } else expect(observed.state).not.toBe('complete');
-}, 30_000);
+});
 
 it.each(['auth', 'mutable', 'stop-after-binding', 'tampered-binding', 'wrong-doorway-binding'])('keeps %s closed through the provider owners', async kind => {
   const f = fixture();
@@ -111,7 +113,7 @@ it.each(['auth', 'mutable', 'stop-after-binding', 'tampered-binding', 'wrong-doo
       invocationBinding: { ...provider.invocationBinding, doorway: 'claude-code-subscription' } } : provider;
   await expect(f.dispatch(selected)).rejects.toThrow();
   expect(f.state.calls).toBe(0);
-}, 30_000);
+});
 
 it.each(['failed-process', 'tool-used', 'malformed', 'over-tokens'])('retains uncertainty or rejection for %s instead of admitting a response', async kind => {
   const f = fixture();
@@ -121,7 +123,7 @@ it.each(['failed-process', 'tool-used', 'malformed', 'over-tokens'])('retains un
   if (kind === 'over-tokens') f.state.raw = f.state.raw.replace(/"output_tokens":\s*\d+/gu, '"output_tokens":999999');
   await expect(f.dispatch()).rejects.toThrow();
   expect(f.state.calls).toBe(1);
-}, 30_000);
+});
 
 it.each(['claude-code-subscription', 'codex-cli-subscription'])('measures the exact %s prompt at and over its bound', id => {
   const doorway = subscriptionDoorway(id), framing = doorway.conversationFraming;

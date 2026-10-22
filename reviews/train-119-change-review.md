@@ -3,7 +3,7 @@
 Subject base: 588332d9d0839cd504bee2819e297cd6222a2ef9
 Review state: open
 Reviewed content: none
-Outcome: Combine the reviewed registered-doorway self-host repair and bounded authority-snapshot reread on the exact live train-113 base. Preserve both members without product-source edits.
+Outcome: Combine the reviewed registered-doorway self-host repair and bounded authority-snapshot reread on the exact live train-113 base. Preserve both members without product-source edits; use the existing repository test deadline for the slow owner-store replays.
 Affected rules: 1, 2, 24, 26, 30, 34, 35, 36, 37, 41, 42, 49, 55, 60, 69, 74, 75, 90, 101, 102, 105, 111, 112, 113, 115, 116
 Affected floors: secrets retain existing custody; spend cap retains reservations without model retries; stop and revocation remain enforced; no duplicate sends retains dispatch and uncertain-outcome preservation; durable intake retains its existing journal.
 Operator questions: none
@@ -34,6 +34,7 @@ Prompt finding: b1bb3946362d | protocol-literal | Existing Claude agent identity
 Prompt finding: 42faf877ba82 | protocol-literal | Existing Codex agent identity instruction is asserted by act-first tests; identity wording is unchanged.
 Prompt finding: 450c79237a95 | protocol-literal | Existing conflicting-memory guidance is asserted by journal-people tests; the instruction and its interpretation are unchanged.
 Decision: train-119-review-closing | Move the incoming first-call record simplestRobustRoute field into its required closing three lines; preserve its wording and carry prompt dispositions for the advanced composition range. No product behavior changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-119-PROGRESS.md
+Decision: train-119-replay-deadline | Remove the self-host replay test's 30-second overrides in favor of the existing bounded 90-second repository deadline: unchanged Node 24 cases took 31–56 seconds and timed out. Assertions, captured bytes, product deadlines and safety limits are unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-119-PROGRESS.md
 Register replay: Exact source b13bd38ab7cbedf1ecdef9db2b266219bffe398a; generation sha256:c3822c77cef2a10c0523dc89a510e1ddf100e06ed7112ea65335b27e92868515, 293 entries and 117 rules.
 Verification: Merged changed tests, direct source importers, journal tests, default-context floor and platform-eligible READY selection; build, typecheck, lint, architecture, register and change-review checks. Exact outcomes and host limitations recorded in the report.
 simplestRobustRoute: This is the simplest robust route: two ordinary reviewed merges and existing generation tools, with no new product code. Exact activation and stable authenticated evidence are start guards; bounded snapshots, spend and resource limits remain; terminal evidence and durable effects are end guards. Existing member reports supply unattended Studio results; this composition claims only author verification, not new live acceptance.
