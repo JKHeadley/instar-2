@@ -259,11 +259,16 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   // Active reply-style preferences at the reservation; each is also offered as a memory
   // candidate carrying only its exact clause (its source turn holds that clause) and no reply.
   const activePreferences = new Map();
+  const activatePreference = (key, source, quote) => {
+    // Restatement changes the active source, not the number of standing preferences.
+    for (const [held, item] of activePreferences) if (item.quote === quote) activePreferences.delete(held);
+    activePreferences.set(key, { source, quote });
+  };
   for (const change of activeChanges) {
     const key = JSON.stringify([change.source, change.quote]);
-    if (change.mode === 'prefer') activePreferences.set(key, { source: change.source, quote: change.quote });
-    else if (activePreferences.delete(key) && change.mode === 'correct') activePreferences.set(
-      JSON.stringify([change.trigger, change.replacement]), { source: change.trigger, quote: change.replacement });
+    if (change.mode === 'prefer') activatePreference(key, change.source, change.quote);
+    else if (activePreferences.delete(key) && change.mode === 'correct') activatePreference(
+      JSON.stringify([change.trigger, change.replacement]), change.trigger, change.replacement);
   }
   // Carry sources are authenticated lineage, not destination intake. Match the reservation's
   // correction/forget projection without reranking a historical selection against today's clock.
