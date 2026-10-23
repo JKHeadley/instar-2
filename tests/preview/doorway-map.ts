@@ -8,6 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { durablePreviewWrite } from './durable-write.js';
 import { liveMeasurement, renderMeasured } from './measured.js';
+import type { SubscriptionDoorway } from '../../src/assembly/production-provider.js';
 import { modelEntryFresh } from '../../src/register/index.js';
 
 export const DOORWAY_FRESH_MS = 24 * 60 * 60 * 1000;
@@ -110,14 +111,14 @@ export const writeDoorwayMap = (path: string, map: DoorwayMap): void => durableP
 
 /** Content-free discovery at the subscription exchange: the exit, result frame and reported model ids only. */
 export function subscriptionExchange(result: { code: number | null; limited: boolean; localLimit?: string | null; stdout: string },
-  operation: string, exchangeModels: (stdout: string) => readonly string[] | null): ExchangeObservation | null {
-  // A local ceiling or capacity refusal says nothing about the provider route.
-  if (result.limited && result.localLimit !== 'timeout') return null;
-  if (result.limited) return { ok: false, reason: 'timeout', evidence: `exchange:${operation}` };
-  const models = result.code === 0 ? exchangeModels(result.stdout) : null;
-  if (result.code !== 0 || models === null)
-    return { ok: false, reason: result.code !== 0 ? 'exit' : 'error-frame', evidence: `exchange:${operation}` };
-  return { ok: true, reportedModels: models, evidence: `exchange:${operation}` };
+  operation: string, doorway: Pick<SubscriptionDoorway, 'exchangeModels'>): ExchangeObservation | null {
+  // A local ceiling, including a shortened revision deadline, says nothing about
+  // provider availability. Keep the last exchange evidence; it still ages stale.
+  if (result.limited) return null;
+  if (result.code !== 0) return { ok: false, reason: 'exit', evidence: `exchange:${operation}` };
+  const models = doorway.exchangeModels(result.stdout);
+  return models === null ? { ok: false, reason: 'error-frame', evidence: `exchange:${operation}` }
+    : { ok: true, reportedModels: models, evidence: `exchange:${operation}` };
 }
 
 /** Qualified internal usage against what the provider actually reported. A reserved

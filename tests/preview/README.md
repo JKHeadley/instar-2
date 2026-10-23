@@ -670,8 +670,15 @@ from the successor root. Changing or deleting the activation file closes the rou
 
 ### What the model receives each turn
 
-The system prompt is `SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT` (framing `preview-conversation-v1`,
-1886 bytes). It is separately bound from the v2 one-shot framing, whose reconstruction is unchanged.
+The system prompt is `SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT` (framing `preview-conversation-v1`).
+It is separately bound from the v2 one-shot framing, whose reconstruction is unchanged.
+Its flat JSON response begins with `reasoning`, a brief decision rationale supported by relevant
+evidence. This requests an explanation of the decision, not the model's full internal reasoning.
+The subscription conversation, tools and native prompts and both Codex prompts share this wording;
+the JSON field and readers remain the same. A wording change moves the full invocation-policy
+digest and needs a conversation policy-successor activation through `renew-activation.mjs
+--policy-successor`. Existing tools policy classes still apply only when their unchanged checkpoint
+pins match; a grant for one exact digest does not authorize a new one.
 Stdin is the exact canonical Seven envelope: the operator's current message as `role:user`, and as
 `role:context` the canonical `{bindings, packet}`. The packet (`successive-context-v1`) holds:
 
@@ -3892,10 +3899,10 @@ servers (Part Thirteen §9,
   and it is not what closes the race. It also admits sandboxed commands
   whatever words they contain, a WebFetch (GET only) of a host whose every resolved address is public, a WebSearch,
   an MCP tool listed as a read, the harness's bookkeeping (ToolSearch, ListAgents, CronList, ReportFindings,
-  TaskStop), a worktree inside the workspace, and a `worker` subagent within the turn's budget (rewritten to the
+  TaskStop, ScheduleWakeup with boolean `stop:true`), a worktree inside the workspace, and a `worker` subagent within the turn's budget (rewritten to the
   foreground), started by the turn or by a subagent. Effects that could be consequential go to the effect
   doorway: an MCP tool not listed as a read, an unsandboxed command, a Monitor command (not shown to be sandboxed; Bash
-  in the background is), a send, a scheduled or remote trigger, a DesignSync, and a web read or listed MCP read whose
+  in the background is), a send, a cron or remote trigger, a DesignSync, and a web read or listed MCP read whose
   effect or target the `--effect-policy` registers or marks policy-sensitive. The doorway (`effect-doorway.mjs`, Part
   Twelve) classifies each against the purpose's four consequential-effect tests (cannot be undone by the agent alone;
   commits money or a resource above the operator's named level, an unknown cost counting as above; reaches outside the
@@ -3907,7 +3914,16 @@ servers (Part Thirteen §9,
   …"), and a refusal rides below that turn's answer as one infrastructure line. A Skill is admitted when it is one of
   the pinned harness's bundled skills verified to run inline (its instructions join the turn, which starts nothing;
   the turn loads no user or project skills); a skill that can run forked, and Workflow, are refused for budget (the
-  agents they may start cannot be reserved before dispatch), and any other skill name is refused. A web read of a loopback, private or
+  agents they may start cannot be reserved before dispatch), and any other skill name is refused. ScheduleWakeup's
+  stop operation is normalized to `{stop:true}`: the pinned harness cancels only its session's dynamic loop and
+  schedules nothing. A new ScheduleWakeup is refused for durable-work/spend accounting and points the model to the
+  existing promises and dated-request protocol. The refusal stays in the tool trace; it creates no effect-doorway
+  approval notice in an unrelated answer. `sched-tool-replay.test.ts` replays train-133 update 367053122 through
+  this decision and the journal send path, including restart without a duplicate send.
+  The doorway map uses the selected subscription adapter id. A locally enforced timeout preserves earlier exchange
+  evidence rather than claiming provider unavailability; the normal freshness window still expires. A different
+  provider-reported model remains `changed` with its observed ids, never silently treated as the configured model.
+  A web read of a loopback, private or
   local-name host is refused; a tool the hook does not classify is refused. Each call takes one of
   the step's 32 slots (shared with the turn's subagents) by exclusive create, so overlapping calls cannot exceed the
   cap. The sandbox refuses reads from `/` down except the scratch volume, the system files commands need (it reopens the
@@ -4440,3 +4456,13 @@ its reply review, with no new store, watcher or model call. A compact rendering 
 self-state counts pays for the fixed instructions within the existing context floor.
 `self-unblock.test.ts` replays recorded update 46039927 and the recorded uncertain/review/
 empty-output shapes; live account behavior still requires the desk's proof-room check.
+
+## Doorway map observations
+
+The runner installs the selected subscription doorway's registry id and configured
+model in `doorway-map.json`. Each adapter interprets its own real exchange format;
+Codex completion verifies the configured route without claiming a provider-reported
+model id. Failed exchanges, local ceilings and stale evidence retain their existing
+meaning. Replaced doorway entries remain retired history and do not appear as active
+unavailable models in status, capability context or reply notices. Restarting an
+existing root applies this reconciliation without another store or probe.

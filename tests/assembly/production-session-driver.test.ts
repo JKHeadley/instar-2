@@ -14,7 +14,7 @@ import { SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.
 import { createSessionConversationAdapter } from '../../src/assembly/conversation-harness-adapter.js';
 import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value, refused } from '../facts/fixtures.js';
-import { buildLiteralSendArgs, chunkLiteralForTmux, classifyPaneIdle, classifyPaneReadiness, classifyStuckSignature,
+import { buildLiteralSendArgs, chunkLiteralForTmux, classifyPaneIdle, classifyBlockingMenu, classifyPaneReadiness, classifyStuckSignature,
   createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
 import type { ProductionSessionConfig, SessionIO, SessionJournal } from '../../src/assembly/production-session-driver.js';
 
@@ -850,7 +850,7 @@ it('refuses changed identity and protects named sessions from stop', () => {
 
 it.each(['claude-code', 'codex-cli'] as const)('an admitted %s session launches with every tool, the admission hook and the model-dispatch checkpoint', framework => {
   const f = fixture(framework);
-  const toolAdmission = { command: (claim: string, phase: 'pre' | 'post') => `/node /repo/hook.mjs ${phase} /state/${claim}`, timeoutSeconds: 600 };
+  const toolAdmission = { command: (claim: string, phase: 'pre' | 'post' | 'permission') => `/node /repo/hook.mjs ${phase} /state/${claim}`, timeoutSeconds: 600 };
   const modelGate = (claim: string) => `http://127.0.0.1:4100/${'a'.repeat(32)}/${claim}`;
   const driver = createProductionSessionDriver({ ...f.config, confinement: 'admitted', toolAdmission, modelGate });
   value(driver.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test', incarnation: 'inc', workingScope: '/work', handles: [] }));
@@ -860,6 +860,7 @@ it.each(['claude-code', 'codex-cli'] as const)('an admitted %s session launches 
     expect(spawned).toContain('--dangerously-skip-permissions');
     const settings = JSON.parse(spawned[spawned.indexOf('--settings') + 1]!);
     expect(settings.hooks.PreToolUse).toEqual([{ matcher: '*', hooks: [{ type: 'command', command: '/node /repo/hook.mjs pre /state/topic', timeout: 600 }] }]);
+    expect(settings.hooks.PermissionRequest[0].hooks[0].command).toBe('/node /repo/hook.mjs permission /state/topic');
     expect(settings.hooks.PostToolUse[0].hooks[0].command).toBe('/node /repo/hook.mjs post /state/topic');
     expect(settings.hooks.PostToolUseFailure).toEqual(settings.hooks.PostToolUse);
     // No background model traffic, and every model call the session makes goes to this claim's checkpoint.
@@ -1462,4 +1463,58 @@ it('exposes the recorded native reconnect wait without adding input or extending
   expect(f.journal.sessions[0]!.turnDeadline).toBe(2000);
   f.changePane('ordinary work\n❯ ');
   expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).detail).not.toBe('connection recovery waiting');
+});
+
+// Rule 36: inherited real render, no authority inferred from its prose or selected Yes.
+it('surfaces a recorded unresolved approval menu without typing or claiming completion', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../fixtures/permission-menu-1x.json', import.meta.url), 'utf8'));
+  const f = fixture('claude-code', { ...rateConfig, turnDeadlineMs: 300000 }), id = f.launch(); value(f.deliver(id));
+  const sends = f.sends, deadline = f.journal.sessions[0]?.turnDeadline;
+  f.changePane(recorded.capture);
+  for (const at of [1000, 2000, 4000]) { f.time(at); value(f.driver.observe({ operation: 'deliver', processIdentity: id })); }
+  f.time(6000);
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id }))).toMatchObject({
+    phase: 'launched', detail: 'harness menu needs exact authorization; no input sent',
+  });
+  expect(f.sends).toBe(sends);
+  expect(f.journal.sessions[0]?.turnDeadline).toBe(deadline);
+});
+
+it('menu observation never submits keys, ends work, resets deadlines or survives changed evidence', () => {
+  const menu = JSON.parse(readFileSync(new URL('../fixtures/permission-menu-1x.json', import.meta.url), 'utf8')).capture;
+  const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+  f.changePane(menu);
+  const observe = (driver = f.driver) => value(driver.observe({ operation: 'deliver', processIdentity: id }));
+  for (let i = 0; i < 10; i++) observe(); // same-clock observations cannot manufacture persistence
+  expect(f.journal.sessions[0]?.promptWait?.samples).toBe(1);
+  for (const at of [2000, 3000, 6000]) { f.time(at); observe(); }
+  const restarted = createProductionSessionDriver(f.config), sends = f.sends;
+  expect(observe(restarted).detail).toContain('harness menu');
+  expect(value(restarted.observeIdle(id))).toBeNull();
+  f.changePane(`${menu}\n❯ `); observe(restarted);
+  expect(f.journal.sessions[0]?.promptWait).toBeNull();
+  f.changePane(menu); f.time(7000); expect(observe(restarted).detail).toBe('session live; turn still open');
+  f.time(121000); expect(observe(restarted).phase).toBe('exit-observed');
+  expect(f.sends).toBe(sends);
+  for (const pane of [`${menu}\n❯ `, `${menu}\nWorking… (esc to interrupt)`, '1. Yes\n2. No', 'Some answer.'])
+    expect(classifyBlockingMenu(pane)).toBe(false);
+  const recorded = JSON.parse(readFileSync(new URL('../fixtures/permission-menu-1x.json', import.meta.url), 'utf8'));
+  for (const capture of recorded.radioCaptures) expect(classifyBlockingMenu(capture)).toBe(true);
+  expect(classifyBlockingMenu(menu.replace('Yes', 'Always allow'))).toBe(true); // visible, never answered
+});
+
+it('replays recorded summary, uncertain, Jev, review and empty reply shapes beside an unresolved menu', () => {
+  const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8'));
+  const menu = JSON.parse(readFileSync(new URL('../fixtures/permission-menu-1x.json', import.meta.url), 'utf8')).capture;
+  for (const row of recorded.otherShapes) {
+    const f = fixture('claude-code', rateConfig), id = f.launch(); value(f.deliver(id));
+    f.changePane(row.raw); value(f.driver.observe({ operation: 'deliver', processIdentity: id }));
+    expect(f.journal.sessions[0]?.promptWait ?? null).toBeNull();
+    const sends = f.sends;
+    f.changePane(`${row.raw}\n${menu}`);
+    for (const at of [1000, 2000, 3000]) { f.time(at); value(f.driver.observe({ operation: 'deliver', processIdentity: id })); }
+    f.time(6000);
+    expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).detail).toContain('harness menu');
+    expect(f.sends).toBe(sends);
+  }
 });

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type PreviewPorts } from './journal-test-worker.js';
 // @ts-expect-error Host-only JavaScript reader.
 import { admissionActivity, createWorkingActivities } from './working-activity.mjs';
-import { WORKING_CONNECTION, WORKING_RATE_LIMIT, WORKING_LIVENESS, currentWorkingActivity, workingProgressDue, type WorkingActivity } from './working-progress.js';
+import { WORKING_CONNECTION, WORKING_HARNESS_MENU, WORKING_RATE_LIMIT, WORKING_LIVENESS, currentWorkingActivity, workingProgressDue, type WorkingActivity } from './working-progress.js';
 
 const roots: string[] = [];
 afterEach(() => { vi.useRealTimers(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -569,4 +569,28 @@ it.each([0, 11, 1.5, NaN])('keeps invalid native retry count %s out of the notic
     connectionRetry: { turnStartedAt: 900, attempt } },
   { kind: 'Success', value: { phase: 'launched', detail: 'connection recovery waiting' } });
   expect(activities.current('input')).toBeNull();
+});
+it('an unresolved native menu gets one durable explanation, never a claim of work or an unbounded notice loop', async () => {
+  const activities = createWorkingActivities({ now: () => Date.now(), read: () => '' });
+  const f = fixture({ activityPort: () => activities.current('input') });
+  try {
+    await f.enteredPromise;
+    activities.observe('input', 'claim', 'start');
+    const observe = () => activities.observeSession({ identity: 'worker', claim: 'claim', turnStartedAt: 1000 },
+      { kind: 'Success', value: { phase: 'launched', evidence: 'sha256:captured-menu', detail: 'harness menu needs exact authorization; no input sent' } });
+    observe();
+    expect(activities.current('input')).toMatchObject({ wait: 'harness-menu', running: false });
+    await vi.advanceTimersByTimeAsync(120000); observe();
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(f.progress().map(row => row.text)).toEqual([WORKING_HARNESS_MENU]);
+    for (let i = 0; i < 6; i++) { observe(); await vi.advanceTimersByTimeAsync(600000); }
+    expect(f.progress()).toHaveLength(1);
+    f.journal.compact();
+    const copy = `${f.path}.menu`; copyFileSync(f.path, copy);
+    const replay = openPreviewJournal(copy, f.key);
+    try { expect(replay.view.order[0]?.workingProgress?.[0]?.wait).toBe('harness-menu'); }
+    finally { replay.close(); }
+    activities.observeSession({ identity: 'worker', claim: 'claim' }, { kind: 'Success', value: { phase: 'launched', detail: 'session live; turn still open' } });
+    expect(activities.current('input')).toBeNull();
+  } finally { f.release('Done.'); await f.drain; f.journal.close(); }
 });

@@ -1,0 +1,86 @@
+{
+  "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/pipeline/live-proof/results/preswitch-train-127-4c77d8ee-20261022-063543/FIRST-proofroom-ps",
+  "update": 367052949,
+  "question": "What can you do in this chat, and what can't you do?",
+  "map": {
+    "version": 1,
+    "doorways": [
+      {
+        "id": "preview-subscription",
+        "billing": "subscription",
+        "price": {
+          "state": "unavailable",
+          "reason": "the subscription route reports no billed charge",
+          "observedAt": 1792676208036,
+          "freshForMs": 86400000
+        },
+        "models": [
+          {
+            "id": "gpt-6-astra",
+            "state": "unavailable",
+            "verifiedAt": null,
+            "freshForMs": 86400000,
+            "evidence": null,
+            "strength": null,
+            "unavailableAt": 1792676290216,
+            "unavailableReason": "error-frame"
+          }
+        ]
+      },
+      {
+        "id": "typesafe-jev",
+        "billing": "metered",
+        "price": {
+          "state": "unavailable",
+          "reason": "the Jev route reports no price",
+          "observedAt": 1792676208036,
+          "freshForMs": 86400000
+        },
+        "models": [
+          {
+            "id": "jev-1.13.0",
+            "state": "verified",
+            "verifiedAt": 1792676253068,
+            "freshForMs": 86400000,
+            "evidence": "exchange:jev-reply-check",
+            "strength": "provider-reported"
+          }
+        ]
+      }
+    ],
+    "check": {
+      "at": 1792676270465,
+      "fresh": false,
+      "since": 1792676270465,
+      "failing": [
+        "preview-subscription/gpt-6-astra:unavailable"
+      ]
+    }
+  },
+  "delivered": {
+    "update": 367052949,
+    "at": 1792676310537,
+    "textSha256": "sha256:5847272faa6be798c251e3eea57d7d3b7a21efe69d5b92ae0c94ddaffed94021",
+    "accepted": true,
+    "reply": "I need to check that answer before I can send it.",
+    "sent": 1530,
+    "sentAt": 1792676380879,
+    "applicationNotices": [],
+    "correctionCandidate": null,
+    "revisionReview": {
+      "verdict": "unavailable",
+      "ruleIds": []
+    },
+    "held": null,
+    "heldNoticeSent": 1529,
+    "prompted": true,
+    "release": null,
+    "heldReview": {
+      "objections": [
+        "claims_blocked",
+        "unrecorded_blocker",
+        "self_state_claim"
+      ]
+    }
+  }
+}

@@ -74,6 +74,9 @@ it.skipIf(process.platform !== 'darwin')('setup follows an innocently named link
   const setup = child(home, ['bin/instar2.mjs', 'setup', join(alias, 'new-agent')]);
   expect(setup.status, setup.stderr).toBe(1); expect(setup.stderr).toContain('~/Documents');
   expect(existsSync(join(target, 'new-agent'))).toBe(false);
+  const update = child(home, ['bin/instar2.mjs', 'update', join(alias, 'new-agent')]);
+  expect(update.status, update.stderr).toBe(1); expect(update.stderr).toContain('Update stopped');
+  expect(existsSync(join(target, 'new-agent'))).toBe(false);
 });
 it.skipIf(process.platform !== 'darwin')('keeps emergency stop reachable on an already misplaced journal root', () => {
   const home = fixture(), root = join(home, 'Documents/agent'); mkdirSync(root, { recursive: true });
@@ -86,6 +89,9 @@ it.skipIf(process.platform !== 'darwin').each(folders)('setup and both boot comm
   const home = fixture(), root = join(home, folder, 'agent');
   const setup = child(home, ['bin/instar2.mjs', 'setup', root]);
   expect(setup.status, setup.stderr).toBe(1); expect(setup.stderr).toContain(`~/${folder}`);
+  expect(existsSync(root)).toBe(false);
+  const update = child(home, ['bin/instar2.mjs', 'update', root]);
+  expect(update.status, update.stderr).toBe(1); expect(update.stderr).toContain('Update stopped');
   expect(existsSync(root)).toBe(false);
   const installation = join(home, 'installation.json'); writeFileSync(installation, JSON.stringify({ storageRoot: root }));
   const boot = child(home, ['bin/instar-production.mjs', installation, join(home, 'host-must-not-load.mjs')]);

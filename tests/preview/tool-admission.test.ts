@@ -55,6 +55,21 @@ const hook = (state: string, input: string, preset?: number, mode = 'pre') => {
 };
 const j = (tool_name: string, tool_input: object) => JSON.stringify({ tool_name, tool_input, tool_use_id: `toolu_${tool_name}` });
 
+it('runs stop-only ScheduleWakeup through the executable hook and preserves the new-wake refusal', () => {
+  const { state } = turn();
+  const stopped = hook(state, j('ScheduleWakeup', { stop: true, delaySeconds: 60, prompt: 'ignored' }));
+  expect(stopped.status).toBe(0);
+  expect(JSON.parse(stopped.stdout).hookSpecificOutput).toMatchObject({ permissionDecision: 'allow', updatedInput: { stop: true } });
+  expect(hook(state, JSON.stringify({ tool_name: 'ScheduleWakeup', tool_use_id: 'toolu_ScheduleWakeup',
+    tool_response: { stopped: true, cancelledWakeups: 0 } }), undefined, 'post').status).toBe(0);
+  const refused = hook(state, j('ScheduleWakeup', { delaySeconds: 60, prompt: 'later', reason: 'wait', noop: true }));
+  expect(JSON.parse(refused.stdout).hookSpecificOutput).toMatchObject({ permissionDecision: 'deny',
+    permissionDecisionReason: expect.stringContaining('durable host work') });
+  const trace = toolTrace(readFileSync(join(state, 'admission.jsonl'), 'utf8').trim().split('\n'));
+  expect(trace).toMatchObject({ consistent: true, admitted: 1, refused: 1 });
+  expect(trace.calls.every((call: { doorway?: unknown }) => call.doorway === undefined)).toBe(true);
+});
+
 it('decides every layer-A case of the spike through the real executable hook; shell commands are admitted for the sandbox to bound', () => {
   const { ws: WS, outside: OUT, state } = turn();
   const cases: [string, string, string, number?, number?][] = [
@@ -123,6 +138,11 @@ it('a checkpointed route sends consequential tools and delegations to its checkp
   // category here), and a network read the route admits is allowed.
   const gated = { gate: 'http://127.0.0.1:4100/x/claim', delegation: true, networkReads: true };
   expect(call('mcp__x__y', {}, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
+  const wake = { delaySeconds: 60, prompt: 'continue admitted work', reason: 'wait', noop: true };
+  expect(call('ScheduleWakeup', wake, gated)).toEqual({ decision: 'gate', kind: 'effect', reason: 'the effect owner decides' });
+  expect(call('ScheduleWakeup', wake)).toMatchObject({ decision: 'deny', kind: 'budget' });
+  expect(call('ScheduleWakeup', { ...wake, stop: true }, gated)).toMatchObject({ decision: 'allow', updatedInput: { stop: true } });
+  for (const stop of [false, 'true']) expect(call('ScheduleWakeup', { ...wake, stop }, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
   expect(call('SendMessage', { to: 'x', message: 'y' }, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
   expect(call('Bash', { command: 'ls', dangerouslyDisableSandbox: true }, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
   expect(call('Agent', { prompt: 'x' }, gated)).toMatchObject({ decision: 'gate', kind: 'delegation' });
@@ -297,7 +317,8 @@ it('strips the harness messaging socket and token from every admitted shell comm
   expect(unstripped.stdout.trim()).toBe('2');
   // A file tool is admitted unchanged: no rewritten input.
   const read = hook(state, j('Read', { file_path: join(state, '..', 'ws', 'in.txt') }));
-  expect(read).toMatchObject({ status: 0, decision: 'allow', stdout: '' });
+  expect(read).toMatchObject({ status: 0, decision: 'allow' });
+  expect(JSON.parse(read.stdout).hookSpecificOutput).not.toHaveProperty('updatedInput');
 });
 
 it('records each call and its result; a result with no admitted call before it makes the trace inconsistent', () => {
@@ -513,7 +534,7 @@ it('decides every tool of the harness\'s built-in set by its class at the hook: 
   expect(decide('EnterWorktree', { path: '/Users/x/repo' })).toMatchObject({ decision: 'deny', kind: 'scope' });
   // Consequential: each goes to the effect doorway by its kind, which the single-machine profile refuses.
   for (const [tool, kind] of [['SendMessage', 'send'], ['PushNotification', 'send'], ['RemoteTrigger', 'network-write'], ['DesignSync', 'network-write'],
-    ['CronCreate', 'schedule'], ['CronDelete', 'schedule'], ['ScheduleWakeup', 'schedule'], ['Monitor', 'unsandboxed']] as const)
+    ['CronCreate', 'schedule'], ['CronDelete', 'schedule'], ['Monitor', 'unsandboxed']] as const)
     expect([tool, decide(tool, { command: 'x' })]).toMatchObject([tool, { decision: 'deny', kind,
       reason: expect.stringContaining(`effect doorway refused tool:${kind} (${tool})`),
       doorway: { effect: `tool:${kind}`, target: tool, disposition: 'refused' } }]);
@@ -722,4 +743,19 @@ it('replays the shell-network live runs: their shell calls reach the recorded ad
     }
     if (name === 'shellnet-reads') expect(discovered.size).toBe(1);
   }
+});
+
+it('answers each admitted recorded call with an explicit one-call allow, never a standing grant', () => {
+  const { state, ws } = turn();
+  const rows = readFileSync(join(SPIKE, 'b1-hook', 'admission.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  const original = rows.find(row => row.tool === 'Read' && row.decision === 'allow');
+  expect(original).toBeDefined();
+  const input = { ...original.input, file_path: join(ws, 'in.txt') };
+  const answer = hook(state, j('Read', input));
+  expect(answer.decision).toBe('allow');
+  expect(JSON.parse(answer.stdout)).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse',
+    permissionDecision: 'allow', permissionDecisionReason: 'ordinary file read' } });
+  const denied = hook(state, j('Write', { ...input, file_path: join(ws, '..', 'outside', 'recorded.txt') }));
+  expect(denied.decision).toBe('deny');
+  expect(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecision).toBe('deny');
 });

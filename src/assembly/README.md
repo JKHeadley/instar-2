@@ -31,7 +31,10 @@ policy. Historical 0.149.1 captures remain labeled with their original version;
 the 0.156.1 answer capture exercises the same route and application answer reader.
 Retired or unreviewed versions require a new review and activation. Tool admission,
 model-call limits, stop, durable intake and send uniqueness remain enforced by
-their existing owners.
+their existing owners. Each registered subscription doorway owns its exchange model
+observation: Claude retains provider-reported model ids; Codex reuses its JSONL
+parser and reports configured-route evidence only after a completed, nonempty
+exchange. Neither configuration nor a process start verifies a model.
 
 ## Scheduled work recovery
 
