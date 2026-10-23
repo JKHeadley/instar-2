@@ -7,15 +7,14 @@ Outcome: Record the exact reviewed rules-13-56-1023 membership and regenerate th
 Affected rules: 13, 26, 37, 49, 56, 69, 74, 90, 101, 102, 107, 111, 112, 113, 116
 Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake remain unchanged; no product source, runtime policy or live state changes.
 Operator questions: none
-Suggested tier: low
-Declared tier: low
+Suggested tier: critical
+Declared tier: ordinary
 Tier rationale: The sole member equals the base; only deterministic register output and this review record change.
 Side effects: Register generation identifies the exact input commit; desk checker behavior is delivered separately on the Studio and is not represented as product code in this branch.
 Undo and recovery: Retain the live base until the desk accepts the candidate. Existing release rollback restores the preceding register generation; no data migration is involved.
 Multi-machine posture: Build and evidence are local to WSL. No Studio writes or live runner changes; the desk owns its installed proof checker and native acceptance.
 Layer below: Read the full constitution, verified both supplied evidence snapshot hashes, inspected the member report and cint-L37 generation chain. Member head equals the exact live base and contains no new product diff.
-Bug class: integration
-Bug evidence: reproducer=tests/preview/default-context-floor.test.ts
+Bug class: none
 Hook bypass: none; core.hooksPath unset and common hooks directory contains only sample files
 Convergence: none
 Decision: train-140-merge | Ordinary merge of reviewed rules-13-56-1023 b61926b0d8867d2b4e8ca01beb34b4ca0dc64f03 returns Already up to date. Member report: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/rules-13-56-1023-PROGRESS.md; its SHA-256 verified snapshot records desk-only delivery, not a product fix. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-140-PROGRESS.md
