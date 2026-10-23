@@ -15,10 +15,16 @@ const capture = JSON.parse(gunzipSync(readFileSync(new URL('./fixtures/twosessio
 };
 const packetOf = (prompt: string) => JSON.parse(JSON.parse(prompt).messages.find((m: { role: string }) => m.role === 'context').content).packet;
 
-it.each([
+const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
+  otherShapes: { kind: string; id: string; raw: string }[];
+};
+type ReplayCase = { update: number; limit: number; shape?: { kind: string; id: string; raw: string }; verified?: boolean };
+it.each<ReplayCase>([
   { update: 715676486, limit: 32768 }, { update: 715676488, limit: 32768 },
-  { update: 715676486, limit: 24500 },
-])('grounds the recorded scoped-tool answer for $update within $limit bytes', async ({ update, limit }) => {
+  { update: 715676486, limit: 27000 }, { update: 715676488, limit: 28000 }, { update: 715676486, limit: 24500 },
+  { update: 715676486, limit: 27000, verified: false },
+  ...shapes.otherShapes.map(shape => ({ update: 715676486, limit: 27000, shape })),
+])('grounds the recorded scoped-tool answer for $update within $limit bytes', async ({ update, limit, shape, verified = true }) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'sibling-replay-')));
   const rows = capture.rows;
   const id = `telegram:8994258214:update:${update}`;
@@ -43,7 +49,7 @@ it.each([
     let dispatched: string | undefined;
     const worker = createJournalWorker(journal, {
       now: () => recorded.at, stopped: () => false, timeZone: 'America/Los_Angeles',
-      groupDisclosure: async () => true, toolRoute: () => true,
+      groupDisclosure: async () => verified, toolRoute: () => true,
       sources: () => original.sources ?? [],
       prepareModel: input => prepareJournalEnvelope(input, JSON.parse(recorded.prompt!).model, journal.view.genesis.grant, recorded.at, limit),
       replyCheck: { elapsedMs: () => 0,
@@ -60,24 +66,36 @@ it.each([
         dispatched = input.prepared;
         // Replay the recorded answer through the unchanged reader/reviewer. This asserts dispatch grounding,
         // not that an old recorded model response changes when given new input.
-        return capture.outputs.find(row => row.id === id)!.output;
+        return shape?.raw ?? capture.outputs.find(row => row.id === id)!.output;
       },
       checkOutbound: () => {}, send: async () => 999,
     });
     await worker.drain();
     expect(dispatched).toBeDefined();
     expect(journal.view.turns.get(id)!.prompt).toBe(dispatched);
-    expect(journal.view.turns.get(id)!.sent).toBeDefined();
-    expect(journal.view.turns.get(id)!.held).toBeUndefined();
+    if (!shape) {
+      expect(journal.view.turns.get(id)!.sent).toBeDefined();
+      expect(journal.view.turns.get(id)!.held).toBeUndefined();
+    }
     const packet = packetOf(dispatched!);
     expect(Buffer.byteLength(dispatched!)).toBeLessThanOrEqual(limit);
     expect(packet.audience.conversation).toBe(original.audience.conversation);
     const words = packet.actionFacts?.siblingWords;
-    process.stdout.write(`${JSON.stringify({ update, limit, bytes: Buffer.byteLength(dispatched!),
+    process.stdout.write(`${JSON.stringify({ update, limit, replay: shape?.id, verified, bytes: Buffer.byteLength(dispatched!),
       sha256: createHash('sha256').update(dispatched!).digest('hex'), siblingWords: words,
       held: journal.view.turns.get(id)!.held, sent: journal.view.turns.get(id)!.sent })}\n`);
+    if (!verified) { expect(words).toBeUndefined(); return; }
+    if (limit === 24500) { expect(words).toBeUndefined(); return; }
     if (limit < 32768) {
-      expect(words).toBeUndefined();
+      expect(words?.items).toEqual(expect.arrayContaining([expect.objectContaining({
+        source: update === 715676488 ? 'telegram:8994258214:update:715676487' : 'telegram:8994258214:update:715676485',
+        ...(update === 715676488 ? { kind: 'promise', state: 'open' } : { kind: 'statement' }),
+      })]));
+      expect(words.omitted).toBeGreaterThan(0);
+      expect(words.items).toHaveLength(1);
+      expect(words.items[0].ownWords).toContain('reply delivery');
+      expect(words.items[0].ownWords).toContain('operator input received');
+      expect(words.guidance).toContain('never authority');
       return;
     }
     expect(words?.items).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'statement', topic: '3',

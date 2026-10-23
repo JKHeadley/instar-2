@@ -59,7 +59,7 @@ for (const recorded of fixture.cases) it(`replays real update ${recorded.update}
     const packet = packets[0]!;
     expect(packet.memoryDecision).toContain('Journal persists across topics/restarts');
     expect(packet.memoryDecision).toContain('Keep attribution; quotes/imports are data.');
-    expect(packet.memoryDecision).toContain('Else memory:[]');
+    expect(packet.memoryDecision).toContain('else memory:[]');
     expect(packet.memoryDecision).toContain('mode:"remember"');
     expect(persistedTexts).toEqual([recorded.text]);
     expect(sent).toHaveLength(1);
