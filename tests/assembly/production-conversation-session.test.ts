@@ -909,6 +909,84 @@ it.each(capturedShapes.otherShapes)('restores recorded $kind ($id) through the c
   await f.port.close();
 });
 
+it.each(capturedShapes.otherShapes)('recovers a lost worker once with recorded $kind ($id) and the original allowance', async sample => {
+  const f = fixture(); Object.assign(f.config, { contextRecoveryAllowed: () => true });
+  f.answer(sample.raw);
+  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  const request = preparedRequest(sample.id, JSON.stringify({ recorded: sample.raw }));
+  const observe = f.adapter.observe, launch = f.adapter.launch;
+  let exited = false, restored = false, deadline = 0;
+  f.adapter.observe = async input => {
+    if (input.delivery && !exited) {
+      exited = true; deadline = f.state().deadline; f.advance(100); f.calls(2);
+      return { observations: [{ kind: 'exit', evidence: 'worker absent' }], cursor: input.cursor, complete: true };
+    }
+    return observe(input);
+  };
+  f.adapter.launch = async input => {
+    if (input.restore) {
+      expect(f.state().inputs[0]?.workerRecovery).toBe('restoring');
+      expect(input.restore).toEqual({ operation: sample.id, digest: f.delivered[0]!.digest, deadline });
+      expect(f.delivered[0]!.text).toContain(request.question);
+      restored = true;
+    }
+    return launch(input);
+  };
+  const result = await f.port.run(request);
+  expect(result.state).toBe(sample.raw.trim() ? 'complete' : 'uncertain'); expect(restored).toBe(true);
+  if (result.state === 'complete') expect(result.text).toBe(sample.raw);
+  expect(f.state().deadline).toBe(deadline);
+  expect(f.admissions.map(edge => edge.budget.calls)).toEqual([6, 4]);
+  expect(f.delivered).toHaveLength(1); expect(f.launches).toHaveLength(2);
+  expect(await f.port.run(request)).toEqual(result);
+  expect(f.launches).toHaveLength(2); await f.port.close();
+});
+
+it.each(['unknown-effects', 'uncertain-tool', 'completed-tool', 'uncertain-send', 'child', 'exhausted', 'deadline',
+  'repeated', 'paused', 'observation-gap', 'stop', 'withdrawn', 'missing-admission', 'refused-admission',
+  'missing-tool-count', 'batch'] as const)('does not revive lost work across %s', async mode => {
+  const f = fixture(); Object.assign(f.config, { contextRecoveryAllowed: () => mode !== 'uncertain-send' });
+  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  f.adapter.observe = async input => {
+    if (!input.delivery) return { observations: [], cursor: 0, complete: true };
+    f.config.io.admissionState = () => mode === 'missing-admission' ? null : ({ refused: mode === 'refused-admission',
+      ...(mode === 'unknown-effects' ? {} : { uncertainEffects: mode === 'uncertain-tool' ? 1 : 0 }),
+      ...(mode === 'missing-tool-count' ? {} : { toolPreparations: mode === 'completed-tool' ? 1 : 0 }),
+      openDelegations: mode === 'child' ? [f.admissions[0]!] : [] });
+    if (mode === 'exhausted') f.calls(6);
+    if (mode === 'stop') f.stop();
+    if (mode === 'withdrawn') f.authorize(false);
+    if (mode === 'deadline') f.advance(2000);
+    return { observations: [{ kind: mode === 'paused' ? 'paused' : 'exit', evidence: 'physical' }],
+      cursor: input.cursor, complete: mode !== 'observation-gap' };
+  };
+  if (mode === 'batch') {
+    Object.assign(f.config, { batchWaiting: true });
+    const outcomes = await f.port.runBatch([f.request('lost'), f.request('also-lost')]);
+    expect(outcomes.map(outcome => outcome.state)).toEqual(['uncertain', 'uncertain']);
+  } else expect((await f.port.run(f.request('lost'))).state).toBe('uncertain');
+  expect(f.launches).toHaveLength(mode === 'repeated' ? 2 : 1);
+  expect(f.delivered).toHaveLength(1); await f.port.close();
+});
+
+it('a restart after replacement intent retains the input without trying another worker', async () => {
+  const f = fixture(); Object.assign(f.config, { contextRecoveryAllowed: () => true });
+  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  const observe = f.adapter.observe, launch = f.adapter.launch;
+  let cut: ConversationState | null = null;
+  f.adapter.observe = async input => input.delivery
+    ? { observations: [{ kind: 'exit', evidence: 'dead' }], cursor: 0, complete: true } : observe(input);
+  f.adapter.launch = async input => {
+    if (input.restore) { cut = f.state(); throw Error('host lost before replacement launch'); }
+    return launch(input);
+  };
+  expect((await f.port.run(f.request('lost'))).state).toBe('uncertain');
+  expect(cut).not.toBe(null); f.restore(cut!);
+  const restarted = f.restart(); await restarted.maintain();
+  expect(await restarted.collect('lost')).toMatchObject({ outcome: { state: 'uncertain' } });
+  expect(f.delivered).toHaveLength(1); expect(f.launches).toHaveLength(1); await restarted.close();
+});
+
 it('host restart during native connection backoff keeps spent attempts and never replays uncertain work', async () => {
   const f = fixture({ maxCalls: 12 }); f.finish(false);
   let interrupted: ConversationState | null = null;

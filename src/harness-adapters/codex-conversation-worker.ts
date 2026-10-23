@@ -21,6 +21,7 @@ export function createCodexConversationWorker(input: Readonly<{
 }>): HarnessAdapterPort<2> {
   let connection: SessionProtocolConnection | null = null, config: ProductionSessionConfig | null = null;
   let claim = '', incarnation = '', thread = '', operation = '', grounding = '';
+  let accepted = false;
   let reader: ReturnType<typeof createCodexTurnReader> | null = null;
   const send = (request: ReturnType<typeof requests.initialize>) => connection!.request(request.method, request.params);
   const guard = () => { ensure(config && !config.stopped(), 'conversation stopped'); };
@@ -38,10 +39,15 @@ export function createCodexConversationWorker(input: Readonly<{
       && !idleDirty && connection!.alive() && result?.status === 'completed'
       ? hash(JSON.stringify([target.launch, target.claim, target.incarnation, operation, result, frameCount])) : null;
   };
-  return {
+  const api: HarnessAdapterPort<2> = {
     describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: true }),
     async launch(spec) {
       input.beforeLaunch?.(spec.claim); config = input.configuration(); guard();
+      const pending = spec.restore && input.resolveDelivery(spec.restore.operation);
+      if (spec.restore) ensure(!connection && accepted && operation === spec.restore.operation
+        && pending && pending.digest === spec.restore.digest && hash(pending.text) === spec.restore.digest
+        && pending.claim !== spec.claim && Number.isSafeInteger(spec.restore.deadline) && spec.restore.deadline > config.now(),
+      'restore requires exact accepted input, closed prior worker and remaining lifetime');
       ensure(config.confinement === 'admitted' && config.toolAdmission && config.modelGate && config.model,
         'protocol worker requires tool and model admission and exact model');
       ensure(spec.workingScope === config.cwd, 'worker scope differs from admitted scope');
@@ -58,7 +64,7 @@ export function createCodexConversationWorker(input: Readonly<{
         executable: via?.[0] ?? config.executable,
         args: via ? [...via.slice(1, -1), '--stdio', via.at(-1)!, config.executable, ...args] : args,
         env: { PATH: '/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin', HOME: config.home, CODEX_HOME: config.configHome },
-        cwd: config.cwd, deadline: config.now() + config.turnDeadlineMs, maxProcesses: config.maxSessions,
+        cwd: config.cwd, deadline: Math.min(config.now() + config.turnDeadlineMs, spec.restore?.deadline ?? Infinity), maxProcesses: config.maxSessions,
         requestTimeoutMs: config.readyTimeoutMs });
       try {
         await send(requests.initialize()); guard(); const ready = requests.initialized(); connection.notify(ready.method, ready.params);
@@ -75,9 +81,11 @@ export function createCodexConversationWorker(input: Readonly<{
         thread = idOf(object(object(response).thread).id);
         if (hit) ensure(thread === saved, 'resumed thread differs from checkpoint');
         const journal = config.io.load(); config.io.save({ ...journal, resumes: { ...journal.resumes, [claim]: thread, [input.resumeKey ?? claim]: thread } });
-        reader = null; operation = '';
+        reader = null; operation = ''; accepted = false;
         input.afterLaunch?.();
-        return { launch: connection.identity, claim, incarnation };
+        const worker = { launch: connection.identity, claim, incarnation };
+        if (pending) ensure((await api.deliver({ ...pending, ...worker })).state === 'accepted', 'restored input was not accepted');
+        return worker;
       } catch (error) {
         await connection.close();
         connection = null; reader = null;
@@ -93,12 +101,12 @@ export function createCodexConversationWorker(input: Readonly<{
       ensure(operation !== delivery.operation, 'input already submitted; no automatic replay');
       input.io.clearResult(delivery.resultPath);
       ensure(input.io.readResult(delivery.resultPath, delivery.maxBytes) === null, 'stale conversation result remains');
-      operation = delivery.operation; reader = null; idleDirty = false;
+      operation = delivery.operation; reader = null; idleDirty = false; accepted = false;
       // Host persists dispatch intent before calling this method. An RPC failure is uncertain.
       const response = await send(requests.deliver(thread, grounding ? `${grounding}\n\n${delivery.text}` : delivery.text));
       const turn = object(object(response).turn);
       reader = createCodexTurnReader(thread, idOf(turn.id), delivery.maxBytes);
-      feed(); guard(); grounding = '';
+      feed(); guard(); grounding = ''; accepted = true;
       return { state: 'accepted', evidence: `${connection!.identity}:${thread}:${turn.id}` };
     },
     async observe(query) {
@@ -139,4 +147,5 @@ export function createCodexConversationWorker(input: Readonly<{
       return { state: 'closed', evidence: target.reason };
     },
   };
+  return api;
 }
