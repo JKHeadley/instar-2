@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Merge exact live ca3d8ab8 into train-133, retaining both native connection-recovery and unresolved-menu observations and their regression coverage.
 Affected rules: 1, 12, 26, 36, 37, 49, 52, 70, 74, 87, 90, 101, 102, 105, 111, 112, 113, 116
-Affected floors: secrets — ; spend cap — ; stop — ; no duplicate sends — ; durable intake — 
+Affected floors: secrets — fixed infrastructure text only; spend cap — no new model calls; stop — existing cancellation retained; no duplicate sends — preserve durable episode identities for each wait kind; durable intake — original journal and intake remain intact.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
@@ -45,6 +45,6 @@ Subject (52 paths): bin/instar2.mjs, docs/permission-prompt-recovery.md, docs/pr
 
 ## Closing block
 
-simplestRobustRoute: This is the simplest robust route: merge the exact live head, union the two disjoint wait kinds and regression cases, then regenerate publication through existing desk tools. No new machinery. Start guards are the exact parent commits; end guards are targeted replay tests, typecheck and honest check results; limits are one test worker, no live sends and no Studio writes. Native byte-bound conformance remains for the Studio to renew; no live acceptance is claimed.
+simplestRobustRoute: This is the simplest robust route: merge the exact live head, union the two disjoint wait kinds and regression cases, then regenerate publication through existing desk tools, with shape-only register replay bound to merge 82cd1d36e0b84e3656ea9beff98285cb08e6d38b. No new machinery. Start guards are the exact parent commits; end guards are targeted replay tests, typecheck and honest check results; limits are one test worker, no live sends and no Studio writes. Native byte-bound conformance remains for the Studio to renew; no live acceptance is claimed.
 80/20: Verify conflict files and required cheap gates; retain both parents and delegate the full release suite and native certification to the Studio pipeline.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
