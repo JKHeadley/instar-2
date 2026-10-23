@@ -102,7 +102,7 @@ it('on the tools route the review packet is route-true, and the same two sides h
     expect(packet.obligationDecision
       .replace('When one applies, return:', 'For withdrawals: cancelDeliveries:[{id:listed commitment id,quote:exact operator withdrawal}]. When applicable:')
       .replace('exact clause of this message setting a standing instruction beyond this reply', 'exact operator standing instruction')
-      .replace('(reply style stays memory prefer)', '(reply style or format too; also memory prefer)')
+      .replace('(reply style stays memory prefer)', '(reply style/format uses memory prefer)')
       .replaceAll('a sentence of your reply copied word for word', 'exact reply sentence')
       .replace('"external"|"date"}]', '"external"|"date",deliveryRequest?:exact operator request to send the finished result without another message}]')
       .replace('for work your reply leaves open (prefer deciding now)', 'for unfinished work')
