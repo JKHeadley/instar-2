@@ -24,6 +24,8 @@ Prompt review: Reuse immutable twosession-1015.json.gz rows and original model/r
 Prompt finding: 849db3a6296a | protocol-literal | existing saved-memory response in journal.ts, unchanged by this change.
 Prompt finding: e8708c7fea24 | protocol-literal | existing memory source-label guidance in journal.ts, unchanged by this change.
 
+Prompt finding: 4106b49fff07 | protocol-literal | unchanged historical no-tools guidance and its topic-awareness compatibility pin; this change adds no expected-answer phrase or semantic literal gate.
+
 ## ELI16
 
 When the answer has little room left, it used to lose the whole view of what the agent said in another topic. It now tries to keep one useful piece first: an open promise, or the latest statement. It keeps where and when it came from and says that other items were left out. This does not increase the allowance or allow a private fact to reach a new audience. If even that piece cannot fit, the agent can still answer using the existing smaller packet.
