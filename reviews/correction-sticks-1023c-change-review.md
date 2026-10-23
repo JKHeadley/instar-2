@@ -4,7 +4,7 @@ Subject base: b61926b0d8867d2b4e8ca01beb34b4ca0dc64f03
 Review state: open
 Reviewed content: none
 Outcome: A model-classified reply preference is injected into the next worker's context without an identical, independently governed directive that can survive a later preference correction.
-Affected rules: Purpose coherence and least revelation; Rules 4/7/10/12/28/29/30/32/33/34/36/47/49/57/74/85/93/96/101/111/113/116.
+Affected rules: Purpose coherence and least revelation; Rules 4/7/10/12/28/29/30/32/33/34/36/47/49/57/74/85/93/96/101/102/111/113/116.
 Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake keep their existing enforcement. No new effect, model call, store, authority or scheduler.
 Operator questions: none
 Suggested tier: significant
@@ -31,6 +31,12 @@ Fresh-model evidence: Four bounded claude-opus-5-5 calls through the shipped sub
 Evidence limit: This is fresh model generation through the real adapter, plus recorded Telegram I4 evidence and disk restart replay. The synthetic send collector is not a new Telegram delivery. The desk's activated live surface gate decides complete row-32 graduation.
 
 ELI16: A correction should follow you into a new conversation. Instar already saves reply preferences; this change stops it from also saving the identical words as an independent instruction that could contradict your next correction. It keeps the original evidence and the privacy checks.
+
+Report-reference repair: The train-138 repair reports correction-single-copy in its designated desk-copy report. Only this record changes; original product evidence above is retained. The existing checker also requires the following dispositions when this record is touched.
+
+Prompt finding: 4106b49fff07 | protocol-literal | Existing action-claim guidance distinguishes an unattempted avenue from evidence of an attempt; topic-awareness.test.ts asserts that guidance is delivered. This repair changes no prompt bytes or semantic decision.
+Prompt finding: 849db3a6296a | protocol-literal | Existing fixed reply for an exactly empty saved-memory inventory; journal-memory-list.test.ts asserts that deterministic display text, not a model intent classifier.
+Prompt finding: e8708c7fea24 | quoted-evidence | Existing sourceLabel attribution guidance; hallucinated-memory-rate.test.ts locates it for its negative control. This repair changes neither the guidance nor the captured evidence and supplies no fixture-specific semantic answer.
 
 simplestRobustRoute: This is the simplest route: reuse the durable preference and its existing every-packet injection. Exact coalescing prevents the named failure of a stale second governing copy; a second store, sentinel or model call would add nothing. Start guard: authenticated source and validated exact preference clause. End state: one durable preference in the fresh worker packet, later corrected without a duplicate directive. Limits: unchanged budgets, audience admission, stop and delivery custody. Recorded-shape replay and four fresh model calls are cited above; no new autonomous Telegram completion is asserted.
 80/20: Targeted red/green regression, real model-output replay, source-boundary neighbors, restart, audience and context-budget checks; final machine gate evidence is recorded in PROGRESS.
