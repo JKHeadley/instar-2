@@ -1,18 +1,9 @@
-/** Rule 93: a standing instruction about how replies look is a directive too, not only a reply-style preference.
- *
- * Live group D check D5c failed in 13 of 14 runs from 2026-10-16 (it passed in almost every run before). The operator
- * says "From now on, end every shopping list you write for me with "— K"." and the reply promises to, but
- * `status.directives` stays empty: the answer model recorded the clause only as memory mode "prefer". Commit f1d39060
- * (2026-10-15) shortened the guide's directive slot from "exact clause of this message setting a standing instruction
- * beyond this reply" to "exact operator standing instruction", and the remaining "(reply style stays memory prefer)"
- * then read as an exclusion. The model's own reasoning says so: "a standing reply-style preference ... No other decision
- * fields (... directives ...) apply". A preference is not the directive lifecycle Rule 93 names.
- *
- * Every model output below is recorded bytes (Rule 106; fixture provenance): the live answers of update 46040376
- * (train-89) and 46040368 (train-88), and real claude-sonnet-5 replays of 46040376's exact recorded prompt with only
- * the guide's parenthesis changed: 0 of 4 declared the directive under the current wording, 5 of 5 under the fixed one,
- * and 0 of 5 for a one-off request under the fixed one. The fixed wording is +14 bytes: at the servable floor the full
- * guide still fits beside governingConstraints (default-context-floor.test.ts). */
+/** Recorded reply-format instructions remain durable preferences. The historical guide requested
+ * a second directive; correction-sticks now coalesces identical same-turn clauses so a later
+ * preference correction cannot leave a stale governing copy. Keep the captured bytes unchanged:
+ * live updates 46040376/46040368 and their original real-model replays remain provenance,
+ * not a claim that those replays were generated with today's guide. Standalone directives
+ * still retain the Rule 93 lifecycle. */
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -38,7 +29,8 @@ const genesis = { kind: 'genesis' as const, bot: '8993213212', chat: '7812716706
 async function directivesOf(raw: string, message = fixture.operatorMessage, update = UPDATE) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-directive-format-')));
   try {
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const path = join(root, 'journal.encrypted');
+    let journal = openPreviewJournal(path, key, genesis);
     const clock = { now: LIVE_AT };
     const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false, timeZone: 'America/Los_Angeles',
       prepareModel: input => input.context,
@@ -55,41 +47,82 @@ async function directivesOf(raw: string, message = fixture.operatorMessage, upda
     take(update, message);
     await worker.drain();
     const first = openDirectives(journal.view).map(({ note }) => ({ quote: note.quote, at: note.at }));
-    const preferences = journal.view.memory.filter(change => change.mode === 'prefer').length;
+    const savedPreferences = journal.view.memory.filter(change => change.mode === 'prefer');
+    const preferences = savedPreferences.length;
     clock.now += 3_600_000;
     take(update + 1, 'What is a good name for a small garden blog?');
     await worker.drain();
     const later = openDirectives(journal.view).map(({ note }) => ({ quote: note.quote, at: note.at }));
     journal.close();
-    return { first, later, preferences };
+    journal = openPreviewJournal(path, key);
+    const reopenedPreferences = journal.view.memory.filter(change => change.mode === 'prefer');
+    const reopenedDirectives = openDirectives(journal.view).map(({ note }) => ({ quote: note.quote, at: note.at }));
+    journal.close();
+    return { first, later, preferences, savedPreferences, reopenedPreferences, reopenedDirectives };
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 
-it('the answer guide says a standing reply-style or format instruction is a directive too, on both routes', () => {
+it('both answer routes direct reply-style or format instructions to durable preferences', () => {
   for (const guide of [OBLIGATION_DECISION, OBLIGATION_DECISION_TOOLS]) {
-    expect(guide).toContain(fixture.guide.fixed);
+    expect(guide).toContain('(reply style/format uses memory prefer)');
+    expect(guide).not.toContain(fixture.guide.fixed);
     expect(guide).not.toContain(fixture.guide.current);
   }
 });
 
-it('reproduces the live failure: the recorded answers save only a preference and leave no directive', async () => {
+it('the historical live answers and preference-only replays retain one preference without a duplicate directive', async () => {
   for (const item of fixture.live) {
     const run = await directivesOf(item.output, fixture.operatorMessage, item.update);
     expect(run.preferences, String(item.update)).toBe(1);
     expect(run.first, String(item.update)).toEqual([]);
   }
-  for (const raw of fixture.replays.current) expect((await directivesOf(raw)).first).toEqual([]);
+  for (const raw of fixture.replays.current) {
+    const run = await directivesOf(raw);
+    expect(run.preferences).toBe(1);
+    expect(run.first).toEqual([]);
+    expect(run.reopenedPreferences).toEqual(run.savedPreferences);
+  }
 });
 
-it('under the fixed guide every real replay records the directive, which keeps its original since across a later turn', async () => {
-  for (const raw of fixture.replays.fixed) {
+it('historical identical-clause replays retain one preference across turns and restart', async () => {
+  for (const index of [0, 3]) {
+    const raw = fixture.replays.fixed[index]!;
     const run = await directivesOf(raw);
-    expect(run.first).toHaveLength(1);
-    expect(fixture.operatorMessage).toContain(run.first[0]!.quote);
-    expect(run.first[0]!.quote).toContain('shopping list');
-    expect(run.first[0]!.at).toBe(LIVE_AT);
-    expect(run.later).toEqual(run.first);
+    expect(run.preferences).toBe(1);
+    expect(fixture.operatorMessage).toContain(run.savedPreferences[0]!.quote);
+    expect(run.savedPreferences[0]!.quote).toContain('shopping list');
+    expect(run.first).toEqual([]);
+    expect(run.later).toEqual([]);
+    expect(run.reopenedDirectives).toEqual([]);
+    expect(run.reopenedPreferences).toEqual(run.savedPreferences);
   }
+});
+
+it('historical distinct-clause replays keep the directive rather than guessing semantic equivalence', async () => {
+  for (const index of [1, 2, 4]) {
+    const raw = fixture.replays.fixed[index]!;
+    const captured = JSON.parse(raw);
+    expect(captured.directives[0].quote).not.toBe(captured.memory[0].quote);
+    const run = await directivesOf(raw);
+    expect(run.preferences).toBe(1);
+    expect(run.first).toEqual([{ quote: captured.directives[0].quote, at: LIVE_AT }]);
+    expect(run.later).toEqual(run.first);
+    expect(run.reopenedDirectives).toEqual(run.first);
+    expect(run.reopenedPreferences).toEqual(run.savedPreferences);
+  }
+});
+
+it('a standalone directive retains its original since across a later turn and restart', async () => {
+  // Constructed boundary neighbor of the captured output, not a fresh model result.
+  const output = JSON.parse(fixture.replays.fixed[0]!);
+  output.memory = [];
+  const run = await directivesOf(JSON.stringify(output));
+  expect(run.preferences).toBe(0);
+  expect(run.first).toHaveLength(1);
+  expect(fixture.operatorMessage).toContain(run.first[0]!.quote);
+  expect(run.first[0]!.at).toBe(LIVE_AT);
+  expect(run.later).toEqual(run.first);
+  expect(run.reopenedDirectives).toEqual(run.first);
 });
 
 it('a one-off formatting request under the fixed guide records no directive', async () => {
