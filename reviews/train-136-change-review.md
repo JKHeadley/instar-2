@@ -18,6 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/followup-deliver-launch.test.ts
 Hook bypass: none; core.hooksPath unset and common hooks directory contains only samples
 Convergence: none
+Deferral: tests/preview/followup-deliver-launch.test.ts:14 | not-a-deferral=The carried test name exercises requested follow-up scheduling; it postpones no assigned work.
 Decision: train-136-merge-followup | Fast-forward the exact reviewed 875785751e2d4e05f76d7a07069c802bc70852b0; member evidence is /Users/dabombstudio/.instar/agents/echo/.instar/lanes/followup-deliver-1022-PROGRESS.md (downloaded snapshot SHA-256 verified). | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-136-PROGRESS.md
 Decision: train-136-A-preserve | Preserve every reviewed member byte; ordinary merge fast-forwarded without conflicts or hand edits. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-136-PROGRESS.md
 Decision: train-136-B-live-base | Retain ca3d8ab80f606ce490c2883e71b6b5ab2a93d154 in ancestry; no main merge, branch movement or changes to train-133. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-136-PROGRESS.md
