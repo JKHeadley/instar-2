@@ -11064,6 +11064,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           .filter(item => item.kind === 'recall' || item.kind === 'preference' || item.kind === 'correction')
           .map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: item.text, reply: '' })) : []), ...(replaced ? [{ id: replaced.id, ...forumSource(replaced.id), sourceKind: 'operator-stated' as MemorySourceKind, message: redact(replaced.text).text,
           reply: replyFor(replaced) }] : []), ...[...activePreferences(), ...activeFacts()]
+          // A pending older summary must not borrow saved facts from later turns (Rule 33).
+          // Keep those facts in memory; offer them when the summary reaches their source.
           .filter(item => (journal.view.turns.get(item.source)?.update ?? Infinity) <= through)
           .map(item => ({ id: item.source, ...forumSource(item.source), sourceKind: 'operator-stated' as MemorySourceKind, message: redact(item.quote).text, reply: '' })),
           ...[...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, ...forumSource(older[index]!.id), sourceKind: 'operator-stated' as MemorySourceKind, message: clean(redact(older[index]!.text).text, true, older[index]!.id),
