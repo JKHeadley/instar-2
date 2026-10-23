@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
-import { GROUP_DISCLOSURE_HOLD, ModelPending, type PreviewPorts } from './journal.js';
+import { GROUP_DISCLOSURE_HOLD, ModelNotStarted, ModelPending, type PreviewPorts } from './journal.js';
 import { projectionSections } from './proofs.js';
 import { loopHealth } from './obligations.js';
 
@@ -13,6 +13,7 @@ const inputs: { raw: string; text: string; update: number }[] = recorded.runs.ma
   run.journal.find(row => row.kind === 'intake'));
 const answer = JSON.parse(readFileSync(new URL('./fixtures/context-recovery-answer-1016104-2026-10-16.json', import.meta.url), 'utf8')).output as string;
 const observation = JSON.parse(readFileSync(new URL('./fixtures/intake-survive-2026-10-22.json', import.meta.url), 'utf8'));
+const liveLifecycle = JSON.parse(readFileSync(new URL('./fixtures/intake-survive-lifecycle-2026-10-22.json', import.meta.url), 'utf8'));
 const key = new Uint8Array(32).fill(53), roots: string[] = [];
 const start = 1792168532728;
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7812716706', operator: '7812716706', grant: 'grant:fixture',
@@ -32,7 +33,7 @@ function world(extra: Partial<PreviewPorts> = {}) {
   const replay = () => { const copy = openPreviewJournal(path, key, undefined, undefined, true);
     try { return projectionSections(copy.view); } finally { copy.close(); } };
   return { get journal() { return journal; }, worker, sent, calls, replay,
-    intake: () => worker().intake(inputs.map(input => JSON.parse(input.raw))),
+    intake: (selected = inputs) => worker().intake(selected.map(input => JSON.parse(input.raw))),
     restart: () => { journal.close(); journal = openPreviewJournal(path, key); },
     age: () => { now += observation.drain.observed.oldestUnfinishedAgeMs; }, health: () => loopHealth(journal.view, now), close: () => journal.close() };
 }
@@ -118,6 +119,57 @@ it('keeps an unknown send fenced after restart instead of repeating the answer',
     expect(replies()).toHaveLength(2);
     expect(w.journal.view.order.every(turn => turn.sent === undefined)).toBe(true);
     expect(w.calls).toHaveLength(2);
+  } finally { w.close(); }
+});
+
+// These replay the observed lifecycle with proof-room input, never live message bytes.
+// They characterize the remaining blockers; passing is not a live completion claim.
+it('does not mistake the live unresolved reservation shape for permission to launch again', async () => {
+  let launches = 0, collections = 0;
+  const w = world({ model: async input => {
+    if (input.id.startsWith('summary:')) return { state: 'uncertain' as const };
+    launches++; throw new ModelPending();
+  },
+    collectModel: async () => { collections++; return null; } });
+  try {
+    w.intake([inputs[0]!]); await w.worker().drain();
+    const turn = w.journal.view.order[0]!;
+    w.journal.append({ kind: 'hold', id: turn.id, reason: GROUP_DISCLOSURE_HOLD, at: start });
+    const observed = liveLifecycle.turns[0];
+    expect({ held: turn.held, reserved: turn.reserved, modelState: turn.modelState ?? null })
+      .toEqual({ held: observed.held, reserved: observed.reserved, modelState: observed.modelState });
+    for (let restart = 0; restart < 2; restart++) {
+      w.restart(); await w.worker().drain();
+      expect(w.health().unansweredTurns).toBe(1);
+      expect(w.journal.view.order[0]!.intent).toBeUndefined();
+      expect(projectionSections(w.journal.view)).toEqual(w.replay());
+    }
+    expect(collections).toBe(2); expect(launches).toBe(1); expect(w.sent).toEqual([]);
+  } finally { w.close(); }
+});
+
+it('keeps the live unstarted shape held after a delivered limited notice, even when the model becomes available', async () => {
+  let available = false, launches = 0;
+  const w = world({ model: async input => {
+    if (input.id.startsWith('summary:')) return { state: 'uncertain' as const };
+    launches++; if (!available) throw new ModelNotStarted(); return answer;
+  } });
+  try {
+    w.intake([inputs[0]!]); await w.worker().drain();
+    const turn = w.journal.view.order[0]!, observed = liveLifecycle.turns[1];
+    expect({ held: turn.held, reserved: turn.reserved, modelState: turn.modelState ?? null })
+      .toEqual({ held: observed.held, reserved: observed.reserved, modelState: observed.modelState });
+    expect(turn.limitedSent).toBeDefined(); expect(w.sent).toHaveLength(1);
+    const calls = w.journal.view.calls;
+    available = true;
+    for (let restart = 0; restart < 2; restart++) {
+      w.restart(); await w.worker().drain();
+      expect(w.health().unansweredTurns).toBe(1);
+      expect(w.journal.view.order[0]!.intent).toBeUndefined();
+    }
+    expect(launches).toBe(1); expect(w.sent).toHaveLength(1);
+    expect(w.journal.view.calls).toBe(calls);
+    expect(w.journal.view.tokenTotals.answer.unknownCalls).toBe(0);
   } finally { w.close(); }
 });
 

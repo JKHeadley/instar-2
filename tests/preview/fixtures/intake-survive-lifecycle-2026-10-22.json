@@ -1,0 +1,39 @@
+{
+  "source": "Authorized frozen-build status and metadata-only inspection of an encrypted copy of Justin's root, 2026-10-22",
+  "scope": "Lifecycle metadata only; no message, reply, prompt, identity or credential material",
+  "completionProven": false,
+  "copyRestarts": 2,
+  "copyModelCalls": 0,
+  "copySendCalls": 0,
+  "currentAudienceVerifiedOnCopy": false,
+  "turns": [
+    {
+      "update": 969390338,
+      "acceptedAt": 1791665150484,
+      "held": "group disclosure refused",
+      "reserved": true,
+      "modelState": null,
+      "hasAnswer": false,
+      "hasIntent": false,
+      "hasLimitedReceipt": true,
+      "hasHoldNoticeReceipt": true,
+      "withdrawn": false,
+      "retracted": false,
+      "supersededByEdit": false
+    },
+    {
+      "update": 969390553,
+      "acceptedAt": 1792254040462,
+      "held": "model not started",
+      "reserved": false,
+      "modelState": null,
+      "hasAnswer": false,
+      "hasIntent": false,
+      "hasLimitedReceipt": true,
+      "hasHoldNoticeReceipt": false,
+      "withdrawn": false,
+      "retracted": false,
+      "supersededByEdit": false
+    }
+  ]
+}
