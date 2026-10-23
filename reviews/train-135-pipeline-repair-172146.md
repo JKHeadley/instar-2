@@ -42,7 +42,7 @@ Prompt finding: e769ca9dd959 | protocol-literal | Existing reviewer output proto
 Prompt finding: f6d7f3274c85 | protocol-literal | Existing protocol and evidence terminology, unchanged by this unit; no semantic decision branches on the fixture wording — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "restating a recorded, still-open limit needs no duplicate record. a capability n"
 Prompt finding: feadb66b8ad1 | protocol-literal | Existing reviewer output protocol or secret-standing instruction; unchanged by this timeout-only repair — fixture-phrase tests/preview/reply-check.ts <- tests/preview/act-first.test.ts: "any live authentication secret reaching anyone but the verified operator who sup"
 
-Verification: Targeted doorway and scheduling replay tests, direct doorway importers, typecheck, architecture, register and change-review checks are recorded in the repair report. No full suite or fresh live-provider proof claimed.
+Verification: Register replay generated from merged source 9073ba8b1dff8b49f08a3f8913c3274917c6fd9b. Targeted doorway and scheduling replay tests, direct doorway importers, typecheck, architecture, register and change-review checks are recorded in the repair report. No full suite or fresh live-provider proof claimed.
 
 ## Closing block
 
