@@ -38,7 +38,7 @@ it('preserves recorded provider provenance and both merged work instructions', (
     expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain(MEMORY_DISAMBIGUATION);
     expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).not.toContain(HISTORICAL_MEMORY);
     expect(sample.after.systemSha256).toBe(createHash('sha256')
-      .update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY)).digest('hex'));
+      .update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.')).digest('hex'));
     const envelope = JSON.parse(sample.after.input);
     expect(envelope.messages[0].content).toBe(sample.after.question);
     const packet = JSON.parse(envelope.messages.find((item: { role: string }) => item.role === 'context').content).packet;

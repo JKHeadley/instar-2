@@ -41,28 +41,28 @@ it('refuses new harness wakes at the durable-work and spend floors, with the exi
 it('does not overwrite successful Claude evidence with the recorded local revision timeout', () => {
   const doorway = subscriptionDoorway('claude-code-subscription');
   const frame = captured.frames.find(row => row.id.endsWith(':367053123'))!;
-  const observed = subscriptionExchange(frame, frame.id, doorway.exchangeModels)!;
+  const observed = subscriptionExchange(frame, frame.id, doorway)!;
   expect(observed).toMatchObject({ ok: true, reportedModels: expect.arrayContaining(['claude-opus-4-8']) });
   let map = observeExchange(installDoorways(null, [{ id: doorway.id, model: 'claude-opus-5-5', billing: 'subscription', priceReason: 'unknown' }]),
     doorway.id, 'claude-opus-5-5', observed, frame.at);
   const timeout = subscriptionExchange({ code: captured.timeout.exitCode, limited: captured.timeout.diagnostic.limited,
-    localLimit: captured.timeout.localLimit, stdout: captured.timeout.diagnostic.rawOutputExcerpt }, 'revision', doorway.exchangeModels);
+    localLimit: captured.timeout.localLimit, stdout: captured.timeout.diagnostic.rawOutputExcerpt }, 'revision', doorway);
   expect(timeout).toBeNull();
   if (timeout) map = observeExchange(map, doorway.id, 'claude-opus-5-5', timeout, frame.at + 1);
   // Reachable with a different reported id is honest evidence, never proof of the configured identity.
   expect(map.doorways[0]!.models[0]).toMatchObject({ state: 'changed', observedId: expect.stringContaining('claude-opus-4-8') });
-  expect(subscriptionExchange({ code: 1, limited: false, stdout: '' }, 'failed', doorway.exchangeModels)).toMatchObject({ ok: false });
+  expect(subscriptionExchange({ code: 1, limited: false, stdout: '' }, 'failed', doorway)).toMatchObject({ ok: false });
 });
 
 it('replays recorded writer, uncertain/undecided judgments, reviews and empty reply bodies as transport evidence only', () => {
   const parse = subscriptionDoorway('claude-code-subscription').exchangeModels;
-  for (const frame of captured.frames) expect(subscriptionExchange(frame, frame.id, parse)?.ok, frame.id).toBe(true);
+  for (const frame of captured.frames) expect(subscriptionExchange(frame, frame.id, { exchangeModels: parse })?.ok, frame.id).toBe(true);
   const transport = JSON.parse(captured.frames[0]!.stdout);
   for (const shape of shapes.otherShapes) {
     // Historical bodies in an actual captured envelope; not claimed as fresh outputs.
     const stdout = JSON.stringify({ ...transport, result: shape.raw });
-    expect(subscriptionExchange({ code: 0, limited: false, stdout }, shape.id, parse)?.ok, shape.kind).toBe(true);
-    expect(subscriptionExchange({ code: null, limited: true, localLimit: 'timeout', stdout }, shape.id, parse)).toBeNull();
+    expect(subscriptionExchange({ code: 0, limited: false, stdout }, shape.id, { exchangeModels: parse })?.ok, shape.kind).toBe(true);
+    expect(subscriptionExchange({ code: null, limited: true, localLimit: 'timeout', stdout }, shape.id, { exchangeModels: parse })).toBeNull();
     expect(parse(shape.raw)).toBeNull();
   }
   expect(captured.replyReview).toContain('VIOLATION');

@@ -45,12 +45,12 @@ const conversation = (record, p = profile, now = NOW) =>
 it('pins the reviewed expiry and completion policy while keeping expiry out of invocation policies', () => {
   expect(SUBSCRIPTION_PREVIEW_EXPIRY).toBe(Date.UTC(2026, 10, 12, 21, 40));
   expect(SUBSCRIPTION_PREVIEW_EXPIRY - PRIOR_EXPIRY).toBe(31 * 24 * 3600 * 1000 + 3600 * 1000);
-  // The completion wording changes the policy, so existing installations need a policy-successor record.
+  // The brief-rationale wording changes the policy, so existing installations need a policy-successor record.
   // The expiry itself never enters an invocation policy.
   const policy = subscriptionConversationPolicy(model);
   expect(policy.args.join(' ')).toContain(MEMORY_DISAMBIGUATION);
   expect(policy.args.join(' ')).not.toContain(HISTORICAL_MEMORY);
-  const historical = { ...policy, args: policy.args.map(arg => arg.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY)) };
+  const historical = { ...policy, args: policy.args.map(arg => arg.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.')) };
   const historicalDigest = encoded(historical).hash;
   expect(historicalDigest).toBe('sha256:7b1d9af257f848e9cef4abad31771394af1cb4e1b6062a4538d3442a2045f220');
   expect(encoded(policy).hash).not.toBe(historicalDigest);

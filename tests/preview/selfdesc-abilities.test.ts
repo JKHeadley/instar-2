@@ -122,7 +122,7 @@ it('binds the repaired answer and its explicitly reviewed identity and standing 
   expect(renderedNote(capture.note)).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
   expect(currentInstructions(capture.instructions).replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   // Preserve historical prompt bytes; requested-step guidance is covered by act-first.test.ts.
-  expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, ''));
+  expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, ''));
   const reading = readAnswer(capture.raw, { wrapped: 'accept' });
   expect(reading.ok).toBe(true);
   if (!reading.ok) throw Error(reading.defect);
@@ -232,7 +232,7 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
       + 'the JSON format below applies only to your final answer. Respond with one flat JSON object')
     .replace(oldGrant, standingTrust)
     .replace("You are Instar, speaking", "You are an Instar 2.0 agent, speaking"))
-    .toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY));
+    .toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.'));
   expect(current.runs.map(run => run.kind)).toEqual(['worst', 'chain']);
   for (const run of current.runs) {
     const packet = packetOf(run.input);
@@ -305,7 +305,7 @@ it('replays five recorded answers with the rendered paragraph verbatim and diges
   // Preserve the prior instruction as historical evidence; only its self-description clause was superseded.
   expect(currentInstructions(capture.instructions).replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   // Preserve historical prompt bytes; requested-step guidance is covered by act-first.test.ts.
-  expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, ''));
+  expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, ''));
   expect(capture.runs).toHaveLength(5);
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits);
   const sentence = capabilitySentence(capture.limits);
@@ -345,7 +345,7 @@ it('binds every unchanged-question capability replay and its PASS or FAIL judgme
   expect(capture.recordedInputSha256).toBe('1f88dc781981771069954ea14617717942b77476acce76805d300344565a4b1a');
   expect(currentInstructions(capture.instructions).replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   // Preserve historical prompt bytes; requested-step guidance is covered by act-first.test.ts.
-  expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, ''));
+  expect(capture.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, ''));
   expect(capture.runs).toHaveLength(10);
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits);
   const sentence = capabilitySentence(capture.limits);
