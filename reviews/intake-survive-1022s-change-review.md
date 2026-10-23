@@ -20,13 +20,15 @@ Hook bypass: none; core.hooksPath unset; common hooks directory inspected and co
 Convergence: none
 Decision: durable-hold-until-successor | Keep retry eligibility local and clear durable holds only through existing recorded successors. This removes all direct hold mutation in the drain path without adding a frame or store. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/intake-survive-1022s-PROGRESS.md
 Decision: separate-observation-from-attribution | The sanitized capture lacks the overdue IDs and differing fields. Reproduce its operational shape using recorded test-origin updates 1016101 and 1016102; do not claim those are the live overdue items. Their identification and disposition remain unverified. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/intake-survive-1022s-PROGRESS.md
+Decision: publish-source-pin | Regenerate the existing shape-only publication from committed repair a9b1a9f07353178201e4076eadd04efd4fea3b29; no declaration or certificate change. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/intake-survive-1022s-PROGRESS.md
+Deferral: generated/register.json:1 | not-a-deferral=Unchanged existing declaration wording republished from the repaired source.
 Prompt review: No model question, prompt text, output parser, verdict or release predicate changes. Recorded proof-room ingress updates 1016101/1016102 and answer output 1016104 exercise the real journal worker. A synthetic uncertain summary response isolates recovery from summary generation; it is labelled test machinery, not a new live model result. Existing recorded correction and summary corpus tests remain part of targeted validation.
 Prompt finding: 4106b49fff07 | protocol-literal | Existing runtime instruction about the no-tools reply boundary, asserted by its consumer; unchanged by this repair.
 Prompt finding: 849db3a6296a | protocol-literal | Existing fixed memory-list response; unchanged by this repair.
 Prompt finding: e8708c7fea24 | quoted-evidence | Existing recall instruction located and removed by the negative-control test; unchanged by this repair and not derived from its expected answer.
 Verification: Initial regression failed with live/replay inequality. The first targeted run passed 104 tests in 12 files. The expanded recovery file passes 12 cases. Typecheck and architecture pass. Full final verification and exact pushed head are recorded in the desk PROGRESS file. No live root, bot, chat or login was accessed; no live acceptance is claimed.
 
-Subject (4 paths): tests/preview/journal.ts, tests/preview/intake-survive.test.ts, tests/preview/fixtures/intake-survive-2026-10-22.json, tests/preview/README.md
+Subject (11 paths): tests/preview/journal.ts, tests/preview/intake-survive.test.ts, tests/preview/fixtures/intake-survive-2026-10-22.json, tests/preview/README.md, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 ## Closing block
 
