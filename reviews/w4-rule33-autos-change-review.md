@@ -24,6 +24,10 @@ Prompt finding: 4106b49fff07 | protocol-literal | Existing unchanged tool-attemp
 Prompt finding: 849db3a6296a | protocol-literal | Existing unchanged memory-list rendering marker; the summary boundary fix does not alter it.
 Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged provenance guidance; the selection now satisfies that guidance without changing the audit.
 
+Register pins: Regenerated the seven generated register views from source commit 15571a41f6c404bac0ce72adf0ae0df8336b412b; no declarations or authority changed.
+
+Verification: Original reproducer fails twice; repaired packet replay audits clean. Targeted follow-up: 9 files, 77 tests pass, including the current-message preference regression. Earlier targeted store-agreements, summary-fit and summary-bound checks also pass. Architecture and typecheck pass; final pushed-head lint, register and pinned-text gates are recorded in PROGRESS.
+
 ## Closing block
 
 simplestRobustRoute: Use the frontier the summary already declares to select its local saved-memory candidates and preference projection. The two bounded filters close the observed temporal inconsistency with no new state, retry, scheduler or checker. Existing intake, authentication, output admission and attempt ceilings remain the start/end/limit guards. Rewriting historical proof records or relaxing the audit would hide the failure instead of preventing it.
