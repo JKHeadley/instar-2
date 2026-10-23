@@ -55,6 +55,35 @@ function fixture(run: { events: readonly { method: string; params: unknown }[] }
   };
 }
 describe('registered continuing protocol worker', () => {
+  it('restores the exact accepted input after confirmed closure with its original deadline', async () => {
+    const f = fixture(); f.hold = true;
+    const adapter = f.make(), first = await adapter.launch(f.spec), delivery = f.delivery(first);
+    await adapter.deliver(delivery);
+    await f.transport.close(first.claim, first.incarnation, first.launch);
+    await adapter.control({ ...first, action: 'close', authority: 'grant', reason: 'lost worker' });
+    f.hold = false;
+    const next = await adapter.launch({ ...f.spec, claim: 'claim2', incarnation: 'inc2',
+      restore: { operation: delivery.operation, digest: delivery.digest, deadline: 500 } });
+    expect(f.opens[1]!.deadline).toBe(500);
+    expect(f.calls.filter(call => call.method === 'turn/start')).toHaveLength(2);
+    const restored = { ...delivery, ...next };
+    expect((await adapter.observe({ ...next, delivery: restored, cursor: 0, limit: 16 })).observations).toEqual([
+      { kind: 'reply', delivery: delivery.operation, text: 'LOCAL_PROTOCOL_OK', digest: hash('LOCAL_PROTOCOL_OK') },
+      { kind: 'turn-end', delivery: delivery.operation, state: 'completed' },
+    ]);
+    await expect(adapter.deliver(restored)).rejects.toThrow(/already submitted/);
+  });
+
+  it.each(['live', 'digest', 'deadline', 'unsubmitted'] as const)('does not restore %s protocol input', async mode => {
+    const f = fixture(), adapter = f.make(), first = await adapter.launch(f.spec), delivery = f.delivery(first);
+    if (mode !== 'unsubmitted') await adapter.deliver(delivery);
+    if (mode !== 'live') await adapter.control({ ...first, action: 'close', authority: 'grant', reason: 'retire' });
+    await expect(adapter.launch({ ...f.spec, claim: 'claim2', incarnation: 'inc2', restore: {
+      operation: delivery.operation, digest: mode === 'digest' ? 'wrong' : delivery.digest, deadline: mode === 'deadline' ? 1 : 500,
+    } })).rejects.toThrow(/restor/);
+    expect(f.opens).toHaveLength(1);
+  });
+
   it('replays the recorded two-turn binary capture with exact input/reply binding and prepared accounts', async () => {
     const f = fixture(), adapter = f.make(), worker = await adapter.launch(f.spec);
     for (const operation of ['input1', 'input2']) {

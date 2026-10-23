@@ -27,6 +27,13 @@ terminal evidence. Failed, interrupted and empty turns produce no reply. Changed
 bytes, another incarnation, another turn, uncertain submission and transport loss never
 authorize a retry or a successful answer.
 
+The common host can explicitly restore an accepted no-tool-work input after worker
+loss. The adapter requires its prior accepted submission, confirmed connection
+closure, matching saved bytes, a new claim and remaining original lifetime. It
+starts the restored turn through its normal delivery path before returning the
+replacement handle. A bare launch never replays input. A missing host receipt or
+an uncertain RPC submission remains uncertain across restart.
+
 For explicit lifecycle closure the host closes admission before control. Control interrupts the exact active turn and
 closes the exact physical process. A host stop or finite lifetime also closes the pipe
 process. The model checkpoint, not cumulative protocol token usage, holds spend limits.
