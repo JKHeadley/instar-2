@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type PreviewPorts } from './journal-test-worker.js';
 // @ts-expect-error Host-only JavaScript reader.
 import { admissionActivity, createWorkingActivities } from './working-activity.mjs';
-import { WORKING_RATE_LIMIT, WORKING_HARNESS_MENU, WORKING_LIVENESS, currentWorkingActivity, workingProgressDue, type WorkingActivity } from './working-progress.js';
+import { WORKING_CONNECTION, WORKING_HARNESS_MENU, WORKING_RATE_LIMIT, WORKING_LIVENESS, currentWorkingActivity, workingProgressDue, type WorkingActivity } from './working-progress.js';
 
 const roots: string[] = [];
 afterEach(() => { vi.useRealTimers(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -441,9 +441,14 @@ it.each(['stale', 'completed', 'refused', 'stopped'])('does not announce a %s re
     mode === 'refused' ? { kind: 'Refused' } : { kind: 'Success', value: { phase: mode === 'completed' ? 'output-observed' : 'launched', detail: 'rate-limit recovery waiting' } });
   try {
     await f.enteredPromise;
-    if (mode === 'stopped') f.ports.stopped = () => true;
+    if (mode === 'stopped') f.worker.stop('operator');
     await vi.advanceTimersByTimeAsync(25_000); expect(f.progress()).toHaveLength(0);
-  } finally { f.release('Done.'); await f.drain; f.journal.close(); }
+  } finally {
+    f.release('Done.');
+    if (mode === 'stopped') await expect(f.drain).rejects.toThrow('preview stopped');
+    else await f.drain;
+    f.journal.close();
+  }
 });
 
 it.each([false, true])('rate-limit wait preserves the final reply slot (batched=%s)', async batch => {
@@ -462,6 +467,109 @@ it('batched inputs sharing one recovery get one early wait explanation', async (
   } finally { f.release('Done.'); await f.drain; f.journal.close(); }
 });
 
+
+it('projects one stable connection episode from fresh native retry observations only', () => {
+  let now = 1000;
+  const activities = createWorkingActivities({ now: () => now, read: () => '' });
+  activities.observe('input', 'claim', 'start');
+  const session = { claim: 'claim', identity: 'worker', turnStartedAt: 900,
+    connectionRetry: { turnStartedAt: 900, attempt: 1 } };
+  const observation = { kind: 'Success', value: { phase: 'launched', detail: 'connection recovery waiting' } };
+  activities.observeSession(session, observation);
+  expect(activities.current('input')).toMatchObject({ wait: 'connection', running: false });
+  const step = activities.current('input').step;
+  activities.observeSession({ ...session, connectionRetry: { ...session.connectionRetry, attempt: 10 } }, observation);
+  expect(activities.current('input').step).toBe(step);
+  now += 10001; expect(activities.current('input')).toBeNull();
+  activities.observeSession({ ...session, turnStartedAt: 901 }, observation);
+  expect(activities.current('input')).toBeNull();
+  activities.observeSession(session, observation);
+  activities.observeSession(session, { kind: 'Success', value: { phase: 'pause-observed', detail: 'connection-exhausted' } });
+  expect(activities.current('input')).toBeNull();
+});
+
+
+const connectionCapture = JSON.parse(readFileSync(new URL('./fixtures/socket-drop-worker-1016101-2026-10-16.json', import.meta.url), 'utf8'));
+const connectionSession = connectionCapture.proofs.find((proof: { name: string }) => proof.name === 'persistent').sessionJournal.sessions[0];
+
+it.each(shapes)('recorded $kind ($id) survives a connection wait with one honest line and no empty send', async shape => {
+  const activities = createWorkingActivities({ now: () => Date.now(), read: () => '' });
+  const f = fixture({ recorded: shape, activityPort: () => {
+    activities.observeSession(connectionSession, { kind: 'Success', value: { phase: 'launched', detail: 'connection recovery waiting' } });
+    return activities.current('input');
+  } });
+  activities.observe('input', connectionSession.claim, 'start');
+  try {
+    await f.enteredPromise; expect(f.context()).toContain(JSON.stringify(shape.raw));
+    await vi.advanceTimersByTimeAsync(25_000); expect(f.progress()).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(105_000);
+    expect(f.progress().map(row => row.text)).toEqual([WORKING_CONNECTION]);
+    await vi.advanceTimersByTimeAsync(600_000); expect(f.progress()).toHaveLength(1);
+    activities.observe('input', null, 'end');
+    f.release(shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw)
+      : shape.kind === 'delivered-reply' || shape.kind === 'empty-reply-in-recorded-context' ? shape.raw : 'Recorded evidence reviewed.');
+    await f.drain;
+    expect(f.sent.every(row => row.text.trim())).toBe(true);
+  } finally { f.release('Done.'); await f.drain; f.journal.close(); }
+});
+
+it('does not repeat an unknown connection notice after journal compaction and restart', async () => {
+  const f = fixture({ receipt: null, activityPort: () => ({ step: 'connection:captured-turn', text: 'bounded connection recovery', wait: 'connection', observedAt: Date.now() }) });
+  try {
+    await f.enteredPromise; await vi.advanceTimersByTimeAsync(130_000);
+    expect(f.progress().map(row => row.text)).toEqual([WORKING_CONNECTION]);
+    await vi.advanceTimersByTimeAsync(600_000); expect(f.progress()).toHaveLength(1);
+    f.release('Done.'); await f.drain; f.journal.compact(); f.journal.close();
+    const reopened = openPreviewJournal(f.path, f.key);
+    try { await createJournalWorker(reopened, f.ports).drain(); expect(f.progress()).toHaveLength(1); }
+    finally { reopened.close(); }
+  } finally { f.release('Done.'); await f.drain; f.journal.close(); }
+});
+
+it.each(['stale', 'completed', 'refused', 'stopped', 'exhausted', 'other-turn'])('does not announce a %s connection recovery', async mode => {
+  const activities = createWorkingActivities({ now: () => Date.now(), read: () => '' });
+  const f = fixture({ activityPort: () => {
+    if (mode !== 'stale') activities.observeSession({ ...connectionSession,
+      ...(mode === 'other-turn' ? { turnStartedAt: connectionSession.turnStartedAt + 1 } : {}) },
+      mode === 'refused' ? { kind: 'Refused' } : { kind: 'Success', value: {
+        phase: mode === 'completed' ? 'output-observed' : mode === 'exhausted' ? 'pause-observed' : 'launched', detail: 'connection recovery waiting' } });
+    return activities.current('input');
+  } });
+  activities.observe('input', connectionSession.claim, 'start');
+  try {
+    await f.enteredPromise;
+    if (mode === 'stopped') f.worker.stop('operator');
+    await vi.advanceTimersByTimeAsync(130_000); expect(f.progress()).toHaveLength(0);
+  } finally {
+    f.release('Done.');
+    if (mode === 'stopped') await expect(f.drain).rejects.toThrow('preview stopped');
+    else await f.drain;
+    f.journal.close();
+  }
+});
+
+it.each([false, true])('connection wait preserves the final reply slot (batched=%s)', async batch => {
+  const f = fixture({ batch, cap: 2, activityPort: () => ({ step: 'connection:episode', text: 'recovery', wait: 'connection', observedAt: Date.now() }) });
+  try { await f.enteredPromise; await vi.advanceTimersByTimeAsync(130_000); expect(f.progress()).toHaveLength(0); }
+  finally { f.release('Done.'); await f.drain; f.journal.close(); }
+});
+
+it('batched inputs sharing a native reconnect episode receive one explanation', async () => {
+  const f = fixture({ batch: true, activityPort: () => ({ step: 'connection:episode', text: 'recovery', wait: 'connection', observedAt: Date.now() }) });
+  try {
+    await f.enteredPromise; await vi.advanceTimersByTimeAsync(130_000);
+    expect(f.progress().map(row => row.text)).toEqual([WORKING_CONNECTION]);
+  } finally { f.release('Done.'); await f.drain; f.journal.close(); }
+});
+
+it.each([0, 11, 1.5, NaN])('keeps invalid native retry count %s out of the notice projection', attempt => {
+  const activities = createWorkingActivities({ now: () => 1000, read: () => '' });
+  activities.observe('input', 'claim', 'start');
+  activities.observeSession({ claim: 'claim', identity: 'worker', turnStartedAt: 900,
+    connectionRetry: { turnStartedAt: 900, attempt } },
+  { kind: 'Success', value: { phase: 'launched', detail: 'connection recovery waiting' } });
+  expect(activities.current('input')).toBeNull();
+});
 it('an unresolved native menu gets one durable explanation, never a claim of work or an unbounded notice loop', async () => {
   const activities = createWorkingActivities({ now: () => Date.now(), read: () => '' });
   const f = fixture({ activityPort: () => activities.current('input') });
