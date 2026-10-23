@@ -192,6 +192,16 @@ Cycle diagnostics are one-line fixed-schema JSON on stderr. Their reason is sele
 
 ## Durability and restart tiers
 
+The journal worker retains a turn's recorded hold while it checks whether work can resume.
+Retry eligibility is local to that pass; the existing durable reservation, reply intent or
+memory settlement clears the hold. A slow or interrupted preparation therefore leaves the
+live projection equal to a fresh journal replay, including the original hold age. Accepted
+input bytes and sender identity stay in the same journal. Recovered harness results consume
+their original reservation and packet; an unknown model dispatch or send grants no replay.
+`intake-survive.test.ts` replays recorded proof-room inputs through raw and compacted restart,
+pending-result collection and duplicate suppression. The operational snapshot fixture carries
+the separate limit that its two live overdue turn identities were not provided.
+
 - The production storage under the root holds the main Telegram/Four facts and captures encrypted with `storage-key`, including the custodian cursor journal and issued update captures.
 - `preview-state.json` and `preview-stop.json` are plaintext machine-local control records. They retain trial identity, configuration digest, expiry, cursor seed, capacity/rate/error counters and both immutable error ceilings, intake disposition, context identity, run proof path, and reply phase.
 - `.preview-runs/*/facts.json`, `captures.json`, and `run-proof.json` are fsynced plaintext test-owned stores. They retain the actual Five opening/grounding facts, fixture Six admission witness set, exact bounded context identities, schemas/register metadata, and required captures. The driver reconstructs and byte/hash-checks this owner state and runs the stock grounding decoder and unchanged Five coverage validator during recovery and again before dispatch.
