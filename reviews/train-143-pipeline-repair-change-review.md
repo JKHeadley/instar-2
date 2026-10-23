@@ -14,8 +14,9 @@ Side effects: Retains the candidate current preference projection and source fro
 Undo and recovery: Revert this merge against its first parent and regenerate register outputs; no live deployment or persistent schema mutation occurs.
 Multi-machine posture: No change to ownership, replication or transport. Summary memory remains derived from received durable journal records on each owner.
 Layer below: Read both constitutions on origin/main, both conflicting implementations, source-frontier regression, current-forget regression and source audit. The current projection prevents a later forget from being rolled back; the source cutoff prevents future memory from entering an older summary.
-Bug class: integration
-Bug evidence: reproducer=tests/preview/summary-frontier-forget.test.ts
+Bug class: none
+Bug evidence: none
+Regression verification: This merge resolves conflicting already-reviewed implementations without adding a runtime bug fix. Existing summary-frontier-forget and summary-candidate-frontier tests exercise the retained implementation; neither test is authored by this repair.
 Hook bypass: none; core.hooksPath unset; common hooks directory contains samples only
 Convergence: none
 Decision: train-143-repair-projection | Retain current memory projection and source eligibility cutoff from train-143; this includes the live branch frontier protection while preserving later retirement. Keep the live explanatory comment and all histories. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-143-repair-123853-PROGRESS.md
