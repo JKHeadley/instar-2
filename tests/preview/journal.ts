@@ -7538,7 +7538,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ? { name: selectedName, from: speakerOf(previous), date: dated(previous),
         ...(previous.thread === current ? {} : { conversation: packetConversation(previous.thread) }),
         message: previousMessage } : undefined;
-    const preferences = preferenceState();
+    // Summary packets (labelAll) describe this frontier; an answer still follows
+    // a preference just decided from its current operator message.
+    const preferences = preferenceState(labelAll ? journal.view.memory.filter(change =>
+      (journal.view.turns.get(change.trigger)?.update ?? Infinity) <= through) : journal.view.memory);
     const reference = awayFor === undefined ? undefined : referenceFor(awayFor);
     const now = ports.now(), zone = ports.timeZone ?? 'America/Los_Angeles';
     const local = localParts(now, zone), resume = awayFor && resumeGap(awayFor);
@@ -11059,7 +11062,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const memoryCandidates = [...(journal.view.groupCarry ? groupCarryPacket(journal.view.groupCarry, trigger?.text ?? '', ports.now(), journal.view.limits.maxBytes, journal.view).entries
           .filter(item => item.kind === 'recall' || item.kind === 'preference' || item.kind === 'correction')
           .map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: item.text, reply: '' })) : []), ...(replaced ? [{ id: replaced.id, ...forumSource(replaced.id), sourceKind: 'operator-stated' as MemorySourceKind, message: redact(replaced.text).text,
-          reply: replyFor(replaced) }] : []), ...[...activePreferences(), ...activeFacts()].map(item => ({ id: item.source, ...forumSource(item.source), sourceKind: 'operator-stated' as MemorySourceKind, message: redact(item.quote).text, reply: '' })),
+          reply: replyFor(replaced) }] : []), ...[...activePreferences(), ...activeFacts()]
+          // A pending older summary must not borrow saved facts from later turns (Rule 33).
+          // Keep those facts in memory; offer them when the summary reaches their source.
+          .filter(item => (journal.view.turns.get(item.source)?.update ?? Infinity) <= through)
+          .map(item => ({ id: item.source, ...forumSource(item.source), sourceKind: 'operator-stated' as MemorySourceKind, message: redact(item.quote).text, reply: '' })),
           ...[...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, ...forumSource(older[index]!.id), sourceKind: 'operator-stated' as MemorySourceKind, message: clean(redact(older[index]!.text).text, true, older[index]!.id),
           reply: replyFor(older[index]!) })).filter(item => item.id !== replaced?.id), ...(trigger ? channelCandidates(trigger, summaryFor(trigger.update)?.text) : [])];
         const unanswered = overCapRetry ? [] : unreviewedQuestions(through).slice(0, PREVIEW_QUESTION_LIMIT);
