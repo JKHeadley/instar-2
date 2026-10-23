@@ -1,0 +1,9 @@
+{
+  "source": "JKHeadley/instar@2461cfcf734bbd41d189c55e6e0ddd1b7598bf66:tests/unit/permission-prompt-auto-resolver.test.ts CC_APPROVE_YES (recorded Claude cd-redirection render)",
+  "capture": "Compound command contains cd with output redirection — manual approval required\nto prevent path resolution bypass.\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n  Esc to cancel",
+  "radioSource": "Same commit: tests/unit/permission-prompt-grok-menu.test.ts; verbatim live Grok shell/edit menu captures 2026-08-15/16, observation only (unsupported actuation).",
+  "radioCaptures": [
+    "  ┃  Find instar source repo from config\n  ┃  python3 - <<'PY'\n  ┃  import json\n  ┃  ... Ctrl-F to expand\n  ┃\n  ┃  1 (●) Yes, and don't ask again for anything (always-approve mode)\n  ┃  2 (○) Yes, proceed\n  ┃  3 (○) No, reject (type to add feedback)\n  ┃\n  1/3:select  │  Tab:next option  │  Ctrl+f:expand  │  Ctrl+o:always-approve  │  Ctrl+c:cancel  │  Esc:scrollback",
+    "  ┃  Allow Edit to /private/tmp/grok-menu-capture/hello.txt?\n  ┃\n  ┃  1 (●) Yes, and don't ask again for anything (always-approve mode)\n  ┃  2 (○) Yes, allow all edits during this session\n  ┃  3 (○) Yes\n  ┃  4 (○) No, reject (type to add feedback)\n  ┃\n  1/4:select  │  Tab:next option  │  Ctrl+o:always-approve  │  Ctrl+c:cancel  │  Esc:scrollback"
+  ]
+}

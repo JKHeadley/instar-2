@@ -31,6 +31,7 @@
 //   consequential tool passes its effect owner with the exact operation and input, and every shell command runs under
 //   the step's own confined sandbox profile (`config.shellProfile`). A route with no checkpoint refuses a delegation of
 //   that kind, and its consequential tools go to the effect doorway as above.
+import { createHash } from 'node:crypto';
 import { dirname, join, sep } from 'node:path';
 import { isIP } from 'node:net';
 import { admitEffect, decodeEffectPolicy, DEFAULT_EFFECT_POLICY, SIGN_OFF_TESTS, toolEffectProposal, UNAVAILABLE_EFFECT_POLICY } from './effect-doorway.mjs';
@@ -651,13 +652,42 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
   return deny(`unclassified tool ${tool || '(none)'}: refused by default`);
 }
 
-/** The hook's stdout for a decision: a deny, or an allow carrying the rewritten input. */
-export function hookOutput(decision) {
-  if (decision.decision === 'deny') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny',
-    permissionDecisionReason: decision.reason } };
-  if (decision.updatedInput) return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow',
-    permissionDecisionReason: decision.reason, updatedInput: decision.updatedInput } };
+/** Harness-owned one-call response. No persistent permission rule is ever returned. */
+export function hookOutput(decision, event = 'PreToolUse') {
+  if (event === 'PermissionRequest') return { hookSpecificOutput: { hookEventName: event,
+    decision: decision.decision === 'allow' ? { behavior: 'allow' }
+      : { behavior: 'deny', message: decision.reason } } };
+  if (decision.decision === 'deny' || decision.decision === 'allow') return { hookSpecificOutput: {
+    hookEventName: 'PreToolUse', permissionDecision: decision.decision, permissionDecisionReason: decision.reason,
+    ...(decision.decision === 'allow' && decision.updatedInput ? { updatedInput: decision.updatedInput } : {}) } };
   return null;
+}
+
+const permissionCanonical = value => Array.isArray(value) ? `[${value.map(permissionCanonical).join(',')}]`
+  : value && typeof value === 'object' ? `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${permissionCanonical(value[key])}`).join(',')}}`
+    : JSON.stringify(value ?? null);
+export const permissionInputDigest = value => createHash('sha256').update(permissionCanonical(value)).digest('hex');
+/** Port of PermissionPromptAutoResolver's one-call selection and InputClassifier's
+ * observation/authority split. Native hook identity replaces ambiguous terminal labels.
+ * A PermissionRequest has no tool_use_id: exactly one unfinished, admitted pre-call
+ * must match the session, prompt, agent, tool and complete effective input. */
+export function permissionPromptCandidate(request, rows) {
+  if (request?.hook_event_name !== 'PermissionRequest' || typeof request.session_id !== 'string' || !request.session_id
+    || typeof request.prompt_id !== 'string' || !request.prompt_id || typeof request.tool_name !== 'string'
+    || !request.tool_input || typeof request.tool_input !== 'object' || Array.isArray(request.tool_input)) return null;
+  const matches = rows.filter(row => row.phase === 'pre' && row.decision === 'allow'
+    && row.kind === undefined && row.doorway === undefined && typeof row.id === 'string' && row.id
+    && row.tool === request.tool_name && row.permission?.session === request.session_id
+    && row.permission?.prompt === request.prompt_id && (row.agent ?? null) === (request.agent_id ?? null)
+    && row.permission?.effective === permissionInputDigest(request.tool_input)
+    && !rows.some(other => other !== row && other.id === row.id));
+  if (matches.length !== 1) return null;
+  const row = matches[0];
+  if (!Number.isSafeInteger(row.n) || row.n < 1) return null;
+  let input;
+  try { input = JSON.parse(row.input); } catch { return null; }
+  if (permissionInputDigest(input) !== row.permission.original) return null;
+  return { id: row.id, n: row.n, input, effective: row.permission.effective };
 }
 
 const excerpt = value => { const text = typeof value === 'string' ? value : JSON.stringify(value ?? null);

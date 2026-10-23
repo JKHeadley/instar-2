@@ -23,6 +23,8 @@ export interface SessionRecord {
   readonly rateRecovery?: Readonly<{ dueAt: number; state: 'waiting' | 'sending' | 'accepted'; submittedAt?: number; fingerprint?: string | null }> | null;
   /** Observed native retry pressure, tied to this turn; call liability stays with the owner. */
   readonly connectionRetry?: Readonly<{ turnStartedAt: number; attempt: number }> | null;
+  /** Bounded 1.x persisting-menu observation. A signal only: never authorization or a turn close. */
+  readonly promptWait?: Readonly<{ digest: string; firstAt: number; lastAt: number; samples: number }> | null;
   readonly deadlineHalt?: Readonly<{ deadline: number; at: number }>;
 }
 export interface SessionContinuation {
@@ -72,7 +74,7 @@ export interface ProductionSessionConfig {
   readonly requireTurnHook?: boolean;
   /** Required exactly in `admitted` mode: the admission/completion command for a session's claim (its own
    * admission state), and the hook timeout. The harness runs it before every tool call, its subagents' too. */
-  readonly toolAdmission?: Readonly<{ command: (claim: string, phase: 'pre' | 'post') => string; timeoutSeconds: number }>;
+  readonly toolAdmission?: Readonly<{ command: (claim: string, phase: 'pre' | 'post' | 'permission') => string; timeoutSeconds: number }>;
   /** The host's model-dispatch checkpoint for a claim: the base URL every model call of that claim's session is sent
    * to (`modelGateLaunch`), where it takes the step's reserved allowance before it is forwarded. Required in `admitted`
    * mode, so no admitted session can reach its model any other way. */
@@ -124,12 +126,13 @@ export function modelGateLaunch(framework: SessionFramework, base: string): Read
 export function admissionArgs(framework: SessionFramework, admission: NonNullable<ProductionSessionConfig['toolAdmission']>,
   claim: string, extraClaudeHooks: Readonly<Record<string, unknown>> = {}): readonly string[] {
   const pre = admission.command(claim, 'pre'), post = admission.command(claim, 'post');
-  ensure([pre, post].every(command => hookCommandPattern.test(command)), 'admission hook command must be plain');
+  const permission = framework === 'claude-code' ? admission.command(claim, 'permission') : pre;
+  ensure([pre, post, permission].every(command => hookCommandPattern.test(command)), 'admission hook command must be plain');
   if (framework === 'claude-code') {
     const hook = (command: string) => [{ matcher: '*', hooks: [{ type: 'command', command, timeout: admission.timeoutSeconds }] }];
     // Failed calls have a separate completion event; the post command records that outcome distinctly.
     return ['--settings', JSON.stringify({ disableAllHooks: false,
-      hooks: { ...extraClaudeHooks, PreToolUse: hook(pre), PostToolUse: hook(post), PostToolUseFailure: hook(post) } })];
+      hooks: { ...extraClaudeHooks, PreToolUse: hook(pre), PermissionRequest: hook(permission), PostToolUse: hook(post), PostToolUseFailure: hook(post) } })];
   }
   const hook = (command: string) => `[{matcher='*',hooks=[{type='command',command='${command}',timeout=${admission.timeoutSeconds}}]}]`;
   return ['-c', `hooks.PreToolUse=${hook(pre)}`, '-c', `hooks.PostToolUse=${hook(post)}`];
@@ -174,6 +177,20 @@ export function classifyPaneReadiness(capture: string): 'ready' | 'menu' | 'not-
   if (/[❯›]/.test(text) || /(?:bypass permissions|shift\+tab to cycle|ctrl\+c to exit)/i.test(text)) return 'ready';
   return 'not-ready';
 }
+/** PermissionPromptAutoResolver/PromptGate port: focused options at the genuine
+ * bottom, with a blocking footer. This observes UI structure, never human intent.
+ * Unknown and blanket menus remain visible too; no terminal bytes leave the adapter. */
+export function classifyBlockingMenu(capture: string): boolean {
+  if (classifyPaneActive(capture)) return false;
+  const lines = capture.replace(/\x1b\[[0-9;]*m/g, '').split('\n').map(line => line.trim()).filter(Boolean).slice(-12);
+  const option = /^(?:[┃│]\s*)?(?:[❯›>●○◉]\s*)?\d+(?:[.)]\s|\s*\([●○]\)\s)/u;
+  const focused = /^(?:[┃│]\s*)?(?:[❯›>●○◉]\s*\d+[.)]\s|\d+\s*\([●○]\)\s)/u;
+  const footer = /^(?:Esc to cancel|Enter to confirm · Esc to cancel|Press enter to continue|\d+\/\d+:select\b)/u;
+  const last = lines.at(-1) ?? '';
+  return lines.filter(line => option.test(line)).length >= 2
+    && lines.slice(-6).some(line => focused.test(line)) && (option.test(last) || footer.test(last));
+}
+
 /** ActiveWorkSilenceSentinel A1: a visible input box is not an idle worker.
  * This is adapter evidence only (Rules 26/30/86), never a semantic stuck verdict. */
 export function classifyPaneActive(capture: string): boolean {
@@ -349,7 +366,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const deadline = Math.min(started + config.turnDeadlineMs, session.continuation?.pending?.deadline ?? Infinity);
     ensure(deadline > started, 'context continuation deadline exhausted');
     const armed = { ...session, recovery, turnStartedAt: started, turnDeadline: deadline, closedAt: null, turnCloseEvidence: null,
-      rateRecovery: null,
+      rateRecovery: null, promptWait: null,
       connectionRetry: null,
       turnBaseline: digestOf(capture(session.name)),
       turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
@@ -359,7 +376,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     return armed;
   };
   const closeTurn = (session: SessionRecord, at: number): SessionRecord => ({ ...session,
-    closedAt: at, turnDeadline: null,
+    closedAt: at, turnDeadline: null, promptWait: null,
     ...(session.continuation?.state === 'accepted'
       ? { continuation: { ...session.continuation, state: 'completed' as const } } : {}) });
   const sendText = (session: SessionRecord, text: string) => {
@@ -642,6 +659,20 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           }
           return { phase: 'output-observed' as const, evidence: `turn-closed:${session.name}:${hook.at}`,
             detail: 'Stop hook closed turn' };
+        }
+        // 1.x Layer 3: repeated unsupported menus are observable, never a reason
+        // to press Enter, end work, or borrow the underlying task's authority.
+        const menu = session.turnDeadline !== null && config.now() < session.turnDeadline && session.closedAt === null && classifyBlockingMenu(pane);
+        if (menu) {
+          const fingerprint = digestOf(pane), now = config.now(), previous = session.promptWait;
+          const wait = previous?.digest === fingerprint && previous.lastAt <= now
+            ? { ...previous, lastAt: now, samples: Math.min(4, previous.samples + (now > previous.lastAt ? 1 : 0)) }
+            : { digest: fingerprint, firstAt: now, lastAt: now, samples: 1 };
+          config.io.save(replaceSession(config.io.load(), { ...session, promptWait: wait }));
+          if (wait.samples >= 4 && now - wait.firstAt >= 5_000)
+            return { phase: 'launched' as const, evidence: fingerprint, detail: 'harness menu needs exact authorization; no input sent' };
+        } else if (session.promptWait) {
+          config.io.save(replaceSession(config.io.load(), { ...session, promptWait: null }));
         }
         const contextWall = classifyStuckSignature(pane);
         if ((contextWall === 'context-too-long' || contextWall === 'context-wedge') && classifyPaneIdle(pane, config.framework)

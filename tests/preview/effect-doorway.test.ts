@@ -241,7 +241,8 @@ it('one tool turn on a scratch root: an ordinary write is admitted with no doorw
         const config = JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8'));
         expect(config.irreversibleTerm).toEqual(SHAPE.derivedFrom.irreversible);
         const write = { tool_name: 'Write', tool_input: { file_path: join(turn.workspace, 'note.txt'), content: 'hello doorway' }, tool_use_id: 'w' };
-        expect((await runHookAsync(turn.stateDirectory, write)).stdout).toBe('');
+        expect(JSON.parse((await runHookAsync(turn.stateDirectory, write)).stdout).hookSpecificOutput).toEqual({
+          hookEventName: 'PreToolUse', permissionDecision: 'allow', permissionDecisionReason: 'ordinary in-workspace file operation' });
         writeFileSync(join(turn.workspace, 'note.txt'), 'hello doorway');
         expect((await runHookAsync(turn.stateDirectory, { ...write, tool_response: 'created' }, 'post')).status).toBe(0);
         const effect = { ...consequential, tool_use_id: 'c' };

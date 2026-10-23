@@ -77,11 +77,13 @@ export function createWorkingActivities({ read, now }) {
       if (!session) return;
       const waiting = observation.kind === 'Success' && observation.value.phase === 'launched'
         && observation.value.detail === 'rate-limit recovery waiting' && session.rateRecovery?.state === 'waiting';
-      const episode = waiting ? `${session.identity}:${session.rateRecovery.dueAt}` : null;
+      const menu = observation.kind === 'Success' && observation.value.phase === 'launched'
+        && observation.value.detail === 'harness menu needs exact authorization; no input sent';
+      const episode = menu ? `${session.identity}:${session.turnStartedAt}:${observation.value.evidence}` : waiting ? `${session.identity}:${session.rateRecovery.dueAt}` : null;
       const claim = session.claim;
       for (const state of active.values()) if (state.claim === claim)
-        state.wait = episode === null ? null : { step: createHash('sha256').update(`rate:${claim}:${episode}`).digest('hex'),
-          text: 'bounded rate-limit recovery', wait: 'rate-limit', running: false, observedAt: now() };
+        state.wait = episode === null ? null : { step: createHash('sha256').update(`${menu ? 'menu' : 'rate'}:${claim}:${episode}`).digest('hex'),
+          text: menu ? 'unresolved harness menu' : 'bounded rate-limit recovery', wait: menu ? 'harness-menu' : 'rate-limit', running: false, observedAt: now() };
     },
     current(operation) {
       const state = active.get(operation);
