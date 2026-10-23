@@ -10,6 +10,7 @@ import { successiveWorld, offlineProfile, offlineActivationAuthority, OFFLINE_ST
 import { authoritySealKey, resolveActivationAuthority, sealAuthorityRecord } from './activation-authority.js';
 import { subscriptionDoorway, DEFAULT_SUBSCRIPTION_DOORWAY } from '../../src/assembly/production-provider.js';
 import { FULL_TOOLS_CLASS } from './tools-policy-class.js';
+import { buildRunArgv } from '../../scripts/product-run.mjs';
 import { encoded } from './stage2-provider.js';
 
 const roots = [];
@@ -387,4 +388,36 @@ it('retains each account-bound quota custody reference through import and build 
   writeFileSync(path, JSON.stringify({ version: 1, logins }));
   installHarnessLogin({ root: f.root, options: { ...f.options(f.logins[0]), 'login-pool': path }, verify: f.verify });
   expect(read(f.prepare()).logins.map(row => row.quotaLogin)).toEqual(logins.map(row => row.quotaLogin));
+});
+
+it.each(['profile', 'authority'])('product launch preserves verified primary and secondary history after secondary %s loss', field => {
+  // Reviewer reproduction: astra-unit-update-b-1021-regression.test.ts, using real sealed grant validators.
+  const f = fixture(); f.install(f.logins[0]); f.install(f.logins[1]);
+  const write = (name, value) => writeFileSync(join(f.root, name), JSON.stringify(value));
+  write('model-setting.json', { model: f.world.model });
+  write('journal.encrypted', { fixture: true });
+  write('yes.json', { fixture: true });
+  write('run-config.json', { version: 1, options: {
+    'bot-id': '12345678', 'bot-username': '@fixture_bot', 'operator-sender-id': '12345',
+    'chat-id': '-1001234567890', forum: true, 'grant-reference': 'preview-trial:fixture',
+    'configuration-digest': `sha256:${'a'.repeat(64)}`, 'expires-at': '2026-11-12T21:40:00Z',
+    'operator-records': f.root, 'explicit-yes-installation': join(f.root, 'yes.json'),
+    'review-repository': 'fixture/repository', 'harness-user': '_instarharness', 'conversation-session': 'off'
+  }});
+  const expected = buildRunArgv(f.root);
+  const before = read(join(f.root, 'harness-logins.json'));
+  rmSync(f.logins[1][field]);
+  expect(buildRunArgv(f.root)).toEqual(expected);
+  expect(read(join(f.root, 'harness-logins.json'))).toEqual(before);
+  const launch = installedHarnessLaunch({ root: f.root,
+    options: { model: f.world.model, 'harness-user': 'offline' }, prepare: () => f.prepare() });
+  expect(launch.mode).toBe('installed-pool');
+  const manifest = read(launch.options['login-pool']);
+  expect(manifest.logins).toHaveLength(2);
+  expect(manifest.logins[1].admittedProfile).toEqual(before.logins[1].admittedProfile);
+  expect(manifest.logins[1].unavailable).toBeDefined();
+  expect(() => verifyPreparedHarnessLogin(manifest.logins[1])).toThrow(/unavailable/);
+  const primary = manifest.logins[0];
+  expect(() => verifyPreparedHarnessLogin(primary)).not.toThrow();
+  expect(() => f.verify(primary, read(primary.profile), read(primary.activation), read(primary.toolsActivation))).not.toThrow();
 });

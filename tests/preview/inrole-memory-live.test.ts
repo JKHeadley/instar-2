@@ -23,11 +23,11 @@ const genesis = { kind: 'genesis' as const, bot: '8994258214', chat: '-100436755
   maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 32768, cursor: 0 };
 
 for (const recorded of fixture.cases) it(`replays real update ${recorded.update} through intake, answer and restart`, async () => {
-  // Preserve the captured digest; identity and completion guidance were added afterward.
+  // Preserve the captured digest; identity, completion and brief-rationale guidance were added afterward.
   // Check outside the model port: the worker records thrown model errors as unknown outcomes.
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain(MEMORY_DISAMBIGUATION);
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).not.toContain(HISTORICAL_MEMORY);
-  const capturedSystem = SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace(
+  const capturedSystem = SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(
     "You are an Instar 2.0 agent,", 'You are Instar,').replace(COMPLETE_REQUESTED_WORK, '');
   expect(createHash('sha256').update(capturedSystem).digest('hex')).toBe(recorded.systemSha256);
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'inrole-memory-'))), path = join(root, 'journal');

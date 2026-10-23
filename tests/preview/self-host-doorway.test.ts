@@ -12,7 +12,7 @@ import { dispatchOwnedProvider, providerStores } from './self-host-owners.ts';
 import { encoded, inputMeasurements, requireInputBound } from './stage2-provider.js';
 import { successiveWorld, offlineProfile } from './successive-fixture.js';
 
-// Preserve the recorded policy/prompt before the reviewed memory-supersession guidance.
+// Preserve the recorded policy before the reviewed memory-supersession and concise-rationale guidance.
 const HISTORICAL_MEMORY = 'When two active memory items both fit the question but conflict, or are about different people or things, ask one short question that names a detail telling them apart. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
 
 const roots = [];
@@ -60,7 +60,10 @@ it('reaches the registered Codex doorway with the recorded 0.156.1 transport and
   const doorway = subscriptionDoorway(doorwayId), policy = doorway.policyFor(model, doorway.conversationFraming);
   expect(policy.system).toContain(MEMORY_DISAMBIGUATION);
   expect(policy.system).not.toContain(HISTORICAL_MEMORY);
-  const historical = { ...policy, system: policy.system.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY) };
+  expect(policy.system).toContain('give a brief decision rationale supported by the relevant evidence.');
+  const historical = { ...policy, system: policy.system
+    .replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY)
+    .replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.') };
   expect(encoded(historical).hash).toBe(regression.invocationPolicyDigest);
   expect(f.input.activation.invocationPolicyDigest).not.toBe(regression.invocationPolicyDigest);
   await f.dispatch(provider);

@@ -1,14 +1,17 @@
 // Rule 56: the installed doorway/model map carries exact ids and verification
 // times; a map older than its window, unverified, changed or unavailable fails.
 import { expect, it } from 'vitest';
-import { DOORWAY_FRESH_MS, doorwayFreshness, installDoorways, observeExchange, standingDoorwayCheck, subscriptionExchange as discoverExchange } from './doorway-map.js';
+import { DOORWAY_FRESH_MS, doorwayFreshness, installDoorways, observeExchange, standingDoorwayCheck, subscriptionExchange } from './doorway-map.js';
 import { subscriptionDoorway } from '../../src/assembly/production-provider.js';
+import { readFileSync } from 'node:fs';
+import { doorwayNotices } from './credential-reminders.js';
+import type { DoorwayMap } from './doorway-map.js';
 import { modelEntryFresh } from '../../src/register/index.js';
 import codexCapture from './fixtures/codex-answer-0.156.1.json' with { type: 'json' };
 import recordedStreams from './codex-recorded-frames.json' with { type: 'json' };
 import recordedShapes from './fixtures/retrospective-duty-followup-train-1-2026-10-08.json' with { type: 'json' };
-const subscriptionExchange = (result: Parameters<typeof discoverExchange>[0], operation: string) =>
-  discoverExchange(result, operation, subscriptionDoorway('claude-code-subscription').exchangeModels);
+const discoverExchange = (result: Parameters<typeof subscriptionExchange>[0], operation: string, exchangeModels: Parameters<typeof subscriptionExchange>[2]['exchangeModels']) =>
+  subscriptionExchange(result, operation, { exchangeModels });
 
 it('discovers the real Codex exchange through its registered adapter without inventing a provider model id', () => {
   const doorway = subscriptionDoorway('codex-cli-subscription');
@@ -102,13 +105,13 @@ it('returns a reinstalled model (A→B→A) to the checked population, unverifie
 
 it('discovers the subscription outcome from the exchange, ignoring local resource limits', () => {
   const frame = JSON.stringify({ type: 'result', is_error: false, modelUsage: { 'claude-opus-4-8': {} } });
-  expect(subscriptionExchange({ code: 0, limited: false, stdout: frame }, 'op')).toEqual({ ok: true, reportedModels: ['claude-opus-4-8'], evidence: 'exchange:op' });
-  expect(subscriptionExchange({ code: 0, limited: false, stdout: JSON.stringify({ type: 'result', is_error: true }) }, 'op'))
+  expect(subscriptionExchange({ code: 0, limited: false, stdout: frame }, 'op', subscriptionDoorway('claude-code-subscription'))).toEqual({ ok: true, reportedModels: ['claude-opus-4-8'], evidence: 'exchange:op' });
+  expect(subscriptionExchange({ code: 0, limited: false, stdout: JSON.stringify({ type: 'result', is_error: true }) }, 'op', subscriptionDoorway('claude-code-subscription')))
     .toMatchObject({ ok: false, reason: 'error-frame' });
-  expect(subscriptionExchange({ code: 1, limited: false, stdout: '' }, 'op')).toMatchObject({ ok: false, reason: 'exit' });
-  expect(subscriptionExchange({ code: null, limited: true, localLimit: 'timeout', stdout: '' }, 'op')).toMatchObject({ ok: false, reason: 'timeout' });
-  expect(subscriptionExchange({ code: null, limited: true, localLimit: 'memory', stdout: '' }, 'op')).toBeNull();
-  expect(subscriptionExchange({ code: null, limited: true, localLimit: 'capacity', stdout: '' }, 'op')).toBeNull();
+  expect(subscriptionExchange({ code: 1, limited: false, stdout: '' }, 'op', subscriptionDoorway('claude-code-subscription'))).toMatchObject({ ok: false, reason: 'exit' });
+  expect(subscriptionExchange({ code: null, limited: true, localLimit: 'timeout', stdout: '' }, 'op', subscriptionDoorway('claude-code-subscription'))).toMatchObject({ ok: false, reason: 'timeout' });
+  expect(subscriptionExchange({ code: null, limited: true, localLimit: 'memory', stdout: '' }, 'op', subscriptionDoorway('claude-code-subscription'))).toBeNull();
+  expect(subscriptionExchange({ code: null, limited: true, localLimit: 'capacity', stdout: '' }, 'op', subscriptionDoorway('claude-code-subscription'))).toBeNull();
 });
 
 // Live risk (real model output format): a real Claude Code result frame lists every model the CLI used,
@@ -121,11 +124,11 @@ it('reads a real-shaped subscription result frame: the requested model among hel
   const frame = (usage: Record<string, unknown>) => JSON.stringify({ type: 'result', subtype: 'success', is_error: false, num_turns: 1,
     result: 'PREVIEW — ok', stop_reason: 'end_turn', total_cost_usd: 0.03, modelUsage: usage });
   const both = subscriptionExchange({ code: 0, limited: false, stdout: frame({
-    'claude-haiku-4-5-20251001': entry('claude-haiku-4-5'), 'claude-opus-4-8': entry('claude-opus-4-8') }) }, 'real');
+    'claude-haiku-4-5-20251001': entry('claude-haiku-4-5'), 'claude-opus-4-8': entry('claude-opus-4-8') }) }, 'real', subscriptionDoorway('claude-code-subscription'));
   expect(both).toEqual({ ok: true, reportedModels: ['claude-haiku-4-5-20251001', 'claude-opus-4-8'], evidence: 'exchange:real' });
   const verified = observeExchange(installDoorways(null, installed, 1000), 'preview-subscription', 'claude-opus-4-8', both!, 1000);
   expect(verified.doorways[0]!.models.find(m => m.id === 'claude-opus-4-8')).toMatchObject({ state: 'verified', strength: 'provider-reported' });
-  const helperOnly = subscriptionExchange({ code: 0, limited: false, stdout: frame({ 'claude-haiku-4-5-20251001': entry('claude-haiku-4-5') }) }, 'real');
+  const helperOnly = subscriptionExchange({ code: 0, limited: false, stdout: frame({ 'claude-haiku-4-5-20251001': entry('claude-haiku-4-5') }) }, 'real', subscriptionDoorway('claude-code-subscription'));
   const changed = observeExchange(installDoorways(null, installed, 1000), 'preview-subscription', 'claude-opus-4-8', helperOnly!, 1000);
   expect(changed.doorways[0]!.models.find(m => m.id === 'claude-opus-4-8')).toMatchObject({ state: 'changed', observedId: 'claude-haiku-4-5-20251001' });
 });
@@ -156,4 +159,72 @@ it('runs a standing check through the register\'s model-map age rule: current, t
     { doorway: 'preview-subscription', state: 'unavailable', reason: installed[0]!.priceReason, observedAt: 1000, trusted: false },
     { doorway: 'typesafe-jev', state: 'unavailable', reason: installed[1]!.priceReason, observedAt: 1000, trusted: false }]);
   expect(doorwayFreshness(map, idle).prices.map(p => p.state)).toEqual(['stale', 'stale']);
+});
+
+// Recorded train-127 capability turn: a working Codex route was called unavailable.
+it('retires the false preview route and verifies the selected Codex doorway from real 0.156.1 bytes', () => {
+  const historical = JSON.parse(readFileSync('tests/preview/fixtures/codex-doorway-train-127-2026-10-22.json', 'utf8')) as {
+    update: number; map: DoorwayMap; delivered: { reply: string } };
+  const captured = JSON.parse(readFileSync('tests/preview/fixtures/codex-answer-0.156.1.json', 'utf8')) as {
+    model: string; captures: { code: number; limited: boolean; stdout: string }[] };
+  expect(historical.update).toBe(367052949);
+  expect(historical.delivered.reply).toBe('I need to check that answer before I can send it.');
+  const now = historical.map.doorways[1]!.models[0]!.verifiedAt! + 1000;
+  expect(doorwayNotices(historical.map, now)[0]!.line).toContain('preview-subscription/gpt-6-astra is unavailable');
+  const doorway = subscriptionDoorway('codex-cli-subscription');
+  let map = installDoorways(historical.map, [
+    { ...installed[0]!, id: doorway.id, model: captured.model }, installed[1]!], now);
+  expect(doorwayFreshness(map, now).models[0]!.state).toBe('unverified');
+  const exchange = subscriptionExchange(captured.captures.at(-1)!, 'recorded-codex', doorway);
+  expect(exchange).toEqual({ ok: true, reportedModels: [], evidence: 'exchange:recorded-codex' });
+  map = standingDoorwayCheck(observeExchange(map, doorway.id, captured.model, exchange!, now), now);
+  expect(doorwayFreshness(map, now)).toMatchObject({ fresh: true, models: [
+    { doorway: doorway.id, model: 'gpt-6-astra', state: 'verified' }, { doorway: 'typesafe-jev', state: 'verified' }] });
+  expect(map.doorways[0]!.models[0]).toMatchObject({ strength: 'configured-route', evidence: 'exchange:recorded-codex' });
+  expect(map.doorways.find(d => d.id === 'preview-subscription')!.models[0]!.state).toBe('retired');
+  expect(doorwayNotices(map, now)).toEqual([]);
+  expect(doorwayNotices(standingDoorwayCheck(map, now + DOORWAY_FRESH_MS + 1), now + DOORWAY_FRESH_MS + 1)[0]!.line)
+    .toContain('codex-cli-subscription/gpt-6-astra is stale');
+});
+
+it('keeps Codex failed, partial, malformed and empty exchanges unverified, and local limits neutral', () => {
+  const doorway = subscriptionDoorway('codex-cli-subscription');
+  const captured = JSON.parse(readFileSync('tests/preview/fixtures/codex-answer-0.156.1.json', 'utf8')) as {
+    captures: { code: number; limited: boolean; stdout: string }[] };
+  const recorded = JSON.parse(readFileSync('tests/preview/codex-recorded-frames.json', 'utf8')) as { streams: Record<string, string> };
+  const complete = captured.captures.at(-1)!;
+  expect(subscriptionExchange({ ...complete, code: 1 }, 'exit', doorway)).toMatchObject({ ok: false, reason: 'exit' });
+  expect(subscriptionExchange({ ...complete, limited: true, localLimit: 'timeout' }, 'timeout', doorway))
+    .toMatchObject({ ok: false, reason: 'timeout' });
+  for (const localLimit of ['memory', 'capacity', 'stop'])
+    expect(subscriptionExchange({ ...complete, limited: true, localLimit }, localLimit, doorway)).toBeNull();
+  const events = complete.stdout.trim().split('\n').map(line => JSON.parse(line));
+  const empty = events.map(event => JSON.stringify(event.type === 'item.completed' && event.item.type === 'agent_message'
+    ? { ...event, item: { ...event.item, text: '' } } : event)).join('\n');
+  for (const stdout of [recorded.streams.turnFailed!, events.slice(0, 2).map(event => JSON.stringify(event)).join('\n'),
+    complete.stdout + 'not JSON\n', empty, '']) {
+    expect(subscriptionExchange({ ...complete, stdout }, 'bad', doorway)).toMatchObject({ ok: false, reason: 'error-frame' });
+  }
+  // Successful tool exchanges also prove reachability; this is not an answer-admission decision.
+  expect(subscriptionExchange({ ...complete, stdout: recorded.streams.toolUsed! }, 'tool', doorway)).toMatchObject({ ok: true });
+  expect(subscriptionExchange(complete, 'wrong-format', subscriptionDoorway('claude-code-subscription'))).toMatchObject({ ok: false });
+});
+
+it('observes recorded summary, uncertain/undecided Jev, review and delivered-reply bodies without interpreting their verdicts', () => {
+  const corpus = JSON.parse(readFileSync('tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', 'utf8')) as {
+    otherShapes: { kind: string; id: string; raw: string }[] };
+  const captured = JSON.parse(readFileSync('tests/preview/fixtures/codex-answer-0.156.1.json', 'utf8')) as {
+    captures: { code: number; limited: boolean; stdout: string }[] };
+  const run = captured.captures.at(-1)!;
+  const events = run.stdout.trim().split('\n').map(line => JSON.parse(line));
+  expect(corpus.otherShapes.map(row => row.kind)).toEqual(['summary-writer', 'summary-uncertain', 'jev-undecided',
+    'jev-unsure', 'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
+  for (const row of corpus.otherShapes) {
+    // Historical journal bodies replayed in captured transport framing, not new Codex answers.
+    const stdout = events.map(event => JSON.stringify(event.type === 'item.completed' && event.item.type === 'agent_message'
+      ? { ...event, item: { ...event.item, text: row.raw } } : event)).join('\n');
+    const observed = subscriptionExchange({ ...run, stdout }, row.id, subscriptionDoorway('codex-cli-subscription'));
+    expect(observed?.ok, row.id).toBe(row.raw.trim().length > 0);
+    expect(observed?.evidence).toBe(`exchange:${row.id}`);
+  }
 });

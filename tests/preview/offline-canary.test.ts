@@ -150,7 +150,7 @@ it('validates renewal and policy-successor records against the pinned policy, wi
   const policy = subscriptionConversationPolicy(model);
   expect(policy.args.join(' ')).toContain(MEMORY_DISAMBIGUATION);
   expect(policy.args.join(' ')).not.toContain(HISTORICAL_MEMORY);
-  const historical = { ...policy, args: policy.args.map(arg => arg.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY)) };
+  const historical = { ...policy, args: policy.args.map(arg => arg.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.')) };
   const historicalDigest = encoded(historical).hash;
   expect(historicalDigest).toBe('sha256:7b1d9af257f848e9cef4abad31771394af1cb4e1b6062a4538d3442a2045f220');
   expect(digest).not.toBe(historicalDigest);

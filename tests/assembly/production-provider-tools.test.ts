@@ -117,7 +117,7 @@ it('tells the model it has the whole tool set and how each call is bounded, and 
     + 'ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
   expect(completion.policy.args[prompt]).toContain(oldMemory);
   expect({ ...current, args: current.args.map((arg, index) => index === prompt
-    ? completion.policy.args[prompt].replace(closedSet, '').replace(oldMemory, MEMORY_DISAMBIGUATION) : arg) })
+    ? completion.policy.args[prompt].replace(closedSet, '').replace(oldMemory, MEMORY_DISAMBIGUATION).replace('do all your reasoning there.', 'give a brief decision rationale supported by the relevant evidence.') : arg) })
     .toEqual(current);
   expect({ ...completion.policy, args: completion.policy.args.map((arg: string, index: number) => index === prompt ? current.args[prompt] : arg) })
     .toEqual(current);

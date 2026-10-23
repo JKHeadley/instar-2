@@ -670,8 +670,15 @@ from the successor root. Changing or deleting the activation file closes the rou
 
 ### What the model receives each turn
 
-The system prompt is `SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT` (framing `preview-conversation-v1`,
-1886 bytes). It is separately bound from the v2 one-shot framing, whose reconstruction is unchanged.
+The system prompt is `SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT` (framing `preview-conversation-v1`).
+It is separately bound from the v2 one-shot framing, whose reconstruction is unchanged.
+Its flat JSON response begins with `reasoning`, a brief decision rationale supported by relevant
+evidence. This requests an explanation of the decision, not the model's full internal reasoning.
+The subscription conversation, tools and native prompts and both Codex prompts share this wording;
+the JSON field and readers remain the same. A wording change moves the full invocation-policy
+digest and needs a conversation policy-successor activation through `renew-activation.mjs
+--policy-successor`. Existing tools policy classes still apply only when their unchanged checkpoint
+pins match; a grant for one exact digest does not authorize a new one.
 Stdin is the exact canonical Seven envelope: the operator's current message as `role:user`, and as
 `role:context` the canonical `{bindings, packet}`. The packet (`successive-context-v1`) holds:
 
@@ -4440,3 +4447,13 @@ its reply review, with no new store, watcher or model call. A compact rendering 
 self-state counts pays for the fixed instructions within the existing context floor.
 `self-unblock.test.ts` replays recorded update 46039927 and the recorded uncertain/review/
 empty-output shapes; live account behavior still requires the desk's proof-room check.
+
+## Doorway map observations
+
+The runner installs the selected subscription doorway's registry id and configured
+model in `doorway-map.json`. Each adapter interprets its own real exchange format;
+Codex completion verifies the configured route without claiming a provider-reported
+model id. Failed exchanges, local ceilings and stale evidence retain their existing
+meaning. Replaced doorway entries remain retired history and do not appear as active
+unavailable models in status, capability context or reply notices. Restarting an
+existing root applies this reconciliation without another store or probe.
