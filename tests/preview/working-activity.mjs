@@ -71,19 +71,29 @@ export function createWorkingActivities({ read, now }) {
         }
       }
     },
-    // 1.x RateLimitSentinel's immediate wait notice, projected into the existing
+    // 1.x RateLimitSentinel/SocketDisconnectSentinel wait notices, projected into the existing
     // durable progress doorway. No send authority or private notification store.
     observeSession(session, observation) {
       if (!session) return;
       const waiting = observation.kind === 'Success' && observation.value.phase === 'launched'
         && observation.value.detail === 'rate-limit recovery waiting' && session.rateRecovery?.state === 'waiting';
+      const reconnecting = observation.kind === 'Success' && observation.value.phase === 'launched'
+        && observation.value.detail === 'connection recovery waiting'
+        && Number.isSafeInteger(session.turnStartedAt) && session.connectionRetry?.turnStartedAt === session.turnStartedAt
+        && Number.isSafeInteger(session.connectionRetry.attempt) && session.connectionRetry.attempt >= 1
+        && session.connectionRetry.attempt <= 10;
       const menu = observation.kind === 'Success' && observation.value.phase === 'launched'
         && observation.value.detail === 'harness menu needs exact authorization; no input sent';
-      const episode = menu ? `${session.identity}:${session.turnStartedAt}:${observation.value.evidence}` : waiting ? `${session.identity}:${session.rateRecovery.dueAt}` : null;
+      // One episode per worker turn, not one per retry/countdown frame. The durable
+      // progress intent dedupes across adapter restart and UNKNOWN delivery too.
+      const wait = reconnecting ? 'connection' : menu ? 'harness-menu' : 'rate-limit';
+      const episode = reconnecting ? `${session.identity}:${session.turnStartedAt}`
+        : menu ? `${session.identity}:${session.turnStartedAt}:${observation.value.evidence}`
+        : waiting ? `${session.identity}:${session.rateRecovery.dueAt}` : null;
       const claim = session.claim;
       for (const state of active.values()) if (state.claim === claim)
-        state.wait = episode === null ? null : { step: createHash('sha256').update(`${menu ? 'menu' : 'rate'}:${claim}:${episode}`).digest('hex'),
-          text: menu ? 'unresolved harness menu' : 'bounded rate-limit recovery', wait: menu ? 'harness-menu' : 'rate-limit', running: false, observedAt: now() };
+        state.wait = episode === null ? null : { step: createHash('sha256').update(`${reconnecting ? 'connection' : menu ? 'menu' : 'rate'}:${claim}:${episode}`).digest('hex'),
+          text: reconnecting ? 'bounded connection recovery' : menu ? 'unresolved harness menu' : 'bounded rate-limit recovery', wait, running: false, observedAt: now() };
     },
     current(operation) {
       const state = active.get(operation);

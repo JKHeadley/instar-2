@@ -1454,6 +1454,17 @@ it('a different adapter pause after throttle waiting is preserved without a cont
   expect(f.sends).toBe(sends);
 });
 
+
+it('exposes the recorded native reconnect wait without adding input or extending its deadline', () => {
+  const { f, id } = retryingSocket(), sends = f.sends;
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })))
+    .toMatchObject({ phase: 'launched', detail: 'connection recovery waiting' });
+  expect(f.sends).toBe(sends);
+  expect(f.journal.sessions[0]!.turnDeadline).toBe(2000);
+  f.changePane('ordinary work\n❯ ');
+  expect(value(f.driver.observe({ operation: 'deliver', processIdentity: id })).detail).not.toBe('connection recovery waiting');
+});
+
 // Rule 36: inherited real render, no authority inferred from its prose or selected Yes.
 it('surfaces a recorded unresolved approval menu without typing or claiming completion', () => {
   const recorded = JSON.parse(readFileSync(new URL('../fixtures/permission-menu-1x.json', import.meta.url), 'utf8'));

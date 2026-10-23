@@ -7,6 +7,8 @@ import { createConversationSessionPort } from '../../src/assembly/production-con
 import type { ConversationState, ConversationSessionConfig, ConversationSessionPort } from '../../src/assembly/production-conversation-session.js';
 import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
+// @ts-expect-error Host-only JavaScript projection used by the shipped launcher.
+import { createWorkingActivities } from '../preview/working-activity.mjs';
 
 const capture = JSON.parse(readFileSync(new URL('../preview/fixtures/socket-drop-worker-1016101-2026-10-16.json', import.meta.url), 'utf8'));
 const persistent = capture.runs[1];
@@ -35,6 +37,8 @@ function replay(result: string | null, stopAtRetry = false) {
       return { code: 0, stdout: '' };
     },
   };
+  const activities = createWorkingActivities({ now: () => now, read: () => '' });
+  const waits: { step: string; wait: string }[] = [];
   let port: ConversationSessionPort;
   const charge = () => {
     while (charged < errors.length && errors[charged]!.at <= now) {
@@ -42,6 +46,11 @@ function replay(result: string | null, stopAtRetry = false) {
     }
   };
   const config: ConversationSessionConfig = {
+    workingActivity: (operation, claim, phase) => {
+      activities.observe(operation, claim, phase);
+      const activity = activities.current(operation);
+      if (activity?.wait) waits.push(activity);
+    },
     conversation: 'socket-proof', allowanceDeadline: now + 900000, authorized: () => true, currentAuthority: () => 'role',
     store: { load: () => structuredClone(state), save: next => { state = structuredClone(next); } },
     io: { clearResult: next => { path = next; currentResult = null; }, readResult: file => file === path ? currentResult : null,
@@ -59,15 +68,21 @@ function replay(result: string | null, stopAtRetry = false) {
     resultDirectory: '/scope/results', artifact: 'artifact', incarnation: 'incarnation',
     deadlineMs: 600000, pollMs: 100, maxCalls: 128, maxSteps: 3, maxResultBytes: 65536,
     createAdapter: resolveDelivery => createSessionConversationAdapter({ io: config.io, resolveDelivery,
-      createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted', framework: 'claude-code',
+      createDriver: resolveIntake => { const driver = createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted', framework: 'claude-code',
         executable: '/fake', cwd: '/scope', home: '/h', configHome: '/h', context: f.c, io: physical, now: () => now,
         stopped: () => stopped, resolveIntake, maxSessions: 1, turnDeadlineMs: 600000, readyTimeoutMs: 1000,
         protectedSessions: [], requireTurnHook: true, hookScript: '/installed/stop.mjs', inboxDirectory: '/inbox',
         toolAdmission: { command: () => '/installed/tool-hook', timeoutSeconds: 2 },
-        modelGate: claim => `http://127.0.0.1:1234/${'a'.repeat(32)}/${claim}` }) }),
+        modelGate: claim => `http://127.0.0.1:1234/${'a'.repeat(32)}/${claim}` });
+        return { ...driver, observe: input => {
+          const observed = driver.observe(input);
+          activities.observeSession(journal.sessions.find(row => row.identity === input.processIdentity), observed);
+          return observed;
+        } };
+      } }),
   };
   port = value(createConversationSessionPort(config));
-  return { port, config, state: () => state!, journal: () => journal, enters: () => enters, charged: () => charged,
+  return { port, config, waits, activities, state: () => state!, journal: () => journal, enters: () => enters, charged: () => charged,
     request: { operation: 'recorded-update-1016102', question: 'Retain my original request', context: '{}', authority: 'role' } };
 }
 
@@ -139,4 +154,16 @@ it('records transient native recovery to one correlated answer and one delivered
   expect(proof.sessionJournal.sessions[0].turnCloseEvidence).toMatch(/^turn-closed:/);
   expect(proof.sessionJournal.deliveries).toHaveLength(1);
   expect(proof.sends).toHaveLength(1); expect(proof.sends[0].text).toMatch(/^51\b/);
+});
+
+
+it('projects the real retry frames through the shipped adapter and owner as one bounded wait episode', async () => {
+  const f = replay(null);
+  expect((await f.port.run(f.request)).state).toBe('uncertain');
+  expect(f.waits.length).toBeGreaterThan(1);
+  expect(f.waits.every(row => row.wait === 'connection')).toBe(true);
+  expect(new Set(f.waits.map(row => row.step)).size).toBe(1);
+  expect(f.activities.current(f.request.operation)).toBeNull();
+  expect(f.enters()).toBe(1); expect(f.charged()).toBe(errors.length);
+  await f.port.close();
 });
