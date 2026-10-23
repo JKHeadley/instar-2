@@ -18,7 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/correction-sticks.test.ts
 Hook bypass: none; core.hooksPath unset and common hooks directory contains samples only.
 Convergence: none
-Decision: correction-single-copy | Reuse the 1.x preference-routing and session-context pattern within the existing 2.0 journal adapter. Preserve explicit supersession and distinct clauses. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/correction-sticks-1023c-PROGRESS.md
+Decision: correction-single-copy | Reuse the 1.x preference-routing and session-context pattern within the existing 2.0 journal adapter. Preserve explicit supersession and distinct clauses. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-138-repair-033257-PROGRESS.md
 
 1.x source: JKHeadley/instar origin/main d5b30b1d7; CorrectionCaptureLoop.ts user-only distillation; CorrectionLedger.ts deduplicated durable provenance; CorrectionLoopDriver.ts preference route; PreferencesManager.ts sessionContext/formatPreferencesForSessionStart; scaffold/templates.ts injected preference awareness. Port behavior, not whole files or its additional stores/jobs. ONEX-LESSONS.md lines 110/113/114/120/123/125/126/127/128 apply; exact mappings are in PROGRESS.
 
