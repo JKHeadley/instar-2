@@ -3167,7 +3167,10 @@ async function main() {
       // Every admitted job drains ordinary intake first. A pre-poll job may finish during
       // the poll: admitting only reminders here could win every cycle and starve both
       // accepted operator turns and due obligations indefinitely (including session work).
-      workCycle(batch.length === 0);
+      // Like intake, an empty-poll delivery opportunity retains one coalesced wake while work is busy.
+      // The admitted pass drains withdrawal input first and rechecks stop, ownership, capacity and send identity.
+      // Otherwise every empty poll during a long obligation step can be discarded, stranding its finished result.
+      workCycle(batch.length === 0, batch.length === 0);
       reportCap();
       // Rule 55: while the other machine is away the unsettled updates return at once; re-read after the same pause.
       if (worker.intakeHeld() || shared && batch.length === 0 && updates.result.length > 0) await waitHeld();
