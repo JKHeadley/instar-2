@@ -18,7 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/summary-candidate-frontier.test.ts
 Hook bypass: none; core.hooksPath unset and common hooks directory contains only samples
 Convergence: none
-Decision: train-142-merge-frontier | Ordinary merge fast-forwarded to exact reviewed 73527b2a0ba5d5356bfa9f54731aa7c7165ffe6c; member evidence /Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-rule33-autos-PROGRESS.md downloaded with verified snapshot SHA256 and committed as reviews/train-142-member-evidence.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-142-PROGRESS.md
+Decision: train-142-merge-frontier | Ordinary merge fast-forwarded to exact reviewed 73527b2a0ba5d5356bfa9f54731aa7c7165ffe6c; member evidence /Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-rule33-autos-PROGRESS.md downloaded with verified snapshot SHA256 and committed as reviews/train-142-member-evidence.txt. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-142-PROGRESS.md
 Decision: train-142-A-preserve | Preserve every reviewed member byte; no conflict resolution or product edits required. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-142-PROGRESS.md
 Decision: train-142-B-live-base | Retain exact 42767914df8d0561fd1a5280cc0e7341cc546913 ancestry; no main merge, branch move or change to train-137 or train-141. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-142-PROGRESS.md
 Decision: train-142-D-host-checks | Apply the declared WSL exception to unchanged host-bound checks; disclose outcomes and inaccessible absolute Studio report paths without changing declarations. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-142-PROGRESS.md
