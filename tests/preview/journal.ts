@@ -8555,13 +8555,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (turn.held === undefined) journal.append({ kind: 'hold', id: turn.id, reason: GROUP_DISCLOSURE_HOLD, at: ports.now() });
           continue;
         }
-        if (turn.held === GROUP_DISCLOSURE_HOLD) { delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn); }
+        // Like 1.x PendingInjectStore, retain the durable pending state until its
+        // successor is recorded. Eligibility to retry is local to this pass; only
+        // reserve/intent (or another recorded settlement) clears the projected hold.
+        // Mutating the turn here made a read-only restart disagree while preparation awaited.
+        let releasedHold: string | undefined;
+        const currentHold = () => turn.held === releasedHold ? undefined : turn.held;
+        if (currentHold() === GROUP_DISCLOSURE_HOLD) { releasedHold = turn.held; }
         startAcknowledgement(turn);
         // int11 answers a status command and a too-long-input notice even while a
         // correction holds ordinary answers; the burst ordering hold keeps that exemption.
         if (blockedEarlier && turn.modelState !== 'uncertain' && !isStatusCommand(turn.text)
           && turn.noticeClass !== 'too-long-input' && Buffer.byteLength(turn.text) <= journal.view.limits.maxBytes) {
-          if (turn.held !== 'earlier turn pending')
+          if (currentHold() !== 'earlier turn pending')
             journal.append({ kind: 'hold', id: turn.id, reason: 'earlier turn pending', at: ports.now() });
           continue;
         }
@@ -8570,7 +8576,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // reply without spending a model call on input that cannot fit the envelope.
         if (Buffer.byteLength(turn.text) > journal.view.limits.maxBytes && !turn.noticeClass && !turn.reserved)
           journal.append({ kind: 'notice', id: turn.id, noticeClass: 'too-long-input', at: ports.now() });
-        if (turn.noticeClass === 'too-long-input' && turn.held) { delete turn.held; delete turn.heldSince; }
+        if (turn.noticeClass === 'too-long-input' && currentHold()) { releasedHold = turn.held; }
         // A correction is decided before its reply, so an uncertain send cannot
         // let a later answer use the old fact. Intake remains durable if the
         // capped summary path cannot decide it.
@@ -8592,47 +8598,46 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           for (let request = pendingMemory(); request && journal.view.summaryReservations.size > 0; request = pendingMemory())
             journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-uncertain', at: ports.now() });
           if (pendingMemory()) {
-            if (turn.held !== 'memory correction pending') journal.append({kind:'hold',id:turn.id,reason:'memory correction pending',at:ports.now()});
+            if (currentHold() !== 'memory correction pending') journal.append({kind:'hold',id:turn.id,reason:'memory correction pending',at:ports.now()});
             blockedEarlier = true;
             continue; // later eligible loss notices must still be reached
           }
-          if (turn.held === 'memory correction pending') { delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn); }
+          if (currentHold() === 'memory correction pending') { releasedHold = turn.held; }
 
         }
-        if (turn.held === 'memory correction pending' && (turn.noticeClass === 'too-long-input'
+        if (currentHold() === 'memory correction pending' && (turn.noticeClass === 'too-long-input'
           || journal.view.order.some(item => item.update > turn.update
             && Buffer.byteLength(item.text) > journal.view.limits.maxBytes)))
-          delete turn.held;
+          releasedHold = turn.held;
         // A settled request (decided or recorded undecided, e.g. across a restart) releases
         // its correction hold; a hold with no request behind it keeps int11's held notice.
-        if (!pendingMemory() && turn.held === 'memory correction pending' && correctionRequestBehind()) {
-          delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
+        if (!pendingMemory() && currentHold() === 'memory correction pending' && correctionRequestBehind()) {
+          releasedHold = turn.held;
         }
-        if (turn.held === 'earlier turn pending' && !blockedEarlier) { delete turn.held; delete turn.heldSince; }
+        if (currentHold() === 'earlier turn pending' && !blockedEarlier) { releasedHold = turn.held; }
         // A request settled undecided because its own span cannot be summarized: that preflight refusal concerns the
         // summary frontier, not this reply, whose packet is prepared on its own (an earlier turn held the same way was
         // already answered). Keeping it would leave the operator's message with no reply (Rule 15; Rule 95's open side).
         if (turn.memoryUndecided && turn.answer === undefined
-          && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable')) {
-          delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
+          && (currentHold() === 'summary oversized turn' || currentHold() === 'summary preflight unavailable')) {
+          releasedHold = turn.held;
         }
-        const priorHold = turn.held;
-        if (turn.held?.startsWith('summary unavailable:') || turn.held === 'prompt overflow' || turn.held === 'context overflow') {
+        if (currentHold()?.startsWith('summary unavailable:') || currentHold() === 'prompt overflow' || currentHold() === 'context overflow') {
           const key = heldFitKey();
           if (heldPrepared?.id === turn.id && heldPrepared.key === key && elapsed() - heldPrepared.at < HELD_REPREPARE_MS) {
             // Nothing that could make it fit has changed: only the summary pass may release it.
             await summarizeIfNeeded(true);
             if (heldFitKey() === key) break;
           } else if ('reason' in (await prepareRecall(() => preparedFor(turn)))) await summarizeIfNeeded(true);
-          delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
+          releasedHold = turn.held;
         }
         // Rules 2, 77, 95: older builds could hold an unavailable review before recording either a
         // reply intent or a holding notice. Resume only those silent holds through the ordinary bounded
         // send path; durable reservations prevent repeated paid checks and intents prevent duplicate sends.
-        const silentReviewHold = (turn.held === 'reply check unavailable' || turn.held === REPLY_CHECK_BUDGET_REASON)
+        const silentReviewHold = (currentHold() === 'reply check unavailable' || currentHold() === REPLY_CHECK_BUDGET_REASON)
           && turn.replyChecks?.at(-1)?.verdict === 'unavailable' && turn.intent === undefined
           && turn.heldNoticeIntent === undefined && turn.heldNoticeSent === undefined && turn.heldNoticeCoveredBy === undefined;
-        if (turn.held && !silentReviewHold) continue;
+        if (currentHold() && !silentReviewHold) continue;
         // The minimal path already owns this stop (confirmation sent or latched): never a second one.
         if (turn.limited && isStopCommand(turn.text)) continue;
         gate();
@@ -8707,8 +8712,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           } else if ('reason' in selected) {
             const reason = journal.view.order.some(item => item.sent && item.update < turn.update)
               ? `summary unavailable: ${selected.reason}` : selected.reason;
-            if (priorHold !== reason) journal.append({kind:'hold',id:turn.id,reason,at:ports.now()});
-            else { turn.held = reason; journal.view.heldTurns.add(turn); }
+            if (turn.held !== reason) journal.append({kind:'hold',id:turn.id,reason,at:ports.now()});
+            // The unchanged hold is already durable; do not rewrite it or reset its age.
             heldPrepared = { id: turn.id, key: heldFitKey(), at: elapsed() };
             break;
           }

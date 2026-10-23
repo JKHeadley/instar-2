@@ -1,0 +1,13 @@
+{
+  "source": "lanes/carryover-refresh-1022-evidence.json, sanitized operational capture 2026-10-22T00:29:18.811271-07:00; no journal or chat content",
+  "revision": "588332d9d0839cd504bee2819e297cd6222a2ef9",
+  "restore": {
+    "completedAt": 1792632620197,
+    "observed": { "sections": 92, "cursor": 969390645, "restored": true, "differing": "turns" }
+  },
+  "drain": {
+    "completedAt": 1792653564752,
+    "observed": { "unfinished": 2, "oldestUnfinishedAgeMs": 988414267, "backlogOverdue": true, "inhibition": null }
+  },
+  "limitation": "The capture does not name the two overdue update IDs or differing turn fields. Tests replay this operational shape with separately recorded test-origin inputs; they do not claim to identify or settle those two live turns."
+}
