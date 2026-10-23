@@ -22,7 +22,7 @@ function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | '
   const launches: ConversationWorker[] = [], delivered: ConversationDelivery[] = [];
   const edges: (SessionWorkEdge | SessionWorkEdgeClose)[] = [], admissions: SessionWorkEdge[] = [], closed: string[] = [];
   const adapter: HarnessAdapterPort<2> = {
-    describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false }),
+    describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false, pendingRestore: true }),
     launch: async input => { const worker = { launch: `process-${launches.length}`, incarnation: input.incarnation, claim: input.claim };
       expect(edges[0]?.type).toBe('SessionWorkEdge'); launches.push(worker); dead = false; return worker; },
     deliver: async input => {
@@ -1136,4 +1136,153 @@ it('replays the failed email turn: missing result stays uncertain, and the actua
   expect(prompt).toContain('Put that honest answer in the requested result file');
   expect(prompt).toContain('never invent account contents or completed actions');
   await f.port.close();
+});
+
+it('resumes a lost worker once through exact pending restoration and returns recorded work without another intake', async () => {
+  const captured = JSON.parse(readFileSync(new URL('../preview/fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  const f = fixture(); Object.assign(f.config, { contextRecoveryAllowed: () => true });
+  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  f.answer(captured.workOutput);
+  const observe = f.adapter.observe, launch = f.adapter.launch;
+  let lost = false;
+  f.adapter.observe = async input => {
+    if (input.delivery && !lost) { lost = true; f.calls(2); return { observations: [{ kind: 'exit', evidence: 'exact-worker-gone' }], cursor: 0, complete: true }; }
+    return observe(input);
+  };
+  f.adapter.launch = async input => {
+    if (input.restore) {
+      expect(f.counts()).toEqual({ stops: 1, releases: 1 });
+      expect(input.restore).toEqual({ operation: captured.workCall, digest: f.delivered[0]!.digest, deadline: 3000 });
+      expect(f.state().inputs[0]?.workerRecovery).toBe('restoring');
+    }
+    return launch(input);
+  };
+  const request = f.request(captured.workCall);
+  const result = await f.port.run(request);
+  expect(result).toMatchObject({ state: 'complete', text: captured.workOutput });
+  expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(1);
+  expect(f.admissions.map(edge => edge.budget.calls)).toEqual([6, 4]);
+  expect(f.state().deadline).toBe(3000);
+  expect(f.state().inputs[0]?.workerRecovery).toBe('continued');
+  expect(await f.port.run(request)).toEqual(result);
+  expect((await f.restart().collect(request.operation))?.outcome).toEqual(result);
+  expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(1);
+});
+
+it.each(['live', 'gap', 'paused', 'child', 'unknown-effects', 'uncertain-effect', 'tool-ran', 'unknown-tools',
+  'unknown-send', 'unknown-calls', 'calls', 'deadline', 'watchdog', 'stop', 'withdrawn', 'superseded',
+  'unsupported', 'second-loss', 'stop-failed', 'release-failed', 'capacity', 'stop-during-admission', 'restore-threw'] as const)(
+  'does not revive unsafe worker-loss neighbor: %s', async mode => {
+    const f = fixture(); Object.assign(f.config, { contextRecoveryAllowed: () => mode !== 'unknown-send' });
+    if (mode === 'unsupported') f.adapter.describe = () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: true });
+    let afterExit = false;
+    f.config.io.admissionState = () => ({ refused: false, openDelegations: afterExit && mode === 'child' ? [f.admissions[0]!] : [],
+      ...(mode === 'unknown-effects' ? {} : { uncertainEffects: afterExit && mode === 'uncertain-effect' ? 1 : 0 }),
+      ...(mode === 'unknown-tools' ? {} : { toolPreparations: afterExit && mode === 'tool-ran' ? 1 : 0 }) });
+    f.adapter.observe = async input => {
+      if (!input.delivery) return { observations: [], cursor: 0, complete: true };
+      afterExit = true;
+      if (mode === 'unknown-calls') f.calls(null);
+      if (mode === 'calls') f.calls(6);
+      if (mode === 'deadline') f.advance(2000);
+      if (mode === 'stop') f.stop();
+      if (mode === 'withdrawn') f.authorize(false);
+      if (mode === 'superseded') f.grant('different-role');
+      return { observations: mode === 'live' ? [] : [{ kind: mode === 'paused' ? 'paused' : 'exit', evidence: 'loss-neighbor',
+        ...(mode === 'watchdog' ? { safetyDeadline: 3000 } : {}) }], cursor: input.cursor, complete: mode !== 'gap' };
+    };
+    if (mode === 'stop-failed') f.stopFailure();
+    if (mode === 'release-failed') f.releaseFailure();
+    const admit = f.config.resources.admit;
+    Object.assign(f.config.resources, { admit: async () => {
+      if (afterExit && mode === 'capacity') return null;
+      if (afterExit && mode === 'stop-during-admission') f.stop();
+      return admit();
+    } });
+    const launch = f.adapter.launch;
+    f.adapter.launch = async input => {
+      if (input.restore && mode === 'restore-threw') throw Error('uncertain launch');
+      return launch(input);
+    };
+    const result = await f.port.run(f.request('lost'));
+    expect(result.state).toBe('uncertain');
+    expect(f.delivered).toHaveLength(1);
+    expect(f.launches).toHaveLength(mode === 'second-loss' ? 2 : 1);
+    const restored = f.restart();
+    if (mode === 'stop-failed') await expect(restored.collect('lost')).rejects.toThrow('session stop unconfirmed');
+    else expect((await restored.collect('lost'))?.outcome).toEqual(result);
+    expect(f.launches).toHaveLength(mode === 'second-loss' ? 2 : 1);
+  });
+
+it.each(capturedShapes.otherShapes)('worker-loss restoration preserves recorded $kind ($id) without inferring success from content', async sample => {
+  const f = fixture(); Object.assign(f.config, { contextRecoveryAllowed: () => true });
+  f.config.io.admissionState = () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+  f.answer(sample.raw);
+  const observe = f.adapter.observe;
+  let lost = false;
+  f.adapter.observe = async input => {
+    if (input.delivery && !lost) { lost = true; return { observations: [{ kind: 'exit', evidence: 'exact-worker-gone' }], cursor: 0, complete: true }; }
+    return observe(input);
+  };
+  const result = await f.port.run(preparedRequest(sample.id, JSON.stringify({ recorded: sample.raw })));
+  expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(1);
+  expect(result.state).toBe(sample.raw.trim() ? 'complete' : 'uncertain');
+  if (sample.raw.trim()) expect(result).toHaveProperty('text', sample.raw);
+  expect(f.state().inputs[0]!.request.context).toBe(JSON.stringify({ recorded: sample.raw }));
+  await f.port.close();
+});
+
+it('the shipped driver and adapter restore the exact accepted recorded task after process loss', async () => {
+  const { createSessionConversationAdapter } = await import('../../src/assembly/conversation-harness-adapter.js');
+  const { createProductionSessionDriver } = await import('../../src/assembly/production-session-driver.js');
+  const captured = JSON.parse(readFileSync(new URL('../preview/fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8'));
+  const f = fixture(); let now = 1000, live = false, path = '', entered = 0, result: string | null = null;
+  let journal: import('../../src/assembly/production-session-driver.js').SessionJournal = { sessions: [], deliveries: [], resumes: {} };
+  const submitted: string[] = [], receipts: { kind: 'turn-closed'; sessionId: string; at: number; receiptId: string }[] = [];
+  const physical: import('../../src/assembly/production-session-driver.js').SessionIO = {
+    exclusive: run => run(), load: () => journal, save: next => { journal = structuredClone(next); },
+    sleep: ms => { now += ms; }, armDeadline: () => {}, transcriptExists: () => false, readInbox: () => receipts,
+    tmux: args => {
+      if (args[0] === 'new-session') live = true;
+      if (args[0] === 'has-session') return { code: live ? 0 : 1, stdout: '' };
+      if (args[0] === 'display-message') return { code: 0, stdout: '321:1000' };
+      if (args[0] === 'capture-pane') return { code: 0, stdout: '❯ ' };
+      if (args[0] === 'kill-session') live = false;
+      if (args[0] === 'send-keys' && args.includes('-l')) submitted.push(args.at(-1)!);
+      if (args[0] === 'send-keys' && args.includes('Enter')) {
+        entered++;
+        if (entered === 1) live = false; // Physical loss after accepted input, before any tool.
+        else {
+          result = captured.workOutput;
+          receipts.push({ kind: 'turn-closed', sessionId: '12345678-1234-1234-1234-123456789abc', at: now, receiptId: 'restored-turn' });
+        }
+      }
+      return { code: 0, stdout: '' };
+    },
+  };
+  const io = { ...f.config.io, clearResult: (next: string) => { path = next; result = null; },
+    readResult: (file: string) => file === path ? result : null, modelCalls: () => entered, wait: async (ms: number) => { now += ms; },
+    admissionState: () => ({ refused: false, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] }) };
+  const port = value(createConversationSessionPort({ ...f.config, io, now: () => now, contextRecoveryAllowed: () => true,
+    createAdapter: resolveDelivery => createSessionConversationAdapter({ io, resolveDelivery,
+      createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
+        framework: 'claude-code', executable: '/fake', cwd: '/scope', home: '/h', configHome: '/h', context: f.config.context,
+        io: physical, now: () => now, stopped: () => false, resolveIntake, maxSessions: 1, turnDeadlineMs: 2000,
+        readyTimeoutMs: 1000, protectedSessions: [], requireTurnHook: true, hookScript: '/installed/stop.mjs', inboxDirectory: '/inbox',
+        continuation: pending => {
+          const original = resolveDelivery(pending.operation)!;
+          expect(pending.pendingDigest).toBe(original.digest);
+          return { text: original.text, source: original.operation };
+        },
+        toolAdmission: { command: () => '/installed/tool-hook', timeoutSeconds: 2 },
+        modelGate: claim => `http://127.0.0.1:1234/${'a'.repeat(32)}/${claim}` }) }) }));
+  const request = f.request(captured.workCall);
+  const outcome = await port.run(request);
+  expect(outcome).toMatchObject({ state: 'complete', text: captured.workOutput });
+  expect(journal.sessions).toHaveLength(2); expect(journal.deliveries).toHaveLength(1);
+  expect(journal.sessions[1]!.continuation).toMatchObject({ state: 'completed', pending: { operation: request.operation, deadline: 3000 } });
+  expect(submitted).toHaveLength(2); expect(submitted[1]).toBe(submitted[0]);
+  expect(f.state().spent).toBe(2); expect(f.admissions.map(edge => edge.budget.calls)).toEqual([6, 5]);
+  expect(await port.run(request)).toEqual(outcome); expect(entered).toBe(2);
+  await port.close(); expect(live).toBe(false);
 });

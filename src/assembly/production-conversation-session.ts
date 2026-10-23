@@ -37,6 +37,8 @@ export interface ConversationInput {
   readonly batch?: readonly string[];
   readonly effectsAtDispatch?: number;
   readonly contextRecovery?: 'compacting' | 'restoring' | 'continued';
+  /** One pending-turn restoration after a positively observed worker exit; never replay permission after a host crash. */
+  readonly workerRecovery?: 'restoring' | 'continued';
 }
 export interface IdleCleanupState {
   readonly candidate: Readonly<{ fingerprint: string; firstAt: number; lastAt: number;
@@ -436,12 +438,33 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           ensure(admission !== null, 'conversation allowance refused or unreadable');
           const batch = await adapter.observe({ ...state.worker!, delivery, cursor: row(id).cursor, limit: 16 });
           ensure(batch.complete && batch.cursor >= row(id).cursor, 'observation gap requires reconciliation');
+          const exited = batch.observations.find(event => event.kind === 'exit');
+          if (exited?.kind === 'exit') {
+            if (exited.safetyDeadline !== undefined) halt('deadline', exited.safetyDeadline);
+            guard();
+            const recovery = config.io.admissionState(state.claim!);
+            ensure(adapter.describe().pendingRestore === true && !row(id).workerRecovery && !row(id).contextRecovery && ids.length === 1
+              && !batch.observations.some(event => event.kind === 'paused')
+              && recovery !== null && !recovery.refused && recovery.uncertainEffects === 0
+              && Number.isSafeInteger(row(id).effectsAtDispatch) && recovery.toolPreparations === row(id).effectsAtDispatch
+              && recovery.openDelegations.length === 0 && config.contextRecoveryAllowed?.() === true
+              && calls() < config.maxCalls && config.now() < state.deadline,
+            'worker recovery requires one exact exit, known sends, no tool effects or child work, and remaining allowance');
+            // 1.x resume-queue/liveness discipline, through the existing adapter: keep the
+            // accepted input and its liability; record the attempt before replacing custody.
+            const deadline = state.deadline;
+            updateBatch({ workerRecovery: 'restoring' });
+            ensure(await replace(request, { operation: id, digest: delivery.digest, deadline }), 'worker replacement admission unavailable');
+            delivery = { ...delivery, ...state.worker! };
+            updateBatch({ delivery, workerRecovery: 'continued', cursor: 0 });
+            continue;
+          }
           const pause = batch.observations.find(event => event.kind === 'paused');
           if (pause?.kind === 'paused' && (pause.reason === 'context-too-long' || pause.reason === 'context-wedge')) {
             guard();
             const recoveryAdmission = config.io.admissionState(state.claim!);
             ensure(recoveryAdmission !== null && !recoveryAdmission.refused, 'context recovery admission unavailable');
-            ensure(!row(id).contextRecovery && ids.length === 1, 'context recovery already attempted or batched input requires reconciliation');
+            ensure(!row(id).contextRecovery && !row(id).workerRecovery && ids.length === 1, 'context recovery already attempted or batched input requires reconciliation');
             ensure(config.contextRecoveryAllowed?.() === true && recoveryAdmission.uncertainEffects === 0
               && Number.isSafeInteger(row(id).effectsAtDispatch) && recoveryAdmission.toolPreparations === row(id).effectsAtDispatch
               && recoveryAdmission.openDelegations.length === 0 && calls() < config.maxCalls,

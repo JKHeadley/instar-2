@@ -133,3 +133,13 @@ it('the resource owner admits a session step, holds its real process tree, and r
   // A stopped launch is refused before admission.
   expect(await owner.hold('maintenance', { timeout: 1000, stopped: () => true })).toBe(null);
 }, 30_000);
+
+it('a failed physical probe stays unknown while a completed negative probe stays negative', () => {
+  const w = world();
+  const settings = { stateDirectory: join(w.root, 'probe-state'), home: w.root, configHome: w.login, cwd: w.scope };
+  const missing = createProductionSessionIO({ ...settings, tmuxPath: join(w.root, 'missing-tmux') });
+  expect(() => missing.tmux(['has-session', '-t', '=exact:'])).toThrow('outcome unknown');
+  const negative = createProductionSessionIO({ ...settings, tmuxPath: '/usr/bin/false' });
+  expect(negative.tmux(['has-session', '-t', '=exact:']).code).toBe(1);
+  expect(w.io.tmux(['has-session', '-t', '=exact:']).code).toBe(0);
+});

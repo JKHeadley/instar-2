@@ -69,6 +69,22 @@ Its tests include the real production session driver over simulated physical I/O
 not a live harness or Telegram proof. The journal launcher wiring below is step 1;
 foundation intake/effect/judgment integration remains in the later plan steps.
 
+If the worker exits during a single accepted turn, the owner can restore that exact
+input once through an adapter advertising `pendingRestore`. It records the attempt
+before replacement and retains the original deadline and remaining call allowance.
+This requires affirmative evidence of no tool preparations since dispatch, no
+uncertain effects or sends, and no open child work. Stop, withdrawn authority,
+exhausted allowance, a second loss, and an indeterminate process probe prevent
+restoration. A host crash during restoration retains uncertainty rather than
+repeating the attempt. The current terminal adapter supports this path; adapters
+without that capability retain the unresolved input. Native session resume alone
+does not establish pending-turn restoration support.
+
+In everyday terms: if a worker disappears before taking an action, Instar can pick
+up its question once without asking again. It cannot repeat an action whose result
+is unknown. This slice has recorded-output replay and simulated-process evidence;
+that evidence does not establish a live unattended worker-loss outcome.
+
 An admitted session at an unclosed idle quota wall or captured terminal server throttle retains its accepted input and original
 turn deadline while the driver waits 30 seconds, then submits at most one neutral
 continuation of the same turn. The existing journal records intent before terminal

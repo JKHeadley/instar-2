@@ -315,7 +315,11 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
   const lockedBoundary = <T>(name: string, input: unknown, perform: () => T): Result<T> =>
     boundary(name, input, config.context, () => config.io.exclusive(perform));
   const capture = (name: string) => run(['capture-pane', '-p', '-t', literalTarget(name), '-S', '-80']);
-  const alive = (name: string) => config.io.tmux(['has-session', '-t', literalTarget(name)]).code === 0;
+  const alive = (name: string) => {
+    const result = config.io.tmux(['has-session', '-t', literalTarget(name)]);
+    ensure(result.code === 0 || result.code === 1, 'session liveness probe indeterminate');
+    return result.code === 0;
+  };
   const checkStop = () => {
     if (!config.stopped()) return;
     reconcileReservations();

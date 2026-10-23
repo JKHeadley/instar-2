@@ -255,7 +255,9 @@ export type HarnessNormalizedObservation =
   | Readonly<{ kind: 'turn-end'; delivery: string; state: 'completed' | 'no-reply' | 'uncertain' }>
   | Readonly<{ kind: 'exit' | 'paused'; evidence: string; reason?: string; safetyDeadline?: number }>;
 interface ContinuingHarnessAdapterPort {
-  describe(): Readonly<{ version: 2; subsequentInput: true; output: 'reply-and-turn-end'; resume: boolean }>;
+  describe(): Readonly<{ version: 2; subsequentInput: true; output: 'reply-and-turn-end'; resume: boolean;
+    /** Restores an exact accepted pending turn at launch, under its original deadline. */
+    pendingRestore?: true }>;
   launch(input: Readonly<{ operation: string; claim: string; artifact: string; incarnation: string; workingScope: string; restore?: { operation: string; digest: string; deadline: number } }>): Promise<HarnessWorkerHandle>;
   deliver(input: HarnessInputDelivery): Promise<Readonly<{ state: 'accepted' | 'busy-not-dispatched' | 'refused-not-dispatched' | 'uncertain'; evidence: string }>>;
   observe(input: HarnessWorkerHandle & Readonly<{ delivery: HarnessInputDelivery | null; cursor: number; limit: number }>): Promise<Readonly<{

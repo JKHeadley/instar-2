@@ -20,7 +20,7 @@ export function createSessionConversationAdapter(config: Readonly<{
     return input.text;
   });
   return {
-    describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false }),
+    describe: () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false, pendingRestore: true }),
     launch: async input => {
       const launch = take(driver.launch({ ...input, handles: [] }));
       // Pending-turn recovery already contains the accepted input. Ordinary restoration

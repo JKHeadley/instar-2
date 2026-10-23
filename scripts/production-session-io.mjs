@@ -87,7 +87,8 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
     },
     tmux(args) {
       const result = spawnSync(tmuxPath, args, { cwd, env, encoding: 'utf8', timeout: 10_000, maxBuffer: 1024 * 1024 });
-      return { code: result.status ?? 1, stdout: result.stdout ?? '' };
+      if (result.error || result.signal || result.status === null) throw Error('tmux observation or command did not finish; outcome unknown');
+      return { code: result.status, stdout: result.stdout ?? '' };
     },
     sleep(ms) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); },
     load() { return withHalts(existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : base); },

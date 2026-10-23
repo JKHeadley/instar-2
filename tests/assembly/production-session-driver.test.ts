@@ -1518,3 +1518,14 @@ it('replays recorded summary, uncertain, Jev, review and empty reply shapes besi
     expect(f.sends).toBe(sends);
   }
 });
+
+it.each([2, 124, 137])('an indeterminate liveness command (%s) is not a worker exit or restoration permission', code => {
+  const f = fixture(), identity = f.launch(); value(f.deliver(identity));
+  const tmux = f.config.io.tmux;
+  f.config.io.tmux = args => args[0] === 'has-session' ? { code, stdout: '' } : tmux(args);
+  refused(f.driver.observe({ operation: 'deliver', processIdentity: identity }), 'liveness probe indeterminate');
+  const restore = { operation: 'deliver', digest: hash('hello'), deadline: 1900 };
+  refused(f.driver.launch({ operation: 'replacement', claim: 'replacement', artifact: 'sha256:test', incarnation: 'next', workingScope: '/work', handles: [], restore }), 'liveness probe indeterminate');
+  expect(f.calls.filter(call => call[0] === 'new-session')).toHaveLength(1);
+  expect(f.calls.filter(call => call[0] === 'kill-session')).toHaveLength(0);
+});
