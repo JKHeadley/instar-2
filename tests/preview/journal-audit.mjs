@@ -101,8 +101,10 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   };
   const body = value => JSON.stringify(value ?? {});
   const channelRef = id => `sha256:${createHash('sha256').update(id).digest('hex')}`;
+  // A summary's history frontier is not its memory frontier: later retirement was already
+  // known when the packet was reserved. Reconstruct that exact projection from its count.
   const activeChanges = view.memory.slice(0, memoryCount)
-    .filter(change => (view.turns.get(change.trigger)?.update ?? Infinity) < turn.update);
+    .filter(change => callKind === 'summary' || (view.turns.get(change.trigger)?.update ?? Infinity) < turn.update);
   const predecessor = carriedEntries(view);
   const projection = { ...view, memory: activeChanges };
   const recordedSummaries = view.summaries.slice(0, summaryCount);
@@ -298,7 +300,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   if (packet.memoryRequest !== undefined) {
     const request = view.turns.get(packet.memoryRequest?.id);
     if (!request?.accepted || request.update > turn.update
-      || packet.memoryRequest.message !== clean(request.text)) fault('memory-request-source', 'memoryRequest');
+      || packet.memoryRequest.message !== clean(request.text, request.id)) fault('memory-request-source', 'memoryRequest');
     if (request) add('memory-request', 'memoryRequest', [{ kind: 'operator-turn', id: request.id, update: request.update }]);
   }
   for (const [n, item] of list(packet.openCommitments, 'openCommitments').entries()) {
@@ -328,7 +330,9 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     const at = `corrections[${n}]`, found = source(item?.source, at);
     if (found) add('reply-check-note', at, [{ kind: 'source-turn', id: found.id, update: found.update }]);
   }
-  const expectedPreferences = [...activePreferences.values()].map(item => ({ text: clean(item.quote), source: item.source }));
+  const expectedPreferences = [...activePreferences.values()]
+    .filter(item => (view.turns.get(item.source)?.update ?? Infinity) < turn.update)
+    .map(item => ({ text: clean(item.quote, item.source), source: item.source }));
   const preferences = list(packet.preferences, 'preferences');
   if (preferences.length !== expectedPreferences.length || preferences.some((item, n) =>
     item?.source !== expectedPreferences[n]?.source || item?.text !== expectedPreferences[n]?.text))
@@ -349,9 +353,9 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   const packetMemory = list(packet.memory, 'memory');
   for (const [n, change] of activeChanges.entries()) {
     const trigger = view.turns.get(change.trigger);
-    if (!trigger || trigger.update >= turn.update || change.mode === 'prefer' || change.mode === 'remember') continue;
+    if (!trigger || change.mode === 'prefer' || change.mode === 'remember') continue;
     const superseded = activeChanges.slice(n + 1).some(next => supersedesCorrection(change, next));
-    if (!superseded && !packetMemory.some(item => item?.source === publicSource(change.source) && item?.trigger === change.trigger))
+    if (trigger.update < turn.update && !superseded && !packetMemory.some(item => item?.source === publicSource(change.source) && item?.trigger === change.trigger))
       fault('memory-change-unrepresented', `memory-change[${n}]`);
     if (offeredFields.some(({ value, source }) => hasClaim(value, change.quote)
       && projectMemoryClause(projection, change.quote, source) !== change.quote))

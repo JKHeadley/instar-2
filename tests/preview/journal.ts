@@ -7538,7 +7538,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ? { name: selectedName, from: speakerOf(previous), date: dated(previous),
         ...(previous.thread === current ? {} : { conversation: packetConversation(previous.thread) }),
         message: previousMessage } : undefined;
+    // Rules 33/93: render and select from the current memory projection, including later
+    // retirement. A summary bounds source eligibility, never rolls back an operator's forget.
     const preferences = preferenceState();
+    const selectedPreferences = [...preferences.active.values()].filter(item => !labelAll
+      || (journal.view.turns.get(item.source)?.update ?? Infinity) <= through);
     const reference = awayFor === undefined ? undefined : referenceFor(awayFor);
     const now = ports.now(), zone = ports.timeZone ?? 'America/Los_Angeles';
     const local = localParts(now, zone), resume = awayFor && resumeGap(awayFor);
@@ -7698,7 +7702,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         ...(selectedDated.window ? { datedScope: selectedDated.window } : {}) } : {}),
 
       ...(datedPending.length ? { datedPending, moreDatedPending: pendingDates.length - datedPending.length } : {}),
-      ...(preferences.active.size ? { preferences: [...preferences.active.values()].map(item => ({ text: clean(redact(item.quote).text, false, item.source), source: item.source })) } : {}),
+      ...(selectedPreferences.length ? { preferences: selectedPreferences.map(item => ({ text: clean(redact(item.quote).text, false, item.source), source: item.source })) } : {}),
       ...(directiveItems.length ? { directives: directiveItems } : {}),
       ...(blockerItems.length ? { blockers: blockerItems } : {}),
       ...(inventory ? { inventory: { total: inventory.total, shown: inventory.items.length,
@@ -11059,7 +11063,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const memoryCandidates = [...(journal.view.groupCarry ? groupCarryPacket(journal.view.groupCarry, trigger?.text ?? '', ports.now(), journal.view.limits.maxBytes, journal.view).entries
           .filter(item => item.kind === 'recall' || item.kind === 'preference' || item.kind === 'correction')
           .map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: item.text, reply: '' })) : []), ...(replaced ? [{ id: replaced.id, ...forumSource(replaced.id), sourceKind: 'operator-stated' as MemorySourceKind, message: redact(replaced.text).text,
-          reply: replyFor(replaced) }] : []), ...[...activePreferences(), ...activeFacts()].map(item => ({ id: item.source, ...forumSource(item.source), sourceKind: 'operator-stated' as MemorySourceKind, message: redact(item.quote).text, reply: '' })),
+          reply: replyFor(replaced) }] : []), ...[...activePreferences(), ...activeFacts()]
+          .filter(item => (journal.view.turns.get(item.source)?.update ?? Infinity) <= through)
+          .map(item => ({ id: item.source, ...forumSource(item.source), sourceKind: 'operator-stated' as MemorySourceKind, message: redact(item.quote).text, reply: '' })),
           ...[...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, ...forumSource(older[index]!.id), sourceKind: 'operator-stated' as MemorySourceKind, message: clean(redact(older[index]!.text).text, true, older[index]!.id),
           reply: replyFor(older[index]!) })).filter(item => item.id !== replaced?.id), ...(trigger ? channelCandidates(trigger, summaryFor(trigger.update)?.text) : [])];
         const unanswered = overCapRetry ? [] : unreviewedQuestions(through).slice(0, PREVIEW_QUESTION_LIMIT);
