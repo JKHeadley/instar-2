@@ -25,6 +25,8 @@ Prompt finding: 4106b49fff07 | protocol-literal | Existing no-tools disclosure a
 Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory status wording asserted by the consumer; unchanged.
 Prompt finding: e8708c7fea24 | protocol-literal | Existing source-provenance guidance asserted by the consumer; unchanged.
 
+Register replay: Regenerated all seven views from merged source 16135ff553932b21f80247aa741517e8049c24b2; generation sha256:93cc4a8361e85515512d9f5ed25d5eea929ea5e568f664ac1db1dc83b4835537, 293 entries, 117 rules, 34 terms.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge, preserve the candidate projection that already satisfies both branches, and regenerate derived outputs. No new machinery. Existing authority, durable intake, stop, spend and send uniqueness guards remain intact; no new unattended capability or live deployment is claimed.
