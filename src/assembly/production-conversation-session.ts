@@ -37,6 +37,7 @@ export interface ConversationInput {
   readonly batch?: readonly string[];
   readonly effectsAtDispatch?: number;
   readonly contextRecovery?: 'compacting' | 'restoring' | 'continued';
+  readonly workerRecovery?: 'restoring' | 'continued';
 }
 export interface IdleCleanupState {
   readonly candidate: Readonly<{ fingerprint: string; firstAt: number; lastAt: number;
@@ -436,12 +437,37 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
           ensure(admission !== null, 'conversation allowance refused or unreadable');
           const batch = await adapter.observe({ ...state.worker!, delivery, cursor: row(id).cursor, limit: 16 });
           ensure(batch.complete && batch.cursor >= row(id).cursor, 'observation gap requires reconciliation');
+          const exit = batch.observations.find(event => event.kind === 'exit');
+          if (exit?.kind === 'exit') {
+            if (exit.safetyDeadline !== undefined) halt('deadline', exit.safetyDeadline);
+            guard();
+            ensure(config.now() < state.deadline, 'lost worker deadline exhausted; input retained');
+            ensure(!row(id).workerRecovery && !row(id).contextRecovery && ids.length === 1,
+              'lost worker recovery already attempted or batched input requires reconciliation');
+            const recoveryAdmission = config.io.admissionState(state.claim!);
+            ensure(recoveryAdmission !== null && !recoveryAdmission.refused, 'lost worker admission unavailable; input retained');
+            ensure(config.contextRecoveryAllowed?.() === true, 'lost worker has unknown outward sends; no automatic replay');
+            ensure(recoveryAdmission.uncertainEffects === 0, 'lost worker has unknown tool effects; no automatic replay');
+            ensure(Number.isSafeInteger(row(id).effectsAtDispatch) && recoveryAdmission.toolPreparations === row(id).effectsAtDispatch,
+              'lost worker prepared tools since dispatch; reconcile their outcomes before continuing');
+            ensure(recoveryAdmission.openDelegations.length === 0, 'lost worker has pending child work; no duplicate revival');
+            ensure(calls() < config.maxCalls, 'lost worker allowance exhausted; input retained');
+            // 1.x ResumeQueue/AutonomousLivenessReconciler: durable intent, fresh limits,
+            // one existing respawn funnel. PendingInjectStore custody is preserved;
+            // its historical at-least-once replay is not permission for tool effects.
+            updateBatch({ workerRecovery: 'restoring' });
+            ensure(await replace(request, { operation: id, digest: delivery.digest, deadline: state.deadline }),
+              'lost worker replacement admission unavailable; input retained');
+            delivery = { ...delivery, ...state.worker! };
+            updateBatch({ delivery, workerRecovery: 'continued', cursor: 0 });
+            continue;
+          }
           const pause = batch.observations.find(event => event.kind === 'paused');
           if (pause?.kind === 'paused' && (pause.reason === 'context-too-long' || pause.reason === 'context-wedge')) {
             guard();
             const recoveryAdmission = config.io.admissionState(state.claim!);
             ensure(recoveryAdmission !== null && !recoveryAdmission.refused, 'context recovery admission unavailable');
-            ensure(!row(id).contextRecovery && ids.length === 1, 'context recovery already attempted or batched input requires reconciliation');
+            ensure(!row(id).contextRecovery && !row(id).workerRecovery && ids.length === 1, 'context recovery already attempted or batched input requires reconciliation');
             ensure(config.contextRecoveryAllowed?.() === true && recoveryAdmission.uncertainEffects === 0
               && Number.isSafeInteger(row(id).effectsAtDispatch) && recoveryAdmission.toolPreparations === row(id).effectsAtDispatch
               && recoveryAdmission.openDelegations.length === 0 && calls() < config.maxCalls,
