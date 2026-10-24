@@ -1,0 +1,25 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.test-copy.makeTestCopy",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "compacts",
+      "holdsAgentMemory": "yes",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "A test copy is a new preview journal root on this machine, made once from a read of the source journal's bytes; it then grows and compacts as that journal does. The source root is never written."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      2,
+      7,
+      32,
+      35
+    ],
+    "holds": []
+  }
+]
