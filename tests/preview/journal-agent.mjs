@@ -2601,7 +2601,8 @@ async function main() {
         effects: createToolEffectOwner({ decide: (tool, input, parent) => conversationSession && sessionConnectors.has(parent.child)
           ? admitSessionConnector({ tool, input, config: admissionConfig(), mcp: readRootMcp(root), enabled: accountActions,
             now: wallNow(), decide: admitToolCallEffect })
-          : admitToolCallEffect(tool, input, admissionConfig(), wallNow()),
+          : admitToolCallEffect(tool, input, { ...admissionConfig(),
+            ...(sessionConnectors.has(parent.child) ? { mcpReads: readRootMcp(root)?.reads ?? [] } : {}) }, wallNow()),
           append: appendWork, stopped: gateStopped, now: wallNow, prepared: identity => (journal.view.toolEffects ?? []).includes(identity) }) });
     }
     if (sessionSetup !== null) {
@@ -2647,7 +2648,7 @@ async function main() {
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
             // A hook invocation is bounded independently of the four-hour conversation lifetime.
             timeoutSeconds: Math.min(3600, Math.ceil(sessionLimits.deadlineMs / 1000)) }, modelGate: claim => gate.base(claim),
-          ...(conversationSession ? { connectors: claim => sessionConnectors.get(claim)?.launch() } : {}),
+          connectors: claim => sessionConnectors.get(claim)?.launch(),
           framework, executable: binding.entry().profile.executable, cwd: project, home: binding.entry().profile.home, configHome: binding.entry().profile.configDirectory,
           model: required(options, 'model'), context, io: { ...binding.physical(), transcriptExists: (...args) => (!handoff || handoff.resumeAllowed) && binding.physical().transcriptExists(...args) }, now: wallNow, stopped: binding.stopped, resolveIntake,
           observeActivity: observation => {
@@ -2719,7 +2720,7 @@ async function main() {
               harnessSessionAdmission(root, identity.user);
               if (conversationSession) { installLifecycleHook(harnessHookPath()); grantVolume(binding.physical().inboxDirectory, identity.user, identity.runner); }
             }
-            const mcp = conversationSession ? readRootMcp(root) : null;
+            const mcp = readRootMcp(root);
             if (conversationSession) sessionMcpDigest = mcp?.digest ?? null;
             const state = prepareSessionAdmission({ mcpReads: mcp?.reads ?? [], base: admissionBase, claim, workspace: project, maxCalls: edge.budget.calls,
               gate: gate.base(claim), ...admissionConfig(), ...(identity ? { harness: { user: identity.user, runner: identity.runner } } : {}) });
@@ -2740,7 +2741,8 @@ async function main() {
             }
             stepEgress.set(claim, (await attachEgress({ stateDirectory: state, ...(privateDirectory ? { privateDirectory } : {}), scratch: tmp,
               home: join(tmp, 'home') }, undefined, networkToolReads(), { check: heldVerdict(heldSecrets), span: () => heldSpan(heldSecrets) })).proxy);
-            if (conversationSession) {
+            {
+              // Every tool-using session receives the same reviewed root connector set.
               const previous = sessionConnectors.get(claim);
               if (previous) await previous.close();
               sessionConnectors.set(claim, await prepareSessionConnectors({ mcp,
