@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { appendGroupCarry, validCarriedMemory } from './group-carry.js';
-import { UNKNOWN_SEND_NOTICE, createJournalWorker, GROUP_DISCLOSURE_HOLD, GROUP_DISCLOSURE_HOLD_NOTICE, openPreviewJournal, openRequests, ModelDisclosureRefused, createModelLaunchBoundary, type JournalRecord } from './journal-test-worker.js';
+import { UNKNOWN_SEND_NOTICE, createJournalWorker, ModelPending, GROUP_DISCLOSURE_HOLD, GROUP_DISCLOSURE_HOLD_NOTICE, openPreviewJournal, openRequests, ModelDisclosureRefused, createModelLaunchBoundary, type JournalRecord } from './journal-test-worker.js';
 import { key, scope, permissionFor } from './group-carry-fixture.js';
 
 const dirs: string[] = [];
@@ -442,4 +442,25 @@ it('carries a daily series after dispatch without repeating that day, then resum
   group.now += 86400_000; await worker.sendRequested();
   expect(pushes(group.sent)).toHaveLength(2);
   source.close(); destination.close();
+});
+
+// limit-notice-1020 (probe-disclosure-1020 diagnosis): turn 969390627 was reserved, its call queued in host
+// custody for want of login capacity, and a transient audience read then stamped it "group disclosure refused".
+// Disclosure did not stop that turn; a reserved turn is skipped without the disclosure label.
+it('never labels a turn already reserved in host custody as a disclosure hold; an unreserved turn still is', async () => {
+  const w = await world();
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, start + 3600_000, () => false); w.source.close();
+  const group = { now: start + 7200_000, allowed: true, due: 0, sent: [] as { text: string; thread?: number }[] };
+  const worker = createJournalWorker(w.destination, { ...ports(group, true),
+    model: async () => { throw new ModelPending(); } });
+  worker.intake([update(100, 'What is on my list?', true)]); await worker.drain();
+  const queued = w.destination.view.order.find(turn => turn.update === 100)!;
+  expect(queued.reserved).toBe(true); expect(queued.held).toBeUndefined();
+  group.allowed = false;
+  worker.intake([update(101, 'And after that?', true)]);
+  await worker.drain(); await worker.drain();
+  expect(queued.held).toBeUndefined();
+  // The neighbour: an unreserved turn under the same refused audience keeps its disclosure hold.
+  expect(w.destination.view.order.find(turn => turn.update === 101)!.held).toBe(GROUP_DISCLOSURE_HOLD);
+  w.destination.close();
 });

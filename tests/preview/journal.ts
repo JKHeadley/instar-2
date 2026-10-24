@@ -529,6 +529,22 @@ export class ModelPending extends Error {
 export const MODEL_NOT_STARTED_REPLY = "I couldn't start my model right now. Your message is saved; please resend it to try again.";
 export const MODEL_CAPACITY_HOLD = 'provider usage limit; resend required';
 export const MODEL_CAPACITY_ALERT = 'provider usage limit; saved turns need resend';
+/** limit-notice-1020: every reviewed login is out of capacity, so a queued turn waits in host custody. One fixed
+ * infrastructure notice per outage (no model call): what is wrong, the earliest known reset, and that the
+ * messages are kept and will be answered. The outage ends at the next successful model answer. */
+export const loginOutageReply = (resetAt: number | null, zone = 'UTC') => "My model is unavailable right now, so I can't answer yet. "
+  + (resetAt === null ? "I don't know yet when it will be available; I'll answer as soon as it is."
+    : `I expect to answer again after ${localStamp(resetAt, zone)} (${zone}).`)
+  + " Your messages are kept and I'll answer them then; you don't need to resend them.";
+// Accept the previous fixed wording on replay; new notices make no unsupported cause claim.
+const LOGIN_OUTAGE_TEXT = /^(?:I've used up my model allowance for now|My model is unavailable right now), so I can't answer yet\. (?:I don't know yet when it resets; I'll answer as soon as it does|I don't know yet when it will be available; I'll answer as soon as it is|I expect to answer again after [0-9]{4}-[0-9]{2}-[0-9]{2} [0-2][0-9]:[0-5][0-9] \([^()]{1,64}\))\. Your messages are kept and I'll answer them then; you don't need to resend them\.$/u;
+/** Open from a recorded outage notice until a later successful model answer. */
+export const loginOutageOpen = (view: JournalView) => {
+  const notice = Math.max(-Infinity, ...view.order.map(turn => turn.loginOutageNotice?.at ?? -Infinity));
+  const answered = Math.max(-Infinity, ...view.order.filter(turn => turn.modelState === 'complete' && !turn.failureClass)
+    .map(turn => turn.answerAt ?? -Infinity));
+  return notice > answered;
+};
 export type ModelCapacity = { resetHint: string | null; resetAt: number | null };
 const validCapacity = (value: ModelCapacity) => (value.resetHint === null || /^(?:[1-9]|1[0-2]):[0-5][0-9](?:am|pm)$/.test(value.resetHint))
   && (value.resetAt === null || Number.isSafeInteger(value.resetAt) && value.resetAt >= 0);
@@ -1177,8 +1193,10 @@ export type JournalRecord =
   | { kind: 'held-notice-review'; id: string; result: ReplyCheckResult; at: number }
   | { kind: 'held-notice-intent'; id: string; text: string; chat: string; thread?: number; update: number; grant: string;
     /** Other held messages in this conversation the one notice also answers; none gets a second push (P-14). */
-    covers?: string[]; acknowledgement?: true; acknowledgementMode?: 'reaction-or-text'; workingProgress?: WorkingProgress; waitingProgress?: true; deliveryUnknown?: true; provenance?: OutboundProvenance; at: number }
-  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; workingProgress?: number; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
+    covers?: string[]; acknowledgement?: true; acknowledgementMode?: 'reaction-or-text'; workingProgress?: WorkingProgress; waitingProgress?: true; deliveryUnknown?: true;
+    /** limit-notice-1020: its own durable slot (`login-outage:<id>`). Non-additive: a reader that skipped it would repeat the notice. */
+    loginOutage?: { resetAt: number | null }; provenance?: OutboundProvenance; at: number }
+  | { kind: 'held-notice-sent'; id: string; message: number; deliveryUnknown?: true; loginOutage?: true; workingProgress?: number; waitingProgress?: true; acknowledgementPath?: 'reaction' | 'text'; at: number }
 
   // Non-additive: reservations/checks below may follow a sent reply; an older writer must refuse.
   | { kind: 'reply-review-after-send'; id: string; at: number }
@@ -1442,6 +1460,8 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
 
 
   deliveryNotice?: { lead: string; text: string; at: number; sent?: number };
+  /** limit-notice-1020: the one fixed notice that every reviewed login was out of capacity, on the turn host custody queued. */
+  loginOutageNotice?: { text: string; at: number; resetAt: number | null; sent?: number };
   heldNoticeReviewReserved?: true; heldNoticeReview?: ReplyCheckResult;
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
   afterSendReview?: true; replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevRetried?: true; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
@@ -3208,6 +3228,8 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
     return progress ? { sent: progress.sent } : undefined; }
   if (kind === 'delivery-notice') { const notice = view.turns.get(key)?.deliveryNotice;
     return notice?.lead === key ? { sent: notice.sent } : undefined; }
+  if (kind === 'login-outage') { const notice = view.turns.get(key)?.loginOutageNotice;
+    return notice ? { sent: notice.sent } : undefined; }
   if (kind === 'held-notice') { const turn = view.turns.get(key);
     return turn?.heldNoticeIntent !== undefined ? { sent: turn.heldNoticeSent } : undefined; }
   if (kind === 'reply-part') { const part = view.turns.get(rest.slice(1).join(':'))?.replyParts?.[Number(rest[0]) - 2];
@@ -3303,6 +3325,7 @@ export function sendOutcomeCounts(view: JournalView) {
     if (turn.deliveryNotice?.lead === turn.id) settle(`delivery-notice:${turn.id}`, turn.deliveryNotice.sent);
     for (const progress of turn.workingProgress ?? []) settle(`working-progress:${progress.ordinal}:${turn.id}`, progress.sent);
     if (turn.waitingProgress) settle(`waiting-progress:${turn.id}`, turn.waitingProgress.sent);
+    if (turn.loginOutageNotice) settle(`login-outage:${turn.id}`, turn.loginOutageNotice.sent);
     if (turn.heldNoticeIntent !== undefined) settle(`held-notice:${turn.id}`, turn.heldNoticeSent);
     if (turn.limited?.lead === turn.id) settle(`limited:${turn.id}`, turn.limitedSent);
   }
@@ -3347,7 +3370,7 @@ export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' |
   if (row.kind === 'operator-result-intent') return { target: `operator-result:${row.request}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'limited-intent') return { target: `limited:${row.id}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'intent') return { target: `reply:${row.id}`, chat: row.chat, ...thread, body: row.body ?? row.text };
-  if (row.kind === 'held-notice-intent') return { target: `${row.workingProgress ? `working-progress:${row.workingProgress.ordinal}` : row.waitingProgress ? 'waiting-progress' : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.workingProgress ? encodeReply(row.text) : row.text };
+  if (row.kind === 'held-notice-intent') return { target: `${row.workingProgress ? `working-progress:${row.workingProgress.ordinal}` : row.waitingProgress ? 'waiting-progress' : row.loginOutage ? 'login-outage' : row.deliveryUnknown ? 'delivery-notice' : 'held-notice'}:${row.id}`, chat: row.chat, ...thread, body: row.workingProgress ? encodeReply(row.text) : row.text };
   return { target: `requested-reminder:${String(row.batch)}`, chat: row.chat, ...thread, body: row.body };
 }
 /** Verifies a recorded system writer's owner signature over its exact occurrence. */
@@ -4544,6 +4567,26 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     turn.heldNoticeReview = row.result;
     if (row.result.verdict !== 'unavailable') settleTokens(view, `held-notice-review:${row.id}`, row.result.usage);
     return;
+  }
+  if (row.kind === 'held-notice-intent' && row.loginOutage) {
+    const resetAt = row.loginOutage.resetAt;
+    if (!turn.accepted || !operatorWriter(view, turn, true) || !turn.reserved || turn.intent !== undefined
+      || turn.requestedAction || turn.editOf || turn.loginOutageNotice || loginOutageOpen(view)
+      || !(resetAt === null || Number.isSafeInteger(resetAt) && resetAt > 0) || !LOGIN_OUTAGE_TEXT.test(row.text)
+      || (resetAt === null) !== row.text.includes("I don't know yet when")
+      || view.stop !== null || row.at >= view.expires || view.replies >= view.limits.maxReplies - 1
+      || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
+      || row.grant !== view.genesis.grant || row.workingProgress || row.waitingProgress || row.deliveryUnknown
+      || row.acknowledgement || row.acknowledgementMode || row.covers
+      || !row.provenance || admission === 'new' && row.provenance.speaker !== 'infrastructure')
+      throw Error('preview journal: login outage notice refused');
+    turn.loginOutageNotice = { text: row.text, at: row.at, resetAt }; view.replies++; return;
+  }
+  if (row.kind === 'held-notice-sent' && row.loginOutage) {
+    if (row.loginOutage !== true || !turn.loginOutageNotice || turn.loginOutageNotice.sent !== undefined
+      || row.deliveryUnknown || row.waitingProgress || row.workingProgress !== undefined || row.acknowledgementPath !== undefined
+      || !Number.isSafeInteger(row.message) || row.message <= 0) throw Error('preview journal: login outage receipt order');
+    turn.loginOutageNotice.sent = row.message; return;
   }
   if (row.kind === 'held-notice-intent' && row.workingProgress) {
     const progress = row.workingProgress, prior = turn.workingProgress ?? [];
@@ -5860,6 +5903,9 @@ export interface PreviewPorts {
   /** Monotonic process time for minimum waits; inherited UNKNOWN work waits anew. */
   elapsed?(): number;
   timeZone?: string;
+  /** limit-notice-1020: the runner's read-only login-pool view. Null while any reviewed login may have room;
+   * otherwise the earliest reset it knows (null when none is known). Read only when host custody queues a turn. */
+  loginCapacity?(): { resetAt: number | null } | null;
   /** Rule 35: the trusted composition origin of this worker's transport (default production). */
   origin?: WriteOrigin;
   /** Static sources, or a function read at each turn (for the desk's report). */
@@ -8363,6 +8409,29 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     acknowledgementTimers.set(turn, after(Math.max(0, turn.at + REPLY_ACKNOWLEDGEMENT_AFTER_MS - ports.now()),
       () => { const entered = ports.now(); void acknowledgeReply(turn, entered).catch(() => {}); }));
   };
+  /** limit-notice-1020 (Rules 2, 42, 87): host custody queued this turn. When every reviewed login is out of
+   * capacity, tell the operator once per outage with a fixed infrastructure notice (no model call). Its intent
+   * precedes dispatch, so a crash or an UNKNOWN never repeats it; the kept turns are answered when capacity returns. */
+  const noticeLoginOutage = async (turn: Turn) => {
+    const now = ports.now();
+    if (!ports.loginCapacity || halted() || !fromOperator(turn) || !turn.reserved || turn.intent !== undefined
+      || turn.requestedAction || turn.editOf || turn.loginOutageNotice || loginOutageOpen(journal.view)
+      || now >= journal.view.expires || journal.view.replies >= journal.view.limits.maxReplies - 1) return;
+    let outage: { resetAt: number | null } | null;
+    try { outage = ports.loginCapacity(); } catch { return; } // an unreadable pool is not evidence of an outage
+    if (!outage) return;
+    const resetAt = Number.isSafeInteger(outage.resetAt) && outage.resetAt! > now ? outage.resetAt : null;
+    const text = loginOutageReply(resetAt, ports.timeZone), chat = journal.view.genesis.chat;
+    const thread = turn.thread === undefined ? {} : { thread: turn.thread }, target = `login-outage:${turn.id}`;
+    ports.checkOutbound(text);
+    const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
+    const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, ...thread, update: turn.update }, () => {
+      journal.append({ kind: 'held-notice-intent', id: turn.id, text, chat, ...thread, update: turn.update,
+        grant: journal.view.genesis.grant, loginOutage: { resetAt }, provenance, at: ports.now() });
+    });
+    if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: turn.id, loginOutage: true, message: outcome.message, at: ports.now() }); }
+    catch { /* the notice stays UNKNOWN; never repeated */ }
+  };
   /** Rules 2, 87, 88: a disclosure hold past the self-heal window is told once, content-free, per notice window; the
    * held turns are named only by this fixed text. Its intent precedes dispatch and an UNKNOWN is never repeated. */
   const noticeDisclosureHolds = async () => {
@@ -8552,7 +8621,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Least revelation: a carried root without current permission and operator-only audience reserves nothing and
         // sends nothing for this turn; it is kept (a due request stays unconsumed) and proceeds once both hold again.
         if (!audienceHolds && !isStopCommand(turn.text)) {
-          if (turn.held === undefined) journal.append({ kind: 'hold', id: turn.id, reason: GROUP_DISCLOSURE_HOLD, at: ports.now() });
+          // limit-notice-1020: a reserved turn's call is already in host custody; disclosure did not stop it,
+          // so it is skipped this pass without a disclosure label (a capacity wait is reported as capacity).
+          if (turn.held === undefined && !turn.reserved) journal.append({ kind: 'hold', id: turn.id, reason: GROUP_DISCLOSURE_HOLD, at: ports.now() });
           continue;
         }
         // Like 1.x PendingInjectStore, retain the durable pending state until its
@@ -8669,7 +8740,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           try { collected = await ports.collectModel(turn.id); }
           catch (error) {
             // Exact host evidence distinguishes queued work from an unknown dispatch.
-            if (error instanceof ModelPending) { startAcknowledgement(turn, true); await acknowledgeReply(turn); }
+            if (error instanceof ModelPending) { startAcknowledgement(turn, true); await acknowledgeReply(turn); await noticeLoginOutage(turn); }
             blockedEarlier = true; continue; // Neither pending nor unreadable custody authorizes replay.
           }
           gate();
@@ -8763,7 +8834,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               gate();
               result = await original.model(input);
             } catch (error) {
-              if (error instanceof ModelPending) { blockedEarlier = true; startAcknowledgement(turn, true); await acknowledgeReply(turn); }
+              if (error instanceof ModelPending) { blockedEarlier = true; startAcknowledgement(turn, true); await acknowledgeReply(turn); await noticeLoginOutage(turn); }
               if (error instanceof ModelDisclosureRefused || error instanceof ModelNotStarted)
                 journal.append({ kind: 'hold', id: turn.id,
                   reason: error instanceof ModelDisclosureRefused ? GROUP_DISCLOSURE_HOLD : MODEL_NOT_STARTED_HOLD,
@@ -8825,6 +8896,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   const pending = journal.view.turns.get(input.id)!;
                   startAcknowledgement(pending, true); await acknowledgeReply(pending);
                 }
+                await noticeLoginOutage(journal.view.turns.get(waiting[0]!.id)!);
               }
               blockedEarlier = true; answer = false;
             }

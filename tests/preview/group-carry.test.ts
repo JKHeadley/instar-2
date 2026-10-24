@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appendGroupCarry, buildCarriedMemory, groupCarryPacket, validCarriedMemory } from './group-carry.js';
-import { createJournalWorker, openPreviewJournal, openRequests, CARRIED_MEMORY_ITEM_SOURCE, MEMORY_ITEM_SHAPE, PREFERENCE_DECISION, type JournalRecord } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, openRequests, CARRIED_MEMORY_ITEM_SOURCE, MEMORY_ITEM_SHAPE, PREFERENCE_DECISION, ModelPending, type JournalRecord } from './journal-test-worker.js';
 import { resolveGroupDisclosure, verifyGroupAudience, createGroupAudienceCache } from './group-disclosure.js';
 import { now, key, sealKey, scope, records, authority, membership, permissionFor } from './group-carry-fixture.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -347,4 +347,41 @@ it('replays all recorded model shapes through carried recall after the disclosur
     expect(sends.every(text => text.trim().length > 0), shape.id).toBe(true);
     w.destination.close();
   }
+});
+
+// A refused audience read must not spend the once-per-outage slot. An admitted UNKNOWN must.
+it.each([false, true])('login outage recovers after pre-dispatch refusal; admitted unknown=%s stays fenced', async unknown => {
+  const w = await world();
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false);
+  let allowed = true, first = true, sends = 0;
+  const ports = { now: () => now + 1000, stopped: () => false,
+    groupDisclosure: async () => allowed, loginCapacity: () => ({ resetAt: null }),
+    model: async () => { if (first) { first = false; allowed = false; } throw new ModelPending(); },
+    collectModel: async () => { throw new ModelPending(); },
+    send: async () => {
+      expect(w.destination.view.order.some(t => t.loginOutageNotice)).toBe(true);
+      sends++;
+      if (unknown) throw Error('connection lost after dispatch');
+      return 1;
+    }, checkOutbound: () => {} };
+  const worker = createJournalWorker(w.destination, ports);
+  try {
+    worker.intake([update(2, 'First question', true)]); await worker.drain();
+    expect(sends).toBe(0);
+    expect(w.destination.view.order.every(t => !t.loginOutageNotice)).toBe(true);
+    allowed = true;
+    worker.intake([update(3, 'Second question', true)]);
+    await worker.drain(); await worker.drain();
+    expect(sends).toBe(1);
+    const notice = w.destination.view.order.find(t => t.loginOutageNotice)!.loginOutageNotice!;
+    expect(notice.sent).toBe(unknown ? undefined : 1);
+    w.destination.compact(); w.destination.close();
+    const replay = openPreviewJournal(w.target, key);
+    try {
+      const resumed = createJournalWorker(replay, { ...ports, send: async () => { sends++; return 2; } });
+      resumed.intake([update(4, 'Third question', true)]);
+      await resumed.drain(); await resumed.drain();
+      expect(sends).toBe(1);
+    } finally { replay.close(); }
+  } finally { w.destination.close(); w.source.close(); }
 });

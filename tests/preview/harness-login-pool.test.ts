@@ -7,6 +7,7 @@ import { createHarnessLoginPool, loadHarnessLogins, harnessQuotaLimit, observeHa
 import { harnessGate, harnessLoginPath, migrateHarnessLogin, readHarnessLogin, storeHarnessLogin } from './harness-user.mjs';
 import { createClaudePoolQuota } from '../../scripts/claude-pool-quota.mjs';
 import { classifyProviderFailure } from '../../src/assembly/provider-failure.js';
+import { loginOutageReply } from './journal.js';
 import { openReplyNotices, validAnswerNotices } from './credential-reminders.js';
 
 const roots: string[] = [];
@@ -632,4 +633,79 @@ it('prefers fresh live quota and preserves a legacy snapshot age when telemetry 
   f.clock.at += 300001;
   pool = createHarnessLoginPool({ ...f.settings, quotaReader: reader, usage: () => file });
   expect(pool.readySession(1)).toBeNull();
+});
+
+// limit-notice-1020: the live 2026-10-20 outage shape — login A at the 95% threshold (weekly reset known),
+// login B excluded at 100% — read without changing selection, so the journal can tell the operator once.
+it('outage() reports no capacity with the earliest known reset, reads only, and is null whenever a login has room', () => {
+  const f = fixture(), [a, b] = f.configuration.entries.map(entry => entry.profile);
+  const week = f.clock.at + 2 * 86400_000, later = f.clock.at + 4 * 86400_000;
+  const reading = (aPct, bPct) => ({ version: 1, accounts: [[a, aPct, week], [b, bPct, later]].map(([p, pct, reset]) => ({
+    email: p.expectedAccount, configHome: p.configDirectory, lastQuota: { measuredAt: new Date(f.clock.at).toISOString(),
+      fiveHour: { utilizationPct: 10, resetsAt: new Date(f.clock.at + 3600_000).toISOString() },
+      sevenDay: { utilizationPct: pct, resetsAt: new Date(reset).toISOString() } } })) });
+  let document = reading(95, 100);
+  const pool = createHarnessLoginPool({ ...f.settings, usage: () => document });
+  const before = JSON.stringify(pool.state);
+  expect(pool.outage()).toEqual({ resetAt: week });
+  expect(JSON.stringify(pool.state)).toBe(before); // a read, never a hold or switch
+  document = reading(94, 100); expect(pool.outage()).toBeNull();
+  document = reading(95, 50); expect(pool.outage()).toBeNull();
+  // A stale or missing reading is not evidence of exhaustion (same as select()).
+  document = null; expect(pool.outage()).toBeNull();
+  // Stored holds count: both held, one with an unknown reset, the other known.
+  pool.observe(f.configuration.entries[0], limit);
+  pool.observe(f.configuration.entries[1], { state: 'uncertain', failure: { failureClass: 'limit', resetAt: later } });
+  expect(pool.outage()).toEqual({ resetAt: later });
+  expect(() => pool.select()).toThrow(/no reviewed login/);
+  // Unavailable members are out with no known reset.
+  const excluded = createHarnessLoginPool({ ...f.settings, statePath: join(f.root, 'other.json'),
+    unavailable: new Map([[0, 'withdrawn'], [1, 'withdrawn']]), usage: () => null });
+  expect(excluded.outage()).toEqual({ resetAt: null });
+  // After the known reset passes, the login has room again.
+  f.clock.at = later + 1; document = null;
+  expect(createHarnessLoginPool(f.settings).outage()).toBeNull();
+});
+
+it('signed-out logins with fresh room report unavailable, never exhaustion or a reset promise', () => {
+  const f = fixture();
+  const document = { version: 1, accounts: f.configuration.entries.map(({ profile }) => ({
+    email: profile.expectedAccount, configHome: profile.configDirectory, status: 'needs-reauth',
+    lastQuota: { measuredAt: new Date(f.clock.at).toISOString(),
+      fiveHour: { utilizationPct: 1, resetsAt: new Date(f.clock.at + 3600_000).toISOString() },
+      sevenDay: { utilizationPct: 1, resetsAt: new Date(f.clock.at + 86400_000).toISOString() } } })) };
+  const pool = createHarnessLoginPool({ ...f.settings, usage: () => document });
+  expect(pool.readySession()).toBeNull();
+  expect(pool.outage()).toEqual({ resetAt: null });
+  const text = loginOutageReply(pool.outage().resetAt);
+  expect(text).toContain('My model is unavailable right now');
+  expect(text).toContain("I don't know yet when it will be available");
+  expect(text).not.toMatch(/used up|allowance|resets/);
+  document.accounts.forEach(account => { account.status = 'active'; });
+  expect(pool.outage()).toBeNull();
+});
+
+// Integration: outage observation shares live selection telemetry without making a placement move.
+it('outage uses fresh live quota and keeps soft pressure distinct from a held outage', () => {
+  const f = fixture();
+  const fallback = capacity(f);
+  let live = capacity(f);
+  for (const account of live.accounts) account.lastQuota.fiveHour.utilizationPct = 100;
+  const pool = createHarnessLoginPool({ ...f.settings, quotaReader: { read: () => live }, usage: () => fallback });
+  const before = JSON.stringify(pool.state);
+  expect(pool.outage()).toEqual({ resetAt: Date.parse(live.accounts[0].lastQuota.fiveHour.resetsAt) });
+  expect(JSON.stringify(pool.state)).toBe(before);
+  for (const account of live.accounts) account.lastQuota.fiveHour.utilizationPct = 80;
+  expect(pool.outage()).toBeNull(); // Soft placement pressure alone leaves the current login usable.
+  pool.observe(f.configuration.entries[0], limit);
+  pool.observe(f.configuration.entries[1], limit);
+  f.clock.at += 1;
+  for (const account of live.accounts) account.lastQuota.measuredAt = new Date(f.clock.at).toISOString();
+  expect(pool.outage()).toEqual({ resetAt: null }); // A held login needs the same recovery margin as select.
+  expect(pool.selectSession(0)).toBeNull();
+  for (const account of live.accounts) account.lastQuota.fiveHour.utilizationPct = 20;
+  expect(pool.outage()).toBeNull();
+  expect(pool.selectSession(0)?.index).toBe(0);
+  live = { version: 1, accounts: [] };
+  expect(pool.outage()).toBeNull(); // Missing live observation uses the unchanged compatibility source.
 });

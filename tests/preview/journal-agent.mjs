@@ -2165,6 +2165,8 @@ async function main() {
         } }),
       // Rule 44: an installed update rides operator packets until a sent answer's recorded prompt carried it.
       installedUpdate: () => installUpdate && !updateDelivery(installUpdate, journal.view.order) ? updatePacketItem(installUpdate) : null,
+      // limit-notice-1020: read when host custody queues a turn, so an outage of every reviewed login is told once.
+      loginCapacity: () => loginPool?.outage() ?? null,
       // Rules 8, 56, 100: due credential reminder stages and a failing doorway check ride the next answer as one line.
       // An unreadable registry or map offers nothing here; status reports it (credentials.error, doorways.fresh).
       replyNotices: turn => {
