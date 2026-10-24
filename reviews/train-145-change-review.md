@@ -29,6 +29,8 @@ Decision: train-145-loader | Deduplicate literal loader entry paths in the new d
 Prompt review: No new model prompt, output parser or model verdict. Existing recorded pool shapes and journal tests replay on the combined tree.
 Deferral: generated/register.json:1 | not-a-deferral=generated quotation of governing rules, not a deferred commitment
 
+Publication: Combined source 3847d89a28df34c293d99d19d316e6b49c310e38 regenerated as sha256:b60d4f1abe5dd1df060106d896bd2e976eb846550ae1d471cad8ebbafcbb9cf5 in 6921f6ea. Repin and owner rehash changed zero pins; build, typecheck, architecture, lint and register check passed. Default-context-floor passed 6 tests; measured plain always-sent answer is 23,172 bytes and tools 26,584 bytes, with guard unchanged at 23,459. Host physical launcher cases refuse bot identity before dispatch, matching the member evidence; these are submitted to the Studio gate, not claimed successful here.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges, compose the existing primary override with the existing relocation reader, retain both test sets, and regenerate publication with existing desk tools. No new service, watcher, store or authority. Start guards remain admitted sources and sealed authority; end guards are valid local records with unchanged pool identity/history; existing limits remain intact. No fresh unattended deployment is claimed.
