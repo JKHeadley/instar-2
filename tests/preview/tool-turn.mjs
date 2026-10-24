@@ -234,7 +234,10 @@ export function prepareMcpLaunch({ mcp, privateDirectory, socket, harness = null
     const launcher = harness ? join(dirname(harness.hookScript), 'mcp-launch.mjs') : TOOL_MCP_LAUNCHER;
     const nonces = Object.fromEntries(secretServers.map(name => [name, randomBytes(16).toString('hex')]));
     const launch = Object.fromEntries(servers.map(name => {
-      const server = mcp.servers[name];
+      const configured = mcp.servers[name];
+      // MCP spawns do not inherit the shell's PATH repair. Include the installation's node/npx directory.
+      const server = configured.command.includes('/') ? configured : { ...configured,
+        env: { PATH: `${dirname(node)}:${process.env.PATH ?? '/usr/bin:/bin'}`, ...configured.env } };
       if (!nonces[name]) return [name, server];
       const { command, args = [], env = {}, ...rest } = server;
       const plain = Object.fromEntries(Object.entries(env).filter(([, value]) => typeof value === 'string'));

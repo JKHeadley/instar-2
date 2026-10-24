@@ -4,4 +4,12 @@
 // run may be replayed after a crash; it must check its durable effect before repeating it.
 export const schemaVersion = 1;
 export const readableSchemas = [1];
-export const migrations = [];
+export const migrations = [{ id: 'mcp-defaults-1024', async run(root) {
+  const { register } = await import('node:module');
+  register('./slice-ts-loader.mjs', import.meta.url);
+  const { installMcp } = await import('./mcp-setup.mjs');
+  installMcp(root);
+} }];
+
+// A new id reaches roots which already recorded the snapshot-only migration.
+migrations.push({ id: 'mcp-browser-reads-1024', run: migrations[0].run });

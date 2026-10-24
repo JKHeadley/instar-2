@@ -3966,6 +3966,18 @@ servers (Part Thirteen §9,
   protects `.git` under the workspace, so a repository is cloned under `$TMPDIR`. `npm install` succeeds, but its audit
   request is a POST and is refused, so `npm audit` does not work; SSH remotes do not work (only HTTP(S) reaches the
   checkpoint).
+- MCP setup (ELI16): setup gives the agent its browser connector automatically; an update adds it to older roots.
+  `scripts/mcp-setup.mjs` merges the same Playwright server that 1.x installs (`npx -y @playwright/mcp@latest`);
+  no 1.x default is omitted. Navigation, snapshots, screenshots, waits, console/network reads and tab listing are reads; tab mutations, clicks, typing, form fill, uploads and evaluation retain effect admission. Bare MCP commands receive the installation’s Node directory on PATH, including outside a shell. Existing default installations receive the read list through the release migration; customised servers are preserved.
+  Existing server definitions and read scopes win. The release migration runs before the updater switches `current`.
+  A desk that switches a checkout directly instead of using `instar2 update` must run this release's migration
+  against that root before restarting; direct checkout switches do not invoke the product updater.
+  To add one agreed account connector, pipe a JSON object with `mcpServers`, `reads` and optional
+  `secretEnv: {serverName: {ENV_NAME: value}}` to `instar2 mcp-add ROOT`. Supply the existing storage key through
+  `INSTAR_SECRET_PREVIEW_STORAGE_KEY`; feed secret values from Secret Drop/custody through the pipe, never a file or argv.
+  Values are stored encrypted before only their names enter the MCP file. Restart to load the new connector.
+  This installs configuration, not an account login or an effect grant. The root-local setup lock refuses concurrent
+  merges; after a crash, establish that the installer has stopped before removing its `.mcp-setup-lock` directory.
 - MCP: `ROOT/mcp.json` (the operator's file; absent means none) is `{"mcpServers": {name: {command, args?, env?}},
   "reads": ["mcp__name__tool", …]}`. An `env` value is a plain string, kept as written, or `{"secretRef": "<name>"}`,
   a credential in the root's custody vault: the runner opens it at the turn (a value it cannot open answers the turn

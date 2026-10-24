@@ -21,6 +21,9 @@ import { currentEffectPolicy } from './effect-doorway.mjs';
 // @ts-expect-error The effect owner stays plain JavaScript, like the hook.
 import { createToolEffectOwner } from './admission-gate.mjs';
 
+// @ts-expect-error Real installer JavaScript.
+import { installMcp } from '../../scripts/mcp-setup.mjs';
+
 const HOOK = join(__dirname, 'tool-admission-hook.mjs');
 const SPIKE = join(__dirname, 'fixtures/tool-turn/spike-cab6b51d');
 const roots: string[] = [];
@@ -54,6 +57,52 @@ const hook = (state: string, input: string, preset?: number, mode = 'pre') => {
   return { status: r.status, decision, stdout: r.stdout };
 };
 const j = (tool_name: string, tool_input: object) => JSON.stringify({ tool_name, tool_input, tool_use_id: `toolu_${tool_name}` });
+
+it('routes executable browser navigation through effect admission and never-twice ownership', () => {
+  const { root, state } = turn(); installMcp(root);
+  const config = { ...JSON.parse(readFileSync(join(state, 'config.json'), 'utf8')),
+    mcpReads: JSON.parse(readFileSync(join(root, 'mcp.json'), 'utf8')).reads };
+  writeFileSync(join(state, 'config.json'), JSON.stringify(config));
+  const tool = 'mcp__playwright__browser_navigate';
+  const fs = { exists: () => true, realpath: (path: string) => path };
+  const ordinary = ['https://example.com', ' HTTP://example.com/ ', 'about:blank', 'https://example.com/?q=javascript:alert(1)'];
+  const executable = ["javascript:void(document.querySelector('form').requestSubmit())",
+    " \u0000JaVa\tScRi\nPt:void(document.querySelector('form').requestSubmit())\r"];
+  for (const url of ordinary) {
+    expect(admitToolCallEffect(tool, { url }, config, 0), url).toMatchObject({ admitted: true, consequential: false });
+    expect(admitToolCall({ tool_name: tool, tool_input: { url } }, config, 1, fs), url).toMatchObject({ decision: 'allow' });
+    expect(hook(state, j(tool, { url })), url).toMatchObject({ status: 0, decision: 'allow' });
+  }
+  for (const url of [...executable, 'not a URL', undefined, 42]) {
+    expect(admitToolCallEffect(tool, { url }, config, 0), String(url)).toMatchObject({ admitted: false, consequential: true });
+    expect(admitToolCall({ tool_name: tool, tool_input: { url } }, config, 1, fs), String(url)).toMatchObject({ decision: 'deny' });
+    expect(hook(state, j(tool, { url })), String(url)).toMatchObject({ decision: 'deny' });
+  }
+  // Full ability remains: the existing effect grant admits the executable call, then its owner blocks a repeat.
+  const proposal = admitToolCallEffect(tool, { url: executable[0] }, config, 0);
+  const granted = { ...config, effectPolicy: { type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [],
+    registered: [{ effect: proposal.effect, target: proposal.target, consequence: 'external', reversibility: 'irreversible',
+      reach: 'world', costUsd: 0, source: 'review-fixture' }], grants: [{ id: 'navigation-grant',
+      effect: proposal.effect, target: proposal.target, approves: ['scope'],
+      source: 'review-fixture', custodian: 'desk', recovery: 'remove grant' }] }, operations: [proposal.effect] };
+  const rows: { id: string }[] = [];
+  const owner = createToolEffectOwner({ decide: (name: string, input: unknown) => admitToolCallEffect(name, input, granted, 0),
+    append: (row: { id: string }) => rows.push(row), prepared: (id: string) => rows.some(row => row.id === id),
+    stopped: () => false, now: () => 0 });
+  const parent = { id: 'navigation-edge', child: 'child' };
+  for (const [index, url] of executable.entries()) {
+    const input = { url };
+    expect(admitToolCallEffect(tool, input, granted, 0)).toMatchObject({ admitted: true, consequential: true });
+    expect(owner.admit({ parent, tool, input, call: `effect-${index}-1` })).toMatchObject({ admitted: true });
+    expect(owner.admit({ parent, tool, input, call: `effect-${index}-2` })).toMatchObject({ admitted: false,
+      reason: expect.stringContaining('never sent twice') });
+  }
+  const readOwner = createToolEffectOwner({ decide: (name: string, input: unknown) => admitToolCallEffect(name, input, config, 0),
+    append: (row: { id: string }) => rows.push(row), prepared: (id: string) => rows.some(row => row.id === id),
+    stopped: () => false, now: () => 0 });
+  for (const call of ['read-1', 'read-2'])
+    expect(readOwner.admit({ parent, tool, input: { url: ordinary[0] }, call })).toMatchObject({ admitted: true });
+});
 
 it('runs stop-only ScheduleWakeup through the executable hook and preserves the new-wake refusal', () => {
   const { state } = turn();
