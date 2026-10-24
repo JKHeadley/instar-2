@@ -36,6 +36,39 @@ Generated wiring: Ran the delegated owner-manifest rehash and repin chain (no ma
 
 Pipeline repair scope: This paragraph supplies the missing reuse judgment only. The concrete purpose is to run a retained-history copy on a test bot without touching the source root or sending into its conversation, enabling answer checks on the copied agent. Runtime behavior, invocation policies, inherited evidence and acceptance limits remain unchanged; this documentation correction claims no fresh live proof or full-suite result.
 
+## Inherited review-range dispositions
+
+Editing this record extends its checked range through the train integration. These dispositions carry the unchanged inherited prompts and tests into that range; no prompt, fixture, skip or deferral is introduced by the documentation repair.
+
+Prompt finding: 0abb3dc96311 | protocol-literal | Inherited unchanged; disposition carried from reviews/0282e94b-merge-live-0227b381-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: 42faf877ba82 | protocol-literal | Inherited unchanged; disposition carried from reviews/0282e94b-merge-live-0227b381-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: 45e37ea2e9e9 | protocol-literal | Inherited unchanged; disposition carried from reviews/0282e94b-merge-live-0227b381-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Inherited unchanged; disposition carried from reviews/0282e94b-merge-live-0227b381-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: 5b486d8bd247 | protocol-literal | Inherited unchanged; disposition carried from reviews/0282e94b-merge-live-0227b381-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: 5fa1a20c4031 | protocol-literal | Inherited unchanged; disposition carried from reviews/0282e94b-merge-live-0227b381-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: 7c45ffbe90ad | protocol-literal | Inherited unchanged; disposition carried from reviews/0282e94b-merge-live-0227b381-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: 95e349aaf4ac | protocol-literal | Inherited unchanged; disposition carried from reviews/0282e94b-merge-live-0227b381-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: aef7d91bef51 | protocol-literal | Inherited unchanged; disposition carried from reviews/0282e94b-merge-live-0227b381-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: b1bb3946362d | protocol-literal | Inherited unchanged; disposition carried from reviews/0282e94b-merge-live-0227b381-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: b288d6ef1604 | protocol-literal | Inherited unchanged; disposition carried from reviews/0282e94b-merge-live-0227b381-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: e769ca9dd959 | protocol-literal | Inherited unchanged; disposition carried from reviews/0282e94b-merge-live-0227b381-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: f6d7f3274c85 | protocol-literal | Inherited unchanged; disposition carried from reviews/0282e94b-merge-live-0227b381-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: feadb66b8ad1 | protocol-literal | Inherited unchanged; disposition carried from reviews/0282e94b-merge-live-0227b381-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: 0725f0150c56 | protocol-literal | Inherited unchanged; disposition carried from reviews/2176b4cf-merge-live-d121315e-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: 27d7720e7977 | protocol-literal | Inherited unchanged; disposition carried from reviews/2176b4cf-merge-live-d121315e-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: 0d4664ea9de7 | quoted-evidence | Inherited unchanged; disposition carried from reviews/ab0a7a92-merge-live-39d72c39-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: 14d7eeccc218 | quoted-evidence | Inherited unchanged; disposition carried from reviews/ab0a7a92-merge-live-39d72c39-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: 9781075d458e | quoted-evidence | Inherited unchanged; disposition carried from reviews/ab0a7a92-merge-live-39d72c39-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: 38a2c5d186f1 | protocol-literal | Inherited unchanged; disposition carried from reviews/afd0771a-merge-live-7dd06d19-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: d531743e1e12 | protocol-literal | Inherited unchanged; disposition carried from reviews/codex-recall-1021s-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: 7a4f0c3f557c | protocol-literal | Inherited unchanged; disposition carried from reviews/da0364c1-merge-live-245a300d-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Prompt finding: 85544c20941f | protocol-literal | Inherited unchanged; disposition carried from reviews/limit-notice-1020-repair-change-review.md. This documentation repair changes neither the prompt nor its fixture.
+Deferral: src/rungraph/promises.ts:9 | not-a-deferral=The follow-up action is a retained promise type member, not unfinished implementation; unchanged by this repair.
+Deferral: tests/preview/followup-deliver-launch.test.ts:14 | not-a-deferral=The test describes delivered, uncertain and withdrawn follow-up work; it is not a promise to implement the test later.
+Skip: tests/e2e/conversation-worker-recovery-live.test.ts:26 | scope=Existing opt-in real-worker recovery proof requires the allocated Studio harness account, profile and evidence directory; this repair does not change that scope.
+Skip: tests/preview/pool-quota-live.test.ts:23 | scope=Existing opt-in two-login proof requires INSTAR_POOL_COPY_PROOF with allocated test credentials and an isolated root; no live custody is opened by this repair.
+Skip: tests/recall/cold-start.test.ts:38 | quarantine=docs/defects/cold-start-20k-timing-flake.md
+
 ## Closing block
 
 simplestRobustRoute: Persist a chronological position only on intake after the existing durable test-copy rebind, while retaining the raw wire identity. Existing history, summary and recall consumers then work unchanged. The extra field prevents unrelated bot counters from hiding copied history; its persistence prevents replay from reinterpreting old evidence. Existing authentication, resource limits, stop and dispatch guards remain the start, limit and end-state guards. This is the simplest robust route; no autonomous live-completion claim is made by these offline tests.
