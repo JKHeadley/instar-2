@@ -3125,7 +3125,9 @@ async function main() {
         timeoutMs: 12000 }, token()); }
       catch { if (!await pollFailure(false, true)) break; continue; }
       await new Promise(done => setImmediate(done));
-      if (signalled || workerStop.value || existsSync(stopPath)) break;
+      // The poll may return after this owner's term ended. Retire before intake,
+      // just as after replication, rather than turning the worker's stop into a crash.
+      if (ended()) break;
       if (result.kind !== 'response' || result.status !== 200) {
         // A temporary server failure (5xx, 429) is an outage like no answer at all: due work goes on (MUST-FIX 1).
         if (!await pollFailure(result.kind === 'response' && result.status === 409,
@@ -3142,7 +3144,7 @@ async function main() {
       failedPolls = 0; conflictedPolls = 0; routeHealthy = true;
       // Updates this journal already recorded come back until the shared cursor passes them; only the new ones are taken.
       const batch = shared ? updates.result.filter(update => !(update?.update_id < journal.view.cursor)) : updates.result;
-      worker.intake(batch);
+      if (!await untilStopped(() => worker.intake(batch), ended)) break;
       dueWake.refresh();
       // An approved phone stop latches in the journal; the loop ends without another effect.
       if (journal.view.stop) break;

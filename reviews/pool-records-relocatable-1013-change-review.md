@@ -3,6 +3,7 @@
 Subject base: 0de16e3cdaea380ac746793123a51382aeb9830b
 Review state: open
 Reviewed content: none
+1.x lineage: Reuses JKHeadley/instar main src/core/SubscriptionPool.ts account/config-home selection, whose store is resolved from the current stateDir, already inherited by tests/preview/harness-login-pool.mjs. The 2.0 extension resolves derived per-build activation manifests and their installation-local references against the current root; it does not rebuild the pool or move credential contents.
 Outcome: A copied or renamed installation resolves prepared login records against its current root, including the existing absolute-path format. Preparation recreates missing derived records from verified admitted sources without resetting pool selection or notices.
 Affected rules: Purpose 2/3; Rules 1, 4, 26, 28, 34, 35, 37, 42, 44, 45, 49, 70, 74, 95, 100, 101, 102, 111, 112, 113, 116
 Affected floors: secrets — unchanged harness custody, no credential copying or printing; spend cap and stop — unchanged dispatch admission; no duplicate sends — retain identity, holds, switch history and notice identity without replay; durable intake — unchanged journal and root writer lease

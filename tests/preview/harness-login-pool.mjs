@@ -22,7 +22,7 @@ export function relocateHarnessRecords(value, from, to) {
     return suffix !== '..' && !suffix.startsWith('../') && !isAbsolute(suffix) ? join(to, suffix) : path;
   };
   const row = entry => ({ ...entry, ...Object.fromEntries(
-    ['profile', 'activation', 'authority', 'toolsActivation', 'sessionActivation'].filter(key => entry[key] !== undefined)
+    ['profile', 'activation', 'authority', 'toolsActivation', 'sessionActivation', 'quotaLogin'].filter(key => entry[key] !== undefined)
       .map(key => [key, relocate(entry[key])])),
     ...(entry.sources ? { sources: entry.sources.map(source => ({ ...source, path: relocate(source.path) })) } : {}) });
   return { ...value, logins: value.logins?.map(row),

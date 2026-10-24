@@ -1,7 +1,7 @@
 // @ts-nocheck -- installation host composition, real validators and sealed synthetic grants.
 import { afterEach, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { cpSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin, observeInstalledSessionLogin } from './installed-harness-logins.mjs';
 import { readHarnessLogin } from './harness-user.mjs';
@@ -388,6 +388,42 @@ it('retains each account-bound quota custody reference through import and build 
   writeFileSync(path, JSON.stringify({ version: 1, logins }));
   installHarnessLogin({ root: f.root, options: { ...f.options(f.logins[0]), 'login-pool': path }, verify: f.verify });
   expect(read(f.prepare()).logins.map(row => row.quotaLogin)).toEqual(logins.map(row => row.quotaLogin));
+});
+
+it.each(['rename', 'copy'])('quota custody follows a real installation %s and external custody stays external', move => {
+  const f = fixture(), custody = join(f.root, 'quota-custody');
+  mkdirSync(custody, { mode: 0o700 });
+  const external = join(f.world.directory, 'installation-external');
+  mkdirSync(external, { mode: 0o700 });
+  const logins = f.logins.map((row, index) => {
+    const profile = read(row.profile), quotaLogin = join(index === 0 ? custody : external, 'login.json');
+    writeFileSync(quotaLogin, JSON.stringify({ v: 1, reference: profile.reference,
+      account: profile.expectedAccount, organization: profile.organization, plan: profile.plan,
+      token: `synthetic-quota-token-${index}` }), { mode: 0o600 });
+    return { ...row, quotaLogin };
+  });
+  const path = join(f.root, 'quota-logins.json');
+  writeFileSync(path, JSON.stringify({ version: 1, logins }));
+  installHarnessLogin({ root: f.root, options: { ...f.options(f.logins[0]), 'login-pool': path }, verify: f.verify });
+  const launch = root => installedHarnessLaunch({ root, options: { model: f.world.model, 'harness-user': 'offline' },
+    prepare: options => prepareInstalledHarnessLogins({ root, options, doorway: f.doorway,
+      build: 'build-a', now: Date.now(), verify: f.verify }) });
+  const tokens = configuration => configuration.entries.map(entry => readHarnessLogin(entry.profile, entry.quotaLogin));
+  const before = loadHarnessLogins(launch(f.root).options);
+  expect(tokens(before)).toEqual(['synthetic-quota-token-0', 'synthetic-quota-token-1']);
+  const destination = join(f.world.directory, 'moved-installation');
+  if (move === 'rename') renameSync(f.root, destination); else cpSync(f.root, destination, { recursive: true });
+  if (move === 'copy') {
+    // Re-establish private directory permissions for the synthetic copied custody.
+    chmodSync(join(destination, 'quota-custody'), 0o700);
+    rmSync(logins[0].quotaLogin); // the copy must read its own custody
+  }
+  const after = loadHarnessLogins(launch(destination).options);
+  expect(tokens(after)).toEqual(['synthetic-quota-token-0', 'synthetic-quota-token-1']);
+  expect(after.entries[0].quotaLogin).toBe(join(destination, 'quota-custody/login.json'));
+  expect(after.entries[1].quotaLogin).toBe(logins[1].quotaLogin);
+  expect(after.entries.map(entry => entry.profile)).toEqual(before.entries.map(entry => entry.profile));
+  expect(after.identity).toBe(before.identity);
 });
 
 it.each(['profile', 'authority'])('product launch preserves verified primary and secondary history after secondary %s loss', field => {

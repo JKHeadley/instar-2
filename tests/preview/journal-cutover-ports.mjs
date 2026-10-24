@@ -41,6 +41,16 @@ export function createProductionTelegramIO() {
         log({ kind: 'poll', outcome: 'conflict', role: 'live', offset: input.body.offset });
         return { kind: 'response', status: 409, bytes: '{"ok":false}' };
       }
+      // A bounded, non-CPU-burning poll barrier lets the parent stop this exact process
+      // inside the transport, then return the response after its ownership term expires.
+      const heldPoll = join(directory, `hold-poll-${process.env.INSTAR_PREVIEW_CUTOVER_ROLE}`);
+      if (existsSync(heldPoll)) {
+        writeFileSync(`${heldPoll}.entered`, String(process.pid));
+        const deadline = performance.now() + 90000;
+        while (existsSync(heldPoll) && performance.now() < deadline)
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+        if (existsSync(heldPoll)) throw Error('cutover poll barrier expired');
+      }
       const remainingPath = join(directory, 'conflicts-remaining');
       if (existsSync(remainingPath)) {
         const remaining = Number(readFileSync(remainingPath, 'utf8'));

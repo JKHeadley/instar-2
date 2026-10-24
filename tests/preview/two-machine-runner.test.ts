@@ -4,7 +4,7 @@
  * Only the Telegram port and the model route are the file-backed fixtures every runner process test uses.
  * D1(a): a reply waits until the other machine acknowledged its record; it is never sent on local durability. */
 import { expect, it } from 'vitest';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { REPLY_ACKNOWLEDGEMENT } from './journal.js';
@@ -218,6 +218,9 @@ it.each([0, 1500])('an owner that stalls past its term and comes back is stale: 
   }
   expect((await t.view())).toMatchObject({ epoch: 1, holder: { machine: 'studio' } });
   // The owner stalls (SIGSTOP by exact PID) for longer than its term; the standby takes over with the history.
+  const heldPoll = join(t.world.directory, 'hold-poll-studio');
+  writeFileSync(heldPoll, 'hold');
+  await until('the owner is inside the poll transport', () => existsSync(`${heldPoll}.entered`));
   studio.child.kill('SIGSTOP');
   await until('the standby takes over', () => laptop.output.stderr.includes('owner: epoch 2; history adopted'), 60000);
   expect(await t.status('laptop')).toMatchObject({ turns: 1, unknownSends: 0,
@@ -227,6 +230,7 @@ it.each([0, 1500])('an owner that stalls past its term and comes back is stale: 
   const stalePolls = t.polls('studio').length;
 
   // The stale owner wakes: its lease is gone, so it neither polls nor sends again; it retires with a recorded reason.
+  unlinkSync(heldPoll);
   studio.child.kill('SIGCONT');
   const ended = await studio.exited;
   // Rule 2: a non-zero exit here reached two gates with no evidence of its cause, because the child's

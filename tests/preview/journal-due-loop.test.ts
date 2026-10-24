@@ -1,3 +1,31 @@
+it('a lease lost while a poll returns refuses intake cleanly, while owned intake and genuine errors retain their outcomes', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-poll-lease-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '8989505249', chat: '7812716706',
+      operator: '7812716706', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+      maxCalls: 10, maxReplies: 10, maxTurns: 10, maxBytes: 409600, cursor: 0 });
+    let owned = true;
+    const worker = createJournalWorker(journal, { now: () => T0, stopped: () => !owned, model: async () => '{}',
+      send: async () => 1, checkOutbound: () => {} });
+    const batch = [{ update_id: 1, message: { message_id: 101, date: Math.floor(T0 / 1000), text: 'Synthetic lease test',
+      from: { id: 7812716706, is_bot: false, first_name: 'Synthetic' }, chat: { id: 7812716706, type: 'private' } } }];
+    // The response arrives after the term. The actual intake gate throws even for an empty batch.
+    owned = false;
+    expect(() => worker.intake(batch)).toThrow('preview stopped');
+    expect(await untilStopped(() => worker.intake(batch), () => !owned)).toBe(false);
+    expect(journal.view.cursor).toBe(0);
+    expect(journal.view.order).toHaveLength(0);
+    // The current owner can still accept exactly that update; no stale intake advanced the cursor.
+    owned = true;
+    expect(await untilStopped(() => worker.intake(batch), () => !owned)).toBe(true);
+    expect(journal.view.cursor).toBe(2);
+    expect(journal.view.order).toHaveLength(1);
+    await expect(untilStopped(() => { throw Error('intake storage failed'); }, () => !owned))
+      .rejects.toThrow('intake storage failed');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 // Plan row #548 (observer #179): a deferred task that falls due RUNS on its schedule whatever the chat connection is
 // doing; only DELIVERING its result needs Telegram, and the result waits durably in the journal until a reply carries
 // it. These tests drive the runner's own loop pieces (createOrdinaryLane, sentinelCycle, waitWorking and the poll
