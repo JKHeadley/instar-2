@@ -1,6 +1,6 @@
 # Change review — Repair historical capability replay after step-check retirement
 
-Subject base: bdd4533cef74e39c30dc94c2d6ec44d00da2e042
+Subject base: 0a8305ce7d58a97f7aee1423df48fe42343582fd
 Review state: open
 Reviewed content: none
 Outcome: Restore the five historical capability-note comparisons after the accepted step-check retirement while preserving captured evidence.
@@ -18,7 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/selfdesc-abilities.test.ts
 Hook bypass: none
 Convergence: none
-Decision: train106-retired-replay | Translate only the exact retired step-check inventory line in the existing test helper; retain captures and digests to avoid rewriting historical evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-106-p2-repair-002344-PROGRESS.md
+Decision: train106-retired-replay | Translate only the exact retired step-check inventory line in the existing test helper; retain captures and digests to avoid rewriting historical evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/limit-notice-1020-repair-205520-PROGRESS.md
 Prompt finding: 0d4664ea9de7 | quoted-evidence | Existing exact historical guidance comparison; no production prompt edits or literal-trigger judgment — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "run without another yes. the operator can tighten or revoke trust through setup-"
 Prompt finding: 14d7eeccc218 | quoted-evidence | Existing exact historical guidance comparison; no production prompt edits or literal-trigger judgment — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
 Prompt finding: 45e37ea2e9e9 | quoted-evidence | Existing exact historical guidance comparison; no production prompt edits or literal-trigger judgment — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
@@ -27,6 +27,9 @@ Prompt finding: 95e349aaf4ac | quoted-evidence | Existing exact historical guida
 Prompt finding: 9781075d458e | quoted-evidence | Existing exact historical guidance comparison; no production prompt edits or literal-trigger judgment — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "the effect doorway reports any refusal and its reason; say so plainly."
 
 Subject (1 paths): tests/preview/selfdesc-abilities.test.ts
+
+Reuse provenance: Cherry-picked unchanged implementation from b84884e440c12aa57b8ac1d20420d3fa856acb98; subject base follows its new parent on limit-notice-1020. The original train review remains in that source commit.
+Deferral: generated/register.json:1 | not-a-deferral=derived register quotation of governing rules, not a deferred commitment
 
 ## Closing block
 

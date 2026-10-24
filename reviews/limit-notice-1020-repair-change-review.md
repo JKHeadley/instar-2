@@ -46,6 +46,8 @@ Deferral: generated/register.json:1 | not-a-deferral=generated register quotatio
 
 Final publication: Register replay from f84a76628a2f8cb224221a5e64e5a69c77353458 produces generation sha256:47591a01b88be973a0ca9f383a826b71503d4ea311f0d92dbe175d5d2df26122. Targeted combined-source verification: 278 tests passed across 12 files; typecheck and build passed.
 
+Review anchoring: The reused replay repair record is anchored to its cherry-pick parent 0a8305ce7d58a97f7aee1423df48fe42343582fd and reports to this unit's required Studio destination; the original source review is preserved in b84884e4.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: move the existing durable append into the existing admitted-send callback and use neutral fixed availability wording. No new queue, classifier, timer or sign-in automation. Start guards remain queued host custody, unavailable alternatives, stop, audience and reply allowance; end state is one admitted notice with UNKNOWN fenced or a proven refusal still eligible. Saved turns recover through the existing session path. Live combined-build acceptance remains with the desk; no deployment claim is made.
