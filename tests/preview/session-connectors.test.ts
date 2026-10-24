@@ -43,3 +43,14 @@ it('missing custody refuses before a connector can launch; no configuration rema
   const port = await prepareSessionConnectors({ mcp: null });
   expect(port.launch()).toBeUndefined(); await port.close();
 });
+it('keeps the default browser home on the continuing session workspace', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'session-browser-')); roots.push(root);
+  const mcp = readRootMcp(root, () => JSON.stringify({ mcpServers: { playwright: { command: 'npx',
+    args: ['-y', '@playwright/mcp@latest', '--headless', '--user-data-dir', '.instar-browser-profile'] } } }));
+  const port = await prepareSessionConnectors({ mcp, privateDirectory: root, workspace: root, identity: null,
+    resolveSecret: () => { throw Error('no secret expected'); }, check: () => 'clear' });
+  try {
+    expect(port.launch().launch.playwright.env.CFFIXED_USER_HOME).toBe(root);
+    expect(port.launch().launch.playwright.env.CFFIXED_USER_HOME).toBe(root);
+  } finally { await port.close(); }
+});

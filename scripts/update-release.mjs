@@ -13,3 +13,6 @@ export const migrations = [{ id: 'mcp-defaults-1024', async run(root) {
 
 // A new id reaches roots which already recorded the snapshot-only migration.
 migrations.push({ id: 'mcp-browser-reads-1024', run: migrations[0].run });
+
+// Reach installations which already recorded both earlier browser migrations.
+migrations.push({ id: 'mcp-browser-profile-1024', run: migrations[0].run });

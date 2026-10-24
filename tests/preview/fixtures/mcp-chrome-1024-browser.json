@@ -1,0 +1,50 @@
+{
+  "source": "lanes/mcp-chrome-1024-proof2/admission-ea761463a4901a09-0.jsonl; proofroom3-mcpchrome-1024-133158; read-only capture",
+  "update": 840343974,
+  "calls": [
+    {
+      "phase": "pre",
+      "permission": {
+        "session": "b2c14d24-f42c-4b6e-bd88-d050a39da0b5",
+        "prompt": "77a0b1b4-bff7-442c-b37b-80543cd68837",
+        "original": "5dc5c505a79bfc2eb22d0e45eff415c6ecf0c965c3d53d6e3e02c1bda74b0927",
+        "effective": "5dc5c505a79bfc2eb22d0e45eff415c6ecf0c965c3d53d6e3e02c1bda74b0927"
+      },
+      "id": "toolu_01BhF3iVaJ6oBHRFZ7BiHP3c",
+      "n": 2,
+      "tool": "mcp__playwright__browser_navigate",
+      "input": "{\"url\":\"https://example.com\"}",
+      "decision": "allow",
+      "reason": "MCP read the root configuration lists",
+      "kind": "mcp-read"
+    },
+    {
+      "phase": "post",
+      "id": "toolu_01BhF3iVaJ6oBHRFZ7BiHP3c",
+      "tool": "mcp__playwright__browser_navigate",
+      "result": "[{\"type\":\"text\",\"text\":\"### Ran Playwright code\\n```js\\nawait page.goto('https://example.com');\\n```\\n### Page\\n- Page URL: https://example.com/\\n- Page Title: Example Domain\\n### Snapshot\\n- [Snapshot](.playwright-mcp/page-2026-10-24T20-33-02-384Z.yml)\"}]"
+    },
+    {
+      "phase": "pre",
+      "permission": {
+        "session": "b2c14d24-f42c-4b6e-bd88-d050a39da0b5",
+        "prompt": "77a0b1b4-bff7-442c-b37b-80543cd68837",
+        "original": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "effective": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+      },
+      "id": "toolu_018AvQMgNchhXtmhoK1GkfMd",
+      "n": 3,
+      "tool": "mcp__playwright__browser_snapshot",
+      "input": "{}",
+      "decision": "allow",
+      "reason": "MCP read the root configuration lists",
+      "kind": "mcp-read"
+    },
+    {
+      "phase": "post",
+      "id": "toolu_018AvQMgNchhXtmhoK1GkfMd",
+      "tool": "mcp__playwright__browser_snapshot",
+      "result": "[{\"type\":\"text\",\"text\":\"### Page\\n- Page URL: https://example.com/\\n- Page Title: Example Domain\\n### Snapshot\\n```yaml\\n- generic [active] [ref=e1]:\\n  - paragraph [ref=e7]: This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes.\\n  - paragraph [ref=e8]: هذا النطاق مُخصص للاستخدام في أمثلة التوثيق دون الحاجة إلى إذن. هذه ليست خدمة، يُرجى تجنب الاعتماد عليها لأغراض الاختبار والمراقبة.\\n  - paragraph [ref=e9]: 该域名仅用于文档示例，无需获得许可。这并非一项服务，请勿将其用于测试和监控目的。\\n  - paragraph [ref=e10]: L’usage de ce domaine est réservé à des exemples de documentation, sans autorisation préalable. Il ne s’agit pas d’un service ; son utilisation à des fins de test ou de surveillance est à éviter.\\n  - paragraph [ref=e11]: Данный домен предназначен для использования в примерах документации без необходимости получения предварительного разрешения. Это не сервис; не рекомендуется его использование для тестирования и мониторинга.\\n  - paragraph [ref=e12]: Este dominio está destinado al uso en ejemplos de documentación sin necesidad de permiso. Esto no es un servicio; evitar utilizarlo para realizar pruebas o monitoreos.\\n  - link \\\"Learn more\\\" [ref=e13] [cursor=pointer]:\\n    - /url: https://iana.org/help/example-domains\\n```\"}]"
+    }
+  ]
+}

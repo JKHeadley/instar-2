@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { prepareMcpLaunch, serveTurnSocket } from './tool-turn.mjs';
 import { harnessSocketDirectory, harnessHookPath } from './harness-user.mjs';
 
-export async function prepareSessionConnectors({ mcp, privateDirectory, identity, resolveSecret,
+export async function prepareSessionConnectors({ mcp, privateDirectory, identity, workspace, resolveSecret,
   check, socketDirectory = () => identity ? harnessSocketDirectory(identity.user) : realpathSync(mkdtempSync(join(tmpdir(), 'ism-'))) }) {
   if (!mcp) return { launch: () => undefined, close: async () => {} };
   const values = {};
@@ -21,7 +21,7 @@ export async function prepareSessionConnectors({ mcp, privateDirectory, identity
   const socket = join(socketDirectory(), 's');
   const close = await serveTurnSocket(socket, { shared: Boolean(identity), check });
   return { close, launch() {
-    const prepared = prepareMcpLaunch({ mcp, privateDirectory, socket,
+    const prepared = prepareMcpLaunch({ mcp, privateDirectory, socket, workspace,
       harness: identity ? { hookScript: harnessHookPath() } : null });
     close.rearm(prepared?.nonces ?? {}, values);
     return prepared;

@@ -213,7 +213,7 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
     ...(shellProfile ? { shellProfile } : {}), ...(gate ? { gate, delegation: true, networkReads: true } : {}),
     children: { max: children, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: mcp ? [...mcp.reads] : [], authority,
     ...(effectPolicy === undefined ? {} : { effectPolicy }), ...(irreversibleTerm === undefined ? {} : { irreversibleTerm }) }), { mode: 0o600 });
-  const mcpTurn = prepareMcpLaunch({ mcp, privateDirectory, socket, harness, node });
+  const mcpTurn = prepareMcpLaunch({ mcp, privateDirectory, socket, harness, node, workspace });
   // Only now may the harness enter its state: it reads the runner's config, adds its own files, and replaces none.
   if (opened) opened.open([join(stateDirectory, 'config.json')]);
   return { slug, directory: turn, volumeDirectory: volume ? volume.directory : turn, scratch: mounted, workspace, tmp, home, stateDirectory,
@@ -223,7 +223,7 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
 
 /** Prepare the same credential-free MCP launch records for a tool turn or continuing session.
  * Secret values never enter the file: the existing one-use socket launcher receives them. */
-export function prepareMcpLaunch({ mcp, privateDirectory, socket, harness = null, node = process.execPath }) {
+export function prepareMcpLaunch({ mcp, privateDirectory, socket, harness = null, node = process.execPath, workspace }) {
   const servers = mcp ? Object.keys(mcp.servers) : [];
   let mcpTurn;
   if (servers.length) {
@@ -236,8 +236,12 @@ export function prepareMcpLaunch({ mcp, privateDirectory, socket, harness = null
     const launch = Object.fromEntries(servers.map(name => {
       const configured = mcp.servers[name];
       // MCP spawns do not inherit the shell's PATH repair. Include the installation's node/npx directory.
-      const server = configured.command.includes('/') ? configured : { ...configured,
+      let server = configured.command.includes('/') ? configured : { ...configured,
         env: { PATH: `${dirname(node)}:${process.env.PATH ?? '/usr/bin:/bin'}`, ...configured.env } };
+      // macOS Foundation ignores HOME and otherwise uses the harness account's /var/empty.
+      // The shipped relative profile and its startup caches belong on the same bounded workspace.
+      if (workspace && name === 'playwright' && configured.args?.some((arg, i) => arg === '--user-data-dir' && configured.args[i + 1] === '.instar-browser-profile'))
+        server = { ...server, env: { CFFIXED_USER_HOME: workspace, ...server.env } };
       if (!nonces[name]) return [name, server];
       const { command, args = [], env = {}, ...rest } = server;
       const plain = Object.fromEntries(Object.entries(env).filter(([, value]) => typeof value === 'string'));
@@ -390,7 +394,8 @@ export async function serveTurnSocket(socket, { nonces = {}, values = {}, shared
     link.setEncoding('utf8');
     link.on('data', chunk => { if (text.length + chunk.length > HELD_CHECK_MAX_BYTES * 2) over = true; else text = `${text}${chunk}`; });
     link.on('end', () => {
-      const line = text.trim();
+      // Preserve the separator for an empty check payload (browser_snapshot {}).
+      const line = text.replace(/\r?\n$/u, '');
       if (line.startsWith('check ')) {
         if (over) { link.end('held'); return; }
         let verdict;
