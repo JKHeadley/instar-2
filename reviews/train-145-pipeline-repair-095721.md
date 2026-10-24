@@ -30,3 +30,6 @@ simplestRobustRoute: This is the simplest robust route: include the omitted fiel
 VERDICT: author submission; no independent convergence verdict claimed
 
 Publication preparation: The delegated desk owner-manifest and grounding-chain repin tools reported zero changed pins. The source-wiring ledger still requires register replay for the changed pool reader. The original relocation decisions now point to this repair's required desk-copy report, which names those inherited decisions too.
+
+Register publication: Replayed committed source 3a3083d657107ed287fed10cd3907bc6d887f7d7 into generation sha256:ff29b0369d1dbfd3d499d36751a3c2c97ddede4731ac14aac158fb3980269350 (293 entries, 117 rules; shape-only authority). This record covers the generated publication as well as the repair source.
+Verification evidence: The quota consumer regressions failed before the field repair and all 36 installation tests pass afterward. Both forced stale-owner process cases pass (0/1500 ms return), along with all seven due-loop tests. The unchanged first two two-machine scenarios time out awaiting standby startup on WSL and remain for the Studio gate. Pool and topic-pool tests pass; 96 direct conversation-session consumer tests pass; the live quota probe is explicitly skipped without live credentials. Architecture passes without findings. No full suite or live acceptance is claimed.
