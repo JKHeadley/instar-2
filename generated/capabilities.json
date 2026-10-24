@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:e9cca4433015473b31790daa22cb807aeaf961f0f252fba95ee77bf7f3c4f85d",
-  "commit": "2179b3f00062865c38a93597c6668d5cbdaefd7c",
+  "generation": "sha256:47591a01b88be973a0ca9f383a826b71503d4ea311f0d92dbe175d5d2df26122",
+  "commit": "f84a76628a2f8cb224221a5e64e5a69c77353458",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -90,14 +90,6 @@
         "availability": "not-loaded",
         "userFacing": false,
         "text": "keeps a faithfulness-checked rolling summary of earlier turns."
-      },
-      {
-        "id": "preview.step-check",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "off unless launched with it; independently checks each business step and changes nothing."
       },
       {
         "id": "register-tooling",
@@ -230,14 +222,6 @@
         "text": "keeps a faithfulness-checked rolling summary of earlier turns."
       },
       {
-        "id": "preview.step-check",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "off unless launched with it; independently checks each business step and changes nothing."
-      },
-      {
         "id": "register-tooling",
         "status": "live",
         "module": "src/register",
@@ -366,14 +350,6 @@
         "availability": "not-loaded",
         "userFacing": false,
         "text": "keeps a faithfulness-checked rolling summary of earlier turns."
-      },
-      {
-        "id": "preview.step-check",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "off unless launched with it; independently checks each business step and changes nothing."
       },
       {
         "id": "register-tooling",
@@ -506,14 +482,6 @@
         "text": "keeps a faithfulness-checked rolling summary of earlier turns."
       },
       {
-        "id": "preview.step-check",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "off unless launched with it; independently checks each business step and changes nothing."
-      },
-      {
         "id": "register-tooling",
         "status": "live",
         "module": "src/register",
@@ -642,14 +610,6 @@
         "availability": "available",
         "userFacing": false,
         "text": "keeps a faithfulness-checked rolling summary of earlier turns."
-      },
-      {
-        "id": "preview.step-check",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "available",
-        "userFacing": false,
-        "text": "off unless launched with it; independently checks each business step and changes nothing."
       },
       {
         "id": "register-tooling",
