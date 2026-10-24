@@ -38,7 +38,7 @@ it.each([false, true])('shipped session admission forwards listed connectors and
       doorway: { id: 'doorway' }, mountVolume: () => {}, closeStepEgress: async () => {},
       readRootMcp, prepareSessionAdmission, admissionConfig: () => ({ operations: [] }),
       attachEgress: async () => ({ proxy: {} }), networkToolReads: () => [], heldVerdict: () => () => 'clear', heldSecrets: {},
-      prepareSessionConnectors: async config => { const port = await prepareSessionConnectors(config); ports.push(port); return port; },
+      prepareSessionConnectors: async config => { expect(config.workspace).toBe(project); const port = await prepareSessionConnectors(config); ports.push(port); return port; },
     };
     const make = Function(...Object.keys(env), `return ${factory}`)(...Object.values(env));
     const binding = { entry: () => ({ profile: { executable: '/cli', home: '/home', configDirectory: '/config' } }),

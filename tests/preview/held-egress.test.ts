@@ -184,6 +184,30 @@ describe('review round 5 replay: a credential read through the swap race cannot 
     // A file tool and a sandboxed command are not outward: they never ask, so they are unaffected.
     expect((await hook(turn.stateDirectory, 'Bash', { command: 'echo ok' })).permissionDecision).toBe('allow');
   });
+  it('checks the recorded empty browser_snapshot input instead of losing its socket frame', async () => {
+    const seen: string[] = [];
+    const check = heldVerdict(createHeldSecrets({ login: () => [LOGIN] }));
+    const config = { mcpServers: { playwright: { command: 'npx' } }, reads: ['mcp__playwright__browser_snapshot'] };
+    const turn = await turnWith((text: string) => { seen.push(text); return check(text); }, 'empty-snapshot', config);
+    // Empty-input neighbour of denial 840343972, now captured from successful live update 840343974.
+    const proof = JSON.parse(readFileSync(new URL('./fixtures/mcp-chrome-1024-browser.json', import.meta.url), 'utf8'));
+    const snapshot = proof.calls.find((row: { phase: string; tool: string }) => row.phase === 'pre' && row.tool === 'mcp__playwright__browser_snapshot');
+    expect(proof.update).toBe(840343974);
+    expect((await hook(turn.stateDirectory, snapshot.tool, JSON.parse(snapshot.input))).permissionDecision).toBe('allow');
+    expect(seen).toEqual(['']);
+    const recorded = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')).otherShapes;
+    for (const row of recorded) {
+      const input = row.raw === '' ? {} : { text: row.raw };
+      expect((await hook(turn.stateDirectory, 'mcp__playwright__browser_snapshot', input)).permissionDecision, row.id).toBe('allow');
+      expect(seen.at(-1), row.id).toBe(outwardText('mcp__playwright__browser_snapshot', input));
+    }
+
+    expect((await hook(turn.stateDirectory, 'mcp__playwright__browser_snapshot', { text: LOGIN })).permissionDecisionReason)
+      .toMatch(/secret value the runner holds/u);
+    const unavailable = await turnWith(() => 'unavailable', 'empty-unavailable', config);
+    expect((await hook(unavailable.stateDirectory, 'mcp__playwright__browser_snapshot', {})).permissionDecisionReason)
+      .toMatch(/held-secret check is unavailable/u);
+  });
   it('refuses an MCP tool call or an unsandboxed command carrying a held value before its own decision', async () => {
     const turn = await turnWith(heldVerdict(createHeldSecrets({ login: () => [LOGIN] })), 'mcp');
     const mcp = await hook(turn.stateDirectory, 'mcp__srv__send', { to: 'x', body: `token ${PLAIN}` });

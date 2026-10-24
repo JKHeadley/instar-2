@@ -8,7 +8,10 @@ import { durablePreviewWrite } from '../tests/preview/durable-write.js';
 import { readSetupRecord } from './onboarding-state.mjs';
 import { assertAgentPaths } from './agent-paths.mjs';
 
-export const DEFAULT_MCP = { mcpServers: { playwright: { command: 'npx', args: ['-y', '@playwright/mcp@latest'] } },
+const LEGACY_BROWSER = { command: 'npx', args: ['-y', '@playwright/mcp@latest'] };
+// Relative to the harness workspace: owned, writable, and inside its bounded volume.
+export const DEFAULT_MCP = { mcpServers: { playwright: { command: 'npx',
+  args: [...LEGACY_BROWSER.args, '--headless', '--user-data-dir', '.instar-browser-profile'] } },
   reads: ['navigate', 'snapshot', 'take_screenshot', 'wait_for', 'tabs', 'console_messages', 'network_requests']
     .map(name => `mcp__playwright__browser_${name}`) };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -43,6 +46,7 @@ export function installMcp(root, config = DEFAULT_MCP, secretEnv = {}, custody) 
     }
     const servers = Object.assign(Object.create(null), old?.mcpServers), reads = [...old?.reads ?? []];
     for (const [name, server] of Object.entries(next.mcpServers)) {
+      if (config === DEFAULT_MCP && name === 'playwright' && same(servers[name], LEGACY_BROWSER)) servers[name] = server;
       if (Object.hasOwn(servers, name)) {
         if (config !== DEFAULT_MCP && !same(servers[name], server)) throw Error('MCP server already has different operator choices');
         if (config !== DEFAULT_MCP || !same(servers[name], server)) continue;

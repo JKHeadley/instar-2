@@ -1,13 +1,13 @@
 import { afterEach, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, symlinkSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, symlinkSync, realpathSync, accessSync, constants } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createSecretCustody, dueCredentialReminders, REMINDER_OFFSETS_MS, secretRef } from './secret-custody.js';
 // @ts-expect-error Installer JavaScript.
 import { installMcp, DEFAULT_MCP } from '../../scripts/mcp-setup.mjs';
 // @ts-expect-error Real runtime consumer.
-import { readRootMcp, prepareMcpLaunch } from './tool-turn.mjs';
+import { readRootMcp, prepareMcpLaunch, prepareToolTurn } from './tool-turn.mjs';
 // @ts-expect-error Real effect admission consumer.
 import { admitToolCallEffect, admitToolCall } from './tool-admission.mjs';
 // @ts-expect-error Release migration manifest.
@@ -203,4 +203,53 @@ it('replays the proof-room failed-server record and admits its requested browser
   const p = root(); installMcp(p);
   expect(admitToolCallEffect('mcp__playwright__browser_navigate', { url: 'https://example.com' },
     { operations: [], mcpReads: readRootMcp(p).reads }, 1)).toMatchObject({ admitted: true, consequential: false });
+});
+
+it('migrates the old browser to an owned workspace profile without touching customized servers', async () => {
+  const migration = migrations.find((m: { id: string }) => m.id === 'mcp-browser-profile-1024');
+  expect(migration).toBeDefined();
+  const p = root(), old = { command: 'npx', args: ['-y', '@playwright/mcp@latest'] };
+  writeFileSync(join(p, 'mcp.json'), JSON.stringify({ mcpServers: { playwright: old }, reads: ['mcp__playwright__browser_snapshot'] }));
+  await migration.run(p);
+  const server = readRootMcp(p).servers.playwright;
+  expect(server.args).toEqual(['-y', '@playwright/mcp@latest', '--headless', '--user-data-dir', '.instar-browser-profile']);
+  const before = bytes(p), stat = statSync(join(p, 'mcp.json'));
+  await migration.run(p);
+  expect(bytes(p)).toBe(before);
+  expect(statSync(join(p, 'mcp.json')).ino).toBe(stat.ino);
+  expect(statSync(join(p, 'mcp.json')).mtimeMs).toBe(stat.mtimeMs);
+  for (const custom of [{ ...old, env: { LOG_LEVEL: 'debug' } }, { ...old, args: [...old.args, '--user-data-dir', '/custom/profile'] }]) {
+    writeFileSync(join(p, 'mcp.json'), JSON.stringify({ mcpServers: { playwright: custom }, reads: [] }));
+    const original = bytes(p); await migration.run(p); expect(bytes(p)).toBe(original);
+  }
+});
+
+it('launches the default profile inside the writable bounded harness workspace', () => {
+  const p = root(); installMcp(p);
+  const turn = prepareToolTurn({ root: p, operation: 'telegram:1:update:browser-profile', attempt: 0, operations: [],
+    mcp: readRootMcp(p), scratch: (dir: string) => {
+      const volume = join(dir, 'volume'); mkdirSync(volume); return realpathSync(volume);
+    } });
+  roots.push(resolve(turn.socket.path, '..'));
+  const server = JSON.parse(readFileSync(turn.mcp.config, 'utf8')).mcpServers.playwright;
+  const profile = resolve(turn.workspace, server.args[server.args.indexOf('--user-data-dir') + 1]);
+  expect(profile).toBe(join(turn.workspace, '.instar-browser-profile'));
+  expect(server.env.CFFIXED_USER_HOME).toBe(turn.workspace);
+  // The harness's actual cwd is the workspace, already covered by its volume grant.
+  mkdirSync(profile); accessSync(profile, constants.W_OK);
+  expect(server.args).toContain('--headless');
+  expect(server.args).not.toContain('--no-sandbox');
+});
+
+it('leaves other browser profiles and an explicit Foundation home unchanged', () => {
+  const p = root();
+  for (const server of [
+    { command: 'npx', args: ['--user-data-dir', '/chosen/profile'] },
+    { command: 'npx', args: ['--user-agent', '.instar-browser-profile'] },
+    { ...DEFAULT_MCP.mcpServers.playwright, env: { CFFIXED_USER_HOME: '/chosen/home' } },
+  ]) {
+    const launch = prepareMcpLaunch({ mcp: { servers: { playwright: server }, secrets: {} },
+      privateDirectory: p, socket: '/unused', workspace: p });
+    expect(launch.launch.playwright.env.CFFIXED_USER_HOME).toBe(server.env?.CFFIXED_USER_HOME);
+  }
 });

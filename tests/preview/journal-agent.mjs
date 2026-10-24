@@ -2746,7 +2746,7 @@ async function main() {
               const previous = sessionConnectors.get(claim);
               if (previous) await previous.close();
               sessionConnectors.set(claim, await prepareSessionConnectors({ mcp,
-                privateDirectory: privateDirectory ?? state, identity,
+                privateDirectory: privateDirectory ?? state, identity, workspace: project,
                 resolveSecret: name => createSecretCustody(root, key(), wallNow).resolve(secretRef(name)),
                 check: heldVerdict(heldSecrets) }));
             }
