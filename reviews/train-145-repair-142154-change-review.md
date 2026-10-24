@@ -14,8 +14,8 @@ Side effects: Future installs stay on TypeScript 5.9.3 rather than accepting lat
 Undo and recovery: Revert the merge with its first parent selected and regenerate the register; retain both parent histories and do not touch installed state.
 Multi-machine posture: Repository-only integration; every machine installs the same locked compiler, with existing machine-local connector custody and ownership unchanged.
 Layer below: Both parent package manifests and lockfiles resolve TypeScript 5.9.3. Incoming MCP source merged cleanly; its recorded-shape admission tests and original runtime dependency regression exercise the consumers. The constitution matches origin/main. No changelog conflict or edit.
-Bug class: integration
-Bug evidence: reproducer=tests/preview/one-line-install.test.ts
+Bug class: none
+Bug evidence: none
 Hook bypass: none
 Convergence: none
 Decision: train-145-repair-pin | Keep the live exact TypeScript 5.9.3 dependency in both manifests; preserve runtime dependency availability and both merge parents. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-145-repair-142154-PROGRESS.md
