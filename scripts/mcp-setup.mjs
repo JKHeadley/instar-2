@@ -2,6 +2,7 @@
 import { mkdirSync, rmdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readRootMcp } from '../tests/preview/tool-turn.mjs';
+import { setupMcp } from '../tests/preview/trust-setup.mjs';
 import { durablePreviewWrite } from '../tests/preview/durable-write.js';
 import { readSetupRecord } from './onboarding-state.mjs';
 import { assertAgentPaths } from './agent-paths.mjs';
@@ -19,12 +20,12 @@ export function installMcp(root, config = DEFAULT_MCP, secretEnv = {}, custody) 
   try {
     const path = join(root, 'mcp.json'), old = readSetupRecord(path);
     readRootMcp(root);
-    readRootMcp(root, () => JSON.stringify(config));
+    setupMcp(config);
     const next = structuredClone(config);
     if (!secretEnv || typeof secretEnv !== 'object' || Array.isArray(secretEnv)) throw Error('MCP secret env must be an object');
     const pending = [];
     for (const [name, values] of Object.entries(secretEnv)) {
-      if (!next.mcpServers?.[name] || !values || typeof values !== 'object' || Array.isArray(values) || !custody)
+      if (!Object.hasOwn(next.mcpServers, name) || !values || typeof values !== 'object' || Array.isArray(values) || !custody)
         throw Error('MCP secrets need a configured server and custody');
       for (const [key, value] of Object.entries(values)) {
         if (typeof value !== 'string' || !value || !/^[A-Za-z_][A-Za-z0-9_]*$/u.test(key)) throw Error('MCP secret env malformed');

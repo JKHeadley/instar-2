@@ -65,6 +65,19 @@ it('refuses malformed env before secret injection can turn it into an object', (
     { account: { TOKEN: 'opaque-test-value' } }, custody)).toThrow();
   expect(bytes(p)).toBe(before); expect(custody.records()).toEqual([]);
 });
+it('refuses even an opaque inline env value instead of relying on token recognition', () => {
+  const p = root(); installMcp(p); const before = bytes(p);
+  expect(() => installMcp(p, { mcpServers: { account: { command: 'connector', env: { TOKEN: 'opaque-test-value' } } } }))
+    .toThrow();
+  expect(bytes(p)).toBe(before);
+});
+it('secret injection requires an own server entry, not an inherited object property', () => {
+  const p = root(); installMcp(p); const before = bytes(p);
+  const custody = createSecretCustody(p, new Uint8Array(32).fill(3), () => 1);
+  expect(() => installMcp(p, { mcpServers: { account: { command: 'connector' } } },
+    JSON.parse('{"__proto__":{"TOKEN":"opaque-test-value"}}'), custody)).toThrow();
+  expect(bytes(p)).toBe(before); expect(custody.records()).toEqual([]);
+});
 it('replays recorded model and reply shapes through the newly installed read boundary', () => {
   const p = root(); installMcp(p);
   const mcp = readRootMcp(p);
