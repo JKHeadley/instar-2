@@ -233,9 +233,18 @@ export function toolCallProposals(tool, input) {
  * names, or any under an unreadable policy, is decided by the doorway). Any refusal refuses the call; otherwise the call is
  * consequential when any of its targets is, carrying every test that held and every grant that admitted one, so the effect
  * owner applies the never-twice identity to it. The host checkpoint's effect owner decides with this same function. */
-// Playwright combines tab reads and mutations in one tool; only its explicit list action is a read.
-const configuredMcpRead = (tool, input, config) => tool.startsWith('mcp__') && config.mcpReads?.includes(tool) === true
-  && (tool !== 'mcp__playwright__browser_tabs' || input?.action === 'list');
+// Rules 1/26: a read-listed tool can still execute an effect. Share the input check with the hook and effect owner.
+function configuredMcpRead(tool, input, config) {
+  if (!tool.startsWith('mcp__') || config.mcpReads?.includes(tool) !== true) return false;
+  if (tool === 'mcp__playwright__browser_tabs') return input?.action === 'list';
+  if (tool === 'mcp__playwright__browser_navigate') {
+    // WHATWG parsing matches browser scheme normalization (case, leading controls, embedded tabs/newlines).
+    // Executable or malformed navigation keeps the tool available through the existing effect doorway.
+    if (typeof input?.url !== 'string') return false;
+    try { return new URL(input.url).protocol !== 'javascript:'; } catch { return false; }
+  }
+  return true;
+}
 export function admitToolCallEffect(tool, input, config, now) {
   const network = CODEX_NETWORK_READ_TOOLS.includes(tool);
   const accountRead = configuredMcpRead(tool, input, config);

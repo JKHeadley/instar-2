@@ -108,8 +108,14 @@ it('replays recorded model and reply shapes through the newly installed read bou
   for (const row of rows) {
     const config = { operations: [], mcpReads: mcp.reads };
     for (const tool of mcp.reads)
-      expect(admitToolCallEffect(tool, { text: row.raw, action: 'list' }, config, 1), row.id)
+      expect(admitToolCallEffect(tool, { text: row.raw, action: 'list', url: 'about:blank' }, config, 1), row.id)
         .toMatchObject({ admitted: true, consequential: false });
+    // Recorded model/reply bytes are inert payload: executable URL classification still reaches the effect boundary.
+    const tool = 'mcp__playwright__browser_navigate';
+    const input = { url: `JaVa\tScRiPt:void(${JSON.stringify(row.raw)})` };
+    expect(admitToolCallEffect(tool, input, config, 1), row.id).toMatchObject({ admitted: false, consequential: true });
+    expect(admitToolCall({ tool_name: tool, tool_input: input }, { ...config, maxCalls: 100 }, 1,
+      { exists: () => true, realpath: (path: string) => path }), row.id).toMatchObject({ decision: 'deny' });
     expect(admitToolCallEffect('mcp__playwright__browser_click', { text: row.raw }, config, 1), row.id)
       .toMatchObject({ admitted: false });
   }
