@@ -123,6 +123,7 @@ const importSource = (journal, state, source, stopped) => {
 };
 
 import { auditJournal } from './journal-audit.mjs';
+import { makeTestCopy } from './test-copy.js';
 
 
 import { memoryReport } from './memory-export.js';
@@ -754,7 +755,25 @@ async function main() {
   const retrospectiveEnabled = options.retrospective !== 'false';
   // Part 18 (plan #402): the live sentinels, all on by default; `--sentinels none` (or a subset) is the off-switch.
   const sentinelFamilies = sentinelFamiliesOf(options.sentinels);
-  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'carry-group', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract', 'install-login', 'prepare-logins'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'carry-group', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract', 'install-login', 'prepare-logins', 'test-copy'].includes(command)) throw Error('preview: unknown command');
+  if (command === 'test-copy') {
+    // test-copy-1020: a NEW root holding a copy of the source's journal, explicitly rebound (and recorded as rebound) to a
+    // test bot and the operator's own private chat on it. The source root is only read; logins, custody and the
+    // conversation lease are never copied, so the copy launches with the test room's own launch line and login.
+    try {
+      const testCopy = makeTestCopy({ sourceRoot: required(options, 'source-root'), root: required(options, 'root'), key: key(), now: wallNow(),
+        binding: { bot: required(options, 'bot-id'), chat: required(options, 'chat-id'),
+          ...(options.cursor === undefined ? {} : { cursor: number(options.cursor, 'cursor', 0) }),
+          ...(options['grant-reference'] === undefined ? {} : { grant: options['grant-reference'] }),
+          ...(options['configuration-digest'] === undefined ? {} : { configurationDigest: options['configuration-digest'] }) } });
+      process.stdout.write(`${JSON.stringify({ testCopy })}\n`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      process.stderr.write(`${/^(test copy:|preview journal: test copy refused|preview: )/u.test(message) ? message : 'test copy: preparation failed'}\n`);
+      process.exitCode = 1;
+    }
+    return;
+  }
   if (command === 'seal-authority') {
     // The desk's recording step: seals the authority record it decided, under the trial's storage
     // SecretRef, into a new file (never replacing one). Nothing else is read or written.
@@ -1351,13 +1370,15 @@ async function main() {
       { ...(cacheHit === undefined ? {} : { cacheHit }), accepted, elapsedMs: Math.max(0, Math.round(clock.elapsed() - started)) }, wallNow()); }
   };
   const requireGroupDisclosure = async view => {
-    if (!view.groupCarry) return;
+    // test-copy-1020: a copy's audience is its verified operator's own private chat (the rebind admits no other), so
+    // carried private memory is disclosed to that operator alone; the group grant of its lineage does not apply.
+    if (!view.groupCarry || view.testCopy) return;
     const scope = view.groupCarry.scope;
     if (!await observeAudience(async observe => groupPermission(scope).kind === 'resolved'
       && await groupAudience.verify(scope, observe) && groupPermission(scope).kind === 'resolved')) throw Error('group carry: disclosure grant or operator-only audience refused');
   };
   const verifiedActionAudience = async () => {
-    if (journal.view.groupCarry) { await requireGroupDisclosure(journal.view); return true; }
+    if (journal.view.groupCarry && !journal.view.testCopy) { await requireGroupDisclosure(journal.view); return true; }
     const scope = { sourceRoot: root, destinationRoot: root, chat: journal.view.genesis.chat,
       operator: journal.view.genesis.operator, bot: journal.view.genesis.bot };
     return observeAudience(observe => groupAudience.verify(scope, observe));
@@ -2365,11 +2386,17 @@ async function main() {
       // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
       // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
       sendAdmits: true,
-      send: async ({ text, expectedText, formatting, chat, thread, replyTo, replyMarkup, target, provenance, admit, current, observeSendPhase }) => {
-        if (!journal.verifyOutbound(provenance, { target, chat, ...(thread === undefined ? {} : { thread }), body: text }))
+      send: async ({ text, expectedText, formatting, chat, thread: signedThread, replyTo, replyMarkup, target, provenance, admit, current, observeSendPhase }) => {
+        if (!journal.verifyOutbound(provenance, { target, chat, ...(signedThread === undefined ? {} : { thread: signedThread }), body: text }))
           return { kind: 'refused', reason: 'outbound provenance unsigned' };
-        if (formatting && !journal.verifyOutbound(formatting.fallback.provenance, { target, chat, ...(thread === undefined ? {} : { thread }), body: formatting.fallback.text }))
+        if (formatting && !journal.verifyOutbound(formatting.fallback.provenance, { target, chat, ...(signedThread === undefined ? {} : { thread: signedThread }), body: formatting.fallback.text }))
           return { kind: 'refused', reason: 'plain alternative provenance unsigned' };
+        // test-copy-1020: a copy sends into its own test chat and nowhere else (never its lineage's chat), and its private
+        // chat has no topics, so a copied turn's forum topic is not carried onto the wire.
+        const copied = journal.view.testCopy;
+        if (copied && (chat !== g.chat || copied.lineage.forum === true && chat === copied.lineage.chat))
+          return { kind: 'refused', reason: 'test copy sends only to its test chat' };
+        const thread = copied ? undefined : signedThread;
         if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop)
           return { kind: 'refused', reason: 'stopped before dispatch' };
         // Rule 63: the fence is consumed immediately before dispatch. Without it nothing is sent: a definite

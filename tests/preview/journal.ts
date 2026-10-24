@@ -1073,7 +1073,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1096,6 +1096,10 @@ export type JournalRecord =
   // Non-additive: an older writer must not discard the no-repeat expectation.
   | { kind: 'media-claim'; id: string; digest: string; at: number }
   | { kind: 'media-custody'; id: string; result: MediaCustodyResult; at: number }
+  /** Non-additive (test-copy-1020): the explicit, recorded rebind of a test copy onto a test bot and the operator's own
+   * private chat on it, naming the source root and the exact journal head it was copied from. Once per journal. */
+  | { kind: 'test-copy'; bot: string; chat: string; cursor: number; grant?: string; configurationDigest?: string;
+    source: TestCopySource; at: number }
   | { kind: 'genesis'; bot: string; chat: string; operator: string; forum?: true; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number;
     /** Rules 8, 92: this root's own open-loop revisit interval, fixed for its life. Absent keeps
      * `LOOP_REVISIT_MS`, so every root created before this field behaves exactly as it did. */
@@ -1103,6 +1107,8 @@ export type JournalRecord =
     /** Rule 35: set only by a trusted test composition; absent means a production store. */
     origin?: 'test' }
   | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody;
+    /** Rule 96: chronological position after a bot rebind; update/raw/cursor retain the wire identity. */
+    historyUpdate?: number;
     /** Rules 28/29: the verified principal minted at intake; absent only on legacy or unaccepted rows. */
     writer?: WriterRecord;
     /** Admitted past the ordinary turn allowance by the minimal reserve (Rule 15). */
@@ -1509,6 +1515,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
 
 
 
+export interface TestCopySource { root: string; journal: string; bytes: number; frontier: string }
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   /** Highest durable journal timestamp; a later wall-clock rollback cannot reorder frames. */
   clockFloor: number;
@@ -1530,6 +1537,10 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
 
   /** Non-additive: older readers must refuse, including after compaction; descendants depend on its disclosure gate. */
   groupCarry?: CarriedMemory;
+  /** A test copy's rebind (test-copy-1020): where it came from, the source's own binding (lineage) and the open work
+   * that was copied with it. Present only in a copy; `genesis` then holds the test binding every launch is checked against. */
+  testCopy?: { source: TestCopySource; lineage: Extract<JournalRecord, {kind:'genesis'}>; at: number;
+    copied: { requests: string[]; commitments: number; turns: string[]; waiting: number } };
   /** Predecessor only: open requests whose execution moved to a group root, once. Never fired from here again. */
   requestTransfer?: { destinationRoot: string; chat: string; requests: ReminderRef[]; at: number };
   channelItems: Map<string, ChannelItem>;
@@ -2879,13 +2890,17 @@ export const wallEpoch = (day: string, time: string, zone: string) => {
 };
 /** A runner-authored turn sorts after every earlier turn and before the next Telegram update. */
 const SYNTHETIC_UPDATE_STEP = 1 / 1024;
-/** "Everything before this turn": integer Telegram updates keep their old meaning. The packet
+/** "Everything before this turn": integer intake positions keep their old meaning. The packet
  * writer and its audit both bound history with this, so a due turn's own request stays in view. */
 export const before = (update: number) => update - SYNTHETIC_UPDATE_STEP / 4;
-/** The journal's update domain: a Telegram update id, or a synthetic update on the 1/1024 grid that a requested
- * action's due turn receives. One definition, read by every consumer that names an operation by its update. */
+/** The journal's chronological update domain: an intake position (the wire id unless a bot was rebound),
+ * or a synthetic update on the 1/1024 grid that a requested action's due turn receives. One definition, read by every consumer that names an operation by its update. */
 export const isJournalUpdate = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
   && value >= 0 && Number.isSafeInteger(value / SYNTHETIC_UPDATE_STEP);
+/** Copied bot streams have unrelated wire counters. New turns follow every copied or synthetic turn.
+ * Persist the position on intake rather than renumbering old evidence when a journal is replayed. */
+const nextIntakeHistoryUpdate = (view: JournalView, wireUpdate: number) => Math.max(wireUpdate,
+  Math.floor(view.order.reduce((max, turn) => Math.max(max, turn.update), -1)) + 1);
 export const nextSyntheticUpdate = (view: JournalView) => {
   const top = view.order.reduce((max, turn) => Math.max(max, turn.update), 0), base = Math.floor(top);
   const step = Math.round((top - base) / SYNTHETIC_UPDATE_STEP) + 1;
@@ -3970,7 +3985,10 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
   if (row.kind === 'intake') {
     const prior = view.turns.get(row.id);
     view.waiting = view.waiting.filter(item => item.update !== row.update);
-    if (prior) { if (prior.update !== row.update || prior.raw !== row.raw) throw Error('preview journal: update collision'); return; }
+    if (prior) { if (prior.update !== (row.historyUpdate ?? row.update) || prior.raw !== row.raw) throw Error('preview journal: update collision'); return; }
+    const historyUpdate = row.historyUpdate ?? row.update;
+    if (row.historyUpdate !== undefined && (!view.testCopy || !isJournalUpdate(historyUpdate)
+      || historyUpdate !== nextIntakeHistoryUpdate(view, row.update))) throw Error('preview journal: intake history order');
     if (row.reserve !== undefined && (row.reserve !== true || view.order.length < view.limits.maxTurns))
       throw Error('preview journal: reserve intake order');
     if (view.order.length >= view.limits.maxTurns && !(row.reserve && (!row.accepted
@@ -3983,10 +4001,10 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       && /^sha256:[0-9a-f]{64}$/u.test(row.custody.arrival) && typeof row.custody.capture === 'string' && Array.isArray(row.custody.secrets)
       && row.custody.secrets.every(name => typeof name === 'string'))) throw Error('preview journal: intake custody malformed');
     if (row.editOf !== undefined && (!row.accepted || !row.replaces || !view.turns.get(row.editOf)?.accepted
-      || !view.turns.get(row.replaces)?.accepted || row.update <= view.turns.get(row.replaces)!.update))
+      || !view.turns.get(row.replaces)?.accepted || historyUpdate <= view.turns.get(row.replaces)!.update))
       throw Error('preview journal: edit lineage refused');
     checkIntakeWriter(view, row);
-    const turn: Turn = { id: row.id, update: row.update, text: row.text, raw: row.raw, accepted: row.accepted, at: row.at, reserved: false,
+    const turn: Turn = { id: row.id, update: historyUpdate, text: row.text, raw: row.raw, accepted: row.accepted, at: row.at, reserved: false,
       ...(row.writer === undefined ? {} : { writer: row.writer }),
       ...(row.thread === undefined ? {} : { thread: row.thread }),
       ...(row.custody === undefined ? {} : { custody: row.custody }),
@@ -4028,6 +4046,28 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       || scope.operator !== view.genesis.operator || scope.bot !== view.genesis.bot
       || !validCarriedMemory(row.memory)) throw Error('preview journal: group lineage refused');
     view.groupCarry = row.memory; return;
+  }
+  if (row.kind === 'test-copy') {
+    // Rule 35 / least revelation: a copy is rebound only onto the SAME verified operator's private chat with a different
+    // bot, so the audience of the copied history is that operator alone; a copy of a copy has no second lineage.
+    const g = view.genesis, source = row.source as Partial<TestCopySource> | undefined;
+    if (view.testCopy || g.importSource !== undefined && !view.imported || row.bot === g.bot || !/^[1-9][0-9]*$/u.test(row.bot)
+      || row.chat !== g.operator || !Number.isSafeInteger(row.cursor) || row.cursor < 0 || !Number.isSafeInteger(row.at) || row.at <= 0
+      || row.grant !== undefined && (typeof row.grant !== 'string' || !row.grant)
+      || row.configurationDigest !== undefined && (typeof row.configurationDigest !== 'string' || !row.configurationDigest)
+      || !source || typeof source.root !== 'string' || !source.root.startsWith('/') || !/^sha256:[a-f0-9]{64}$/u.test(source.journal ?? '')
+      || !Number.isSafeInteger(source.bytes) || source.bytes! <= 0 || !/^[a-f0-9]{64}$/u.test(source.frontier ?? ''))
+      throw Error('preview journal: test copy refused');
+    view.testCopy = { source: { root: source.root, journal: source.journal!, bytes: source.bytes!, frontier: source.frontier! }, lineage: g, at: row.at,
+      copied: { requests: openRequests(view).map(datedKey), commitments: view.commitments.filter((_, id) => commitmentOpen(view, id)).length,
+        turns: view.order.filter(turn => turn.accepted && turn.intent === undefined).map(turn => turn.id), waiting: view.waiting.length } };
+    const { forum: _forum, ...binding } = g;
+    view.genesis = { ...binding, bot: row.bot, chat: row.chat, cursor: row.cursor,
+      ...(row.grant === undefined ? {} : { grant: row.grant }),
+      ...(row.configurationDigest === undefined ? {} : { configurationDigest: row.configurationDigest }) };
+    // The source bot's queued updates are the source's; the test bot's own update stream starts at the copy's cursor.
+    view.cursor = row.cursor; view.waiting = [];
+    return;
   }
   if (row.kind === 'request-transfer') {
     const open = new Set(openRequests(view).map(datedKey)), keys = Array.isArray(row.requests) ? row.requests.map(reminderKey) : [];
@@ -5362,13 +5402,15 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
   let pendingSnapshot: { start: SnapshotStart; chunks: Buffer[] } | undefined;
   let closed = false;
   let signer: ReturnType<typeof outboundSigner> | undefined;
-  const signerOf = () => signer ??= outboundSigner(key, view!.genesis.bot);
+  // A test copy keeps its lineage's signing identity, so every copied signature and verified writer still verifies.
+  const lineageBot = () => view!.testCopy?.lineage.bot ?? view!.genesis.bot;
+  const signerOf = () => signer ??= outboundSigner(key, lineageBot());
   /** Rule 89: the journal owner signs every outbound intent automatically; callers never hold the key. */
   const signOutbound = (speaker: Speaker, subject: OutboundSubject) => signerOf().sign(speaker, subject);
   const verifyOutbound = (provenance: unknown, subject: OutboundSubject) => signerOf().verify(provenance, subject);
   let system: ReturnType<typeof systemWriters> | undefined;
   /** Rule 29: the owner's verified system writers; minted and re-verified with the journal's own key. */
-  const systemOf = () => system ??= systemWriters(key, view!.genesis.bot);
+  const systemOf = () => system ??= systemWriters(key, lineageBot());
   const systemCheck: SystemCheck = (writer, method, occurrence) => systemOf().check(writer, method, occurrence);
   const systemWriter = (method: SystemMethod, occurrence: string, at: number) => systemOf().mint(method, occurrence, at);
   const sealed = readFileSync(fd);
@@ -6236,15 +6278,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (reserve && parsed.accepted && reserveTurnsUsed(journal.view, ports.now()) >= MINIMAL_RESERVE.turns) {
         held = true; holdBacklog(pending.slice(index), waiting); break;
       }
+      const historyUpdate = journal.view.testCopy ? nextIntakeHistoryUpdate(journal.view, update.update_id) : update.update_id;
       let editOf: string | undefined, replaces: string | undefined;
       if (update.edited_message && parsed.accepted && Number.isSafeInteger(update.edited_message.message_id)
         && update.edited_message.message_id! > 0) {
-        const matches = journal.view.order.filter(turn => turn.accepted && turn.update < update.update_id
+        const matches = journal.view.order.filter(turn => turn.accepted && turn.update < historyUpdate
           && turn.thread === parsed.thread && (() => {
             try {
               const raw = JSON.parse(turn.raw) as TelegramUpdate;
               const message = raw.edited_message ?? raw.message;
-              return message?.message_id === update.edited_message!.message_id
+              return turn.id === previewTurnId(journal.view.genesis.bot, raw.update_id)
+                && message?.message_id === update.edited_message!.message_id
                 && message?.chat?.id === update.edited_message!.chat?.id
                 && message?.from?.id === update.edited_message!.from?.id;
             } catch { return false; }
@@ -6261,6 +6305,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         ? ports.secrets.custody({ text: parsed.text, raw: JSON.stringify(update), source: parsed.id }) : null;
       journal.append({ kind: 'intake', id: parsed.id, update: update.update_id, text: accepted ? custody?.text ?? parsed.text : '',
         raw: custody?.raw ?? JSON.stringify(update), accepted, cursor, at: ports.now(),
+        ...(journal.view.testCopy ? { historyUpdate } : {}),
         ...(custody?.custody ? { custody: custody.custody } : {}),
         ...(accepted && principal ? { writer: writerRecord(principal) } : {}),
         ...(accepted && parsed.thread !== undefined ? { thread: parsed.thread } : {}),
