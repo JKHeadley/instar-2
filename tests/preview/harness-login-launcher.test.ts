@@ -2,7 +2,7 @@
 // only physical Telegram, harness identity and CLI IO are replaced. No Shared mutation/model spend.
 import { expect, it } from 'vitest';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync, renameSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, offlineActivationAuthority, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
@@ -10,16 +10,17 @@ import { encoded } from './stage2-provider.js';
 import { CREDENTIAL_SHAPE_NOTICE, openPreviewJournal } from './journal.js';
 import { harnessLoginPath, storeHarnessLogin } from './harness-user.mjs';
 
-it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', 'imported', 'missing-custody', 'missing-custody-secret', 'intact-custody-secret'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
-  const world = successiveWorld(), directory = world.directory, root = join(directory, 'pool-runner');
+it.each(['pool', 'legacy', 'installed', 'fresh', 'missing', 'missing-profile', 'imported', 'missing-custody', 'missing-custody-secret', 'intact-custody-secret', 'renamed', 'copied', 'lost-build'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
+  const world = successiveWorld(), directory = world.directory;
+  let root = join(directory, 'pool-runner');
   const absolute = relative => pathToFileURL(join(process.cwd(), relative)).href;
   const log = join(directory, 'telegram.log'), updates = join(directory, 'updates.json'), calls = join(directory, 'calls.jsonl');
   const custodyCase = mode.includes('custody');
   const missingCustody = mode.startsWith('missing-custody');
   const secretAnswer = mode.endsWith('custody-secret');
   const encodedPrimary = Buffer.from('sk-ant-oat01-synthetic-serving-a-only').toString('base64');
-  const missing = ['missing', 'missing-profile'].includes(mode) || custodyCase;
-  const pooled = mode !== 'legacy', automatic = custodyCase || ['installed', 'fresh', 'missing', 'missing-profile', 'imported'].includes(mode);
+  const missing = mode === 'missing-profile' || custodyCase;
+  const pooled = mode !== 'legacy', automatic = custodyCase || ['installed', 'fresh', 'missing', 'missing-profile', 'imported', 'renamed', 'copied', 'lost-build'].includes(mode);
   const logins = (pooled ? ['serving-a', 'serving-b'] : ['serving-b']).map(name => {
     const profile = { ...offlineProfile, reference: name, activationReference: `${name}-activation`, expectedAccount: `${name}@example.invalid`,
       home: `/offline/${name}/home`, configDirectory: `/offline/${name}/config`, workingDirectory: `/offline/${name}/work` };
@@ -116,9 +117,10 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       }
       const registry = JSON.parse(readFileSync(join(root, 'harness-logins.json'), 'utf8'));
       expect(registry.logins.map(row => row.profile)).toEqual(logins.map(row => row.profile));
-      if (missing && !custodyCase) {
+      if ((missing || mode === 'missing' || mode === 'lost-build') && !custodyCase) {
         const prepared = JSON.parse(readFileSync(registry.preparedManifest, 'utf8'));
-        rmSync(mode === 'missing-profile' ? logins[1].profile : prepared.logins[1].activation);
+        rmSync(mode === 'missing-profile' ? logins[1].profile : mode === 'lost-build'
+          ? join(registry.preparedManifest, '..') : prepared.logins[1].activation, { recursive: true });
       }
       if (missingCustody) rmSync(harnessLoginPath(JSON.parse(readFileSync(logins[1].profile, 'utf8')), join(directory, 'custody')));
       if (mode === 'fresh') {
@@ -132,6 +134,17 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
         const prepared = JSON.parse(readFileSync(registry.preparedManifest, 'utf8'));
         writeFileSync(registry.preparedManifest, JSON.stringify({ ...prepared, usageFile }));
       }
+      if (mode === 'renamed' || mode === 'copied') {
+        const moved = join(directory, 'relocated-runner');
+        // Strip the new marker to replay the legacy absolute-path manifest from the incident.
+        const prepared = JSON.parse(readFileSync(registry.preparedManifest, 'utf8'));
+        delete prepared.recordRoot;
+        writeFileSync(registry.preparedManifest, JSON.stringify(prepared));
+        delete registry.recordRoot;
+        writeFileSync(join(root, 'harness-logins.json'), JSON.stringify(registry));
+        if (mode === 'renamed') renameSync(root, moved); else cpSync(root, moved, { recursive: true });
+        root = moved; args[args.indexOf('--root') + 1] = root;
+      }
       for (const flag of ['--login-profile', '--activation-record', '--authority-record']) args.splice(args.indexOf(flag), 2);
     }
     const run = () => spawnSync(process.execPath, args, { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env });
@@ -143,7 +156,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       throw Error(first.stderr + JSON.stringify(detail));
     }
     const rows = readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse);
-    expect(rows[0].account).toBe(custodyCase || ['pool', 'installed', 'missing', 'missing-profile', 'imported'].includes(mode) ? 'serving-a' : 'serving-b');
+    expect(rows[0].account).toBe(custodyCase || ['pool', 'installed', 'missing', 'missing-profile', 'imported', 'renamed', 'copied', 'lost-build'].includes(mode) ? 'serving-a' : 'serving-b');
     expect(rows.slice(1).every(row => row.account === (missing ? 'serving-a' : 'serving-b'))).toBe(true);
     expect(rows.length).toBeGreaterThan(1);
     if (pooled) {
@@ -163,7 +176,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     expect(sends.some(row => row.text.includes(encodedPrimary))).toBe(false);
     if (!secretAnswer) expect(sends.some(row => row.text.includes('second approved login answered'))).toBe(true);
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, undefined, undefined, true);
-    expect(journal.view.order[0].modelState).toBe(['pool', 'installed', 'imported'].includes(mode) ? 'rejected' : 'complete');
+    expect(journal.view.order[0].modelState).toBe(['pool', 'installed', 'imported', 'missing', 'renamed', 'copied', 'lost-build'].includes(mode) ? 'rejected' : 'complete');
     expect(journal.view.order.map(turn => turn.update)).toEqual([1, 2, 3]);
     const completed = journal.view.order.filter(turn => turn.modelState === 'complete');
     if (secretAnswer) {
@@ -181,7 +194,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
     expect(completed.every(turn => turn.sent !== undefined)).toBe(true);
     expect(new Set(completed.map(turn => turn.sent)).size).toBe(completed.length);
     const failed = journal.view.order.filter(turn => turn.modelState !== 'complete');
-    if (['pool', 'installed', 'imported'].includes(mode)) {
+    if (['pool', 'installed', 'imported', 'missing', 'renamed', 'copied', 'lost-build'].includes(mode)) {
       expect(failed).toHaveLength(1); expect(failed[0].update).toBe(1);
       expect(failed[0].failureClass).toBe('capacity'); expect(failed[0].sent).toBeUndefined();
       expect(failed[0].raw).toContain('Please say hello.'); // Retained failed work, never replayed as another attempt.
