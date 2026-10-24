@@ -19,6 +19,7 @@ export function installMcp(root, config = DEFAULT_MCP, secretEnv = {}, custody) 
   try {
     const path = join(root, 'mcp.json'), old = readSetupRecord(path);
     readRootMcp(root);
+    readRootMcp(root, () => JSON.stringify(config));
     const next = structuredClone(config);
     if (!secretEnv || typeof secretEnv !== 'object' || Array.isArray(secretEnv)) throw Error('MCP secret env must be an object');
     const pending = [];
