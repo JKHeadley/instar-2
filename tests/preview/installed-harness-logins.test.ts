@@ -517,3 +517,25 @@ it.each(['foreign-path', 'foreign-record', 'tampered-record', 'profile', 'source
   expect(() => f.prepare()).toThrow(/differ|does not belong/);
   expect(readFileSync(target, 'utf8')).toBe(bytes);
 });
+
+it('retains a launch-only primary session grant across relocation without lending or persisting it', () => {
+  const f = fixture(); f.install(f.logins[0]); f.install(f.logins[1]);
+  const session = join(f.root, 'launch-session.json');
+  writeFileSync(session, JSON.stringify({ reference: 'reviewed-primary-session' }));
+  const launch = (root, granted) => installedHarnessLaunch({ root,
+    options: { model: f.world.model, 'harness-user': 'offline',
+      ...(granted ? { 'session-work-activation': join(root, 'launch-session.json') } : {}) },
+    prepare: options => prepareInstalledHarnessLogins({ root, options, doorway: f.doorway,
+      build: 'build-a', now: Date.now(), verify: f.verify }) });
+  launch(f.root, false); launch(f.root, true);
+  const root = join(f.world.directory, 'moved-session-installation'); renameSync(f.root, root);
+  const selected = launch(root, true), pool = loadHarnessLogins(selected.options);
+  expect(pool.entries[0].sessionActivation).toBe(join(root, 'launch-session.json'));
+  expect(pool.entries[1].sessionActivation).toBeUndefined();
+  expect(() => verifyPreparedHarnessLogin(pool.entries[0])).not.toThrow();
+  expect(launch(root, true).options['login-pool']).toBe(selected.options['login-pool']);
+  expect(read(join(root, 'harness-logins.json')).logins[0].sessionActivation).toBeUndefined();
+  expect(launch(root, false).options['session-work-activation']).toBeUndefined();
+  writeFileSync(join(root, 'launch-session.json'), JSON.stringify({ reference: 'withdrawn' }));
+  expect(() => verifyPreparedHarnessLogin(pool.entries[0])).toThrow('source withdrawn');
+});
