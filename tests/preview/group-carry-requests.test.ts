@@ -321,6 +321,48 @@ it.each([true, false])('shipped send delivers answers and terminal notices when 
   }
 });
 
+// train-146: execute the merged physical send body, including both signature checks,
+// test-copy routing and the existing bounded formatting fallback. No network or serving login.
+it.each(['copy', 'ordinary', 'bad-primary', 'bad-fallback', 'foreign-chat', 'stopped'] as const)(
+  'merged shipped send preserves formatted-copy boundaries: %s', async mode => {
+    const chat = mode === 'foreign-chat' ? '-10099' : '7654321';
+    const copied = mode !== 'ordinary', verified: { thread?: number; body: string }[] = [];
+    const requests: Record<string, unknown>[] = [], retained: unknown[] = [];
+    let admitted = 0;
+    const send = Function('sendFormattedText', 'journal', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'ownerHeld', 'shared',
+      'GROUP_DISCLOSURE_HOLD_NOTICE', 'isGroupReviewFinalNotice', 'requireGroupDisclosure', 'physical', 'secretRef',
+      'token', 'classifyTelegramSend', 'g', 'typing', `return (${sendFunction});`)(sendFormattedText,
+      { verifyOutbound: (signature: string, subject: { thread?: number; body: string }) => {
+        verified.push(subject); return signature === subject.body && subject.thread === 3;
+      }, append: (row: unknown) => retained.push(row), view: { expires: friday9 + 1000, stop: false,
+        ...(copied ? { testCopy: { lineage: { forum: true, chat: '-10099' } } } : {}) } },
+      { value: mode === 'stopped' }, () => false, '/test/stop', () => friday9, () => true, null,
+      GROUP_DISCLOSURE_HOLD_NOTICE, isGroupReviewFinalNotice, async () => {},
+      { invoke: ({ body }: { body: Record<string, unknown> }) => {
+        requests.push(body);
+        if (requests.length === 1) return { kind: 'response', status: 400,
+          bytes: JSON.stringify({ ok: false, description: "Bad Request: can't parse entities" }) };
+        return { kind: 'response', status: 200, bytes: JSON.stringify({ ok: true, result: {
+          chat: { id: Number(chat) }, text: body.text, message_id: 7,
+          ...(body.message_thread_id === undefined ? {} : { message_thread_id: body.message_thread_id }) } }) };
+      } }, (x: string) => x, () => 'TEST', classifyTelegramSend, { chat: '7654321', forum: !copied }, { stop: () => {} });
+    const result = await send({ text: '<b>Done</b>', expectedText: 'Done', chat, thread: 3, target: 'TEST-reply',
+      provenance: mode === 'bad-primary' ? 'forged' : '<b>Done</b>',
+      formatting: { fallback: { text: 'Done', provenance: mode === 'bad-fallback' ? 'forged' : 'Done' } },
+      admit: () => { admitted++; } });
+    expect(verified.every(subject => subject.thread === 3)).toBe(true);
+    if (mode === 'copy' || mode === 'ordinary') {
+      expect(result).toEqual({ kind: 'accepted', message: 7 });
+      expect(verified.map(subject => subject.body)).toEqual(['<b>Done</b>', 'Done']);
+      expect(admitted).toBe(1); expect(requests).toHaveLength(2); expect(retained).toHaveLength(1);
+      expect(requests.map(body => body.message_thread_id)).toEqual(copied ? [undefined, undefined] : [3, 3]);
+      expect(requests.map(body => body.parse_mode)).toEqual(['HTML', undefined]);
+      expect(requests.every(body => body.chat_id === '7654321')).toBe(true);
+    } else {
+      expect(result.kind).toBe('refused'); expect(admitted).toBe(0); expect(requests).toEqual([]); expect(retained).toEqual([]);
+    }
+  });
+
 it.each([['model', false], ['subscription', false], ['send', false], ['model', true], ['subscription', true], ['send', true]] as const)('exact shipped %s boundary recovers recorded answer after disclosure loss (authorized control: %s)', async (boundary, initiallyAdmitted) => {
   const w = await world();
   appendGroupCarry(w.destination, w.source, scope, permission(), true, start + 3600_000, () => false); w.source.close();

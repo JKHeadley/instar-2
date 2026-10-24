@@ -16,6 +16,7 @@ Multi-machine posture: Existing deliberately machine-local test-copy store and c
 Layer below: Read both constitutional documents and SHA-verified member/desk evidence snapshots. Inspected complete-frame staging, durable rebind, genesis validation, lineage signer, chronological projection, raw intake identity and physical formatted send guards. Existing desk generation chain is reused.
 Bug class: integration
 Bug evidence: reproducer=tests/preview/test-copy-ordering.test.ts
+Integration evidence: tests/preview/group-carry-requests.test.ts executes the exact shipped send body with substituted network dependencies, covering copy/ordinary routing, formatted fallback, forged primary/fallback signatures, foreign chat and stop.
 Hook bypass: none
 Convergence: none
 Decision: train-146-merge | Merge exact reviewed d384429361a80fc314fda0cf57dd2ce89c102c8d; member evidence /Users/dabombstudio/.instar/agents/echo/.instar/lanes/test-copy-1020-PROGRESS.md read from its SHA-verified supplied snapshot. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-146-PROGRESS.md
