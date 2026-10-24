@@ -6,6 +6,7 @@ import { configureTrust, setupTrustPolicy, setupMcp } from '../tests/preview/tru
 import { decodeEffectPolicy } from '../tests/preview/effect-doorway.mjs';
 import { assertAgentPaths } from './agent-paths.mjs';
 import { publishSetupRecord, readSetupRecord, syncDirectory } from './onboarding-state.mjs';
+import { DEFAULT_MCP } from './mcp-setup.mjs';
 
 export const SETUP_DEFAULTS = Object.freeze({ identity: true, selfKnowledge: true, reflection: true, growth: true });
 export const SETUP_QUESTIONS = Object.freeze([
@@ -35,7 +36,7 @@ export function onboardingRequest(identity, answers) {
   const source = `terminal-setup:${identity.agentId}`;
   return { source, custodian: identity.custodian, recovery: 'The installation owner can revise or revoke standing trust.',
     // No connected account or paid operation is being granted by this first slice.
-    resourceLevelUsd: 0, effects: [],
+    resourceLevelUsd: 0, effects: [], mcp: DEFAULT_MCP,
     role: { description: values[0], trust: values[1], accounts: [], channels: [] },
     policySensitive: values[3].toLowerCase() === 'none' ? [] : values[3].split(';').map(part => part.trim()),
     onboarding: { agentId: identity.agentId, source, custodian: identity.custodian,
@@ -45,8 +46,9 @@ function verifyInstalled(root, request) {
   const policy = readSetupRecord(join(root, 'effect-policy.json'));
   const mcp = readSetupRecord(join(root, 'mcp.json'));
   if (!policy || !mcp || !same(decodeEffectPolicy(policy), setupTrustPolicy(request))
-    || !same(mcp, { ...setupMcp(), operatorGrant: { source: request.source, custodian: request.custodian, recovery: request.recovery } }))
+    || !same(mcp.operatorGrant, { source: request.source, custodian: request.custodian, recovery: request.recovery }))
     throw Error('Recorded setup differs from the installed choices. Keep the current policy; use the owner’s revise/revoke flow.');
+  setupMcp(mcp);
 }
 /** Four fixed form fields: no inferred scope and no model text treated as authority.
  * Each accepted answer is durable before the next prompt. Re-entry reads those answers.
