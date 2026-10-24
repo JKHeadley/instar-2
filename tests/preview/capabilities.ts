@@ -170,9 +170,16 @@ export function capabilityFindings(inventory: PreviewInventory, classify: (p: Fe
   record: readonly PromotionEntry[] = PROMOTION_RECORD): string[] {
   const findings = [...inventory.gaps, ...promotionRecordFindings(record)];
   for (const id of new Set(record.map(entry => entry.capability))) {
-    const gated = inventory.capabilities.find(item => item.declaration.id === id)?.declaration.requiredFacts.gate;
+    const declared = inventory.capabilities.find(item => item.declaration.id === id)?.declaration;
+    const gated = declared?.requiredFacts.gate, promotion = promotionOf(record, id);
+    // A retirement is the record's last word: the declaration is retired and carries no gate, and the reverse.
+    if (promotion.retired) {
+      if (declared?.status !== 'retired' || gated) findings.push(`${id}: Rule 72 — the promotion record retires a capability the register still declares ${declared?.status ?? 'absent'}${gated ? ' with a graduation gate' : ''}`);
+      continue;
+    }
+    if (declared?.status === 'retired') { findings.push(`${id}: Rule 72 — a retired capability's latest promotion decision must be its retirement`); continue; }
     if (!gated) findings.push(`${id}: Rule 72 — the promotion record names a capability with no declared graduation gate`);
-    const recorded = promotionOf(record, id).deadline;
+    const recorded = promotion.deadline;
     if (gated && recorded && recorded.deadline !== gated.deadline)
       findings.push(`${id}: Rule 72 — the declared graduation deadline differs from the promotion record's latest (${utcDay(recorded.deadline)})`);
   }
@@ -213,7 +220,7 @@ export function metricReached(status: Readonly<Record<string, unknown>>, path: s
 }
 
 export interface OutcomeRow { id: string; capability: string; plan: string | null; posture: string; confirmed: boolean; owner: string | null }
-export type Protection = 'confirmed' | 'unconfirmed' | 'unproven' | 'gap' | 'dark' | 'off-in-this-launch';
+export type Protection = 'confirmed' | 'unconfirmed' | 'unproven' | 'gap' | 'dark' | 'retired' | 'off-in-this-launch';
 export interface CapabilityRow {
   id: string; status: FeatureStatus; change: CapabilityMeta['change']; enabled: boolean; version: string;
   /** False while the declaration waits in the pending file for the register to resolve its record reference. */
@@ -256,7 +263,8 @@ export function capabilityRows(inventory: PreviewInventory, input: CapabilityInp
       return { id: item.id, capability: d.id, plan: plan?.id ?? null, posture, owner,
         confirmed: posture === 'healthy' || !plan && current !== undefined };
     });
-    const protection: Protection = d.status === 'dark' || d.status === 'soaking' ? 'dark' : !enabled ? 'off-in-this-launch'
+    const protection: Protection = d.status === 'dark' || d.status === 'soaking' ? 'dark' : d.status === 'retired' ? 'retired'
+      : !enabled ? 'off-in-this-launch'
       : adjectives.critical && !outcomes.length ? 'gap' : !outcomes.length ? 'unproven'
         : outcomes.every(row => row.confirmed) ? 'confirmed' : 'unconfirmed';
     const developed = input.proofs.some(row => row.capability === d.id && row.lastSuccessAt !== null);
@@ -284,13 +292,14 @@ export function proofStatusLines(proofs: readonly PlanPosture[], rows: readonly 
   const liveMissing = rows.filter(row => row.enabled && row.liveProof.state !== 'recorded' && row.liveProof.state !== 'not-required').length;
   const overdue = rows.filter(row => row.graduation?.overdue).map(row => row.id);
   const dark = rows.filter(row => row.protection === 'dark').map(row => row.id);
+  const retired = rows.filter(row => row.protection === 'retired').map(row => row.id);
   const gaps = rows.filter(row => row.protection === 'gap').map(row => row.id);
   // Rule 72: where each gated capability stands on the promotion record, and the deadline it must meet.
   const graduation = rows.flatMap(row => row.graduation && row.status !== 'live' ? [`${row.id} — ${STAGES.map(stage => `${stage} ${row.graduation!.stages[stage]}`).join(', ')}; `
     + `deadline ${utcDay(row.graduation.deadline)}${row.graduation.deadlineRecorded ? ` (recorded ${utcDay(row.graduation.deadlineRecorded.recordedAt)})` : ''}${row.graduation.overdue ? ', overdue' : ''}`] : []);
   return [
     `Proofs: ${healthy.length}/${required.length} healthy${problems.length ? `; ${problems.join(', ')}` : ''}${unobserved ? `; ${unobserved} not currently observed` : ''}.`,
-    `Capabilities: ${count('confirmed')} confirmed, ${count('unconfirmed')} unconfirmed, ${dark.length} dark${dark.length ? ` (${dark.join(', ')})` : ''}${gaps.length ? `, gaps: ${gaps.join(', ')}` : ''}; ${liveMissing} without a live proof at their current version${overdue.length ? `; graduation overdue: ${overdue.join(', ')}` : ''}.`,
+    `Capabilities: ${count('confirmed')} confirmed, ${count('unconfirmed')} unconfirmed, ${dark.length} dark${dark.length ? ` (${dark.join(', ')})` : ''}${retired.length ? `, ${retired.length} retired (${retired.join(', ')})` : ''}${gaps.length ? `, gaps: ${gaps.join(', ')}` : ''}; ${liveMissing} without a live proof at their current version${overdue.length ? `; graduation overdue: ${overdue.join(', ')}` : ''}.`,
     ...graduation.length ? [`Graduation: ${graduation.join('; ')}.`] : [],
   ];
 }
