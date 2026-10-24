@@ -85,12 +85,19 @@ it('an idle intake starts immediately, and an ordinary busy submission still doe
 
 it('the launcher offers intake before its minimal await, after durable peer sync and read-ahead stop protection', () => {
   const source = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
-  const intake = source.slice(source.indexOf('      worker.intake(batch);'));
-  const wake = intake.indexOf('if (batch.length > 0) workCycle(false, true)');
-  expect(wake).toBeGreaterThan(intake.indexOf('await shared.sync()'));
-  expect(wake).toBeGreaterThan(intake.indexOf('worker.readAhead()'));
-  expect(wake).toBeGreaterThan(intake.indexOf('const minimalStep = untilStopped(() => worker.minimal(), ended)'));
-  expect(wake).toBeLessThan(intake.indexOf('await minimalStep'));
+  const start = source.indexOf('if (!await untilStopped(() => worker.intake(batch), ended)) break;');
+  expect(start).toBeGreaterThanOrEqual(0);
+  const intake = source.slice(start);
+  // Require every checkpoint to exist: indexOf's -1 must never count as an earlier step.
+  const steps = ['await shared.sync()', 'worker.readAhead()',
+    'const minimalStep = untilStopped(() => worker.minimal(), ended)',
+    'if (batch.length > 0) workCycle(false, true)', 'await minimalStep'];
+  let previous = 0;
+  for (const step of steps) {
+    const position = intake.indexOf(step);
+    expect(position, step).toBeGreaterThan(previous);
+    previous = position;
+  }
   expect(source).toContain('!signalled && !workerStop.value && !existsSync(stopPath) && !journal.view.stop');
   expect(source).toContain('ownerHeld() && activationMatchesJournal(journal.view, activation)');
 });
