@@ -9,7 +9,8 @@ import { readSetupRecord } from './onboarding-state.mjs';
 import { assertAgentPaths } from './agent-paths.mjs';
 
 export const DEFAULT_MCP = { mcpServers: { playwright: { command: 'npx', args: ['-y', '@playwright/mcp@latest'] } },
-  reads: ['mcp__playwright__browser_snapshot'] };
+  reads: ['navigate', 'snapshot', 'take_screenshot', 'wait_for', 'tabs', 'console_messages', 'network_requests']
+    .map(name => `mcp__playwright__browser_${name}`) };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 /** Installer-only. A per-root lock prevents concurrent merges losing operator entries.
  * A crash leaves a visible lock; the installer must establish writer death before removing it.
@@ -44,9 +45,9 @@ export function installMcp(root, config = DEFAULT_MCP, secretEnv = {}, custody) 
     for (const [name, server] of Object.entries(next.mcpServers)) {
       if (Object.hasOwn(servers, name)) {
         if (config !== DEFAULT_MCP && !same(servers[name], server)) throw Error('MCP server already has different operator choices');
-        continue;
+        if (config !== DEFAULT_MCP || !same(servers[name], server)) continue;
       }
-      servers[name] = server;
+      else servers[name] = server;
       for (const tool of next.reads ?? []) if (tool.startsWith(`mcp__${name}__`) && !reads.includes(tool)) reads.push(tool);
     }
     const merged = { ...old, mcpServers: servers, reads };

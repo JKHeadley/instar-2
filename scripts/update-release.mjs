@@ -10,3 +10,6 @@ export const migrations = [{ id: 'mcp-defaults-1024', async run(root) {
   const { installMcp } = await import('./mcp-setup.mjs');
   installMcp(root);
 } }];
+
+// A new id reaches roots which already recorded the snapshot-only migration.
+migrations.push({ id: 'mcp-browser-reads-1024', run: migrations[0].run });

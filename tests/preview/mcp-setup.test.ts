@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -7,9 +7,9 @@ import { createSecretCustody, dueCredentialReminders, REMINDER_OFFSETS_MS, secre
 // @ts-expect-error Installer JavaScript.
 import { installMcp, DEFAULT_MCP } from '../../scripts/mcp-setup.mjs';
 // @ts-expect-error Real runtime consumer.
-import { readRootMcp } from './tool-turn.mjs';
+import { readRootMcp, prepareMcpLaunch } from './tool-turn.mjs';
 // @ts-expect-error Real effect admission consumer.
-import { admitToolCallEffect } from './tool-admission.mjs';
+import { admitToolCallEffect, admitToolCall } from './tool-admission.mjs';
 // @ts-expect-error Release migration manifest.
 import { migrations } from '../../scripts/update-release.mjs';
 // @ts-expect-error Real npm installer.
@@ -107,8 +107,9 @@ it('replays recorded model and reply shapes through the newly installed read bou
   const rows = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')).otherShapes;
   for (const row of rows) {
     const config = { operations: [], mcpReads: mcp.reads };
-    expect(admitToolCallEffect('mcp__playwright__browser_snapshot', { text: row.raw }, config, 1), row.id)
-      .toMatchObject({ admitted: true });
+    for (const tool of mcp.reads)
+      expect(admitToolCallEffect(tool, { text: row.raw, action: 'list' }, config, 1), row.id)
+        .toMatchObject({ admitted: true, consequential: false });
     expect(admitToolCallEffect('mcp__playwright__browser_click', { text: row.raw }, config, 1), row.id)
       .toMatchObject({ admitted: false });
   }
@@ -145,4 +146,55 @@ it('real setup installs defaults and the add CLI consumes secrets only from stdi
   expect(add.status, add.stderr).toBe(0);
   expect(add.stdout + add.stderr + bytes(p)).not.toContain('opaque-cli-test-value');
   expect(readRootMcp(p).secrets.account.TOKEN).toBeTruthy();
+});
+
+it('starts a bare MCP command beside installation node under a minimal harness PATH', () => {
+  const p = root(), bin = join(p, 'installation-bin'); mkdirSync(bin);
+  symlinkSync(process.execPath, join(bin, 'node'));
+  writeFileSync(join(bin, 'mcp-path-proof'), '#!/usr/bin/env node\nprocess.stdout.write("connector-started");\n', { mode: 0o700 });
+  const mcp = { servers: { proof: { command: 'mcp-path-proof' } }, reads: [], secrets: {} };
+  const launch = prepareMcpLaunch({ mcp, privateDirectory: p, socket: '/unused', node: join(bin, 'node') });
+  const server = JSON.parse(readFileSync(launch.config, 'utf8')).mcpServers.proof;
+  const result = spawnSync(server.command, server.args ?? [], { env: { PATH: '/usr/bin:/bin', ...server.env }, encoding: 'utf8' });
+  expect(result.error).toBeUndefined(); expect(result.status).toBe(0); expect(result.stdout).toBe('connector-started');
+  expect(mcp.servers.proof).toEqual({ command: 'mcp-path-proof' });
+});
+it('migrates the shipped snapshot-only default and admits browser reads but not actions', async () => {
+  const p = root();
+  writeFileSync(join(p, 'mcp.json'), JSON.stringify({ mcpServers: DEFAULT_MCP.mcpServers, reads: ['mcp__playwright__browser_snapshot'] }));
+  const migration = migrations.find((m: { id: string }) => m.id === 'mcp-browser-reads-1024');
+  expect(migration).toBeDefined(); await migration.run(p);
+  const before = bytes(p); await migration.run(p); expect(bytes(p)).toBe(before);
+  const config = { workspace: p, tmp: p, maxCalls: 100, operations: [], mcpReads: readRootMcp(p).reads };
+  const fs = { exists: () => true, realpath: (path: string) => path };
+  for (const name of ['navigate', 'snapshot', 'take_screenshot', 'wait_for', 'console_messages', 'network_requests', 'tabs']) {
+    const tool = `mcp__playwright__browser_${name}`, input = { action: 'list', url: 'https://example.com' };
+    expect(admitToolCallEffect(tool, input, config, 1), name).toMatchObject({ admitted: true, consequential: false });
+    expect(admitToolCall({ tool_name: tool, tool_input: input }, config, 1, fs), name).toMatchObject({ decision: 'allow' });
+  }
+  for (const name of ['click', 'type', 'fill_form', 'evaluate', 'file_upload', 'tabs']) {
+    const tool = `mcp__playwright__browser_${name}`;
+    for (const action of ['new', 'close', 'select', undefined]) {
+      expect(admitToolCallEffect(tool, { action }, config, 1), name).toMatchObject({ admitted: false });
+      expect(admitToolCall({ tool_name: tool, tool_input: { action } }, config, 1, fs), name).toMatchObject({ decision: 'deny' });
+    }
+  }
+});
+
+it('preserves an explicit server PATH and adds no other runner environment to the launch', () => {
+  const p = root(), servers = { plain: { command: 'connector', env: { PATH: '/operator/bin', LOG: 'debug' } },
+    keyed: { command: 'connector', env: { TOKEN: { secretRef: 'key' } } } };
+  const launch = prepareMcpLaunch({ mcp: { servers, secrets: { keyed: { TOKEN: 'key' } } }, privateDirectory: p, socket: '/unused' });
+  expect(launch.launch.plain).toEqual(servers.plain);
+  expect(Object.keys(launch.launch.keyed.env)).toEqual(['PATH']);
+  expect(launch.launch.keyed.env.PATH).toContain(process.execPath.slice(0, process.execPath.lastIndexOf('/')));
+  expect(readFileSync(launch.config, 'utf8')).not.toContain('secretRef');
+});
+it('replays the proof-room failed-server record and admits its requested browser navigation', () => {
+  const proof = JSON.parse(readFileSync(new URL('./fixtures/mcp-connect-1024-tools-m2.json', import.meta.url), 'utf8'));
+  expect(proof.update).toBe(840343944);
+  expect(JSON.parse(proof.calls[0].result).failed_mcp_servers).toMatchObject([{ name: 'playwright', errorCode: 'ENOENT' }]);
+  const p = root(); installMcp(p);
+  expect(admitToolCallEffect('mcp__playwright__browser_navigate', { url: 'https://example.com' },
+    { operations: [], mcpReads: readRootMcp(p).reads }, 1)).toMatchObject({ admitted: true, consequential: false });
 });

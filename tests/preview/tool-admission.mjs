@@ -233,9 +233,12 @@ export function toolCallProposals(tool, input) {
  * names, or any under an unreadable policy, is decided by the doorway). Any refusal refuses the call; otherwise the call is
  * consequential when any of its targets is, carrying every test that held and every grant that admitted one, so the effect
  * owner applies the never-twice identity to it. The host checkpoint's effect owner decides with this same function. */
+// Playwright combines tab reads and mutations in one tool; only its explicit list action is a read.
+const configuredMcpRead = (tool, input, config) => tool.startsWith('mcp__') && config.mcpReads?.includes(tool) === true
+  && (tool !== 'mcp__playwright__browser_tabs' || input?.action === 'list');
 export function admitToolCallEffect(tool, input, config, now) {
   const network = CODEX_NETWORK_READ_TOOLS.includes(tool);
-  const accountRead = tool.startsWith('mcp__') && config.mcpReads?.includes(tool) === true;
+  const accountRead = configuredMcpRead(tool, input, config);
   const verdicts = toolCallProposals(tool, input).map(proposal => (network || accountRead) && !policyNames(config, proposal)
     ? { effect: proposal.effect, target: proposal.target, tests: { irreversible: false, resources: false, scope: false, policySensitive: false },
       consequential: false, admitted: true, disposition: 'ordinary',
@@ -629,7 +632,7 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
   if (tool.startsWith('mcp__')) {
     // Continuing sessions must re-check even configured reads against the host's current account set and policy.
     if (typeof config.gate === 'string') return effect('mcp');
-    if (Array.isArray(config.mcpReads) && config.mcpReads.includes(tool) && !policyNames(config, toolEffectProposal(tool, input))) return { decision: 'allow', reason: 'MCP read the root configuration lists', kind: 'mcp-read' };
+    if (configuredMcpRead(tool, input, config) && !policyNames(config, toolEffectProposal(tool, input))) return { decision: 'allow', reason: 'MCP read the root configuration lists', kind: 'mcp-read' };
     return effect('mcp');
   }
   if (Object.hasOwn(OUTWARD_TOOLS, tool)) return effect(OUTWARD_TOOLS[tool]);
