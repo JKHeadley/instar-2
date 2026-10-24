@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: significant
 Declared tier: significant
 Tier rationale: Merge existing reviewed runtime setup and MCP changes; the only authored product resolution selects an exact dependency version already resolved by both parents.
-Side effects: Future installs stay on TypeScript 5.9.3 rather than accepting later 5.9 patches. Generated publication is replayed from the merged source; source pins are derived by repository tools.
+Side effects: Future installs stay on TypeScript 5.9.3 rather than accepting later 5.9 patches. Generated publication is replayed at merge 4caffc43dcf72a7d8d89ee66ccc6d75586007788 (294 entries, 117 rules); source pins are derived by repository tools.
 Undo and recovery: Revert the merge with its first parent selected and regenerate the register; retain both parent histories and do not touch installed state.
 Multi-machine posture: Repository-only integration; every machine installs the same locked compiler, with existing machine-local connector custody and ownership unchanged.
 Layer below: Both parent package manifests and lockfiles resolve TypeScript 5.9.3. Incoming MCP source merged cleanly; its recorded-shape admission tests and original runtime dependency regression exercise the consumers. The constitution matches origin/main. No changelog conflict or edit.
