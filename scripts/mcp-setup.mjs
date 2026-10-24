@@ -1,6 +1,7 @@
 // Rules 44/100/116: reuse the 1.x Playwright default, runtime validator and custody.
 import { mkdirSync, rmdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { jwtExpiry } from '../tests/preview/secret-custody.js';
 import { readRootMcp } from '../tests/preview/tool-turn.mjs';
 import { setupMcp } from '../tests/preview/trust-setup.mjs';
 import { durablePreviewWrite } from '../tests/preview/durable-write.js';
@@ -37,7 +38,7 @@ export function installMcp(root, config = DEFAULT_MCP, secretEnv = {}, custody) 
     for (const { name, key, value } of pending) {
       const prior = old?.mcpServers?.[name]?.env?.[key]?.secretRef;
       const kept = prior && custody.resolve({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name: prior }) === value;
-      next.mcpServers[name].env[key] = { secretRef: kept ? prior : custody.store({ value, kind: 'mcp', source: 'MCP installer' }).name };
+      next.mcpServers[name].env[key] = { secretRef: kept ? prior : custody.store({ value, kind: jwtExpiry(value) === null ? 'mcp' : 'jwt', source: 'MCP installer' }).name };
     }
     const servers = Object.assign(Object.create(null), old?.mcpServers), reads = [...old?.reads ?? []];
     for (const [name, server] of Object.entries(next.mcpServers)) {

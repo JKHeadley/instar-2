@@ -4,7 +4,7 @@ Subject base: 099456d9745a90a50d637f7005aac17e4e57a408
 Review state: open
 Reviewed content: none
 Outcome: fresh setup installs the 1.x Playwright default; the release updater merges it into existing roots; an installer stdin path stores account secrets in custody before publishing references.
-Affected rules: 1, 26, 34, 44, 49, 74, 100, 101, 102, 113, 116
+Affected rules: 1, 26, 34, 44, 49, 62, 74, 84, 100, 101, 102, 113, 116
 Affected floors: existing secrets custody and tool admission remain authoritative; spend cap, stop, durable intake and no duplicate sends are unchanged. Connector installation grants no account login or effect scope.
 Operator questions: none
 Suggested tier: significant
@@ -18,8 +18,8 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/mcp-setup.test.ts
 Hook bypass: none
 Convergence: none
-Decision: mcp-connect-existing-installers | use the 1.x Playwright default through existing setup and named release migration; preserve operator definitions and classify only browser_snapshot as a read | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/mcp-connect-1024-PROGRESS.md
-Decision: mcp-connect-custody-merge | accept one account connector through installer stdin, reuse setupMcp to reject inline env values, seal secret env values before atomic publication, and serialize root merges to prevent lost operator entries | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/mcp-connect-1024-PROGRESS.md
+Decision: mcp-connect-existing-installers | use the 1.x Playwright default through existing setup and named release migration; preserve operator definitions and classify only browser_snapshot as a read | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/mcp-connect-1024-repair-102800-PROGRESS.md
+Decision: mcp-connect-custody-merge | accept one account connector through installer stdin, reuse setupMcp to reject inline env values, seal secret env values before atomic publication, and serialize root merges to prevent lost operator entries | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/mcp-connect-1024-repair-102800-PROGRESS.md
 Prompt review: no prompt or model output parser changes. Tests replay the existing captured summary-writer 715672480, uncertain summary 715672483, Jev undecided 715672482, Jev unsure 969389570, reply-review 969389923, delivered reply 715672479 and empty candidate 715672550 from tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json through the installed read/effect boundary. This does not claim a live model or delivered empty bubble.
 simplestRobustRoute: this is the simplest route: reuse the existing MCP consumer, custody, atomic writer, setup and update registry. The only added serialization prevents concurrent read/merge/write from discarding an operator entry. Existing path checks guard start, readRootMcp validates before publication, custody read-back precedes secret reference publication, and existing tool admission holds all effect floors. The unattended real model proof requires a Studio proof room, unavailable to this WSL builder; no live proof is claimed.
 80/20: small installation plumbing, targeted consumer tests and unchanged admission engines; no new account registry, browser engine or policy framework.

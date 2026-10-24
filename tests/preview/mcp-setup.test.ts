@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createSecretCustody, secretRef } from './secret-custody.js';
+import { createSecretCustody, dueCredentialReminders, REMINDER_OFFSETS_MS, secretRef } from './secret-custody.js';
 // @ts-expect-error Installer JavaScript.
 import { installMcp, DEFAULT_MCP } from '../../scripts/mcp-setup.mjs';
 // @ts-expect-error Real runtime consumer.
@@ -39,11 +39,34 @@ it('stores opaque secret env values in real encrypted custody before publishing 
   const ref = readRootMcp(p).servers.account.env.TOKEN;
   expect(custody.resolve(secretRef(ref.secretRef))).toBe('opaque-test-only-value');
   expect(bytes(p)).not.toContain('opaque-test-only-value');
+  expect(custody.records()).toMatchObject([{ kind: 'mcp', expiresAt: null, expirySource: 'unknown', reminders: [] }]);
   const before = bytes(p), vaultTime = statSync(join(p, 'credentials.json')).mtimeMs;
   expect(installMcp(p, { mcpServers: { account: { command: 'connector' } }, reads: ['mcp__account__read'] },
     { account: { TOKEN: 'opaque-test-only-value' } }, custody)).toBe(false);
   expect(bytes(p)).toBe(before);
   expect(statSync(join(p, 'credentials.json')).mtimeMs).toBe(vaultTime);
+});
+it('preserves JWT expiry and due reminders through encrypted custody and repeat installation', () => {
+  const p = root(), expiry = 1792866600000;
+  let now = expiry - 8 * 24 * 60 * 60 * 1000;
+  const custody = createSecretCustody(p, new Uint8Array(32).fill(7), () => now);
+  const token = `${Buffer.from('{"alg":"HS256"}').toString('base64url')}.${Buffer.from(JSON.stringify({ exp: expiry / 1000 })).toString('base64url')}.test-only-signature`;
+  const config = { mcpServers: { account: { command: 'connector' } }, reads: ['mcp__account__read'] };
+  const secrets = { account: { TOKEN: token } };
+  expect(installMcp(p, config, secrets, custody)).toBe(true);
+  const ref = readRootMcp(p).servers.account.env.TOKEN;
+  expect(custody.resolve(secretRef(ref.secretRef))).toBe(token);
+  expect(bytes(p)).not.toContain(token);
+  expect(custody.records()).toMatchObject([{ name: ref.secretRef, kind: 'jwt', expiresAt: expiry,
+    expirySource: 'jwt-exp', reminders: [...REMINDER_OFFSETS_MS.map(offset => expiry - offset), expiry] }]);
+  expect(dueCredentialReminders(custody.records(), now)).toEqual([]);
+  now = expiry - REMINDER_OFFSETS_MS[0]!;
+  expect(dueCredentialReminders(custody.records(), now)).toMatchObject([{ name: ref.secretRef, stage: 0, expiresAt: expiry }]);
+  const before = bytes(p), registry = readFileSync(join(p, 'credentials.json'), 'utf8');
+  expect(installMcp(p, config, secrets, custody)).toBe(false);
+  expect(bytes(p)).toBe(before);
+  expect(readFileSync(join(p, 'credentials.json'), 'utf8')).toBe(registry);
+  expect(dueCredentialReminders(custody.records(), expiry)).toMatchObject([{ stage: REMINDER_OFFSETS_MS.length }]);
 });
 it('refuses an invalid list or conflicting account without changing the old file', () => {
   const p = root(); installMcp(p); const before = bytes(p);
