@@ -30,6 +30,12 @@ Deferral: generated/register.json:1 | not-a-deferral=Generated register text ret
 
 Generated wiring: Ran the delegated owner-manifest rehash and repin chain (no manifest or inventory bytes changed), then replayed the register at implementation commit 837c466e4878b244323e26f9523b00f3d5202aba. Only generated outputs refresh the journal source pin.
 
+## Instar 1.x reuse disposition
+
+1.x precedent: `JKHeadley/instar`, `src/core/BackupManager.ts`, `createSnapshot()` and `restoreSnapshot()` (reviewed by Astra at main `8bbf18fc984b55b3e17d0f2adb43e055c6662756`, as recorded in `astra-train-146-evidence/one-x.json`). The reused behavior is selective state copying that excludes secrets and machine custody and checks safety before restoration; 1.x records a snapshot manifest and refuses restoration while sessions are active. This is behavioral precedent, not a claim that its code was ported. Its selected-file snapshots and in-place restore do not supply complete encrypted-journal frames, preserved signed lineage, or a durable bot/chat rebind, so there is no direct implementation fit. The existing 2.0 journal, carry and dispatch primitives remain the implementation base: complete-frame staging, durable test rebind and guarded publication preserve those journal-specific contracts without transplanting BackupManager or adding machinery (Rule 116).
+
+Pipeline repair scope: This paragraph supplies the missing reuse judgment only. The concrete purpose is to run a retained-history copy on a test bot without touching the source root or sending into its conversation, enabling answer checks on the copied agent. Runtime behavior, invocation policies, inherited evidence and acceptance limits remain unchanged; this documentation correction claims no fresh live proof or full-suite result.
+
 ## Closing block
 
 simplestRobustRoute: Persist a chronological position only on intake after the existing durable test-copy rebind, while retaining the raw wire identity. Existing history, summary and recall consumers then work unchanged. The extra field prevents unrelated bot counters from hiding copied history; its persistence prevents replay from reinterpreting old evidence. Existing authentication, resource limits, stop and dispatch guards remain the start, limit and end-state guards. This is the simplest robust route; no autonomous live-completion claim is made by these offline tests.
