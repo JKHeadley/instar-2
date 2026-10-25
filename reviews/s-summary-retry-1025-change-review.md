@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: A completed full-context loss rejection gets one revision carrying its reason before the automatic ten-minute cooldown. Only a passing review commits.
 Affected rules: 7, 11, 32, 34, 35, 36, 37, 42, 49, 55, 60, 70, 74, 75, 95, 96, 101, 113, 116
-Affected floors: Secrets retain redaction and memory projection; spend uses existing reservations, per-span attempts and pass ceiling; stop is checked before dispatch and commit; no send path changes; durable intake and original history stay in the journal.
+Affected floors: Secrets retain redaction and memory projection; spend uses existing reservations, per-span attempts and pass ceiling; stop is checked before dispatch and commit; no duplicate sends retains the existing send path unchanged; durable intake and original history stay in the journal.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
