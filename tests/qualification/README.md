@@ -31,7 +31,7 @@ prepared metadata. They do **not** supply the separate custodian/recovery identi
 or an approved genesis preparation run required by docs/14. `coverage` records those
 gaps as false and `pass` remains false. The primitive pairs are diagnostic evidence,
 not substitutes for the full task set. A candidate that fails even these pairs
-remains unqualified; no prompt tuning or paid fallback is performed here.
+remains unqualified. Prompt changes require a new frozen report; paid fallback is never used.
 
 Run the short boundary and owner tests in the foreground:
 
@@ -89,7 +89,9 @@ The [separate constrained results](evidence/macos-arm64-2026-10-25-constrained.m
 preserve the prior runs. Set `INSTAR_SETUP_CONSTRAINED=1` to replay the exact owner
 cases from the prior metered evidence and pass `instar-setup-verdict-v1` through
 b4000's built-in `--json-schema` converter. Every trial records its schema digest.
-The decoder, prompt, expectations and resource profile remain unchanged.
+Those recorded runs kept the original decoder, prompt, expectations and resource
+profile unchanged. The current runner uses the hardened prompt described below;
+historical replay checks use each report's preserved source snapshot.
 
 `INSTAR_SETUP_MODEL=3b` selects the second immutable official pin in `MODEL_3B`;
 its artifacts manifest must point to the corresponding verified weights. The
@@ -112,3 +114,27 @@ It refuses an unconstrained or 1.5B combination. The default remains 2 GiB, and
 the experiment changes no installation design or qualification bar.
 
 Results: [constrained 3B with 3 GiB](evidence/macos-arm64-2026-10-25-constrained-3b-3gib.md).
+
+## Frozen prompt-hardening experiment
+
+The mac4 experiment freezes six positive neighbors and six negative transformations
+in [the held-out fixture](fixtures/setup-held-out-1025-mac4.json), with a sibling
+SHA-256 file, in commit `70b1f612e` before changing the prompt. Cases retain provenance
+to actual owner observations and identify each transformation. They are adversarial
+replays, not claims of new owner executions. No held-out result is used for tuning.
+
+The prompt separates objective from delimited untrusted evidence, requires all
+postconditions and receipt agreement, holds on instructions inside evidence, and
+asks the reason to name each checked postcondition. Delimiter characters inside
+JSON data are escaped without changing its decoded values. Schema, strict decoder,
+exact-owner checks, pinned model/runtime and resource limits stay unchanged.
+
+Run the constrained 3B / `3b-3gib` configuration with `INSTAR_SETUP_SET=original`
+and then `INSTAR_SETUP_SET=held-out`, each in its own fresh private evidence directory.
+Each set runs three times. No single-case pilot qualifies either set. Console output
+distinguishes the model's candidate from the final exact-owner verdict: an unsafe
+model accept remains a failure even when the final verdict holds.
+
+[Separate results and per-case counts](evidence/macos-arm64-2026-10-25-hardened-3b-3gib.md)
+retain both complete capture sets. Distribution remains unqualified until the full
+owner-run and independent-assessment requirements are met.

@@ -33,12 +33,23 @@ it.skipIf(!process.env.INSTAR_SETUP_QUALIFICATION)('records the pinned real macO
     const profile = qualificationProfile(profileName, model, constrained);
     const priorBytes = readFileSync(new URL('../qualification/evidence/macos-arm64-2026-10-25.json', import.meta.url), 'utf8');
     const prior = JSON.parse(priorBytes);
-    const ownerEvidence: ReturnType<typeof captureSetupCases> = constrained ? prior.ownerEvidence : captureSetupCases(join(root, 'owner-captures'));
-    if (constrained) expect(digest(JSON.stringify(ownerEvidence.cases))).toBe(prior.hashes.taskSet);
-    const report: Record<string, any> = { schemaVersion: 1, candidate: model, profile, profileName,
+    const caseSet = process.env.INSTAR_SETUP_SET ?? 'original';
+    if (!['original', 'held-out'].includes(caseSet)) throw Error('unknown qualification case set');
+    if (caseSet === 'held-out' && !constrained) throw Error('held-out requires constrained replay');
+    const heldOutPath = 'tests/qualification/fixtures/setup-held-out-1025-mac4.json';
+    const heldOutBytes = readFileSync(heldOutPath, 'utf8');
+    const heldOutDigest = readFileSync(`${heldOutPath}.sha256`, 'utf8').split(' ')[0];
+    expect(digest(heldOutBytes)).toBe(heldOutDigest);
+    const ownerEvidence: ReturnType<typeof captureSetupCases> = caseSet === 'held-out'
+      ? { ...prior.ownerEvidence, cases: JSON.parse(heldOutBytes).cases }
+      : constrained ? prior.ownerEvidence : captureSetupCases(join(root, 'owner-captures'));
+    if (constrained && caseSet === 'original') expect(digest(JSON.stringify(ownerEvidence.cases))).toBe(prior.hashes.taskSet);
+    const report: Record<string, any> = { schemaVersion: 1, candidate: model, profile, profileName, caseSet,
+      heldOutFreeze: { path: heldOutPath, sha256: heldOutDigest, commit: '70b1f612e' },
       generatedAt: new Date().toISOString(), host: { os: platform(), architecture: arch(), release: release(),
         cpu: cpus()[0]?.model, logicalCpus: cpus().length, totalMemoryBytes: totalmem(), availableMemoryBytes: freemem() },
-      artifacts: manifest, constrained, replaySource: constrained ? { path: 'tests/qualification/evidence/macos-arm64-2026-10-25.json', sha256: digest(priorBytes) } : null,
+      artifacts: manifest, constrained, replaySource: caseSet === 'held-out' ? { path: heldOutPath, sha256: heldOutDigest }
+        : constrained ? { path: 'tests/qualification/evidence/macos-arm64-2026-10-25.json', sha256: digest(priorBytes) } : null,
       hashes: { prompt: digest(PROMPT), template: digest(TEMPLATE), taskSet: digest(JSON.stringify(ownerEvidence.cases)),
         adapter: await fileDigest('scripts/setup-qualification.mjs'), bridge: await fileDigest('tests/qualification/setup-seven.ts'),
         ownerCaptures: await fileDigest('tests/qualification/setup-owner-cases.ts') },
@@ -56,7 +67,7 @@ it.skipIf(!process.env.INSTAR_SETUP_QUALIFICATION)('records the pinned real macO
         const result = await observeSetup({ root: trialRoot, stopFile, executable: manifest.executable,
           runtimeDigest: manifest.runtimeDigest, weights: manifest.weights, task, constrained, model, profileName });
         report.trials.push({ case: task.id, repetition, expected: task.expected, ...result }); save();
-        console.log(`${repetition}/${task.id}: ${result.verdict.disposition}; ${Math.round(result.elapsedMs)} ms; RSS ${result.raw.resources?.peakMemoryBytes ?? 'unknown'}`);
+        console.log(`${repetition}/${task.id}: ${result.verdict.disposition} final / ${(result.verdict.candidate ?? result.verdict).disposition} model; ${Math.round(result.elapsedMs)} ms; RSS ${result.raw.resources?.peakMemoryBytes ?? 'unknown'}`);
       }
     }
     report.numericalBar = { total: report.trials.length,
