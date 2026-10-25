@@ -18,7 +18,7 @@ it('P5-SEAM-RC-R9-F3-ADMISSION-BINDINGS P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION 
   expect(original).toBe(reviewed
     .replace('"standards": [26, 31, 33, 34, 63, 68, 69, 96],', '"standards": [26, 31, 33, 34, 39, 63, 68, 69, 96],')
     .replace('"decidesAlone": "ruled-three",', '"decidesAlone": "ruled-three",\n      "decidesAloneBasis": "operator-emergency-stop",')
-    .replace('"deadline": 1791158400000', '"deadline": 1792886400000'));
+    .replace('"deadline": 1791158400000', '"deadline": 1794096000000'));
   expect(original).not.toBe(reviewed);
 
   const legacy = setup();

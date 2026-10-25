@@ -1,0 +1,622 @@
+{
+  "provenance": {
+    "source": "Studio proof room group S, train-145 6b1d99a7, 2026-10-24; hash-verified task snapshots",
+    "limits": "Snapshots contain inspect projections, delivered replies and questions, not raw answer model output. Answer test values reconstructed from recorded answerReason are labelled in the test; never represented as captured bytes."
+  },
+  "turns": [
+    {
+      "label": "early",
+      "question": "Who did I say looks after my teeth?",
+      "update": 367054112,
+      "memory": [
+        {
+          "mode": "remembered",
+          "replacement": "My dentist is Doctor Okafor.",
+          "source": "telegram:8813073094:update:367054059",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 16:57 PDT/#367054059",
+          "trigger": "telegram:8813073094:update:367054059"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The blue kayak is stored in bay C at the marina.",
+          "source": "telegram:8813073094:update:367054060",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 16:58 PDT/#367054060",
+          "trigger": "telegram:8813073094:update:367054060"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My favourite tea is smoked lapsang.",
+          "source": "telegram:8813073094:update:367054061",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 16:58 PDT/#367054061",
+          "trigger": "telegram:8813073094:update:367054061"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The book club meets on the second Thursday.",
+          "source": "telegram:8813073094:update:367054062",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 16:59 PDT/#367054062",
+          "trigger": "telegram:8813073094:update:367054062"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The neighbour's cat is called Biscuit.",
+          "source": "telegram:8813073094:update:367054063",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 16:59 PDT/#367054063",
+          "trigger": "telegram:8813073094:update:367054063"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "Our street's recycling goes out on Tuesday nights.",
+          "source": "telegram:8813073094:update:367054064",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:00 PDT/#367054064",
+          "trigger": "telegram:8813073094:update:367054064"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My library card number ends in 3317.",
+          "source": "telegram:8813073094:update:367054065",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:00 PDT/#367054065",
+          "trigger": "telegram:8813073094:update:367054065"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The car's tyre pressure should be 34 psi.",
+          "source": "telegram:8813073094:update:367054066",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:01 PDT/#367054066",
+          "trigger": "telegram:8813073094:update:367054066"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My grandmother's ring is in the cedar box.",
+          "source": "telegram:8813073094:update:367054067",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:01 PDT/#367054067",
+          "trigger": "telegram:8813073094:update:367054067"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The pottery class is taught by Ines.",
+          "source": "telegram:8813073094:update:367054068",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:02 PDT/#367054068",
+          "trigger": "telegram:8813073094:update:367054068"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My running shoes are size 44.",
+          "source": "telegram:8813073094:update:367054069",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:02 PDT/#367054069",
+          "trigger": "telegram:8813073094:update:367054069"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The Lisbon trip flight leaves from gate B12.",
+          "source": "telegram:8813073094:update:367054070",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:03 PDT/#367054070",
+          "trigger": "telegram:8813073094:update:367054070"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The piano tuner comes every April.",
+          "source": "telegram:8813073094:update:367054071",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:03 PDT/#367054071",
+          "trigger": "telegram:8813073094:update:367054071"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My sourdough starter is named Clint.",
+          "source": "telegram:8813073094:update:367054072",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:04 PDT/#367054072",
+          "trigger": "telegram:8813073094:update:367054072"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The garage door remote uses a CR2032 battery.",
+          "source": "telegram:8813073094:update:367054073",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:04 PDT/#367054073",
+          "trigger": "telegram:8813073094:update:367054073"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My first car was a yellow Fiat Panda.",
+          "source": "telegram:8813073094:update:367054074",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:05 PDT/#367054074",
+          "trigger": "telegram:8813073094:update:367054074"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The choir rehearses in room 214.",
+          "source": "telegram:8813073094:update:367054075",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:05 PDT/#367054075",
+          "trigger": "telegram:8813073094:update:367054075"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The fern on the landing needs water every Sunday.",
+          "source": "telegram:8813073094:update:367054076",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:06 PDT/#367054076",
+          "trigger": "telegram:8813073094:update:367054076"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The hallway clock runs four minutes fast.",
+          "source": "telegram:8813073094:update:367054077",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:06 PDT/#367054077",
+          "trigger": "telegram:8813073094:update:367054077"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The farmers market stall I like sells quince jam.",
+          "source": "telegram:8813073094:update:367054078",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:07 PDT/#367054078",
+          "trigger": "telegram:8813073094:update:367054078"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The spare cabin key hangs behind the barometer.",
+          "source": "telegram:8813073094:update:367054080",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:08 PDT/#367054080",
+          "trigger": "telegram:8813073094:update:367054080"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My cousin Tomas lives in Ghent.",
+          "source": "telegram:8813073094:update:367054081",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:11 PDT/#367054081",
+          "trigger": "telegram:8813073094:update:367054081"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The umbrella I keep at work is orange.",
+          "source": "telegram:8813073094:update:367054082",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:12 PDT/#367054082",
+          "trigger": "telegram:8813073094:update:367054082"
+        }
+      ],
+      "recalledIds": [
+        "telegram:8813073094:update:367054059",
+        "telegram:8813073094:update:367054077",
+        "telegram:8813073094:update:367054083",
+        "telegram:8813073094:update:367054084",
+        "telegram:8813073094:update:367054085"
+      ],
+      "memoryLookup": "offered",
+      "answerReason": "Justin asked me to recall a fact, so I didn't need any tools. On 2026-10-24 at 16:57 PDT he wrote \"My dentist is Doctor Okafor.\" That is message #367054059, and it is labelled operator-stated in both packet.memory and recalled. There is no later correction to it. This is a recall question with no new fact, so nothing needs saving. The question names no person, so lastNamedPerson is null.",
+      "delivered": "Here are 20 active memory items I have about you (newest first):\n1. The umbrella I keep at work is orange.\n   To correct or forget this, quote the item and tell me what to change or forget.\n2. My cousin Tomas lives in Ghent.\n   To correct or forget this, quote the item and tell me what to change or forget.\n3. The spare cabin key hangs behind the barometer.\n   To correct or forget this, quote the item and tell me what to change or forget.\n4. The farmers market stall I like sells quince jam.\n   To correct or forget this, quote the item and tell me what to change or forget.\n5. The hallway clock runs four minutes fast.\n   To correct or forget this, quote the item and tell me what to change or forget.\n6. The fern on the landing needs water every Sunday.\n   To correct or forget this, quote the item and tell me what to change or forget.\n7. The choir rehearses in room 214.\n   To correct or forget this, quote the item and tell me what to change or forget.\n8. My first car was a yellow Fiat Panda.\n   To correct or forget this, quote the item and tell me what to change or forget.\n9. The garage door remote uses a CR2032 battery.\n   To correct or forget this, quote the item and tell me what to change or forget.\n10. My sourdough starter is named Clint.\n   To correct or forget this, quote the item and tell me what to change or forget.\n11. The piano tuner comes every April.\n   To correct or forget this, quote the item and tell me what to change or forget.\n12. The Lisbon trip flight leaves from gate B12.\n   To correct or forget this, quote the item and tell me what to change or forget.\n13. My running shoes are size 44.\n   To correct or forget this, quote the item and tell me what to change or forget.\n14. The pottery class is taught by Ines.\n   To correct or forget this, quote the item and tell me what to change or forget.\n15. My grandmother's ring is in the cedar box.\n   To correct or forget this, quote the item and tell me what to change or forget.\n16. The car's tyre pressure should be 34 psi.\n   To correct or forget this, quote the item and tell me what to change or forget.\n17. My library card number ends in 3317.\n   To correct or forget this, quote the item and tell me what to change or forget.\n18. Our street's recycling goes out on Tuesday nights.\n   To correct or forget this, quote the item and tell me what to change or forget.\n19. The neighbour's cat is called Biscuit.\n   To correct or forget this, quote the item and tell me what to change or forget.\n20. The book club meets on the second Thursday.\n   To correct or forget this, quote the item and tell me what to change or forget.\nThere are 4 older active items not shown."
+    },
+    {
+      "label": "late",
+      "question": "Where did I say I keep the extra thing that unlocks the hut in the woods?",
+      "update": 367054113,
+      "memory": [
+        {
+          "mode": "remembered",
+          "replacement": "My dentist is Doctor Okafor.",
+          "source": "telegram:8813073094:update:367054059",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 16:57 PDT/#367054059",
+          "trigger": "telegram:8813073094:update:367054059"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The blue kayak is stored in bay C at the marina.",
+          "source": "telegram:8813073094:update:367054060",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 16:58 PDT/#367054060",
+          "trigger": "telegram:8813073094:update:367054060"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My favourite tea is smoked lapsang.",
+          "source": "telegram:8813073094:update:367054061",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 16:58 PDT/#367054061",
+          "trigger": "telegram:8813073094:update:367054061"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The book club meets on the second Thursday.",
+          "source": "telegram:8813073094:update:367054062",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 16:59 PDT/#367054062",
+          "trigger": "telegram:8813073094:update:367054062"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The neighbour's cat is called Biscuit.",
+          "source": "telegram:8813073094:update:367054063",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 16:59 PDT/#367054063",
+          "trigger": "telegram:8813073094:update:367054063"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "Our street's recycling goes out on Tuesday nights.",
+          "source": "telegram:8813073094:update:367054064",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:00 PDT/#367054064",
+          "trigger": "telegram:8813073094:update:367054064"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My library card number ends in 3317.",
+          "source": "telegram:8813073094:update:367054065",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:00 PDT/#367054065",
+          "trigger": "telegram:8813073094:update:367054065"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The car's tyre pressure should be 34 psi.",
+          "source": "telegram:8813073094:update:367054066",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:01 PDT/#367054066",
+          "trigger": "telegram:8813073094:update:367054066"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My grandmother's ring is in the cedar box.",
+          "source": "telegram:8813073094:update:367054067",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:01 PDT/#367054067",
+          "trigger": "telegram:8813073094:update:367054067"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The pottery class is taught by Ines.",
+          "source": "telegram:8813073094:update:367054068",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:02 PDT/#367054068",
+          "trigger": "telegram:8813073094:update:367054068"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My running shoes are size 44.",
+          "source": "telegram:8813073094:update:367054069",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:02 PDT/#367054069",
+          "trigger": "telegram:8813073094:update:367054069"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The Lisbon trip flight leaves from gate B12.",
+          "source": "telegram:8813073094:update:367054070",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:03 PDT/#367054070",
+          "trigger": "telegram:8813073094:update:367054070"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The piano tuner comes every April.",
+          "source": "telegram:8813073094:update:367054071",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:03 PDT/#367054071",
+          "trigger": "telegram:8813073094:update:367054071"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My sourdough starter is named Clint.",
+          "source": "telegram:8813073094:update:367054072",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:04 PDT/#367054072",
+          "trigger": "telegram:8813073094:update:367054072"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The garage door remote uses a CR2032 battery.",
+          "source": "telegram:8813073094:update:367054073",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:04 PDT/#367054073",
+          "trigger": "telegram:8813073094:update:367054073"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My first car was a yellow Fiat Panda.",
+          "source": "telegram:8813073094:update:367054074",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:05 PDT/#367054074",
+          "trigger": "telegram:8813073094:update:367054074"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The choir rehearses in room 214.",
+          "source": "telegram:8813073094:update:367054075",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:05 PDT/#367054075",
+          "trigger": "telegram:8813073094:update:367054075"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The fern on the landing needs water every Sunday.",
+          "source": "telegram:8813073094:update:367054076",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:06 PDT/#367054076",
+          "trigger": "telegram:8813073094:update:367054076"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The hallway clock runs four minutes fast.",
+          "source": "telegram:8813073094:update:367054077",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:06 PDT/#367054077",
+          "trigger": "telegram:8813073094:update:367054077"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The farmers market stall I like sells quince jam.",
+          "source": "telegram:8813073094:update:367054078",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:07 PDT/#367054078",
+          "trigger": "telegram:8813073094:update:367054078"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The spare cabin key hangs behind the barometer.",
+          "source": "telegram:8813073094:update:367054080",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:08 PDT/#367054080",
+          "trigger": "telegram:8813073094:update:367054080"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My cousin Tomas lives in Ghent.",
+          "source": "telegram:8813073094:update:367054081",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:11 PDT/#367054081",
+          "trigger": "telegram:8813073094:update:367054081"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The umbrella I keep at work is orange.",
+          "source": "telegram:8813073094:update:367054082",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:12 PDT/#367054082",
+          "trigger": "telegram:8813073094:update:367054082"
+        }
+      ],
+      "recalledIds": [
+        "telegram:8813073094:update:367054057",
+        "telegram:8813073094:update:367054077",
+        "telegram:8813073094:update:367054083",
+        "telegram:8813073094:update:367054084",
+        "telegram:8813073094:update:367054085"
+      ],
+      "memoryLookup": "offered",
+      "answerReason": "The operator is asking where he said he keeps the extra thing that opens the hut in the woods. I read that as the spare cabin key. The journal memory has an operator-stated item from #367054080 (2026-10-24 17:08 PDT): \"The spare cabin key hangs behind the barometer.\" Matching \"hut in the woods\" to \"cabin\" and \"extra thing that unlocks\" to \"spare key\" is my reading, so I say so in the reply. I used no tools. My previous reply to \"Who did I say looks after my teeth?\" gave a memory list and never answered the question. Memory #367054059 says \"My dentist is Doctor Okafor.\", so I add that correction briefly. Nothing new to save and no dates.",
+      "delivered": "You told me: \"The spare cabin key hangs behind the barometer.\" (2026-10-24 17:08 PDT). I'm taking the hut in the woods to mean the cabin.\n\nAlso, my last reply never answered your teeth question. You told me: \"My dentist is Doctor Okafor.\" (2026-10-24 16:57 PDT)."
+    },
+    {
+      "label": "never",
+      "question": "What name did I give you for my sister's horse?",
+      "update": 367054114,
+      "memory": [
+        {
+          "mode": "remembered",
+          "replacement": "My dentist is Doctor Okafor.",
+          "source": "telegram:8813073094:update:367054059",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 16:57 PDT/#367054059",
+          "trigger": "telegram:8813073094:update:367054059"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The blue kayak is stored in bay C at the marina.",
+          "source": "telegram:8813073094:update:367054060",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 16:58 PDT/#367054060",
+          "trigger": "telegram:8813073094:update:367054060"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My favourite tea is smoked lapsang.",
+          "source": "telegram:8813073094:update:367054061",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 16:58 PDT/#367054061",
+          "trigger": "telegram:8813073094:update:367054061"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The book club meets on the second Thursday.",
+          "source": "telegram:8813073094:update:367054062",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 16:59 PDT/#367054062",
+          "trigger": "telegram:8813073094:update:367054062"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The neighbour's cat is called Biscuit.",
+          "source": "telegram:8813073094:update:367054063",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 16:59 PDT/#367054063",
+          "trigger": "telegram:8813073094:update:367054063"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "Our street's recycling goes out on Tuesday nights.",
+          "source": "telegram:8813073094:update:367054064",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:00 PDT/#367054064",
+          "trigger": "telegram:8813073094:update:367054064"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My library card number ends in 3317.",
+          "source": "telegram:8813073094:update:367054065",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:00 PDT/#367054065",
+          "trigger": "telegram:8813073094:update:367054065"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The car's tyre pressure should be 34 psi.",
+          "source": "telegram:8813073094:update:367054066",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:01 PDT/#367054066",
+          "trigger": "telegram:8813073094:update:367054066"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My grandmother's ring is in the cedar box.",
+          "source": "telegram:8813073094:update:367054067",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:01 PDT/#367054067",
+          "trigger": "telegram:8813073094:update:367054067"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The pottery class is taught by Ines.",
+          "source": "telegram:8813073094:update:367054068",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:02 PDT/#367054068",
+          "trigger": "telegram:8813073094:update:367054068"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My running shoes are size 44.",
+          "source": "telegram:8813073094:update:367054069",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:02 PDT/#367054069",
+          "trigger": "telegram:8813073094:update:367054069"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The Lisbon trip flight leaves from gate B12.",
+          "source": "telegram:8813073094:update:367054070",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:03 PDT/#367054070",
+          "trigger": "telegram:8813073094:update:367054070"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The piano tuner comes every April.",
+          "source": "telegram:8813073094:update:367054071",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:03 PDT/#367054071",
+          "trigger": "telegram:8813073094:update:367054071"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My sourdough starter is named Clint.",
+          "source": "telegram:8813073094:update:367054072",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:04 PDT/#367054072",
+          "trigger": "telegram:8813073094:update:367054072"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The garage door remote uses a CR2032 battery.",
+          "source": "telegram:8813073094:update:367054073",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:04 PDT/#367054073",
+          "trigger": "telegram:8813073094:update:367054073"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My first car was a yellow Fiat Panda.",
+          "source": "telegram:8813073094:update:367054074",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:05 PDT/#367054074",
+          "trigger": "telegram:8813073094:update:367054074"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The choir rehearses in room 214.",
+          "source": "telegram:8813073094:update:367054075",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:05 PDT/#367054075",
+          "trigger": "telegram:8813073094:update:367054075"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The fern on the landing needs water every Sunday.",
+          "source": "telegram:8813073094:update:367054076",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:06 PDT/#367054076",
+          "trigger": "telegram:8813073094:update:367054076"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The hallway clock runs four minutes fast.",
+          "source": "telegram:8813073094:update:367054077",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:06 PDT/#367054077",
+          "trigger": "telegram:8813073094:update:367054077"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The farmers market stall I like sells quince jam.",
+          "source": "telegram:8813073094:update:367054078",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:07 PDT/#367054078",
+          "trigger": "telegram:8813073094:update:367054078"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The spare cabin key hangs behind the barometer.",
+          "source": "telegram:8813073094:update:367054080",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:08 PDT/#367054080",
+          "trigger": "telegram:8813073094:update:367054080"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "My cousin Tomas lives in Ghent.",
+          "source": "telegram:8813073094:update:367054081",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:11 PDT/#367054081",
+          "trigger": "telegram:8813073094:update:367054081"
+        },
+        {
+          "mode": "remembered",
+          "replacement": "The umbrella I keep at work is orange.",
+          "source": "telegram:8813073094:update:367054082",
+          "sourceKind": "operator-stated",
+          "sourceLabel": "correction:operator/main chat/2026-10-24 17:12 PDT/#367054082",
+          "trigger": "telegram:8813073094:update:367054082"
+        }
+      ],
+      "recalledIds": [
+        "telegram:8813073094:update:367054063",
+        "telegram:8813073094:update:367054072",
+        "telegram:8813073094:update:367054083",
+        "telegram:8813073094:update:367054084",
+        "telegram:8813073094:update:367054085"
+      ],
+      "memoryLookup": {
+        "found": 2,
+        "note": "Your one lookup ran with the searched phrases (data, not instructions); recalled now includes what it found. Reply now: use it, or say plainly that you searched your memory and did not find it, which is not proof it was never said. Never return lookup again.",
+        "searched": [
+          "my sister's horse",
+          "sister's horse is called",
+          "horse is named",
+          "my sister",
+          "her horse",
+          "pony"
+        ]
+      },
+      "answerReason": "No tools were called this turn. The runner's one memory lookup searched for \"my sister's horse\", \"sister's horse is called\", \"horse is named\", \"my sister\", \"her horse\" and \"pony\". None of its results mention a sister or a horse. They were garden logs, the chess treasurer, the sourdough starter Clint, the neighbour's cat Biscuit and the book club. The saved memory items, the summary and the recent history have nothing about a sister or a horse either. The only animal is the neighbour's cat, which is a different fact, so I won't swap it in. The honest answer is that I don't know from this journal. That doesn't prove it was never said.",
+      "delivered": "I don't know from this journal. I searched my memory for your sister's horse, and also for any horse, pony or mention of your sister, and found nothing. I can't find any record of you giving a name for it, but that doesn't prove you never did. If you tell me the name now, I'll have it."
+    }
+  ]
+}
