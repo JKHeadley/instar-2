@@ -121,7 +121,7 @@ it('names carried sources in memory guidance only for a carried root; a root wit
   const uncarried = createJournalWorker(w.source, { now: () => now - 1000, stopped: () => false,
     model: async input => { plain = input.context; return 'Noted.'; }, send: async () => 11, checkOutbound: () => {} });
   uncarried.intake([update(2, 'Where do we meet?')]); await uncarried.drain();
-  expect(decision(plain)).toContain(`${MEMORY_ITEM_SHAPE} Earlier answer correction:`);
+  expect(decision(plain)).toContain(`${MEMORY_ITEM_SHAPE} Answer corrections:`);
   expect(decision(plain)).toContain(PREFERENCE_DECISION);
   expect(plain).not.toContain(CARRIED_MEMORY_ITEM_SOURCE); expect(plain).not.toContain('predecessorMemory');
   appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false);
@@ -130,7 +130,7 @@ it('names carried sources in memory guidance only for a carried root; a root wit
     groupDisclosure: async () => true, model: async input => { carried = input.context; return 'The arboretum.'; },
     send: async () => 1, checkOutbound: () => {} });
   worker.intake([update(2, 'Where do we meet?', true)]); await worker.drain();
-  expect(decision(carried)).toContain(`${MEMORY_ITEM_SHAPE} ${CARRIED_MEMORY_ITEM_SOURCE} Earlier answer correction:`);
+  expect(decision(carried)).toContain(`${MEMORY_ITEM_SHAPE} ${CARRIED_MEMORY_ITEM_SOURCE} Answer corrections:`);
   expect(decision(carried)).toContain(PREFERENCE_DECISION);
   w.destination.close(); w.source.close();
 });
