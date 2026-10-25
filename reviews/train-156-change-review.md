@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Integrate the exact reviewed memory consistency head into the accepted train-153 build, preserving its custody-platform additions.
 Affected rules: Purpose 2 and 3; 4, 7, 10, 12, 14, 26, 34, 36, 37, 41, 46, 49, 57, 58, 67, 70, 74, 90, 91, 100, 101, 102, 105, 111, 112, 113, 115, 116, 117
-Affected floors: Existing secrets custody, spend cap, stop, durable intake and unique sends remain binding. Attribute repair uses the existing bounded retry; no authority or effect route added.
+Affected floors: Existing secrets custody, spend cap, stop, durable intake and no duplicate sends remain binding. Attribute repair uses the existing bounded retry; no authority or effect route added.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
