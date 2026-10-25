@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { captureSetupCases } from '../qualification/setup-owner-cases.js';
 import { observeSetup } from '../qualification/setup-seven.js';
 // @ts-expect-error Physical qualification adapter.
-import { MODEL, MODEL_3B, PROMPT, TEMPLATE, digest, fileDigest, qualificationProfile, projectTask, TYPED_PROMPT, PROJECTION_SCHEMA } from '../../scripts/setup-qualification.mjs';
+import { MODEL, MODEL_3B, PROMPT, TEMPLATE, digest, fileDigest, qualificationProfile, projectTask, TYPED_PROMPT, PROJECTION_SCHEMA, PROJECTED_VERDICT_SCHEMA, extractReply } from '../../scripts/setup-qualification.mjs';
 
 it('captures real crypto, recovery, changed signatures and conflicting durable appends', () => {
   const evidence = captureSetupCases(mkdtempSync(join(tmpdir(), 'setup-owners-')));
@@ -55,7 +55,7 @@ it.skipIf(!process.env.INSTAR_SETUP_QUALIFICATION)('records the pinned real macO
       heldOutFreeze: { path: heldOutPath, sha256: heldOutDigest, commit: '70b1f612e' },
       generatedAt: new Date().toISOString(), host: { os: platform(), architecture: arch(), release: release(),
         cpu: cpus()[0]?.model, logicalCpus: cpus().length, totalMemoryBytes: totalmem(), availableMemoryBytes: freemem() },
-      artifacts: manifest, constrained, typed, projectionSchema: typed ? PROJECTION_SCHEMA : null, projectedTasks, replaySource: caseSet === 'held-out' ? { path: heldOutPath, sha256: heldOutDigest }
+      artifacts: manifest, constrained, typed, projectionSchema: typed ? PROJECTION_SCHEMA : null, verdictSchema: typed ? PROJECTED_VERDICT_SCHEMA : null, projectedTasks, replaySource: caseSet === 'held-out' ? { path: heldOutPath, sha256: heldOutDigest }
         : constrained ? { path: 'tests/qualification/evidence/macos-arm64-2026-10-25.json', sha256: digest(priorBytes) } : null,
       hashes: { prompt: digest(typed ? TYPED_PROMPT : PROMPT), template: digest(TEMPLATE), taskSet: digest(JSON.stringify(ownerEvidence.cases)),
         adapter: await fileDigest('scripts/setup-qualification.mjs'), bridge: await fileDigest('tests/qualification/setup-seven.ts'),
@@ -83,11 +83,11 @@ it.skipIf(!process.env.INSTAR_SETUP_QUALIFICATION)('records the pinned real macO
           expect(`sha256:${digest(bytes)}`).toBe(ref.hash); return [key, bytes]; }));
         report.trials.push({ case: task.id, repetition, expected: task.expected, ...result,
           owner: undefined, seven: { ...result.seven, captures } }); save();
-        console.log(`${repetition}/${task.id}: ${result.verdict.disposition} final / ${(result.verdict.candidate ?? result.verdict).disposition} model; ${Math.round(result.elapsedMs)} ms; RSS ${result.raw.resources?.peakMemoryBytes ?? 'unknown'}`);
+        console.log(`${repetition}/${task.id}: ${result.verdict.disposition} final / ${rawDisposition(result)} model; ${Math.round(result.elapsedMs)} ms; RSS ${result.raw.resources?.peakMemoryBytes ?? 'unknown'}`);
       }
     }
     report.numericalBar = { total: report.trials.length,
-      unsafeCandidateAccepts: report.trials.filter((r: any) => r.expected === 'hold' && (r.verdict.candidate ?? r.verdict).disposition === 'accept').length,
+      unsafeCandidateAccepts: report.trials.filter((r: any) => r.expected === 'hold' && rawDisposition(r) === 'accept').length,
       rejectedPositiveNeighbors: report.trials.filter((r: any) => r.expected === 'accept' && r.verdict.disposition !== 'accept').length,
       inconsistent: selected.filter((task: { id: string }) => new Set(report.trials.filter((r: any) => r.case === task.id).map((r: any) => r.verdict.disposition)).size !== 1).map(task => task.id),
       resourceFailures: report.trials.filter((r: any) => r.disposition !== 'observed').length };
@@ -113,6 +113,32 @@ it.skipIf(!process.env.INSTAR_SETUP_QUALIFICATION)('records the pinned real macO
         limitation: 'Correct primitive postcondition replay; full installed four pre/four post sequence is absent.',
         accepted: report.supervisionTrials.filter((r: any) => r.verdict.disposition === 'accept').length };
     }
+    const trials = report.trials;
+    const positives = trials.filter((r: any) => r.expected === 'accept');
+    const firstEight = positives.slice(0, 8);
+    report.summary = {
+      positiveTrials: positives.length, negativeTrials: trials.length - positives.length,
+      rawPositiveAccepts: positives.filter((r: any) => rawDisposition(r) === 'accept').length,
+      finalPositiveAccepts: positives.filter((r: any) => r.verdict.disposition === 'accept').length,
+      unsafeModelAccepts: trials.filter((r: any) => r.expected === 'hold' && rawDisposition(r) === 'accept').length,
+      schemaFailureCount: trials.filter((r: any) => ['empty, truncated or malformed output', 'incomplete or ungrounded schema'].includes(r.verdict.reason)).length,
+      missingCitationFailures: trials.filter((r: any) => r.verdict.adequacy?.kind === 'missing-required-citations').length,
+      citedCheckMisstatementFailures: trials.filter((r: any) => r.verdict.adequacy?.kind === 'cited-check-misstatement').length,
+      citedCheckMisstatements: trials.reduce((n: number, r: any) => n + (r.verdict.adequacy?.misstatements?.length ?? 0), 0),
+      rawInconsistent: selected.filter((task: { id: string }) => new Set(trials.filter((r: any) => r.case === task.id).map(rawDisposition)).size !== 1).map(task => task.id),
+      resourceFailures: trials.filter((r: any) => r.disposition !== 'observed').length,
+      latencyMs: [Math.min(...trials.map((r: any) => r.elapsedMs)), Math.max(...trials.map((r: any) => r.elapsedMs))],
+      peakMemoryBytes: Math.max(...trials.map((r: any) => r.raw.resources?.peakMemoryBytes ?? 0)),
+      firstEightPositiveMs: firstEight.reduce((n: number, r: any) => n + r.elapsedMs, 0),
+      firstEightLoadMs: firstEight.reduce((n: number, r: any) => n + (r.loadMs ?? 0), 0),
+      firstEightAccepted: firstEight.filter((r: any) => r.verdict.disposition === 'accept').length,
+      firstEightCases: firstEight.map((r: any) => ({ case: r.case, repetition: r.repetition })),
+    };
     report.reason = 'Full preparation/custodian/recovery/genesis owner run absent; independent assessment pending. Primitive trials cannot qualify distribution.';
     save(); expect(report.trials).toHaveLength(selected.length * (only ? 1 : 3));
   });
+
+function rawDisposition(result: { output: string }): string {
+  try { return JSON.parse(extractReply(result.output)).disposition ?? 'unparseable'; }
+  catch { return 'unparseable'; }
+}

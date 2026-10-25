@@ -136,7 +136,7 @@ export async function validateTask({ root, stopFile, executable, weights, runtim
   try { if (statSync(logFile).size <= 131072) diagnostics = readFileSync(logFile, 'utf8'); } catch { /* unavailable is unknown usage */ }
   const count = pattern => { const hit = diagnostics.match(pattern); return hit ? Number(hit[1]) : null; };
   const usage = tokenUsage(diagnostics);
-  return { ...run, constraint: schema ? { id: task.projection ? `${PROJECTION_SCHEMA}-verdict` : SCHEMA_ID, sha256: digest(JSON.stringify(schema)), schema } : null,
+  return { ...run, constraint: schema ? { id: task.projection ? PROJECTED_VERDICT_SCHEMA : SCHEMA_ID, sha256: digest(JSON.stringify(schema)), schema } : null,
     elapsedMs: performance.now() - started, prompt, output, diagnostics, usage, loadMs: count(/load time\s*=\s*([\d.]+) ms/),
     verdict: run.disposition === 'observed' ? decodeVerdict(extractReply(output), task)
       : { disposition: 'hold', reason: run.raw.localLimit ?? run.raw.cancellationReason ?? 'model unavailable', preserved: task.id } };
@@ -163,14 +163,16 @@ export function tokenUsage(diagnostics) {
 // This closed schema covers the captured primitive-owner operations. It cannot
 // manufacture isolated-custodian/recovery/GE/A0 results absent from those captures.
 export const PROJECTION_SCHEMA = 'setup-primitive-owner-results-v1';
+export const PROJECTED_VERDICT_SCHEMA = 'setup-primitive-owner-verdict-v2';
 export const TYPED_PROMPT = `Validate whether these named owner results together establish the step.
 Scope is isolated primitive-owner replay, not installation or genesis authorization.
 Each check has its responsible owner, observed and passed booleans, and a receipt handle.
 Accept only when every required check is observed and passed. Otherwise hold, identifying
 failed or unobserved checks. Checks complement each other; a successful check cannot cancel
 another failure. Do not infer missing facts. Receipt handles refer to retained owner evidence.
-Return exactly {"disposition":"accept" or "hold","reason":"explain using relevant check names and receipt handles","evidence":["the cited receipt handles"]}.
-For acceptance cite every check and receipt; for hold cite the failed or unobserved checks.
+Return exactly {"disposition":"accept" or "hold","reason":"explain the conclusion using the cited results","checks":[{"name":"check name","observed":true or false,"passed":true or false,"receipt":"receipt handle"}]}.
+Each citation must copy that check's observed and passed values and receipt exactly.
+For acceptance cite every check as observed and passed; for hold cite the failed or unobserved checks.
 No output grants installation authority.`;
 const STEP_FIELDS = Object.freeze({
   key: ['installation', 'keyId', 'challengeVerified'],
@@ -257,32 +259,50 @@ export function projectTask(task, checkpoint) {
   return { ...task, checkpoint: { ...checkpoint }, projection, receipts };
 }
 function projectedVerdictSchema(task) {
-  return { type: 'object', additionalProperties: false, required: ['disposition', 'reason', 'evidence'], properties: {
+  return { type: 'object', additionalProperties: false, required: ['disposition', 'reason', 'checks'], properties: {
     disposition: { type: 'string', enum: ['accept', 'hold'] },
     reason: { type: 'string', minLength: 1, maxLength: 4096 },
-    evidence: { type: 'array', minItems: 1, items: { type: 'string', enum: task.projection.checks.map(r => r.receipt) } } } };
+    checks: { type: 'array', minItems: 1, maxItems: task.projection.checks.length,
+      items: { type: 'object', additionalProperties: false, required: ['name', 'observed', 'passed', 'receipt'], properties: {
+        name: { type: 'string', enum: task.projection.checks.map(r => r.name) },
+        observed: { type: 'boolean' }, passed: { type: 'boolean' },
+        receipt: { type: 'string', enum: task.projection.checks.map(r => r.receipt) },
+      } } } } };
 }
 function decodeProjectedVerdict(bytes, task) {
-  const hold = (reason, candidate) => ({ disposition: 'hold', reason, evidence: [], preserved: task.id, ...(candidate ? { candidate } : {}) });
+  const hold = (reason, candidate, adequacy) => ({ disposition: 'hold', reason, checks: [], preserved: task.id,
+    ...(candidate ? { candidate } : {}), ...(adequacy ? { adequacy } : {}) });
   let value;
   try { value = JSON.parse(bytes); } catch { return hold('empty, truncated or malformed output'); }
-  if (!object(value) || Object.keys(value).sort().join(',') !== 'disposition,evidence,reason'
+  const checks = task.projection.checks;
+  if (!object(value) || Object.keys(value).sort().join(',') !== 'checks,disposition,reason'
     || !['accept', 'hold'].includes(value.disposition) || typeof value.reason !== 'string' || !value.reason.trim()
-    || value.reason.length > 4096 || !Array.isArray(value.evidence) || !value.evidence.length
-    || new Set(value.evidence).size !== value.evidence.length
-    || value.evidence.some(id => typeof id !== 'string' || !task.projection.checks.some(r => r.receipt === id)))
+    || value.reason.length > 4096 || !Array.isArray(value.checks) || !value.checks.length
+    || value.checks.length > checks.length
+    || value.checks.some(r => !object(r) || Object.keys(r).sort().join(',') !== 'name,observed,passed,receipt'
+      || typeof r.observed !== 'boolean' || typeof r.passed !== 'boolean'
+      || !checks.some(c => c.name === r.name) || !checks.some(c => c.receipt === r.receipt))
+    || new Set(value.checks.map(r => r.name)).size !== value.checks.length)
     return hold('incomplete or ungrounded schema');
   let current;
   try { current = projectTask(task, task.checkpoint); } catch { return hold('invalid owner checkpoint', value); }
   if (!equal(current.projection, task.projection) || !equal(current.receipts, task.receipts))
     return hold('projection or receipt mapping differs from current owners', value);
+  // Booleans are deliberately unconstrained in the grammar: wrong claims must
+  // remain possible, visible and counted, never made correct by output sampling.
+  const misstatements = value.checks.filter(r => {
+    const actual = current.projection.checks.find(c => c.name === r.name);
+    return r.observed !== actual.observed || r.passed !== actual.passed || r.receipt !== actual.receipt;
+  }).map(r => r.name);
+  if (misstatements.length) return hold('cited check differs from owner record', value,
+    { kind: 'cited-check-misstatement', misstatements });
   const relevant = value.disposition === 'accept' ? current.projection.checks
     : current.projection.checks.filter(r => !r.observed || !r.passed);
-  if (!relevant.length && value.disposition === 'hold') return { ...value, preserved: task.id };
-  // Exact references, not semantic reason grading: Nine still assesses the explanation.
-  const words = new Set(value.reason.split(/[^a-zA-Z0-9_]+/));
-  if (relevant.some(r => !value.evidence.includes(r.receipt) || !words.has(r.name) || !words.has(r.receipt)))
-    return hold('reason lacks relevant check and receipt references', value);
-  if (current.projection.checks.some(r => !r.observed || !r.passed)) return hold('exact owner check failed', value);
+  if (relevant.some(r => !value.checks.some(c => c.name === r.name)))
+    return hold('missing required check citations', value, { kind: 'missing-required-citations' });
+  if (value.disposition === 'accept' && current.projection.checks.some(r => !r.observed || !r.passed))
+    return hold('exact owner check failed', value);
+  // Prose adequacy still belongs to Nine. A model hold remains a hold, even when
+  // every exact owner check passed; the structured claims establish references.
   return { ...value, preserved: task.id };
 }

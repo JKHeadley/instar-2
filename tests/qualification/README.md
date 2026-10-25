@@ -159,9 +159,15 @@ The published held-out set is regression coverage, not a new unseen qualificatio
 set. Linux captures are also replayed through the projection in targeted tests;
 that does not qualify model inference on Linux.
 
-The model must explain acceptance using all relevant check names and receipt
-handles, and explain a hold using failed or unobserved checks. The decoder checks
-those exact references, while semantic adequacy remains Astra's assessment. A
+The model's verdict carries a closed `checks` array of `name`, `observed`, `passed`
+and `receipt` alongside its disposition and free-text reason. Per-call name and
+receipt enums come only from the typed owner record. Booleans remain unconstrained
+by the grammar so incorrect claims can be measured. The decoder compares every
+cited value and receipt exactly, counts misstatements separately from schema
+failures, requires every check cited true for acceptance and every failed or
+unobserved check cited for a hold. Semantic reason adequacy remains Astra's
+assessment. The v2 output contract supersedes prose reference extraction; the
+original option1 evidence and its captured source remain unchanged. A
 model hold is never turned into success because the owner checks passed. Reports
 count raw model choices, schema failures, grounding failures and final outcomes
 separately. No rejected input is discarded.
@@ -193,3 +199,21 @@ reports. Prior raw-evidence results and frozen case files remain byte-identical.
 [Closed-projection results, per-case failures and pins](evidence/macos-arm64-2026-10-25-option1.md)
 keep raw model choices separate from protected final outcomes. Independent Astra
 assessment remains pending; these measurements do not authorize distribution.
+
+## Structured verdict grounding continuation
+
+The [3B structured-citation results](evidence/macos-arm64-2026-10-25-option1b.md)
+and [experiment manifest](evidence/macos-arm64-2026-10-25-option1b-manifest.json)
+retain all 72 original/held-out case trials. All 30 positives now pass exact citation
+checks and there are no unsafe raw accepts. Qualification still fails: 21 trials
+misstate cited check values, six others omit required citations, and free-text
+reasons contain factual errors. The two eight-positive call sums are 233.36 and
+187.58 seconds against the unchanged 120-second target.
+
+The original experiment also reached its unchanged 20-minute ceiling during the
+eighth extra timing call. Seven timing calls were captured; the eighth remains
+unknown, with no completed response or resource-owner cleanup receipt. Its exact
+PID was absent on readback. The published original report labels its post-run
+counter aggregation and preserves the last resource snapshot. The raw private
+report and all historical repository evidence remain unchanged. Astra assessment
+is pending; no route is promoted.
