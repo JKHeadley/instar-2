@@ -23,10 +23,22 @@ Prompt finding: 4106b49fff07 | protocol-literal | Existing evidence-boundary ins
 Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory response is unchanged; its test pins the displayed response.
 Prompt finding: 85544c20941f | protocol-literal | Existing waiting-message literal is unchanged; this repair does not change sending.
 Prompt finding: e8708c7fea24 | protocol-literal | Existing source-citation instruction is unchanged; no fixture phrase was added to the prompt.
-Decision: summary-stall-D1 | Replace the active-turn completion veto with exact memory-basis comparison. Idle admission still paces new work; a reviewed older prefix need not wait for an unrelated answer. Undo can change memory without changing its count. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/s-summary-stall-1024-s-PROGRESS.md
-Decision: summary-stall-D2 | Keep valid overflow quotes in existing prose, checked by the same reviewers and byte ceiling, rather than raising the item bound or adding a store. Format 5 marks changed acceptance using the existing mechanism. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/s-summary-stall-1024-s-PROGRESS.md
+Decision: summary-stall-D1 | Replace the active-turn completion veto with exact memory-basis comparison. Idle admission still paces new work; a reviewed older prefix need not wait for an unrelated answer. Undo can change memory without changing its count. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/s-summary-stall-1024-s-repair-003350-PROGRESS.md
+Decision: summary-stall-D2 | Keep valid overflow quotes in existing prose, checked by the same reviewers and byte ceiling, rather than raising the item bound or adding a store. Format 5 marks changed acceptance using the existing mechanism. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/s-summary-stall-1024-s-repair-003350-PROGRESS.md
 
 Register publication: The generated register and capability metadata bind to source commit e74a5ff4e392284198973eafc034b8ff80a8f2b3. Capability sentences are unchanged; the source pin and generation were refreshed with the shipped generator.
+
+## 1.x-first comparison and pipeline repair
+
+Reference inspected: `JKHeadley/instar`, commit `6472aee0c8918f9dd3791b25bc95a5e753f0c488`, `src/memory/TopicSummarizer.ts`, specifically `buildSummaryPrompt()` and `TopicSummarizer.summarize()`. The 1.x implementation reads the existing prose summary and messages since that summary, asks the model to update the prose with those messages, validates the returned text and saves the completed body through `TopicMemory.saveTopicSummary()` with its message frontier. This is the rolling-summary behavior inherited here: extend retained context and persist the completed result for future sessions.
+
+The repair belongs in 2.0's existing `tests/preview/journal.ts` reviewed journal worker. It already owns summary admission, original-message retention, correction projection, review, resource reservations and durable summary append. Keeping an already-reviewed prefix when its memory basis is unchanged restores the inherited completion behavior within those checks; retaining validated exact overflow quotes in the existing bounded prose preserves that same continuity. Importing the 1.x `TopicMemory` persistence path would introduce a second summary store and a new coherence obligation without fixing either the completion veto or the fact-list truncation at their source. No 1.x file is transplanted, and no new summarizer is needed. This is behavioral reuse through the existing 2.0 machinery, not a claim of identical persistence or concurrency semantics.
+
+Scope accounting: the original unit base is `019172c5a26008c2cbd2036bcb35975a086f22e7`; its reviewed head is `73f94fa1c39af4bcc22c02dcfa48019593ced063` (14 changed files). The desk's broader review header starts at `d0944dbaee4acee514c53c25c3f1ba13026953d6` (2,214 changed files); the unit verdict does not freshly approve that inherited range. This documentation repair starts at the reviewed head and changes only this review record. The desk's unfilled why/plan-step fields remain desk context, not a runtime defect.
+
+Decision: summary-stall-repair-D1 | Add the verified 1.x rolling-summary comparison and explicit unit range to this existing review; retain the reviewed implementation because another persistence path solves neither observed cause and adds machinery. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/s-summary-stall-1024-s-repair-003350-PROGRESS.md
+
+Repair side effects and undo: documentation and Decision report destinations only; revert this repair commit to undo. No runtime, model-facing, storage, authority or multi-machine behavior changes. The five safety floors are unchanged. Historical replay statements above describe the original unit; this repair makes no new live acceptance claim.
 
 ## Closing block
 
