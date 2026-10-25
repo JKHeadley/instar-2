@@ -1,5 +1,21 @@
 [
   {
+    "revision": 29,
+    "date": "2026-10-25",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "install-setup-route-1025: specify the constitutional model-supervision route after the predecessor prerequisite audit."
+    },
+    "changes": [
+      {
+        "what": "Specify a pinned CPU-only setup-model candidate, per-step exact evidence, finite reservations and independently assessed host and judgment qualification.",
+        "why": "Rule 38 requires supervision of identity/security preparation; build units need a concrete experiment without claiming unmeasured adequacy.",
+        "ref": "reviews/install-setup-route-1025.md; install-supervisor-1025-PROGRESS.md"
+      }
+    ]
+  },
+  {
     "revision": 28,
     "date": "2026-10-13",
     "status": "draft",
