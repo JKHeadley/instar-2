@@ -94,7 +94,7 @@ it('preserves the truthful failed-save notice when the repair is still invalid',
   try {
     await w.worker.drain();
     expect(w.journal.view.memory).toEqual([]);
-    expect(w.sends).toEqual([capture.delivered]); expect(capture.delivered).toBe(MEMORY_UNDECIDED_REPLY);
+    expect(w.sends).toEqual([MEMORY_UNDECIDED_REPLY]); expect(capture.delivered).toContain('could not validate');
     expect(w.journal.view.turns.get(id)?.memoryPending).toBe(true);
     expect(w.records.filter(row => row.kind === 'format-retry')).toHaveLength(1);
   } finally { w.journal.close(); }

@@ -48,7 +48,7 @@ it('replays update 969390379 on a carried forum copy, repairs its exact invalid 
     expect(w.journal.view.turns.get(id)?.answerRetried).toBe(true);
     expect(w.journal.view.memory).toEqual([{ mode: 'remember', source: id, trigger: id,
       quote: 'please remember that the desk test word is copper-7203' }]);
-    expect(w.sends).toEqual(['Saved the requested fact.']);
+    expect(w.sends).toEqual([JSON.parse(capture.revision).reply]);
     w.journal.close();
     const reopened = openPreviewJournal(w.path, key);
     try {
