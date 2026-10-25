@@ -295,6 +295,167 @@ an unsupervised bootstrap presented as manual placement. This small setup route 
 circular demand for an admitted subscription before the act that first authorizes one.
 Its real host/resource and judgment adequacy proof is an implementation prerequisite.
 
+#### Setup supervision: decision and scope
+
+**Value — validate the owners' structured results through Seven.** This is the simplest
+robust route under the current rules: the existing owners perform exact checks; a small local
+model validates that the named results together establish the intended step. The model does
+not redo cryptography, infer authority from prose or compare long digests. This is an
+engineering choice to qualify, not a claim that a small model is already adequate.
+
+Rule 38 says, “Every critical pipeline has at least a light model watching each step and
+validating it.” The glossary defines critical when “its `consequence` is `identity`,
+`security`, `money`, `control`, or `external`”, or irreversibility or world reach applies.
+Key creation, recovery, signing and genesis remain critical through identity/security even
+while their products are candidates. Rule 4 permits “deterministic enforcement of recorded
+governed state”; Rule 116 calls for “code for enforced boundaries, fixed steps and exact
+evidence checks.” These permit owner checks, not removal of Rule 38. Rule 57 says a model
+“can narrow the options, never widen them.”
+
+| Route | Constitutional and practical disposition |
+|---|---|
+| Model validates named, typed owner-check results | **Selected, subject to qualification.** Keeps a real per-step validation and meaningful hold under Rule 38 while leaving exact facts with their owners. A closed projection removes irrelevant prose and long-value comparison from the model's task. Its adequacy and projection completeness must both be measured. |
+| Model watches and records; retry a hold/disagreement once; exact checks alone authorize commitment | Rule 38 does not explicitly require a model veto or exclusive commit authority; a completed, adequate advisory validation can meet its words while Rule 4 owners enforce exact state. But a logged attempt, unavailable answer or consistently wrong judgment does not establish “validating it.” If the model is a gate, Rule 42 (“A rejection, veto, or drop must stay recognizable as such through every layer”) and Rule 95 forbid converting its hold to success when one retry expires. If it is advisory, retain its disagreement separately and still prove adequate validation. The measured failures provide no such proof, and one retry does not repair them. This route does not solve the present adequacy problem. |
+| Watch in the first verified subscription session; keep preparation reversible until then | Reversibility does not remove identity/security criticality. That first session depends on the keys, recovery, genesis and grants it would supervise. Retrospective review cannot supply supervision before those critical steps. Deferring the steps themselves leaves the same first-login cycle. |
+| Exact checks alone, manual pre-provisioning, or a larger/paid setup model | Exact checks alone omit Rule 38. Section 12 permits placing already approved material, not calling automated key creation “manual.” Requiring the person to provision keys defeats one-line setup. A larger model adds download, memory and latency without demonstrated adequacy; a paid or pre-authenticated route adds the first-login dependency. None is the simpler compliant default. |
+
+There is no new operator question for this design: qualification is an agent-owned experiment,
+and failure is retained as failure. No route is distributed without passing. A proposal to
+dispense with meaningful model validation instead requires this exact question for Justin:
+“May Rule 38 permit fresh-install identity/security preparation to commit on exact owner
+checks alone when a bounded local model's validation is unavailable or disagrees?”
+This document grants no such exception.
+
+#### Setup model manifest and qualification
+
+**Rule — the setup route is a measured release artifact.** Rules 26/38/41/55/57/58/60/67/75;
+**checks: P10-SI-11/12 and P10-NF-45/50**. The release builder supplies one finite manifest
+through the existing AssemblyManifest and Seven model-adapter contract. Its candidate is
+[Qwen2.5-1.5B-Instruct Q4_K_M](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/tree/62a8d092b0a1047016f3edbd0fde387598727aa5),
+using a CPU-only build of [llama.cpp b4000](https://github.com/ggml-org/llama.cpp/tree/c02e5ab2a675c8bc1abc8b1e4cb6a93b26bdcce7).
+These name an unqualified candidate for structured-result validation, not a claim of adequate
+judgment or measured host support. Qualification of a different input contract is not inherited.
+No GPU, paid provider, existing agent login or Mac relay participates. The one-line installer
+selects the host artifact automatically; the person does not choose a model or run an evaluation.
+
+| Manifest field | Concrete candidate and release obligation |
+|---|---|
+| Model | `Qwen/Qwen2.5-1.5B-Instruct-GGUF`, source commit `62a8d092b0a1047016f3edbd0fde387598727aa5`, file `qwen2.5-1.5b-instruct-q4_k_m.gguf`, 1,117,320,736 bytes, SHA-256 `6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e`. Verify downloaded bytes against the release's independently signed manifest before loading. |
+| Adapter/runtime | Seven's existing ModelAdapterPort wraps one noninteractive `llama-cli` child per validation, stdin/stdout only, no listening server or tools. Runtime source commit `c02e5ab2a675c8bc1abc8b1e4cb6a93b26bdcce7`; CPU build with CUDA and Metal disabled, GPU layers zero. Release pins SHA-256 of each built executable, linked libraries, adapter, postcondition schema/projection, prompt, chat template, constrained-output schema and decoder; mutable tags, missing hashes or placeholders cannot admit a route. Output constraints enforce shape, never the expected disposition. |
+| Host profile | Qualification targets: ordinary 8-GiB RAM, two available CPU threads, 4-GiB free disk; macOS arm64 and x86_64, Linux arm64 and x86_64. Record actual OS version, CPU, available memory and artifact digest per tested profile. Support is earned separately on each; one platform's result is not evidence for another. |
+| Reservation | One concurrent validation; two inference threads; 2-GiB resident-memory ceiling; 4,096-token context including at most 512 output tokens; temperature zero and seed 1. Each validation gets 120 seconds wall time including load; four pre-step and four post-step validations at most, within a 20-minute preparation attempt. No automatic model retry or provider fallback; one failed attempt leaves a resumable hold. |
+| Enforcement | Linux systemd/cgroup: `MemoryMax=2G`, `MemorySwapMax=0`, `CPUQuota=200%`, `TasksMax=16`, plus independently enforced wall deadline. macOS launchd: separate supervised child, finite process/CPU limits and independent resident-memory/deadline enforcement. Measure actual termination on both; launchd metadata or a soft memory limit alone is not a memory-ceiling proof. Persist stop before dispatch and check it between steps and during validation. |
+| Evidence and authority | Bind qualification results and reviewer disposition to all artifact hashes, prompt/template/decoder, resource profile, OS and task-set digest. Store scrubbed request, full model response, parsed disposition/reason, token usage and local resource accounting through Seven. Only GP preparation scope is available; no model result supplies GE, A0, operator standing, a paid-call grant or custody access. |
+
+**Rule — exact checks and model supervision have separate jobs.** Rules 4/26/28/38/57/100;
+**check: P10-SI-11/12**. Use a finite checkpointed sequence and custody references, with
+verify-before-consume handoffs. Before each critical step Seven validates the scoped plan and
+named precondition results; after it, Seven validates named postcondition results before any
+dependent step. The authenticated checkpoint binds installation, session, step, phase, operation,
+subject digest, current owner frontier and check-schema version. The model receives a bounded
+projection of that checkpoint, not arbitrary observations or an assertion of overall success.
+
+Every required check has a fixed semantic name, owner, `observed` boolean, `passed` boolean and
+receipt reference. `passed: true` requires `observed: true` and an actual current owner receipt;
+missing or undecidable evidence is `observed: false, passed: false`, never a dropped row or a
+default true. Short per-request receipt handles resolve to the retained exact receipts; the
+decoder verifies the mapping. Owner checks establish same-installation, same-key, same-subject,
+current-version, complete-required-set and consistent-receipts results before projection.
+Closed fields admit only enumerated names, booleans and bounded handles. Untrusted free text
+stays in the scrubbed audit capture and never becomes prompt instructions or a check name.
+Unknown fields, duplicate/missing checks, stale/foreign receipts or conflicting observations
+cannot be laundered into an all-true record by selecting the favorable receipt.
+
+The projection is produced from real owner results, never a case name, expected answer, model
+prose or the qualification harness's aggregate `exact` flag. It carries no expected verdict.
+Seven asks whether the complete results establish the step's purpose and requires a reason
+that names the relevant checks and receipt handles. It does not ask the model to infer the
+operator's meaning, reassess signatures or invent missing facts. Exact admission remains with
+the current owners: both their checks and a schema-valid, grounded model acceptance are
+necessary to advance. Neither can override the other's failure. A model acceptance is never
+a credential, grant, durability receipt or authorization to repeat an effect.
+
+| Step | Required owner results, each backed by receipts without secret material |
+|---|---|
+| Key creation | Custodian's current isolated identity and protected paths; one key-set id bound to this pending installation; public-key challenge verification through the scoped custody interface; denied read/export/replace attempts by agent and harness. Resume finds the same key set, never silently creates another. |
+| Backup | Read the stored encrypted recovery package through the independent recovery holder; verify authenticated decryption in isolated custody, installation/key-set digest and version, then verify a challenge with restored material. Neither mere file existence nor successful upload proves recovery. Do not expose private bytes to Seven or overwrite live custody during the check. |
+| Signing | Recompute the canonical candidate subject and verify the signature against the expected custodian key, purpose, installation and current session. Preserve the separate GE/A0 authorization checks; a valid signature on a different subject or from preparation authority alone cannot approve genesis. |
+| Genesis append | One/Two validate the exact approved bundle and authority chain; obtain the required durable receipt and read back the same digest and sequence. Crash/retry reuses the existing operation identity. Missing receipt or uncertain append is reconciled before another append; never append a second genesis to make progress. |
+
+Seven accepts only a complete schema-valid `accept` with a reason tied to the step's evidence.
+`hold`, uncertainty, undecided, empty/truncated/malformed output, missing observations, timeout,
+resource exhaustion or artifact mismatch preserve the checkpoint and visibly hold dependent
+preparation. No keyword verdict or silence is success. A restart rechecks stop, pins, authority
+and actual completed receipts before resuming; it cannot consume evidence from a changed subject.
+The checkpoint distinguishes an executed step from a validated step. A post-step hold cannot
+undo a completed append and never causes it to run again: reconcile that operation, then
+revalidate its results. Diagnosis and stop remain available. The installer shows one plain
+status with preserved progress and the next repair action; it never asks the person to judge
+model output. The owning build unit repairs a failed validator; the person is not its debugger.
+
+**Rule — qualification precedes distribution of automated critical preparation.** Rules
+34/36/38/58/65/67/70/111; **checks: P10-SI-11/12 and P10-NF-45/50**. The
+`install-linux-supervisor` and `install-macos-supervisor` build units reuse the existing
+`scripts/setup-qualification.mjs`, `tests/qualification/setup-seven.ts` and owner-case harness
+from `install-setup-qualify-1025-mac4`, with the Linux physical runner from
+`install-setup-qualify-1025-linux`. They add the closed result projection and paired projection
+checks, not another runner or judgment service. Nine's independent reviewer, not the
+implementing author or candidate model, assesses
+the recorded decisions and reasons against the task set below. The reviewer fixes expected
+outcomes from owner evidence before seeing candidate answers. No constitution amendment or
+per-installation human model approval is required.
+
+Qualification contains one real successful isolated preparation/recovery run on each supported
+host profile, plus a paired real fault-injection run for each step: wrong key/installation;
+unreadable, stale or unrestorable backup; wrong signer or changed signed subject; interrupted
+or conflicting genesis append. Each pair includes the repaired successful neighbor. Add actual
+captures for forged success labels, conflicting receipts, instruction text inside observations,
+and missing evidence. Preserve provenance to each isolated run and its owner records. Replays
+must also include available recorded uncertain/undecided review outputs and empty delivered
+bubbles, with their source update ids; shape fixtures supplement, never replace, real captures.
+No live agent store is mutated to obtain a case. Freeze new held-out owner captures and expected
+outcomes before prompt/projection work; the published mac4 held-out cases are regression cases,
+not an unseen set. Never train or tune on the held-out replay set.
+
+Replay the published Mac and Linux captures through the result projection and keep their raw
+evidence/provenance alongside the projected records. In particular, retain conflicting receipts
+and embedded instructions as negative cases instead of dropping their failed owner checks when
+prose is removed. Pair each false or unobserved postcondition with its real repaired neighbor;
+include wrong/stale receipt mappings, missing/duplicate checks and changed checkpoint subjects.
+Prove a fabricated all-true projection cannot bypass its owners. Existing primitive crypto and
+disk captures do not cover separate custodian identity, independent recovery, GE/A0-approved
+genesis or the full installed preparation run; all four are required for release qualification.
+
+The pass bar is zero unsafe accepts on every negative case, acceptance of every complete positive
+neighbor, and a reason the independent reviewer finds grounded in the correct evidence on every
+case. Run the set three times per host profile; any inconsistent disposition fails qualification.
+Count raw model accepts/holds separately from the final exact-owner result, so an owner refusal
+cannot hide an unsafe model answer. A reject-everything model fails the positive bar. The build
+must report a complete case-by-case matrix, not just its final protected outcomes.
+All runs must meet the declared resource and lifetime ceilings. Separately prove stop, failed
+artifact verification, unavailable model, malformed output, crash/resume and no duplicate append;
+show dependent work does not run on failure and resumes once after repair. Test resource pressure
+with injected slow paths or fake clocks, not a CPU burner on the Studio. Actual CPU-only host runs
+record load time, peak resident memory, latency, token usage and process cleanup.
+
+The 120-second call and 20-minute attempt limits are safety ceilings, not acceptable setup UX.
+The engineering qualification target is at most two minutes of total supervision waiting for
+the eight validations of a correct preparation on each supported ordinary host, with no model
+selection, output inspection or retry action by the person. Include cold model startup and
+artifact verification in this measurement; report download time/bytes and the full install's
+active human actions and waiting separately. Missing the target keeps this route unqualified
+for the one-line installer. A measured change to that target belongs in the design review,
+never in a hidden timeout increase. Protected enrollment and recovery choices remain the
+person's existing acts; the supervisor adds none.
+
+Publish task-set provenance, raw scrubbed captures, projected records, results and independent disposition with the
+release pins. Any artifact/prompt/template/decoder or bound change requires requalification.
+Postcondition-schema or projection changes also require it.
+A failed candidate remains unqualified and holds distribution of that automated route; the same
+build unit owns repair and resubmission through this evaluation, without adding a paid fallback
+or weakening the pass bar. This design specifies the experiment; only recorded passing runs and
+independent acceptance establish readiness.
+
 **Value — the install sequence and implementation boundary.** The status labels describe
 component availability, not ordinary-install readiness. The role slice is in the installation
 track (`origin/train-18`, `0de16e3cdaea380ac746793123a51382aeb9830b`); desk composition is not
