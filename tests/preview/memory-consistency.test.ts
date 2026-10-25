@@ -42,7 +42,8 @@ it.each([6236466, 6236477])('repairs recorded paraphrased person attribute %s wi
   const row = capture.turns.find((r: { update: number }) => r.update === update), w = world();
   let calls = 0;
   const repaired = JSON.parse(row.output[0]);
-  repaired.personAttributes[0].value = update === 6236466 ? 'pottery class' : 'treasurer';
+  if (update === 6236466) repaired.personAttributes = []; // Keep the fact without inventing a verbatim job title.
+  else repaired.personAttributes[0].value = 'treasurer';
   repaired.memory = [{ mode: 'remember', source: row.id, quote: row.text }];
   repaired.reply.answer = update === 6236466 ? 'I’ll remember that Ines teaches your pottery class.' : 'I’ll remember that Mr. Albescu is the chess club’s treasurer.';
   try {
@@ -51,7 +52,7 @@ it.each([6236466, 6236477])('repairs recorded paraphrased person attribute %s wi
     } });
     worker.intake([row.raw]); await worker.drain();
     expect(calls).toBe(2); expect(w.packets[1]?.formatReminder).toContain('personAttributes');
-    expect(w.journal.view.personAttributes).toHaveLength(1);
+    expect(w.journal.view.personAttributes).toHaveLength(update === 6236466 ? 0 : 1);
     expect(w.journal.view.memory).toHaveLength(1); expect(w.sends).toEqual([repaired.reply.answer]);
   } finally { w.journal.close(); }
 });
@@ -74,7 +75,7 @@ it('gives equivalent recorded statements one save policy despite old retrospecti
   const w = world();
   // The actual contradictory finding remains quoted evidence, not policy authority.
   w.journal.view.retroPasses.push({ pass: 0, state: 'complete', at: w.ports.now(), result: {
-    findings: [capture.finding], feedback: [], closures: [], authorizations: [] } } as never);
+    findings: [capture.finding], feedback: [], closures: [], authorizations: [], grades: [], comparisons: [] } } as never);
   try {
     const worker = createJournalWorker(w.journal, { ...w.ports, model: async input => {
       w.packets.push(JSON.parse(input.context));
@@ -89,6 +90,12 @@ it('gives equivalent recorded statements one save policy despite old retrospecti
       }
     }
     expect(w.journal.view.order.filter(t => t.accepted)).toHaveLength(25);
+    expect(w.journal.view.memory.filter(m => m.mode === 'remember')).toHaveLength(12);
+    const cases = retrospectiveCases(w.journal.view);
+    const firstAnswer = cases.find(c => c.id === 'answer:telegram:8989505249:update:6236456');
+    expect(firstAnswer?.followUps?.find(f => f.ref === 'turn:telegram:8989505249:update:6236457')?.remembered).toBe(1);
+    expect(cases.find(c => c.id === 'turn:telegram:8989505249:update:6236457')?.meta?.correction).toBeUndefined();
+    expect(cases.find(c => c.id === 'turn:telegram:8989505249:update:6236468')?.meta?.remembered).toBe(0);
     expect(w.packets.length).toBeGreaterThanOrEqual(25);
     expect(PREFERENCE_DECISION).toContain('without asking');
     for (const packet of w.packets) {
@@ -130,7 +137,7 @@ it('keeps repeated excluded statements out of ordinary memory without a permissi
     }
     expect(w.sends).toEqual(['I won’t put access secrets in ordinary memory.', 'I won’t put access secrets in ordinary memory.']);
     expect(w.journal.view.memory).toEqual([]);
-    for (const p of w.packets) expect(p.memoryDecision).toContain('Exclude credentials/access secrets');
+    for (const p of w.packets) expect(p.memoryDecision).toContain('Exclude secrets');
   } finally { w.journal.close(); }
 });
 
