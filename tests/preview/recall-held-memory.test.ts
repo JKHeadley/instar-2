@@ -37,7 +37,7 @@ it.each(['recorded', 'restart-before-send', 'missing-fact', 'retired-fact', 'wro
         memory: [{ mode: 'forget', source: frame(90).id, quote: JSON.parse(output(95)).memory[0].quote }] });
       recallCalls++;
       if (mode === 'dependent-answer') {
-        expect(JSON.parse(input.context).memoryDecision).toContain('an answer depending on it');
+        expect(JSON.parse(input.context).memoryDecision).toContain('Report failed saves only when relevant');
         return JSON.stringify({ reply: uncertainty, memory: [], memoryDisposition: 'unresolved' });
       }
       const value = JSON.parse(output(recallCalls === 1 ? 155 : 161));

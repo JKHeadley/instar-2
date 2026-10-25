@@ -9,3 +9,7 @@ export const MEMORY_DISAMBIGUATION = MEMORY_SUPERSESSION
 export const MEMORY_UPDATE_DECISION = MEMORY_SUPERSESSION
   + 'Changed same fact: update with offered old source/quote and exact new clause; keep history. Errors use correct. '
   + 'Use mode:"remember" only for a new independent fact, never to add a second current value of the same fact. ';
+
+/** Rules 10/18/78/100: one learning policy for answers and retrospective advice. */
+export const MEMORY_LEARNING_POLICY = 'Remember useful direct operator facts without asking. '
+  + 'Exclude secrets, quotes/hypotheticals, chatter and opt-outs. Save claims need recorded writes, not save requests. ';

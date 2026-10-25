@@ -50,13 +50,13 @@ it('delivers correction guidance with existing candidates, durably restates the 
     worker = createJournalWorker(journal, ports);
     await ask(3, 'What is 17 times 3?');
     expect(packets.at(-1)!.preferences).toEqual([{ text: correction, source: journal.view.order[1]!.id }]);
-    expect(packets.at(-1)!.memoryDecision).toContain('never override');
+    expect(packets.at(-1)!.memoryDecision).toContain('Rules win');
     expect(journal.view.order.at(-1)!.answer).toBe('17 × 3 is 51. That is 17 + 17 + 17.');
     // Recorded disagreement and one-off instruction: neither is a lasting correction.
     await ask(4, 'No, it\'s 41.');
     await ask(5, 'Quick check from the desk: are you there? One short line is enough.');
     expect(journal.view.memory.filter(item => item.mode === 'prefer')).toHaveLength(1);
     await ask(6, 'Shorter please.');
-    expect(summaryQuestions.some(question => question.includes('one-off instructions') && question.includes('never override'))).toBe(true);
+    expect(summaryQuestions.some(question => question.includes('no one-off/disagreement preferences') && question.includes('Rules win'))).toBe(true);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
