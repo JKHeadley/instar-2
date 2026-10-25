@@ -394,7 +394,7 @@ it('accepts a summary completed after intake only when offered to the correction
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('keeps correction lineage valid when a later background summary completes', async () => {
+it('keeps correction lineage valid after refusing a stale background summary and completing a fresh one', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-later-summary-')));
   try {
     const path = join(root, 'journal.encrypted');
@@ -434,6 +434,14 @@ it('keeps correction lineage valid when a later background summary completes', a
     expect(offered.through).toBeUndefined();
     expect(auditJournal(journal.view).findings).toEqual([]);
     releaseSummary(); await background;
+    expect(journal.view.summaries).toHaveLength(1);
+    expect(journal.view.lastSummaryFailure?.reason).toBe('summary built before a memory change');
+    expect(journal.view.summaryReservations.has(2)).toBe(false);
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    // The correction's offered lineage survives both the stale candidate's refusal and a
+    // new summary built from the corrected memory. The new freshness guard is not bypassed.
+    await worker.summarizeIfNeeded(true);
+    expect(journal.view.summaries).toHaveLength(2);
     const reservation = journal.view.awayEvents.find(event => event.kind === 'reserve'
       && event.id === journal.view.memory[0]!.trigger)!;
     expect(journal.view.summaries[1]!.at).toBeGreaterThan(reservation.at);
