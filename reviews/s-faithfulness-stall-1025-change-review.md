@@ -27,6 +27,8 @@ Prompt finding: 85544c20941f | protocol-literal | Existing unchanged protocol/st
 Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 Validation: Failing-first regression reproduced the absent index offer. Recorded rejection, semantic retrieval, later intake, restart persistence, bounded omissions, stop, shared call cap and healthy-tail neighbors are tested. Existing summary and meaning-index regression checks and mandatory READY checks are recorded with final results in PROGRESS.
 
+Publication: Regenerated the existing shape-only register replay against source commit 0960702d80078c877a5aaf3ab8e522d4de3b90c8 at the current clock. Owner-manifest rehash changed zero pins. This refresh changes source bindings only and grants no authority.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: broaden the existing bounded index-only selector after rejected compaction. It prevents summary review from withholding independent retrieval hints, while retaining that review as the only admission to summary memory. One recovery batch per pass prevents index backlog from occupying every summary slot. Start guards remain eligible retained operator messages, idle worker, live stop state and shared allowance; end guards remain valid source-bound terms and a passing review for summary commits. Offline replay is evidence of the repair, not an unattended live-success claim.
