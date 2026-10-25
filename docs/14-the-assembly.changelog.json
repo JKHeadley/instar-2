@@ -1,5 +1,26 @@
 [
   {
+    "revision": 31,
+    "date": "2026-10-25",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Independent option1b assessment; desk direction to weigh decision-only validation first."
+    },
+    "changes": [
+      {
+        "what": "Consume the qualified model decision and show fixed owner-check text; keep raw explanations for audit and re-derive refuted reasons under Rule 108.",
+        "why": "All 72 primitive decisions are correct while generated explanations and copied citations misstate exact owner facts; neither copying nor prose is required by Rule 38.",
+        "ref": "reviews/install-setup-assess-1025b.md"
+      },
+      {
+        "what": "Allow bounded within-attempt process reuse after isolation qualification and assess measured one-time setup latency instead of treating two minutes as an absolute gate.",
+        "why": "The eight-positive sums are 187.58–233.36 seconds, but llama.cpp load time overlaps first prompt evaluation; no warm-run speedup or installed-run bound has been measured.",
+        "ref": "reviews/install-setup-assess-1025b.md"
+      }
+    ]
+  },
+  {
     "revision": 30,
     "date": "2026-10-25",
     "status": "draft",
