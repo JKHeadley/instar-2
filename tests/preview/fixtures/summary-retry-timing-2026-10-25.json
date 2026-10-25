@@ -1,0 +1,36 @@
+{
+  "source": "Read-only task-s-summary-retry-1025-2f32067d6c7b711f/6-status-fill-60.json",
+  "sha256": "a060aa07598d2140b3947d41e45e6a17822869ed42eb424ba797f4dad43d5af0",
+  "observedAt": 1792956120845,
+  "summaryThrough": 6236476,
+  "lastSummaryFailure": {
+    "through": 6236480,
+    "reason": "summary faithfulness: full-context review found loss"
+  },
+  "summaryPending": 0,
+  "summaryStoppedAt": null,
+  "lastSummaryFaithfulness": {
+    "through": 6236480,
+    "path": "jev",
+    "verdict": "undecided",
+    "score": 0.55,
+    "usage": {
+      "inputTokens": 4856,
+      "outputTokens": 21,
+      "charge": null
+    },
+    "reason": "summary faithfulness: full-context review found loss"
+  },
+  "phases": [
+    {
+      "id": "summary:6236480",
+      "phase": "auth",
+      "at": 1792955754914
+    },
+    {
+      "id": "summary:6236480:review",
+      "phase": "auth",
+      "at": 1792955772686
+    }
+  ]
+}

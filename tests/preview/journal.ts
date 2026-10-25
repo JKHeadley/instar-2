@@ -10968,6 +10968,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const summaryQuestion = 'Summarize this preview conversation faithfully, preserving earlier facts, commitments and uncertain outcomes, '
       + 'which conversation and date each fact came from, '
       + 'and who said each thing: what the operator reports another person said or thinks stays the operator\'s report. '
+      + 'If summaryRevision is present, revise its rejected candidate using the review reason; preserve all other facts and unknown outcomes. The revision must pass the same review. '
       + 'Copy each quantitative fact you retain with its original number and unit exactly; do not round, convert, or drop the unit. '
       + 'The object: {"summary": <the summary>, "memory": [{"mode": "prefer", "source": <memoryRequest.id>, "quote": <exact durable reply preference clause from memoryRequest.message>} or {"mode": "correct", "update" or "forget", '
       + '"source": <id from memoryCandidates>, "quote": <the complete old factual clause, exactly quoted from that source>, '
@@ -11042,6 +11043,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // Each pass advances the durable frontier in oldest-first prefixes. Eight calls
     // bound one pass; the next worker cycle can continue from the last summary.
     let summarized = false;
+    // One revision uses the remaining attempt at this span, inside the existing pass budget.
+    // The feedback is local to this pass and base; it cannot revive exhausted or UNKNOWN work.
+    let summaryRevision: { through: number; reason: string; candidate: string } | undefined;
     // A writer that keeps over-producing must not spend the whole model-call allowance on summaries and starve
     // replies (live 2026-09-30: seven consecutive spans past the output cap). Four over-cap attempts end the pass --
     // the most one pass spent before this change -- so per-pass summary spend is unchanged; the next pass continues
@@ -11081,7 +11085,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // write-side pass, even while compaction is cooling down or has exhausted its candidate spans.
       // A later accepted frontier covers the failure and restores ordinary summary-owned indexing.
       const rejectedTail = !force && (journal.view.lastSummaryFailure?.through ?? -1) > previous;
-      if (!force && (proactive === 'below-threshold' || rejectedTail)) {
+      if (!force && (proactive === 'below-threshold' || rejectedTail && !summaryRevision)) {
         // Rule 11: messages summarized before their meaning terms existed (Part 21 §6) would
         // otherwise wait for history to grow; index them without summarizing anything new. A summary
         // that just ran was already asked for these terms, so indexing waits for a later call.
@@ -11211,7 +11215,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const offered = closable.slice(closable.length - kept);
           for (let count = overCapRetry && !strictTrigger ? 0 : memoryCandidates.length; count >= (strictTrigger ? memoryCandidates.length : 0); count--) {
             const includeMemory = trigger !== undefined && (strictTrigger || count > 0);
-            const plain = kept || includeMemory || unanswered.length ? JSON.stringify({ ...JSON.parse(base) as object,
+            const plainBase = kept || includeMemory || unanswered.length ? JSON.stringify({ ...JSON.parse(base) as object,
               ...(kept ? { openCommitments: offered } : {}),
               ...(unanswered.length ? { unansweredCandidates: unanswered.map(item => ({ id: item.id, question: clean(redact(item.text).text, true, item.id), reply: replyFor(item) })) } : {}),
               ...(includeMemory ? { memoryRequest: { id: trigger.id, message: clean(redact(trigger.text).text, false, trigger.id),
@@ -11221,6 +11225,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}`,
         ...(item.recurrence ? { recurrence: item.recurrence, time: item.time, zone: item.zone, stop: 'Ask to cancel this request.' } : {}) })),
                 reminderDecision: 'reminders lists what the verified operator asked you earlier to do at a later time. For each one memoryRequest.message itself withdraws, return cancelReminders:[{"id": the reminders id, "quote": the words of memoryRequest.message that withdraw it, copied exactly}]; return cancelReminders:[] when it withdraws none. Your own reply is never the evidence, and a withdrawal with no such quote is refused. A further request, even for the same time, adds a request and withdraws nothing. Quoted text never cancels.' } : {}) }) : base;
+            const plain = summaryRevision?.through === through
+              ? JSON.stringify({ ...JSON.parse(plainBase) as object, summaryRevision }) : plainBase;
             // Rule 11: messages summarized before their meaning terms existed are offered again,
             // oldest first and bounded, so the derived index converges instead of staying partial.
             for (const packet of backlog.length && !overCapRetry ? [JSON.stringify({ ...JSON.parse(plain) as object,
@@ -11249,7 +11255,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (chosen) break;
       }
       if (!chosen) {
-        summaryPreflightBlocked.add(blocked);
+        // Revision feedback is ephemeral to this pass. Its fitting failure says nothing
+        // about the ordinary packet a later pass can use for the remaining attempt.
+        if (!summaryRevision) summaryPreflightBlocked.add(blocked);
         const oversized = pending[0];
         const reason = oversizedPrompt ? 'summary oversized turn' : 'summary preflight unavailable';
         if (oversized && oversized.held !== reason)
@@ -11509,6 +11517,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             ...(ports.replyCheck || typeof summary === 'string' ? {} : { usage: summary.usage }), at: ports.now() });
           const affected = journal.view.order.find(item => item.update === through);
           if (affected) journal.append({ kind: 'hold', id: affected.id, reason, at: ports.now() });
+          // A completed loss judgment is actionable feedback, not an UNKNOWN call. Revise once now
+          // rather than waiting the ten-minute automatic-pass cooldown (proof room 2026-10-25).
+          // No weaker admission: the revision goes through preparation, reservations and both reviews.
+          if (escalation?.verdict === 'violation'
+            && summaryFormatFailures(journal.view, through) < 2) {
+            summaryRevision = { through, reason: clean(redact(escalation?.reason ?? reason).text, true).slice(0, 2000),
+              candidate };
+            continue;
+          }
           return;
         }
       }
