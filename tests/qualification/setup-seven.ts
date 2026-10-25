@@ -5,7 +5,7 @@ import { value } from '../facts/fixtures.js';
 // @ts-expect-error Physical Seven capture port.
 import { createJudgmentCaptures } from '../../scripts/judgment-captures.mjs';
 // @ts-expect-error Physical qualification adapter.
-import { validateTask, renderTask } from '../../scripts/setup-qualification.mjs';
+import { validateTask, renderTask, MODEL_3B } from '../../scripts/setup-qualification.mjs';
 
 /** Real local invocation through Seven's existing no-retry adapter and Six claim.
  * This qualification does not issue a Decision, standing, GE or A0. */
@@ -13,7 +13,7 @@ export async function observeSetup(input: Parameters<typeof validateTask>[0]) {
   const f = transportFixture(input.root);
   const captures = createJudgmentCaptures(input.root, {}, f.result, 1048576, f.ctx.decode.captures);
   const description = { owner: 'part-ten' as const, provider: 'llama.cpp-b4000',
-    model: 'Qwen2.5-1.5B-Instruct-Q4_K_M', route: 'route', automaticRetries: 0 as const,
+    model: input.model === MODEL_3B ? 'Qwen2.5-3B-Instruct-Q4_K_M' : 'Qwen2.5-1.5B-Instruct-Q4_K_M', route: 'route', automaticRetries: 0 as const,
     maxInputBytes: 16384, maxOutputBytes: 65536, maxCharge: 0, measured: false as const,
     basis: 'unqualified macOS CPU candidate; isolated qualification only; no installation authority' };
   let measured: Awaited<ReturnType<typeof validateTask>> | undefined;

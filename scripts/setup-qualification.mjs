@@ -8,6 +8,10 @@ export const MODEL = Object.freeze({ source: '62a8d092b0a1047016f3edbd0fde387598
   file: 'qwen2.5-1.5b-instruct-q4_k_m.gguf', size: 1117320736,
   sha256: '6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e',
   runtimeSource: 'c02e5ab2a675c8bc1abc8b1e4cb6a93b26bdcce7' });
+export const MODEL_3B = Object.freeze({ source: '7dabda4d13d513e3e842b20f0d435c732f172cbe',
+  file: 'qwen2.5-3b-instruct-q4_k_m.gguf', size: 2104932768,
+  sha256: '626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18e0a9615c62d',
+  runtimeSource: MODEL.runtimeSource });
 export const PROFILE = Object.freeze({ concurrency: 1, threads: 2, memoryBytes: 2 * 1024 ** 3,
   context: 4096, outputTokens: 512, temperature: 0, seed: 1, deadlineMs: 120000,
   attemptMs: 1200000, validationsPerAttempt: 8, processCount: 16, cpuMilliseconds: 240000 });
@@ -20,16 +24,28 @@ Return only one JSON object with exactly these fields:
 {"disposition":"accept" or "hold","reason":"explanation grounded in the evidence","evidence":["observed evidence ids"]}.
 Accept only a complete correct result. Do not invent observations.`;
 export const TEMPLATE = '<|im_start|>system\n{system}<|im_end|>\n<|im_start|>user\n{task}<|im_end|>\n<|im_start|>assistant\n';
+// Mirror the decoder's structural requirements. Grounding uses only observed IDs,
+// never the expected verdict. The decoder still checks nonblank reasons and exact owners.
+export const SCHEMA_ID = 'instar-setup-verdict-v1';
+export function verdictSchema(task) {
+  return { type: 'object', additionalProperties: false,
+    required: ['disposition', 'reason', 'evidence'], properties: {
+      disposition: { type: 'string', enum: ['accept', 'hold'] },
+      reason: { type: 'string', minLength: 1, maxLength: 4096 },
+      evidence: { type: 'array', minItems: 1,
+        items: { type: 'string', enum: task.evidence.map(row => row.id) } } } };
+}
 export const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 export async function fileDigest(file) {
   const hash = createHash('sha256');
   for await (const bytes of createReadStream(file)) hash.update(bytes);
   return hash.digest('hex');
 }
-export async function verifyWeights(file) {
-  if (statSync(file).size !== MODEL.size || await fileDigest(file) !== MODEL.sha256)
+export async function verifyWeights(file, model = MODEL) {
+  if (model !== MODEL && model !== MODEL_3B) throw Error('unknown model pin; model not loaded');
+  if (statSync(file).size !== model.size || await fileDigest(file) !== model.sha256)
     throw Error('weights size or SHA-256 mismatch; model not loaded');
-  return MODEL.sha256;
+  return model.sha256;
 }
 
 // Port of 1.x setup-wizard's validate-before-next shape. A hold keeps the input;
@@ -78,9 +94,9 @@ export async function boundedRun({ root, stopFile, executable, args, stdin, prof
     raw: { ...raw, stdoutBytes: undefined }, owner: owner.snapshot() };
 }
 
-export async function validateTask({ root, stopFile, executable, weights, runtimeDigest, task }) {
+export async function validateTask({ root, stopFile, executable, weights, runtimeDigest, task, constrained = false, model = MODEL }) {
   const started = performance.now();
-  await verifyWeights(weights);
+  await verifyWeights(weights, model);
   if (!/^[a-f0-9]{64}$/.test(runtimeDigest) || await fileDigest(executable) !== runtimeDigest)
     throw Error('runtime SHA-256 mismatch; model not loaded');
   const prompt = renderTask(task);
@@ -88,16 +104,19 @@ export async function validateTask({ root, stopFile, executable, weights, runtim
   if (Buffer.byteLength(prompt) > PROFILE.context - PROFILE.outputTokens - 8)
     throw Error('prompt exceeds conservative context reservation');
   const logFile = join(root, 'llama.log');
+  const schema = constrained ? verdictSchema(task) : null;
   const run = await boundedRun({ root, stopFile, executable, stdin: prompt,
     profile: { ...PROFILE, deadlineMs: Math.max(1, PROFILE.deadlineMs - (performance.now() - started)) }, args: [
     '-m', weights, '-f', '/dev/stdin', '-t', '2', '-tb', '2', '-c', '4096', '-n', '512',
-    '--temp', '0', '--seed', '1', '-ngl', '0', '--no-display-prompt', '--simple-io', '--no-warmup', '--log-file', logFile] });
+    '--temp', '0', '--seed', '1', '-ngl', '0', '--no-display-prompt', '--simple-io', '--no-warmup', '--log-file', logFile,
+    ...(schema ? ['--json-schema', JSON.stringify(schema)] : [])] });
   const output = run.raw.stdout;
   let diagnostics = run.raw.rawError ?? '';
   try { if (statSync(logFile).size <= 131072) diagnostics = readFileSync(logFile, 'utf8'); } catch { /* unavailable is unknown usage */ }
   const count = pattern => { const hit = diagnostics.match(pattern); return hit ? Number(hit[1]) : null; };
   const usage = tokenUsage(diagnostics);
-  return { ...run, elapsedMs: performance.now() - started, prompt, output, diagnostics, usage, loadMs: count(/load time\s*=\s*([\d.]+) ms/),
+  return { ...run, constraint: schema ? { id: SCHEMA_ID, sha256: digest(JSON.stringify(schema)), schema } : null,
+    elapsedMs: performance.now() - started, prompt, output, diagnostics, usage, loadMs: count(/load time\s*=\s*([\d.]+) ms/),
     verdict: run.disposition === 'observed' ? decodeVerdict(extractReply(output), task)
       : { disposition: 'hold', reason: run.raw.localLimit ?? run.raw.cancellationReason ?? 'model unavailable', preserved: task.id } };
 }

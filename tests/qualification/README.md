@@ -82,3 +82,22 @@ malformed JSON is preserved and refused, never repaired.
 ELI16: the small model ran within the tested limits, but that does not make it a
 trustworthy setup checker. Both correct judgments and a complete real installation
 test are required before it may supervise installation.
+
+## Constrained continuation
+
+The [separate constrained results](evidence/macos-arm64-2026-10-25-constrained.md)
+preserve the prior runs. Set `INSTAR_SETUP_CONSTRAINED=1` to replay the exact owner
+cases from the prior metered evidence and pass `instar-setup-verdict-v1` through
+b4000's built-in `--json-schema` converter. Every trial records its schema digest.
+The decoder, prompt, expectations and resource profile remain unchanged.
+
+`INSTAR_SETUP_MODEL=3b` selects the second immutable official pin in `MODEL_3B`;
+its artifacts manifest must point to the corresponding verified weights. The
+default remains `1.5b`. Unknown model names or caller-supplied pins refuse.
+Use a fresh private artifacts/stop directory for every configuration, as above.
+
+The constrained 1.5B model produced valid JSON and accepted all positives, but
+made six unsafe negative judgments. The 3B model hit the unchanged 2-GiB RSS
+ceiling in all 36 attempts before producing an answer. These are failures, not
+qualification. Independent assessment remains PENDING ASTRA; the separate
+custodian/recovery/GE-A0 owner gap remains uncovered.

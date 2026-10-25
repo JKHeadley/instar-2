@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, readFileSync, truncateSync, rmSync, existsS
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error Physical qualification adapter, outside the pure core.
-import { verifyWeights, decodeVerdict, extractReply, boundedRun, tokenUsage, PROFILE, MODEL } from '../../scripts/setup-qualification.mjs';
+import { verifyWeights, decodeVerdict, extractReply, boundedRun, tokenUsage, PROFILE, MODEL, MODEL_3B, digest, verdictSchema, renderTask } from '../../scripts/setup-qualification.mjs';
 
 function recordBoundary(name: string, result: unknown) {
   const path = process.env.INSTAR_SETUP_BOUNDARY_EVIDENCE;
@@ -17,6 +17,8 @@ it('refuses a wrong weights digest before any model can load', async () => {
   const file = join(root, 'wrong.gguf'); writeFileSync(file, 'wrong model');
   try {
     await expect(verifyWeights(file)).rejects.toThrow('weights');
+    await expect(verifyWeights(file, MODEL_3B)).rejects.toThrow('weights');
+    await expect(verifyWeights(file, { ...MODEL, size: 11 })).rejects.toThrow('unknown model pin');
     // Sparse file: equal size, wrong digest, no 1-GiB allocation or load generator.
     truncateSync(file, MODEL.size);
     await expect(verifyWeights(file)).rejects.toThrow('SHA-256');
@@ -111,4 +113,63 @@ it('enforces actual resident-memory termination using a lowered ceiling, without
   expect(result.disposition).toBe('hold'); expect(result.raw.localLimit).toBe('memory');
   expect(result.raw.resources.cleanup).toBe('verified'); expect(result.attempts).toBe(1);
   recordBoundary('memory', result);
+});
+
+it('constrains structure and observed IDs without leaking expected judgment into the prompt or schema', () => {
+  const report = JSON.parse(readFileSync(new URL('../qualification/evidence/macos-arm64-2026-10-25.json', import.meta.url), 'utf8'));
+  for (const task of report.ownerEvidence.cases) {
+    const schema = verdictSchema(task);
+    expect(schema.additionalProperties).toBe(false);
+    expect(schema.required).toEqual(['disposition', 'reason', 'evidence']);
+    expect(schema.properties.disposition.enum).toEqual(['accept', 'hold']);
+    expect(schema.properties.reason).toEqual({ type: 'string', minLength: 1, maxLength: 4096 });
+    expect(schema.properties.evidence.minItems).toBe(1);
+    expect(schema.properties.evidence.items.enum).toEqual(task.evidence.map((row: { id: string }) => row.id));
+    const changedExpectation = { ...task, exact: !task.exact, expected: task.expected === 'accept' ? 'hold' : 'accept' };
+    expect(verdictSchema(changedExpectation)).toEqual(schema);
+    expect(renderTask(changedExpectation)).toBe(renderTask(task));
+    const valid = { disposition: task.expected, reason: 'Observed owner evidence.', evidence: schema.properties.evidence.items.enum };
+    expect(decodeVerdict(JSON.stringify(valid), task).reason).not.toMatch(/schema|malformed/);
+    for (const invalid of [{ ...valid, extra: true }, { ...valid, evidence: [] },
+      { ...valid, evidence: ['invented'] }, { ...valid, reason: ' '.repeat(2) },
+      { ...valid, reason: 'a'.repeat(4097) }]) {
+      expect(decodeVerdict(JSON.stringify(invalid), task)).toMatchObject({ disposition: 'hold', reason: 'incomplete or ungrounded schema' });
+    }
+  }
+});
+
+it('replays both real constrained configurations without hiding unsafe candidates behind exact holds', () => {
+  for (const size of ['1.5b', '3b']) {
+    const report = JSON.parse(readFileSync(new URL(`../qualification/evidence/macos-arm64-2026-10-25-constrained-${size}.json`, import.meta.url), 'utf8'));
+    expect(report.trials).toHaveLength(36);
+    for (const row of report.trials) {
+      const task = report.ownerEvidence.cases.find((item: { id: string }) => item.id === row.case);
+      expect(row.prompt).toBe(renderTask(task));
+      expect(row.constraint.schema).toEqual(verdictSchema(task));
+      expect(row.constraint.sha256).toBe(digest(JSON.stringify(verdictSchema(task))));
+      expect(row.seven.calls).toBe(1);
+      expect(row.raw.resources.cleanup).toBe('verified');
+      for (const key of ['requestCapture', 'responseCapture', 'accountingCapture']) {
+        expect(`sha256:${digest(row.seven.captures[key])}`).toBe(row.seven[key].hash);
+      }
+      if (row.disposition === 'observed') {
+        expect(decodeVerdict(extractReply(row.output), task)).toEqual(row.verdict);
+        expect(row.verdict.reason).not.toMatch(/schema|malformed/);
+      } else {
+        expect(row.verdict).toMatchObject({ disposition: 'hold', reason: 'memory', preserved: task.id });
+        expect(row.raw.localLimit).toBe('memory');
+      }
+    }
+    expect(report.pass).toBe(false);
+    expect(report.profile.memoryBytes).toBe(PROFILE.memoryBytes);
+    expect(report.independentAssessment.state).toBe('pending');
+    if (size === '1.5b') {
+      expect(report.numericalBar).toMatchObject({ unsafeCandidateAccepts: 6, rejectedPositiveNeighbors: 0, resourceFailures: 0 });
+      const unsafe = report.trials.filter((row: any) => row.expected === 'hold' && row.verdict.candidate?.disposition === 'accept');
+      expect(unsafe.map((row: any) => row.case)).toEqual(Array(3).fill(['append-fault', 'conflicting-receipts']).flat());
+    } else {
+      expect(report.candidate).toEqual(MODEL_3B);
+      expect(report.numericalBar.resourceFailures).toBe(36);
+    }
+  }
 });
