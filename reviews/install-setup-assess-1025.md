@@ -98,6 +98,8 @@ The six supplied Studio snapshots were downloaded read-only and their SHA-256 va
 
 ## Verification and limits
 
+The [offline evidence audit](../tests/qualification/evidence/install-setup-assess-1025-audit.json) records independently recomputed file hashes, per-trial raw/final dispositions, citation differences and byte-identical repetitions. It retains reasons for comparison, but does not pretend that code judges prose adequacy. This non-executable evidence artifact also gives the change-review record a concrete subject outside reviews/.
+
 Assessment uses retained real captures, not new inference. Offline replay covers all 79 completed option1b outputs and the unknown interrupted launch as unknown. Repository journal extracts cover summary 715672480, uncertain summary 715672483, Jev undecided 715672482, Jev unsure 969389570, reply review 969389923, delivered reply 715672479, and empty candidate in recorded context 715672550. The last is not evidence of an empty delivered bubble. Source: `tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json`, referring to `proofroom-summary-cascade-stall-2026-09-30.json` and `guidance-live-2026-10-03.json`. No live/proof-room root was accessed and no new model-facing path is claimed.
 
 The handoff report records actual command exits, the pushed commit, PR and clean-tree proof. This independent assessment judges the candidate evidence; the desk still reviews this assessment before landing. It is not a claim that this PR has independently converged or that the installer is ready.

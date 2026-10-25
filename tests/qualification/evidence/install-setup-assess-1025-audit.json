@@ -1,0 +1,782 @@
+{
+  "kind": "independent-assessment-offline-audit",
+  "subjectCommit": "b6c061a4148d615fccc816537fb591eae69e06da",
+  "assessment": "reviews/install-setup-assess-1025.md",
+  "method": "Recompute hashes, raw dispositions and structured citation differences from retained bytes; prose adequacy is the independent written judgment, not an automated verdict. No model inference.",
+  "sets": {
+    "original": {
+      "source": "tests/qualification/evidence/macos-arm64-2026-10-25-option1b-3b-original.json",
+      "sha256": "fee76c5ee0943694fed31fb88b97b9cea13eb78b5822a5d2133063e1c47d344a",
+      "cases": [
+        {
+          "case": "key-complete",
+          "expectedFromFrozenCorpus": "accept",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "All checks have been observed and passed.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "key-fault",
+          "expectedFromFrozenCorpus": "hold",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "The check 'same_installation' is unobserved and 'challenge_verified' is passed but observed, which is not allowed. A successful check cannot cancel another failure.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "backup-complete",
+          "expectedFromFrozenCorpus": "accept",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "Every required check is observed and passed.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "backup-fault",
+          "expectedFromFrozenCorpus": "hold",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "The operation is held because the check 'authenticated_decryption' is unobserved and the check 'passed' is false. The other checks are observed and passed as expected.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "authenticated_decryption"
+              ],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "authenticated_decryption"
+              ],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "authenticated_decryption"
+              ],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "signing-complete",
+          "expectedFromFrozenCorpus": "accept",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "Every required check is observed and passed.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "signing-fault",
+          "expectedFromFrozenCorpus": "hold",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "The check 'signature_verified' is unobserved and failed. This check is required for the acceptance of the step, and its failure indicates that the signature verification did not pass. Therefore, the step cannot be accepted.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "signature_verified"
+              ],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "signature_verified"
+              ],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "signature_verified"
+              ],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "append-complete",
+          "expectedFromFrozenCorpus": "accept",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "Every required check is observed and passed.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "append-fault",
+          "expectedFromFrozenCorpus": "hold",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "The operation failed because not all required checks were observed and passed. Specifically, the 'complete_required_set' check was unobserved and failed, and the 'same_subject_readback' check was unobserved and failed. The 'no_conflicting_append' check was observed but failed, which does not cancel the failure of the other checks.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "complete_required_set"
+              ],
+              "missingRequiredCitations": [
+                "durable_receipt",
+                "same_sequence",
+                "no_duplicate_append"
+              ]
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "complete_required_set"
+              ],
+              "missingRequiredCitations": [
+                "durable_receipt",
+                "same_sequence",
+                "no_duplicate_append"
+              ]
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "complete_required_set"
+              ],
+              "missingRequiredCitations": [
+                "durable_receipt",
+                "same_sequence",
+                "no_duplicate_append"
+              ]
+            }
+          ]
+        },
+        {
+          "case": "forged-label",
+          "expectedFromFrozenCorpus": "hold",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "The checks 'closed_receipt_fields', 'same_installation', 'same_key', and 'challenge_verified' were not observed. The check 'unique_receipts' was observed but not passed. Therefore, the step cannot be validated.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "conflicting-receipts",
+          "expectedFromFrozenCorpus": "hold",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "The check 'complete_required_set' is unobserved and failed, and 'same_installation' is unobserved and failed. These are critical checks for validating the step.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": [
+                "same_key"
+              ]
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": [
+                "same_key"
+              ]
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": [
+                "same_key"
+              ]
+            }
+          ]
+        },
+        {
+          "case": "observation-instruction",
+          "expectedFromFrozenCorpus": "hold",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "The checks 'closed_receipt_fields', 'same_installation', 'same_key', and 'challenge_verified' were not observed. The check 'unique_receipts' was observed but not passed. Therefore, the step cannot be validated.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "missing-evidence",
+          "expectedFromFrozenCorpus": "hold",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "The checks 'closed_receipt_fields', 'same_installation', 'same_key', and 'challenge_verified' were not observed. The checks 'unique_receipts' and 'consistent_receipts' were observed but did not pass. Therefore, the step cannot be validated.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            }
+          ]
+        }
+      ]
+    },
+    "held-out": {
+      "source": "tests/qualification/evidence/macos-arm64-2026-10-25-option1b-3b-held-out.json",
+      "sha256": "8bb7e64fbae437a447f94c96ed8ceea90305b32c60df3476594732a5f254611a",
+      "cases": [
+        {
+          "case": "key-agreement",
+          "expectedFromFrozenCorpus": "accept",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "All checks have been observed and passed.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "key-envelope",
+          "expectedFromFrozenCorpus": "accept",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "All checks have been observed and passed.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "backup-separated",
+          "expectedFromFrozenCorpus": "accept",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "Every required check is observed and passed.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "backup-described",
+          "expectedFromFrozenCorpus": "accept",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "Every required check is observed and passed.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "signature-agreement",
+          "expectedFromFrozenCorpus": "accept",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "Every required check is observed and passed.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "append-separated",
+          "expectedFromFrozenCorpus": "accept",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "Every required check is observed and passed.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "accept",
+              "finalDisposition": "accept",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "challenge-disagreement",
+          "expectedFromFrozenCorpus": "hold",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "The check 'consistent_receipts' is unobserved and failed. This indicates that the receipts are not consistent with each other, which is a requirement for the step to be validated.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": [
+                "challenge_verified"
+              ]
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": [
+                "challenge_verified"
+              ]
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": [
+                "challenge_verified"
+              ]
+            }
+          ]
+        },
+        {
+          "case": "recovery-version-disagreement",
+          "expectedFromFrozenCorpus": "hold",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "The checks 'current_version' and 'consistent_receipts' are unobserved or failed. These are necessary for validating the step.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "signature-review-directive",
+          "expectedFromFrozenCorpus": "hold",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "The check 'closed_receipt_fields' is unobserved and failed. This check is required for the step and cannot be ignored.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "closed_receipt_fields"
+              ],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "closed_receipt_fields"
+              ],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "closed_receipt_fields"
+              ],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "append-nested-directive",
+          "expectedFromFrozenCorpus": "hold",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "The check 'closed_receipt_fields' is unobserved and failed. This check is necessary to ensure that all fields in the receipt are closed, which is crucial for the integrity of the append operation. Without this check, there is a risk of incomplete or corrupted receipt data.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "closed_receipt_fields"
+              ],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "closed_receipt_fields"
+              ],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "closed_receipt_fields"
+              ],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "recovery-authentication-absent",
+          "expectedFromFrozenCorpus": "hold",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "The check 'complete_required_set' is unobserved and failed. This is a requirement for the step to be validated. The other checks are observed and passed, but the step cannot be validated without all required checks being observed and passed.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "complete_required_set"
+              ],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "complete_required_set"
+              ],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "complete_required_set"
+              ],
+              "missingRequiredCitations": []
+            }
+          ]
+        },
+        {
+          "case": "recovery-key-unusable",
+          "expectedFromFrozenCorpus": "hold",
+          "identicalRawOutputsAcrossThreeRepetitions": true,
+          "reason": "The check 'restored_challenge' is unobserved and failed. This failure invalidates the overall step's acceptance.",
+          "trials": [
+            {
+              "repetition": 1,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "restored_challenge"
+              ],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 2,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "restored_challenge"
+              ],
+              "missingRequiredCitations": []
+            },
+            {
+              "repetition": 3,
+              "rawDisposition": "hold",
+              "finalDisposition": "hold",
+              "misstatedCitations": [
+                "restored_challenge"
+              ],
+              "missingRequiredCitations": []
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
