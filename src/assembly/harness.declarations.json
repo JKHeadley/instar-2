@@ -24,7 +24,7 @@
         "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.route=claude-code-subscription@src/assembly/production-provider.ts",
         "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.entries=tests/preview/self-host.mjs,scripts/slice-ts-loader.mjs,deploy/macos/fixed-worker/worker.sb",
         "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.runtime=node-24.14.1@sha256:91d3afb67a7dc211f642f2328f822505ff1c1ad381e98ffdd21b003970deeeda",
-        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.conformance=sha256:4e1610d66cc14c97f6ded521644065134c542d1b9b9454e1313d339d7ce9a032",
+        "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.conformance=sha256:3688eb778d9575dae99ba8efc9ac98a3eff0916fddcdfbc46b336ea0a896d8e3",
         "harness.preview-self-host-native.claude-code-subscription.darwin.self-hosting.evidence=tests/preview/native-harness-contract.test.ts#native composition honours the harness contract through doorway claude-code-subscription"
       ]
     },

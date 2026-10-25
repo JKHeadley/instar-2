@@ -4,7 +4,7 @@ Subject base: 206bc77026aae10e4acb3ae6b177f2d0882295c8
 Review state: open
 Reviewed content: none
 Outcome: Equivalent direct facts receive the same automatic-learning instructions throughout answers, summary recovery and retrospective review. Valid saves keep the agent’s own answer. Malformed person attributes receive the existing single declaration repair; an exhausted save failure reports plainly that the message remains in the conversation.
-Affected rules: Purpose constraints 2 and 3; Rules 4, 7, 10, 12, 18, 36, 41, 49, 55, 57, 58, 70, 74, 75, 77, 78, 80, 85, 89, 100, 101, 111, 113, 116.
+Affected rules: Purpose constraints 2 and 3; Rules 4, 7, 10, 12, 18, 26, 36, 41, 49, 55, 57, 58, 70, 74, 75, 77, 78, 80, 85, 89, 100, 101, 105, 111, 113, 115, 116.
 Affected floors: Secrets, spend cap, stop, durable intake, and no duplicate sends retain their existing validators, admission and send paths. No new effect, authority, storage or provider route.
 Operator questions: none
 Suggested tier: critical
@@ -28,6 +28,8 @@ Recorded shape coverage: Summary writer summary:715672480, uncertain summary 715
 
 ELI16: The agent was getting two different instructions: remember useful facts, and only save when asked. A later self-review repeated the second instruction because it could not see the saves that had happened. Now both paths say the same thing and the review can see the save evidence. When a save works, you get the agent’s own reply. If it cannot save, it says so plainly and keeps your message.
 
-Validation so far: 154 focused tests across nine files pass, plus the full recorded conversation-pressure boundary and complete-history headroom boundary. Typecheck passed before the final text compaction; final gates are recorded in PROGRESS. Architecture reports only the charter-exempt stale native macOS self-host composition certificate; its declaration is unchanged.
+Validation so far: 154 focused tests across nine files pass, plus the full recorded conversation-pressure boundary and complete-history headroom boundary. Typecheck passed before the final text compaction; final gates are recorded in PROGRESS. The desk requested renewal of the stale native macOS self-host certificate after rejecting that READY exception; its evidence and final gates are recorded below and in PROGRESS.
 
 VERDICT: author submission; independent convergence and fresh live acceptance are not claimed
+
+Desk-requested native conformance renewal: The existing native-harness-contract.test.ts ran on the Studio before renewal: nine behavioral cases passed and only the stale certificate assertion failed. The measured complete 275-file composition is sha256:3688eb778d9575dae99ba8efc9ac98a3eff0916fddcdfbc46b336ea0a896d8e3, on the unchanged declared node-24.14.1 runtime. The declaration is renewed only for those measured bytes and is verified by rerunning the unchanged contract. Captured provider frames and temporary roots exercise the shipped native composition without serving logins or live sends. No architecture check, safety floor, supported status or test assertion is weakened. Reverting requires the matching composition and certificate; the declaration alone cannot certify other bytes. Evidence logs: memory-consistency-1025-native-before.log, memory-consistency-1025-native-after.log and memory-consistency-1025-native-composition.json in the absolute lanes directory. Rules 26/49/70/105/115/116 are satisfied through this existing proof and publication path.
