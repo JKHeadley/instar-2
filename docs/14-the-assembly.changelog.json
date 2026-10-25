@@ -1,5 +1,26 @@
 [
   {
+    "revision": 30,
+    "date": "2026-10-25",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "install-setup-rethink-1025: desk three-round design review after four Mac and one Linux setup qualification rounds failed adequacy."
+    },
+    "changes": [
+      {
+        "what": "Select model validation of closed, receipt-backed owner postconditions; evaluate advisory supervision, subscription deferral and exact-only/manual alternatives against the unchanged constitution.",
+        "why": "Keep meaningful Rule 38 validation while reducing the small model task to bounded consistency over actual owner results, without claiming unmeasured reliability.",
+        "ref": "reviews/install-setup-rethink-1025.md; https://github.com/JKHeadley/instar-2/pull/178"
+      },
+      {
+        "what": "Require projection fidelity, real host/owner replay, a new frozen held-out set, both positive and negative model adequacy, independent acceptance and a measured two-minute supervision UX target before distribution.",
+        "why": "Exact-owner refusals must not hide unsafe model answers, and an always-refusing model or primitive-only harness cannot qualify a usable fresh installer.",
+        "ref": "install-setup-qualify-1025-mac4 at 1eb27d0f96574f74a03cbe258a474078daf9e3b9; install-setup-qualify-1025-linux at 5de884f6319f36cd32dff2b70417b7a30cc06efb"
+      }
+    ]
+  },
+  {
     "revision": 29,
     "date": "2026-10-25",
     "status": "draft",

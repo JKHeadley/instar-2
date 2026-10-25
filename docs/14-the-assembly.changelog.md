@@ -4,6 +4,11 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 30 · 2026-10-25 · draft — install-setup-rethink-1025: desk three-round design review after four Mac and one Linux setup qualification rounds failed adequacy.
+
+- **Select model validation of closed, receipt-backed owner postconditions; evaluate advisory supervision, subscription deferral and exact-only/manual alternatives against the unchanged constitution.** — Keep meaningful Rule 38 validation while reducing the small model task to bounded consistency over actual owner results, without claiming unmeasured reliability. _(reviews/install-setup-rethink-1025.md; https://github.com/JKHeadley/instar-2/pull/178)_
+- **Require projection fidelity, real host/owner replay, a new frozen held-out set, both positive and negative model adequacy, independent acceptance and a measured two-minute supervision UX target before distribution.** — Exact-owner refusals must not hide unsafe model answers, and an always-refusing model or primitive-only harness cannot qualify a usable fresh installer. _(install-setup-qualify-1025-mac4 at 1eb27d0f96574f74a03cbe258a474078daf9e3b9; install-setup-qualify-1025-linux at 5de884f6319f36cd32dff2b70417b7a30cc06efb)_
+
 ## Revision 29 · 2026-10-25 · draft — install-setup-route-1025: specify the constitutional model-supervision route after the predecessor prerequisite audit.
 
 - **Specify a pinned CPU-only setup-model candidate, per-step exact evidence, finite reservations and independently assessed host and judgment qualification.** — Rule 38 requires supervision of identity/security preparation; build units need a concrete experiment without claiming unmeasured adequacy. _(reviews/install-setup-route-1025.md; install-supervisor-1025-PROGRESS.md)_
