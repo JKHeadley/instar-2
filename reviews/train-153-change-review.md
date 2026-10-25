@@ -14,6 +14,7 @@ Side effects: Adds platform lifecycle scripts and conformance fixtures. Linux fo
 Undo and recovery: Keep the live build until the desk accepts this candidate. Revert the merge through the release process and regenerate publication; no live installation, state migration or send replay is performed here.
 Multi-machine posture: Custody is deliberately machine-local; independent OS identity and resource boundaries apply on each host, without a new peer dependency or shared store.
 Layer below: Read the constitution, SHA-verified member and cint-L37 reports, signed-distribution authentication, Linux identity/kernel/resource observations, existing macOS wrapper and the mediated custody-reader contract. Preserve the distinction between same-user socket evidence and unrun privileged cross-identity proof.
+1.x comparison: The unit brief /Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-broker-linux-1013-brief.txt, line 3 (1.X FIRST), records the inspected JKHeadley/instar 0072030c86124f1084ed4a1d1cce5bb6f0e8d3d6 comparison: setup.ts installAutoStart/installLinuxSystemdService installs an agent-controlled user service, and SecretStore.ts supplies OS-keychain/local-file-key encrypted storage; neither supplies independently administered, separate-identity, signed-distribution custody. Preserve reuse of src/assembly/custody.ts and tests/preview/harness-user.mjs; no runtime repair or new proof claim follows from this rationale correction.
 Bug class: integration
 Bug evidence: reproducer=tests/platform/custody-platform.test.ts
 Hook bypass: none
