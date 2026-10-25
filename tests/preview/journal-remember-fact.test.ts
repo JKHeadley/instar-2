@@ -37,7 +37,7 @@ function world() {
         expect(packet.memoryDecision).toContain('mode:"remember"');
         return JSON.stringify({ reply: 'Noted.', memory: [{ mode: 'remember', source: input.id, quote }] });
       }
-      if (input.question === 'what do you remember?') return JSON.stringify({ reply: 'Listing.', memory: [], memoryList: true });
+      if (input.question === 'what do you remember?') return JSON.stringify({ reply: '', memory: [], memoryList: true });
       const found = packet.memory?.find((item: { mode: string }) => item.mode === 'remembered');
       return JSON.stringify({ reply: found?.replacement ?? 'No saved fact.', memory: [] });
     }, checkOutbound: () => {}, send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return sends.length; } };
@@ -200,7 +200,7 @@ it('review: seventeenth short fact fits the unchanged packet budget', async () =
    const turn = w.journal.view.turns.get(input.id)!;
    expect(turn.grounding!.memoryChanges).toHaveLength(packet.memory?.length ?? 0);
    expect(auditPacket(w.journal.view, turn, packet).findings).toEqual([]);
-   if(input.question === 'what do you remember?') return JSON.stringify({reply:'Listing.',memory:[],memoryList:true});
+   if(input.question === 'what do you remember?') return JSON.stringify({reply:'',memory:[],memoryList:true});
    if(input.question.startsWith('remember ')) return JSON.stringify({reply:'Noted.',memory:[{mode:'remember',source:input.id,quote:input.question.slice(9)}]});
    return JSON.stringify({reply:'Hello there.',memory:[]});
   }});

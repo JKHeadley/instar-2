@@ -264,7 +264,7 @@ describe('fault 2: the never-said question keeps its searched-and-not-found answ
   });
 
   it('without a lookup, memoryList still renders the saved-items list ("what do you remember about me")', async () => {
-    const r = await turn([{ text: withList(JSON.stringify({ reply: 'Here is what I remember.' })) }],
+    const r = await turn([{ text: withList(JSON.stringify({ reply: '' })) }],
       { text: 'What do you remember about me?' });
     try {
       expect(r.inputs).toHaveLength(1);

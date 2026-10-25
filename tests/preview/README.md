@@ -1763,7 +1763,10 @@ procedure, see [memory-dedupe-live-test.md](memory-dedupe-live-test.md).
 ### Correcting and forgetting memory
 
 For “What do you remember about me?”, the capped answer model can request
-`memoryList:true`. The runner then renders active saved items from the journal,
+`memoryList:true` with an empty `reply.answer`. A nonempty answer always takes
+precedence, including a fact recalled directly from the supplied context. Fact
+questions use the existing memory and lookup path; they do not request an inventory.
+The runner renders active saved items from the journal,
 newest first, with at most 20 entries. It includes open operator memory
 requests, dates, active reply preferences and corrected replacements, while
 excluding closed, forgotten and corrected-away clauses. A byte bound may show

@@ -50,7 +50,7 @@ it('lists at most 20 active journal items newest first after forgetting and corr
     journal = openPreviewJournal(path, key);
     const sent: string[] = [];
     const worker = createJournalWorker(journal, { now: () => 1790001700000, stopped: () => false,
-      model: async () => JSON.stringify({ reply: 'An untrusted model list.', memory: [], dated: [], memoryList: true }),
+      model: async () => JSON.stringify({ reply: '', memory: [], dated: [], memoryList: true }),
       send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
     worker.intake([JSON.parse(raw(27, 'What do you remember about me?'))]);
     await worker.drain();
@@ -98,7 +98,7 @@ it('says plainly when the journal has no active saved items', async () => {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
     const sent: string[] = [];
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
-      model: async () => JSON.stringify({ reply: 'Invented fact.', memory: [], dated: [], memoryList: true }),
+      model: async () => JSON.stringify({ reply: '', memory: [], dated: [], memoryList: true }),
       send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
     worker.intake([JSON.parse(raw(1, 'What do you remember about me?'))]);
     await worker.drain();
@@ -134,7 +134,7 @@ it('includes active dated items and reply preferences from answer frames', async
       memoryFor: ['turn-2'], state: 'complete', at: 1790000120000 });
     const sent: string[] = [];
     const worker = createJournalWorker(journal, { now: () => 1790000200000, stopped: () => false,
-      model: async () => JSON.stringify({ reply: 'Anything.', memory: [], dated: [], memoryList: true }),
+      model: async () => JSON.stringify({ reply: '', memory: [], dated: [], memoryList: true }),
       send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
     worker.intake([JSON.parse(raw(3, 'What do you remember about me?'))]);
     await worker.drain();
@@ -169,7 +169,7 @@ it.each([
     const worker = createJournalWorker(journal, { now: () => 1790000120000, stopped: () => false,
       model: async input => {
         expect(input.context).toContain('turn-1');
-        return JSON.stringify({ reply: 'Stale model text.', memoryList: true, dated: [],
+        return JSON.stringify({ reply: '', memoryList: true, dated: [],
           memory: [{ mode, source: 'turn-1', quote: saved, ...(replacement ? { replacement } : {}) }] });
       }, send: async input => { sent.push(input.expectedText); return sent.length + 1; }, checkOutbound: () => {} });
     worker.intake([JSON.parse(raw(2, request))]);
@@ -212,7 +212,7 @@ it('fits the full escaped reply when active items contain HTML entities', async 
       commitments, state: 'complete', at: 1790001000000 });
     const sent: { text: string; expectedText: string }[] = [];
     const worker = createJournalWorker(journal, { now: () => 1790001200000, stopped: () => false,
-      model: async () => JSON.stringify({ reply: 'Untrusted list.', memory: [], dated: [], memoryList: true }),
+      model: async () => JSON.stringify({ reply: '', memory: [], dated: [], memoryList: true }),
       send: async input => { sent.push(input); return 16; }, checkOutbound: () => {} });
     worker.intake([JSON.parse(raw(16, 'What do you remember about me?'))]);
     await worker.drain();
