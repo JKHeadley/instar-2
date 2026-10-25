@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { captureSetupCases } from '../qualification/setup-owner-cases.js';
 import { observeSetup } from '../qualification/setup-seven.js';
 // @ts-expect-error Physical qualification adapter.
-import { MODEL, MODEL_3B, PROFILE, PROMPT, TEMPLATE, digest, fileDigest } from '../../scripts/setup-qualification.mjs';
+import { MODEL, MODEL_3B, PROMPT, TEMPLATE, digest, fileDigest, qualificationProfile } from '../../scripts/setup-qualification.mjs';
 
 it('captures real crypto, recovery, changed signatures and conflicting durable appends', () => {
   const evidence = captureSetupCases(mkdtempSync(join(tmpdir(), 'setup-owners-')));
@@ -29,11 +29,13 @@ it.skipIf(!process.env.INSTAR_SETUP_QUALIFICATION)('records the pinned real macO
     const modelSize = process.env.INSTAR_SETUP_MODEL ?? '1.5b';
     if (!['1.5b', '3b'].includes(modelSize)) throw Error('unknown qualification model');
     const model = modelSize === '3b' ? MODEL_3B : MODEL;
+    const profileName = process.env.INSTAR_SETUP_PROFILE ?? 'default';
+    const profile = qualificationProfile(profileName, model, constrained);
     const priorBytes = readFileSync(new URL('../qualification/evidence/macos-arm64-2026-10-25.json', import.meta.url), 'utf8');
     const prior = JSON.parse(priorBytes);
     const ownerEvidence: ReturnType<typeof captureSetupCases> = constrained ? prior.ownerEvidence : captureSetupCases(join(root, 'owner-captures'));
     if (constrained) expect(digest(JSON.stringify(ownerEvidence.cases))).toBe(prior.hashes.taskSet);
-    const report: Record<string, any> = { schemaVersion: 1, candidate: model, profile: PROFILE,
+    const report: Record<string, any> = { schemaVersion: 1, candidate: model, profile, profileName,
       generatedAt: new Date().toISOString(), host: { os: platform(), architecture: arch(), release: release(),
         cpu: cpus()[0]?.model, logicalCpus: cpus().length, totalMemoryBytes: totalmem(), availableMemoryBytes: freemem() },
       artifacts: manifest, constrained, replaySource: constrained ? { path: 'tests/qualification/evidence/macos-arm64-2026-10-25.json', sha256: digest(priorBytes) } : null,
@@ -49,10 +51,10 @@ it.skipIf(!process.env.INSTAR_SETUP_QUALIFICATION)('records the pinned real macO
     const selected = only ? ownerEvidence.cases.filter(row => row.id === only) : ownerEvidence.cases;
     for (let repetition = 1; repetition <= (only ? 1 : 3); repetition++) {
       for (const task of selected) {
-        if (performance.now() - start > PROFILE.attemptMs) throw Error('qualification ceiling reached; partial evidence preserved');
+        if (performance.now() - start > profile.attemptMs) throw Error('qualification ceiling reached; partial evidence preserved');
         const trialRoot = join(root, `trial-${repetition}-${task.id}`); mkdirSync(trialRoot, { mode: 0o700 });
         const result = await observeSetup({ root: trialRoot, stopFile, executable: manifest.executable,
-          runtimeDigest: manifest.runtimeDigest, weights: manifest.weights, task, constrained, model });
+          runtimeDigest: manifest.runtimeDigest, weights: manifest.weights, task, constrained, model, profileName });
         report.trials.push({ case: task.id, repetition, expected: task.expected, ...result }); save();
         console.log(`${repetition}/${task.id}: ${result.verdict.disposition}; ${Math.round(result.elapsedMs)} ms; RSS ${result.raw.resources?.peakMemoryBytes ?? 'unknown'}`);
       }

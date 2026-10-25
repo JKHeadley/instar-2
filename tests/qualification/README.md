@@ -101,3 +101,14 @@ made six unsafe negative judgments. The 3B model hit the unchanged 2-GiB RSS
 ceiling in all 36 attempts before producing an answer. These are failures, not
 qualification. Independent assessment remains PENDING ASTRA; the separate
 custodian/recovery/GE-A0 owner gap remains uncovered.
+
+## 3B reservation measurement
+
+The desk-authorized continuation uses `INSTAR_SETUP_MODEL=3b`,
+`INSTAR_SETUP_CONSTRAINED=1` and `INSTAR_SETUP_PROFILE=3b-3gib` with a new
+private evidence directory. This named profile changes only sampled RSS from
+2 GiB to 3 GiB; the 120-second deadline and every other reservation stay unchanged.
+It refuses an unconstrained or 1.5B combination. The default remains 2 GiB, and
+the experiment changes no installation design or qualification bar.
+
+Results: [constrained 3B with 3 GiB](evidence/macos-arm64-2026-10-25-constrained-3b-3gib.md).

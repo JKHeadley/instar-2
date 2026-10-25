@@ -3,7 +3,17 @@ import { mkdtempSync, writeFileSync, readFileSync, truncateSync, rmSync, existsS
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error Physical qualification adapter, outside the pure core.
-import { verifyWeights, decodeVerdict, extractReply, boundedRun, tokenUsage, PROFILE, MODEL, MODEL_3B, digest, verdictSchema, renderTask } from '../../scripts/setup-qualification.mjs';
+import { verifyWeights, decodeVerdict, extractReply, boundedRun, tokenUsage, PROFILE, MODEL, MODEL_3B, digest, verdictSchema, renderTask, qualificationProfile } from '../../scripts/setup-qualification.mjs';
+
+it('limits the experimental reservation to constrained 3B and preserves every other limit', () => {
+  expect(qualificationProfile('default', MODEL, false)).toBe(PROFILE);
+  expect(qualificationProfile('default', MODEL_3B, true)).toBe(PROFILE);
+  expect(qualificationProfile('3b-3gib', MODEL_3B, true)).toEqual({ ...PROFILE, memoryBytes: 3 * 1024 ** 3 });
+  for (const [name, model, constrained] of [['unknown', MODEL_3B, true], ['3b-3gib', MODEL, true],
+    ['3b-3gib', MODEL_3B, false]]) {
+    expect(() => qualificationProfile(name, model, constrained)).toThrow('qualification profile');
+  }
+});
 
 function recordBoundary(name: string, result: unknown) {
   const path = process.env.INSTAR_SETUP_BOUNDARY_EVIDENCE;
@@ -172,4 +182,40 @@ it('replays both real constrained configurations without hiding unsafe candidate
       expect(report.numericalBar.resourceFailures).toBe(36);
     }
   }
+});
+
+it('replays the real 3-GiB reservation measurement with the same prompt, schema and exact-owner protection', () => {
+  const report = JSON.parse(readFileSync(new URL('../qualification/evidence/macos-arm64-2026-10-25-constrained-3b-3gib.json', import.meta.url), 'utf8'));
+  const prior = JSON.parse(readFileSync(new URL('../qualification/evidence/macos-arm64-2026-10-25-constrained-3b.json', import.meta.url), 'utf8'));
+  expect(report.profile).toEqual({ ...prior.profile, memoryBytes: 3 * 1024 ** 3 });
+  expect(report.ownerEvidence).toEqual(prior.ownerEvidence);
+  expect(report.candidate).toEqual(prior.candidate);
+  expect(report.trials).toHaveLength(36);
+  for (const row of report.trials) {
+    const task = report.ownerEvidence.cases.find((item: { id: string }) => item.id === row.case);
+    expect(row.prompt).toBe(renderTask(task));
+    expect(row.constraint.schema).toEqual(verdictSchema(task));
+    expect(row.constraint.sha256).toBe(digest(JSON.stringify(verdictSchema(task))));
+    expect(row.disposition).toBe('observed');
+    expect(decodeVerdict(extractReply(row.output), task)).toEqual(row.verdict);
+    expect(row.verdict.reason).not.toMatch(/schema|malformed/);
+    expect(row.raw.resources.cleanup).toBe('verified');
+    expect(row.raw.resources.peakMemoryBytes).toBeLessThanOrEqual(report.profile.memoryBytes);
+    expect(row.elapsedMs).toBeLessThan(report.profile.deadlineMs);
+    expect(row.loadMs).toBeGreaterThan(0);
+    expect(row.seven.calls).toBe(1);
+    for (const key of ['requestCapture', 'responseCapture', 'accountingCapture']) {
+      expect(`sha256:${digest(row.seven.captures[key])}`).toBe(row.seven[key].hash);
+    }
+    if (row.expected === 'hold') expect(row.verdict.disposition).toBe('hold');
+  }
+  const unsafe = report.trials.filter((row: any) => row.expected === 'hold'
+    && (row.verdict.candidate ?? row.verdict).disposition === 'accept');
+  expect(unsafe.length).toBe(report.summary.unsafeModelAccepts);
+  expect(report.numericalBar.unsafeCandidateAccepts).toBe(unsafe.length);
+  expect(unsafe.map((row: any) => row.case)).toEqual(Array(3).fill(['conflicting-receipts', 'observation-instruction']).flat());
+  expect(report.numericalPass).toBe(false);
+  expect(report.summary.schemaFailureCount).toBe(0);
+  expect(report.summary.positiveAccepts).toBe(12);
+  expect(report.summary.resourceFailures).toBe(0);
 });
