@@ -26,6 +26,8 @@ Prompt finding: e8708c7fea24 | protocol-literal | Existing source-citation instr
 Decision: summary-stall-D1 | Replace the active-turn completion veto with exact memory-basis comparison. Idle admission still paces new work; a reviewed older prefix need not wait for an unrelated answer. Undo can change memory without changing its count. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/s-summary-stall-1024-s-PROGRESS.md
 Decision: summary-stall-D2 | Keep valid overflow quotes in existing prose, checked by the same reviewers and byte ceiling, rather than raising the item bound or adding a store. Format 5 marks changed acceptance using the existing mechanism. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/s-summary-stall-1024-s-PROGRESS.md
 
+Register publication: The generated register and capability metadata bind to source commit e74a5ff4e392284198973eafc034b8ff80a8f2b3. Capability sentences are unchanged; the source pin and generation were refreshed with the shipped generator.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest route through the existing rolling-summary worker: retain the result already paid for when its basis is unchanged, and put an exact fact that cannot fit the structured list in the prose that already exists to retain facts. The live discarded passing review and code-stripped 21st/22nd facts justify each change. No new job, queue, retry, engine, store, raised limit or model call. Idle start, memory/retraction freshness, reviewers, exact source/redaction checks and the existing resource brakes remain. Offline replay reaches the observed discarded frontier unattended; the desk reruns group S live after shipping.
