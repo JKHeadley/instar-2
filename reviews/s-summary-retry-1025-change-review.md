@@ -28,6 +28,8 @@ Prompt finding: 85544c20941f | protocol-literal | Existing unchanged protocol/st
 Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 Validation: Failing-first replay showed only one writer call. Final targeted tests and architecture/type/register checks are reported in PROGRESS. No independent review or live acceptance is asserted here.
 
+Publication: Refreshed the shape-only register against source commit 588fdf642f8181df00d48eab0d3669ed926de6cd. Owner-manifest and assembly-chain refresh changed zero pins. Generated source bindings grant no authority.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: use the existing bounded pass and the remaining per-span attempt, adding the completed review's reason to the retry packet. It prevents a known correctable loss from consuming a ten-minute pause before any revision. No new engine, stored queue or weakened review. Start guards remain idle/forced admission, stop, scope, reservation and allowance; the end guard is a passing summary review; the limits are two attempts per span and the existing pass ceiling. This submission proves offline behavior, not an unattended shipped live result.
