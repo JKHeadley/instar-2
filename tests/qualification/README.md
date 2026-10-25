@@ -82,3 +82,34 @@ malformed JSON is preserved and refused, never repaired.
 ELI16: the small model ran within the tested limits, but that does not make it a
 trustworthy setup checker. Both correct judgments and a complete real installation
 test are required before it may supervise installation.
+
+## Linux qualification
+
+The Linux sibling reuses this exact task generator, prompt, decoder and Seven
+bridge. `scripts/setup-qualification-linux.mjs` launches a transient user systemd
+service. Its Python child reads the actual cgroup v2 controls before executing
+llama-cli: memory 2 GiB, swap zero, CPU quota two CPUs and at most 16 tasks.
+The service's independent runtime deadline includes child startup. The worker
+checks the durable stop every 50 ms and kills only its own unreaped child PID.
+It records both child maximum RSS and cgroup peak memory (different subjects),
+CPU accounting, kernel memory events and cleanup. Missing service output holds;
+it does not fabricate cleanup evidence. No automatic retry is made.
+
+Use the same immutable artifact download/build instructions and fresh private
+root above on Linux, then run the same opt-in host test. The runner selects the
+Linux adapter automatically. The local experiment hashes its source, executable
+and linked libraries; it is **not** an independently signed release manifest.
+The 12 primitive cases are repeated three times. Full custodian, recovery-holder
+and approved-genesis coverage remains explicitly false, as on macOS. Reviewer's
+semantic assessment remains pending even if the numerical diagnostic bar passes.
+
+Run the Linux kernel boundary check in the foreground:
+
+```sh
+nice -n 10 npx vitest run --maxWorkers 1 tests/assembly/setup-qualification-linux.test.ts
+```
+
+The kernel boundary test uses a private directory under `/tmp`, shared with the
+systemd service, rather than the test runner's namespace-private RAM directory.
+The inherited macOS physical-resource tests still need their macOS host; their
+owner process census is not a Linux cgroup qualification.

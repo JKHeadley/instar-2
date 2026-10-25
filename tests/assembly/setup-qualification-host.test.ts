@@ -2,6 +2,8 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir, platform, arch, cpus, totalmem, freemem, release } from 'node:os';
 import { join } from 'node:path';
+// @ts-expect-error Linux physical qualification adapter.
+import { boundedLinuxRun } from '../../scripts/setup-qualification-linux.mjs';
 import { captureSetupCases } from '../qualification/setup-owner-cases.js';
 import { observeSetup } from '../qualification/setup-seven.js';
 // @ts-expect-error Physical qualification adapter.
@@ -16,9 +18,9 @@ it('captures real crypto, recovery, changed signatures and conflicting durable a
 });
 
 // Explicit opt-in: ordinary test runs never load weights or consume minutes of CPU.
-it.skipIf(!process.env.INSTAR_SETUP_QUALIFICATION)('records the pinned real macOS candidate without claiming independent acceptance',
+it.skipIf(!process.env.INSTAR_SETUP_QUALIFICATION)('records the pinned real host candidate without claiming independent acceptance',
   { timeout: 1200000 }, async () => {
-    if (platform() !== 'darwin') throw Error('macOS evidence must be run on macOS');
+    if (!['darwin', 'linux'].includes(platform())) throw Error('unsupported qualification host');
     const root = process.env.INSTAR_SETUP_QUALIFICATION!;
     mkdirSync(root, { recursive: true, mode: 0o700 });
     const manifest = JSON.parse(readFileSync(join(root, 'artifacts.json'), 'utf8'));
@@ -31,7 +33,8 @@ it.skipIf(!process.env.INSTAR_SETUP_QUALIFICATION)('records the pinned real macO
         cpu: cpus()[0]?.model, logicalCpus: cpus().length, totalMemoryBytes: totalmem(), availableMemoryBytes: freemem() },
       artifacts: manifest, hashes: { prompt: digest(PROMPT), template: digest(TEMPLATE), taskSet: digest(JSON.stringify(ownerEvidence.cases)),
         adapter: await fileDigest('scripts/setup-qualification.mjs'), bridge: await fileDigest('tests/qualification/setup-seven.ts'),
-        ownerCaptures: await fileDigest('tests/qualification/setup-owner-cases.ts') },
+        ownerCaptures: await fileDigest('tests/qualification/setup-owner-cases.ts'),
+        linuxAdapter: await fileDigest('scripts/setup-qualification-linux.mjs'), linuxWorker: await fileDigest('scripts/setup-qualification-linux.py') },
       independentAssessment: { state: 'pending', reviewer: 'Astra', expectedOutcomes: 'author proposals; reviewer must fix from owner evidence before inspecting answers' },
       ownerEvidence, trials: [], pass: false, qualification: 'unqualified' };
     const save = () => writeFileSync(join(root, 'report.json'), JSON.stringify(report, null, 2) + '\n', { mode: 0o600 });
@@ -44,7 +47,7 @@ it.skipIf(!process.env.INSTAR_SETUP_QUALIFICATION)('records the pinned real macO
         if (performance.now() - start > PROFILE.attemptMs) throw Error('qualification ceiling reached; partial evidence preserved');
         const trialRoot = join(root, `trial-${repetition}-${task.id}`); mkdirSync(trialRoot, { mode: 0o700 });
         const result = await observeSetup({ root: trialRoot, stopFile, executable: manifest.executable,
-          runtimeDigest: manifest.runtimeDigest, weights: manifest.weights, task });
+          runtimeDigest: manifest.runtimeDigest, weights: manifest.weights, task, runner: platform() === 'linux' ? boundedLinuxRun : undefined });
         report.trials.push({ case: task.id, repetition, expected: task.expected, ...result }); save();
         console.log(`${repetition}/${task.id}: ${result.verdict.disposition}; ${Math.round(result.elapsedMs)} ms; RSS ${result.raw.resources?.peakMemoryBytes ?? 'unknown'}`);
       }

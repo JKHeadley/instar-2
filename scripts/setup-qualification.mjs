@@ -78,7 +78,7 @@ export async function boundedRun({ root, stopFile, executable, args, stdin, prof
     raw: { ...raw, stdoutBytes: undefined }, owner: owner.snapshot() };
 }
 
-export async function validateTask({ root, stopFile, executable, weights, runtimeDigest, task }) {
+export async function validateTask({ root, stopFile, executable, weights, runtimeDigest, task, runner = boundedRun }) {
   const started = performance.now();
   await verifyWeights(weights);
   if (!/^[a-f0-9]{64}$/.test(runtimeDigest) || await fileDigest(executable) !== runtimeDigest)
@@ -88,7 +88,7 @@ export async function validateTask({ root, stopFile, executable, weights, runtim
   if (Buffer.byteLength(prompt) > PROFILE.context - PROFILE.outputTokens - 8)
     throw Error('prompt exceeds conservative context reservation');
   const logFile = join(root, 'llama.log');
-  const run = await boundedRun({ root, stopFile, executable, stdin: prompt,
+  const run = await runner({ root, stopFile, executable, stdin: prompt,
     profile: { ...PROFILE, deadlineMs: Math.max(1, PROFILE.deadlineMs - (performance.now() - started)) }, args: [
     '-m', weights, '-f', '/dev/stdin', '-t', '2', '-tb', '2', '-c', '4096', '-n', '512',
     '--temp', '0', '--seed', '1', '-ngl', '0', '--no-display-prompt', '--simple-io', '--no-warmup', '--log-file', logFile] });
