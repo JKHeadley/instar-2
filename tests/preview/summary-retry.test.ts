@@ -5,6 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, SUMMARY_FORMAT,
   type JournalRecord, type SummaryConcept } from './journal.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
+import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import type { PreviewPorts } from './journal.js';
 import { interpretSummaryReview } from './summary-check.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/faithfulness-stall-2026-10-25.json', import.meta.url), 'utf8')) as {
@@ -169,4 +172,80 @@ it.each(historical.otherShapes)('revises with recorded $kind ($id) in the retain
     expect(w.journal.view.summaries.at(-1)?.through).toBe(6236276);
     expect(w.journal.view.summaries.at(-1)?.text).toContain('delivery unknown');
   } finally { w.close(); }
+});
+
+// Synthetic capacity boundary from the independent review reproduction, using the real
+// encrypted journal and launcher envelope. Recorded model shapes are replayed above.
+it.each([24576, 32768, 40000])('keeps the remaining attempt reachable after revision fitting at %i bytes', async maxBytes => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'summary-retry-capacity-')));
+  const limits = { ...genesis, maxBytes };
+  const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, limits);
+  let now = 1790000000000;
+  const id = `telegram:${genesis.bot}:update:1`;
+  const text = 'My workshop code is 7319. ' + 'The garden plan includes tomatoes and herbs. '.repeat(88);
+  const reply = 'Noted. ' + 'The garden has tomatoes and herbs along the fence. '.repeat(78);
+  journal.append({ kind: 'intake', id, update: 1, text, raw: JSON.stringify({ update_id: 1,
+    message: { text, date: 1790000000, chat: { id: Number(genesis.chat), type: 'private' },
+      from: { id: Number(genesis.operator) } } }), accepted: true, cursor: 2, at: now });
+  journal.append({ kind: 'reserve', id, at: now });
+  journal.append({ kind: 'answer', id, text: reply, state: 'complete', at: now });
+  journal.append({ kind: 'intent', id, text: reply, chat: genesis.chat, update: 1, grant: genesis.grant, at: now });
+  journal.append({ kind: 'sent', id, message: 1, at: now });
+  const ceiling = Math.floor(maxBytes * 0.75);
+  const prepared: { revision: boolean; bytes: number }[] = [];
+  const dispatched: { revision: boolean; bytes: number }[] = [];
+  const ports: PreviewPorts = {
+    now: () => now, stopped: () => false,
+    prepareModel: input => {
+      // The smallest case injects an oversized provider envelope to exercise the ordinary cache.
+      const envelope = prepareJournalEnvelope(input, 'claude-opus-5-5', genesis.grant, now, maxBytes)
+        + (maxBytes === 24576 ? ' '.repeat(maxBytes) : '');
+      prepared.push({ revision: !!JSON.parse(input.context).summaryRevision,
+        bytes: Buffer.byteLength(envelope) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT) });
+      return envelope;
+    },
+    model: async input => {
+      dispatched.push({ revision: !!JSON.parse(input.context).summaryRevision,
+        bytes: Buffer.byteLength(input.prepared!) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT) });
+      return JSON.stringify({ summary: 'The workshop code is 0000. ' + 'The operator discussed garden planning. '.repeat(140),
+        people: [], commitments: [], closed: [], memory: [] });
+    },
+    summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.5 } } }),
+    replyCheck: { elapsedMs: () => 0, jev: async () => { throw Error('unexpected integrity call'); },
+      escalate: async () => { throw Error('unexpected escalation'); },
+      summaryReview: async () => ({ verdict: 'violation', reason: 'The code is wrong. ' + 'Keep the original facts. '.repeat(75), latencyMs: 1 }) },
+    send: async () => { throw Error('offline replay never sends'); }, checkOutbound: () => {},
+  };
+  const worker = createJournalWorker(journal, ports);
+  try {
+    await worker.summarizeIfNeeded(true);
+    if (maxBytes === 24576) {
+      // An ordinary packet that cannot fit still gets cached; idle passes do not
+      // repeatedly prepare the same impossible envelope or reserve model spend.
+      expect(dispatched).toHaveLength(0);
+      expect(prepared.length).toBeGreaterThan(0);
+      const count = prepared.length;
+      now += 700000;
+      await worker.summarizeIfNeeded(true);
+      expect(prepared).toHaveLength(count);
+      expect(dispatched).toHaveLength(0);
+      expect(journal.view.summaryFailures.size).toBe(0);
+      return;
+    }
+    expect(dispatched).toHaveLength(maxBytes === 32768 ? 1 : 2);
+    const revisions = prepared.filter(item => item.revision);
+    expect(revisions.length).toBeGreaterThan(0);
+    expect(revisions.every(item => item.bytes > ceiling)).toBe(maxBytes === 32768);
+    expect(journal.view.summaries).toHaveLength(0);
+    now += 700000;
+    await worker.summarizeIfNeeded(true);
+    expect(dispatched).toHaveLength(2);
+    expect(dispatched[1]!.revision).toBe(maxBytes === 40000);
+    expect(dispatched.every(item => item.bytes <= ceiling)).toBe(true);
+    expect(journal.view.summaryFailures.get(1)).toBe(2);
+    expect(journal.view.summaries).toHaveLength(0);
+    now += 700000;
+    await worker.summarizeIfNeeded(true);
+    expect(dispatched).toHaveLength(2);
+  } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
 });

@@ -11255,7 +11255,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (chosen) break;
       }
       if (!chosen) {
-        summaryPreflightBlocked.add(blocked);
+        // Revision feedback is ephemeral to this pass. Its fitting failure says nothing
+        // about the ordinary packet a later pass can use for the remaining attempt.
+        if (!summaryRevision) summaryPreflightBlocked.add(blocked);
         const oversized = pending[0];
         const reason = oversizedPrompt ? 'summary oversized turn' : 'summary preflight unavailable';
         if (oversized && oversized.held !== reason)
