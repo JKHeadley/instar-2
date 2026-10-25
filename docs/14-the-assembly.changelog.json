@@ -9,7 +9,7 @@
     },
     "changes": [
       {
-        "what": "Consume the qualified model decision and show fixed owner-check text; keep raw explanations for audit and re-derive refuted reasons under Rule 108.",
+        "what": "Select the measured 3B/3-GiB candidate; consume its qualified decision and show fixed owner-check text, retaining raw explanations for audit and re-deriving refuted reasons under Rule 108.",
         "why": "All 72 primitive decisions are correct while generated explanations and copied citations misstate exact owner facts; neither copying nor prose is required by Rule 38.",
         "ref": "reviews/install-setup-assess-1025b.md"
       },

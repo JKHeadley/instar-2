@@ -19,7 +19,7 @@ Hook bypass: none. Checked core.hooksPath (unset) and common hooks directory (sa
 Convergence: none
 Decision: assess-1025b-D1 | Select C and decision-only consumption with fixed owner text; retain and independently re-derive refuted reasons instead of treating correct totals as sufficient. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-PROGRESS.md
 Decision: assess-1025b-D2 | Reject subtraction of reported load as a warm-process prediction because first prompt evaluation overlaps that interval. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-PROGRESS.md
-Decision: assess-1025b-D3 | Keep release unqualified while allowing bounded process reuse and a provisional four-minute evaluation allowance in docs/14 revision 31. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-PROGRESS.md
+Decision: assess-1025b-D3 | Keep release unqualified; explicitly select the measured 3B/3-GiB candidate, bounded process reuse and a provisional four-minute evaluation allowance in docs/14 revision 31. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-PROGRESS.md
 
 ## Assessment and simplest option first
 

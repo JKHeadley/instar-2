@@ -6,7 +6,7 @@ each linked to the git change that made it (rule 91).
 
 ## Revision 31 · 2026-10-25 · draft — Independent option1b assessment; desk direction to weigh decision-only validation first.
 
-- **Consume the qualified model decision and show fixed owner-check text; keep raw explanations for audit and re-derive refuted reasons under Rule 108.** — All 72 primitive decisions are correct while generated explanations and copied citations misstate exact owner facts; neither copying nor prose is required by Rule 38. _(reviews/install-setup-assess-1025b.md)_
+- **Select the measured 3B/3-GiB candidate; consume its qualified decision and show fixed owner-check text, retaining raw explanations for audit and re-deriving refuted reasons under Rule 108.** — All 72 primitive decisions are correct while generated explanations and copied citations misstate exact owner facts; neither copying nor prose is required by Rule 38. _(reviews/install-setup-assess-1025b.md)_
 - **Allow bounded within-attempt process reuse after isolation qualification and assess measured one-time setup latency instead of treating two minutes as an absolute gate.** — The eight-positive sums are 187.58–233.36 seconds, but llama.cpp load time overlaps first prompt evaluation; no warm-run speedup or installed-run bound has been measured. _(reviews/install-setup-assess-1025b.md)_
 
 ## Revision 30 · 2026-10-25 · draft — install-setup-rethink-1025: desk three-round design review after four Mac and one Linux setup qualification rounds failed adequacy.
