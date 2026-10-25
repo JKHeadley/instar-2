@@ -6,7 +6,7 @@ import { writerRecord } from './intake-principal.js';
 import { readAnswer } from './answer-reading.js';
 import { interpretSummaryReview } from './summary-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { createJournalWorker, openPreviewJournal, PREVIEW_FULL_HISTORY_BYTES, requestOccurrence, type JournalRecord } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, PREVIEW_FULL_HISTORY_BYTES, SUMMARY_FORMAT, requestOccurrence, type JournalRecord } from './journal-test-worker.js';
 
 type ModelUsage = { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true };
 
@@ -77,13 +77,40 @@ it('keeps all 33 recorded turns as complete history without spending any automat
   } finally { w.close(); }
 });
 
+// The recorded bodies stay exact. These outcome replays need the same exhausted
+// frontier budget under this build; historical format-4 failures alone cannot spend it.
+function replayCurrentBudget(w: ReturnType<typeof world>, before: number) {
+  for (const row of fixture.rows.slice(1, before))
+    w.append(row.kind === 'summary-failed' ? { ...row, format: SUMMARY_FORMAT } : row);
+}
+
+it('keeps historical failures retryable under the current format', async () => {
+  const record = fixture.writers.at(-1)!;
+  const w = world();
+  try {
+    const rows = fixture.rows.slice(1, record.before);
+    const failures = rows.filter(row => row.kind === 'summary-failed');
+    expect(failures.length).toBeGreaterThan(0);
+    expect(failures.every(row => row.format !== SUMMARY_FORMAT)).toBe(true);
+    for (const row of rows) w.append(row);
+    expect(w.journal.view.summaryFailures.size).toBeGreaterThan(0);
+    expect(w.journal.view.summaryFormatFailures).toEqual([]);
+    await w.worker.summarizeIfNeeded(true);
+    expect(w.calls).toEqual(['summary:840342890']);
+    expect(w.journal.view.lastSummaryFailure).toMatchObject({
+      through: 840342890, format: SUMMARY_FORMAT, failureClass: 'malformed',
+    });
+    expect(w.journal.view.summaries).toEqual([]);
+  } finally { w.close(); }
+});
+
 const malformed = fixture.writers.filter(item => item.outcome === 'complete'
   && item.recordedResult.kind === 'summary-failed' && item.recordedResult.failureClass === 'malformed'
   && item.recordedResult.reason === undefined);
 it.each(malformed.map((record, index) => ({ record, index })))('preserves refusal of recorded malformed writer $index ($record.id) when explicitly required', async ({ record }) => {
   const w = world(record);
   try {
-    for (const row of fixture.rows.slice(1, record.before)) w.append(row);
+    replayCurrentBudget(w, record.before);
     await w.worker.summarizeIfNeeded(true);
     expect(w.calls[0]).toBe(record.id);
     expect(w.journal.view.lastSummaryFailure?.failureClass).toBe('malformed');
@@ -96,7 +123,7 @@ it('still accepts the recorded valid summary when explicitly required', async ()
   expect(record.recordedResult.kind).toBe('summary');
   const w = world(record);
   try {
-    for (const row of fixture.rows.slice(1, record.before)) w.append(row);
+    replayCurrentBudget(w, record.before);
     await w.worker.summarizeIfNeeded(true);
     expect(w.calls[0]).toBe(record.id);
     expect(w.journal.view.summaries.at(-1)?.text).toBe(JSON.parse(record.output!).summary);
@@ -107,7 +134,7 @@ it('retains the recorded Jev undecided → review violation refusal', async () =
   const record = fixture.writers.find(item => item.recordedResult.reason?.includes('full-context review found loss'))!;
   const w = world(record);
   try {
-    for (const row of fixture.rows.slice(1, record.before)) w.append(row);
+    replayCurrentBudget(w, record.before);
     await w.worker.summarizeIfNeeded(true);
     expect(w.calls[0]).toBe(record.id);
     expect(w.journal.view.lastSummaryFailure?.reason).toContain('full-context review found loss');
