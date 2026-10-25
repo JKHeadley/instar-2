@@ -87,6 +87,6 @@ it.each(['', { answer: '' }])('an explicit inventory request still lists with an
   const result = await replay(0, reply, 'List what you remember about me.');
   expect(result.sent[0]).toContain('Here are 20 active memory items');
   expect(result.sent[0]).toContain('older active items not shown');
-  expect(result.packets[0]!.datedDecision).toContain('explicit saved-memory inventory');
-  expect(result.packets[0]!.datedDecision).toContain('empty reply.answer');
+  expect(result.packets[0]!.datedDecision).toContain('only for inventories');
+  expect(result.packets[0]!.datedDecision).toContain('reply.answer:""');
 });
