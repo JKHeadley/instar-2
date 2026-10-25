@@ -11075,8 +11075,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const proactive = force ? 'compact' : decideProactiveCompaction({ now: ports.now(), stopped: ports.stopped() || journal.view.stop !== null,
         idle: !working, pressure: unreviewedQuestions(last.update).length > 0 || smallest(full) >= startBytes,
         lastAttemptAt: Number.isFinite(priorSummaryAt) ? priorSummaryAt : null });
-      if (!force && proactive !== 'compact' && proactive !== 'below-threshold') return;
-      if (!force && proactive === 'below-threshold') {
+      if (proactive === 'stopped' || proactive === 'busy') return;
+      // A rejected compaction must not strand the unsummarized tail's meaning terms. The originals
+      // remain recallable through the history floor; index them independently using the same bounded
+      // write-side pass, even while compaction is cooling down or has exhausted its candidate spans.
+      // A later accepted frontier covers the failure and restores ordinary summary-owned indexing.
+      const rejectedTail = !force && (journal.view.lastSummaryFailure?.through ?? -1) > previous;
+      if (!force && (proactive === 'below-threshold' || rejectedTail)) {
         // Rule 11: messages summarized before their meaning terms existed (Part 21 §6) would
         // otherwise wait for history to grow; index them without summarizing anything new. A summary
         // that just ran was already asked for these terms, so indexing waits for a later call.
@@ -11087,14 +11092,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // seven messages pending out of a hundred summarized, so the paraphrase reached nothing).
         // Each source is offered at most INDEX_ATTEMPT_LIMIT times and at most once per pass, so this
         // cannot loop: the work is finite and the existing call cap still bounds the pass.
-        if (summarized) return;
-        const unoffered = journal.view.order.filter(item => remembered(item) && fromOperator(item) && !sizeRefused(item)
-          && item.update <= previous && !indexed.has(item.id) && !offeredThisPass.has(item.id)
+        if (summarized && proactive === 'below-threshold') return;
+        // Recovery spends at most one batch per idle pass, leaving the remaining pass budget for
+        // compaction itself. A large unindexed tail must not delay a summary that can now pass.
+        const unoffered = journal.view.order.filter(item => (!rejectedTail || offeredThisPass.size === 0)
+          && remembered(item) && fromOperator(item) && !sizeRefused(item)
+          && item.update <= (rejectedTail ? last.update : previous) && !indexed.has(item.id) && !offeredThisPass.has(item.id)
           && indexAttempts(item.id) < INDEX_ATTEMPT_LIMIT).slice(0, INDEX_BACKLOG_LIMIT);
         for (const item of unoffered) offeredThisPass.add(item.id);
-        if (unoffered.length && await indexOnly(unoffered)) continue;
-        return;
+        if (unoffered.length) {
+          if (await indexOnly(unoffered)) continue;
+          return;
+        }
+        if (proactive === 'below-threshold') return;
       }
+      if (!force && proactive !== 'compact' && proactive !== 'below-threshold') return;
       const candidates: { turn: Turn; bases: string[]; fallback: ReadonlySet<string> }[] = [];
       // Part 21 §6: a frontier that used its two attempts stays failed, with its originals kept in the journal.
       // The budget is per span: attempts made from an older base do not count against this one (live 2026-09-30:

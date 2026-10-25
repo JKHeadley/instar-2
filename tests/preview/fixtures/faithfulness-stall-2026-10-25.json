@@ -1,0 +1,1513 @@
+{
+  "provenance": {
+    "run": "S-proofroom2-20261025-061616",
+    "root": "proofroom2-q-20261025-061536",
+    "base": "779c15ea26aa634ee1b02159cef2bbaf1671d0f0",
+    "note": "Read-only journal extraction. Exact message, delivered reply, summary and model output bodies; transport and secret-bearing envelopes excluded."
+  },
+  "turns": [
+    {
+      "id": "telegram:8989505249:update:6236249",
+      "update": 6236249,
+      "text": "Locker 17 at the swim club has combination 4821.",
+      "at": 1792934184032,
+      "reply": "Got it: locker 17 at the swim club, combination 4821.\n\nModel route check: typesafe-jev/jev-1.13.0 is unverified.",
+      "sentAt": 1792934195108
+    },
+    {
+      "id": "telegram:8989505249:update:6236250",
+      "update": 6236250,
+      "text": "My niece Priya turns nine in March.",
+      "at": 1792934208574,
+      "reply": "Nine in March, that's a fun age for Priya! If you happen to know the exact day, feel free to mention it, but March is plenty to go on.",
+      "sentAt": 1792934241550
+    },
+    {
+      "id": "telegram:8989505249:update:6236251",
+      "update": 6236251,
+      "text": "My dentist is Doctor Okafor.",
+      "at": 1792934264717,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934278258
+    },
+    {
+      "id": "telegram:8989505249:update:6236252",
+      "update": 6236252,
+      "text": "The blue kayak is stored in bay C at the marina.",
+      "at": 1792934299982,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934309041
+    },
+    {
+      "id": "telegram:8989505249:update:6236253",
+      "update": 6236253,
+      "text": "My favourite tea is smoked lapsang.",
+      "at": 1792934324535,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934333750
+    },
+    {
+      "id": "telegram:8989505249:update:6236254",
+      "update": 6236254,
+      "text": "The book club meets on the second Thursday.",
+      "at": 1792934349114,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934363871
+    },
+    {
+      "id": "telegram:8989505249:update:6236255",
+      "update": 6236255,
+      "text": "The neighbour's cat is called Biscuit.",
+      "at": 1792934384204,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934393233
+    },
+    {
+      "id": "telegram:8989505249:update:6236256",
+      "update": 6236256,
+      "text": "Our street's recycling goes out on Tuesday nights.",
+      "at": 1792934409293,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934423705
+    },
+    {
+      "id": "telegram:8989505249:update:6236257",
+      "update": 6236257,
+      "text": "My library card number ends in 3317.",
+      "at": 1792934445018,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934454083
+    },
+    {
+      "id": "telegram:8989505249:update:6236258",
+      "update": 6236258,
+      "text": "The car's tyre pressure should be 34 psi.",
+      "at": 1792934469797,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934478634
+    },
+    {
+      "id": "telegram:8989505249:update:6236259",
+      "update": 6236259,
+      "text": "My grandmother's ring is in the cedar box.",
+      "at": 1792934517639,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934526583
+    },
+    {
+      "id": "telegram:8989505249:update:6236260",
+      "update": 6236260,
+      "text": "The pottery class is taught by Ines.",
+      "at": 1792934547173,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934566166
+    },
+    {
+      "id": "telegram:8989505249:update:6236261",
+      "update": 6236261,
+      "text": "My running shoes are size 44.",
+      "at": 1792934583343,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934592426
+    },
+    {
+      "id": "telegram:8989505249:update:6236262",
+      "update": 6236262,
+      "text": "The Lisbon trip flight leaves from gate B12.",
+      "at": 1792934607910,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934618923
+    },
+    {
+      "id": "telegram:8989505249:update:6236263",
+      "update": 6236263,
+      "text": "The piano tuner comes every April.",
+      "at": 1792934668512,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934679039
+    },
+    {
+      "id": "telegram:8989505249:update:6236264",
+      "update": 6236264,
+      "text": "My sourdough starter is named Clint.",
+      "at": 1792934693051,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934702663
+    },
+    {
+      "id": "telegram:8989505249:update:6236265",
+      "update": 6236265,
+      "text": "The garage door remote uses a CR2032 battery.",
+      "at": 1792934717942,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934729335
+    },
+    {
+      "id": "telegram:8989505249:update:6236266",
+      "update": 6236266,
+      "text": "My first car was a yellow Fiat Panda.",
+      "at": 1792934742591,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934753539
+    },
+    {
+      "id": "telegram:8989505249:update:6236267",
+      "update": 6236267,
+      "text": "The choir rehearses in room 214.",
+      "at": 1792934767295,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934774362
+    },
+    {
+      "id": "telegram:8989505249:update:6236268",
+      "update": 6236268,
+      "text": "The fern on the landing needs water every Sunday.",
+      "at": 1792934792166,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934805458
+    },
+    {
+      "id": "telegram:8989505249:update:6236269",
+      "update": 6236269,
+      "text": "The hallway clock runs four minutes fast.",
+      "at": 1792934827418,
+      "reply": "Saved the requested fact. Upcoming: The fern on the landing needs water every Sunday. (2026-10-25).",
+      "sentAt": 1792934838979
+    },
+    {
+      "id": "telegram:8989505249:update:6236270",
+      "update": 6236270,
+      "text": "The farmers market stall I like sells quince jam.",
+      "at": 1792934852257,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792934861316
+    },
+    {
+      "id": "telegram:8989505249:update:6236271",
+      "update": 6236271,
+      "text": "The chess club's treasurer is Mr. Albescu.",
+      "at": 1792934876868,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792935063533
+    },
+    {
+      "id": "telegram:8989505249:update:6236272",
+      "update": 6236272,
+      "text": "The spare cabin key hangs behind the barometer.",
+      "at": 1792934901473,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792935074204
+    },
+    {
+      "id": "telegram:8989505249:update:6236273",
+      "update": 6236273,
+      "text": "My cousin Tomas lives in Ghent.",
+      "at": 1792935095513,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792935107230
+    },
+    {
+      "id": "telegram:8989505249:update:6236274",
+      "update": 6236274,
+      "text": "The umbrella I keep at work is orange.",
+      "at": 1792935130693,
+      "reply": "Saved the requested fact.",
+      "sentAt": 1792935142811
+    },
+    {
+      "id": "telegram:8989505249:update:6236275",
+      "update": 6236275,
+      "text": "Garden log 1: a quiet note for the record, nothing to act on. Row 1 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the beans looked",
+      "at": 1792935166091,
+      "reply": "Noted, Justin. Rows 1 to 10 of the beans are all steady: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Your message cut off at \"Row 11 of the beans looked\", so I don't know how row 11 or any later rows did. Send the rest whenever you like.\n\nWhile you're watering: today is Sunday (2026-10-25), so the fern on the landing is due for water too.",
+      "sentAt": 1792935188558
+    },
+    {
+      "id": "telegram:8989505249:update:6236276",
+      "update": 6236276,
+      "text": "Garden log 2: a quiet note for the record, nothing to act on. Row 1 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the basil looked",
+      "at": 1792935212289,
+      "reply": "Noted, Justin. Rows 1 to 10 of the basil are all steady, with the same care as the beans: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain.\n\nThis log also cut off at \"Row 11 of the basil looked\", the same place as the beans log. That looks like a length limit, not chance. Sending each log in two shorter messages should get the rest through.",
+      "sentAt": 1792935230218
+    },
+    {
+      "id": "telegram:8989505249:update:6236277",
+      "update": 6236277,
+      "text": "Garden log 3: a quiet note for the record, nothing to act on. Row 1 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935247769,
+      "reply": "Noted, Justin. Rows 1 to 10 of the squash are all steady: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. This one came through complete.\n\nI was probably wrong about a length limit. This log is about as long as the other two and arrived whole, so I'm not sure why the beans and basil logs stopped at \"Row 11\". If those had more rows, resend them and I'll add them.",
+      "sentAt": 1792935267730
+    },
+    {
+      "id": "telegram:8989505249:update:6236278",
+      "update": 6236278,
+      "text": "Garden log 4: a quiet note for the record, nothing to act on. Row 1 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935282634,
+      "reply": "Noted, Justin. Rows 1 to 10 of the lettuce are all steady: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. This log came through complete, like the squash one.",
+      "sentAt": 1792935293463
+    },
+    {
+      "id": "telegram:8989505249:update:6236279",
+      "update": 6236279,
+      "text": "Garden log 5: a quiet note for the record, nothing to act on. Row 1 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935308176,
+      "reply": "Noted, Justin. Rows 1 to 10 of the peppers are all steady: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. This log came through complete too.",
+      "sentAt": 1792935317775
+    },
+    {
+      "id": "telegram:8989505249:update:6236280",
+      "update": 6236280,
+      "text": "Garden log 6: a quiet note for the record, nothing to act on. Row 1 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the",
+      "at": 1792935333508,
+      "reply": "Noted, Justin. Rows 1 to 9 of the marigolds are all steady: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Row 10 matches up to the point where your message cut off, at \"soil loose after the\". It's probably the same light rain as the other rows, but that last bit didn't come through.",
+      "sentAt": 1792935343750
+    },
+    {
+      "id": "telegram:8989505249:update:6236281",
+      "update": 6236281,
+      "text": "Garden log 7: a quiet note for the record, nothing to act on. Row 1 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935358347,
+      "reply": "Noted, Justin. Rows 1 to 10 of the carrots are all steady: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. This log came through complete.",
+      "sentAt": 1792935367517
+    },
+    {
+      "id": "telegram:8989505249:update:6236282",
+      "update": 6236282,
+      "text": "Garden log 8: a quiet note for the record, nothing to act on. Row 1 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rai",
+      "at": 1792935383317,
+      "reply": "Noted, Justin. Rows 1 to 10 of the tomatoes are all steady: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. The very end of row 10 got clipped (\"light rai\"), but only a letter or two is missing, so the note is clear.",
+      "sentAt": 1792935392442
+    },
+    {
+      "id": "telegram:8989505249:update:6236283",
+      "update": 6236283,
+      "text": "Garden log 9: a quiet note for the record, nothing to act on. Row 1 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the beans looked",
+      "at": 1792935408298,
+      "reply": "Noted, Justin. Rows 1 to 10 of the beans are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain.\n\nThis is the same as Garden log 1, and it stops in the same place, at \"Row 11 of the beans looked\". So if there's more about row 11, it isn't reaching me, and I don't know why. If row 11 matters, you could send it as its own short message.",
+      "sentAt": 1792935427908
+    },
+    {
+      "id": "telegram:8989505249:update:6236284",
+      "update": 6236284,
+      "text": "Garden log 10: a quiet note for the record, nothing to act on. Row 1 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the basil looked",
+      "at": 1792935443510,
+      "reply": "Noted, Justin. Rows 1 to 10 of the basil are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain.\n\nLike Garden log 2, this one stops at \"Row 11 of the basil looked\", so I still don't have row 11 for the basil. If it matters, send it as its own short message.",
+      "sentAt": 1792935463915
+    },
+    {
+      "id": "telegram:8989505249:update:6236285",
+      "update": 6236285,
+      "text": "Garden log 11: a quiet note for the record, nothing to act on. Row 1 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935478994,
+      "reply": "Noted, Justin. Rows 1 to 10 of the squash are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden log 3, this one came through complete.",
+      "sentAt": 1792935488105
+    },
+    {
+      "id": "telegram:8989505249:update:6236286",
+      "update": 6236286,
+      "text": "Garden log 12: a quiet note for the record, nothing to act on. Row 1 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935503882,
+      "reply": "Noted, Justin. Rows 1 to 10 of the lettuce are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden log 4, this one came through complete.",
+      "sentAt": 1792935510704
+    },
+    {
+      "id": "telegram:8989505249:update:6236287",
+      "update": 6236287,
+      "text": "Garden log 13: a quiet note for the record, nothing to act on. Row 1 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935528726,
+      "reply": "Noted, Justin. Rows 1 to 10 of the peppers are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden log 5, this one came through complete.",
+      "sentAt": 1792935539732
+    },
+    {
+      "id": "telegram:8989505249:update:6236288",
+      "update": 6236288,
+      "text": "Garden log 14: a quiet note for the record, nothing to act on. Row 1 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after th",
+      "at": 1792935553734,
+      "reply": "Noted, Justin. Rows 1 to 9 of the marigolds are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Row 10 matches up to the point where the message cut off, at \"soil loose after th\". Garden log 6 stopped at almost the same spot. Row 10 is most likely the same as the others, but the end of it didn't reach me.",
+      "sentAt": 1792935563469
+    },
+    {
+      "id": "telegram:8989505249:update:6236289",
+      "update": 6236289,
+      "text": "Garden log 15: a quiet note for the record, nothing to act on. Row 1 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935578528,
+      "reply": "Noted, Justin. Rows 1 to 10 of the carrots are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden log 7, this one came through complete.",
+      "sentAt": 1792935587011
+    },
+    {
+      "id": "telegram:8989505249:update:6236290",
+      "update": 6236290,
+      "text": "Garden log 16: a quiet note for the record, nothing to act on. Row 1 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light ra",
+      "at": 1792935603517,
+      "reply": "Noted, Justin. Rows 1 to 10 of the tomatoes are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Garden log 8 got clipped at the very end too, and this one cuts off at \"light ra\". Only a couple of letters are missing, so the note is clear.",
+      "sentAt": 1792935615191
+    },
+    {
+      "id": "telegram:8989505249:update:6236291",
+      "update": 6236291,
+      "text": "Garden log 17: a quiet note for the record, nothing to act on. Row 1 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the beans looked",
+      "at": 1792935628778,
+      "reply": "Noted, Justin. Rows 1 to 10 of the beans are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 1 and 9, this one stops at \"Row 11 of the beans looked\", so I still don't have row 11 for the beans.",
+      "sentAt": 1792935640188
+    },
+    {
+      "id": "telegram:8989505249:update:6236292",
+      "update": 6236292,
+      "text": "Garden log 18: a quiet note for the record, nothing to act on. Row 1 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the basil looked",
+      "at": 1792935653570,
+      "reply": "Noted, Justin. Rows 1 to 10 of the basil are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 2 and 10, this one stops at \"Row 11 of the basil looked\", so I still don't have row 11 for the basil.",
+      "sentAt": 1792935661101
+    },
+    {
+      "id": "telegram:8989505249:update:6236293",
+      "update": 6236293,
+      "text": "Garden log 19: a quiet note for the record, nothing to act on. Row 1 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935678475,
+      "reply": "Noted, Justin. Rows 1 to 10 of the squash are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 3 and 11, this one came through complete.",
+      "sentAt": 1792935684368
+    },
+    {
+      "id": "telegram:8989505249:update:6236294",
+      "update": 6236294,
+      "text": "Garden log 20: a quiet note for the record, nothing to act on. Row 1 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935703510,
+      "reply": "Noted, Justin. Rows 1 to 10 of the lettuce are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 4 and 12, this one came through complete.",
+      "sentAt": 1792935713180
+    },
+    {
+      "id": "telegram:8989505249:update:6236295",
+      "update": 6236295,
+      "text": "Garden log 21: a quiet note for the record, nothing to act on. Row 1 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935728332,
+      "reply": "Noted, Justin. Rows 1 to 10 of the peppers are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 5 and 13, this one came through complete.",
+      "sentAt": 1792935737458
+    },
+    {
+      "id": "telegram:8989505249:update:6236296",
+      "update": 6236296,
+      "text": "Garden log 22: a quiet note for the record, nothing to act on. Row 1 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after th",
+      "at": 1792935753154,
+      "reply": "Noted, Justin. Rows 1 to 9 of the marigolds are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Row 10 cuts off at \"soil loose after th\", the same place as Garden log 14. It's most likely the same as the other rows, but the end didn't reach me.",
+      "sentAt": 1792935764727
+    },
+    {
+      "id": "telegram:8989505249:update:6236297",
+      "update": 6236297,
+      "text": "Garden log 23: a quiet note for the record, nothing to act on. Row 1 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935777917,
+      "reply": "Noted, Justin. Rows 1 to 10 of the carrots are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 7 and 15, this one came through complete.",
+      "sentAt": 1792935787190
+    },
+    {
+      "id": "telegram:8989505249:update:6236298",
+      "update": 6236298,
+      "text": "Garden log 24: a quiet note for the record, nothing to act on. Row 1 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light ra",
+      "at": 1792935802698,
+      "reply": "Noted, Justin. Rows 1 to 10 of the tomatoes are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden log 16, this one cuts off at \"light ra\". Only a couple of letters are missing, so the note is clear.",
+      "sentAt": 1792935814828
+    },
+    {
+      "id": "telegram:8989505249:update:6236299",
+      "update": 6236299,
+      "text": "Garden log 25: a quiet note for the record, nothing to act on. Row 1 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the beans looked",
+      "at": 1792935837989,
+      "reply": "Noted, Justin. Rows 1 to 10 of the beans are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 1, 9 and 17, this one stops at \"Row 11 of the beans looked\", so I still don't have row 11 for the beans.",
+      "sentAt": 1792935847612
+    },
+    {
+      "id": "telegram:8989505249:update:6236300",
+      "update": 6236300,
+      "text": "Garden log 26: a quiet note for the record, nothing to act on. Row 1 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the basil looked",
+      "at": 1792935862895,
+      "reply": "Noted, Justin. Rows 1 to 10 of the basil are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 2, 10 and 18, this one stops at \"Row 11 of the basil looked\", so I still don't have row 11 for the basil.",
+      "sentAt": 1792935871971
+    },
+    {
+      "id": "telegram:8989505249:update:6236301",
+      "update": 6236301,
+      "text": "Garden log 27: a quiet note for the record, nothing to act on. Row 1 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935887777,
+      "reply": "Noted, Justin. Rows 1 to 10 of the squash are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 3, 11 and 19, this one came through complete.",
+      "sentAt": 1792935896969
+    },
+    {
+      "id": "telegram:8989505249:update:6236302",
+      "update": 6236302,
+      "text": "Garden log 28: a quiet note for the record, nothing to act on. Row 1 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935917434,
+      "reply": "Noted, Justin. Rows 1 to 10 of the lettuce are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 4, 12 and 20, this one came through complete.",
+      "sentAt": 1792935927355
+    },
+    {
+      "id": "telegram:8989505249:update:6236303",
+      "update": 6236303,
+      "text": "Garden log 29: a quiet note for the record, nothing to act on. Row 1 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935942540,
+      "reply": "Earlier conversation up to #6236271 is now summarized for me; your previous message (#6236302, 2026-10-25 06:45 PDT) was answered. Noted, Justin. Rows 1 to 10 of the peppers are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 5, 13 and 21, this one came through complete.",
+      "sentAt": 1792935949589
+    },
+    {
+      "id": "telegram:8989505249:update:6236304",
+      "update": 6236304,
+      "text": "Garden log 30: a quiet note for the record, nothing to act on. Row 1 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after th",
+      "at": 1792935967509,
+      "reply": "Noted, Justin. Rows 1 to 9 of the marigolds are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Row 10 cuts off at \"soil loose after th\", the same place as Garden logs 14 and 22. It's most likely the same as the other rows, but the end didn't reach me.",
+      "sentAt": 1792935977679
+    },
+    {
+      "id": "telegram:8989505249:update:6236305",
+      "update": 6236305,
+      "text": "Garden log 31: a quiet note for the record, nothing to act on. Row 1 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792935992429,
+      "reply": "Noted, Justin. Rows 1 to 10 of the carrots are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 7, 15 and 23, this one came through complete.",
+      "sentAt": 1792936002162
+    },
+    {
+      "id": "telegram:8989505249:update:6236306",
+      "update": 6236306,
+      "text": "Garden log 32: a quiet note for the record, nothing to act on. Row 1 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light ra",
+      "at": 1792936017387,
+      "reply": "Noted, Justin. Rows 1 to 10 of the tomatoes are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 16 and 24, this one cuts off at \"light ra\". Only a couple of letters are missing, so the note is clear.",
+      "sentAt": 1792936026457
+    },
+    {
+      "id": "telegram:8989505249:update:6236307",
+      "update": 6236307,
+      "text": "Garden log 33: a quiet note for the record, nothing to act on. Row 1 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the beans looked",
+      "at": 1792936042191,
+      "reply": "Noted, Justin. Rows 1 to 10 of the beans are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 1, 9, 17 and 25, this one stops at \"Row 11 of the beans looked\", so I still don't have row 11 for the beans.",
+      "sentAt": 1792936051367
+    },
+    {
+      "id": "telegram:8989505249:update:6236308",
+      "update": 6236308,
+      "text": "Garden log 34: a quiet note for the record, nothing to act on. Row 1 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the basil looked",
+      "at": 1792936067163,
+      "reply": "Noted, Justin. Rows 1 to 10 of the basil are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 2, 10, 18 and 26, this one stops at \"Row 11 of the basil looked\", so I still don't have row 11 for the basil.",
+      "sentAt": 1792936077165
+    },
+    {
+      "id": "telegram:8989505249:update:6236309",
+      "update": 6236309,
+      "text": "Garden log 35: a quiet note for the record, nothing to act on. Row 1 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792936092033,
+      "reply": "Noted, Justin. Rows 1 to 10 of the squash are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 3, 11, 19 and 27, this one came through complete.",
+      "sentAt": 1792936099724
+    },
+    {
+      "id": "telegram:8989505249:update:6236310",
+      "update": 6236310,
+      "text": "Garden log 36: a quiet note for the record, nothing to act on. Row 1 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792936116986,
+      "reply": "Noted, Justin. Rows 1 to 10 of the lettuce are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 4, 12, 20 and 28, this one came through complete.",
+      "sentAt": 1792936126121
+    },
+    {
+      "id": "telegram:8989505249:update:6236311",
+      "update": 6236311,
+      "text": "Garden log 37: a quiet note for the record, nothing to act on. Row 1 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792936141812,
+      "reply": "Noted, Justin. Rows 1 to 10 of the peppers are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 5, 13, 21 and 29, this one came through complete.",
+      "sentAt": 1792936228298
+    },
+    {
+      "id": "telegram:8989505249:update:6236312",
+      "update": 6236312,
+      "text": "Garden log 38: a quiet note for the record, nothing to act on. Row 1 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after th",
+      "at": 1792936251925,
+      "reply": "Noted, Justin. Rows 1 to 9 of the marigolds are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Row 10 cuts off at \"soil loose after th\", the same place as Garden logs 14, 22 and 30. It's most likely the same as the other rows, but the end didn't reach me.",
+      "sentAt": 1792936261297
+    },
+    {
+      "id": "telegram:8989505249:update:6236313",
+      "update": 6236313,
+      "text": "Garden log 39: a quiet note for the record, nothing to act on. Row 1 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792936276910,
+      "reply": "Noted, Justin. Rows 1 to 10 of the carrots are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 7, 15, 23 and 31, this one came through complete.",
+      "sentAt": 1792936285841
+    },
+    {
+      "id": "telegram:8989505249:update:6236314",
+      "update": 6236314,
+      "text": "Garden log 40: a quiet note for the record, nothing to act on. Row 1 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light ra",
+      "at": 1792936301995,
+      "reply": "Noted, Justin. Rows 1 to 10 of the tomatoes are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 16, 24 and 32, this one cuts off at \"light ra\". Only a couple of letters are missing, so the note is clear.",
+      "sentAt": 1792936308920
+    },
+    {
+      "id": "telegram:8989505249:update:6236315",
+      "update": 6236315,
+      "text": "Garden log 41: a quiet note for the record, nothing to act on. Row 1 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the beans looked",
+      "at": 1792936326966,
+      "reply": "Noted, Justin. Rows 1 to 10 of the beans are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 1, 9, 17, 25 and 33, this one stops at \"Row 11 of the beans looked\", so I still don't have row 11 for the beans.",
+      "sentAt": 1792936337144
+    },
+    {
+      "id": "telegram:8989505249:update:6236316",
+      "update": 6236316,
+      "text": "Garden log 42: a quiet note for the record, nothing to act on. Row 1 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the basil looked",
+      "at": 1792936352030,
+      "reply": "Noted, Justin. Rows 1 to 10 of the basil are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 2, 10, 18, 26 and 34, this one stops at \"Row 11 of the basil looked\", so I still don't have row 11 for the basil.",
+      "sentAt": 1792936362635
+    },
+    {
+      "id": "telegram:8989505249:update:6236317",
+      "update": 6236317,
+      "text": "Garden log 43: a quiet note for the record, nothing to act on. Row 1 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792936376927,
+      "reply": "Noted, Justin. Rows 1 to 10 of the squash are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 3, 11, 19, 27 and 35, this one came through complete.",
+      "sentAt": 1792936388023
+    },
+    {
+      "id": "telegram:8989505249:update:6236318",
+      "update": 6236318,
+      "text": "Garden log 44: a quiet note for the record, nothing to act on. Row 1 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792936402069,
+      "reply": "Noted, Justin. Rows 1 to 10 of the lettuce are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 4, 12, 20, 28 and 36, this one came through complete.",
+      "sentAt": 1792936412576
+    },
+    {
+      "id": "telegram:8989505249:update:6236319",
+      "update": 6236319,
+      "text": "Garden log 45: a quiet note for the record, nothing to act on. Row 1 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792936426972,
+      "reply": "Noted, Justin. Rows 1 to 10 of the peppers are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 5, 13, 21, 29 and 37, this one came through complete.",
+      "sentAt": 1792936436100
+    },
+    {
+      "id": "telegram:8989505249:update:6236320",
+      "update": 6236320,
+      "text": "Garden log 46: a quiet note for the record, nothing to act on. Row 1 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after th",
+      "at": 1792936452000,
+      "reply": "Noted, Justin. Rows 1 to 9 of the marigolds are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Row 10 cuts off at \"soil loose after th\", the same place as Garden logs 14, 22, 30 and 38. It's probably the same as the other rows, but the end of it didn't come through.",
+      "sentAt": 1792936460908
+    },
+    {
+      "id": "telegram:8989505249:update:6236321",
+      "update": 6236321,
+      "text": "Garden log 47: a quiet note for the record, nothing to act on. Row 1 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792936514237,
+      "reply": "Noted, Justin. Rows 1 to 10 of the carrots are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 7, 15, 23, 31 and 39, this one came through complete.",
+      "sentAt": 1792936529292
+    },
+    {
+      "id": "telegram:8989505249:update:6236322",
+      "update": 6236322,
+      "text": "Garden log 48: a quiet note for the record, nothing to act on. Row 1 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light ra",
+      "at": 1792936550400,
+      "reply": "Noted, Justin. Rows 1 to 10 of the tomatoes are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 16, 24, 32 and 40, this one cuts off at \"light ra\". Only a couple of letters are missing, so the note is clear.",
+      "sentAt": 1792936562808
+    },
+    {
+      "id": "telegram:8989505249:update:6236323",
+      "update": 6236323,
+      "text": "Garden log 49: a quiet note for the record, nothing to act on. Row 1 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the beans looked",
+      "at": 1792936586042,
+      "reply": "Got it, Justin. Rows 1 to 10 of the beans are steady again. They were watered at dawn, the mulch is still damp, one stake was retied, there are no pests, and the soil is loose after the light rain. This log stops at \"Row 11 of the beans looked\", just like Garden logs 1, 9, 17, 25, 33 and 41, so I still don't know how row 11 of the beans is doing.",
+      "sentAt": 1792936595329
+    },
+    {
+      "id": "telegram:8989505249:update:6236324",
+      "update": 6236324,
+      "text": "Garden log 50: a quiet note for the record, nothing to act on. Row 1 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the basil looked",
+      "at": 1792936651559,
+      "reply": "Got it, Justin. Rows 1 to 10 of the basil are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. This log stops at \"Row 11 of the basil looked\", like Garden logs 2, 10, 18, 26, 34 and 42, so I still don't know how row 11 of the basil is doing.",
+      "sentAt": 1792936661698
+    },
+    {
+      "id": "telegram:8989505249:update:6236325",
+      "update": 6236325,
+      "text": "Garden log 51: a quiet note for the record, nothing to act on. Row 1 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792936676533,
+      "reply": "Noted, Justin. Rows 1 to 10 of the squash are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 3, 11, 19, 27, 35 and 43, this one came through complete.",
+      "sentAt": 1792936688263
+    },
+    {
+      "id": "telegram:8989505249:update:6236326",
+      "update": 6236326,
+      "text": "Garden log 52: a quiet note for the record, nothing to act on. Row 1 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792936701689,
+      "reply": "Noted, Justin. Rows 1 to 10 of the lettuce are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 4, 12, 20, 28, 36 and 44, this one came through complete.",
+      "sentAt": 1792936724846
+    },
+    {
+      "id": "telegram:8989505249:update:6236327",
+      "update": 6236327,
+      "text": "Garden log 53: a quiet note for the record, nothing to act on. Row 1 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the peppers looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792936748186,
+      "reply": "Noted, Justin. Rows 1 to 10 of the peppers are steady again. They were watered at dawn, the mulch is still damp, one stake was retied, there are no pests, and the soil is loose after the light rain. This log came through complete, like Garden logs 5, 13, 21, 29, 37 and 45.",
+      "sentAt": 1792936757280
+    },
+    {
+      "id": "telegram:8989505249:update:6236328",
+      "update": 6236328,
+      "text": "Garden log 54: a quiet note for the record, nothing to act on. Row 1 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the marigolds looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after th",
+      "at": 1792936773277,
+      "reply": "Noted, Justin. Rows 1 to 9 of the marigolds are steady again. They were watered at dawn, the mulch is still damp, one stake was retied, there are no pests, and the soil is loose after the light rain. Row 10 cuts off at \"soil loose after th\", the same place as Garden logs 14, 22, 30, 38 and 46. It's probably the same as the other rows, but the end of it didn't reach me.",
+      "sentAt": 1792936779388
+    },
+    {
+      "id": "telegram:8989505249:update:6236329",
+      "update": 6236329,
+      "text": "Garden log 55: a quiet note for the record, nothing to act on. Row 1 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the carrots looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792936798337,
+      "reply": "Noted, Justin. Rows 1 to 10 of the carrots are steady again. They were watered at dawn, the mulch is still damp, one stake was retied, there are no pests, and the soil is loose after the light rain. This log came through complete, like Garden logs 7, 15, 23, 31, 39 and 47.",
+      "sentAt": 1792936809118
+    },
+    {
+      "id": "telegram:8989505249:update:6236330",
+      "update": 6236330,
+      "text": "Garden log 56: a quiet note for the record, nothing to act on. Row 1 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the tomatoes looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light ra",
+      "at": 1792936825195,
+      "reply": "Noted, Justin. Rows 1 to 10 of the tomatoes are steady again. They were watered at dawn, the mulch is still damp, one stake was retied, there are no pests, and the soil is loose after the light rain. This one cuts off at \"light ra\", like Garden logs 16, 24, 32, 40 and 48. Only a couple of letters are missing, so the note is clear.",
+      "sentAt": 1792936836491
+    },
+    {
+      "id": "telegram:8989505249:update:6236331",
+      "update": 6236331,
+      "text": "Garden log 57: a quiet note for the record, nothing to act on. Row 1 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the beans looked",
+      "at": 1792936850284,
+      "reply": "Noted, Justin. Rows 1 to 10 of the beans are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. Like Garden logs 1, 9, 17, 25, 33, 41 and 49, this one stops at \"Row 11 of the beans looked\", so I still don't know how row 11 of the beans is doing.",
+      "sentAt": 1792936859624
+    },
+    {
+      "id": "telegram:8989505249:update:6236332",
+      "update": 6236332,
+      "text": "Garden log 58: a quiet note for the record, nothing to act on. Row 1 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the basil looked",
+      "at": 1792936875451,
+      "reply": "The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.",
+      "sentAt": 1792936898355
+    },
+    {
+      "id": "telegram:8989505249:update:6236333",
+      "update": 6236333,
+      "text": "Garden log 59: a quiet note for the record, nothing to act on. Row 1 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the squash looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792936922541,
+      "reply": "Earlier conversation up to #6236271 is now summarized for me; your previous message (#6236332, 2026-10-25 07:01 PDT) is still open (loss notice delivered; model UNKNOWN as Telegram message 12478, not an answer). Noted, Justin. Rows 1 to 10 of the squash are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. This log came through complete, like Garden logs 3, 11, 19, 27, 35, 43 and 51.\n\nMy answer to Garden log 58 (basil) didn't go through, so here it is: rows 1 to 10 of the basil were steady too. That log also stopped at \"Row 11 of the basil looked\", so I still don't know how row 11 of the basil is doing.",
+      "sentAt": 1792936937427
+    },
+    {
+      "id": "telegram:8989505249:update:6236334",
+      "update": 6236334,
+      "text": "Garden log 60: a quiet note for the record, nothing to act on. Row 1 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the lettuce looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain.",
+      "at": 1792936958349,
+      "reply": "Noted, Justin. Rows 1 to 10 of the lettuce are steady again: watered at dawn, mulch still damp, one stake retied, no pests, and the soil loose after the light rain. This log came through complete, like Garden logs 4, 12, 20, 28, 36, 44 and 52.",
+      "sentAt": 1792936969536
+    }
+  ],
+  "summaries": [
+    {
+      "kind": "summary",
+      "through": 6236252,
+      "text": "Main chat, 2026-10-25 (PDT), all statements by the operator Justin:\n- 06:16: Justin said locker 17 at the swim club has combination 4821. The reply confirmed it.\n- 06:16: Justin said his niece Priya turns nine in March. The exact day was not given, and the reply invited it but did not require it.\n- 06:17: Justin said his dentist is Doctor Okafor. The reply said the fact was saved.\n- 06:18: Justin said the blue kayak is stored in bay C at the marina. The reply said the fact was saved.\nNo commitments, reminders or open questions are pending. All replies were recorded as Telegram API accepted.",
+      "memoryItems": [
+        {
+          "source": "telegram:8989505249:update:6236249",
+          "quote": "Locker 17 at the swim club has combination 4821."
+        },
+        {
+          "source": "telegram:8989505249:update:6236250",
+          "quote": "My niece Priya turns nine in March."
+        },
+        {
+          "source": "telegram:8989505249:update:6236251",
+          "quote": "My dentist is Doctor Okafor."
+        },
+        {
+          "source": "telegram:8989505249:update:6236252",
+          "quote": "The blue kayak is stored in bay C at the marina."
+        }
+      ],
+      "concepts": [
+        {
+          "source": "telegram:8989505249:update:6236249",
+          "terms": [
+            "lock code",
+            "gym locker",
+            "pool",
+            "swimming",
+            "padlock",
+            "password"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236250",
+          "terms": [
+            "birthday",
+            "family",
+            "relative",
+            "age",
+            "kid",
+            "spring"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236251",
+          "terms": [
+            "teeth",
+            "dental",
+            "doctor",
+            "health care",
+            "appointment",
+            "physician"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236252",
+          "terms": [
+            "boat",
+            "storage",
+            "dock",
+            "paddling",
+            "harbor",
+            "where kept"
+          ]
+        }
+      ],
+      "faithfulness": {
+        "path": "subscription",
+        "verdict": "pass",
+        "score": null
+      },
+      "people": [
+        {
+          "name": "Priya",
+          "source": "telegram:8989505249:update:6236250",
+          "quote": "My niece Priya turns nine in March."
+        },
+        {
+          "name": "Doctor Okafor",
+          "source": "telegram:8989505249:update:6236251",
+          "quote": "My dentist is Doctor Okafor."
+        }
+      ],
+      "memory": [],
+      "commitments": [],
+      "state": "complete",
+      "at": 1792934907265
+    },
+    {
+      "kind": "summary",
+      "through": 6236256,
+      "text": "Main chat, 2026-10-25 (PDT), all statements by the operator Justin:\n- 06:16: Justin said locker 17 at the swim club has combination 4821. The reply confirmed it.\n- 06:16: Justin said his niece Priya turns nine in March. The exact day was not given; the reply invited it but did not require it.\n- 06:17: Justin said his dentist is Doctor Okafor. The reply said it was saved.\n- 06:18: Justin said the blue kayak is stored in bay C at the marina. The reply said it was saved.\n- 06:18: Justin said his favourite tea is smoked lapsang. The reply said it was saved.\n- 06:19: Justin said the book club meets on the second Thursday. The reply said it was saved.\n- 06:19: Justin said the neighbour's cat is called Biscuit. The reply said it was saved.\n- 06:20: Justin said their street's recycling goes out on Tuesday nights. The reply said it was saved.\nNo commitments, reminders or open questions are pending. All replies were recorded as Telegram API accepted.",
+      "memoryItems": [
+        {
+          "source": "telegram:8989505249:update:6236249",
+          "quote": "Locker 17 at the swim club has combination 4821."
+        },
+        {
+          "source": "telegram:8989505249:update:6236250",
+          "quote": "My niece Priya turns nine in March."
+        },
+        {
+          "source": "telegram:8989505249:update:6236251",
+          "quote": "My dentist is Doctor Okafor."
+        },
+        {
+          "source": "telegram:8989505249:update:6236252",
+          "quote": "The blue kayak is stored in bay C at the marina."
+        },
+        {
+          "source": "telegram:8989505249:update:6236253",
+          "quote": "My favourite tea is smoked lapsang."
+        },
+        {
+          "source": "telegram:8989505249:update:6236254",
+          "quote": "The book club meets on the second Thursday."
+        },
+        {
+          "source": "telegram:8989505249:update:6236255",
+          "quote": "The neighbour's cat is called Biscuit."
+        },
+        {
+          "source": "telegram:8989505249:update:6236256",
+          "quote": "Our street's recycling goes out on Tuesday nights."
+        }
+      ],
+      "concepts": [
+        {
+          "source": "telegram:8989505249:update:6236253",
+          "terms": [
+            "drink preference",
+            "beverage",
+            "favorite tea",
+            "lapsang souchong",
+            "tea type"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236254",
+          "terms": [
+            "reading group",
+            "meeting schedule",
+            "monthly meetup",
+            "books",
+            "club date"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236255",
+          "terms": [
+            "pet name",
+            "neighbor's pet",
+            "kitty",
+            "animal next door",
+            "cat name"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236256",
+          "terms": [
+            "bin day",
+            "waste collection",
+            "trash pickup",
+            "garbage schedule",
+            "weekly chore"
+          ]
+        }
+      ],
+      "faithfulness": {
+        "path": "subscription",
+        "verdict": "pass",
+        "score": null
+      },
+      "people": [],
+      "memory": [],
+      "commitments": [],
+      "state": "complete",
+      "at": 1792934926935
+    },
+    {
+      "kind": "summary",
+      "through": 6236260,
+      "text": "Main chat, 2026-10-25 (PDT). All statements are by the operator, Justin.\n- 06:16: locker 17 at the swim club has combination 4821.\n- 06:16: his niece Priya turns nine in March. He did not give the exact day; the reply invited it.\n- 06:17: his dentist is Doctor Okafor.\n- 06:18: the blue kayak is stored in bay C at the marina.\n- 06:18: his favourite tea is smoked lapsang.\n- 06:19: the book club meets on the second Thursday.\n- 06:19: the neighbour's cat is called Biscuit.\n- 06:20: their street's recycling goes out on Tuesday nights.\n- 06:20: his library card number ends in 3317.\n- 06:21: the car's tyre pressure should be 34 psi.\n- 06:21: his grandmother's ring is in the cedar box.\n- 06:22: the pottery class is taught by Ines.\nEach reply said the fact was saved. All replies were recorded as Telegram API accepted. No commitments, reminders or open questions are pending.",
+      "memoryItems": [
+        {
+          "source": "telegram:8989505249:update:6236249",
+          "quote": "Locker 17 at the swim club has combination 4821."
+        },
+        {
+          "source": "telegram:8989505249:update:6236250",
+          "quote": "My niece Priya turns nine in March."
+        },
+        {
+          "source": "telegram:8989505249:update:6236251",
+          "quote": "My dentist is Doctor Okafor."
+        },
+        {
+          "source": "telegram:8989505249:update:6236252",
+          "quote": "The blue kayak is stored in bay C at the marina."
+        },
+        {
+          "source": "telegram:8989505249:update:6236253",
+          "quote": "My favourite tea is smoked lapsang."
+        },
+        {
+          "source": "telegram:8989505249:update:6236254",
+          "quote": "The book club meets on the second Thursday."
+        },
+        {
+          "source": "telegram:8989505249:update:6236255",
+          "quote": "The neighbour's cat is called Biscuit."
+        },
+        {
+          "source": "telegram:8989505249:update:6236256",
+          "quote": "Our street's recycling goes out on Tuesday nights."
+        },
+        {
+          "source": "telegram:8989505249:update:6236257",
+          "quote": "My library card number ends in 3317."
+        },
+        {
+          "source": "telegram:8989505249:update:6236258",
+          "quote": "The car's tyre pressure should be 34 psi."
+        },
+        {
+          "source": "telegram:8989505249:update:6236259",
+          "quote": "My grandmother's ring is in the cedar box."
+        },
+        {
+          "source": "telegram:8989505249:update:6236260",
+          "quote": "The pottery class is taught by Ines."
+        }
+      ],
+      "concepts": [
+        {
+          "source": "telegram:8989505249:update:6236257",
+          "terms": [
+            "library",
+            "card digits",
+            "membership number",
+            "books",
+            "borrowing",
+            "id number"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236258",
+          "terms": [
+            "tire pressure",
+            "vehicle",
+            "wheels",
+            "inflation",
+            "maintenance",
+            "psi setting"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236259",
+          "terms": [
+            "jewelry",
+            "heirloom",
+            "family ring",
+            "storage location",
+            "wooden box",
+            "keepsake"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236260",
+          "terms": [
+            "ceramics",
+            "instructor",
+            "teacher",
+            "art class",
+            "clay",
+            "lessons"
+          ]
+        }
+      ],
+      "faithfulness": {
+        "path": "subscription",
+        "verdict": "pass",
+        "score": null
+      },
+      "people": [
+        {
+          "name": "Ines",
+          "source": "telegram:8989505249:update:6236260",
+          "quote": "The pottery class is taught by Ines."
+        }
+      ],
+      "memory": [],
+      "commitments": [],
+      "state": "complete",
+      "at": 1792934956322
+    },
+    {
+      "kind": "summary",
+      "through": 6236264,
+      "text": "Main chat, 2026-10-25 (PDT). All statements by the operator, Justin.\n- 06:16: locker 17 at the swim club has combination 4821.\n- 06:16: niece Priya turns nine in March; no exact day given, reply invited it.\n- 06:17: dentist is Doctor Okafor.\n- 06:18: blue kayak stored in bay C at the marina.\n- 06:18: favourite tea is smoked lapsang.\n- 06:19: book club meets on the second Thursday.\n- 06:19: neighbour's cat is called Biscuit.\n- 06:20: street's recycling goes out on Tuesday nights.\n- 06:20: library card number ends in 3317.\n- 06:21: car's tyre pressure should be 34 psi.\n- 06:21: grandmother's ring is in the cedar box.\n- 06:22: pottery class is taught by Ines.\n- 06:23: his running shoes are size 44.\n- 06:23: the Lisbon trip flight leaves from gate B12.\n- 06:24: the piano tuner comes every April.\n- 06:24: his sourdough starter is named Clint.\nEach reply said the fact was saved; all were recorded as Telegram API accepted. No commitments, reminders or open questions are pending.",
+      "memoryItems": [
+        {
+          "source": "telegram:8989505249:update:6236249",
+          "quote": "Locker 17 at the swim club has combination 4821."
+        },
+        {
+          "source": "telegram:8989505249:update:6236250",
+          "quote": "My niece Priya turns nine in March."
+        },
+        {
+          "source": "telegram:8989505249:update:6236251",
+          "quote": "My dentist is Doctor Okafor."
+        },
+        {
+          "source": "telegram:8989505249:update:6236252",
+          "quote": "The blue kayak is stored in bay C at the marina."
+        },
+        {
+          "source": "telegram:8989505249:update:6236253",
+          "quote": "My favourite tea is smoked lapsang."
+        },
+        {
+          "source": "telegram:8989505249:update:6236254",
+          "quote": "The book club meets on the second Thursday."
+        },
+        {
+          "source": "telegram:8989505249:update:6236255",
+          "quote": "The neighbour's cat is called Biscuit."
+        },
+        {
+          "source": "telegram:8989505249:update:6236256",
+          "quote": "Our street's recycling goes out on Tuesday nights."
+        },
+        {
+          "source": "telegram:8989505249:update:6236257",
+          "quote": "My library card number ends in 3317."
+        },
+        {
+          "source": "telegram:8989505249:update:6236258",
+          "quote": "The car's tyre pressure should be 34 psi."
+        },
+        {
+          "source": "telegram:8989505249:update:6236259",
+          "quote": "My grandmother's ring is in the cedar box."
+        },
+        {
+          "source": "telegram:8989505249:update:6236260",
+          "quote": "The pottery class is taught by Ines."
+        },
+        {
+          "source": "telegram:8989505249:update:6236261",
+          "quote": "My running shoes are size 44."
+        },
+        {
+          "source": "telegram:8989505249:update:6236262",
+          "quote": "The Lisbon trip flight leaves from gate B12."
+        },
+        {
+          "source": "telegram:8989505249:update:6236263",
+          "quote": "The piano tuner comes every April."
+        },
+        {
+          "source": "telegram:8989505249:update:6236264",
+          "quote": "My sourdough starter is named Clint."
+        }
+      ],
+      "concepts": [
+        {
+          "source": "telegram:8989505249:update:6236261",
+          "terms": [
+            "shoe size",
+            "sneakers",
+            "footwear",
+            "running gear",
+            "feet",
+            "trainers"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236262",
+          "terms": [
+            "portugal travel",
+            "airport",
+            "departure gate",
+            "boarding",
+            "vacation flight",
+            "trip"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236263",
+          "terms": [
+            "piano maintenance",
+            "instrument tuning",
+            "annual visit",
+            "spring appointment",
+            "music",
+            "technician"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236264",
+          "terms": [
+            "bread baking",
+            "sourdough name",
+            "fermentation",
+            "yeast culture",
+            "kitchen",
+            "baking"
+          ]
+        }
+      ],
+      "faithfulness": {
+        "path": "subscription",
+        "verdict": "pass",
+        "score": null
+      },
+      "people": [],
+      "memory": [],
+      "commitments": [],
+      "state": "complete",
+      "at": 1792934978892
+    },
+    {
+      "kind": "summary",
+      "through": 6236268,
+      "text": "Main chat, 2026-10-25 (PDT). All statements by the operator, Justin.\n- 06:16: locker 17 at swim club, combination 4821.\n- 06:16: niece Priya turns nine in March; no exact day given, reply invited it.\n- 06:17: dentist is Doctor Okafor.\n- 06:18: blue kayak in bay C at the marina; favourite tea smoked lapsang.\n- 06:19: book club meets second Thursday; neighbour's cat is Biscuit.\n- 06:20: street recycling out Tuesday nights; library card ends in 3317.\n- 06:21: car tyre pressure should be 34 psi; grandmother's ring in the cedar box.\n- 06:22: pottery class taught by Ines.\n- 06:23: running shoes size 44; Lisbon trip flight leaves from gate B12.\n- 06:24: piano tuner comes every April; sourdough starter named Clint.\n- 06:25: garage door remote uses a CR2032 battery; first car was a yellow Fiat Panda.\n- 06:26: choir rehearses in room 214; fern on the landing needs water every Sunday.\nEach reply said the fact was saved; all recorded as Telegram API accepted. No commitments, reminders or open questions pending.",
+      "memoryItems": [
+        {
+          "source": "telegram:8989505249:update:6236249",
+          "quote": "Locker 17 at the swim club has combination 4821."
+        },
+        {
+          "source": "telegram:8989505249:update:6236250",
+          "quote": "My niece Priya turns nine in March."
+        },
+        {
+          "source": "telegram:8989505249:update:6236251",
+          "quote": "My dentist is Doctor Okafor."
+        },
+        {
+          "source": "telegram:8989505249:update:6236252",
+          "quote": "The blue kayak is stored in bay C at the marina."
+        },
+        {
+          "source": "telegram:8989505249:update:6236253",
+          "quote": "My favourite tea is smoked lapsang."
+        },
+        {
+          "source": "telegram:8989505249:update:6236254",
+          "quote": "The book club meets on the second Thursday."
+        },
+        {
+          "source": "telegram:8989505249:update:6236255",
+          "quote": "The neighbour's cat is called Biscuit."
+        },
+        {
+          "source": "telegram:8989505249:update:6236256",
+          "quote": "Our street's recycling goes out on Tuesday nights."
+        },
+        {
+          "source": "telegram:8989505249:update:6236257",
+          "quote": "My library card number ends in 3317."
+        },
+        {
+          "source": "telegram:8989505249:update:6236258",
+          "quote": "The car's tyre pressure should be 34 psi."
+        },
+        {
+          "source": "telegram:8989505249:update:6236259",
+          "quote": "My grandmother's ring is in the cedar box."
+        },
+        {
+          "source": "telegram:8989505249:update:6236260",
+          "quote": "The pottery class is taught by Ines."
+        },
+        {
+          "source": "telegram:8989505249:update:6236261",
+          "quote": "My running shoes are size 44."
+        },
+        {
+          "source": "telegram:8989505249:update:6236262",
+          "quote": "The Lisbon trip flight leaves from gate B12."
+        },
+        {
+          "source": "telegram:8989505249:update:6236263",
+          "quote": "The piano tuner comes every April."
+        },
+        {
+          "source": "telegram:8989505249:update:6236264",
+          "quote": "My sourdough starter is named Clint."
+        },
+        {
+          "source": "telegram:8989505249:update:6236265",
+          "quote": "The garage door remote uses a CR2032 battery."
+        },
+        {
+          "source": "telegram:8989505249:update:6236266",
+          "quote": "My first car was a yellow Fiat Panda."
+        },
+        {
+          "source": "telegram:8989505249:update:6236267",
+          "quote": "The choir rehearses in room 214."
+        },
+        {
+          "source": "telegram:8989505249:update:6236268",
+          "quote": "The fern on the landing needs water every Sunday."
+        }
+      ],
+      "concepts": [
+        {
+          "source": "telegram:8989505249:update:6236265",
+          "terms": [
+            "coin cell",
+            "garage opener",
+            "battery type",
+            "clicker",
+            "replacement battery"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236266",
+          "terms": [
+            "first vehicle",
+            "old car",
+            "childhood car",
+            "automobile",
+            "car colour"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236267",
+          "terms": [
+            "singing group",
+            "rehearsal location",
+            "practice room",
+            "music",
+            "venue"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236268",
+          "terms": [
+            "houseplant",
+            "watering schedule",
+            "plant care",
+            "weekly chore",
+            "stairs plant"
+          ]
+        }
+      ],
+      "faithfulness": {
+        "path": "subscription",
+        "verdict": "pass",
+        "score": null
+      },
+      "people": [],
+      "memory": [],
+      "commitments": [],
+      "state": "complete",
+      "at": 1792935038115
+    },
+    {
+      "kind": "summary",
+      "through": 6236271,
+      "text": "Main chat, 2026-10-25 (PDT). All statements by the operator, Justin.\n- 06:16: locker 17 at swim club, combination 4821.\n- 06:16: niece Priya turns nine in March; no exact day given, reply invited it.\n- 06:17: dentist is Doctor Okafor.\n- 06:18: blue kayak in bay C at the marina; favourite tea smoked lapsang.\n- 06:19: book club meets second Thursday; neighbour's cat is Biscuit.\n- 06:20: street recycling out Tuesday nights; library card ends in 3317.\n- 06:21: car tyre pressure should be 34 psi; grandmother's ring in the cedar box.\n- 06:22: pottery class taught by Ines.\n- 06:23: running shoes size 44; Lisbon trip flight leaves from gate B12.\n- 06:24: piano tuner comes every April; sourdough starter named Clint.\n- 06:25: garage door remote uses a CR2032 battery; first car was a yellow Fiat Panda.\n- 06:26: choir rehearses in room 214; fern on the landing needs water every Sunday.\n- 06:27: hallway clock runs four minutes fast; liked farmers market stall sells quince jam.\n- 06:27: chess club's treasurer is Mr. Albescu; reply to this is still pending (not delivered).\nEarlier replies said each fact was saved; all recorded as Telegram API accepted. No commitments, reminders or open questions pending.\ntelegram:8989505249:update:6236269: The hallway clock runs four minutes fast.\ntelegram:8989505249:update:6236270: The farmers market stall I like sells quince jam.\ntelegram:8989505249:update:6236271: The chess club's treasurer is Mr. Albescu.",
+      "memoryItems": [
+        {
+          "source": "telegram:8989505249:update:6236249",
+          "quote": "Locker 17 at the swim club has combination 4821."
+        },
+        {
+          "source": "telegram:8989505249:update:6236250",
+          "quote": "My niece Priya turns nine in March."
+        },
+        {
+          "source": "telegram:8989505249:update:6236251",
+          "quote": "My dentist is Doctor Okafor."
+        },
+        {
+          "source": "telegram:8989505249:update:6236252",
+          "quote": "The blue kayak is stored in bay C at the marina."
+        },
+        {
+          "source": "telegram:8989505249:update:6236253",
+          "quote": "My favourite tea is smoked lapsang."
+        },
+        {
+          "source": "telegram:8989505249:update:6236254",
+          "quote": "The book club meets on the second Thursday."
+        },
+        {
+          "source": "telegram:8989505249:update:6236255",
+          "quote": "The neighbour's cat is called Biscuit."
+        },
+        {
+          "source": "telegram:8989505249:update:6236256",
+          "quote": "Our street's recycling goes out on Tuesday nights."
+        },
+        {
+          "source": "telegram:8989505249:update:6236257",
+          "quote": "My library card number ends in 3317."
+        },
+        {
+          "source": "telegram:8989505249:update:6236258",
+          "quote": "The car's tyre pressure should be 34 psi."
+        },
+        {
+          "source": "telegram:8989505249:update:6236259",
+          "quote": "My grandmother's ring is in the cedar box."
+        },
+        {
+          "source": "telegram:8989505249:update:6236260",
+          "quote": "The pottery class is taught by Ines."
+        },
+        {
+          "source": "telegram:8989505249:update:6236261",
+          "quote": "My running shoes are size 44."
+        },
+        {
+          "source": "telegram:8989505249:update:6236262",
+          "quote": "The Lisbon trip flight leaves from gate B12."
+        },
+        {
+          "source": "telegram:8989505249:update:6236263",
+          "quote": "The piano tuner comes every April."
+        },
+        {
+          "source": "telegram:8989505249:update:6236264",
+          "quote": "My sourdough starter is named Clint."
+        },
+        {
+          "source": "telegram:8989505249:update:6236265",
+          "quote": "The garage door remote uses a CR2032 battery."
+        },
+        {
+          "source": "telegram:8989505249:update:6236266",
+          "quote": "My first car was a yellow Fiat Panda."
+        },
+        {
+          "source": "telegram:8989505249:update:6236267",
+          "quote": "The choir rehearses in room 214."
+        },
+        {
+          "source": "telegram:8989505249:update:6236268",
+          "quote": "The fern on the landing needs water every Sunday."
+        }
+      ],
+      "concepts": [
+        {
+          "source": "telegram:8989505249:update:6236269",
+          "terms": [
+            "wall clock",
+            "time offset",
+            "clock accuracy",
+            "fast clock",
+            "hallway timepiece"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236270",
+          "terms": [
+            "preserves",
+            "favourite vendor",
+            "market stand",
+            "fruit spread",
+            "local market"
+          ]
+        },
+        {
+          "source": "telegram:8989505249:update:6236271",
+          "terms": [
+            "chess society",
+            "club finances",
+            "treasurer name",
+            "club officer",
+            "money keeper"
+          ]
+        }
+      ],
+      "faithfulness": {
+        "path": "subscription",
+        "verdict": "pass",
+        "score": null
+      },
+      "memoryFor": [
+        "telegram:8989505249:update:6236271"
+      ],
+      "people": [
+        {
+          "name": "Mr. Albescu",
+          "source": "telegram:8989505249:update:6236271",
+          "quote": "The chess club's treasurer is Mr. Albescu."
+        }
+      ],
+      "memory": [
+        {
+          "mode": "remember",
+          "source": "telegram:8989505249:update:6236271",
+          "quote": "The chess club's treasurer is Mr. Albescu.",
+          "trigger": "telegram:8989505249:update:6236271"
+        }
+      ],
+      "commitments": [],
+      "state": "complete",
+      "at": 1792935062406
+    }
+  ],
+  "failures": [
+    {
+      "kind": "summary-failed",
+      "format": 5,
+      "through": 6236268,
+      "reason": "summary faithfulness: full-context review found loss",
+      "faithfulness": {
+        "path": "jev",
+        "verdict": "undecided",
+        "score": 0.31,
+        "usage": {
+          "inputTokens": 4766,
+          "outputTokens": 21,
+          "charge": null
+        }
+      },
+      "state": "complete",
+      "at": 1792935009112
+    },
+    {
+      "kind": "summary-failed",
+      "format": 5,
+      "through": 6236275,
+      "state": "complete",
+      "failureClass": "malformed",
+      "usage": {
+        "inputTokens": 36987,
+        "outputTokens": 2412,
+        "charge": null,
+        "inputComplete": true
+      },
+      "at": 1792935692794
+    },
+    {
+      "kind": "summary-failed",
+      "format": 5,
+      "through": 6236275,
+      "state": "complete",
+      "failureClass": "malformed",
+      "usage": {
+        "inputTokens": 36921,
+        "outputTokens": 2175,
+        "charge": null,
+        "inputComplete": true
+      },
+      "at": 1792936320077
+    },
+    {
+      "kind": "summary-failed",
+      "format": 5,
+      "through": 6236276,
+      "reason": "summary faithfulness: full-context review found loss",
+      "faithfulness": {
+        "path": "jev",
+        "verdict": "undecided",
+        "score": 0.42,
+        "usage": {
+          "inputTokens": 7221,
+          "outputTokens": 21,
+          "charge": null
+        }
+      },
+      "state": "complete",
+      "at": 1792936959776
+    }
+  ],
+  "models": [
+    {
+      "id": "summary:6236276",
+      "judgment": "summary",
+      "output": "{\"reasoning\":\"No remember/correct/forget request, so memory is empty. Added the 3 new facts and the cousin Tomas. Both garden logs cut off at row 11 and were answered; no open commitments or questions.\",\"summary\":\"Main chat, 2026-10-25 (PDT). All statements are by the operator, Justin.\\n- 06:16-06:26: personal facts saved (locker, niece Priya, dentist, kayak, tea, book club, cat, recycling, library card, tyre psi, ring, pottery, shoes, Lisbon gate, piano tuner, starter, remote battery, first car, choir room, fern); exact clauses are kept in memoryItems.\\n- 06:27: the hallway clock runs four minutes fast; the farmers market stall he likes sells quince jam; the chess club's treasurer is Mr. Albescu. The reply to the Albescu message was earlier recorded as pending (not delivered).\\n- 06:28: the spare cabin key hangs behind the barometer. 06:31: his cousin Tomas lives in Ghent. 06:32: the umbrella he keeps at work is orange.\\n- 06:32: Garden log 1 (beans), \\\"nothing to act on\\\". Rows 1-10 were steady: watered at dawn, mulch damp, one stake retied, no pests, soil loose after light rain. The text cut off at \\\"Row 11 of the beans looked\\\". The reply invited the rest and noted the fern is due for water (Sunday).\\n- 06:33: Garden log 2 (basil), with identical rows 1-10, also cut off at row 11. The reply suggested a length limit and advised sending two shorter messages.\\nAll replies were recorded as Telegram API accepted. Row 11 and later rows are unknown. No commitments, reminders or open questions are pending.\",\"memory\":[],\"people\":[{\"name\":\"Tomas\",\"source\":\"telegram:8989505249:update:6236273\",\"quote\":\"My cousin Tomas lives in Ghent.\"}],\"personAttributes\":[{\"name\":\"Tomas\",\"attribute\":\"city\",\"value\":\"Ghent\",\"status\":\"current\",\"quote\":\"My cousin Tomas lives in Ghent.\"}],\"commitments\":[],\"closed\":[],\"memoryDisposition\":\"none\",\"questions\":[],\"memoryItems\":[{\"source\":\"telegram:8989505249:update:6236272\",\"quote\":\"The spare cabin key hangs behind the barometer.\"},{\"source\":\"telegram:8989505249:update:6236273\",\"quote\":\"My cousin Tomas lives in Ghent.\"},{\"source\":\"telegram:8989505249:update:6236274\",\"quote\":\"The umbrella I keep at work is orange.\"}],\"concepts\":[{\"source\":\"telegram:8989505249:update:6236272\",\"terms\":[\"cabin\",\"spare key\",\"hiding spot\",\"weather instrument\",\"house access\"]},{\"source\":\"telegram:8989505249:update:6236273\",\"terms\":[\"relative\",\"family\",\"belgium\",\"where cousin lives\",\"hometown\"]},{\"source\":\"telegram:8989505249:update:6236274\",\"terms\":[\"office\",\"rain gear\",\"colour\",\"workplace items\"]},{\"source\":\"telegram:8989505249:update:6236275\",\"terms\":[\"garden\",\"vegetables\",\"bean rows\",\"watering\",\"plant health\",\"truncated log\"]},{\"source\":\"telegram:8989505249:update:6236276\",\"terms\":[\"garden\",\"herbs\",\"basil rows\",\"watering\",\"plant health\",\"truncated log\"]}]}",
+      "outcome": "complete",
+      "usage": {
+        "inputTokens": 19234,
+        "outputTokens": 1832,
+        "charge": null
+      },
+      "at": 1792936942252
+    },
+    {
+      "id": "jev-summary-faithfulness:e1ac4a524c956547",
+      "judgment": "jev-summary-faithfulness",
+      "output": "{\"model\":\"jev-1.13.0\",\"answers\":{\"lost_memory\":{\"type\":\"noul\",\"noul\":0.42}},\"usage\":{\"input_tokens\":7221,\"output_tokens\":21}}",
+      "outcome": "complete",
+      "usage": {
+        "inputTokens": 7221,
+        "outputTokens": 21,
+        "charge": null
+      },
+      "at": 1792936942479
+    },
+    {
+      "id": "summary:6236276:review",
+      "judgment": "summary-review",
+      "output": "{\"reasoning\":\"Facts, person Tomas and the garden logs match. But the summary says all replies were accepted, while the Albescu reply was recorded pending, so its delivery is unknown.\",\"verdict\":\"violation\",\"reason\":\"Most coverage is faithful. The 06:16-06:26 facts are carried in memoryItems, and the 06:27 clock and quince jam facts are in the prose. So are the 06:28 cabin key, 06:31 Tomas in Ghent (also in people), the 06:32 orange umbrella, and both garden logs cut off at row 11 with the replies. However, the summary marks the reply to the 06:27 Mr. Albescu message as recorded pending (not delivered), then states \\\"All replies were recorded as Telegram API accepted.\\\" That describes an unknown delivery outcome as delivered and contradicts the summary's own pending note. The packet shows no accepted outcome for that reply.\"}",
+      "outcome": "complete",
+      "usage": {
+        "inputTokens": 19309,
+        "outputTokens": 1164,
+        "charge": null
+      },
+      "at": 1792936959756
+    }
+  ]
+}

@@ -52,6 +52,8 @@ const world = (journal: Journal, write: (input: Input) => object, clock = { now:
     },
     model: async (input: Input) => {
       calls.push(input.id);
+      // Recovery indexing is a separate bounded call, not a compaction writer or its injected wait.
+      if (input.id.startsWith('summary:index:')) return '{"concepts":[]}';
       if (!input.id.startsWith('summary:') && opts.answer) return opts.answer(input);
       if (opts.hold) await opts.hold();
       sentBytes.push(Buffer.byteLength(input.prepared ?? '') + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT));
@@ -287,19 +289,23 @@ it('catches a far-behind root up pass after pass with no operator message, each 
     const journal = justinRoot(join(root, 'journal.encrypted'));
     const w = world(journal, plain);
     w.clock.elapsed += SUMMARY_UNKNOWN_RECOVERY_MS;
-    const perPass: number[] = [], frontier: number[] = [];
+    const perPass: number[] = [], totalPerPass: number[] = [], frontier: number[] = [];
     for (let pass = 0; pass < 12; pass++) {
       const before = w.calls.length;
       await w.worker.summarizeIfNeeded();
       w.clock.now += 600_000;
       perPass.push(frames(w.calls.slice(before)).length);
+      totalPerPass.push(w.calls.length - before);
       frontier.push(journal.view.summaries.at(-1)?.through ?? -1);
     }
     // Ten passes (74 frames of at most four turns) bring the frontier to 297; the 31 turns after it fit under the 24 KiB
     // start threshold and stay as raw history, as in any chat. Later passes make no summary-frame call.
     expect(perPass.every(count => count <= 8)).toBe(true);
-    expect(perPass).toEqual([8, 8, 8, 8, 8, 8, 8, 8, 8, 2, 0, 0]);
-    expect(frontier).toEqual([33, 65, 97, 129, 161, 193, 225, 257, 289, 297, 297, 297]);
+    // The first pass spends one of its eight slots indexing past the recorded failure.
+    expect(w.calls[0]).toBe('summary:index:0');
+    expect(totalPerPass.every(count => count <= 8)).toBe(true);
+    expect(perPass).toEqual([7, 8, 8, 8, 8, 8, 8, 8, 8, 3, 0, 0]);
+    expect(frontier).toEqual([28, 61, 93, 125, 157, 189, 221, 253, 285, 297, 297, 297]);
     // Monotone, never re-dispatches the UNKNOWN, holds nothing for size.
     expect(frontier.every((value, i) => i === 0 || value >= frontier[i - 1]!)).toBe(true);
     expect(w.prepared).not.toContain('summary:31');
@@ -330,7 +336,8 @@ it('answers an operator message that arrives mid catch-up while the pass is stil
     expect(frames(w.calls)).toHaveLength(1);
     release();
     await pass;
-    expect(frames(w.calls)).toHaveLength(8);
+    expect(frames(w.calls)).toHaveLength(7);
+    expect(w.calls.filter(id => id.startsWith('summary:index:'))).toHaveLength(1);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 120000);
@@ -360,7 +367,8 @@ for (const [label, answer, reply] of [['decided by its answer', decidingAnswer, 
       }
       // The background catch-up continues afterwards, unforced, and is never asked to decide the settled request.
       await w.worker.summarizeIfNeeded();
-      expect(frames(w.calls)).toHaveLength(8);
+      expect(frames(w.calls)).toHaveLength(7);
+      expect(w.calls.filter(id => id.startsWith('summary:index:'))).toHaveLength(1);
       expect(journal.view.summaries.some(item => item.memoryFor?.includes(asked.id))).toBe(false);
       journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
@@ -451,7 +459,7 @@ it('resumes a catch-up across a restart without repeating a decided call or losi
     w.clock.now += 600_000;
     await w.worker.summarizeIfNeeded();
     const kept = journal.view.summaries.map(item => item.through);
-    expect(kept.at(-1)).toBe(65);
+    expect(kept.at(-1)).toBe(61); // one slot indexed the failed tail; total calls per pass stayed eight
     // The process ends inside the next summary call: only its reservation was written.
     journal.append({ kind: 'summary-reserve', through: 69, at: at + 400 });
     const dispatched = new Set(frames(w.calls));

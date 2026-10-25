@@ -70,6 +70,8 @@ function world(writer: Step[], forum = false, media = false) {
       { providerAttempts: genesis.maxCalls, expiresAt: genesis.expires }).sources,
       selfStateSource(selfStateBrief(journal.view, { launches: [], unreadable: 0 }, START + clock, 'UTC'))],
     model: async input => {
+      // Index-only recovery has no briefing or summary protocol and must not consume a writer step.
+      if (input.id.startsWith('summary:index:')) return '{"concepts":[]}';
       // Replay the captured writers/uncertain outcomes through the trimmed briefing,
       // not just an empty fixture context. Both governed excerpts still reach the call.
       const sources = (JSON.parse(input.context) as { sources: { id: string; text: string }[] }).sources;
