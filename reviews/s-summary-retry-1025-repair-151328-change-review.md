@@ -27,6 +27,8 @@ Prompt finding: 85544c20941f | protocol-literal | Existing unchanged protocol/st
 Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 Validation: The 32768-byte boundary failed before the fix while the 40000-byte neighbor passed; both pass after it. The ordinary oversized-envelope control keeps preparation cached. The targeted summary replay suite verifies rejection, stop, spend, UNKNOWN recovery and real shapes. Portable gate results are recorded in the local desk-handoff report.
 
+Publication: Regenerated the seven shape-only register outputs against source commit 55ef76562ab33475540a7e9077025f457e3a506e. The delegated owner-manifest and assembly-chain refresh changed zero pins. No authority granted.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: guard the existing cache insertion by the lifetime of the feedback it depends on. It prevents a transient revision overflow from becoming a permanent ordinary-attempt block without adding keys, schedulers or durable state. Existing idle admission, stop, reservation, prompt size and two-attempt guards remain; only passing summaries commit. Offline evidence is not an unattended shipped-path claim.
