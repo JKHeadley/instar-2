@@ -15,7 +15,7 @@ if (command === 'prepare-login') {
     }
     prepareLogin(root, JSON.parse(input));
     process.stdout.write('Login preparation saved. No login is connected or authorized.\n'
-      + 'Next step: complete protected operator enrollment and phone confirmation.\n');
+      + 'Protected operator enrollment and phone confirmation are not implemented in this build.\n');
   } catch (error) {
     process.stderr.write(`${error instanceof LoginPreparationRefused ? error.message
       : 'Login preparation refused. Check the installation and supply only provider and account; details suppressed.'}\n`);
