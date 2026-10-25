@@ -27,6 +27,8 @@ Prompt finding: 85544c20941f | protocol-literal | Existing unchanged protocol/st
 Prompt finding: e8708c7fea24 | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 
 
+Publication: Existing desk rehash refreshed three owner pins; repin chain changed no grounding inventory entry. Register replay binds source f5a1c7016357e5991fd1f4a36fff030c2441f4d6 at the real current clock after finite renewal. This publication grants no runtime authority.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: narrow the existing inventory instruction and require an empty answer before invoking its renderer. The named failure is replacement of a correct answer already produced from memory. No extra model, classifier, storage or new service. Start guards remain verified operator and valid fields; end guards remain checked durable delivery; existing resource/lookup limits remain. Offline replay is submitted, not an unattended live-success claim.
