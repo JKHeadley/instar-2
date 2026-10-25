@@ -169,8 +169,9 @@ export const SUMMARY_CONCEPT_TERMS = 6;
  * 4: the summary's own fields are asked for directly beside `reasoning`, and an answer written as JSON text inside
  * `answer` is read as the object it was meant to be or named as a defect (plan #507, answer-reading.ts `object`). Both
  * what the summary is asked and how its answer is read changed, so the span the live root of 2026-10-04 exhausted
- * under format 3 may be tried again. */
-export const SUMMARY_FORMAT = 4;
+ * under format 3 may be tried again.
+ * 5: exact new facts beyond the item count stay in the reviewed, size-bounded prose instead of being discarded. */
+export const SUMMARY_FORMAT = 5;
 /** Summary prose over SUMMARY_TEXT_CEILING_BYTES: the answer asked too much, the same class as an over-cap attempt, so
  * a shorter span is offered next and the over-cap brake applies. */
 export const SUMMARY_OVER_BOUND_REASON = 'summary answer over its bound';
@@ -11253,6 +11254,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // Plan #389: the retraction state this packet was built under. A retraction applied while the call is out makes
       // the answer stale: it may carry the retracted turns' facts, so it is settled as failed at admission, never kept.
       const retractedAtBuild = journal.view.retracted?.length ?? 0;
+      const memoryAtBuild = JSON.stringify(journal.view.memory);
 
       let summary: Awaited<ReturnType<PreviewPorts['model']>>;
       try { summary = await ports.model({ question: summaryQuestion,
@@ -11366,6 +11368,41 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (affected) journal.append({kind:'hold',id:affected.id,reason,...failedOutput, at:ports.now()});
         return;
       }
+      const priorItems = summaryFor(through)?.memoryItems ?? [];
+      const changes = [...journal.view.memory, ...memory ?? []];
+      const memoryItems: SummaryMemoryItem[] = priorItems.filter(item => !changes.some(change =>
+        (change.mode === 'correct' || change.mode === 'forget') && change.source === item.source
+          && (item.quote.includes(change.quote) || change.quote.includes(item.quote))));
+      // The item count bounds structured context, not what the agent is allowed to remember. A full list
+      // must not silently drop the next exact fact (proof room 2, #6236101/#6236102). Keep overflow in
+      // the same prose the next writer condenses and both reviewers inspect, under its existing byte ceiling.
+      const keepItem = (item: SummaryMemoryItem) => {
+        if (memoryItems.length < 20) memoryItems.push(item);
+        else if (!summaryText.includes(item.quote)) summaryText += `\n${item.source}: ${item.quote}`;
+      };
+      for (const [index, change] of changes.entries()) if (change.mode === 'correct' && change.replacement
+        && (memory?.includes(change) || priorItems.some(item => item.source === change.source
+          && (item.quote.includes(change.quote) || change.quote.includes(item.quote))))
+        && !changes.slice(index + 1).some(later => (later.mode === 'correct' || later.mode === 'forget') && later.source === change.trigger
+          && (change.replacement!.includes(later.quote) || later.quote.includes(change.replacement!)))) {
+        const source = journal.view.turns.get(change.trigger);
+        if (source && redact(source.text).text.includes(change.replacement)
+          && Buffer.byteLength(change.replacement) <= 300
+          && !memoryItems.some(item => item.source === source.id && item.quote === change.replacement))
+          keepItem({ source: source.id, quote: change.replacement });
+      }
+      const after = summaryFor(through)?.through ?? -1;
+      for (const item of Array.isArray(proposedItems) ? proposedItems.slice(0, 20) : []) {
+        const { source, quote } = (item ?? {}) as { source?: unknown; quote?: unknown };
+        const turn = typeof source === 'string' ? journal.view.turns.get(source) : undefined;
+        if (!turn?.accepted || !fromOperator(turn) || turn.update <= after || turn.update > through
+          || typeof quote !== 'string' || !quote.trim() || Buffer.byteLength(quote) > 300
+          || !redact(turn.text).text.includes(quote)
+          || memoryItems.some(saved => saved.source === source && saved.quote === quote)
+          || changes.some(change => (change.mode === 'correct' || change.mode === 'forget') && change.source === source
+            && (quote.includes(change.quote) || change.quote.includes(quote)))) continue;
+        keepItem({ source: turn.id, quote });
+      }
       // The prose ceiling: past the carried size every packet is sized for, a rewrite asked too much whatever the span,
       // so it is the over-bound class and the over-cap brake applies. Prose between the target and the ceiling is
       // accepted: the answer ended within the output cap, and the next pass is asked to condense it.
@@ -11375,34 +11412,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...failedOutput, ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()});
         // Like a proven over-cap attempt: a shorter span next, inside this pass's bound of four.
         if (++overCapAttempts < 4) continue; break;
-      }
-      const priorItems = summaryFor(through)?.memoryItems ?? [];
-      const changes = [...journal.view.memory, ...memory ?? []];
-      const memoryItems: SummaryMemoryItem[] = priorItems.filter(item => !changes.some(change =>
-        (change.mode === 'correct' || change.mode === 'forget') && change.source === item.source
-          && (item.quote.includes(change.quote) || change.quote.includes(item.quote))));
-      for (const [index, change] of changes.entries()) if (change.mode === 'correct' && change.replacement
-        && (memory?.includes(change) || priorItems.some(item => item.source === change.source
-          && (item.quote.includes(change.quote) || change.quote.includes(item.quote))))
-        && !changes.slice(index + 1).some(later => (later.mode === 'correct' || later.mode === 'forget') && later.source === change.trigger
-          && (change.replacement!.includes(later.quote) || later.quote.includes(change.replacement!)))) {
-        const source = journal.view.turns.get(change.trigger);
-        if (source && redact(source.text).text.includes(change.replacement)
-          && Buffer.byteLength(change.replacement) <= 300 && memoryItems.length < 20
-          && !memoryItems.some(item => item.source === source.id && item.quote === change.replacement))
-          memoryItems.push({ source: source.id, quote: change.replacement });
-      }
-      const after = summaryFor(through)?.through ?? -1;
-      for (const item of Array.isArray(proposedItems) ? proposedItems.slice(0, 20) : []) {
-        const { source, quote } = (item ?? {}) as { source?: unknown; quote?: unknown };
-        const turn = typeof source === 'string' ? journal.view.turns.get(source) : undefined;
-        if (!turn?.accepted || !fromOperator(turn) || turn.update <= after || turn.update > through
-          || typeof quote !== 'string' || !quote.trim() || Buffer.byteLength(quote) > 300
-          || !redact(turn.text).text.includes(quote) || memoryItems.length >= 20
-          || memoryItems.some(saved => saved.source === source && saved.quote === quote)
-          || changes.some(change => (change.mode === 'correct' || change.mode === 'forget') && change.source === source
-            && (quote.includes(change.quote) || change.quote.includes(quote)))) continue;
-        memoryItems.push({ source: turn.id, quote });
       }
       // Meaning terms index the operator messages this summary newly covers, and the offered backlog (bounded per pass).
       const concepts: SummaryConcept[] = [];
@@ -11547,12 +11556,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(!ports.replyCheck && typeof summary !== 'string' ? { usage: summary.usage } : {}), at: ports.now() });
         return;
       }
-      // A new turn may have arrived while the background model/review was running.
-      // Do not replace its frontier or delay its reply. Retain the outcome and originals;
-      // a later idle pass uses the ordinary bounded retry path (Rules 14/47/55/96).
-      if (!force && working) {
+      // A later reply can run while this already-reviewed prefix commits: it owns its prepared packet,
+      // and the next pass still waits for idle. Only a changed memory basis makes this candidate stale,
+      // including a correction that finished while the reviewers were out (Rules 2/47/96).
+      if (JSON.stringify(journal.view.memory) !== memoryAtBuild) {
         journal.append({ kind: 'summary-failed', through, state: 'complete',
-          reason: 'proactive summary deferred: ordinary turn active',
+          reason: 'summary built before a memory change',
           ...(!ports.replyCheck && typeof summary !== 'string' ? { usage: summary.usage } : {}), at: ports.now() });
         return;
       }

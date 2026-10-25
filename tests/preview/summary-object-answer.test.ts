@@ -151,7 +151,7 @@ it('reads the withdrawal the real model wrote in the summary, and the live runs 
 /** What the summary is asked, and how its answer is read, both changed: a span an older format exhausted
  * may be tried again, so the live root stuck at 2026-10-04 is not braked by its own failures. */
 it('counts as a changed summary format', () => {
-  expect(SUMMARY_FORMAT).toBe(4);
+  expect(SUMMARY_FORMAT).toBe(5);
 });
 
 // ---- The offline end-to-end shape: the withdrawal lands from the summary side, in this branch's own worker. ----

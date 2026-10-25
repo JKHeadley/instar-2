@@ -2,7 +2,7 @@ import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, type MemoryChange } from './journal-test-worker.js';
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
@@ -19,8 +19,13 @@ function world() {
   const calls: string[] = [];
   let hold: (() => Promise<void>) | undefined;
   let stopped = false;
+  let reviewHold: (() => Promise<void>) | undefined;
   const packets: string[] = [];
   const makeWorker = () => createJournalWorker(journal, { now: () => now, stopped: () => stopped,
+    summaryCheck: async () => {
+      await reviewHold?.();
+      return { model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } };
+    },
     model: async input => {
       calls.push(input.id); packets.push(input.context);
       if (hold) await hold();
@@ -28,18 +33,19 @@ function world() {
         people: [], memory: [], commitments: [], questions: [] }) : 'The marker is cedar.';
     }, send: async () => journal.view.replies + 1, checkOutbound: () => {} });
   let worker = makeWorker();
-  const seed = (n: number) => {
+  const seed = (n: number, memory?: MemoryChange[], undo?: { change: number }) => {
     const id = `telegram:12345678:update:${n}`, text = 'The marker is cedar. Check the garden. ' + 'Garden observations. '.repeat(150);
     const raw = JSON.stringify({ update_id: n, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
     journal.append({ kind: 'intake', id, update: n, text, raw, accepted: true, cursor: n + 1, at: at + n });
     journal.append({ kind: 'reserve', id, at: at + n });
-    journal.append({ kind: 'answer', id, text: 'Noted.', at: at + n });
+    journal.append({ kind: 'answer', id, text: 'Noted.', ...(memory ? { memory } : {}), ...(undo ? { undo } : {}), at: at + n });
     journal.append({ kind: 'intent', id, text: 'Noted.', chat: genesis.chat, update: n, grant: genesis.grant, at: at + n });
     journal.append({ kind: 'sent', id, message: n, at: at + n });
   };
   return { get journal() { return journal; }, get worker() { return worker; }, calls, packets, seed, path,
     stop: () => { stopped = true; },
     reopen: () => { journal.close(); journal = openPreviewJournal(path, key); worker = makeWorker(); }, advance: (ms: number) => { now += ms; },
+    reviewHold: (fn: () => Promise<void>) => { reviewHold = fn; },
     hold: (fn?: () => Promise<void>) => { hold = fn; } };
 }
 
@@ -86,7 +92,7 @@ it('paces subsequent automatic passes but leaves forced recovery available', asy
 });
 
 
-it('keeps replies immediate and defers frontier replacement if a turn starts during a summary', async () => {
+it('keeps the reviewed prefix when a later reply starts during a summary', async () => {
   const w = world();
   try {
     for (let n = 1; n <= 8; n++) w.seed(n);
@@ -101,8 +107,9 @@ it('keeps replies immediate and defers frontier replacement if a turn starts dur
     w.worker.intake([{ update_id: 9, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'What was the marker?' } }]);
     const answering = w.worker.drain(); await started;
     releaseSummary(); await compacting;
-    expect(w.journal.view.summaries).toEqual([]);
-    expect(w.journal.view.lastSummaryFailure?.reason).toBe('proactive summary deferred: ordinary turn active');
+    expect(w.journal.view.summaries.at(-1)?.through).toBe(4);
+    expect(w.journal.view.lastSummaryFailure).toBeNull();
+    expect(w.journal.view.order.at(-1)?.sent).toBeUndefined();
     releaseAnswer(); await answering; w.hold();
     expect(w.journal.view.order.at(-1)?.sent).toBeDefined();
     w.advance(600000); await w.worker.summarizeIfNeeded();
@@ -120,5 +127,26 @@ it('does not spend for a short conversation, a stop, or an exhausted call budget
     await w.worker.summarizeIfNeeded(); expect(w.calls).toEqual([]);
     w.journal.view.calls = 8; w.stop();
     await w.worker.summarizeIfNeeded(); expect(w.calls).toEqual([]);
+  } finally { w.journal.close(); }
+});
+
+it.each(['forget', 'undo'] as const)('refuses a reviewed prefix when %s completes while review is in flight', async mode => {
+  const w = world();
+  try {
+    for (let n = 1; n <= 7; n++) w.seed(n);
+    w.seed(8, mode === 'undo' ? [{ mode: 'correct', source: 'telegram:12345678:update:1',
+      trigger: 'telegram:12345678:update:8', quote: 'Garden observations.', replacement: 'The marker is cedar.' }] : undefined);
+    let release!: () => void, entered!: () => void;
+    const waiting = new Promise<void>(done => { release = done; });
+    const started = new Promise<void>(done => { entered = done; });
+    w.reviewHold(async () => { entered(); await waiting; });
+    const compacting = w.worker.summarizeIfNeeded(); await started;
+    w.seed(9, mode === 'undo' ? undefined : [{ mode: 'forget', source: 'telegram:12345678:update:1', trigger: 'telegram:12345678:update:9',
+      quote: 'The marker is cedar.' }], mode === 'undo' ? { change: 0 } : undefined);
+    release(); await compacting;
+    expect(w.journal.view.summaries).toEqual([]);
+    expect(w.journal.view.lastSummaryFailure?.reason).toBe('summary built before a memory change');
+    expect(w.journal.view.summaryReservations.size).toBe(0);
+    expect(w.journal.view.memory).toHaveLength(1);
   } finally { w.journal.close(); }
 });
