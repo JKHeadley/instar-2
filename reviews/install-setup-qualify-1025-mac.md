@@ -17,12 +17,17 @@ Layer below: Full constitution; docs/14 manifest and qualification; 1.x setup-wi
 Bug class: none
 Bug evidence: none
 Hook bypass: none
-Convergence: none; independent Astra assessment pending.
+Convergence: none
+Independent assessment: Astra assessment pending.
 
-simplestRobustRoute: Reuse existing Seven, Six and Ten with a small qualification-only adapter and captured primitive-owner pairs. This is the simplest route to obtain diagnostic measurements without building a second setup or judgment engine. Added code verifies artifact bytes, adapts llama-cli's exact footer and records strict verdicts; these prevent wrong-artifact execution and false success on malformed or foreign output. No JSON repair, model retry, heuristic fallback or independent-review substitution exists. The absent full preparation run prevents an autonomous completion claim.
 
 Verification: Red test first, then targeted boundary/owner tests and real CPU trials. Real summary/uncertain/undecided/reply-review/empty-reply captures replay through the decoder, with source update IDs. Exact commands, measured results, lint/register output and pushed status are in the absolute lane PROGRESS record. The report's pass=false is intentional evidence, not a test success claim.
 
 ELI16: We tested the small checker on this Mac. Its outputs and resource use are recorded, but the complete real setup test and independent review are still required. Installation stays held.
 
+Skip: tests/assembly/setup-qualification-host.test.ts:21 | scope=Real model experiment requires explicit opt-in; ordinary test runs do not load weights.
+Skip: tests/assembly/setup-qualification-linux.test.ts:10 | scope=Linux kernel proof is Linux-only; macOS uses its separate resource owner.
+
+simplestRobustRoute: Reuse existing Seven, Six and Ten with a small qualification-only adapter and captured primitive-owner pairs. This is the simplest route to obtain diagnostic measurements without building a second setup or judgment engine. Added code verifies artifact bytes, adapts llama-cli's exact footer and records strict verdicts; these prevent wrong-artifact execution and false success on malformed or foreign output. No JSON repair, model retry, heuristic fallback or independent-review substitution exists. The absent full preparation run prevents an autonomous completion claim.
+80/20: Diagnostic host evidence only; complete installed preparation and independent adequacy assessment remain required. No release qualification is claimed.
 VERDICT: author submission of incomplete qualification; independent review pending

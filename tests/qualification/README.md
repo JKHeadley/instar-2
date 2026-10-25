@@ -85,6 +85,10 @@ test are required before it may supervise installation.
 
 ## Linux qualification
 
+Recorded Linux x86_64 evidence is in `evidence/linux-x86_64-2026-10-25.json`
+and its Markdown summary. It is failed and incomplete: 30/36 calls before the
+20-minute experiment ceiling, with eight rejected positive neighbors.
+
 The Linux sibling reuses this exact task generator, prompt, decoder and Seven
 bridge. `scripts/setup-qualification-linux.mjs` launches a transient user systemd
 service. Its Python child reads the actual cgroup v2 controls before executing
