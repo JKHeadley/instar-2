@@ -72,6 +72,10 @@ it.each(fixed.cases)('replays fresh Codex decisions through durable memory: $nam
   });
   const old = JSON.parse(capture.turns[0].raw).message.text as string;
   const updated = scenario.name === 'recorded-update' || scenario.name === 'explicit-now';
+  // Keep the captured deliveries as historical evidence of the old inventory override.
+  // The current protocol preserves the captured nonempty answer despite memoryList:true.
+  const expectedSends = updated ? [...scenario.delivered.slice(0, -1),
+    'orchid-cdb0bc5a47dc\nSource: main chat, turn 367052735, 2026-10-21 16:29 PDT.'] : scenario.delivered;
   try {
     w.worker.intake([JSON.parse(capture.turns[0].raw)]); await w.worker.drain();
     const second = JSON.parse(capture.turns[1].raw); second.message.text = scenario.second;
@@ -102,9 +106,9 @@ it.each(fixed.cases)('replays fresh Codex decisions through durable memory: $nam
           expect.objectContaining({ status: 'current', quote: scenario.second })
         ]) });
       } else expect(report).toContain(old);
-      expect(w.sends).toEqual(scenario.delivered);
+      expect(w.sends).toEqual(expectedSends);
       expect(call).toBe(scenario.calls.length);
-      await worker.drain(); expect(w.sends).toEqual(scenario.delivered);
+      await worker.drain(); expect(w.sends).toEqual(expectedSends);
     } finally { reopened.close(); }
   } finally { w.journal.close(); }
 });
