@@ -25,5 +25,5 @@ The scope test drives the actual declaration through the real register and deadl
 ## Closing block
 
 simplestRobustRoute: use the existing finite declaration gate and register generator, with exact boundary regression evidence and an explicit desk reassessment; this is that route and adds no checker or runtime machinery.
-80/20: the repair addresses the identified register expiry only; production live proof, independent full-gate acceptance and the inherited review blockers remain outstanding at their original owners.
+80/20: the declaration/expiry and additivity tests pass (7 assertions, 41 explicitly retained scope skips), as do all 47 fixed-installation contract tests, typecheck, build and architecture. The generated register consumes committed source 057f1169fe32f644ca982467213f4e834aee9df3 in shape-only replay mode. The repair addresses the identified register expiry only; production live proof, independent full-gate acceptance and the inherited review blockers remain outstanding at their original owners.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
