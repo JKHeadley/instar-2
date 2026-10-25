@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, type JournalRecord } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, SUMMARY_FORMAT, type JournalRecord } from './journal-test-worker.js';
 
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/reminder-idle-live-2026-10-09.json', import.meta.url), 'utf8')) as {
   cases: { older: { update: number; text: string; at: number; reply: string };
@@ -16,7 +16,8 @@ const update = (turn: { update: number; text: string; at: number }) => ({ update
   message: { chat: { id: Number(genesis.chat), type: 'private' }, from: { id: Number(genesis.operator) },
     text: turn.text, date: Math.floor(turn.at / 1000) } });
 
-for (const sample of recorded.cases) it(`settles exhausted background memory on idle polls and fires live request ${sample.request.update} once`, async () => {
+for (const sample of recorded.cases) it.each(['current', 'recorded'] as const)(
+  `settles only current-format exhausted memory for live request ${sample.request.update} (%s failures)`, async format => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reminder-idle-')));
   const path = join(root, 'journal.encrypted');
   let journal = openPreviewJournal(path, key, genesis), now = sample.older.at;
@@ -41,7 +42,9 @@ for (const sample of recorded.cases) it(`settles exhausted background memory on 
     const fail = (index: number) => {
       const row = sample.failures[index]!;
       journal.append({ kind: 'summary-reserve', through: row.through, at: now });
-      journal.append({ ...row, at: now });
+      // Preserve the recorded body. Only the exhaustion case spends this build's format
+      // budget; unchanged historical failures must leave the new format retryable.
+      journal.append({ ...row, ...(format === 'current' ? { format: SUMMARY_FORMAT } : {}), at: now });
     };
     fail(0);
     expect(older.memoryPending).toBe(true);
@@ -58,6 +61,20 @@ for (const sample of recorded.cases) it(`settles exhausted background memory on 
     now++;
     await worker.sendRequested();
     const due = journal.view.order.filter(turn => turn.requestedAction);
+    if (format === 'recorded') {
+      expect(sample.failures.every(row => row.format !== SUMMARY_FORMAT)).toBe(true);
+      expect(due).toHaveLength(0);
+      expect(older.memoryUndecided).toBeUndefined();
+      expect(older.memoryPending).toBe(true);
+      journal.close();
+      journal = openPreviewJournal(path, key);
+      worker = createJournalWorker(journal, ports);
+      await worker.sendRequested();
+      expect(journal.view.order.filter(turn => turn.requestedAction)).toHaveLength(0);
+      expect(sent.slice(replies)).toHaveLength(0);
+      expect(calls).toHaveLength(before);
+      return;
+    }
     expect(due).toHaveLength(1);
     expect(older.memoryUndecided).toBe(true);
     expect(due[0]).toMatchObject({ writer: { kind: 'system', id: 'preview-scheduler:8989505249' }, at: now });
