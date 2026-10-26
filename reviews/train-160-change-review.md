@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Integrate the exact reviewed meaning-recall instruction repair and captured real-model evidence onto the accepted live build.
 Affected rules: 1, 4, 10, 11, 12, 34, 35, 36, 37, 49, 58, 69, 70, 74, 75, 90, 101, 102, 113, 116
-Affected floors: Existing secret custody, spend reservations, stop checks, durable intake and unique send path are unchanged. No model calls or external sends are added by integration.
+Affected floors: Existing secret custody, spend reservations, stop checks, durable intake and no duplicate sends are unchanged. No model calls or external sends are added by integration.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
@@ -20,6 +20,8 @@ Evidence boundary: Recorded real model output replay and offline synthetic contr
 Hook bypass: none
 Convergence: none
 Prompt review: Preserve reviewed general lookup and evidence-limit meaning, with no test-specific phrases or new classifiers. Captured real output tests cover successful original-source recall and uncertain misses, alongside historical summary/Jev/reply shapes.
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Existing capability-note tool inventory wording is unchanged; assertion checks delivery, not semantic classification.
+Prompt finding: 95e349aaf4ac | protocol-literal | Existing effect-doorway standing-grant wording is unchanged; no new permission gate.
 Prompt finding: 4106b49fff07 | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision — fixture-phrase tests/preview/journal.ts <- tests/preview/topic-awareness.test.ts: "you attempted nothing outside this reply, so never call an avenue tried; a missi"
 Prompt finding: 849db3a6296a | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
 Prompt finding: 85544c20941f | protocol-literal | Existing unchanged protocol/status text asserted by tests; no new keyword intent decision — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-conversation-session.test.ts: "your messages are kept and i'll answer them then; you don't need to resend them."
