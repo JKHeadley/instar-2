@@ -222,6 +222,8 @@ No additional approval, account or login is introduced. A few minutes once can b
 unattended and measured; the design must disclose actual waiting rather than promise two minutes
 from arithmetic. Safety limits and existing enrollment/recovery choices remain intact.
 
+Skip: tests/assembly/setup-supervisor-linux.test.ts:36 | scope=Inherited supervisor physical Linux cgroup proof requires explicit host opt-in and pinned model assets; this metadata repair does not run or claim that proof.
+
 simplestRobustRoute: Use the existing model decision plus exact owners, with fixed owner-generated check text and retained raw audit evidence; qualify that smaller contract through the existing runner. No retry engine, semantic prose gate or new service. Current-subject/pin/authority start guards, owner-plus-model end guards, stop and resource limits remain. No unattended shipped-install completion is claimed.
 80/20: The 24 case re-derivations support the narrow decision role despite rejected explanations; preserve the explicit installed-owner and changed-contract gaps. Correct the design now rather than tune prose repeatedly or claim a warm speedup from overlapping timers. This independent evidence assessment is complete; landing review of the amendment remains open.
 VERDICT: C — amend docs/14; primitive decision evidence accepted, release qualification not established

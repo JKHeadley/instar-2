@@ -35,6 +35,8 @@ Verification: Targeted tests passed (22 passed, one explicit model-run opt-in sk
 
 Skip: tests/assembly/setup-qualification-host.test.ts:19 | scope=Real inference requires explicit opt-in and pinned local model assets; ordinary checks replay retained captures without launching a model.
 
+Skip: tests/assembly/setup-supervisor-linux.test.ts:36 | scope=Inherited supervisor physical Linux cgroup proof requires explicit host opt-in and pinned model assets; this metadata repair does not run or claim that proof.
+
 simplestRobustRoute: Extend the existing qualification harness with a fixed named-result projection and decoder, leaving exact comparisons to their owners. This is the simplest robust route for the experiment. It prevents raw instructions and long-value comparisons from confusing the model without a second runner, heuristic semantic verdict, paid fallback or installation authority. Start guards are artifact pins and durable stop; bounds are one child, two threads, finite RSS/deadline and exact-PID cleanup; acceptance needs grounded model validation and owner success. No autonomous installed completion is claimed.
 80/20: Preserve the failed qualification evidence and explicit installer gaps; this record repairs coverage and makes no independent acceptance claim.
 VERDICT: failed qualification evidence; independent assessment PENDING ASTRA. No route is promoted.
