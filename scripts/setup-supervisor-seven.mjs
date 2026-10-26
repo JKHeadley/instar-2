@@ -20,9 +20,10 @@ export function setupSevenRoute({ authority, host, context, captures, claim, phy
     async validate(record, options) {
       if (active) throw Error('setup validation already active');
       active = true;
+      let slot, calls = 0;
       try {
         const prompt = renderSetupRequest(record);
-        let measured, calls = 0;
+        let measured;
         const description = { owner: 'part-ten', provider: 'llama.cpp-b4000', model: 'Qwen2.5-3B-Instruct-Q4_K_M',
           route: 'setup-local', automaticRetries: 0, maxInputBytes: 16384, maxOutputBytes: 65536,
           maxCharge: 0, measured: false, basis: 'distribution remains held until exact host and installed-owner qualification' };
@@ -38,13 +39,18 @@ export function setupSevenRoute({ authority, host, context, captures, claim, phy
         const bytes = value(adapter.prepare({ prompt, checkpointDigest: digest(JSON.stringify(record)) }));
         const request = value(captures.put(bytes, 16384));
         // Reserve full raw response + accounting before the model can run.
-        const slot = value(captures.reserve(4 * 1048576));
+        slot = value(captures.reserve(4 * 1048576));
         const exchange = await claim(bytes, request);
         const observation = value(await adapter.exchange({ ...exchange, bytes }));
         const capture = value(captures.putReserved(slot, JSON.stringify({ request, record, observation,
           accounting: measured?.accounting ?? null, cleanup: measured?.cleanup ?? 'unknown', calls })));
         return { state: observation.state, bytes: observation.bytes, usage: observation.usage, capture,
           cleanup: calls === 1 ? measured?.cleanup ?? 'unknown' : 'unknown' };
+      } catch (error) {
+        // No physical invocation: return only unused capacity through its owner.
+        // The owner refuses bound slots; request and transport evidence stay intact.
+        if (slot && calls === 0) value(captures.releaseReserved(slot));
+        throw error;
       } finally { active = false; }
     },
   });
