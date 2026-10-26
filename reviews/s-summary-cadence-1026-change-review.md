@@ -29,6 +29,8 @@ Prompt finding: e8708c7fea24 | protocol-literal | Unchanged protocol text, no ne
 Deferral: tests/preview/fixtures/summary-cadence-2026-10-26.json:227 | not-a-deferral=Recorded delivered reply preserved as test evidence, not a builder commitment.
 Validation: Red-first recorded-tail regression; targeted summary tests, architecture, typecheck and final gate results in PROGRESS. Injected waiting and clocks only; no Studio load tests.
 
+Publication: Regenerated the seven shape-only register outputs from committed source bf616aa95698de9c04e8c5d22fdd55ef894af7f9 using scripts/build-register.mjs --commit. No authority or conformance declaration changed.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: remove the four-turn restriction from automatic byte-fitting and reuse the existing format reminder for one completed malformed attempt. It repairs the recorded ten-minute retry delay and short-span bottleneck without a scheduler, new engine, weaker reviewer or raised resource floor. Pressure/idle/cooldown admission, stop, spend, prepared prompt/output ceilings and acceptance review remain the start, limit and end guards. No unattended live-completion claim is made.
