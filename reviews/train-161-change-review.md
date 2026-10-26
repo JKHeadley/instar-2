@@ -25,6 +25,11 @@ Decision: train-161-B | Start directly at the exact live fcc49ab27f44ff45831a779
 Decision: train-161-D | Run direct-import and journal tests on WSL; report unchanged host-dependent checks separately for the Studio gate, as directed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-161-PROGRESS.md
 Decision: train-161-desk | Run the supplied repin/build/rehash/register-replay chain; only adapt macOS sed syntax in the downloaded temporary script for Linux. Regenerate generated files, never hand-edit them. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-161-PROGRESS.md
 
+Prompt finding: 4106b49fff07 | protocol-literal | Existing source-bound action-claim instruction, unchanged from the supplied base. The test asserts the protocol and does not supply a desired verdict.
+Prompt finding: 85544c20941f | protocol-literal | Existing fixed queued-message notice, unchanged from the supplied base; its test checks the actual notice, not a semantic trigger.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing sourceLabel attribution instruction, unchanged from the supplied base; no prompt or fixture was copied or changed.
+Prompt finding: 849db3a6296a | protocol-literal | Existing fixed empty-memory display literal, unchanged from the supplied base; no semantic classifier is introduced.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest route: one ordinary exact-head merge and the existing desk regeneration/checks. No new mechanism, policy or authority is introduced. Existing atomic snapshot verification, pending-evidence retention and diagnostic boundaries remain the guards. No unattended deployment or live completion is claimed.
