@@ -1,5 +1,21 @@
 [
   {
+    "revision": 32,
+    "date": "2026-10-26",
+    "status": "draft",
+    "cause": {
+      "kind": "migration",
+      "note": "train-163 task requires main design text exactly while preserving both histories."
+    },
+    "changes": [
+      {
+        "what": "Align assembly design text with reviewed main 2f46478df4fd512e74d612ac494dc88441aa3bd6.",
+        "why": "Release-train integration follows the prescribed main design text without changing the accepted live implementation.",
+        "ref": "reviews/train-163-change-review.md"
+      }
+    ]
+  },
+  {
     "revision": 31,
     "date": "2026-10-25",
     "status": "draft",
@@ -15,7 +31,7 @@
       },
       {
         "what": "Allow bounded within-attempt process reuse after isolation qualification and assess measured one-time setup latency instead of treating two minutes as an absolute gate.",
-        "why": "The eight-positive sums are 187.58–233.36 seconds, but llama.cpp load time overlaps first prompt evaluation; no warm-run speedup or installed-run bound has been measured.",
+        "why": "The eight-positive sums are 187.58\u2013233.36 seconds, but llama.cpp load time overlaps first prompt evaluation; no warm-run speedup or installed-run bound has been measured.",
         "ref": "reviews/install-setup-assess-1025b.md"
       }
     ]

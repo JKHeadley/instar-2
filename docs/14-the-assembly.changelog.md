@@ -4,6 +4,10 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 32 · 2026-10-26 · draft — train-163 task requires main design text exactly while preserving both histories.
+
+- **Align assembly design text with reviewed main 2f46478df4fd512e74d612ac494dc88441aa3bd6.** — Release-train integration follows the prescribed main design text without changing the accepted live implementation. _(reviews/train-163-change-review.md)_
+
 ## Revision 31 · 2026-10-25 · draft — Independent option1b assessment; desk direction to weigh decision-only validation first.
 
 - **Select the measured 3B/3-GiB candidate; consume its qualified decision and show fixed owner-check text, retaining raw explanations for audit and re-deriving refuted reasons under Rule 108.** — All 72 primitive decisions are correct while generated explanations and copied citations misstate exact owner facts; neither copying nor prose is required by Rule 38. _(reviews/install-setup-assess-1025b.md)_
