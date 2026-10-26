@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawn, spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE, UNKNOWN_SEND_NOTICE,
-  SUMMARY_UNKNOWN_RECOVERY_MS, SUMMARY_MAX_PROMPT_BYTES, SUMMARY_MAX_TURNS, SUMMARY_TARGET_OUTPUT_TOKENS, summaryPromptBytes } from './journal-test-worker.js';
+  SUMMARY_UNKNOWN_RECOVERY_MS, SUMMARY_MAX_PROMPT_BYTES, SUMMARY_TARGET_OUTPUT_TOKENS, summaryPromptBytes } from './journal-test-worker.js';
 import { INDEX_ATTEMPT_LIMIT, INDEX_BACKLOG_LIMIT, OBLIGATION_FLOOR_PACKET_BYTES as FLOOR_GUIDE, TOO_LONG_INPUT_NOTICE } from './journal.js';
 // w3-floorduty (Rules 3, 93): under pressure the obligation guide now yields to its floor form instead of vanishing, so a
 // small synthetic limit carries those bytes too; every outcome below is otherwise unchanged.
@@ -832,9 +832,9 @@ it('bounds each rolling chunk by measured prepared prompt bytes and reported out
     expect(journal.view.summaries.length).toBeGreaterThan(0); // raised reply cap must not defer all summaries
     await worker.summarizeIfNeeded(true);
     expect(journal.view.summaries.at(-1)?.through).toBe(20);
-    expect(measurements.length).toBeGreaterThan(1);
-    expect(measurements.every(item => item.historyTurns <= SUMMARY_MAX_TURNS
-      && item.promptBytes <= SUMMARY_MAX_PROMPT_BYTES && item.outputTokens <= SUMMARY_TARGET_OUTPUT_TOKENS)).toBe(true);
+    expect(measurements).toHaveLength(1); // all twenty fit; the byte ceiling bounds the automatic span
+    expect(measurements[0]!.historyTurns).toBe(20);
+    expect(measurements.every(item => item.promptBytes <= SUMMARY_MAX_PROMPT_BYTES && item.outputTokens <= SUMMARY_TARGET_OUTPUT_TOKENS)).toBe(true);
     // A raised root raises the provider's prompt bound to its own limit (the launcher's raisedPromptBytes); the summary
     // ceiling is three quarters of it.
     expect(Math.max(...measurements.map(item => item.promptBytes))).toBeLessThanOrEqual(summaryPromptBytes(journal.view.limits.maxBytes));

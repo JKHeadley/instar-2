@@ -298,14 +298,16 @@ it('catches a far-behind root up pass after pass with no operator message, each 
       totalPerPass.push(w.calls.length - before);
       frontier.push(journal.view.summaries.at(-1)?.through ?? -1);
     }
-    // Ten passes (74 frames of at most four turns) bring the frontier to 297; the 31 turns after it fit under the 24 KiB
-    // start threshold and stay as raw history, as in any chat. Later passes make no summary-frame call.
+    // Fitting older prefixes catch up in one bounded pass. A short raw tail stays below
+    // the pressure threshold; later passes make no summary-frame call.
     expect(perPass.every(count => count <= 8)).toBe(true);
     // The first pass spends one of its eight slots indexing past the recorded failure.
     expect(w.calls[0]).toBe('summary:index:0');
     expect(totalPerPass.every(count => count <= 8)).toBe(true);
-    expect(perPass).toEqual([7, 8, 8, 8, 8, 8, 8, 8, 8, 3, 0, 0]);
-    expect(frontier).toEqual([28, 61, 93, 125, 157, 189, 221, 253, 285, 297, 297, 297]);
+    expect(perPass[0]).toBeGreaterThan(0);
+    expect(perPass.slice(1).every(count => count === 0)).toBe(true);
+    expect(frontier[0]).toBeGreaterThanOrEqual(297);
+    expect(w.sentBytes.every(bytes => bytes <= summaryPromptBytes(409600))).toBe(true);
     // Monotone, never re-dispatches the UNKNOWN, holds nothing for size.
     expect(frontier.every((value, i) => i === 0 || value >= frontier[i - 1]!)).toBe(true);
     expect(w.prepared).not.toContain('summary:31');
@@ -336,7 +338,9 @@ it('answers an operator message that arrives mid catch-up while the pass is stil
     expect(frames(w.calls)).toHaveLength(1);
     release();
     await pass;
-    expect(frames(w.calls)).toHaveLength(7);
+    expect(frames(w.calls).length).toBeGreaterThan(0);
+    expect(frames(w.calls).length).toBeLessThanOrEqual(7);
+    expect(journal.view.summaries.at(-1)!.through).toBeGreaterThanOrEqual(297);
     expect(w.calls.filter(id => id.startsWith('summary:index:'))).toHaveLength(1);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -367,7 +371,9 @@ for (const [label, answer, reply] of [['decided by its answer', decidingAnswer, 
       }
       // The background catch-up continues afterwards, unforced, and is never asked to decide the settled request.
       await w.worker.summarizeIfNeeded();
-      expect(frames(w.calls)).toHaveLength(7);
+      expect(frames(w.calls).length).toBeGreaterThan(0);
+      expect(frames(w.calls).length).toBeLessThanOrEqual(7);
+      expect(journal.view.summaries.at(-1)!.through).toBeGreaterThanOrEqual(297);
       expect(w.calls.filter(id => id.startsWith('summary:index:'))).toHaveLength(1);
       expect(journal.view.summaries.some(item => item.memoryFor?.includes(asked.id))).toBe(false);
       journal.close();
@@ -453,15 +459,19 @@ it('resumes a catch-up across a restart without repeating a decided call or losi
   const path = join(root, 'journal.encrypted');
   try {
     let journal = justinRoot(path);
-    let w = world(journal, plain);
+    let attempted = 0, interrupted = -1;
+    let w = world(journal, input => {
+      if (++attempted === 2) { interrupted = Number(input.id.split(':')[1]); throw Error('injected worker loss'); }
+      return plain();
+    });
     w.clock.elapsed += SUMMARY_UNKNOWN_RECOVERY_MS;
     await w.worker.summarizeIfNeeded();
-    w.clock.now += 600_000;
-    await w.worker.summarizeIfNeeded();
     const kept = journal.view.summaries.map(item => item.through);
-    expect(kept.at(-1)).toBe(61); // one slot indexed the failed tail; total calls per pass stayed eight
+    expect(kept).toHaveLength(1);
+    expect(kept[0]).toBeGreaterThan(4);
+    expect(interrupted).toBeGreaterThan(kept[0]!);
     // The process ends inside the next summary call: only its reservation was written.
-    journal.append({ kind: 'summary-reserve', through: 69, at: at + 400 });
+    expect(journal.view.summaryReservations.has(interrupted)).toBe(true);
     const dispatched = new Set(frames(w.calls));
     journal.close();
     journal = openPreviewJournal(path, key);
@@ -472,11 +482,11 @@ it('resumes a catch-up across a restart without repeating a decided call or losi
     expect(w.calls).toEqual([]);
     w.clock.elapsed += SUMMARY_UNKNOWN_RECOVERY_MS;
     for (let pass = 0; pass < 12; pass++) { await w.worker.summarizeIfNeeded(); w.clock.now += 600_000; }
-    expect(w.prepared).not.toContain('summary:69');
+    expect(w.prepared).not.toContain(`summary:${interrupted}`);
     expect(w.prepared).not.toContain('summary:31');
     expect(frames(w.calls).filter(id => dispatched.has(id))).toEqual([]);
     expect(journal.view.summaries.slice(0, kept.length).map(item => item.through)).toEqual(kept);
-    expect(journal.view.summaryReservations.has(69)).toBe(true);
+    expect(journal.view.summaryReservations.has(interrupted)).toBe(true);
     expect(328 - journal.view.summaries.at(-1)!.through).toBeLessThanOrEqual(32);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }

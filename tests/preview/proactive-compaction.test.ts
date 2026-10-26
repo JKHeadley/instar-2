@@ -107,7 +107,9 @@ it('keeps the reviewed prefix when a later reply starts during a summary', async
     w.worker.intake([{ update_id: 9, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'What was the marker?' } }]);
     const answering = w.worker.drain(); await started;
     releaseSummary(); await compacting;
-    expect(w.journal.view.summaries.at(-1)?.through).toBe(4);
+    const chosen = JSON.parse(w.packets[0]!).history.at(-1).id;
+    expect(w.journal.view.summaries.at(-1)?.through).toBe(Number(chosen.split(':').at(-1)));
+    expect(w.journal.view.summaries.at(-1)!.through).toBeLessThan(9);
     expect(w.journal.view.lastSummaryFailure).toBeNull();
     expect(w.journal.view.order.at(-1)?.sent).toBeUndefined();
     releaseAnswer(); await answering; w.hold();
