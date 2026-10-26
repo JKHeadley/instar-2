@@ -9,7 +9,7 @@ import { decideProactiveCompaction } from '../../src/awareness/sentinel.js';
 import { WORKING_PROGRESS_CAP, WORKING_SILENCE_MS, currentWorkingActivity, workingProgressText, workingProgressDue, type WorkingActivity, type WorkingProgress } from './working-progress.js';
 import { admitJev, JEV_ADMISSION_MS } from './reply-check.js';
 import { JOURNAL_JSON_CHUNK_BYTES, JOURNAL_JSON_STRING_BYTES, journalJsonChunks, parseJournalJson } from './journal-json.js';
-import { checkPhaseTiming, createPhaseTimingRecorder, type PhaseTiming } from './phase-timing.js';
+import { checkPhaseTiming, createPhaseTimingRecorder, isIdleAudienceTiming, retainedIdleAudienceTimings, type PhaseTiming } from './phase-timing.js';
 import { groupCarryPacket, validCarriedMemory, type CarriedMemory } from './group-carry.js';
 import { boundThread, journalAudience, journalConversation, matchesBoundChat, validateChatBinding } from './forum-routing.js';
 /** The machine-local preview's only conversation and effect ledger. Records are
@@ -2034,12 +2034,14 @@ function retainedEvidence(rows: JournalRecord[], view: JournalView): JournalReco
     || turn.accepted && (turn.intent === undefined || turn.sent === undefined)).map(turn => turn.id));
   const evidence: JournalRecord[] = [];
   const sentinels = retainedSentinelEvidence(rows.filter((row): row is SentinelRecord => row.kind === 'sentinel'));
+  const idleTimings = retainedIdleAudienceTimings(rows.filter((row): row is PhaseTiming => row.kind === 'phase-timing'));
   const holds = new Map<string, Extract<JournalRecord, {kind:'hold'}>>();
   for (const row of rows) {
-    // Phase timings are diagnostics only: the projection keeps the last 100 (`view.phaseTimings`, saved in the
-    // snapshot), nothing reads them from retained evidence, and carrying every one forward grew the live root's
-    // snapshot past V8's maximum string length (2026-10-26: 1.79M rows, 399 MB of 547 MB), refusing every launch.
-    if (row.kind === 'phase-timing') continue;
+    // The latest-100 projection is not the archive. Only repeated idle audience checks
+    // may be summarized; unique send, acknowledgement, auth and Jev evidence stays whole.
+    if (row.kind === 'phase-timing' && isIdleAudienceTiming(row)) {
+      const kept = idleTimings.get(row); if (kept) evidence.push(kept); continue;
+    }
     if (row.kind === 'sentinel' && !sentinels.has(row)) continue;
     if (row.kind === 'hold' && !row.unusedModel) { if (open.has(row.id)) holds.set(row.id, row); continue; }
     if ((row.kind === 'reserve' || row.kind === 'lookup' || row.kind === 'format-retry' || row.kind === 'answer-replace')

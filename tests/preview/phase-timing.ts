@@ -4,6 +4,8 @@ export type PhaseTiming = {
   kind: 'phase-timing'; id: string; phase: 'acknowledgement' | 'send' | 'audience' | 'version' | 'auth' | 'jev-disclosure' | 'jev-admission' | 'jev';
   measurements: Record<string, number | boolean>; at: number;
   forward: { generation: 4; additive: true };
+  /** Compacted idle samples represented by this row, excluding the separately kept tail. */
+  observations?: { count: number; firstAt: number; lastAt: number };
 };
 const fields = new Set(['scheduledDueAt', 'callbackEnteredAt', 'timerCallback', 'sendEnteredAt',
   'audienceAdmittedAt', 'transportBegunAt', 'transportReturnedAt', 'attempt', 'provedNotSentAttempts',
@@ -15,6 +17,45 @@ export function checkPhaseTiming(row: PhaseTiming): void {
     || !Object.entries(row.measurements).every(([key, value]) => fields.has(key)
       && (typeof value === 'boolean' || typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)))
     throw Error('preview journal: invalid phase timing');
+  if (row.observations && (!isIdleAudienceTiming(row)
+    || !Number.isSafeInteger(row.observations.count) || row.observations.count < 1
+    || !Number.isSafeInteger(row.observations.firstAt) || row.observations.firstAt < 0
+    || !Number.isSafeInteger(row.observations.lastAt) || row.observations.firstAt > row.at
+    || row.observations.lastAt < row.at)) throw Error('preview journal: invalid phase timing aggregate');
+}
+
+/** Match only the idle observer's shape. Other audience measurements may describe real work. */
+export const isIdleAudienceTiming = (row: PhaseTiming): boolean => row.phase === 'audience' && row.id === 'group-disclosure'
+  && typeof row.measurements.accepted === 'boolean'
+  && Object.keys(row.measurements).every(field => ['accepted', 'cacheHit', 'elapsedMs'].includes(field));
+
+export const IDLE_AUDIENCE_TIMINGS_KEPT = 100;
+/** Rules 7/9/13: retain each verdict transition, summarize older repeated checks and keep
+ * the latest 100 raw samples per verdict run. Counts exclude that tail, so another
+ * compaction or restart cannot double-count it. Send/ack/auth/Jev evidence is never sampled.
+ * Port the 1.x JsonlStore bounded-diagnostics pattern into the existing snapshot archive. */
+export function retainedIdleAudienceTimings(rows: readonly PhaseTiming[]): Map<PhaseTiming, PhaseTiming> {
+  const kept = new Map<PhaseTiming, PhaseTiming>();
+  let first: PhaseTiming | undefined;
+  let recent: PhaseTiming[] = [];
+  for (const row of rows) {
+    if (!isIdleAudienceTiming(row)) {
+      if (row.phase === 'audience' && row.id === 'group-disclosure') first = undefined;
+      continue;
+    }
+    if (!first || row.measurements.accepted !== first.measurements.accepted) {
+      first = row; recent = []; kept.set(row, row); continue;
+    }
+    recent.push(row); kept.set(row, row);
+    if (recent.length <= IDLE_AUDIENCE_TIMINGS_KEPT) continue;
+    const old = recent.shift()!;
+    const aggregate = kept.get(first)!.observations ?? { count: 1, firstAt: first.at, lastAt: first.at };
+    const added = old.observations ?? { count: 1, firstAt: old.at, lastAt: old.at };
+    kept.set(first, { ...first, observations: { count: aggregate.count + added.count,
+      firstAt: Math.min(aggregate.firstAt, added.firstAt), lastAt: Math.max(aggregate.lastAt, added.lastAt) } });
+    kept.delete(old);
+  }
+  return kept;
 }
 export function recordPhaseTiming(append: (row: PhaseTiming) => void, id: string, phase: PhaseTiming['phase'],
   measurements: PhaseTiming['measurements'], at: number): void {

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, UNKNOWN_SEND_NOTICE, REFUSED_SEND_NOTICE, type PreviewPorts } from './journal-test-worker.js';
-import { checkPhaseTiming, recordPhaseTiming } from './phase-timing.js';
+import { checkPhaseTiming, recordPhaseTiming, retainedIdleAudienceTimings, isIdleAudienceTiming, type PhaseTiming } from './phase-timing.js';
 import { createGroupAudienceCache } from './group-disclosure.js';
 import { membership, scope } from './group-carry-fixture.js';
 
@@ -99,7 +99,7 @@ it('rejects prose or unknown measurement fields and isolates a diagnostics write
   expect(() => recordPhaseTiming(() => { throw Error('disk unavailable'); }, 'turn:1', 'auth', { elapsedMs: 4 }, at)).not.toThrow();
 });
 
-it('compaction does not carry every phase-timing row forward (live root refused at 547 MB of retained rows)', () => {
+it('compaction preserves unique auth timings beyond the latest 100 projection', () => {
   const root = mkdtempSync(join(tmpdir(), 'phase-compact-')), path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, key, genesis, undefined, false, 64 * 1024);
   try {
@@ -108,8 +108,8 @@ it('compaction does not carry every phase-timing row forward (live root refused 
     const recent = journal.view.phaseTimings!;
     expect(recent).toHaveLength(100);
     journal.compact();
-    // The projection keeps the last 100; the snapshot's retained evidence must not grow with every timing row.
-    expect(journal.retainedRows).toBeLessThan(10);
+    // The bounded projection is not the evidence archive.
+    expect(journal.retainedRows).toBe(4000);
     journal.close(); const replay = openPreviewJournal(path, key, undefined, undefined, true);
     try { expect(replay.view.phaseTimings).toEqual(recent); } finally { replay.close(); }
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
@@ -185,4 +185,29 @@ it('the worker bounds idle acknowledgement preflight rows while a slow answer is
     finish('42'); await draining;
     expect(timingRows).toBeLessThanOrEqual(4); // the final answer is a separate send target
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+
+it('summarizes only the idle observer shape and preserves verdict changes and exceptional audience rows', () => {
+  const rows: PhaseTiming[] = [];
+  for (const accepted of [true, false, true]) for (let i = 0; i < 250; i++) rows.push({ kind: 'phase-timing',
+    id: 'group-disclosure', phase: 'audience', measurements: { accepted, cacheHit: i % 2 === 0, elapsedMs: i },
+    at: rows.length, forward: { generation: 4, additive: true } });
+  const exceptional: PhaseTiming = { ...rows[0]!, measurements: { accepted: true, failed: true }, at: 750 };
+  rows.push(exceptional, { ...rows[0]!, at: 751 });
+  const selected = retainedIdleAudienceTimings(rows);
+  const kept = rows.flatMap(row => isIdleAudienceTiming(row) ? selected.has(row) ? [selected.get(row)!] : [] : [row]);
+  expect(kept).toHaveLength(305);
+  expect(kept.filter(row => row.observations).map(row => row.measurements.accepted)).toEqual([true, false, true]);
+  expect(kept.reduce((count, row) => count + (row.observations?.count ?? 1), 0)).toBe(rows.length);
+  expect(kept.slice(-2)).toEqual(rows.slice(-2));
+  const again = retainedIdleAudienceTimings(kept);
+  expect(kept.map(row => again.get(row) ?? row)).toEqual(kept);
+  for (const row of kept) expect(() => checkPhaseTiming(row)).not.toThrow();
+  const summary = kept[0]!;
+  for (const observations of [
+    { count: 0, firstAt: 0, lastAt: 149 }, { count: 150, firstAt: 1, lastAt: 149 },
+    { count: 1.5, firstAt: 0, lastAt: 149 }, { count: 150, firstAt: 0, lastAt: -1 },
+  ]) expect(() => checkPhaseTiming({ ...summary, observations })).toThrow('invalid phase timing aggregate');
+  expect(() => checkPhaseTiming({ ...summary, phase: 'auth' })).toThrow('invalid phase timing aggregate');
 });

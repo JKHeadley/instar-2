@@ -32,13 +32,16 @@ it('serializes synthetic retained history past the old V8 aggregate-string limit
   // Shared immutable payload: exercise >512 MiB of logical snapshot bytes without a giant
   // allocation, disk burner or competing worker. The journal integration test injects the ceiling.
   const row = { kind: 'model-call', input: 'x'.repeat(256 * 1024), output: 'y'.repeat(256 * 1024) };
-  const retained = Array(Math.ceil(constants.MAX_STRING_LENGTH / (512 * 1024)) + 2).fill(row);
+  // Read-only backup 20261026-044831: 547,392,449 logical row bytes (journal-growth evidence).
+  const preHotfixHistoryBytes = 547_392_449;
+  const retained = Array(Math.ceil(Math.max(constants.MAX_STRING_LENGTH, preHotfixHistoryBytes) / (512 * 1024)) + 2).fill(row);
   let bytes = 0, largest = 0;
   const digest = createHash('sha256');
   for (const chunk of journalJsonChunks({ retained })) {
     bytes += chunk.length; largest = Math.max(largest, chunk.length); digest.update(chunk);
   }
   expect(bytes).toBeGreaterThan(constants.MAX_STRING_LENGTH);
+  expect(bytes).toBeGreaterThan(preHotfixHistoryBytes);
   expect(largest).toBe(JOURNAL_JSON_CHUNK_BYTES);
   expect(digest.digest('hex')).toHaveLength(64);
 }, 30000);

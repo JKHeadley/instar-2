@@ -15,6 +15,9 @@ it('compacts and verifies retained history without stringifying the whole snapsh
   try {
     for (let i = 1; i <= 300; i++) journal.append({ kind: 'intake', id: `turn:${i}`, update: i,
       text: 'a'.repeat(1024), raw: '{}', accepted: false, cursor: i + 1, at: i });
+    // Keep old non-idle timings too: the snapshot must stream with evidence retention enabled.
+    for (let i = 0; i < 150; i++) journal.append({ kind: 'phase-timing', id: `auth:${i}`, phase: 'auth',
+      measurements: { elapsedMs: i }, at: 301 + i, forward: { generation: 4, additive: true } });
     const stringify = JSON.stringify;
     const guard = vi.spyOn(JSON, 'stringify').mockImplementation(((value: unknown, ...args: unknown[]) => {
       // Reduced ceiling reproduces V8's failure without loading the Studio.
@@ -24,7 +27,7 @@ it('compacts and verifies retained history without stringifying the whole snapsh
     }) as typeof JSON.stringify);
     try {
       const before = projectionDigest(journal.view);
-      journal.compact(); journal.close();
+      journal.compact(); expect(journal.retainedRows).toBe(450); journal.close();
       const reopened = openPreviewJournal(path, key, undefined, undefined, true);
       try { expect(projectionDigest(reopened.view)).toBe(before); expect(reopened.view.order).toHaveLength(300); }
       finally { reopened.close(); }
