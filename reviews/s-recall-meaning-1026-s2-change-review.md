@@ -19,14 +19,18 @@ Bug evidence: reproducer=tests/preview/s-recall-meaning.test.ts; live=tests/prev
 Evidence boundary: Seven fresh questions per round: three paraphrases, three never-said questions and one early-fact control. Real model, production envelope/route/lookup, isolated reconstructed journal and local reply capture. This is bounded offline behavioral evidence, not Telegram delivery or complete Part 21 conformance. Desk live group S remains independent.
 Decision: s-recall-search-claims | Round 1 horse repetition 2 acknowledged search uncertainty but then asserted the user had not told it the name. Strengthen the general search-evidence instruction, without test words or a response template, and replay the entire set again. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/s-recall-meaning-1026-s2-PROGRESS.md
 Prompt review: The added sentence concerns what search evidence establishes. It contains no horse, cabin, barometer, source id or expected reply phrase; no output classifier is added.
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged obligation evidence instruction, not a test-derived semantic decision.
+Prompt finding: 85544c20941f | protocol-literal | Unchanged holding-notice protocol, not a keyword classifier.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing citation duty remains; its assertion verifies delivery of that duty.
+Prompt finding: 849db3a6296a | protocol-literal | Existing inventory-empty rendering is unchanged by the recall instruction repair.
 Hook bypass: none
 Convergence: none
+
+Verification:Round 1 has 6/7 passing cases and one disclosed failed horse answer; round 2 passes 7/7 with 13 complete model calls. Raw output fixtures retain every case and its judgment. The final prompt hashes match the replay capture. Targeted controls and fresh-output replay: 65/65 tests pass across five files; typecheck passes. Initial default-context admissions failed locally before provider commands and are retained in the desk report. The capability sentence is the only new product change.
+Publication: Generated register pins refreshed from source commit 2b4aa2baad34d690c66033a4c782619b7bc734bf using the existing replay builder. Shape-only metadata; no authority or certificate changes.
 
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reuse the accepted lookup instruction and existing bounded lookup, add one general search-evidence sentence after a real failure, and capture the model's decisions on the recorded fixture. Seven fresh journals, at most fourteen answer calls per round, zero retries, existing stop/custody/charge controls, no messaging transport. Raw outputs and lookup results make the actual behavior reviewable without another runtime mechanism.
 80/20: Repair the one demonstrated inference error and replay the same bounded set. Retain the failed round and existing stub controls, with the desk's independent verdict still required.
 VERDICT: author submission; no independent verdict claimed
-
-Verification: Round 1 has 6/7 passing cases and one disclosed failed horse answer; round 2 passes 7/7 with 13 complete model calls. Raw output fixtures retain every case and its judgment. The final prompt hashes match the replay capture. Targeted controls and fresh-output replay: 65/65 tests pass across five files; typecheck passes. Initial default-context admissions failed locally before provider commands and are retained in the desk report. The capability sentence is the only new product change.
-Publication: Generated register pins refreshed from source commit 2b4aa2baad34d690c66033a4c782619b7bc734bf using the existing replay builder. Shape-only metadata; no authority or certificate changes.
