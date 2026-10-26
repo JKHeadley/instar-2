@@ -27,7 +27,7 @@ Prompt finding: e8708c7fea24 | protocol-literal | Unchanged protocol text, no ne
 
 Evidence boundary: Mixed sequence is injected: malformed bytes at update 6236633, followed by the recorded physical output-cap outcome at 715672483. They are not claimed to have occurred consecutively live. Prose-bound probe repeats recorded prose synthetically; later larger-span answers/reviews are synthetic conservation checks. Existing tests replay recorded reviewer, Jev and delivered reply shapes.
 
-Subject (2 paths): tests/preview/journal.ts, tests/preview/summary-cadence.test.ts
+Publication: Regenerated seven shape-only register outputs from committed source 7a07bfa37a4c451c3463e17065b78a03ab93454f with build-register --replay --commit; supplied owner/grounding repin tools found no changes. No declaration or authority was changed.
 
 ## Closing block
 
