@@ -7,6 +7,7 @@ import { createDecipheriv } from 'node:crypto';
 import { brotliDecompressSync } from 'node:zlib';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, UNKNOWN_ANSWER_NOTICE, MODEL_FAILURE_REPLY } from './journal.js';
 import type { JournalRecord } from './journal.js';
+import { modelCallRecord } from './model-call-boundary.js';
 
 const key = new Uint8Array(32).fill(7);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-compact-')));
@@ -330,5 +331,59 @@ it.each([false, true])('keeps an earlier attempt\'s exact input when compaction 
     // Settled: the snapshot turn holds the final packet, so only its duplicate is dropped; the earlier input stays.
     expect((rows.find(row => row.kind === 'reserve') as {prompt?: string}).prompt).toBe('first exact prepared input');
     expect((rows.find(row => row.kind === 'format-retry') as {prompt?: string}).prompt).toBeUndefined();
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps every model judgment whole beyond the diagnostic retention bound', () => {
+  const root = origin(), path = join(root, 'journal.encrypted');
+  const journal = openPreviewJournal(path, key, genesis);
+  try {
+    const calls = Array.from({ length: 150 }, (_, i) => modelCallRecord({ id: `call:${i}`, judgment: 'summary',
+      route: 'preview-subscription', model: 'test-model', input: `exact prompt ${i}`, output: i % 2 ? null : `exact output ${i}`,
+      outcome: i % 2 ? 'uncertain' : 'complete', latencyMs: i,
+      usage: { inputTokens: i + 1, outputTokens: i, charge: null }, at: 1000 + i }));
+    for (const call of calls) journal.append(call);
+    journal.compact(); journal.compact(); journal.close();
+    expect(retainedRows(path)).toEqual(calls);
+    const reopened = read(root);
+    try { expect(reopened.view.modelCalls.total).toBe(150); }
+    finally { reopened.close(); }
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+
+it('retains every unique phase timing older than the latest 100 through repeated compaction and reopen', () => {
+  const root = origin(), path = join(root, 'journal.encrypted');
+  const journal = openPreviewJournal(path, key, genesis);
+  const phases = ['send', 'acknowledgement', 'auth', 'version', 'jev', 'jev-admission', 'jev-disclosure', 'audience'] as const;
+  const unique = phases.map((phase, index) => ({ kind: 'phase-timing' as const, phase, id: `unique:${index}`,
+    measurements: { elapsedMs: index }, at: index, forward: { generation: 4 as const, additive: true as const } }));
+  try {
+    for (const row of unique) journal.append(row);
+    for (let i = 0; i < 350; i++) journal.append({ kind: 'phase-timing', phase: 'audience', id: 'group-disclosure',
+      measurements: { accepted: true, cacheHit: i % 5 !== 0, elapsedMs: i % 10 }, at: 100 + i,
+      forward: { generation: 4, additive: true } });
+    const recent = structuredClone(journal.view.phaseTimings);
+    journal.compact();
+    const kept = retainedRows(path);
+    expect(kept.slice(0, unique.length)).toEqual(unique);
+    const idle = kept.filter(row => row.kind === 'phase-timing' && row.id === 'group-disclosure');
+    expect(idle).toHaveLength(101);
+    expect(idle[0]).toMatchObject({ at: 100, observations: { count: 250, lastAt: 349 } });
+    expect(idle.slice(1).map(row => 'at' in row ? row.at : undefined)).toEqual(Array.from({ length: 100 }, (_, i) => 350 + i));
+    journal.compact(); expect(retainedRows(path)).toEqual(kept);
+    journal.close();
+    const reopened = openPreviewJournal(path, key);
+    try {
+      expect(reopened.view.phaseTimings).toEqual(recent);
+      for (let i = 0; i < 150; i++) reopened.append({ kind: 'phase-timing', phase: 'audience', id: 'group-disclosure',
+        measurements: { accepted: true, cacheHit: true, elapsedMs: 1 }, at: 450 + i,
+        forward: { generation: 4, additive: true } });
+      reopened.compact();
+      const again = retainedRows(path);
+      expect(again.slice(0, unique.length)).toEqual(unique);
+      expect(again).toHaveLength(unique.length + 101);
+      expect(again[unique.length]).toMatchObject({ observations: { count: 400, lastAt: 499 } });
+    } finally { reopened.close(); }
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
