@@ -2032,6 +2032,10 @@ function retainedEvidence(rows: JournalRecord[], view: JournalView): JournalReco
   const evidence: JournalRecord[] = [];
   const holds = new Map<string, Extract<JournalRecord, {kind:'hold'}>>();
   for (const row of rows) {
+    // Phase timings are diagnostics only: the projection keeps the last 100 (`view.phaseTimings`, saved in the
+    // snapshot), nothing reads them from retained evidence, and carrying every one forward grew the live root's
+    // snapshot past V8's maximum string length (2026-10-26: 1.79M rows, 399 MB of 547 MB), refusing every launch.
+    if (row.kind === 'phase-timing') continue;
     if (row.kind === 'hold' && !row.unusedModel) { if (open.has(row.id)) holds.set(row.id, row); continue; }
     if ((row.kind === 'reserve' || row.kind === 'lookup' || row.kind === 'format-retry' || row.kind === 'answer-replace')
       && row.prompt !== undefined && settledPrompt(view.turns.get(row.id)) === row.prompt) {
@@ -5681,7 +5685,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         ...(outputs[0]!.usage ? { usage: outputs[0]!.usage! } : {}),
         detail: 'collected recorded output after verified worker closure' };
     };
-    return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter, sessionWorkRecords, obligationCheckpoint,
+    return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, get retainedRows() { return retained.length; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter, sessionWorkRecords, obligationCheckpoint,
       close: () => { if (!closed) { closed = true; closeSync(fd); } } };
   } catch (error) { if (!closed) closeSync(fd); throw error; }
 }
