@@ -30,6 +30,8 @@ Prompt finding: 85544c20941f | protocol-literal | Existing fixed queued-message 
 Prompt finding: e8708c7fea24 | protocol-literal | Existing sourceLabel attribution instruction, unchanged from the supplied base; no prompt or fixture was copied or changed.
 Prompt finding: 849db3a6296a | protocol-literal | Existing fixed empty-memory display literal, unchanged from the supplied base; no semantic classifier is introduced.
 
+Decision: train-161-fixture | The commitments live-script fixture still constructed the old full selfState source while the shipped inspect/turnSources uses selfStateBrief plus disciplineSource. Match those existing runtime sources so the 32768-byte probe and actual turn test the same packet; retain all commitment and continuity assertions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-161-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest route: one ordinary exact-head merge and the existing desk regeneration/checks. No new mechanism, policy or authority is introduced. Existing atomic snapshot verification, pending-evidence retention and diagnostic boundaries remain the guards. No unattended deployment or live completion is claimed.
