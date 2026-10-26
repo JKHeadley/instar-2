@@ -26,7 +26,7 @@ Prompt finding: 4106b49fff07 | protocol-literal | Unchanged protocol text, no ne
 Prompt finding: 849db3a6296a | protocol-literal | Unchanged protocol text, no new keyword decision — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
 Prompt finding: 85544c20941f | protocol-literal | Unchanged protocol text, no new keyword decision — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-conversation-session.test.ts: "your messages are kept and i'll answer them then; you don't need to resend them."
 Prompt finding: e8708c7fea24 | protocol-literal | Unchanged protocol text, no new keyword decision — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
-Deferral: tests/preview/fixtures/summary-cadence-2026-10-26.json:227 | not-a-deferral=Recorded delivered reply preserved as test evidence, not a builder commitment.
+Deferral: tests/preview/fixtures/summary-cadence-2026-10-26.json:226 | not-a-deferral=Recorded delivered reply preserved as test evidence, not a builder commitment.
 Validation: Red-first recorded-tail regression; targeted summary tests, architecture, typecheck and final gate results in PROGRESS. Injected waiting and clocks only; no Studio load tests.
 
 Publication: Regenerated the seven shape-only register outputs from committed source bf616aa95698de9c04e8c5d22fdd55ef894af7f9 using scripts/build-register.mjs --commit. No authority or conformance declaration changed.
