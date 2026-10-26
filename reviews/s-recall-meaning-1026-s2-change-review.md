@@ -29,3 +29,4 @@ simplestRobustRoute: This is the simplest robust route: reuse the accepted looku
 VERDICT: author submission; no independent verdict claimed
 
 Verification: Round 1 has 6/7 passing cases and one disclosed failed horse answer; round 2 passes 7/7 with 13 complete model calls. Raw output fixtures retain every case and its judgment. The final prompt hashes match the replay capture. Targeted controls and fresh-output replay: 65/65 tests pass across five files; typecheck passes. Initial default-context admissions failed locally before provider commands and are retained in the desk report. The capability sentence is the only new product change.
+Publication: Generated register pins refreshed from source commit 2b4aa2baad34d690c66033a4c782619b7bc734bf using the existing replay builder. Shape-only metadata; no authority or certificate changes.
