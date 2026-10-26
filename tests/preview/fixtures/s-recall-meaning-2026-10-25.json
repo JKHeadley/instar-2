@@ -1,0 +1,374 @@
+{
+  "provenance": {
+    "source": "S-proofroom2-20261025-223202, train-157 4227fad1; read-only journal projection 2026-10-26",
+    "scrubbing": "Bot/operator ids replaced; operator name replaced; existing secret redactor applied. Summary and previous text retained only as ranking inputs. No raw credentials, raw envelopes or unrelated history. Synthetic locker combination also withheld."
+  },
+  "query": "Where did I say I keep the extra thing that unlocks the hut in the woods?",
+  "summary": "Main chat, 2026-10-25 PDT, operator Operator. 22:32: Operator said he has locker 17 at the swim club and gave its combination. The agent declined to store it as a secret and suggested a password manager. 22:34: niece Priya's birthday day is unknown. The agent asked for it and offered a reminder. 22:35: the agent offered dentist reminders. 22:38: the agent asked whether book club is monthly and when it starts. It said that if monthly, the next meeting is Thursday 2026-11-12, and offered a reminder once the time is known; unanswered. 22:40: the agent said the next recycling night is Tuesday 2026-10-27 and that it can't set a weekly repeat. It offered a one-time reminder if given a time and asked whether it is every Tuesday; unanswered. 22:43: the agent said to ask if he needs the ring's location. 22:46: the agent said Lisbon gates can change, so check the departure board. It offered a reminder if given the flight date and time; unanswered. 22:46: the agent said the next piano tuner visit would be April 2027 and asked the day and time; unresolved. 22:48-22:51: the garage remote battery, first car, choir room and fern were noted. The agent said next Sunday is 2026-11-01 and that reminders run once, daily or on weekdays, with no Sunday-only repeat. It offered a one-time reminder next Sunday if given a time; unanswered. 22:52-22:54: the hallway clock, the quince jam stall, Mr. Albescu as chess club treasurer and the cabin key location were noted. The 22:52 reply also mentioned the fern's watering as upcoming on 2026-10-25. All replies were delivered (Telegram API accepted).\ntelegram:12345678:update:6236571: The farmers market stall I like sells quince jam.\ntelegram:12345678:update:6236572: The chess club's treasurer is Mr. Albescu.\ntelegram:12345678:update:6236573: The spare cabin key hangs behind the barometer.",
+  "previous": "Garden log 41: a quiet note for the record, nothing to act on. Row 1 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the beans looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the beans looked Logged, Operator. All ten bean rows were steady today. Each was watered at dawn and had one stake retied. The mulch was still damp, there were no pests, and the soil was loose after the light rain. Like Garden logs 1, 9, 17, 25 and 33, this one stops at \"Row 11 of the beans looked\", so all six bean logs have ended in that exact spot. If Row 11 has more to it, send just that row on its own and I'll add it. Garden log 42: a quiet note for the record, nothing to act on. Row 1 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 2 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 3 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 4 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 5 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 6 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 7 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 8 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 9 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 10 of the basil looked steady today; watered at dawn, mulch still damp, one stake retied, no pests seen, soil loose after the light rain. Row 11 of the basil looked Logged, Operator. All ten basil rows were steady today. Each was watered at dawn and had one stake retied. The mulch was still damp, there were no pests, and the soil was loose after the light rain. Like Garden logs 2, 10, 18, 26 and 34, this one stops at \"Row 11 of the basil looked\". That makes six basil logs ending in exactly the same spot. If Row 11 has more to it, send just that row on its own and I'll add it. Who did I say looks after my teeth? You told me your dentist is Doctor Okafor. You said it on 2026-10-25 at 22:35 PDT.",
+  "now": 1792997755924,
+  "candidates": [
+    {
+      "update": 6236550,
+      "text": "Locker 17 at the swim club has combination [withheld].",
+      "reply": "I'm not saving that combination as a remembered fact, Operator. Lock combinations are secrets, and I keep secrets out of my memory. Your message is still in this chat's encrypted journal, because every incoming message gets logged there, but I won't treat the code as a fact to bring up later. A password manager is a safer place for it. If you'd still like me to note something, I can remember that you have locker 17 at the swim club, without the code.\n\nModel route check: typesafe-jev/jev-1.13.0 is unverified.",
+      "cues": [
+        "swimming pool",
+        "gym locker",
+        "lock code",
+        "pool membership",
+        "storage"
+      ],
+      "at": 1792992767000
+    },
+    {
+      "update": 6236551,
+      "text": "My niece Priya turns nine in March.",
+      "reply": "Got it: your niece Priya turns nine in March. I've noted it. If you tell me the exact day, I'll keep that too, and I can remind you closer to the time if you'd like. Date 1: unresolved (What day in March is Priya's birthday?). Please give an absolute date.",
+      "cues": [
+        "birthday",
+        "family",
+        "relative",
+        "age",
+        "spring"
+      ],
+      "at": 1792992842000
+    },
+    {
+      "update": 6236552,
+      "text": "My dentist is Doctor Okafor.",
+      "reply": "Noted: your dentist is Doctor Okafor. If you tell me about an appointment, I can remind you before it.",
+      "cues": [
+        "dental care",
+        "teeth",
+        "doctor",
+        "healthcare provider"
+      ],
+      "at": 1792992952000
+    },
+    {
+      "update": 6236553,
+      "text": "The blue kayak is stored in bay C at the marina.",
+      "reply": "Noted: your blue kayak is stored in bay C at the marina. Ask me anytime and I'll tell you where it is.",
+      "cues": [
+        "boat",
+        "storage location",
+        "harbor",
+        "dock",
+        "paddling"
+      ],
+      "at": 1792993011000
+    },
+    {
+      "update": 6236554,
+      "text": "My favourite tea is smoked lapsang.",
+      "reply": "Noted, Operator: your favourite tea is smoked lapsang. Good choice for a cold evening.",
+      "cues": [
+        "drink",
+        "beverage preference",
+        "favorite tea",
+        "black tea",
+        "smoky"
+      ],
+      "at": 1792993062000
+    },
+    {
+      "update": 6236555,
+      "text": "The book club meets on the second Thursday.",
+      "reply": "Noted, Operator: your book club meets on the second Thursday. Is that the second Thursday of every month, and what time does it start? If it's monthly, the next one would be Thursday 2026-11-12 (America/Los_Angeles). Once I know the time, I can remind you beforehand if you'd like. Date 1: unresolved (Is the book club on the second Thursday of every month, and what time does it start?). Please give an absolute date.",
+      "cues": [
+        "reading group",
+        "monthly meeting",
+        "schedule",
+        "books",
+        "club day"
+      ],
+      "at": 1792993112000
+    },
+    {
+      "update": 6236556,
+      "text": "The neighbour's cat is called Biscuit.",
+      "reply": "Noted: your neighbour's cat is called Biscuit.",
+      "cues": [
+        "pet",
+        "neighbor",
+        "cat name",
+        "animal",
+        "next door"
+      ],
+      "at": 1792993185000
+    },
+    {
+      "update": 6236557,
+      "text": "Our street's recycling goes out on Tuesday nights.",
+      "reply": "Noted, Operator: your street's recycling goes out on Tuesday nights. The next one is this Tuesday, 2026-10-27 (America/Los_Angeles). I can't set a weekly repeating reminder. My reminders run once, daily or on weekdays. If you tell me a time, I can remind you once this Tuesday night, and you can ask again each week. Date 1: unresolved (Is this every Tuesday night, and what time should I use for the recycling (for example, for a reminder)?). Please give an absolute date.",
+      "cues": [
+        "bin day",
+        "garbage",
+        "trash collection",
+        "weekly chore",
+        "waste pickup"
+      ],
+      "at": 1792993223000
+    },
+    {
+      "update": 6236558,
+      "text": "My library card number ends in 3317.",
+      "reply": "Noted: your library card number ends in 3317.",
+      "cues": [
+        "library",
+        "card digits",
+        "borrowing",
+        "membership number",
+        "last four"
+      ],
+      "at": 1792993315000
+    },
+    {
+      "update": 6236559,
+      "text": "The car's tyre pressure should be 34 psi.",
+      "reply": "Noted, Operator: your car's tyre pressure should be 34 psi.",
+      "cues": [
+        "tire pressure",
+        "psi",
+        "car maintenance",
+        "inflation",
+        "vehicle",
+        "wheels"
+      ],
+      "at": 1792993363000
+    },
+    {
+      "update": 6236560,
+      "text": "My grandmother's ring is in the cedar box.",
+      "reply": "Noted, Operator: your grandmother's ring is in the cedar box. Just ask if you ever need a reminder of where it is.",
+      "cues": [
+        "jewellery",
+        "heirloom",
+        "family ring",
+        "storage location",
+        "where kept",
+        "wooden box"
+      ],
+      "at": 1792993412000
+    },
+    {
+      "update": 6236561,
+      "text": "The pottery class is taught by Ines.",
+      "reply": "Noted, Operator: your pottery class is taught by Ines.",
+      "cues": [
+        "ceramics",
+        "teacher",
+        "instructor",
+        "art class",
+        "clay",
+        "who teaches"
+      ],
+      "at": 1792993458000
+    },
+    {
+      "update": 6236562,
+      "text": "My running shoes are size 44.",
+      "reply": "Noted, Operator: your running shoes are size 44.",
+      "cues": [
+        "sneakers",
+        "footwear",
+        "shoe size",
+        "trainers",
+        "jogging",
+        "exercise"
+      ],
+      "at": 1792993508000
+    },
+    {
+      "update": 6236563,
+      "text": "The Lisbon trip flight leaves from gate B12.",
+      "reply": "Noted, Operator: your Lisbon trip flight leaves from gate B12. Gates can change, so check the departure board on the day. If you tell me the flight date and time, I can remind you before you leave.",
+      "cues": [
+        "portugal",
+        "airport",
+        "departure gate",
+        "travel",
+        "boarding",
+        "vacation"
+      ],
+      "at": 1792993560000
+    },
+    {
+      "update": 6236564,
+      "text": "The piano tuner comes every April.",
+      "reply": "Noted, Operator: the piano tuner comes every April. The next visit would be in April 2027. Do you know which day in April it usually is, or will they confirm a date closer to the time? If you give me a date, I can remind you before they come. Date 1: unresolved (Which day in April does the piano tuner usually come, and at what time?). Please give an absolute date.",
+      "cues": [
+        "instrument maintenance",
+        "annual visit",
+        "spring",
+        "music",
+        "tuning appointment",
+        "yearly service"
+      ],
+      "at": 1792993617000
+    },
+    {
+      "update": 6236565,
+      "text": "My sourdough starter is named Clint.",
+      "reply": "Noted, Operator: your sourdough starter is named Clint.",
+      "cues": [
+        "bread",
+        "baking",
+        "yeast culture",
+        "fermentation",
+        "pet name",
+        "kitchen"
+      ],
+      "at": 1792993668000
+    },
+    {
+      "update": 6236566,
+      "text": "The garage door remote uses a CR2032 battery.",
+      "reply": "Noted, Operator: your garage door remote uses a CR2032 battery. Ask me when it's time for a new one.",
+      "cues": [
+        "coin cell",
+        "opener clicker",
+        "replacement battery",
+        "garage",
+        "household supplies"
+      ],
+      "at": 1792993713000
+    },
+    {
+      "update": 6236567,
+      "text": "My first car was a yellow Fiat Panda.",
+      "reply": "Noted, Operator: your first car was a yellow Fiat Panda. That's a classic.",
+      "cues": [
+        "first vehicle",
+        "old car",
+        "automobile history",
+        "italian car",
+        "childhood car"
+      ],
+      "at": 1792993766000
+    },
+    {
+      "update": 6236568,
+      "text": "The choir rehearses in room 214.",
+      "reply": "Noted, Operator: the choir rehearses in room 214.",
+      "cues": [
+        "singing practice",
+        "choir location",
+        "rehearsal room",
+        "music group",
+        "venue"
+      ],
+      "at": 1792993813000
+    },
+    {
+      "update": 6236569,
+      "text": "The fern on the landing needs water every Sunday.",
+      "reply": "Noted, Operator: the fern on the landing needs water every Sunday. Today is Sunday 2026-10-25, so if it hasn't been watered yet there's still time tonight. Next Sunday is 2026-11-01 (America/Los_Angeles). My reminders run once, daily or on weekdays, so a Sunday-only repeat isn't one of the options. If you give me a time, I can remind you once next Sunday, and you can ask again each week.",
+      "cues": [
+        "houseplant",
+        "watering schedule",
+        "plant care",
+        "weekly chore",
+        "stairs plant"
+      ],
+      "at": 1792993864000
+    },
+    {
+      "update": 6236570,
+      "text": "The hallway clock runs four minutes fast.",
+      "reply": "Noted, Operator: the hallway clock runs four minutes fast. When you read it, take four minutes off to get the real time. Upcoming: The fern on the landing needs water every Sunday. (2026-10-25).",
+      "cues": [
+        "wall clock",
+        "time offset",
+        "clock fast",
+        "hallway",
+        "real time"
+      ],
+      "at": 1792993951000
+    },
+    {
+      "update": 6236571,
+      "text": "The farmers market stall I like sells quince jam.",
+      "reply": "Noted, Operator: the farmers market stall you like sells quince jam.",
+      "cues": [
+        "farmers market",
+        "jam",
+        "preserves",
+        "quince",
+        "favourite vendor"
+      ],
+      "at": 1792994006000
+    },
+    {
+      "update": 6236572,
+      "text": "The chess club's treasurer is Mr. Albescu.",
+      "reply": "Noted, Operator: Mr. Albescu is the chess club's treasurer.",
+      "cues": [
+        "chess club",
+        "treasurer",
+        "club finances",
+        "albescu",
+        "club officer"
+      ],
+      "at": 1792994047000
+    },
+    {
+      "update": 6236573,
+      "text": "The spare cabin key hangs behind the barometer.",
+      "reply": "Noted, Operator: the spare cabin key hangs behind the barometer. Just ask if you ever need to know where it is.",
+      "cues": [
+        "cabin key",
+        "spare key",
+        "key location",
+        "barometer",
+        "hidden key"
+      ],
+      "at": 1792994087000
+    }
+  ],
+  "questions": [
+    {
+      "update": 6236619,
+      "text": "Where did I say I keep the extra thing that unlocks the hut in the woods?",
+      "answer": "You told me the spare cabin key hangs behind the barometer. You said it on 2026-10-25 at 22:54 PDT. I've taken \"the hut in the woods\" to mean that cabin. If you meant a different place, tell me and I'll check again.",
+      "reason": "The operator asked where the spare key to the hut in the woods is kept. Packet memory and the summary both hold one operator-stated line from #6236573 (2026-10-25 22:54 PDT): \"The spare cabin key hangs behind the barometer.\" No other spare-key or hut fact appears in memory. Taking \"hut in the woods\" to mean the cabin is my reading of the question, so the reply says so. This is a recall question, so nothing needs saving and there are no dates. No person was named. I used no tools.",
+      "delivered": "You told me the spare cabin key hangs behind the barometer. You said it on 2026-10-25 at 22:54 PDT. I've taken \"the hut in the woods\" to mean that cabin. If you meant a different place, tell me and I'll check again."
+    },
+    {
+      "update": 6236620,
+      "text": "What name did I give you for my sister's horse?",
+      "answer": "I can't find that in my journal, Operator. I have no record of a name for your sister's horse, and nothing about a sister or a horse at all. The closest things I have are two other names: your sourdough starter, Clint, and your neighbour's cat, Biscuit. Neither is a horse, so I won't guess. If you tell me the horse's name, I'll keep it.",
+      "reason": "No tools were called this turn. I checked the packet. None of the 25 remembered facts mentions a sister or a horse. The summary covers everything through #6236573 with complete index coverage, and the recent history is garden logs and recall questions. The memory search for this question found only two names you gave, and they belong to other things: the sourdough starter Clint (22:47 PDT) and the neighbour's cat Biscuit (22:39 PDT). Neither is a horse, so I won't offer either as the answer. A missed search doesn't prove you never said it.",
+      "delivered": "I can't find that in my journal, Operator. I have no record of a name for your sister's horse, and nothing about a sister or a horse at all. The closest things I have are two other names: your sourdough starter, Clint, and your neighbour's cat, Biscuit. Neither is a horse, so I won't guess. If you tell me the horse's name, I'll keep it."
+    }
+  ],
+  "coverage": {
+    "disposition": "complete",
+    "meaningIndexed": 24,
+    "summarizedMessages": 24
+  },
+  "recordedRecalled": [
+    6236552,
+    6236569,
+    6236550,
+    6236570
+  ],
+  "baseline": {
+    "lexical": [
+      6236552,
+      6236569,
+      6236550,
+      6236551,
+      6236570
+    ],
+    "scores": [],
+    "composed": [
+      6236552,
+      6236569,
+      6236550,
+      6236551,
+      6236570
+    ]
+  }
+}

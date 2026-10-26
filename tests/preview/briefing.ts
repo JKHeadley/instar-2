@@ -250,5 +250,5 @@ export const ANSWER_PROTOCOL = [
 export const ANSWER_INSTRUCTIONS = `${MIND_INSTRUCTIONS}\n${SELF_DESCRIPTION}\n${ANSWER_PROTOCOL}`;
 
 /** Offered only while the runner can perform a conversation-memory lookup. */
-export const MEMORY_LOOKUP_INSTRUCTIONS = 'If packet.memoryLookup is "offered" and the question needs a remembered conversation detail the packet does not show, do not answer that it is missing or unknown yet: '
+export const MEMORY_LOOKUP_INSTRUCTIONS = 'If packet.memoryLookup is "offered" and the question asks for a remembered detail with no original in history or recalled, even if summary or memory suggests it, do not answer that it is missing or unknown yet: '
     + 'return only {"lookup":[up to 6 short phrases in the words the stored message likely used]}.';

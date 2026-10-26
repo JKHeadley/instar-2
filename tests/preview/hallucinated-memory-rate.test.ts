@@ -62,8 +62,9 @@ const update = (id: number, message: string) => ({ update_id: id,
 
 type Case = (typeof corpus)[number];
 type Packet = { capability: string; history: { user: string; sourceLabel: string }[] };
-const hasPrecisionInstruction = (packet: Packet) => packet.capability.includes('state a remembered detail only when the offered journal evidence supports that exact detail')
-  && packet.capability.includes('I don\'t know from this journal');
+const hasPrecisionInstruction = (packet: Packet) => packet.capability.includes('require exact journal support')
+  && packet.capability.includes('never invent an answer')
+  && packet.capability.includes('search may have missed it');
 const withoutPrecisionInstruction = (packet: Packet): Packet => {
   const start = packet.capability.indexOf('For recall,');
   const last = 'Cite sourceLabel; disclose unknown sources.';
