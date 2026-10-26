@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: A remembered detail supported only by summary or saved memory requests the existing bounded original-source lookup; an unsuccessful recall answer tells the person what was searched and that the search may have missed it.
 Affected rules: 1, 4, 10, 11, 12, 34, 36, 37, 41, 49, 58, 70, 74, 75, 101, 113, 116
-Affected floors: Existing secret redaction, per-turn call reservation, stop admission, durable intake, ownership and duplicate-send fences remain in force. No additional call allowance or state.
+Affected floors: Existing secret redaction, spend cap and per-turn call reservation, stop admission, durable intake, ownership and duplicate-send fences remain in force. No additional call allowance or state.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
