@@ -5,7 +5,7 @@ import { createClaudePoolQuota } from '../../scripts/claude-pool-quota.mjs';
 import { createWorkingActivities, readWorkingAdmission } from './working-activity.mjs';
 import { AgentPathRefused, assertAgentPaths } from '../../scripts/agent-paths.mjs';
 import { prepareSessionConnectors, conversationAccountActions, admitSessionConnector } from './session-connectors.mjs';
-import { recordPhaseTiming } from './phase-timing.js';
+import { createAudienceTimingObserver, recordPhaseTiming } from './phase-timing.js';
 import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice } from './reply-check.js';
 import { installHarnessLogin, installedHarnessLaunch, prepareInstalledHarnessLogins, verifyPreparedHarnessLogin, observeInstalledSessionLogin } from './installed-harness-logins.mjs';
 import { loadHarnessLogins, harnessLoginPoolStatus, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
@@ -1363,12 +1363,7 @@ async function main() {
         operatorRecords(options['operator-records']), authoritySealKey(key()));
     } catch { return { kind: 'refused', reason: 'group disclosure authority unavailable' }; }
   };
-  const observeAudience = async check => {
-    const started = clock.elapsed(); let cacheHit, accepted = false;
-    try { accepted = await check(hit => { cacheHit = hit; }); return accepted; }
-    finally { if (journal) recordPhaseTiming(row => journal.append(row), 'group-disclosure', 'audience',
-      { ...(cacheHit === undefined ? {} : { cacheHit }), accepted, elapsedMs: Math.max(0, Math.round(clock.elapsed() - started)) }, wallNow()); }
-  };
+  const observeAudience = createAudienceTimingObserver(row => { if (journal) journal.append(row); }, clock.elapsed, wallNow);
   const requireGroupDisclosure = async view => {
     // test-copy-1020: a copy's audience is its verified operator's own private chat (the rebind admits no other), so
     // carried private memory is disclosed to that operator alone; the group grant of its lineage does not apply.

@@ -114,3 +114,75 @@ it('compaction does not carry every phase-timing row forward (live root refused 
     try { expect(replay.view.phaseTimings).toEqual(recent); } finally { replay.close(); }
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+it('an idle forum worker checks every second for 120 simulated minutes but records only audience transitions', async () => {
+  const { createAudienceTimingObserver } = await import('./phase-timing.js');
+  let now = at, checked = 0;
+  const rows: import('./phase-timing.js').PhaseTiming[] = [];
+  const observe = createAudienceTimingObserver(row => rows.push(row), () => now, () => now);
+  const root = mkdtempSync(join(tmpdir(), 'idle-audience-'));
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+    { ...genesis, chat: '-1001234567890', forum: true });
+  try {
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
+      model: async () => { throw Error('idle model'); }, send: async () => { throw Error('idle send'); },
+      checkOutbound: () => {}, groupDisclosure: () => observe(async hit => { checked++; hit(checked % 5 !== 0); return true; }) });
+    for (let i = 0; i < 120 * 60; i++) { now += 1000; await worker.drain(); }
+    expect(checked).toBe(7200); expect(rows).toHaveLength(1);
+    expect(await observe(async () => false)).toBe(false);
+    expect(await observe(async () => false)).toBe(false);
+    expect(await observe(async () => true)).toBe(true);
+    await expect(observe(async () => { throw Error('audience unavailable'); })).rejects.toThrow('audience unavailable');
+    expect(rows.map(row => row.measurements.accepted)).toEqual([true, false, true, false]);
+    expect(await observe(async () => true)).toBe(true);
+    expect(rows).toHaveLength(5);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('bounds repeated recorded acknowledgement and pre-transport shapes but keeps each real send attempt', async () => {
+  const { createPhaseTimingRecorder } = await import('./phase-timing.js');
+  const rows: import('./phase-timing.js').PhaseTiming[] = [];
+  const record = createPhaseTimingRecorder(row => rows.push(row));
+  // Backup 20261026-044831, update 969390340: actual last measurements, content-free.
+  const target = 'held-notice:telegram:8820318295:update:969390340';
+  for (let second = 0; second < 7200; second++) {
+    record(target, 'acknowledgement', { scheduledDueAt: 1791671768978, timerCallback: true,
+      callbackEnteredAt: 1793012143482 + second * 1000 }, at + second * 1000);
+    record(target, 'send', { sendEnteredAt: 1793012132287 + second * 1000,
+      provedNotSentAttempts: 0, attempt: 1, audienceAdmittedAt: 1793012134540 + second * 1000 }, at + second * 1000);
+  }
+  expect(rows).toHaveLength(2);
+  for (let attempt = 1; attempt <= 2; attempt++) record(target, 'send', {
+    sendEnteredAt: at, transportBegunAt: at + 1, attempt, provedNotSentAttempts: attempt - 1 }, at);
+  expect(rows.filter(row => row.measurements.transportBegunAt !== undefined)).toHaveLength(2);
+  // A refusal after a physical attempt is a new transition and gets its own observation.
+  record(target, 'send', { sendEnteredAt: at, provedNotSentAttempts: 0 }, at);
+  expect(rows).toHaveLength(5);
+});
+
+it('the worker bounds idle acknowledgement preflight rows while a slow answer is still in flight', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(at);
+  const root = mkdtempSync(join(tmpdir(), 'ack-preflight-growth-'));
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  let finish!: (value: string) => void, preflights = 0, timingRows = 0;
+  const append = journal.append;
+  journal.append = row => { if (row.kind === 'phase-timing') timingRows++; append(row); };
+  const worker = createJournalWorker(journal, { now: () => Date.now(), stopped: () => false, checkOutbound: () => {},
+    model: () => new Promise<string>(resolve => { finish = resolve; }), sendAdmits: true,
+    acknowledgementTimer: (ms, callback) => { const timer = setTimeout(callback, ms); return () => clearTimeout(timer); },
+    send: async input => {
+      preflights++; input.observeSendPhase?.('audienceAdmittedAt');
+      return { kind: 'refused', reason: 'injected pre-transport refusal' };
+    } });
+  try {
+    worker.intake([raw]); const draining = worker.drain();
+    for (let second = 0; second < 110; second++) {
+      await vi.advanceTimersByTimeAsync(1000); await worker.minimal();
+    }
+    expect(preflights).toBeGreaterThan(100);
+    expect(timingRows).toBe(3); // first timer, first poll, first preflight
+    expect(journal.view.order[0]?.heldNoticeIntent).toBeUndefined();
+    finish('42'); await draining;
+    expect(timingRows).toBeLessThanOrEqual(4); // the final answer is a separate send target
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});

@@ -8,7 +8,8 @@ import { reconcileRunCompletion, type RunCompletionItem } from '../../src/rungra
 import { decideProactiveCompaction } from '../../src/awareness/sentinel.js';
 import { WORKING_PROGRESS_CAP, WORKING_SILENCE_MS, currentWorkingActivity, workingProgressText, workingProgressDue, type WorkingActivity, type WorkingProgress } from './working-progress.js';
 import { admitJev, JEV_ADMISSION_MS } from './reply-check.js';
-import { checkPhaseTiming, recordPhaseTiming, type PhaseTiming } from './phase-timing.js';
+import { JOURNAL_JSON_CHUNK_BYTES, JOURNAL_JSON_STRING_BYTES, journalJsonChunks, parseJournalJson } from './journal-json.js';
+import { checkPhaseTiming, createPhaseTimingRecorder, type PhaseTiming } from './phase-timing.js';
 import { groupCarryPacket, validCarriedMemory, type CarriedMemory } from './group-carry.js';
 import { boundThread, journalAudience, journalConversation, matchesBoundChat, validateChatBinding } from './forum-routing.js';
 /** The machine-local preview's only conversation and effect ledger. Records are
@@ -69,7 +70,7 @@ import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, oper
 import { chatYesReference, reviewYesReference, SHARED_ACCESS_NOTE } from '../../src/operator/explicit-yes.js';
 import type { ExplicitYesInstallation, SharedAccessDisclosure } from '../../src/operator/explicit-yes.js';
 import { reviewLink, type ReviewYesSource } from './review-yes-source.js';
-import { applySentinelRecord, checkSentinelRecord, presenceNoteDue, type SentinelRecord, type SentinelView } from './sentinel-record.js';
+import { applySentinelRecord, checkSentinelRecord, retainedSentinelEvidence, presenceNoteDue, type SentinelRecord, type SentinelView } from './sentinel-record.js';
 import { taskFields } from './answer-reading.js';
 import { encodeReply, fitsOneMessage, replyPartTarget, splitReply, wholeReplySent, MAX_ANSWER_BYTES, MAX_REPLY_PARTS, TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
 
@@ -1888,9 +1889,9 @@ export const projectMemoryClause = (view: JournalView, value: string, source?: s
 export const activeMemoryConflicts = (view: JournalView) => view.conflicts.filter(item =>
   [item.first, item.second].every(part => projectMemoryClause(view, part.quote, part.source) === part.quote));
 
-const frameLimit = 2 * 1024 * 1024;
+const frameLimit = JOURNAL_JSON_STRING_BYTES;
 export const PREVIEW_JOURNAL_COMPACT_BYTES = 8 * 1024 * 1024;
-const snapshotChunkBytes = 256 * 1024;
+const snapshotChunkBytes = JOURNAL_JSON_CHUNK_BYTES;
 type SnapshotStart = { kind: 'snapshot-start'; version: 1; chunks: number; bytes: number; digest: string };
 type SnapshotChunk = { kind: 'snapshot-chunk'; data: string };
 type Snapshot = { view: Omit<JournalView, 'turns' | 'order' | 'heldTurns' | 'forwardFrames' | 'channelItems' | 'summaryReservations' | 'summaryFailures' | 'failureClasses' | 'providerStates' | 'closed' | 'capReports' | 'stepChecks' | 'channelSources' | 'channelSourceErrors' | 'summaryRequired' | 'summaryCandidates' | 'summaryChecks' | 'summaryFaithfulness' | 'summaryReviews' | 'callOutcomeCounts' | 'questionsReviewed' | 'tokenCurrent' | 'mentionedDates' | 'reminders'> & {
@@ -1918,7 +1919,9 @@ export const durableProjection = (view: JournalView): Snapshot['view'] => snapsh
 /** Canonical digest of the whole conversation projection (what a snapshot would save). Two views agree
  * exactly when their digests match; Rule 33 uses it as a journal frontier and as the replay comparison. */
 export function projectionDigest(view: JournalView): string {
-  return createHash('sha256').update(JSON.stringify(snapshotOf(view, []).view)).digest('hex');
+  const hash = createHash('sha256');
+  for (const chunk of journalJsonChunks(snapshotOf(view, []).view)) hash.update(chunk);
+  return hash.digest('hex');
 }
 function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): JournalView {
   const saved = snapshot?.view;
@@ -2030,12 +2033,14 @@ function retainedEvidence(rows: JournalRecord[], view: JournalView): JournalReco
   const open = new Set(view.order.filter(turn => turn.held !== undefined
     || turn.accepted && (turn.intent === undefined || turn.sent === undefined)).map(turn => turn.id));
   const evidence: JournalRecord[] = [];
+  const sentinels = retainedSentinelEvidence(rows.filter((row): row is SentinelRecord => row.kind === 'sentinel'));
   const holds = new Map<string, Extract<JournalRecord, {kind:'hold'}>>();
   for (const row of rows) {
     // Phase timings are diagnostics only: the projection keeps the last 100 (`view.phaseTimings`, saved in the
     // snapshot), nothing reads them from retained evidence, and carrying every one forward grew the live root's
     // snapshot past V8's maximum string length (2026-10-26: 1.79M rows, 399 MB of 547 MB), refusing every launch.
     if (row.kind === 'phase-timing') continue;
+    if (row.kind === 'sentinel' && !sentinels.has(row)) continue;
     if (row.kind === 'hold' && !row.unusedModel) { if (open.has(row.id)) holds.set(row.id, row); continue; }
     if ((row.kind === 'reserve' || row.kind === 'lookup' || row.kind === 'format-retry' || row.kind === 'answer-replace')
       && row.prompt !== undefined && settledPrompt(view.turns.get(row.id)) === row.prompt) {
@@ -5440,11 +5445,12 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
           throw Error('preview journal: invalid snapshot chunk');
         pendingSnapshot.chunks.push(chunk);
         if (pendingSnapshot.chunks.length === pendingSnapshot.start.chunks) {
-          const bytes = Buffer.concat(pendingSnapshot.chunks);
-          if (bytes.length !== pendingSnapshot.start.bytes
-            || createHash('sha256').update(bytes).digest('hex') !== pendingSnapshot.start.digest)
+          const hash = createHash('sha256');
+          let bytes = 0;
+          for (const part of pendingSnapshot.chunks) { hash.update(part); bytes += part.length; }
+          if (bytes !== pendingSnapshot.start.bytes || hash.digest('hex') !== pendingSnapshot.start.digest)
             throw Error('preview journal: snapshot digest differs');
-          const snapshot = JSON.parse(bytes.toString('utf8')) as Snapshot;
+          const snapshot = parseJournalJson(pendingSnapshot.chunks) as Snapshot;
           view = restoreSnapshot(snapshot, view.genesis); retained = snapshot.retained;
           snapshotBase = decoded.end; pendingSnapshot = undefined;
         }
@@ -5574,10 +5580,11 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         }
         const kept = retainedEvidence(rows, view);
         verifyPendingEvidence(kept, view);
-        const bytes = Buffer.from(JSON.stringify(snapshotOf(view, kept)));
-        const chunks = Math.ceil(bytes.length / snapshotChunkBytes);
-        const start: SnapshotStart = { kind: 'snapshot-start', version: 1, chunks, bytes: bytes.length,
-          digest: createHash('sha256').update(bytes).digest('hex') };
+        const snapshot = snapshotOf(view, kept), hash = createHash('sha256');
+        let bytes = 0;
+        for (const chunk of journalJsonChunks(snapshot)) { hash.update(chunk); bytes += chunk.length; }
+        const start: SnapshotStart = { kind: 'snapshot-start', version: 1, chunks: Math.ceil(bytes / snapshotChunkBytes), bytes,
+          digest: hash.digest('hex') };
         boundary?.('compact:before-temp');
         if (existsSync(temp)) {
           if (lstatSync(temp).isSymbolicLink() || !lstatSync(temp).isFile()) throw Error('preview journal: substituted compaction temp');
@@ -5589,8 +5596,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         boundary?.('compact:after-genesis');
         nextSize = writeFrame(tempFd, start, key, nextSize);
         boundary?.('compact:after-snapshot-start');
-        for (let i = 0; i < chunks; i++) {
-          const chunk = bytes.subarray(i * snapshotChunkBytes, (i + 1) * snapshotChunkBytes);
+        for (const chunk of journalJsonChunks(snapshot)) {
           nextSize = writeFrame(tempFd, { kind: 'snapshot-chunk', data: chunk.toString('base64') }, key, nextSize);
           boundary?.('compact:after-chunk');
         }
@@ -5599,7 +5605,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         boundary?.('compact:after-fsync');
         const check = openPreviewJournal(temp, key, undefined, undefined, true, compactBytes);
         try {
-          if (JSON.stringify(snapshotOf(check.view, []).view) !== JSON.stringify(snapshotOf(view, []).view))
+          if (projectionDigest(check.view) !== projectionDigest(view))
             throw Error('preview journal: snapshot projection differs');
         } finally { check.close(); }
         boundary?.('compact:after-verify');
@@ -6065,6 +6071,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // Every host of this worker inherits the floor, not only the shipped CLI. A snapshot without
   // its current disclosure resolver is readable for audit but cannot leave through a model or send.
   const original = ports;
+  const recordTiming = createPhaseTimingRecorder(journal.append);
   let operatorOnlyVerified = false;
   const privateMemory = () => !!journal.view.groupCarry || journal.view.genesis.forum === true
     && journal.view.memory.some(change => change.mode === 'remember');
@@ -6088,7 +6095,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }, admission ?? { admissionMs: JEV_ADMISSION_MS }, replyCheck.elapsedMs, original.now);
       accepted = true;
     } finally {
-      recordPhaseTiming(journal.append, occurrence ?? 'jev-reply-check', 'jev-disclosure',
+      recordTiming(occurrence ?? 'jev-reply-check', 'jev-disclosure',
         { accepted, elapsedMs: Math.max(0, Math.round(replyCheck.elapsedMs() - began)) }, original.now());
     }
     return replyCheck.jev(text, questions, timeoutMs, occurrence, remaining);
@@ -6159,7 +6166,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown; current?: () => boolean }, admitted?: () => void): Promise<SettledSendOutcome> => {
     const measurements: Record<string, number | boolean> = { sendEnteredAt: ports.now(), provedNotSentAttempts: 0 };
     const observeSendPhase = (phase: 'audienceAdmittedAt' | 'transportBegunAt' | 'transportReturnedAt') => { measurements[phase] = ports.now(); };
-    const record = () => recordPhaseTiming(journal.append, target, 'send', measurements, ports.now());
+    const record = () => recordTiming(target, 'send', measurements, ports.now());
     try {
     let prepared = admitted === undefined;
     const admit = () => { if (!prepared) { gate(); if (input.current && !input.current()) throw Error('acknowledgement cancelled'); observeSendPhase('audienceAdmittedAt'); admitted!(); prepared = true; } };
@@ -8340,7 +8347,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       || ports.now() - turn.at < REPLY_ACKNOWLEDGEMENT_AFTER_MS
       || journal.view.replies >= journal.view.limits.maxReplies - 1) return Promise.resolve();
     const run = async () => {
-      recordPhaseTiming(journal.append, `held-notice:${turn.id}`, 'acknowledgement', {
+      recordTiming(`held-notice:${turn.id}`, 'acknowledgement', {
         scheduledDueAt: turn.at + REPLY_ACKNOWLEDGEMENT_AFTER_MS, timerCallback: callbackEnteredAt !== undefined,
         ...(callbackEnteredAt === undefined ? {} : { callbackEnteredAt }) }, ports.now());
       const text = REPLY_ACKNOWLEDGEMENT;

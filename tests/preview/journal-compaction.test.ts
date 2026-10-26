@@ -7,6 +7,7 @@ import { createDecipheriv } from 'node:crypto';
 import { brotliDecompressSync } from 'node:zlib';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, UNKNOWN_ANSWER_NOTICE, MODEL_FAILURE_REPLY } from './journal.js';
 import type { JournalRecord } from './journal.js';
+import { modelCallRecord } from './model-call-boundary.js';
 
 const key = new Uint8Array(32).fill(7);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-compact-')));
@@ -330,5 +331,22 @@ it.each([false, true])('keeps an earlier attempt\'s exact input when compaction 
     // Settled: the snapshot turn holds the final packet, so only its duplicate is dropped; the earlier input stays.
     expect((rows.find(row => row.kind === 'reserve') as {prompt?: string}).prompt).toBe('first exact prepared input');
     expect((rows.find(row => row.kind === 'format-retry') as {prompt?: string}).prompt).toBeUndefined();
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps every model judgment whole beyond the diagnostic retention bound', () => {
+  const root = origin(), path = join(root, 'journal.encrypted');
+  const journal = openPreviewJournal(path, key, genesis);
+  try {
+    const calls = Array.from({ length: 150 }, (_, i) => modelCallRecord({ id: `call:${i}`, judgment: 'summary',
+      route: 'preview-subscription', model: 'test-model', input: `exact prompt ${i}`, output: i % 2 ? null : `exact output ${i}`,
+      outcome: i % 2 ? 'uncertain' : 'complete', latencyMs: i,
+      usage: { inputTokens: i + 1, outputTokens: i, charge: null }, at: 1000 + i }));
+    for (const call of calls) journal.append(call);
+    journal.compact(); journal.compact(); journal.close();
+    expect(retainedRows(path)).toEqual(calls);
+    const reopened = read(root);
+    try { expect(reopened.view.modelCalls.total).toBe(150); }
+    finally { reopened.close(); }
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
