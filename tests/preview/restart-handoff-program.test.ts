@@ -3,7 +3,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { historicalModule } from './historical-module.js';
+// @ts-expect-error The production evidence checker is executable ESM tooling.
+import { productionGroundingSourceDigest } from '../../scripts/check-assembly-contracts.mjs';
 import { SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { activationMatchesJournal, createJournalWorker, HELD_NOTICE_AFTER_MS, openPreviewJournal,
   renewJournalExpiry, UNKNOWN_SEND_NOTICE } from './journal.js';
@@ -225,13 +227,17 @@ it('renewal changes expiry only and preserves recall and one-shot effects', asyn
 // written by the live frozen14 build reopens under the candidate with the same effect fences.
 it('a frozen14-written journal reopens under the candidate with recall and effect fences intact', async () => {
   const root = rootFor();
-  const baselineModule = join(process.cwd(), 'tests/preview', `.frozen14-${String(process.pid)}.ts`);
+  const sourceDigest = productionGroundingSourceDigest();
   try {
     const baselineSource = execFileSync('git', ['show', '7d824d64:tests/preview/journal.ts'], { encoding: 'utf8' });
-    writeFileSync(baselineModule, baselineSource);
-    const old = await import(pathToFileURL(baselineModule).href) as JournalModule;
+    const baselineModule = historicalModule(baselineSource, join(process.cwd(), 'tests/preview/journal.ts'),
+      join(root, 'frozen14.ts'));
+    // Sample while the old module exists: a parallel evidence worker must still
+    // see the current checkout, not this test's historical journal implementation.
+    expect(productionGroundingSourceDigest()).toBe(sourceDigest);
+    const old = await import(baselineModule) as JournalModule;
     const { clock, before, heldPushed } = await fixture(root, old);
     expect(JSON.stringify(before)).toContain('Silver otter 731');
     await assertReopened(root, clock, before, false, heldPushed);
-  } finally { rmSync(baselineModule, { force: true }); rmSync(root, { recursive: true, force: true }); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
