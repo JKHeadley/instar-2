@@ -4,6 +4,10 @@ _Generated from `01-the-rules.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 17 · 2026-10-26 · draft — Justin, 2026-10-26: "we should ALWAYS have a functional floor that allows an Instar agent to be fully functional with only a single AI provider (claude, codex, etc)". Final-head GitHub code-owner approval and merge pending.
+
+- **Add Rule 118, One Provider Is Enough, in Needs building, with its value rationale, the single-provider boot test per supported harness and the second-provider declaration check; update the group and total counts and the source note.** — Rule 30 makes every feature work on every harness but does not stop a feature from requiring a second provider; an agent with one provider must be fully functional, and a second provider is an optimization only. _(Justin, 2026-10-26: "we should ALWAYS have a functional floor that allows an Instar agent to be fully functional with only a single AI provider (claude, codex, etc)". Final-head GitHub code-owner approval and merge pending.)_
+
 ## Revision 16 · 2026-10-15 · draft — Justin, topic 102965, 2026-10-15 16:59 PDT: "Yes!", answering the observer’s 16:58 proposal; origin: Justin 16:20 on concurrent sessions contradicting each other on 2026-10-14. Final-head GitHub code-owner approval and merge pending.
 
 - **Add Rule 117, One Agent, Many Sessions, in Needs building with the section g two-session checks and partial-until-live status; update the group and total counts.** — Rule 31 covers machines only; concurrent sessions must share awareness of words, promises and actions and disclose lag instead of contradicting each other. _(Justin, topic 102965, 2026-10-15 16:59 PDT: "Yes!", answering the observer’s 16:58 proposal; origin: Justin 16:20 on concurrent sessions contradicting each other on 2026-10-14. Final-head GitHub code-owner approval and merge pending.)_

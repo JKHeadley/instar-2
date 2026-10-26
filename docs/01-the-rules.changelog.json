@@ -1,5 +1,21 @@
 [
   {
+    "revision": 17,
+    "date": "2026-10-26",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, 2026-10-26: \"we should ALWAYS have a functional floor that allows an Instar agent to be fully functional with only a single AI provider (claude, codex, etc)\". Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Add Rule 118, One Provider Is Enough, in Needs building, with its value rationale, the single-provider boot test per supported harness and the second-provider declaration check; update the group and total counts and the source note.",
+        "why": "Rule 30 makes every feature work on every harness but does not stop a feature from requiring a second provider; an agent with one provider must be fully functional, and a second provider is an optimization only.",
+        "ref": "Justin, 2026-10-26: \"we should ALWAYS have a functional floor that allows an Instar agent to be fully functional with only a single AI provider (claude, codex, etc)\". Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 16,
     "date": "2026-10-15",
     "status": "draft",
