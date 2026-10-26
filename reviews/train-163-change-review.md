@@ -1,0 +1,46 @@
+# Change review — train-163 reviewed integration
+
+Subject base: 1e1dac0353a8fad0651a91ddc6a60526dc121b54
+Review state: open
+Reviewed content: none
+Outcome: Integrate exactly the three prescribed reviewed heads on the accepted live base, preserving bounded summary recovery and bounded test parallelism.
+Affected rules: 1, 4, 7, 11, 34, 35, 36, 37, 42, 47, 49, 55, 58, 60, 69, 70, 74, 75, 90, 91, 95, 96, 101, 102, 111, 112, 113, 116, 118
+Affected floors: Secrets, spend cap, stop, no duplicate sends and durable intake retain the reviewed enforcement. No new authority or external send is introduced by integration.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Carries constitution wording and model-facing summary recovery on the default memory path.
+Side effects: Automatic summaries may fit more older turns; format feedback is consumed once and existing per-span/pass limits and reviewers remain. Vitest ordinary fixtures regain bounded parallelism. The train-159 ancestry also carries setup-supervisor and login-preparation work absent from the live base; it is preserved, not silently discarded.
+Undo and recovery: Retain the current serving build until desk acceptance; revert this train if rejected. No journal migration or resend.
+Multi-machine posture: Shared source and generated register travel by git. Summary execution is owner-local with existing journal replication; test scheduling and temporary fixtures are machine-local deliberately.
+Layer below: Read constitution, all three hash-verified report snapshots, exact git ancestry, member reviews, existing packet fitting and attempt accounting, register replay and Vitest scheduling. Main design text is authoritative; member fixture provenance is retained.
+Bug class: none
+Bug evidence: none
+Hook bypass: none
+Convergence: none
+Prompt review: Preserve the reviewed content-free format reminder and acceptance reviewers. No new classifier or answer cue. Replay recorded malformed writers, uncertain/undecided judgments, reply reviews and delivered replies through existing fixture tests.
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged protocol wording; no keyword intent gate — fixture-phrase tests/preview/journal.ts <- tests/preview/topic-awareness.test.ts: "you attempted nothing outside this reply, so never call an avenue tried; a missi"
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged protocol wording; no keyword intent gate — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
+Prompt finding: 85544c20941f | protocol-literal | Unchanged protocol wording; no keyword intent gate — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-conversation-session.test.ts: "your messages are kept and i'll answer them then; you don't need to resend them."
+Prompt finding: e8708c7fea24 | protocol-literal | Unchanged protocol wording; no keyword intent gate — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
+Deferral: generated/conversion.json:1 | not-a-deferral=Preserved generated rule text or captured delivered-reply evidence; no new builder commitment.
+Deferral: generated/register.json:1 | not-a-deferral=Preserved generated rule text or captured delivered-reply evidence; no new builder commitment.
+Deferral: tests/preview/fixtures/summary-cadence-2026-10-26.json:226 | not-a-deferral=Preserved generated rule text or captured delivered-reply evidence; no new builder commitment.
+Skip: tests/assembly/setup-supervisor-linux.test.ts:36 | scope=Inherited platform-specific bwrap smoke test; Linux-only host contract, not weakened by integration.
+
+Subject (43 paths): bin/instar2.mjs, docs/01-the-rules.changelog.json, docs/01-the-rules.changelog.md, docs/01-the-rules.md, docs/14-the-assembly.changelog.json, docs/14-the-assembly.changelog.md, docs/14-the-assembly.md, docs/defects/vitest-worker-rpc-timeouts.md, docs/setup-supervisor.md, docs/standing-trust-setup.md, generated/capabilities.json, generated/capabilities.md, generated/conversion.json, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, register-source/bootstrap-anchor.json, scripts/build-register.mjs, scripts/login-preparation.mjs, scripts/setup-qualification-linux.mjs, scripts/setup-qualification-linux.py, scripts/setup-supervisor-linux.mjs, scripts/setup-supervisor-owners.mjs, scripts/setup-supervisor-protocol.mjs, scripts/setup-supervisor-seven.mjs, scripts/setup-supervisor.mjs, tests/assembly/setup-supervisor-linux.test.ts, tests/assembly/setup-supervisor-owners.test.ts, tests/assembly/setup-supervisor-seven.test.ts, tests/assembly/setup-supervisor.test.ts, tests/e2e/register.test.ts, tests/preview/fixtures/summary-cadence-2026-10-26.json, tests/preview/journal.test.ts, tests/preview/journal.ts, tests/preview/login-preparation.test.ts, tests/preview/proactive-compaction.test.ts, tests/preview/summary-cadence.test.ts, tests/preview/summary-fit.test.ts, tests/setup/worker-limit.ts, tests/unit/test-worker-limit.test.ts, vitest.config.ts
+
+Decision: train-163-main | Merge exactly 2f46478df4fd512e74d612ac494dc88441aa3bd6; scope and approval provenance in reviews/constitution-single-provider-floor-change-review.md and reviews/const-onemind-merge-166-change-review.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-163-PROGRESS.md
+Decision: train-163-summary | Merge exactly 7a2080c177aef2755f92914c094f97b5062ce649; report /Users/dabombstudio/.instar/agents/echo/.instar/lanes/s-summary-cadence-1026-PROGRESS.md, verified snapshot sha256 805610f298221e4e82021c11e61570c91cce71c339d3c9a2975b50aaaafb29a5. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-163-PROGRESS.md
+Decision: train-163-parallel | Merge exactly 481246a9d0d339cf40665d99271e93230437cf41 including its train-159 ancestry; report /Users/dabombstudio/.instar/agents/echo/.instar/lanes/test-parallel-1026-PROGRESS.md, verified snapshot sha256 17356d8f19206aba0b6693bc14f2aa4d7e233ee6dd5ef2bef6d0a18898a980e7. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-163-PROGRESS.md
+Decision: train-163-A | Preserve both member behaviors and accepted live behavior. Conflicts were generated publication files and a derived conversion pin only. Main assembly design text is adopted exactly; retain changelog versions from both sides and append its alignment record. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-163-PROGRESS.md
+Decision: train-163-B | Create train-163 directly at exact live base 1e1dac0353a8fad0651a91ddc6a60526dc121b54 in a separate worktree; no branch movement. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-163-PROGRESS.md
+Decision: train-163-C | No genuine product conflict arose; no merge aborted and no prescribed head left out. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-163-PROGRESS.md
+Decision: train-163-D | Use WSL targeted foreground checks; disclose host-dependent and real-provider checks for Studio rather than changing their assertions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-163-PROGRESS.md
+Decision: train-163-desk | Run the prescribed repin/build/rehash/replay chain. Regenerate all publication outputs and bind the canonical combined anchor digest; no conformance declaration changed. Source procedure: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L37-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-163-PROGRESS.md
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges and the existing repin/build/rehash/replay tools. No runtime mechanism is added by integration. Existing ownership, spend, stop, prompt/output bounds and durable intake hold; offline replay is not an unattended live-acceptance claim.
+80/20: Target changed tests and direct consumers, preserve all recorded failures, and hand host-only and full-suite verification to the Studio gate.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

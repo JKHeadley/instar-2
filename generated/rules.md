@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:8e77f69337998d2774a42e2cf89c28ad05938d904a867479b8ca04aab2237dd4
-Source commit: 7a07bfa37a4c451c3463e17065b78a03ab93454f
+Register generation: sha256:cd5f938766d837affae1c7d41561a57663fa6026cf5ba8c8e98e3e898809a7ed
+Source commit: e18e7ea90a4c7ddaef827ad95cd952f250edacee
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -151,6 +151,13 @@ Sessions running at the same time are one agent. Each knows what the others have
 
 Check: Two-session tests run in desk proof rooms on every build: one session acts or speaks, another is asked about it, and it must answer correctly (LIVE-PATH-PLAN.md section g, rows a to d). Status: partial until (a) and (b) pass live.
 Terms: term:done, term:operator
+
+## 118. One Provider Is Enough
+
+An agent with exactly one AI provider, whichever one it is (Anthropic, OpenAI, Google, and so on), is fully functional. A second provider (a separate decision model, a reviewer from another model family, a cheaper model routed off the main one) is an optimization only: it may make a feature better, faster or cheaper, never possible. Every feature that uses a second provider declares what it does when there is only one, and that behaviour delivers the feature rather than refusing, holding or switching it off. Extends #30 from harnesses to providers. An outage of the one provider is #67's case, not this rule's.
+
+Check: A single-provider boot test for each supported harness: a fresh installation with only that harness's own provider configured passes the live end-to-end proofs (#43, #62), including a real conversation with the operator, with nothing refused, held or switched off for want of another provider. A declaration check: every place that calls a provider other than the agent's main one carries a declared single-provider behaviour, and a missing declaration fails the build.
+Terms: term:feature
 
 ## 12. Intelligent Prompts
 
