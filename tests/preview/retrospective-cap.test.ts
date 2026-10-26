@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
+import { MEMORY_LEARNING_POLICY } from '../../src/assembly/memory-answer-guidance.js';
 import { SUBSCRIPTION_MAX_OUTPUT_TOKENS } from '../../src/assembly/production-provider.js';
 import { readAnswer } from './answer-reading.js';
 import type { JournalView } from './journal.js';
@@ -49,10 +50,18 @@ it('keeps the actual truncated terminal result refused, while the earlier comple
   expect(() => validate(failed!.terminalResult!)).toThrow();
 });
 
-it('the revised question completes real model replays of the recorded packet within the unchanged cap', () => {
+it('replays the historical cap evidence and identifies the added memory policy separately', () => {
+  // These outputs were captured on October 17. Bind that prompt exactly while
+  // identifying the sole later policy addition; this is not a fresh provider run.
+  const memoryGuidance = MEMORY_LEARNING_POLICY
+    + 'The remembered count is durable fact writes from that turn, including in followUps. A positive count supports a save claim; no separate save request is needed.';
+  const lines = RETROSPECTIVE_QUESTION.split('\n');
+  expect(lines.filter(line => line === memoryGuidance)).toHaveLength(1);
+  const capturedQuestion = lines.filter(line => line !== memoryGuidance).join('\n');
   expect(fixture.replays.length).toBeGreaterThanOrEqual(2);
   for (const replay of fixture.replays) {
-    expect(replay.questionSha256).toBe(createHash('sha256').update(RETROSPECTIVE_QUESTION).digest('hex'));
+    expect(replay.questionSha256).toBe(createHash('sha256').update(capturedQuestion).digest('hex'));
+    expect(replay.questionSha256).not.toBe(createHash('sha256').update(RETROSPECTIVE_QUESTION).digest('hex'));
     expect(replay.numTurns).toBe(1);
     expect(replay.outputTokens).toBeLessThanOrEqual(SUBSCRIPTION_MAX_OUTPUT_TOKENS);
     const raw = JSON.parse(replay.output) as { grades: { case: string }[] };

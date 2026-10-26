@@ -72,10 +72,13 @@ it.each(fixed.cases)('replays fresh Codex decisions through durable memory: $nam
   });
   const old = JSON.parse(capture.turns[0].raw).message.text as string;
   const updated = scenario.name === 'recorded-update' || scenario.name === 'explicit-now';
-  // Keep the captured deliveries as historical evidence of the old inventory override.
-  // The current protocol preserves the captured nonempty answer despite memoryList:true.
-  const expectedSends = updated ? [...scenario.delivered.slice(0, -1),
-    'orchid-cdb0bc5a47dc\nSource: main chat, turn 367052735, 2026-10-21 16:29 PDT.'] : scenario.delivered;
+  // Captured deliveries retain the historical template/inventory overrides. Successful
+  // remembers now preserve the recorded model reply; corrections keep their exact receipt.
+  const expectedSends = [...scenario.delivered];
+  expectedSends[0] = JSON.parse(capture.turns[0].output).reply;
+  if (scenario.name === 'unrelated') expectedSends[1] = JSON.parse(scenario.calls[0]!.output).reply;
+  if (updated) expectedSends[expectedSends.length - 1] =
+    'orchid-cdb0bc5a47dc\nSource: main chat, turn 367052735, 2026-10-21 16:29 PDT.';
   try {
     w.worker.intake([JSON.parse(capture.turns[0].raw)]); await w.worker.drain();
     const second = JSON.parse(capture.turns[1].raw); second.message.text = scenario.second;

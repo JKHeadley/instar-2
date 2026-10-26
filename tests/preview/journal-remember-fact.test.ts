@@ -53,7 +53,7 @@ it('saves in topic 3, recalls in topic 1 and after restart, lists it and forgets
   try {
     await w.turn(1, `remember ${quote}`, 3);
     expect(w.journal.view.memory).toMatchObject([{ mode: 'remember', quote }]);
-    expect(w.sends.at(-1)).toBe('Saved the requested fact.');
+    expect(w.sends.at(-1)).toBe('Noted.');
     expect(projectMemoryClause(w.journal.view, quote)).toBe(quote);
     expect(memoryReport(w.journal.view)).toContain('lantern');
     await w.turn(2, 'what is the desk test word?');
@@ -80,7 +80,7 @@ it.each(['shared', 'revoked-before-send'])('withholds private saved facts when a
     if (scenario === 'shared') w.allow(false); else w.revokeDuringAnswer();
     await w.turn(2, 'what is the desk test word?');
     expect(w.journal.view.order.at(-1)?.accepted).toBe(true);
-    expect(w.sends).toEqual(['Saved the requested fact.']);
+    expect(w.sends).toEqual(['Noted.']);
     if (scenario === 'shared') expect(w.packets).toHaveLength(1);
   } finally { w.journal.close(); }
 });
@@ -169,7 +169,7 @@ it('review: an explicit save after forgetting is recalled', async () => {
   await w.turn(1, `remember ${quote}`, 3);
   await w.turn(2, 'forget the desk test word');
   await w.turn(3, `remember ${quote}`, 3);
-  expect(w.sends.at(-1)).toBe('Saved the requested fact.');
+  expect(w.sends.at(-1)).toBe('Noted.');
   await w.turn(4, 'what is the desk test word?');
   expect(w.sends.at(-1)).toBe(quote);
   const oldSource = w.journal.view.order[0]!.id, newSource = w.journal.view.order[2]!.id;
@@ -210,7 +210,7 @@ it('review: seventeenth short fact fits the unchanged packet budget', async () =
   }
   console.log(JSON.stringify({facts:w.journal.view.memory.length,lastIntakeBytes:Buffer.byteLength(w.journal.view.order.at(-1)!.text),lastReply:w.sends.at(-1),maxBytes:w.journal.view.limits.maxBytes,calls:w.journal.view.calls}));
   expect(w.journal.view.memory.filter(x=>x.mode==='remember')).toHaveLength(17);
-  expect(w.sends.at(-1)).toBe('Saved the requested fact.');
+  expect(w.sends.at(-1)).toBe('Noted.');
   expect(w.journal.view.order.some(turn => turn.packetDropped?.some(item => item.kind === 'fact'))).toBe(true);
   worker.intake([raw(18, 'what do you remember?', 1)]); await worker.drain();
   expect(w.sends.at(-1)).toContain('fact number 1 ');
