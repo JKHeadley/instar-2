@@ -34,13 +34,15 @@ const spare = 'Actually, forget the spare key under the mat.';
 const plain = 'Quick check from the desk: are you there? One short sentence is plenty.';
 type Input = { id: string; question: string; context: string };
 
-const world = (root: string, clock = { now: start + 20 * 60_000 }) => {
+const world = (root: string, clock = { now: start + 20 * 60_000 }, malformed = true) => {
   const calls: Input[] = [], sent: string[] = [];
   const ports = { now: () => clock.now, stopped: () => false, timeZone: 'America/Los_Angeles',
     model: async (input: Input) => {
       calls.push(input);
       // The live root's own summary outcome: malformed, 37 of its 52 summary calls.
-      if (input.id.startsWith('summary:')) return { state: 'complete' as const, failureClass: 'malformed' as const };
+      if (input.id.startsWith('summary:')) return malformed
+        ? { state: 'complete' as const, failureClass: 'malformed' as const }
+        : { state: 'rejected' as const, failureClass: 'rejected' as const };
       return JSON.stringify({ reply: `Answered: ${input.question}`, memory: [], dated: [] });
     },
     checkOutbound: () => {},
@@ -55,7 +57,8 @@ const exhaust = async (w: ReturnType<typeof world>, attempts: number) => {
   for (const [id, text] of [[1, 'Hello.'], [2, 'What is a good bird seed?'], [3, 'How tall do sunflowers grow?'], [4, 'Thanks.']] as const) {
     w.worker.intake([update(id, text)]); await w.worker.drain();
   }
-  for (let attempt = 0; attempt < attempts; attempt++) await w.worker.summarizeIfNeeded(true);
+  // Completed malformed responses consume both attempts in one pass.
+  for (let attempt = 0; attempt < attempts; attempt += 2) await w.worker.summarizeIfNeeded(true);
   expect([...w.journal.view.summaryFailures.values()]).toEqual(attempts === 0 ? [] : [attempts]);
 };
 
@@ -91,7 +94,9 @@ it('settles every request an exhausted frontier already covers in one pass, and 
 it('keeps the correction hold while the frontier still has an attempt left, then releases both requests in one pass', async () => {
   const root = tmp('reachable');
   try {
-    const w = world(root);
+    // A definite rejection is not a completed format miss: it leaves the second
+    // attempt for the next pass, exercising the non-exhausted neighbor.
+    const w = world(root, undefined, false);
     await exhaust(w, 0);
     w.worker.intake([update(5, locker), update(6, spare), update(7, plain)]);
     // Pass one spends the frontier's first attempt only, so the predicate is still false: a later summary can still

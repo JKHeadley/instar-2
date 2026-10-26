@@ -326,7 +326,8 @@ it('brings open items back after compaction with who said them and when, says it
 it('surfaces only BM25-related open items with age, while an unrelated turn gets none', async () => {
   const root = origin();
   try {
-    const w = world(root, { maxBytes: 10000 });
+    // Leave room for due commitments as well as the queried source after a long gap.
+    const w = world(root, { maxBytes: 12000 });
     await w.say(1, LOCKER);
     await w.say(2, DENTIST);
     await w.fillUntilCompacted(3, 'What did I ask you to remember?');
@@ -341,6 +342,7 @@ it('surfaces only BM25-related open items with age, while an unrelated turn gets
       .toEqual([2, 0]);
     expect(packet('How are the garden tomatoes?').commitments).toBeUndefined();
     w.clock.now = 1790172860000;
+    expect(packet('What about my gym locker code?').commitments[0].source).toBe('telegram:12345678:update:1');
     expect(packet('What about my gym locker code?').commitments[0].age).toBe('2 days');
     expect(packet('What open commitments do you have?').commitments.flatMap((entry: { items: { id: number }[] }) => entry.items.map(item => item.id)))
       .toEqual([1, 2, 0]);

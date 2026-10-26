@@ -39,6 +39,8 @@ Decision: train-163-C | No genuine product conflict arose; no merge aborted and 
 Decision: train-163-D | Use WSL targeted foreground checks; disclose host-dependent and real-provider checks for Studio rather than changing their assertions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-163-PROGRESS.md
 Decision: train-163-desk | Run the prescribed repin/build/rehash/replay chain. Regenerate all publication outputs and bind the canonical combined anchor digest; no conformance declaration changed. Source procedure: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L37-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-163-PROGRESS.md
 
+Decision: train-163-fixtures | Adapt four direct-consumer fixtures to the reviewed summary cadence: one pass exhausts completed-malformed attempts; a definite-rejection control retains the one-attempt neighbor; age checks retain their named source with sufficient fixture headroom; cross-topic recall checks actual prior exposure and survival of the relevant source rather than a fixed span/drop trace. Production code, limits and recorded bytes are unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-163-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges and the existing repin/build/rehash/replay tools. No runtime mechanism is added by integration. Existing ownership, spend, stop, prompt/output bounds and durable intake hold; offline replay is not an unattended live-acceptance claim.

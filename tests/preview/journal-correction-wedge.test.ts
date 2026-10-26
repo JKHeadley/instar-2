@@ -61,8 +61,9 @@ it('settles a cued correction behind an exhausted summary prefix as undecided, c
     for (const [id, text] of [[1, 'Hello.'], [2, 'What is a good bird seed?'], [3, 'How tall do sunflowers grow?'], [4, 'Thanks.']] as const) {
       w.worker.intake([update(id, text)]); await w.worker.drain();
     }
-    // The rolling summary through the oldest prefix fails twice, as it did on the proof room (715672482).
-    await w.worker.summarizeIfNeeded(true); await w.worker.summarizeIfNeeded(true);
+    // One pass now consumes both completed-malformed attempts at the oldest prefix,
+    // reproducing the exhausted proof-room frontier (715672482) without exhausting a second span.
+    await w.worker.summarizeIfNeeded(true);
     expect([...w.journal.view.summaryFailures.values()]).toEqual([2]);
     w.worker.intake([update(5, feeder)]); await w.worker.drain();
     expect(w.journal.view.dated).toMatchObject([{ quote: feeder, remind: true }]);
