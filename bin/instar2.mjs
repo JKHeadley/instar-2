@@ -4,7 +4,24 @@ import { createInterface } from 'node:readline';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 const [command, root = join(homedir(), '.instar2'), ...extra] = process.argv.slice(2);
-if (command === 'mcp-add') {
+if (command === 'prepare-login') {
+  const { prepareLogin, LoginPreparationRefused } = await import('../scripts/login-preparation.mjs');
+  try {
+    if (extra.length || process.stdin.isTTY) throw Error('one nonsecret selection required');
+    let input = '';
+    for await (const chunk of process.stdin) {
+      input += chunk;
+      if (input.length > 4096) throw Error('selection too large');
+    }
+    prepareLogin(root, JSON.parse(input));
+    process.stdout.write('Login preparation saved. No login is connected or authorized.\n'
+      + 'Protected operator enrollment and phone confirmation are not implemented in this build.\n');
+  } catch (error) {
+    process.stderr.write(`${error instanceof LoginPreparationRefused ? error.message
+      : 'Login preparation refused. Check the installation and supply only provider and account; details suppressed.'}\n`);
+    process.exitCode = 1;
+  }
+} else if (command === 'mcp-add') {
   try {
     if (extra.length || process.stdin.isTTY) throw Error('pipe one server configuration through stdin');
     register('../scripts/slice-ts-loader.mjs', import.meta.url);
@@ -33,7 +50,7 @@ if (command === 'mcp-add') {
     process.exitCode = 1;
   }
 } else if (!['setup', 'run'].includes(command) || extra.length) {
-  process.stderr.write('Usage: instar2 <setup|run> [installation-directory] | update [installation-directory] [--release <tag>]\n');
+  process.stderr.write('Usage: instar2 <setup|run|prepare-login> [installation-directory] | update [installation-directory] [--release <tag>]\n');
   process.exitCode = 1;
 } else if (command === 'run') {
   register('../scripts/slice-ts-loader.mjs', import.meta.url);
