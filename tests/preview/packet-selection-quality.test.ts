@@ -100,7 +100,10 @@ it('measures labelled minimal recall on the actual bounded model packets', () =>
     // train-128: reviewed same-fact supersession guidance composes at a measured mean of 11418
     // (+48 over the previous regression bound). Recall/precision and the 18000-byte packet limit
     // above are unchanged, as is the separate default-context fixed-prompt guard.
-    expect(result.packetBytesMean).toBeLessThanOrEqual(11418);
+    // train-160: the reviewed recall/search-limit instructions compose at measured mean 11440,
+    // 22 bytes above the prior regression bound. Preserve recall/precision, the 18000-byte
+    // packet limit and the separate default-context fixed-prompt guard unchanged.
+    expect(result.packetBytesMean).toBeLessThanOrEqual(11440);
     expect(rows.find(row => row.question.startsWith('Which clinic'))?.picked).toContain(0);
     const agenda = worker.probe('What should I know about upcoming plans?');
     if ('reason' in agenda) throw Error(agenda.reason);
