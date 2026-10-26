@@ -144,7 +144,9 @@ it('keeps the always-sent prompt parts inside what the measured floor allows, wi
   expect(measured.reviewTotal! - measured.answerTotal!).toBeGreaterThan(REPLY_REVIEW_FIXED_BYTES);
   // A summary step for that same turn also fits, so a conversation can be compacted at the floor.
   expect(measured.summaryTotal).not.toBeNull();
-  expect(measured.summaryTotal!).toBeLessThanOrEqual(floor - replyReviewReserveFor(floor) - 40);
+  expect(measured.summaryTotal!, JSON.stringify({ summaryBytes: measured.summaryTotal,
+    answerBytes: measured.answerTotal, reviewBytes: measured.reviewTotal, floor, reserve: replyReviewReserveFor(floor) }))
+    .toBeLessThanOrEqual(floor - replyReviewReserveFor(floor) - 40);
   // The default is admissible: at or above the floor, and within the approved live bound.
   expect(PREVIEW_MIN_SERVABLE_CONTEXT_BYTES).toBeLessThanOrEqual(PREVIEW_LIVE_LIMITS.contextBytes);
   expect(unservableContextReason(PREVIEW_LIVE_LIMITS.contextBytes)).toBeNull();

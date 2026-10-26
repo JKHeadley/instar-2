@@ -139,7 +139,7 @@ it('replays the actual undecided Jev and full-context rejection, then indexes wi
       w.journal.append(failed);
     }
     await w.worker.summarizeIfNeeded(true);
-    expect(w.calls).toEqual(['summary:6236276']);
+    expect(w.calls).toEqual(['summary:6236276', 'summary:6236276']);
     expect(w.journal.view.lastSummaryFailure).toMatchObject({ through: 6236276,
       reason: 'summary faithfulness: full-context review found loss',
       faithfulness: { verdict: 'undecided', score: 0.42 } });
