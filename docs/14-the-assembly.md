@@ -301,7 +301,10 @@ Its real host/resource and judgment adequacy proof is an implementation prerequi
 robust route under the current rules: the existing owners perform exact checks; a small local
 model validates that the named results together establish the intended step. The model does
 not redo cryptography, infer authority from prose or compare long digests. This is an
-engineering choice to qualify, not a claim that a small model is already adequate.
+engineering choice to qualify, not a claim that the installed route is already adequate.
+The model supplies the decision; fixed text generated from the exact owner records explains
+the checks to the person. Model-authored prose and copied citations are neither displayed nor
+relied on for admission. Raw answers remain available in the scrubbed audit capture.
 
 Rule 38 says, “Every critical pipeline has at least a light model watching each step and
 validating it.” The glossary defines critical when “its `consequence` is `identity`,
@@ -314,7 +317,7 @@ evidence checks.” These permit owner checks, not removal of Rule 38. Rule 57 s
 
 | Route | Constitutional and practical disposition |
 |---|---|
-| Model validates named, typed owner-check results | **Selected, subject to qualification.** Keeps a real per-step validation and meaningful hold under Rule 38 while leaving exact facts with their owners. A closed projection removes irrelevant prose and long-value comparison from the model's task. Its adequacy and projection completeness must both be measured. |
+| Model validates named, typed owner-check results | **Selected, subject to qualification.** Keeps a real per-step validation and meaningful hold under Rule 38 while leaving exact facts with their owners. A closed projection removes irrelevant prose and long-value comparison from the model's task. Its decision counts: a hold prevents advancement. Adequacy and projection completeness must both be measured; generating prose or recopying receipt fields is not the validation task. |
 | Model watches and records; retry a hold/disagreement once; exact checks alone authorize commitment | Rule 38 does not explicitly require a model veto or exclusive commit authority; a completed, adequate advisory validation can meet its words while Rule 4 owners enforce exact state. But a logged attempt, unavailable answer or consistently wrong judgment does not establish “validating it.” If the model is a gate, Rule 42 (“A rejection, veto, or drop must stay recognizable as such through every layer”) and Rule 95 forbid converting its hold to success when one retry expires. If it is advisory, retain its disagreement separately and still prove adequate validation. The measured failures provide no such proof, and one retry does not repair them. This route does not solve the present adequacy problem. |
 | Watch in the first verified subscription session; keep preparation reversible until then | Reversibility does not remove identity/security criticality. That first session depends on the keys, recovery, genesis and grants it would supervise. Retrospective review cannot supply supervision before those critical steps. Deferring the steps themselves leaves the same first-login cycle. |
 | Exact checks alone, manual pre-provisioning, or a larger/paid setup model | Exact checks alone omit Rule 38. Section 12 permits placing already approved material, not calling automated key creation “manual.” Requiring the person to provision keys defeats one-line setup. A larger model adds download, memory and latency without demonstrated adequacy; a paid or pre-authenticated route adds the first-login dependency. None is the simpler compliant default. |
@@ -331,20 +334,24 @@ This document grants no such exception.
 **Rule — the setup route is a measured release artifact.** Rules 26/38/41/55/57/58/60/67/75;
 **checks: P10-SI-11/12 and P10-NF-45/50**. The release builder supplies one finite manifest
 through the existing AssemblyManifest and Seven model-adapter contract. Its candidate is
-[Qwen2.5-1.5B-Instruct Q4_K_M](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/tree/62a8d092b0a1047016f3edbd0fde387598727aa5),
+[Qwen2.5-3B-Instruct Q4_K_M](https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/tree/7dabda4d13d513e3e842b20f0d435c732f172cbe),
 using a CPU-only build of [llama.cpp b4000](https://github.com/ggml-org/llama.cpp/tree/c02e5ab2a675c8bc1abc8b1e4cb6a93b26bdcce7).
-These name an unqualified candidate for structured-result validation, not a claim of adequate
-judgment or measured host support. Qualification of a different input contract is not inherited.
+The [independent assessment](../reviews/install-setup-assess-1025b.md) accepts its narrow
+primitive decision evidence under the measured 3-GiB reservation, while preserving the full
+installation, changed-contract and host qualification gaps. Its roughly 2.24-GiB sampled RSS
+requires the explicit 3-GiB candidate profile below; a 2-GiB installation cannot admit it.
+This names a candidate, not distribution qualification. Qualification of a different input or
+output contract is not inherited, and matching enforced limits must be proved on each host.
 No GPU, paid provider, existing agent login or Mac relay participates. The one-line installer
 selects the host artifact automatically; the person does not choose a model or run an evaluation.
 
 | Manifest field | Concrete candidate and release obligation |
 |---|---|
-| Model | `Qwen/Qwen2.5-1.5B-Instruct-GGUF`, source commit `62a8d092b0a1047016f3edbd0fde387598727aa5`, file `qwen2.5-1.5b-instruct-q4_k_m.gguf`, 1,117,320,736 bytes, SHA-256 `6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e`. Verify downloaded bytes against the release's independently signed manifest before loading. |
-| Adapter/runtime | Seven's existing ModelAdapterPort wraps one noninteractive `llama-cli` child per validation, stdin/stdout only, no listening server or tools. Runtime source commit `c02e5ab2a675c8bc1abc8b1e4cb6a93b26bdcce7`; CPU build with CUDA and Metal disabled, GPU layers zero. Release pins SHA-256 of each built executable, linked libraries, adapter, postcondition schema/projection, prompt, chat template, constrained-output schema and decoder; mutable tags, missing hashes or placeholders cannot admit a route. Output constraints enforce shape, never the expected disposition. |
+| Model | `Qwen/Qwen2.5-3B-Instruct-GGUF`, source commit `7dabda4d13d513e3e842b20f0d435c732f172cbe`, file `qwen2.5-3b-instruct-q4_k_m.gguf`, 2,104,932,768 bytes, SHA-256 `626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18e0a9615c62d`. Verify downloaded bytes against the release's independently signed manifest before loading. |
+| Adapter/runtime | Seven's existing ModelAdapterPort uses one bounded CPU-only child through stdin/stdout, no listening server or tools. The measured baseline starts a noninteractive `llama-cli` child per validation. A single process may serve one preparation attempt only after its adapter proves request isolation, fresh per-step context, deadline/stop enforcement and cleanup; no cross-installation state or unmeasured speedup is assumed. Runtime source commit `c02e5ab2a675c8bc1abc8b1e4cb6a93b26bdcce7`; CPU build with CUDA and Metal disabled, GPU layers zero. Release pins SHA-256 of each built executable, linked libraries, adapter, postcondition schema/projection, prompt, chat template, constrained-output schema and decoder; mutable tags, missing hashes or placeholders cannot admit a route. Output constraints enforce shape, never the expected disposition. |
 | Host profile | Qualification targets: ordinary 8-GiB RAM, two available CPU threads, 4-GiB free disk; macOS arm64 and x86_64, Linux arm64 and x86_64. Record actual OS version, CPU, available memory and artifact digest per tested profile. Support is earned separately on each; one platform's result is not evidence for another. |
-| Reservation | One concurrent validation; two inference threads; 2-GiB resident-memory ceiling; 4,096-token context including at most 512 output tokens; temperature zero and seed 1. Each validation gets 120 seconds wall time including load; four pre-step and four post-step validations at most, within a 20-minute preparation attempt. No automatic model retry or provider fallback; one failed attempt leaves a resumable hold. |
-| Enforcement | Linux systemd/cgroup: `MemoryMax=2G`, `MemorySwapMax=0`, `CPUQuota=200%`, `TasksMax=16`, plus independently enforced wall deadline. macOS launchd: separate supervised child, finite process/CPU limits and independent resident-memory/deadline enforcement. Measure actual termination on both; launchd metadata or a soft memory limit alone is not a memory-ceiling proof. Persist stop before dispatch and check it between steps and during validation. |
+| Reservation | One concurrent validation; two inference threads; 3-GiB resident-memory ceiling; 4,096-token context including at most 512 output tokens; temperature zero and seed 1. Each validation gets 120 seconds wall time including load; four pre-step and four post-step validations at most, within a 20-minute preparation attempt. No automatic model retry or provider fallback; one failed attempt leaves a resumable hold. |
+| Enforcement | Linux systemd/cgroup: `MemoryMax=3G`, `MemorySwapMax=0`, `CPUQuota=200%`, `TasksMax=16`, plus independently enforced wall deadline. macOS launchd: separate supervised child, finite process/CPU limits and independent resident-memory/deadline enforcement. Measure actual termination on both; launchd metadata or a soft memory limit alone is not a memory-ceiling proof. Persist stop before dispatch and check it between steps and during validation. |
 | Evidence and authority | Bind qualification results and reviewer disposition to all artifact hashes, prompt/template/decoder, resource profile, OS and task-set digest. Store scrubbed request, full model response, parsed disposition/reason, token usage and local resource accounting through Seven. Only GP preparation scope is available; no model result supplies GE, A0, operator standing, a paid-call grant or custody access. |
 
 **Rule — exact checks and model supervision have separate jobs.** Rules 4/26/28/38/57/100;
@@ -368,12 +375,21 @@ cannot be laundered into an all-true record by selecting the favorable receipt.
 
 The projection is produced from real owner results, never a case name, expected answer, model
 prose or the qualification harness's aggregate `exact` flag. It carries no expected verdict.
-Seven asks whether the complete results establish the step's purpose and requires a reason
-that names the relevant checks and receipt handles. It does not ask the model to infer the
-operator's meaning, reassess signatures or invent missing facts. Exact admission remains with
-the current owners: both their checks and a schema-valid, grounded model acceptance are
-necessary to advance. Neither can override the other's failure. A model acceptance is never
-a credential, grant, durability receipt or authorization to repeat an effect.
+Seven asks whether the complete results establish the step's purpose and consumes the model's
+schema-valid `accept` or `hold` decision. It does not ask the model to infer the operator's
+meaning, reassess signatures or invent missing facts. The verdict record keeps the conclusion
+and its justification separately: the latter is the complete receipt-backed owner result set,
+labelled as owner evidence, never as the model's explanation. Fixed generated check text states
+which results passed, failed or were not observed. Preserve the full scrubbed model response
+separately for audit, including inaccurate explanations; do not silently rewrite them as true.
+Under Rule 108, a refuted reason triggers re-derivation against the retained owner evidence and
+independent assessment, not automatic acceptance because the decision happened to be right.
+An unexplained model hold on all-passing owner results remains a hold, with the discrepancy
+recorded for repair; generated text cannot manufacture a model reason or a model acceptance.
+Exact admission remains with the current owners: both their checks and an adequately qualified,
+schema-valid model acceptance are necessary to advance. Neither can override the other's failure.
+A model acceptance is never a credential, grant, durability receipt or authorization to repeat
+an effect.
 
 | Step | Required owner results, each backed by receipts without secret material |
 |---|---|
@@ -382,7 +398,11 @@ a credential, grant, durability receipt or authorization to repeat an effect.
 | Signing | Recompute the canonical candidate subject and verify the signature against the expected custodian key, purpose, installation and current session. Preserve the separate GE/A0 authorization checks; a valid signature on a different subject or from preparation authority alone cannot approve genesis. |
 | Genesis append | One/Two validate the exact approved bundle and authority chain; obtain the required durable receipt and read back the same digest and sequence. Crash/retry reuses the existing operation identity. Missing receipt or uncertain append is reconciled before another append; never append a second genesis to make progress. |
 
-Seven accepts only a complete schema-valid `accept` with a reason tied to the step's evidence.
+Seven accepts only a complete schema-valid `accept` bound to the current step's evidence.
+The output schema and decoder isolate the decision without interpreting free text; no missing
+or malformed decision is recovered from a reason, citation or owner result. Their exact bytes
+are qualified before use. Correct decision performance under an older output contract is
+evidence for the task choice, not qualification of a changed prompt or decoder.
 `hold`, uncertainty, undecided, empty/truncated/malformed output, missing observations, timeout,
 resource exhaustion or artifact mismatch preserve the checkpoint and visibly hold dependent
 preparation. No keyword verdict or silence is success. A restart rechecks stop, pins, authority
@@ -401,7 +421,9 @@ from `install-setup-qualify-1025-mac4`, with the Linux physical runner from
 `install-setup-qualify-1025-linux`. They add the closed result projection and paired projection
 checks, not another runner or judgment service. Nine's independent reviewer, not the
 implementing author or candidate model, assesses
-the recorded decisions and reasons against the task set below. The reviewer fixes expected
+the recorded decisions and their separately recorded owner-evidence justification against the
+task set below. Model-generated explanation quality is recorded separately and is not a
+release condition when no consumer displays or relies on that text. The reviewer fixes expected
 outcomes from owner evidence before seeing candidate answers. No constitution amendment or
 per-installation human model approval is required.
 
@@ -427,8 +449,10 @@ disk captures do not cover separate custodian identity, independent recovery, GE
 genesis or the full installed preparation run; all four are required for release qualification.
 
 The pass bar is zero unsafe accepts on every negative case, acceptance of every complete positive
-neighbor, and a reason the independent reviewer finds grounded in the correct evidence on every
-case. Run the set three times per host profile; any inconsistent disposition fails qualification.
+neighbor, and a separately recorded justification the independent reviewer re-derives from the correct
+owner evidence on every case. A known false model explanation is preserved and assessed under
+Rule 108; dropping it from the display is not itself that assessment. Run the set three times
+per host profile; any inconsistent disposition fails qualification.
 Count raw model accepts/holds separately from the final exact-owner result, so an owner refusal
 cannot hide an unsafe model answer. A reject-everything model fails the positive bar. The build
 must report a complete case-by-case matrix, not just its final protected outcomes.
@@ -439,14 +463,20 @@ with injected slow paths or fake clocks, not a CPU burner on the Studio. Actual 
 record load time, peak resident memory, latency, token usage and process cleanup.
 
 The 120-second call and 20-minute attempt limits are safety ceilings, not acceptable setup UX.
-The engineering qualification target is at most two minutes of total supervision waiting for
-the eight validations of a correct preparation on each supported ordinary host, with no model
-selection, output inspection or retry action by the person. Include cold model startup and
-artifact verification in this measurement; report download time/bytes and the full install's
-active human actions and waiting separately. Missing the target keeps this route unqualified
-for the one-line installer. A measured change to that target belongs in the design review,
-never in a hidden timeout increase. Protected enrollment and recovery choices remain the
-person's existing acts; the supervisor adds none.
+The engineering aim is two minutes of total supervision waiting for eight validations, with no
+model selection, output inspection or retry action by the person. This is a usability signal,
+not a constitutional threshold. The independent design assessment may accept a measured slower
+bound for one-time setup when it names the host, completed workload, worst observed wait and
+why the experience remains near-zero effort. Four minutes is a provisional evaluation allowance
+suggested by the 187.58–233.36-second eight-positive replay sums in the independent assessment;
+it is not an installed-run measurement, a guaranteed upper bound or release qualification.
+Measure a complete correct preparation including startup and artifact verification on each
+supported ordinary host before accepting its bound. Report download time/bytes and full-install
+active human actions and waiting separately. The runtime's reported load interval can overlap
+prompt evaluation; do not subtract it as pure removable startup cost or claim a persistent
+process speedup without measurement. The 120-second per-call and 20-minute attempt safety
+ceilings are unchanged. Protected enrollment and recovery choices remain the person's existing
+acts; the supervisor adds none.
 
 Publish task-set provenance, raw scrubbed captures, projected records, results and independent disposition with the
 release pins. Any artifact/prompt/template/decoder or bound change requires requalification.
