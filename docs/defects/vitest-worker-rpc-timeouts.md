@@ -19,3 +19,31 @@ Two runs recorded unhandled runner errors `[vitest-worker]: Timeout calling "onT
 **Repair and closure:** the owner (1) identifies the starving file or the host condition from the worker trace, (2) confirms the resolved vitest package is the worktree's intended version, not a sibling's, and (3) repairs the cause, for example by an async yield in a long synchronous file, lower worker count or a per-worktree install. Closure needs a full run with zero runner errors under the original conditions. If a later run shows the error again, this record reopens.
 
 **Multi-machine posture:** runner and host are machine-local. This record travels with the repository.
+
+## train-159 recurrence, 2026-10-26
+
+The supplied Studio gate excerpt for `66869f8ffc69a8c4c15ae52826e5901f9c68618a` records
+93 failed files, 148 failed tests and 61 `onTaskUpdate` errors over 8,494.84 seconds. Failures
+span independent synchronous owner matrices, bounded child launches, launcher polling and
+wall-time performance assertions. The desk starts each concurrent gate with a four-worker
+cap. The first reported case, the held/malformed/throwing reservation matrix, took 81,095 ms
+against its 30,000 ms ceiling; unchanged under one worker it took 3,125 ms (the entire file
+passed 10 tests in 9,182 ms). After building the package in the fresh checkout, the unchanged
+fixed-peer file passed all 13 cases in 10,598 ms, including refusal and crash boundaries.
+An earlier local attempt lacked `dist/` and failed with exit status 1; that setup failure is
+distinct from the gate's null subprocess status and is not evidence of a product regression.
+
+The source repair makes Vitest's existing serial file mode the default and bounds its pool
+to one worker, even with the desk's `INSTAR_TEST_MAX_WORKERS=4` and `VITEST_SERIAL_GATE=0`.
+This removes competition between files within each run without increasing deadlines,
+quarantining cases, swallowing errors or altering product code. The existing cap parser,
+fork isolation, priority reduction, IPC yield and child bounds remain. The worker-limit
+test checks unset, valid and invalid caps with both legacy serial settings, and an actual
+two-file runner probe uses an injected asynchronous delay instead of burning CPU.
+
+**Qualification remains open.** These targeted results establish large timing sensitivity
+and the scheduling contract, not a proof that every original failure had the same cause.
+They do not recreate the original host pressure or establish a faster full suite. The
+pipeline must rerun the complete gate; the original failures and all assertions remain.
+This change does not bound other programs on the host or cure a single test that blocks
+its own event loop beyond the RPC deadline. No new full-run result is asserted here.
