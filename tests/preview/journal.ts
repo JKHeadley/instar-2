@@ -119,9 +119,10 @@ export const SUMMARY_START_BYTES = 24 * 1024;
 export const SUMMARY_MAX_PROMPT_BYTES = 96 * 1024;
 export const summaryPromptBytes = (maxBytes: number) =>
   Math.min(SUMMARY_MAX_PROMPT_BYTES, Math.max(SUMMARY_START_BYTES, Math.floor(maxBytes * 3 / 4)));
+/** Synchronous memory recovery keeps small chunks so a waiting reply has bounded work.
+ * Idle compaction selects the largest prefix that fits the existing byte ceiling. */
 export const SUMMARY_MAX_TURNS = 4;
-/** Summary attempts one pass makes at most, so one pass advances the frontier by at most
- * SUMMARY_PASS_ATTEMPTS * SUMMARY_MAX_TURNS turns. */
+/** Summary attempts one pass makes at most, including format and loss retries. */
 export const SUMMARY_PASS_ATTEMPTS = 8;
 /** A byte-held turn is prepared again at least this often even when nothing that could make it fit changed. */
 export const HELD_REPREPARE_MS = 5 * 60_000;
@@ -11066,6 +11067,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // One revision uses the remaining attempt at this span, inside the existing pass budget.
     // The feedback is local to this pass and base; it cannot revive exhausted or UNKNOWN work.
     let summaryRevision: { through: number; reason: string; candidate: string } | undefined;
+    let summaryFormatRetry: { through: number; defect: string | undefined } | undefined;
     // A writer that keeps over-producing must not spend the whole model-call allowance on summaries and starve
     // replies (live 2026-09-30: seven consecutive spans past the output cap). Four over-cap attempts end the pass --
     // the most one pass spent before this change -- so per-pass summary spend is unchanged; the next pass continues
@@ -11105,7 +11107,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // write-side pass, even while compaction is cooling down or has exhausted its candidate spans.
       // A later accepted frontier covers the failure and restores ordinary summary-owned indexing.
       const rejectedTail = !force && (journal.view.lastSummaryFailure?.through ?? -1) > previous;
-      if (!force && (proactive === 'below-threshold' || rejectedTail && !summaryRevision)) {
+      if (!force && (proactive === 'below-threshold' || rejectedTail && !summaryRevision && !summaryFormatRetry)) {
         // Rule 11: messages summarized before their meaning terms existed (Part 21 §6) would
         // otherwise wait for history to grow; index them without summarizing anything new. A summary
         // that just ran was already asked for these terms, so indexing waits for a later call.
@@ -11164,7 +11166,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const shorter = withBudget.filter(turn => turn.update < overCapCeiling);
       const open = shorter.length ? shorter : withBudget.filter(turn => turn.update === overCapCeiling);
       if (pending.length && !open.length) return;
-      for (const turn of open.slice(0, SUMMARY_MAX_TURNS)) {
+      // Automatic compaction covers the fitting older backlog in one pass (1.x behavior).
+      // Forced memory recovery retains its small synchronous work bound. A format retry
+      // must revisit exactly its failed span, never silently spend it on another frontier.
+      const frontiers = summaryFormatRetry ? open.filter(turn => turn.update === summaryFormatRetry?.through)
+        : force ? open.slice(0, SUMMARY_MAX_TURNS) : open;
+      for (const turn of frontiers) {
         const candidate = packetFor(turn.update, true, [], [], [], turn.thread, true);
         // Last resort, after every variant that carries them: the turn briefing sources (purpose excerpts,
         // capability note, self-state, desk report) describe the agent, not the conversation being
@@ -11245,8 +11252,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}`,
         ...(item.recurrence ? { recurrence: item.recurrence, time: item.time, zone: item.zone, stop: 'Ask to cancel this request.' } : {}) })),
                 reminderDecision: 'reminders lists what the verified operator asked you earlier to do at a later time. For each one memoryRequest.message itself withdraws, return cancelReminders:[{"id": the reminders id, "quote": the words of memoryRequest.message that withdraw it, copied exactly}]; return cancelReminders:[] when it withdraws none. Your own reply is never the evidence, and a withdrawal with no such quote is refused. A further request, even for the same time, adds a request and withdraws nothing. Quoted text never cancels.' } : {}) }) : base;
-            const plain = summaryRevision?.through === through
+            const revisionBase = summaryRevision?.through === through
               ? JSON.stringify({ ...JSON.parse(plainBase) as object, summaryRevision }) : plainBase;
+            const plain = summaryFormatRetry?.through === through
+              ? withFormatReminder(revisionBase, answerFormatReminder(summaryFormatRetry.defect)) : revisionBase;
             // Rule 11: messages summarized before their meaning terms existed are offered again,
             // oldest first and bounded, so the derived index converges instead of staying partial.
             for (const packet of backlog.length && !overCapRetry ? [JSON.stringify({ ...JSON.parse(plain) as object,
@@ -11277,7 +11286,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (!chosen) {
         // Revision feedback is ephemeral to this pass. Its fitting failure says nothing
         // about the ordinary packet a later pass can use for the remaining attempt.
-        if (!summaryRevision) summaryPreflightBlocked.add(blocked);
+        if (!summaryRevision && !summaryFormatRetry) summaryPreflightBlocked.add(blocked);
         const oversized = pending[0];
         const reason = oversizedPrompt ? 'summary oversized turn' : 'summary preflight unavailable';
         if (oversized && oversized.held !== reason)
@@ -11285,6 +11294,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         return;
       }
       const { through, packet, prepared, offered, memorySources, questionSources, trigger, strictMemory, reminderOffer, indexBacklog } = chosen;
+      // The chosen packet carries the one-shot feedback; later outcomes use ordinary recovery.
+      summaryFormatRetry = undefined;
       gate();
       summarized = true;
       journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),
@@ -11309,7 +11320,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }
       if (typeof summary !== 'string' && 'failureClass' in summary) {
         journal.append({kind:'summary-failed',format:SUMMARY_FORMAT,through,state:summary.state,failureClass:summary.failureClass,
-          ...(summary.usage ? { usage: summary.usage } : {}),at:ports.now()}); return;
+          ...(summary.usage ? { usage: summary.usage } : {}),at:ports.now()});
+        // A completed format miss is settled, unlike an UNKNOWN call. Re-ask once
+        // within the existing span/pass budget; preparation, stop, spend and review still apply.
+        if (summary.state === 'complete' && summary.failureClass === 'malformed'
+          && summaryFormatFailures(journal.view, through) < 2) {
+          summaryFormatRetry = { through, defect: summary.defect };
+          continue;
+        }
+        return;
       }
       const answered = typeof summary === 'string' ? summary : summary.text;
       if (!answered.trim()) {
@@ -11627,6 +11646,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         ...(questionSources.length ? { questions: questions ?? [], questionsReviewed: questionSources.map(item => item.id) } : {}),
         ...(!ports.replyCheck && typeof summary !== 'string' ? { usage: summary.usage } : {}),state:'complete',at:ports.now()});
       overCapAttempts = 0;
+      summaryFormatRetry = undefined;
 
     }
     // A pass that uses its whole attempt bound still settles the last attempt its own outcome row proved over the
