@@ -9,7 +9,7 @@ Affected floors: secrets — no credential or custody changes; spend cap — no 
 Operator questions: none
 Suggested tier: critical
 Declared tier: ordinary
-Tier rationale: Both heads have identical product code and tests; repair merges review metadata and regenerates derived publication only.
+Tier rationale: The repair leaves product code, tests and governed documents unchanged relative to candidate acef940af; it merges review metadata and regenerates derived publication only.
 Side effects: Review ancestry now includes both histories. Losing the Linux opt-in disclosure would make historical evidence incomplete; retaining it does not skip a new test or claim physical qualification.
 Undo and recovery: Revert the merge through the ordinary release process and regenerate publication, preserving both original branch histories. No runtime state migration.
 Multi-machine posture: Git transports the merged record; WSL checks do not claim Studio physical qualification. Reports remain local for desk copying to their named Studio destinations.
@@ -20,7 +20,10 @@ Hook bypass: none; core.hooksPath checked and unset; common hooks directory cont
 Convergence: none
 Decision: train-159-repair-193339-D1 | Retain both qualification records' Linux physical-proof opt-in disclosures and merge live assessment metadata; deduplicate its identical assess-1025b-R2 entry without changing the decision. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-159-repair-193339-PROGRESS.md
 Decision: train-159-repair-193339-D2 | Regenerate derived publication using the existing committed-source generator after the ordinary merge; preserve product and changelog bytes without adding runtime machinery. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-159-repair-193339-PROGRESS.md
+Decision: train-159-repair-205042-D1 | Use the reviewer's exact replacement sentence and retain ordinary tier and existing evidence; direct tree comparison confirms candidate preservation, not equality of merge inputs. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-159-repair-205042-PROGRESS.md
 Deferral: generated/register.json:1 | not-a-deferral=Existing generated prerequisite states remain evidence, not new promises.
+
+Evidence correction: Direct git comparison confirms candidate acef940af and repair 113c0843 have identical src/scripts/bin/tests/docs trees; candidate and incoming live 85901ea7f differ in 16 paths. This correction does not qualify the installed supervisor or replace the Studio full test gate.
 
 Review coverage: The inherited assessment record gains explicit dispositions for five unchanged prompt/test overlaps brought into its subject by this merge; source bytes remain unchanged.
 Publication: Regenerated with scripts/build-register.mjs --replay from merge 941f0080fe46b3742381ef333a1b66b6490aed37; no pin edited by hand.
