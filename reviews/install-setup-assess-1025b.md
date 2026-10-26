@@ -21,6 +21,8 @@ Decision: assess-1025b-D1 | Select C and decision-only consumption with fixed ow
 Decision: assess-1025b-D2 | Reject subtraction of reported load as a warm-process prediction because first prompt evaluation overlaps that interval. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-PROGRESS.md
 Decision: assess-1025b-D3 | Keep release unqualified; explicitly select the measured 3B/3-GiB candidate, bounded process reuse and a provisional four-minute evaluation allowance in docs/14 revision 31. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-PROGRESS.md
 
+Decision: assess-1025b-R2 | Repair missing parent anchors and mandatory metadata in the two inherited qualification records so their commits have real review coverage. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-repair-171331-PROGRESS.md
+
 ## Assessment and simplest option first
 
 **C.** The r30 clauses requiring a model-authored reason tied to check names/receipt handles,
