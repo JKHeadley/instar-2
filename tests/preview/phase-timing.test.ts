@@ -98,3 +98,19 @@ it('rejects prose or unknown measurement fields and isolates a diagnostics write
   expect(() => checkPhaseTiming({ ...row, measurements: { output: 4 } })).toThrow('invalid phase timing');
   expect(() => recordPhaseTiming(() => { throw Error('disk unavailable'); }, 'turn:1', 'auth', { elapsedMs: 4 }, at)).not.toThrow();
 });
+
+it('compaction does not carry every phase-timing row forward (live root refused at 547 MB of retained rows)', () => {
+  const root = mkdtempSync(join(tmpdir(), 'phase-compact-')), path = join(root, 'journal.encrypted');
+  const journal = openPreviewJournal(path, key, genesis, undefined, false, 64 * 1024);
+  try {
+    for (let i = 0; i < 4000; i++) journal.append({ kind: 'phase-timing', id: `turn:${String(i)}`, phase: 'auth',
+      measurements: { elapsedMs: i % 50 }, at: at + i, forward: { generation: 4, additive: true } });
+    const recent = journal.view.phaseTimings!;
+    expect(recent).toHaveLength(100);
+    journal.compact();
+    // The projection keeps the last 100; the snapshot's retained evidence must not grow with every timing row.
+    expect(journal.retainedRows).toBeLessThan(10);
+    journal.close(); const replay = openPreviewJournal(path, key, undefined, undefined, true);
+    try { expect(replay.view.phaseTimings).toEqual(recent); } finally { replay.close(); }
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
