@@ -57,11 +57,11 @@ meaning.
 |---|---|
 | Checkable now | 21 |
 | Free from the core | 9 |
-| Needs building | 74 |
+| Needs building | 75 |
 | Held by the mind | 13 |
-| **Total** | **117** |
+| **Total** | **118** |
 
-Twenty-one of one hundred seventeen can be checked by a script today. That is the honest starting
+Twenty-one of one hundred eighteen can be checked by a script today. That is the honest starting
 position, and it is roughly what 1.x's own record shows: 92 checks in the running system, 20
 confirmed on.
 
@@ -207,7 +207,7 @@ reconstructable from the log* — argues the same way.
 
 ---
 
-### Checkable now — 21 of 117
+### Checkable now — 21 of 118
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -233,7 +233,7 @@ reconstructable from the log* — argues the same way.
 | 91 | A Document Reads as Its First Version | A governed document reads as if written once, today: no revision notes, review responses, or "what changed" prose in the body. Its history lives beside it in `NAME.changelog.json`, one entry per revision, each change linking to the commit or review comment that caused it. Full text: `docs/rules/91-a-document-reads-as-its-first-version.md`. | A script walks every governed document and fails on a revision marker in the body; `scripts/validate-changelog.mjs` fails the sibling changelog on any missing field. Governed is a property a document declares (or a rule names it and then it must declare), never a folder. |
 | 106 | A Link Handed to a Human Works | Every link sent to a person is complete and clickable from where they are: never localhost, never a bare id where a name exists, never a path only the agent can open. | A lint over link shapes at the outbound doorway — 1.x already refuses localhost links in automated sends. (First stated by the operator at #22873, #20131, #19466; recovered by the 2026-08-26 re-sweep.) |
 
-### Free from the core — 9 of 117
+### Free from the core — 9 of 118
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -247,7 +247,7 @@ reconstructable from the log* — argues the same way.
 | 78 | No Manual Work (user *or* agent) | Capturing context and using available tools is automatic. Neither the user nor the agent should have to remember a feature exists. | Free once the capability list is generated from the modules rather than hand-written. The check: no hand-maintained list exists. |
 | 84 | Agent Awareness | Every feature is written into the agent's own briefing. A capability the agent doesn't know about, it doesn't have. Identity, self-knowledge, reflection and growth are present by default; the agent explains itself and its actual abilities in the person's language. | Free from the same generation as #78. A hand-maintained briefing is exactly how 1.x lost this one. |
 
-### Needs building — 74 of 117
+### Needs building — 75 of 118
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -325,12 +325,18 @@ reconstructable from the log* — argues the same way.
 | 114 | Agency Composes Recursively | A session may delegate a bounded part of its work to other sessions or agents, which may delegate in turn. The topology is chosen for the work — including a user-facing session managing an orchestrator that manages specialist groups — never fixed by the platform. Delegation has the same meaning across a local process, another machine, or another agent: it preserves ownership, authority, evidence, resource bounds, cancellation, and the path by which results return. | Every parent-child run edge is a registered durable fact naming scope, owner, authority grant, budget, exit test, placement, transport, and result destination. The core exposes a protocol-independent agent-transport port. Its contract tests cover nested fan-out, worker loss, cancellation, duplicate delivery, capability-aware placement, and honest delivery states across local and remote agents, machines, harnesses, and models. (Operator review of PR #12 and follow-up on Threadline.) |
 | 115 | The System Has a Native Harness | Instar ships a first-party harness built only on the same public core ports available to every other harness. It can use any registered model doorway and can develop, test, extend, and repair Instar itself. It is the reference client, never a privileged bypass. | The native harness runs the full harness contract suite against every compatible registered model doorway; an architecture lint refuses private core imports or special-case authority, and the self-hosting suite builds and installs a real local capability through it. (Operator review of PR #12; makes rule 2 concrete.) |
 | 117 | One Agent, Many Sessions | Sessions running at the same time are one agent. Each knows what the others have said, promised and done, as close to real time as the system allows, and an agent never gives its operator contradictory answers from two places. Where awareness lags, the session says so instead of guessing. | Two-session tests run in desk proof rooms on every build: one session acts or speaks, another is asked about it, and it must answer correctly (LIVE-PATH-PLAN.md section g, rows a to d). Status: partial until (a) and (b) pass live. |
+| 118 | One Provider Is Enough | An agent with exactly one AI provider, whichever one it is (Anthropic, OpenAI, Google, and so on), is fully functional. A second provider (a separate decision model, a reviewer from another model family, a cheaper model routed off the main one) is an optimization only: it may make a feature better, faster or cheaper, never possible. Every feature that uses a second provider declares what it does when there is only one, and that behaviour delivers the feature rather than refusing, holding or switching it off. Extends #30 from harnesses to providers. An outage of the one provider is #67's case, not this rule's. | A single-provider boot test for each supported harness: a fresh installation with only that harness's own provider configured passes the live end-to-end proofs (#43, #62), including a real conversation with the operator, with nothing refused, held or switched off for want of another provider. A declaration check: every place that calls a provider other than the agent's main one carries a declared single-provider behaviour, and a missing declaration fails the build. |
 
 **Value — rationale for Rule 117.** Rule 31 covers coherence across machines. Sessions also
 need coherence while running at the same time on one machine: continuity from one session to
 the next does not by itself keep concurrent answers consistent.
 
-### Held by the mind — 13 of 117
+**Value — rationale for Rule 118.** Rule 30 makes every feature work on every harness, but a
+feature can do that and still need a second provider to run at all. A person who installs an
+agent may have only one subscription. If a feature quietly depends on a second one, that person gets a
+weaker agent and is never told why.
+
+### Held by the mind — 13 of 118
 
 These are binding. Their adequacy is judged through the applicable review, with recorded evidence.
 
@@ -363,4 +369,5 @@ recovered by the 2026-08-26 re-sweep (each cites the message id of its first sta
 document's history is in `01-the-rules.changelog.json` beside it. Rules 114 and 115 come from the
 operator's review of the big-picture design on PR #12. Rule 116 comes from the operator's
 2026-09-23 skills-over-scripts direction and adoption of the simplicity audit as a fundamental
-Occam's Razor / Simplest Robust Route development standard.*
+Occam's Razor / Simplest Robust Route development standard. Rule 118 comes from the operator's
+2026-10-26 direction that an Instar agent is always fully functional with a single AI provider.*
