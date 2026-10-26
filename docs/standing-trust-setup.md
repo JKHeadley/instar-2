@@ -213,3 +213,33 @@ After completion, policy changes go through the existing owner revision path.
 Preserve the input records and grant files together; do not clear them to reset an
 unknown installation or repeat an uncertain effect. No stop, intake, send or
 credential record is touched by this command.
+
+## Subscription preparation before protected enrollment
+
+`instar2 prepare-login [installation-directory]` accepts one nonsecret JSON selection
+on stdin, for example `{"provider":"anthropic","account":"person@example.com"}`.
+`openai` is also a supported selection; this does not claim either provider is logged in.
+Run role setup first. The command retains one immutable account request and prepares
+`login-preparation/profile/{home,config,work}` within that root. Repeating the exact
+request resumes it; changing accounts refuses without replacing the saved request.
+Caller-supplied paths, symlinked ancestors and hard-linked records are refused.
+These path checks assume the installing owner controls the directory during setup;
+they are not a replacement for the separate OS custodian or a hostile-worker sandbox.
+
+The request explicitly records `authority: null`, `custody: null` and
+`awaiting-verified-enrollment`. Neither its existence nor its role receipt admits a
+login. The command opens no provider, accepts no credential field, grants no spending
+and creates no activation. Its profile directories are preparation, not credential
+custody. Existing installations need no migration; the command is additive and reads
+their existing role checkpoint without changing policy.
+
+The named implementation seam is the approved assembly design's protected enrollment
+and first-subscription sequence: `install-linux-broker`, `install-linux-supervisor`,
+`install-linux-custody`, `install-linux-enrollment` and
+`install-linux-role-subscription` (with the corresponding macOS implementations).
+Those owners must establish the release/enrollment/genesis chain, independent custody
+and recovery, verified binding, P-02 grant and enforced cap before ordinary login
+admission can consume this selection. The current preparation command does not
+implement that seam or compose `install-login` / `prepare-logins`. A pending request
+is not a connected-and-verified subscription. State is deliberately installation-local;
+subsequent authority belongs in the existing shared owner history, not this file.
