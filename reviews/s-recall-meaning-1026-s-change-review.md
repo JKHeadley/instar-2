@@ -20,6 +20,13 @@ Evidence boundary: The fixture proves the original failure and the recorded mode
 Decision: s-recall-original-lookup | All 24 generated term lists scored zero for the paraphrase; expanding the candidate pool cannot repair that. Ask the existing answer model to reformulate for original support even when memory or summary supplies a possible answer. No new engine or helper call. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/s-recall-meaning-1026-s-PROGRESS.md
 Decision: s-recall-search-limit | Update 6236620's private reason states the search limit but its delivered answer does not. Require that explanation in the reply in the model's own words. No phrase detector or reply substitution. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/s-recall-meaning-1026-s-PROGRESS.md
 Prompt review: Instructions describe general evidence and search limits; no cabin, horse, source id or expected test answer occurs in them. The always-present capability sentence shrinks. Lookup instructions are present only while the existing lookup is available. Historical fixture text is data, not instructions.
+Prompt finding: 4106b49fff07 | protocol-literal | Unchanged obligation evidence instruction, not a test-derived semantic decision.
+Prompt finding: 85544c20941f | protocol-literal | Unchanged holding-notice protocol, not a keyword classifier.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing citation duty remains; its assertion verifies delivery of that duty.
+Prompt finding: 849db3a6296a | protocol-literal | Existing inventory-empty rendering is unchanged by the recall instruction repair.
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Historical capability inventory assertion; no new capability or test phrase is added.
+Prompt finding: 95e349aaf4ac | protocol-literal | Existing effect-doorway standing description; no authority boundary changes.
+Publication: Register regenerated from source commit 7167b6698b473800afb00f4838786beca38be373 using the existing replay builder. This refreshes derived source pins only and grants no runtime authority.
 Hook bypass: none
 Convergence: none
 
