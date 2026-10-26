@@ -32,6 +32,8 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing fixed empty-memory di
 
 Decision: train-161-fixture | The commitments live-script fixture still constructed the old full selfState source while the shipped inspect/turnSources uses selfStateBrief plus disciplineSource. Match those existing runtime sources so the 32768-byte probe and actual turn test the same packet; retain all commitment and continuity assertions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-161-PROGRESS.md
 
+Generated pins: Replayed register at e335a3954ed839d2a25d507d6aa0ac6d194e6fd0 after the fixture repair; owner manifests and inventory required no pin changes.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest route: one ordinary exact-head merge and the existing desk regeneration/checks. No new mechanism, policy or authority is introduced. Existing atomic snapshot verification, pending-evidence retention and diagnostic boundaries remain the guards. No unattended deployment or live completion is claimed.
