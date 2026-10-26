@@ -23,6 +23,8 @@ Decision: assess-1025b-D3 | Keep release unqualified; explicitly select the meas
 
 Decision: assess-1025b-R1 | Record the existing 1.x supervision and validate-before-next lineage; carry the matching brief amendment in the local report for the desk, without adding a competing implementation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-repair-171331-PROGRESS.md
 
+Decision: assess-1025b-R2 | Repair missing parent anchors and mandatory metadata in the two inherited qualification records so their commits have real review coverage. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-repair-171331-PROGRESS.md
+
 ## Assessment and simplest option first
 
 1.x reuse: JKHeadley/instar’s `docs/LLM-SUPERVISED-EXECUTION.md` supplies the tools-do-the-work/lightweight-model-validates-results standard, and `src/commands/setup-wizard/state-machine.ts` supplies the validate-before-next shape already cited by `scripts/setup-qualification.mjs`; this amendment continues through the existing Seven/exact-owner path, with no code transplant or competing implementation.
