@@ -91,3 +91,31 @@ export const presenceNoteDue = (view: SentinelView | undefined, turn: string): b
   const entry = view?.presence[turn];
   return entry !== undefined && entry.noteDueAt !== null && entry.closedAt === null;
 };
+
+/** Rules 7/9/13: decisions and events stay whole. Repeated observations keep the last
+ * 100 per family; the snapshot retains the exact family counts, latest times and state.
+ * Work's observedAt is proof of looking, not a decision. Unknown/waiting observations
+ * reset lastProgressAt on every tick without asserting progress: summarize those resets
+ * too. Active/stalled progress clocks and all state/detail/activity changes stay whole. */
+export const SENTINEL_OBSERVATIONS_KEPT = 100;
+export function retainedSentinelEvidence(rows: readonly SentinelRecord[]): Set<SentinelRecord> {
+  const kept = new Set<SentinelRecord>();
+  const last = new Map<SentinelFamily, string>();
+  const repeated = new Map<SentinelFamily, SentinelRecord[]>();
+  for (const row of rows) {
+    const state = JSON.stringify({ state: row[row.family], ...(row.work === undefined ? {} : {
+      work: Object.fromEntries(Object.entries(row.work).map(([id, { observedAt: _observedAt, lastProgressAt, ...decision }]) =>
+        [id, { ...decision, ...(['unknown', 'waiting'].includes(decision.state) ? {} : { lastProgressAt }) }])),
+    }) });
+    if (row.events.length || state !== last.get(row.family)) kept.add(row);
+    else {
+      const recent = repeated.get(row.family) ?? [];
+      recent.push(row);
+      if (recent.length > SENTINEL_OBSERVATIONS_KEPT) recent.shift();
+      repeated.set(row.family, recent);
+    }
+    last.set(row.family, state);
+  }
+  for (const recent of repeated.values()) for (const row of recent) kept.add(row);
+  return kept;
+}

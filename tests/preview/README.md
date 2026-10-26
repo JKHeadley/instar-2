@@ -4419,7 +4419,7 @@ No new store or ownership protocol is introduced. Journal intent and receipt sta
 existing replication; the current conversation owner alone creates ephemeral typing activity.
 
 The encrypted journal's `phase-timing` diagnostics expose numeric/boolean measurements through
-`status.phaseTimings` (the latest 100; original frames remain in retained journal evidence).
+`status.phaseTimings` (the latest 100, preserved in the snapshot; older timing frames are compacted away).
 Acknowledgements record the scheduled wall-clock due time and timer callback entry separately;
 a poll-triggered check is labelled `timerCallback: false` and does not invent a callback time.
 Send records carry entry, final audience admission, physical transport entry/return, the attempt
@@ -4437,6 +4437,28 @@ membership/service changes invalidate it before intake. A longer turn needs a fr
 probe. This change does not widen the staleness bound or retain stale evidence on
 error (purpose least revelation; Rules 28, 32, 60, 95). Observations never admit an effect or
 make an UNKNOWN send retry; an observation write failure does not change the operation's result.
+
+Idle diagnostics record transitions: the audience observer records its first verdict and changes
+in that verdict, while still checking on every pass. Repeated acknowledgement timer callbacks and
+send preflights with no transport entry record only changes in phase. Every physical send attempt
+retains its timing, including a proved-not-sent retry. These diagnostic caches belong to the running
+worker and reset on restart; they never supply authority or change retry/delivery behavior.
+
+Journal compaction retains every model-call input/output, usage record, decision, intake and effect
+receipt (Rules 7, 41, 58, 75). Sentinel events and changed decision states stay whole. Repeated
+sentinel observations retain the latest 100 per family, alongside the snapshot's exact total tick
+counts, last observation times and current state. For work observations, `observedAt` and the
+continually reset `lastProgressAt` of unchanged unknown/waiting work are observation timestamps;
+active/stalled progress clocks and changes in state, detail, activity or progress remain evidence.
+
+`journal-json.ts` writes the existing version-1 snapshot JSON in 256 KiB buffers, computes its digest
+incrementally, and parses bounded scalar tokens on reopen. No whole snapshot or projection becomes
+one string; individual parsed tokens keep the journal frame's 2 MiB ceiling. Verification compares
+the complete projection digests after syncing the temporary file and before atomic replacement. Existing snapshots need no format
+migration. The journal still materializes its state and retained evidence in memory; this removes
+the aggregate string limit, not the storage cost of required history. Rollback keeps the latest
+journal and this bounded reader for snapshots beyond the old reader's string limit; never reactivate
+an old backup and lose later intake or effect evidence.
 
 The subscription runner retains one successful CLI version observation keyed by the complete
 pinned profile, including the executable artifact. Changed profiles/artifacts revalidate; failed
