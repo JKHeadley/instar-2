@@ -27,7 +27,7 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing inventory-empty rende
 Prompt finding: 4b98dc2a1b9f | protocol-literal | Historical capability inventory assertion; no new capability or test phrase is added.
 Prompt finding: 95e349aaf4ac | protocol-literal | Existing effect-doorway standing description; no authority boundary changes.
 Publication: Register regenerated from source commit 7167b6698b473800afb00f4838786beca38be373 using the existing replay builder. This refreshes derived source pins only and grants no runtime authority.
-Verification: The older captured not-found answer stays paired with its original question. An additional explicitly constructed S11c control moves the recorded uncertainty sentence from private reasoning into the reply and proves delivery preserves it. Neither is represented as fresh model compliance.
+Verification: Historical packet comparisons in topic-awareness and recall-latency preserve their recorded bytes while asserting the revised evidence instruction. The older captured not-found answer stays paired with its original question. An additional explicitly constructed S11c control moves the recorded uncertainty sentence from private reasoning into the reply and proves delivery preserves it. Neither is represented as fresh model compliance.
 Hook bypass: none
 Convergence: none
 

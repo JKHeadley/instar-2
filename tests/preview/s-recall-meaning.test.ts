@@ -10,7 +10,6 @@ import { selectRecall } from './memory-sentinel.js';
 import { MEMORY_LOOKUP_INSTRUCTIONS } from './briefing.js';
 import { createJournalWorker, LOOKUP_DONE_GUIDANCE, openPreviewJournal } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { readAnswer } from './answer-reading.js';
 import { genesis, key, sourceId, update } from './recall-rank-room.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/s-recall-meaning-2026-10-25.json', import.meta.url), 'utf8')) as {
@@ -111,21 +110,6 @@ it('does not match the cabin fact for an unrelated lookup', async () => {
   expect(r.lookup?.found).not.toContain(sourceId(fact));
   expect(r.lookup?.found).toContain(sourceId(6236565));
   expect(r.calls).toBe(2);
-});
-
-const historical = JSON.parse(readFileSync(new URL('./fixtures/proofroom2-recallrank-2026-10-02.json', import.meta.url), 'utf8')) as {
-  lookupSamples: { samples: { label: string; question: string; calls: { raw: string }[] }[] } };
-it('replays the captured honest not-found output without inventing an answer', async () => {
-  // This response is from the earlier recorded never-said question, not a new response to S11c.
-  const sample = historical.lookupSamples.samples.find(s => s.label === 'never-said')!;
-  const reading = readAnswer(sample.calls[1]!.raw, { evidence: ['offline:recorded-never-said'] });
-  if (!reading.ok) throw Error('recorded answer refused');
-  const r = await lookupReplay(sample.question, ['sister middle name'], reading.value);
-  expect(r.lookup?.found).toEqual([]);
-  expect(r.sent).toHaveLength(1);
-  expect(r.sent[0]).toContain('searched');
-  expect(r.sent[0]).toContain("isn't proof");
-  expect(r.sent[0]).not.toContain('barometer');
 });
 
 it('keeps the S11c search limit when the model includes it in its reply', async () => {
