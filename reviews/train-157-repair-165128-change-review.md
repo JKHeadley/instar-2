@@ -25,6 +25,7 @@ Prompt finding: 4106b49fff07 | protocol-literal | Existing action-evidence bound
 Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory status unchanged; fixed output assertion.
 Prompt finding: 85544c20941f | protocol-literal | Existing retained-message waiting notice unchanged; output protocol literal.
 Prompt finding: e8708c7fea24 | protocol-literal | Existing sourceLabel citation instruction unchanged; attribution assertion.
+Publication: Replayed the existing register generator at source commit 9fc750658161d20efa0a8bc4ea119db28a170d6a; seven generated artifacts bind the changed journal bytes. Delegated owner-manifest and inventory helpers made no changes.
 Validation: Targeted default-context-floor, default-root-conversation, summary-bound, summary-cascade-stall and memory-consistency tests; typecheck, architecture, lint, register check, change-review check and whitespace checks. Exact outcomes and host limitations are in the repair report.
 
 simplestRobustRoute: This is the simplest robust route: delete one duplicate sentence and retain the schema that already gives the instruction. Start guard is the same admitted journal; end guard is the same bounded, reviewed summary; stop, spend and uniqueness remain untouched. Existing tests measure actual envelopes and exercise recorded outputs without adding machinery. No claim of live model or unattended user acceptance is made.
