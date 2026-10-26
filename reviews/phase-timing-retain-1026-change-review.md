@@ -17,6 +17,7 @@ Layer below: Read the constitution in full. Inspected retainedEvidence, latest-1
 1.X FIRST: JsonlStore declares diagnostic byte/segment retention at its storage funnel, while jsonl-rotation distinguishes bounded diagnostics from archive evidence that must not be dropped. Reuse that distinction and a recent diagnostic tail in the existing 2.0 compactor. Plaintext segment deletion is unsuitable for this encrypted causal journal; no file transplant, new storage engine or archive protocol is needed. journal-growth-1026 already supplies the writer-side growth bound and chunked snapshot encoding.
 Bug class: durability
 Bug evidence: reproducer=tests/preview/journal-compaction.test.ts; restart=tests/preview/journal-compaction.test.ts
+Generated pins: Rebuilt the register and capability/source projections from source commit c664da8a9a7a0e8faf8990c3f495a21494efb899; no governing declaration or certificate changed.
 Hook bypass: none; core.hooksPath unset and common hooks directory contains sample files only, checked before committing.
 Convergence: none
 Prompt review: No model-facing change; timing rows do not supply prompts or model-output acceptance. The snapshot projection, including recorded model outcomes, is verified unchanged.
