@@ -122,4 +122,6 @@ it('answers 200 mixed-length turns in one day with bounded review context and ea
     expect(reopened.view.summaries.at(-1)?.text).toContain(earlyFacts[0]);
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-}, 120000);
+// This is a 200-turn correctness/replay test with encrypted disk writes, not a latency assertion.
+// Leave foreground WSL runs enough harness time to reach every delivery and recall check.
+}, 240000);

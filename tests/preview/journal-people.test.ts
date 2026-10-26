@@ -11,7 +11,8 @@ import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy
 
 const key = new Uint8Array(32).fill(9);
 const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-people-')));
-const genesis = (maxBytes = 8000) => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321',
+// Keep semantic person evidence beside the fitted summary cadence. Explicit pressure tests below still force eviction.
+const genesis = (maxBytes = 10000) => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321',
   operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
   maxCalls: 400, maxReplies: 200, maxTurns: 200, maxBytes, cursor: 0 });
 const update = (id: number, text: string, from = 7654321) => ({ update_id: id,
@@ -254,7 +255,8 @@ it.each(['forget', 'correct'] as const)('links only the confirmed pair across re
     return 'I can ask whether those two notes refer to the same person.';
   };
   try {
-    let w = world(root, { summarize, answer, maxBytes: 10000 });
+    // Three source notes plus confirmation/correction candidates must fit together after compaction.
+    let w = world(root, { summarize, answer, maxBytes: 16000 });
     await w.say(1, 'My cofounder Sam prefers October.');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     await w.say(3, 'Sam Ruiz, my neighbour, lent me a ladder.');
@@ -283,7 +285,7 @@ it.each(['forget', 'correct'] as const)('links only the confirmed pair across re
     expect(status.status, status.stderr).toBe(0);
     expect(JSON.parse(status.stdout).personMerges).toMatchObject([{ left: 'Sam', right: 'Sam Ortiz',
       triggerUpdate: n + 1 }]);
-    w = world(root, { summarize, answer, maxBytes: 10000 });
+    w = world(root, { summarize, answer, maxBytes: 16000 });
     const linked = w.worker.probe('What does Ortiz think?');
     if ('reason' in linked) throw Error(linked.reason);
     const packet = JSON.parse(linked.context);
@@ -315,7 +317,7 @@ it.each(['forget', 'correct'] as const)('links only the confirmed pair across re
         encoding: 'utf8', timeout: 10000 });
     expect(inactive.status, inactive.stderr).toBe(0);
     expect(JSON.parse(inactive.stdout).personMerges).toEqual([]);
-    w = world(root, { summarize, answer, maxBytes: 10000 });
+    w = world(root, { summarize, answer, maxBytes: 16000 });
     const replay = w.worker.probe('What does Ortiz think?');
     if ('reason' in replay) throw Error(replay.reason);
     expect(JSON.parse(replay.context).personMerges).toBeUndefined();
@@ -327,7 +329,7 @@ it.each(['Are Sam and Sam Ortiz the same person?', 'Actually, Sam and Sam Ortiz 
   ('rejects a model-proposed merge from %s and does not admit another sender as operator', async question => {
   const root = origin();
   try {
-    const w = world(root, { bad: false, maxBytes: 10000,
+    const w = world(root, { bad: false, maxBytes: 12000,
       summarize: context => JSON.stringify({ summary: 'Sam and Sam Ortiz were mentioned.', memory: [],
         people: (JSON.parse(context) as { history: { user: string }[] }).history.flatMap(({ user }) =>
           user.startsWith('My cofounder Sam') ? [{ name: 'Sam', quote: user }]
@@ -401,7 +403,8 @@ it('links an introductory claim even when its source ends in a question', async 
     // cint-L40 (w3-retrocluster, Rule 19): the 130-byte pushback sentence rides once an answer is in history; the merge
     // candidates yield again. Re-measured in 10-byte steps, fit 7110, fail 7100; the same 70 bytes of headroom kept.
     // w3-floorduty: plus the obligation guide's floor form, which now outranks optional evidence under pressure (Rules 3, 93).
-    const w = world(root, { maxBytes: 7180 + OBLIGATION_FLOOR_PACKET_BYTES, summarize: sourceSummarizer, answer: mergeAnswer });
+    // Fitted automatic spans change the remaining history; retain candidate headroom on both semantic neighbors.
+    const w = world(root, { maxBytes: 9180 + OBLIGATION_FLOOR_PACKET_BYTES, summarize: sourceSummarizer, answer: mergeAnswer });
     await w.say(1, 'My cofounder Sam prefers October. Can you remember that?');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     const n = await w.fillUntilRecall(3, 'Are Sam and Sam Ortiz the same person?');
@@ -423,7 +426,8 @@ it.each(['Can you remember that?', 'Please remember that.'])
   const root = origin();
   try {
     // Match the positive merge neighbor: ambiguity must refuse with all person evidence present, not because it was trimmed.
-    const w = world(root, { maxBytes: 7180 + OBLIGATION_FLOOR_PACKET_BYTES, summarize: sourceSummarizer, answer: mergeAnswer });
+    // Fitted automatic spans change the remaining history; retain candidate headroom on both semantic neighbors.
+    const w = world(root, { maxBytes: 9180 + OBLIGATION_FLOOR_PACKET_BYTES, summarize: sourceSummarizer, answer: mergeAnswer });
     await w.say(1, 'My cofounder Sam prefers October.');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     await w.say(3, `My neighbour Sam lent me a ladder. ${ending}`);
@@ -618,9 +622,9 @@ it('keeps per-turn non-model overhead flat through 200 turns with person notes a
   try {
     // Keep optional people beside the expanded standing guidance; this measures runtime,
     // while the separate pressure tests exercise eviction at smaller packet bounds.
-    let w = world(root, { bad: false, maxBytes: 9000 });
+    let w = world(root, { bad: false, maxBytes: 16000 });
     for (let i = 1; i <= 200; i++) {
-      if (i === 100) { w.journal.close(); w = world(root, { bad: false, maxBytes: 9000 }); }
+      if (i === 100) { w.journal.close(); w = world(root, { bad: false, maxBytes: 16000 }); }
       const text = i % 10 === 1 ? `Sam ${i} reported that Priya wants item ${i} reviewed.`
         : i === 199 ? 'What have Sam and Priya said?' : filler(i);
       const start = performance.now();

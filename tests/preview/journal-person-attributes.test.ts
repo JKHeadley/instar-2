@@ -7,10 +7,11 @@ import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, openPreviewJournal 
 const key = new Uint8Array(32).fill(29);
 const day = 86_400;
 const start = Math.floor(Date.UTC(2026, 8, 1) / 1000);
+// Fitted summary cadence needs recent-tail headroom beside the complete dated timeline.
 // w3-floorduty (Rules 3, 93): plus the obligation guide's floor form, which now outranks optional evidence under pressure.
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
-  maxCalls: 400, maxReplies: 200, maxTurns: 120, maxBytes: 10000 + OBLIGATION_FLOOR_PACKET_BYTES, cursor: 0 };
+  maxCalls: 400, maxReplies: 200, maxTurns: 120, maxBytes: 12000 + OBLIGATION_FLOOR_PACKET_BYTES, cursor: 0 };
 const changes: Record<string, { attribute: 'job' | 'city' | 'partner' | 'pet'; value: string; status: 'current' | 'ended' }> = {
   'Sam Rivera now works at Acme.': { attribute: 'job', value: 'Acme', status: 'current' },
   'Sam Rivera lives in Boston.': { attribute: 'city', value: 'Boston', status: 'current' },
