@@ -47,3 +47,34 @@ They do not recreate the original host pressure or establish a faster full suite
 pipeline must rerun the complete gate; the original failures and all assertions remain.
 This change does not bound other programs on the host or cure a single test that blocks
 its own event loop beyond the RPC deadline. No new full-run result is asserted here.
+
+## Narrow scheduling repair, 2026-10-26
+
+The serial-all workaround also serialized the roughly thousand ordinary test files. The
+M5 Pro qualification report (`lanes/m5pro-slot-1025-PROGRESS.md`, desk record) observed only
+132 files completed in 65 minutes at d936c5c6. That workaround is replaced by the prior
+bounded parallel pool: half the available CPUs, at most six, lowered by
+`INSTAR_TEST_MAX_WORKERS`. `VITEST_SERIAL_GATE=1` remains an explicit serial comparator.
+
+Only the fourteen files named by the trace/timing evidence above are scheduled separately:
+`stage2-recovery`; the seven e2e `transport-loop-a1` files; e2e `register`; e2e harness
+adapter rounds 9 and 12; conversation `telegram.round24.integration`; assembly
+`provider-response-evidence` and `fixed-installation-peer`. The exact paths live in
+`serialFixtureFiles` in `vitest.config.ts`. They run after the ordinary parallel group,
+one file per ordered Vitest project. Each file retains a fresh isolated fork. This uses
+Vitest's existing sequence groups instead of introducing a lock, blocked worker queue or
+shared-process fixture state. Both platform splits retain every selected test exactly once.
+
+This list bounds the recorded heavy fixtures; it does not establish that the 61 unattributed
+train-159 RPC errors came from those files or that all timing-sensitive files share a lock.
+The earlier asynchronous child repairs, worker IPC yields, child deadlines, RAM scratch
+setup, priority reduction and host admission remain necessary. No assertion, case deadline,
+skip or product behavior is changed. Host admission limits concurrent suites; it is separate
+from this config's worker limit within one suite, as in 1.x's host semaphore/setup split.
+
+The regression runs the actual shipped scheduling configuration with asynchronous rendezvous
+fixtures: ordinary files must overlap, selected files must run successively, and all files
+must use different process ids. Discovery checks compare the actual runner inventory against
+all tracked test files in unsplit, macOS-only and non-macOS modes. Full-suite qualification
+and repeated real-fixture runs are recorded in the builder's absolute lanes progress record;
+this defect remains open until that evidence establishes zero runner errors.

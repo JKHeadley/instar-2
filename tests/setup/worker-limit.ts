@@ -1,7 +1,7 @@
 // The desk caps the workers of one full-test run. Two concurrent full runs on the sixteen-core
 // Studio ran twelve forks between them, saturated the host and cost the agent its own session
 // (observer #192, 2026-10-05), so each full run is now launched with INSTAR_TEST_MAX_WORKERS.
-// The requested cap only ever lowers the ceiling in vitest.config.ts (now one worker) — a run can be made
+// The requested cap only ever lowers the ceiling in vitest.config.ts (half available CPUs, at most six) — a run can be made
 // quieter, never louder — and an unusable value is reported rather than dropped in silence,
 // because a cap that silently does not apply is the saturation it was set to prevent.
 
