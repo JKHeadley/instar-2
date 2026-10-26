@@ -1,0 +1,32 @@
+{
+  "provenance": {
+    "host": {
+      "os": "darwin",
+      "architecture": "arm64",
+      "release": "25.5.0",
+      "cpu": "Apple M4 Max",
+      "logicalCpus": 16,
+      "totalMemoryBytes": 68719476736,
+      "availableMemoryBytes": 8853340160
+    },
+    "model": {
+      "source": "62a8d092b0a1047016f3edbd0fde387598727aa5",
+      "file": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+      "size": 1117320736,
+      "sha256": "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e",
+      "runtimeSource": "c02e5ab2a675c8bc1abc8b1e4cb6a93b26bdcce7"
+    },
+    "runtime": "163f596e37e55871f5b33f2a864f6cb816d14d0519e5f7df11b8ff7d6dfa8dc7",
+    "trial": "macos-qualification-1025/trial-1-key-complete",
+    "capturedAt": "2026-10-25T18:15:24.316Z"
+  },
+  "raw": "\n{\"disposition\":\"accept\",\"reason\":\"The evidence shows that the installation key has been verified, which aligns with the objective of verifying the installation public key.\", \"evidence\":[\"id\":\"key-receipt\"]} [end of text]\n\n\n",
+  "verdict": {
+    "disposition": "hold",
+    "reason": "empty, truncated or malformed output",
+    "evidence": [],
+    "preserved": "key-complete"
+  },
+  "elapsedMs": 4486.481125,
+  "sampledPeakRssBytes": 1324269568
+}

@@ -1,0 +1,120 @@
+{
+  "kind": "qualification-experiment-only",
+  "status": "failed; unqualified; Astra pending",
+  "base": "d7f96a7cb",
+  "model": {
+    "source": "7dabda4d13d513e3e842b20f0d435c732f172cbe",
+    "file": "qwen2.5-3b-instruct-q4_k_m.gguf",
+    "size": 2104932768,
+    "sha256": "626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18e0a9615c62d",
+    "runtimeSource": "c02e5ab2a675c8bc1abc8b1e4cb6a93b26bdcce7"
+  },
+  "runtime": {
+    "executable": "/Users/dabombstudio/.cache/instar-setup-qualification/llama.cpp-c02e5ab2a675c8bc1abc8b1e4cb6a93b26bdcce7/llama-cli",
+    "weights": "/Users/dabombstudio/.cache/instar-setup-qualification/qwen2.5-3b-instruct-q4_k_m.gguf",
+    "runtimeDigest": "163f596e37e55871f5b33f2a864f6cb816d14d0519e5f7df11b8ff7d6dfa8dc7",
+    "sourceArchiveSha256": "86e9c92699ae2d431dd364b19340744693f00da7cac3383d5fd4cbfb287529be",
+    "sourceFilesVerified": 992,
+    "build": "nice -n 10 make -j2 llama-cli GGML_NO_METAL=1 GGML_NO_ACCELERATE=1",
+    "releaseManifest": "not an independently signed release manifest; qualification candidate only",
+    "officialModelMetadataSha256": "51cebfbb316fa5fafeaf5ff6e839219dba6dc7a66203bbbf6607b3bd98e07782"
+  },
+  "profile": {
+    "concurrency": 1,
+    "threads": 2,
+    "memoryBytes": 3221225472,
+    "context": 4096,
+    "outputTokens": 512,
+    "temperature": 0,
+    "seed": 1,
+    "deadlineMs": 120000,
+    "attemptMs": 1200000,
+    "validationsPerAttempt": 8,
+    "processCount": 16,
+    "cpuMilliseconds": 240000
+  },
+  "projectionSchema": "setup-primitive-owner-results-v1",
+  "verdictSchema": "setup-primitive-owner-verdict-v2",
+  "sets": {
+    "original": {
+      "hashes": {
+        "prompt": "34483c136f0ad99d70112d703d11815d98da414dbfeb478eb4d8e733ba42a90a",
+        "template": "d1d17164114ed7397de86b887b08bbba55355b58dbb687b0e0e8fc92029837b3",
+        "taskSet": "1a8b22a28d894e53e86e15760fe8da2be827e30723890a93f6c6fe889d126894",
+        "adapter": "f0a6bf7f9fa14c5ab363fc5c96cbb2a6606d3be6f4bdd584f18a3f35ad408b91",
+        "bridge": "f226ca962cd8c97ebac586ec7e98a9b421d0fd5c15f752e2ee8449f34ff2a098",
+        "ownerCaptures": "bb53e67c2999eac41420a485486676c042976f09d39afa7259d4d3bfcb5e4f35"
+      },
+      "replaySource": {
+        "path": "tests/qualification/evidence/macos-arm64-2026-10-25.json",
+        "sha256": "08b0c78439ccb9d6ba64ef6ae701beb938cc9c74be8b6cde76de2172a7f6ec2d"
+      },
+      "heldOutFreeze": {
+        "path": "tests/qualification/fixtures/setup-held-out-1025-mac4.json",
+        "sha256": "8b6897caf65964e3d0585f2e27fcfc5a0ed7a58146c3a3fa037bb745731c65d7",
+        "commit": "70b1f612e"
+      },
+      "sourcePins": {
+        "scripts/setup-qualification.mjs": "f0a6bf7f9fa14c5ab363fc5c96cbb2a6606d3be6f4bdd584f18a3f35ad408b91",
+        "tests/qualification/setup-seven.ts": "f226ca962cd8c97ebac586ec7e98a9b421d0fd5c15f752e2ee8449f34ff2a098",
+        "tests/qualification/setup-owner-cases.ts": "bb53e67c2999eac41420a485486676c042976f09d39afa7259d4d3bfcb5e4f35",
+        "tests/assembly/setup-qualification-host.test.ts": "875aa3e4331a648d2a4d4187be53306409fd7367eda4ae9a14a53b97f17a4828"
+      },
+      "outputSchemaPins": {
+        "key-complete": "e86803a56ed147c6f8d51ce52d8a7cfb8bb341b505a567389271c37978179c14",
+        "key-fault": "e86803a56ed147c6f8d51ce52d8a7cfb8bb341b505a567389271c37978179c14",
+        "backup-complete": "7acc166f33bd45bd1987b538d82ba124a8b06910499b65afbe520ab9f2501509",
+        "backup-fault": "7acc166f33bd45bd1987b538d82ba124a8b06910499b65afbe520ab9f2501509",
+        "signing-complete": "93145488256751813673bdcf5a16fbafb57839e9173364a463a331d317e199a2",
+        "signing-fault": "93145488256751813673bdcf5a16fbafb57839e9173364a463a331d317e199a2",
+        "append-complete": "3c2453c82674decb9cb42575377ead3e8995932fb35b3aa614fb983c6a400dd4",
+        "append-fault": "3c2453c82674decb9cb42575377ead3e8995932fb35b3aa614fb983c6a400dd4",
+        "forged-label": "e86803a56ed147c6f8d51ce52d8a7cfb8bb341b505a567389271c37978179c14",
+        "conflicting-receipts": "e86803a56ed147c6f8d51ce52d8a7cfb8bb341b505a567389271c37978179c14",
+        "observation-instruction": "e86803a56ed147c6f8d51ce52d8a7cfb8bb341b505a567389271c37978179c14",
+        "missing-evidence": "e86803a56ed147c6f8d51ce52d8a7cfb8bb341b505a567389271c37978179c14"
+      },
+      "evidenceSha256": "fee76c5ee0943694fed31fb88b97b9cea13eb78b5822a5d2133063e1c47d344a"
+    },
+    "held-out": {
+      "hashes": {
+        "prompt": "34483c136f0ad99d70112d703d11815d98da414dbfeb478eb4d8e733ba42a90a",
+        "template": "d1d17164114ed7397de86b887b08bbba55355b58dbb687b0e0e8fc92029837b3",
+        "taskSet": "4b18b6070714aff1aa5c8261371e1753f29ace76f6622b4de0a70778bfa06848",
+        "adapter": "f0a6bf7f9fa14c5ab363fc5c96cbb2a6606d3be6f4bdd584f18a3f35ad408b91",
+        "bridge": "f226ca962cd8c97ebac586ec7e98a9b421d0fd5c15f752e2ee8449f34ff2a098",
+        "ownerCaptures": "bb53e67c2999eac41420a485486676c042976f09d39afa7259d4d3bfcb5e4f35"
+      },
+      "replaySource": {
+        "path": "tests/qualification/fixtures/setup-held-out-1025-mac4.json",
+        "sha256": "8b6897caf65964e3d0585f2e27fcfc5a0ed7a58146c3a3fa037bb745731c65d7"
+      },
+      "heldOutFreeze": {
+        "path": "tests/qualification/fixtures/setup-held-out-1025-mac4.json",
+        "sha256": "8b6897caf65964e3d0585f2e27fcfc5a0ed7a58146c3a3fa037bb745731c65d7",
+        "commit": "70b1f612e"
+      },
+      "sourcePins": {
+        "scripts/setup-qualification.mjs": "f0a6bf7f9fa14c5ab363fc5c96cbb2a6606d3be6f4bdd584f18a3f35ad408b91",
+        "tests/qualification/setup-seven.ts": "f226ca962cd8c97ebac586ec7e98a9b421d0fd5c15f752e2ee8449f34ff2a098",
+        "tests/qualification/setup-owner-cases.ts": "bb53e67c2999eac41420a485486676c042976f09d39afa7259d4d3bfcb5e4f35",
+        "tests/assembly/setup-qualification-host.test.ts": "875aa3e4331a648d2a4d4187be53306409fd7367eda4ae9a14a53b97f17a4828"
+      },
+      "outputSchemaPins": {
+        "key-agreement": "e86803a56ed147c6f8d51ce52d8a7cfb8bb341b505a567389271c37978179c14",
+        "key-envelope": "e86803a56ed147c6f8d51ce52d8a7cfb8bb341b505a567389271c37978179c14",
+        "backup-separated": "7acc166f33bd45bd1987b538d82ba124a8b06910499b65afbe520ab9f2501509",
+        "backup-described": "7acc166f33bd45bd1987b538d82ba124a8b06910499b65afbe520ab9f2501509",
+        "signature-agreement": "93145488256751813673bdcf5a16fbafb57839e9173364a463a331d317e199a2",
+        "append-separated": "3c2453c82674decb9cb42575377ead3e8995932fb35b3aa614fb983c6a400dd4",
+        "challenge-disagreement": "e86803a56ed147c6f8d51ce52d8a7cfb8bb341b505a567389271c37978179c14",
+        "recovery-version-disagreement": "7acc166f33bd45bd1987b538d82ba124a8b06910499b65afbe520ab9f2501509",
+        "signature-review-directive": "93145488256751813673bdcf5a16fbafb57839e9173364a463a331d317e199a2",
+        "append-nested-directive": "3c2453c82674decb9cb42575377ead3e8995932fb35b3aa614fb983c6a400dd4",
+        "recovery-authentication-absent": "7acc166f33bd45bd1987b538d82ba124a8b06910499b65afbe520ab9f2501509",
+        "recovery-key-unusable": "7acc166f33bd45bd1987b538d82ba124a8b06910499b65afbe520ab9f2501509"
+      },
+      "evidenceSha256": "8bb7e64fbae437a447f94c96ed8ceea90305b32c60df3476594732a5f254611a"
+    }
+  }
+}
