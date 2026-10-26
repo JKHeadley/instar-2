@@ -22,6 +22,7 @@ Decision: train-159-repair-193339-D1 | Retain both qualification records' Linux 
 Decision: train-159-repair-193339-D2 | Regenerate derived publication using the existing committed-source generator after the ordinary merge; preserve product and changelog bytes without adding runtime machinery. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-159-repair-193339-PROGRESS.md
 Deferral: generated/register.json:1 | not-a-deferral=Existing generated prerequisite states remain evidence, not new promises.
 
+Review coverage: The inherited assessment record gains explicit dispositions for five unchanged prompt/test overlaps brought into its subject by this merge; source bytes remain unchanged.
 Publication: Regenerated with scripts/build-register.mjs --replay from merge 941f0080fe46b3742381ef333a1b66b6490aed37; no pin edited by hand.
 
 simplestRobustRoute: This is the simplest robust route: an ordinary merge retaining both review histories, followed by the existing register generator. No new mechanism. Clean original branch and exact live head are start guards; ancestry, unchanged product bytes and existing checks are end guards; no runtime floors change. No unattended installation completion is claimed.

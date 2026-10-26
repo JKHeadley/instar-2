@@ -228,6 +228,13 @@ from arithmetic. Safety limits and existing enrollment/recovery choices remain i
 
 Skip: tests/assembly/setup-supervisor-linux.test.ts:36 | scope=Inherited supervisor physical Linux cgroup proof requires explicit host opt-in and pinned model assets; this metadata repair does not run or claim that proof.
 
+Prompt review: The live-history merge expands this historical record's subject to inherited memory guidance, journal and retrospective sources. Inspected fixture-trigger and neutral-dispatch boundaries: no repair changes their bytes, no expected answer is inserted into a dispatch, and these five overlaps are fixed status text or general grounding instructions, not literal-trigger judgments.
+Prompt finding: 4106b49fff07 | protocol-literal | Existing capability-grounding instruction prohibits claiming unattempted work; the test checks its delivery, not a phrase-triggered refusal.
+Prompt finding: 849db3a6296a | protocol-literal | Fixed empty memory inventory response is asserted by the list test; it does not classify user intent.
+Prompt finding: 85544c20941f | protocol-literal | Fixed model-outage reassurance describes durable queued messages; the test asserts the delivery contract, not a semantic trigger.
+Prompt finding: d531743e1e12 | protocol-literal | General memory guidance limits clarification to unresolved alternatives and ambiguous subjects; the fixture checks guidance presence, not an expected answer embedded in dispatch.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing recall instruction requires source labels and unknown-source disclosure; the regression locates it for a negative control without turning fixture answers into runtime classifications.
+
 simplestRobustRoute: Use the existing model decision plus exact owners, with fixed owner-generated check text and retained raw audit evidence; qualify that smaller contract through the existing runner. No retry engine, semantic prose gate or new service. Current-subject/pin/authority start guards, owner-plus-model end guards, stop and resource limits remain. No unattended shipped-install completion is claimed.
 80/20: The 24 case re-derivations support the narrow decision role despite rejected explanations; preserve the explicit installed-owner and changed-contract gaps. Correct the design now rather than tune prose repeatedly or claim a warm speedup from overlapping timers. This independent evidence assessment is complete; landing review of the amendment remains open.
 VERDICT: C — amend docs/14; primitive decision evidence accepted, release qualification not established
