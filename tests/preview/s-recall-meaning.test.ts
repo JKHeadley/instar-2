@@ -114,18 +114,31 @@ it('does not match the cabin fact for an unrelated lookup', async () => {
 });
 
 const historical = JSON.parse(readFileSync(new URL('./fixtures/proofroom2-recallrank-2026-10-02.json', import.meta.url), 'utf8')) as {
-  lookupSamples: { samples: { label: string; calls: { raw: string }[] }[] } };
+  lookupSamples: { samples: { label: string; question: string; calls: { raw: string }[] }[] } };
 it('replays the captured honest not-found output without inventing an answer', async () => {
   // This response is from the earlier recorded never-said question, not a new response to S11c.
   const sample = historical.lookupSamples.samples.find(s => s.label === 'never-said')!;
   const reading = readAnswer(sample.calls[1]!.raw, { evidence: ['offline:recorded-never-said'] });
   if (!reading.ok) throw Error('recorded answer refused');
-  const r = await lookupReplay(fixture.questions[1]!.text, ['sister horse'], reading.value);
+  const r = await lookupReplay(sample.question, ['sister middle name'], reading.value);
   expect(r.lookup?.found).toEqual([]);
   expect(r.sent).toHaveLength(1);
   expect(r.sent[0]).toContain('searched');
   expect(r.sent[0]).toContain("isn't proof");
   expect(r.sent[0]).not.toContain('barometer');
+});
+
+it('keeps the S11c search limit when the model includes it in its reply', async () => {
+  const recorded = fixture.questions[1]!;
+  // Additional constructed control: move the recorded final reasoning sentence
+  // into the recorded reply. This is not a fresh model answer or a product template.
+  const limit = recorded.reason.slice(recorded.reason.lastIndexOf('A missed search'));
+  const reply = `${recorded.answer} ${limit}`;
+  const r = await lookupReplay(recorded.text, ['sister horse'], JSON.stringify({ reply }));
+  expect(r.lookup?.found).toEqual([]);
+  expect(r.sent).toEqual([expect.stringContaining(reply)]);
+  expect(r.sent[0]).toContain('Neither is a horse');
+  expect(r.sent[0]).toContain("doesn't prove you never said it");
 });
 
 const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
