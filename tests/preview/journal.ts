@@ -11294,6 +11294,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         return;
       }
       const { through, packet, prepared, offered, memorySources, questionSources, trigger, strictMemory, reminderOffer, indexBacklog } = chosen;
+      // The chosen packet carries the one-shot feedback; later outcomes use ordinary recovery.
+      summaryFormatRetry = undefined;
       gate();
       summarized = true;
       journal.append({kind:'summary-reserve',through,...(prepared === undefined ? {} : { prompt: prepared }),

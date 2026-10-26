@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, type JournalRecord } from './journal.js';
+import { createJournalWorker, openPreviewJournal, type JournalRecord, type CallOutcome } from './journal.js';
 import { readAnswer } from './answer-reading.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { interpretSummaryReview } from './summary-check.js';
@@ -23,7 +23,11 @@ const genesis = { kind: 'genesis' as const, bot: '8989505249', chat: '7812716706
   grant: 'grant:offline', configurationDigest: 'sha256:offline', expires: 9999999999999,
   maxCalls: 2500, maxReplies: 2500, maxTurns: 2500, maxBytes: 409600, cursor: 0 };
 
-function world(options: { end?: number; repeat?: boolean; stop?: boolean; cap?: boolean; cadence?: boolean; secondTail?: boolean; uncertain?: boolean; formatOverflow?: boolean } = {}) {
+type RecordedCap = { id: string; outcome: CallOutcome; uncertainUsage: { inputTokens: number | null; outputTokens: number | null; charge: null } };
+const overCap = (JSON.parse(readFileSync(new URL('./fixtures/proofroom-summary-overcap-2026-09-30.json', import.meta.url), 'utf8')) as { writer: RecordedCap[] })
+  .writer.find(row => row.outcome.localLimit === 'output-cap')!;
+
+function world(options: { mixed?: 'output-cap' | 'prose-bound'; end?: number; repeat?: boolean; stop?: boolean; cap?: boolean; cadence?: boolean; secondTail?: boolean; uncertain?: boolean; formatOverflow?: boolean } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'summary-cadence-')));
   const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis);
   let now = first.at + 600001, stopped = false;
@@ -49,6 +53,20 @@ function world(options: { end?: number; repeat?: boolean; stop?: boolean; cap?: 
     model: async input => {
       if (input.id.startsWith('summary:index:')) return '{"concepts":[]}';
       calls.push(input);
+      // Inject a combination of recorded shapes, not a claim of consecutive live outcomes.
+      if (options.mixed && calls.length === 1) {
+        const read = readAnswer(malformed.output, { object: true, evidence: [input.id] });
+        if (read.ok) throw Error('recorded malformed output unexpectedly parsed');
+        return { state: 'complete' as const, failureClass: 'malformed' as const, defect: read.defect };
+      }
+      if (options.mixed && calls.length === 2) {
+        if (options.mixed === 'prose-bound') {
+          // Synthetic boundary probe: repeat recorded prose beyond the carried byte ceiling.
+          return JSON.stringify({ summary: first.text.repeat(100), people: [], commitments: [], closed: [], memory: [], questions: [] });
+        }
+        journal.append({ kind: 'call-outcome', id: input.id, role: 'summary', outcome: overCap.outcome, at: now });
+        return { state: 'uncertain' as const, usage: overCap.uncertainUsage };
+      }
       if (options.cadence) {
         // Synthetic faithful answer for a newly enlarged span: exact recorded facts, no live call.
         const packet = JSON.parse(input.context) as { summary?: { text: string }; history: { id: string; user: string }[] };
@@ -152,5 +170,24 @@ it('does not cache an oversized format reminder as a permanent ordinary-packet f
     await w.worker.summarizeIfNeeded(true);
     expect(w.calls).toHaveLength(2);
     expect(w.journal.view.summaries.at(-1)?.through).toBe(6236633);
+  } finally { w.close(); }
+});
+
+it.each([
+  [false, 'output-cap'], [true, 'output-cap'], [false, 'prose-bound'], [true, 'prose-bound'],
+] as const)('continues recovery after a malformed retry fails its bound (forced=%s, bound=%s)', async (force, mixed) => {
+  const w = world({ cadence: true, mixed, end: 6236670 });
+  try {
+    await w.worker.summarizeIfNeeded(force);
+    const through = force ? 6236633 : 6236670;
+    expect(w.calls.slice(0, 2).map(c => c.id)).toEqual([`summary:${through}`, `summary:${through}`]);
+    expect(JSON.parse(w.calls[1]!.context).formatReminder).toContain('defect');
+    expect(w.calls.length).toBeGreaterThan(2);
+    expect(w.calls.length).toBeLessThanOrEqual(8);
+    expect(w.calls.slice(2).every(c => JSON.parse(c.context).formatReminder === undefined)).toBe(true);
+    expect(w.journal.view.summaries.at(-1)?.through).toBe(force ? 6236654 : 6236669);
+    expect(w.journal.view.summaryFailures.get(through)).toBe(2);
+    expect(w.journal.view.summaryReservations.size).toBe(0);
+    expect(w.journal.view.order.some(t => t.held === 'summary oversized turn')).toBe(false);
   } finally { w.close(); }
 });
