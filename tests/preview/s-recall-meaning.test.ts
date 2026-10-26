@@ -9,6 +9,7 @@ import { composeRecall } from '../../src/recall/retrieve.js';
 import { selectRecall } from './memory-sentinel.js';
 import { MEMORY_LOOKUP_INSTRUCTIONS } from './briefing.js';
 import { createJournalWorker, LOOKUP_DONE_GUIDANCE, openPreviewJournal } from './journal.js';
+import { readAnswer } from './answer-reading.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { genesis, key, sourceId, update } from './recall-rank-room.js';
 
@@ -72,14 +73,14 @@ it('offers source lookup even when a summary or saved memory suggests the answer
  * lookup request or evidence of fresh model compliance with the changed instruction. */
 const rewritten = ['spare key', 'cabin'];
 type Packet = { capability: string; memoryLookup?: unknown; recalled?: { id: string; user: string }[] };
-async function lookupReplay(text: string, words: string[], answer: string, replyShape?: string) {
+async function lookupReplay(text: string, words: string[] | null, answer: string, replyShape?: string) {
   const r = room(replyShape), packets: Packet[] = [], envelopes: string[] = [], sent: string[] = [];
   const worker = createJournalWorker(r.journal, { now: () => fixture.now, stopped: () => false,
     prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', genesis.grant, fixture.now, genesis.maxBytes),
     model: async input => {
       packets.push(JSON.parse(input.context) as Packet); envelopes.push(input.prepared!);
       if (packets.length > 2) throw Error('lookup exceeded the two-call budget');
-      return packets.length === 1 ? JSON.stringify({ lookup: words }) : answer;
+      return packets.length === 1 && words !== null ? JSON.stringify({ lookup: words }) : answer;
     }, send: async input => { sent.push(input.text); return input.update; }, checkOutbound: () => {} });
   const before = r.journal.view.calls;
   worker.intake([update(6236619, text)]);
@@ -150,4 +151,39 @@ it('puts the search-limit duty in the reply, including when index coverage is co
     expect(packet.capability).toContain('In your reply');
     expect(packet.capability).toContain('search may have missed');
   } finally { r.close(); }
+});
+
+/** Fresh responses are preserved verbatim; unlike the constructed controls above,
+ * these lookups and search-limit sentences were chosen by the real model. */
+const real = JSON.parse(readFileSync(new URL('./fixtures/s-recall-meaning-real-2026-10-26.json', import.meta.url), 'utf8')) as {
+  verdict: string; cases: { kind: string; repetition: number; text: string; verdict: string; answer: string;
+    lookup: { words: string[]; found: string[] } | null;
+    outputs: { id: string; state: string; rawOutput: string; packet: { recalled?: { id: string }[] } }[] }[] };
+it.each(real.cases)('replays real $kind repetition $repetition through lookup and delivery', async sample => {
+  expect(real.verdict).toBe('pass');
+  expect(sample.verdict).toBe('pass');
+  const values = sample.outputs.map(call => {
+    expect(call.state).toBe('complete');
+    const reading = readAnswer(call.rawOutput, { evidence: [call.id] });
+    if (!reading.ok) throw Error(reading.defect);
+    return reading.value;
+  });
+  if (sample.lookup) expect(JSON.parse(values[0]!)).toEqual({ lookup: sample.lookup.words });
+  const replay = await lookupReplay(sample.text, sample.lookup?.words ?? null, values.at(-1)!);
+  expect(replay.calls).toBe(values.length);
+  expect(replay.sent).toEqual([expect.stringContaining(sample.answer)]);
+  if (sample.lookup) expect(replay.lookup).toEqual(sample.lookup);
+  if (sample.kind === 'paraphrase') {
+    expect(sample.outputs[0]!.packet.recalled?.map(row => row.id)).not.toContain(sourceId(fact));
+    expect(replay.lookup?.found).toContain(sourceId(fact));
+    expect(sample.answer).toMatch(/barometer/iu);
+  } else if (sample.kind === 'early-fact') {
+    expect(sample.lookup).toBeNull();
+    expect(sample.answer).toContain('Okafor');
+  } else {
+    // Narrow checks of these recorded answers, not a product meaning classifier.
+    expect(sample.answer).not.toMatch(/you (?:haven't|have not) (?:told|said|mentioned)/iu);
+    expect(sample.answer).toMatch(/search/iu);
+    expect(sample.answer).toMatch(/miss|not proof|doesn.t (?:prove|mean)/iu);
+  }
 });
