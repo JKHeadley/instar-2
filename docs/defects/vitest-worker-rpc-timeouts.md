@@ -19,3 +19,62 @@ Two runs recorded unhandled runner errors `[vitest-worker]: Timeout calling "onT
 **Repair and closure:** the owner (1) identifies the starving file or the host condition from the worker trace, (2) confirms the resolved vitest package is the worktree's intended version, not a sibling's, and (3) repairs the cause, for example by an async yield in a long synchronous file, lower worker count or a per-worktree install. Closure needs a full run with zero runner errors under the original conditions. If a later run shows the error again, this record reopens.
 
 **Multi-machine posture:** runner and host are machine-local. This record travels with the repository.
+
+## train-159 recurrence, 2026-10-26
+
+The supplied Studio gate excerpt for `66869f8ffc69a8c4c15ae52826e5901f9c68618a` records
+93 failed files, 148 failed tests and 61 `onTaskUpdate` errors over 8,494.84 seconds. Failures
+span independent synchronous owner matrices, bounded child launches, launcher polling and
+wall-time performance assertions. The desk starts each concurrent gate with a four-worker
+cap. The first reported case, the held/malformed/throwing reservation matrix, took 81,095 ms
+against its 30,000 ms ceiling; unchanged under one worker it took 3,125 ms (the entire file
+passed 10 tests in 9,182 ms). After building the package in the fresh checkout, the unchanged
+fixed-peer file passed all 13 cases in 10,598 ms, including refusal and crash boundaries.
+An earlier local attempt lacked `dist/` and failed with exit status 1; that setup failure is
+distinct from the gate's null subprocess status and is not evidence of a product regression.
+
+The source repair makes Vitest's existing serial file mode the default and bounds its pool
+to one worker, even with the desk's `INSTAR_TEST_MAX_WORKERS=4` and `VITEST_SERIAL_GATE=0`.
+This removes competition between files within each run without increasing deadlines,
+quarantining cases, swallowing errors or altering product code. The existing cap parser,
+fork isolation, priority reduction, IPC yield and child bounds remain. The worker-limit
+test checks unset, valid and invalid caps with both legacy serial settings, and an actual
+two-file runner probe uses an injected asynchronous delay instead of burning CPU.
+
+**Qualification remains open.** These targeted results establish large timing sensitivity
+and the scheduling contract, not a proof that every original failure had the same cause.
+They do not recreate the original host pressure or establish a faster full suite. The
+pipeline must rerun the complete gate; the original failures and all assertions remain.
+This change does not bound other programs on the host or cure a single test that blocks
+its own event loop beyond the RPC deadline. No new full-run result is asserted here.
+
+## Narrow scheduling repair, 2026-10-26
+
+The serial-all workaround also serialized the roughly thousand ordinary test files. The
+M5 Pro qualification report (`lanes/m5pro-slot-1025-PROGRESS.md`, desk record) observed only
+132 files completed in 65 minutes at d936c5c6. That workaround is replaced by the prior
+bounded parallel pool: half the available CPUs, at most six, lowered by
+`INSTAR_TEST_MAX_WORKERS`. `VITEST_SERIAL_GATE=1` remains an explicit serial comparator.
+
+Only the fourteen files named by the trace/timing evidence above are scheduled separately:
+`stage2-recovery`; the seven e2e `transport-loop-a1` files; e2e `register`; e2e harness
+adapter rounds 9 and 12; conversation `telegram.round24.integration`; assembly
+`provider-response-evidence` and `fixed-installation-peer`. The exact paths live in
+`serialFixtureFiles` in `vitest.config.ts`. They run after the ordinary parallel group,
+one file per ordered Vitest project. Each file retains a fresh isolated fork. This uses
+Vitest's existing sequence groups instead of introducing a lock, blocked worker queue or
+shared-process fixture state. Both platform splits retain every selected test exactly once.
+
+This list bounds the recorded heavy fixtures; it does not establish that the 61 unattributed
+train-159 RPC errors came from those files or that all timing-sensitive files share a lock.
+The earlier asynchronous child repairs, worker IPC yields, child deadlines, RAM scratch
+setup, priority reduction and host admission remain necessary. No assertion, case deadline,
+skip or product behavior is changed. Host admission limits concurrent suites; it is separate
+from this config's worker limit within one suite, as in 1.x's host semaphore/setup split.
+
+The regression runs the actual shipped scheduling configuration with asynchronous rendezvous
+fixtures: ordinary files must overlap, selected files must run successively, and all files
+must use different process ids. Discovery checks compare the actual runner inventory against
+all tracked test files in unsplit, macOS-only and non-macOS modes. Full-suite qualification
+and repeated real-fixture runs are recorded in the builder's absolute lanes progress record;
+this defect remains open until that evidence establishes zero runner errors.
