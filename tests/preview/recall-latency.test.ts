@@ -231,4 +231,6 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     }
     process.stdout.write(`recall latency 2000 turns all memory: full non-model turn p95=${p95(turnSamples).toFixed(2)} ms (intake ${p95(intakeSamples).toFixed(2)}, drain ${p95(drainSamples).toFixed(2)}, coherence ${p95(coherenceSamples).toFixed(2)})\n`);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
-}, 120000);
+// Profiling prints measured latency; the harness deadline must also fit all 50 samples on WSL.
+// Keep the original sample counts, packet pins, audience checks and delivery assertions.
+}, 360000);
