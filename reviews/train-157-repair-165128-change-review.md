@@ -8,8 +8,8 @@ Affected rules: Purpose 2 and 3; Rules 12, 26, 36, 37, 49, 70, 74, 95, 101, 102,
 Affected floors: Secrets custody, spend cap, stop, no duplicate sends and durable intake retain their existing enforcement. Context bounds, output bounds and the 40-byte maintenance margin are unchanged.
 Operator questions: none
 Suggested tier: critical
-Declared tier: small
-Tier rationale: Delete one redundant summary instruction, retaining its identical field requirement in the existing object schema. No logic, protocol, model routing or resource limit changes.
+Declared tier: ordinary
+Tier rationale: Delete one redundant summary instruction, retaining its identical field requirement in the existing object schema. No logic, protocol, model routing or resource limit changes. The existing reproducer gains envelope-size diagnostics without changing its inequality.
 Side effects: Every rolling-summary question is 44 ASCII bytes shorter. The schema still explicitly places prose in the summary field; the following sentence retains the UTF-8 prose bound, and the complete JSON token cap remains. Prompt bytes and hashes change; captured outputs remain historical evidence, not a fresh model run.
 Undo and recovery: Revert this one-line source edit if needed; this restores the measured floor regression and must be repaired before landing. No journal migration, resend, or state rewrite is needed.
 Multi-machine posture: All hosts use the same shorter summary question. No new state, peer dependency, ownership change or host-specific branch.
