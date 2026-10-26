@@ -17,11 +17,15 @@ Layer below: Full docs/00 and docs/01 (identical to origin/main), glossary criti
 Bug class: none
 Hook bypass: none. Checked core.hooksPath (unset) and common hooks directory (sample files only).
 Convergence: none
-Decision: assess-1025b-D1 | Select C and decision-only consumption with fixed owner text; retain and independently re-derive refuted reasons instead of treating correct totals as sufficient. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-PROGRESS.md
-Decision: assess-1025b-D2 | Reject subtraction of reported load as a warm-process prediction because first prompt evaluation overlaps that interval. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-PROGRESS.md
-Decision: assess-1025b-D3 | Keep release unqualified; explicitly select the measured 3B/3-GiB candidate, bounded process reuse and a provisional four-minute evaluation allowance in docs/14 revision 31. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-PROGRESS.md
+Decision: assess-1025b-D1 | Select C and decision-only consumption with fixed owner text; retain and independently re-derive refuted reasons instead of treating correct totals as sufficient. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-repair-171331-PROGRESS.md
+Decision: assess-1025b-D2 | Reject subtraction of reported load as a warm-process prediction because first prompt evaluation overlaps that interval. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-repair-171331-PROGRESS.md
+Decision: assess-1025b-D3 | Keep release unqualified; explicitly select the measured 3B/3-GiB candidate, bounded process reuse and a provisional four-minute evaluation allowance in docs/14 revision 31. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-repair-171331-PROGRESS.md
+
+Decision: assess-1025b-R1 | Record the existing 1.x supervision and validate-before-next lineage; carry the matching brief amendment in the local report for the desk, without adding a competing implementation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-setup-assess-1025b-repair-171331-PROGRESS.md
 
 ## Assessment and simplest option first
+
+1.x reuse: JKHeadley/instar’s `docs/LLM-SUPERVISED-EXECUTION.md` supplies the tools-do-the-work/lightweight-model-validates-results standard, and `src/commands/setup-wizard/state-machine.ts` supplies the validate-before-next shape already cited by `scripts/setup-qualification.mjs`; this amendment continues through the existing Seven/exact-owner path, with no code transplant or competing implementation.
 
 **C.** The r30 clauses requiring a model-authored reason tied to check names/receipt handles,
 a correct reason on every case, and failure solely for exceeding two minutes add obligations
