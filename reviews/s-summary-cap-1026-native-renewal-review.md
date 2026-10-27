@@ -23,6 +23,8 @@ Decision: s-summary-native-renewal | Run the declared native contract on the exa
 Prompt review: No model-facing change in this round. The prior recorded calls and test-login real-model replay remain the model-facing evidence; this captured-frame native contract makes no live-model completion claim.
 Deferral: generated/register.json:1 | not-a-deferral=deterministically replayed existing register descriptions; no new commitment
 
+Generated evidence: Replayed the existing register at source commit 7824ffe12de341bc1fec64973aef424f830a5236 (generation sha256:afcf6698470ad0f3060d79b362c8206195af6ad273d164aa8582dc1051ba7ec7). This record covers both the certificate commit and the subsequent seven generated-output files.
+
 ## Closing block
 
 simplestRobustRoute: Run the existing native contract on the declared runtime, update its existing certificate from the actual composition digest and replay the register. This is that route. Start guard: exact runtime and complete closure. End guard: passing native contract and architecture for the same bytes. Limit guards: unchanged secrets, spend, stop, uniqueness and durable intake. No new machinery or unattended live-model completion claim.
