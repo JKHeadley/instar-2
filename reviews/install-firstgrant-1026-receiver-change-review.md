@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Implement the receiving protocol for the existing setup owner bridge. Authenticate complete current owner records and serialize dispatch without inventing custody or enrollment authority.
 Affected rules: 1, 4, 5, 26, 28, 29, 34, 38, 42, 49, 55, 57, 60, 74, 95, 98, 100, 101, 102, 111, 113, 116
-Affected floors: The receiver grants no secret access or spend. The installed owner retains authority, stop, durable intent and completion enforcement. No send or intake path changes. Uncertain effects are not retried.
+Affected floors: The receiver grants no secret access or spend. The installed owner retains authority, stop, durable intent and completion enforcement. No duplicate sends and durable intake remain enforced by their unchanged owners. Uncertain effects are not retried.
 Operator questions: none
 Suggested tier: ordinary
 Declared tier: ordinary
