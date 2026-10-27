@@ -5,17 +5,17 @@ Review state: open
 Reviewed content: none
 Outcome: Repair the existing broker client transport so the setup supervisor can authenticate a complete bounded owner record. First-grant enrollment remains incomplete; this is not ordinary-install readiness.
 Affected rules: 1, 4, 5, 26, 28, 34, 38, 42, 49, 60, 74, 95, 100, 101, 102, 111, 113, 116
-Affected floors: No credential, paid call, stop change, outbound send or intake mutation. Request and response memory remain bounded; authority stays at the existing owner boundary.
+Affected floors: Secrets and spend caps unchanged; no credential intake or paid call. Stop, no duplicate sends and durable intake remain unchanged. Request and response memory remain bounded; authority stays at the existing owner boundary.
 Operator questions: none
-Suggested tier: small
-Declared tier: small
+Suggested tier: ordinary
+Declared tier: ordinary
 Tier rationale: A bounded transport repair, with no new authority, owner operation, model prompt, model decoder or installed capability.
 Side effects: Client request and response ceilings become 16 KiB measured in bytes; complete UTF-8 decoding replaces per-chunk decoding. Full checkpoint plus owner record no longer fails the former 2-KiB request ceiling. Broker-side closed schemas still apply. Signed distribution and supervisor qualification pins must be renewed by their existing owners for these changed bytes; this change does not re-sign or relax admission.
 Undo and recovery: Revert the transport change; no persisted state schema changes. The older 2-KiB transport will again refuse long valid owner-authentication requests. Existing held setup attempts retain their state and may retry under a requalified release.
 Multi-machine posture: Local Unix-socket installation transport only. No change to shared grants, replication demand or recovery custody.
 Layer below: Read custody-platform's independently administered lifecycle and setupPreparationOwners; projectSetupChecks admits bounded 160-character bindings, and authenticate sends the full record plus checkpoint. The real socket test demonstrates that the previous 2048-byte request limit rejects that valid composition. The broker platform is not the missing key/enrollment business logic.
-Bug class: boundary
-Bug evidence: Before repair, tests/platform/setup-owner-transport.test.ts failed the complete-owner-record case with custody: request bound. After repair the same request traverses the socket and is compared by the receiving fixture. This fixture is not an independently installed custodian or authority proof.
+Bug class: integration
+Bug evidence: reproducer=tests/platform/setup-owner-transport.test.ts
 Hook bypass: none
 Convergence: none
 Decision: firstgrant-1025-transport-D1 | Preserve the full owner evidence and raise the existing finite wire ceiling to 16 KiB instead of truncating checks or inventing another transport. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/install-firstgrant-1025-PROGRESS.md
