@@ -53,6 +53,47 @@ under a contract they were never qualified for. Fixed owner-check text is displa
 the model's explanation is not. Rule 108 re-derivation belongs to independent review
 against the retained record if its justification is refuted.
 
+## Receiving owner requests
+
+`scripts/setup-owner-receiver.mjs` implements the receiving protocol boundary.
+The protected broker composes a `custodian` receiver for key/backup/signing; One/Two
+compose a separate `one-two` receiver for append. Each supplies its installed
+`read`, `reconcile` and atomic `execute` methods. This module is a dispatcher for
+those methods, not their custody or genesis implementation. No production broker
+entrypoint mounts it yet, and it does not make an ordinary installation usable.
+
+The receiver accepts only the existing bounded closed request shape. It detaches
+the request before awaiting, authenticates the full record by comparing it with a
+fresh owner read (including the frontier and receipt mapping), and refuses overlap
+without queuing requests. Authentic failed evidence remains failed evidence.
+Before dispatch, every precheck must have been observed and passed. The atomic
+owner receives that exact observed frontier and must recheck authority, stop and
+supervision at the effect. A completed durable operation is returned without
+executing it again; uncertain reconciliation never dispatches. Completion is
+reported only after a fresh reconciliation observes it. Exceptions return bounded
+generic outcomes, never private diagnostic text.
+
+The authenticated IPC boundary and installed owner methods remain required. A
+caller cannot supply them as request data. The receiving module has no key export,
+path argument, credential intake, signing authority, model fallback or authority
+store. The broker's independently signed distribution must include these exact
+receiver bytes when it mounts the module. Its installed-owner qualification must
+cover that composition before any qualified release uses it.
+
+Tracked integration work, owned by Nine/Ten/Seventeen and Eleven/One/Two in
+`docs/14-the-assembly.md`'s Fresh installation milestones: mount the receiver behind
+authenticated IPC; implement protected key custody and independent vault recovery
+with current-version restore challenge; implement protected enrollment and the
+GE/A0 genesis chain; then compose first-subscription standing into AssemblyAdmission.
+The acceptance condition remains the fresh-root connected-account conversation and
+restart recall. These obligations remain open; the protocol tests do not close them.
+
+`tests/platform/setup-owner-receiver.test.ts` exercises the existing client through
+a real Unix socket, retained signed protocol receipts and corrupted/forged/stale
+neighbors, owner separation, uncertain completion and concurrent mutation. The
+receipt signer is a test fixture; its flags are protocol inputs, never evidence of
+an independently installed custodian or a qualified model.
+
 ## Linux bounds and qualification
 
 `linuxSetupModel` accepts only an independently signed, current release manifest
