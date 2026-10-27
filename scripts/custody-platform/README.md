@@ -95,6 +95,15 @@ agent-accessible signing or credential export endpoint. The conformance payload 
 public and exercises the existing custody reader, with stub standing for that public
 fixture only. It is not a production standing grant or cryptographic custody proof.
 
+The client transport caps each request and response at 16 KiB of UTF-8 bytes. This
+allows the setup supervisor's complete checkpoint and owner-check record to travel
+together for authentication. Response chunks are joined before UTF-8 decoding so a
+split character does not change the record. The transport performs no owner
+authentication itself; the installed broker still checks the closed request and its
+authority. Oversized data refuses and destroys the socket. Existing signed release
+and qualification pins must be refreshed by their owners before distributing changed
+transport bytes.
+
 ## Running the proof
 
 From the repository root:

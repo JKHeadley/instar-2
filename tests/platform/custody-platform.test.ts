@@ -134,7 +134,7 @@ it('runs the existing custody reader through the real Linux socket (same-user pr
       { operation: 'read', scope: 'probe', maxBytes: 1 }, { operation: 'read', scope: 'probe', maxBytes: 129 },
       { operation: 'export-key' }, { operation: 'read', scope: 'probe', maxBytes: 128, requester: 'root' }])
       expect(await requestSocket(socket, request)).toEqual({ state: 'refused' });
-    await expect(requestSocket(socket, { payload: 'x'.repeat(3000) })).rejects.toThrow('bound');
+    await expect(requestSocket(socket, { payload: 'x'.repeat(16384) })).rejects.toThrow('bound');
   } finally {
     if (child && child.exitCode === null && child.signalCode === null) { child.kill('SIGTERM'); await exited; }
     rmSync(root, { recursive: true, force: true });

@@ -94,14 +94,22 @@ export function systemdUnit({ base, node, broker }) {
 }
 export function requestSocket(socket, request) {
   const bytes = JSON.stringify(request);
-  if (Buffer.byteLength(bytes) > 2048) return Promise.reject(Error('custody: request bound'));
+  // A setup authentication request carries both the checkpoint and its full
+  // owner record. The closed protocol's longest valid binding exceeds 2 KiB.
+  // Keep a finite wire bound, measured in bytes in both directions.
+  const maxBytes = 16384;
+  if (Buffer.byteLength(bytes) > maxBytes) return Promise.reject(Error('custody: request bound'));
   return new Promise((accept, reject) => {
-    const peer = connect(socket); let response = '';
+    const peer = connect(socket); const chunks = []; let received = 0;
     const fail = () => { peer.destroy(); reject(Error('custody: request unavailable')); };
     peer.setTimeout(2000, fail); peer.on('error', fail);
     peer.on('connect', () => peer.end(`${bytes}\n`));
-    peer.on('data', bytes => { response += bytes; if (response.length > 4096) fail(); });
-    peer.on('end', () => { try { accept(JSON.parse(response)); } catch { fail(); } });
+    peer.on('data', bytes => {
+      received += bytes.length;
+      if (received > maxBytes) { fail(); return; }
+      chunks.push(bytes);
+    });
+    peer.on('end', () => { try { accept(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch { fail(); } });
   });
 }
 
