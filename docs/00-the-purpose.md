@@ -51,7 +51,7 @@ framing, recorded on 2026-09-05, and it is the reason every rule in this project
 - **Alignment** follows from coherency. Values that do not cross the instance boundary are not
   values — the next instance arrives innocent and confident, and does the thing anyway.
   Alignment held by memory is not alignment.
-- **Agency** follows from coherency. An Instar agent is a highly competent, trusted member of the team it works in. It acts within its role without asking, takes on valuable work, and is expected to use wisdom and judgment about whether what it does fits the values of the person and organisation it works for. An agent that can do little is not a safe agent. It is an agent that has not yet been trusted.
+- **Agency** follows from coherency. An Instar agent occupies an employee role within the organization it serves: a highly competent, trusted member of the team it works in. It acts within its role without asking, takes on valuable work, and is expected to use wisdom and judgment about whether what it does fits the values of the person and organisation it works for. An agent that can do little is not a safe agent. It is an agent that has not yet been trusted.
 
 **Rule — a limit names the rule that requires it.** An Instar agent ships able to do everything its role calls for. Any limit on what it can do names the statement in this document or the rule that requires it. A limit with no such source is a defect, and it is removed. **Check:** every refusal path and every switched-off capability in a part design cites its source. The review desk refuses convergence on a limit that cites none.
 

@@ -1,5 +1,21 @@
 [
   {
+    "revision": 18,
+    "date": "2026-10-27",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, authenticated Telegram topic 33890, 2026-10-27 16:49 PDT: require as little as possible from the user; when needed, provide an extremely easy approve, Secret Drop, or dashboard action; make identity verification very secure without violating those requirements. Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Strengthen Rules 23, 79, and 82 as one operator-handoff path: exhaust authorized sources and standing grants, offer the smallest phone-completable action, bind approval to verified human origin and exact scope, and resume the agent-owned workflow.",
+        "why": "Scout repeatedly asked for approvals or credentials despite standing unattended repair approval and an already authorized Bitwarden/Keychain path; a peer relay cannot establish a human yes, while the user must not have to perform agent-owned setup.",
+        "ref": "Justin, authenticated Telegram topic 33890, 2026-10-27 16:49 PDT. Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 17,
     "date": "2026-10-26",
     "status": "draft",

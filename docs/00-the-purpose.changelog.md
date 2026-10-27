@@ -4,6 +4,10 @@ _Generated from `00-the-purpose.changelog.json` by `scripts/render-changelog.mjs
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 16 · 2026-10-27 · draft — Justin, authenticated Telegram topic 33890, 2026-10-27 16:53–16:54 PDT: approval should mirror an organizational hierarchy because Instar agents are employees within organizations. Final-head GitHub code-owner approval and merge pending.
+
+- **State in the Agency pillar that an Instar agent occupies an employee role within the organization it serves.** — The role-and-standing-grant model is an organizational approval hierarchy, so the purpose should name the relationship that makes delegated authority and minimal operator effort coherent. _(Justin, authenticated Telegram topic 33890, 2026-10-27 16:53–16:54 PDT. Final-head GitHub code-owner approval and merge pending.)_
+
 ## Revision 15 · 2026-10-15 · draft — Justin, topic 102965, 2026-10-15 16:59 PDT: "Yes!", answering the observer’s 16:58 proposal; origin: Justin 16:20 on concurrent sessions contradicting each other on 2026-10-14. Final-head GitHub code-owner approval and merge pending.
 
 - **Make the Coherency pillar explicitly include sessions running at the same time.** — Across sessions can be read as sequential continuity; the approved amendment includes concurrent awareness. _(Justin, topic 102965, 2026-10-15 16:59 PDT: "Yes!", answering the observer’s 16:58 proposal; origin: Justin 16:20 on concurrent sessions contradicting each other on 2026-10-14. Final-head GitHub code-owner approval and merge pending.)_
