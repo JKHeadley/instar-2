@@ -28,6 +28,9 @@ Decision: generation-thinking-room | Separate the CLI's total generation allowan
 Decision: shrink-large-failed-span | Halve large remaining prefixes using the existing durable over-cap frontier; keep fine recovery at four turns and below. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/s-summary-cap-1026-PROGRESS.md
 Validation: Targeted provider and summary tests, recorded-shape replays, real model proof, typecheck and final READY checks are recorded in PROGRESS. All tests run foreground, nice -n 10 and maxWorkers 1. No load tests or dependency installation.
 
+Publication: Regenerated the seven shape-only register outputs from committed source 5a42d77c888b8eff5f9fa5c25abb9bd56bc197c3. No authority, activation or conformance declaration changed.
+Deferral: generated/register.json:1 | not-a-deferral=Deterministic register replay preserves existing descriptions, not a new commitment.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: give generation its already-known thinking allowance while retaining the existing answer cap, and halve an overlarge history prefix using failure state already in the journal. No larger accepted cap, new retry engine, new durable state, scheduler or weaker review. Start guards remain idle/pressure/cooldown and ownership; limit guards remain stop, call admission, timeout and byte/answer caps; the end guard remains a passing faithfulness review. The isolated shipped worker/provider path completed the real recorded case unattended through commit.
