@@ -12,6 +12,16 @@ const scripts: Record<string, string> = JSON.parse(readFileSync('package.json', 
 const macosOnly: string[] = readList(readFileSync(LIST_PATH, 'utf8'));
 const SPLITS = ['only-macos', 'exclude-macos'] as const;
 
+it('routes the setup owner IPC launchd proof to the Mac half beside a portable owner test', () => {
+  const ipc = 'tests/platform/setup-owner-ipc.test.ts';
+  const portable = 'tests/platform/setup-owner-transport.test.ts';
+  const args = [ipc, portable];
+  expect(planStep(args, undefined, macosOnly).files).toEqual(args);
+  expect(planStep(args, 'only-macos', macosOnly).files).toEqual([ipc]);
+  expect(planStep(args, 'exclude-macos', macosOnly).files).toEqual([portable]);
+  expect(planStep([ipc], 'exclude-macos', macosOnly).runs).toBe(false);
+});
+
 const words = (command: string): string[] => [...command.matchAll(/'([^']*)'|"([^"]*)"|(\S+)/g)].map(m => m[1] ?? m[2] ?? m[3] ?? '');
 
 /** The commands `npm run <name>` runs, with nested `npm run` steps expanded and env prefixes dropped. */
