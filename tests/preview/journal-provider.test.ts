@@ -39,7 +39,7 @@ it('invokes the existing subscription route with one bounded prepared journal en
         orgId: offlineProfile.organization, orgName: 'Offline', subscriptionType: 'max' });
       else { launch.started(); modelCalls++;
         expect(command.args).toEqual(policy.args);
-        expect(command.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('2048');
+        expect(command.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('4096');
         expect(command.env.MAX_THINKING_TOKENS).toBe('0');
         expect(command.timeout).toBe(120000);
         expect(command.stdin).toContain('early memory');

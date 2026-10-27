@@ -18,6 +18,7 @@ import { factsFixture, value } from '../facts/fixtures.js';
 import { providerFixture, refused } from '../model-provider/fixture.js';
 import { observationCheck } from '../../src/judgment/model-adapter.js';
 import thinkingCapture from '../preview/fixtures/thinking-floor-opus-2026-10-20.json' with { type: 'json' };
+import summaryCapture from '../preview/fixtures/summary-cap-2026-10-26.json' with { type: 'json' };
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
 
@@ -124,7 +125,7 @@ for (const conversation of [false, true]) it(`sends thinking off on the ${conver
   const model = f.commands().filter(row => row.args.includes('--print'));
   expect(model).toHaveLength(1);
   expect(model[0].env.MAX_THINKING_TOKENS).toBe('0'); expect(f.launched.at(-1)!.MAX_THINKING_TOKENS).toBe('0');
-  expect(model[0].env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('2048');
+  expect(model[0].env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('4096');
   expect(model[0].args).toEqual((conversation ? subscriptionConversationPolicy : subscriptionInvocationPolicy)(f.input.model).args);
   expect(model[0].args.some((arg: string) => /thinking|effort/iu.test(arg))).toBe(false);
 });
@@ -241,6 +242,17 @@ for (const [tokens, thinking, state] of [[3286, 2048, 'complete'], [4096, 2048, 
     const observed = await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds);
     expect(observed.state).toBe(state);
     expect(observed.usage.outputTokens).toBe(tokens);
+  });
+for (const [label, accepted] of [['writer', true], ['review', true], ['overCap', false]] as const)
+  it(`replays the real S0b ${label} through admission with thinking room but the same answer cap`, async () => {
+    const frame = summaryCapture.liveReplay[label].frame;
+    const f = fixture({ conversation: true, terminal: JSON.stringify(frame) });
+    const observed = await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('recorded replay', f.bounds);
+    expect(observed.state).toBe(accepted ? 'complete' : 'uncertain');
+    expect(observed.usage.outputTokens).toBe(frame.usage.output_tokens);
+    expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+    expect(f.commands().find(row => row.args.includes('--print')).env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('4096');
+    expect(f.bounds.maxTokens).toBe(2048);
   });
 it('replays recorded Opus usage through the subscription adapter and effect/invocation owners, retaining total accounting', async () => {
   const recorded = thinkingCapture.recorded.usage;

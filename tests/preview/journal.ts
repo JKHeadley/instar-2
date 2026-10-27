@@ -131,8 +131,8 @@ export const SUMMARY_TARGET_OUTPUT_TOKENS = 1024;
  * Nothing about it is unknown: the reply ended and was discarded for its length, so it is a failed attempt,
  * and a later attempt from the same base takes a shorter span (live 2026-09-30: #483-#493, 2312-4832 tokens). */
 export const SUMMARY_OVER_CAP_REASON = 'summary output over the cap';
-/** The summary call's whole output, Decision envelope and reasoning included, is capped at
- * SUBSCRIPTION_MAX_OUTPUT_TOKENS (the CLI stops there and the over-cap reply is discarded). The summary's allowances
+/** The summary answer, Decision envelope and visible reasoning included, is capped at
+ * SUBSCRIPTION_MAX_OUTPUT_TOKENS; reported thinking has separate generation room and an over-cap answer is discarded. The summary's allowances
  * are sized from that cap by measurement, not guaranteed: the reasoning and the span's lists have no whole-output
  * acceptance bound, so when the estimate misses, the provider cap and the over-cap brake are the protection. Measured on
  * Justin's root (88 recorded summary outputs, 2026-09-26 to 2026-10-02): 2.44 to 3.08 bytes per output token, the
@@ -11164,7 +11164,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const withBudget = pending.filter(turn => summaryFormatFailures(journal.view, turn.update) < 2 && !unknown.has(turn.update)
         && !retractedTurn(journal.view, turn.id));
       const shorter = withBudget.filter(turn => turn.update < overCapCeiling);
-      const open = shorter.length ? shorter : withBudget.filter(turn => turn.update === overCapCeiling);
+      // An output-bound failure needs substantially less work, not one fewer turn from the
+      // same large prefix (train-163: 50, 49, 48, 47 turns all exceeded 2048 answer tokens).
+      // Halve a large prefix after a measured failure; the existing four-turn recovery
+      // keeps its finer steps. The journaled ceiling survives
+      // restart; a successful summary advances the base and releases this span's brake.
+      const open = shorter.length ? askedTooMuch.length
+        ? shorter.slice(0, Math.max(SUMMARY_MAX_TURNS, Math.ceil(shorter.length / 2))) : shorter
+        : withBudget.filter(turn => turn.update === overCapCeiling);
       if (pending.length && !open.length) return;
       // Automatic compaction covers the fitting older backlog in one pass (1.x behavior).
       // Forced memory recovery retains its small synchronous work bound. A format retry
