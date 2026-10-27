@@ -266,13 +266,14 @@ it('runs the model command in the turn workspace with the per-turn settings appe
 
 // Plan #612 (live rc-2 proof room 1, updates 715674595 and 715674603): under a per-message cap of 2048 the CLI cut a long
 // answer and resumed it in a second message, and the JSON result carried only that last fragment. The tool route's
-// per-message cap is its own whole-turn bound, so the CLI never splits an answer the provider would admit; the
-// single-call routes keep 2048 (production-provider-subscription.test.ts). The total the provider admits is unchanged.
-it('gives the tool turn a per-message output cap equal to the route bound, and still refuses a frame over that bound', async () => {
+// generation allowance is its whole-turn answer bound plus 2048 tokens of thinking headroom, so the CLI can finish
+// a fitting answer. Single-call routes retain their 2048-token answer bound with the same generation headroom
+// (production-provider-subscription.test.ts). The provider's admitted answer bound is unchanged.
+it('gives the tool turn generation headroom above its answer bound, and still refuses a frame over that bound', async () => {
   const f = fixture(), policy = subscriptionToolsPolicy(f.model);
   expect(policy.maxTokens).toBe(SUBSCRIPTION_MAX_OUTPUT_TOKENS * SUBSCRIPTION_TOOL_LIMITS.maxTurns);
   expect(await value(createClaudeCodeSubscriptionRoute(f.input())).invoke('{"question":"long"}', f.bounds)).toMatchObject({ state: 'complete' });
-  expect(f.commands().map(c => c.maxOut)).toEqual(Array(3).fill(String(policy.maxTokens)));
+  expect(f.commands().map(c => c.maxOut)).toEqual(Array(3).fill(String(policy.maxTokens + 2048)));
   const over = fixture({ outputTokens: policy.maxTokens + 1 });
   expect(await value(createClaudeCodeSubscriptionRoute(over.input())).invoke('{"question":"long"}', over.bounds))
     .toMatchObject({ state: 'uncertain', bytes: null });
