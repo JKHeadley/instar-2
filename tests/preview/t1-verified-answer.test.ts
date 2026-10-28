@@ -28,7 +28,11 @@ it.each(shapes)('recorded $kind $id does not authorize an old appendix', async s
   await replay(undefined, false, shape.raw);
 });
 
-async function replay(selectedReports: unknown, supported: boolean, recordedRaw?: string) {
+it('an omitted report cannot be selected and never prevents the current answer under byte pressure', async () => {
+  await replay(['commitment:0'], false, undefined, true);
+});
+
+async function replay(selectedReports: unknown, supported: boolean, recordedRaw?: string, omitReports = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 't1-verified-answer-')));
   const path = join(root, 'journal.encrypted');
   const clock = { now: 1793160000000 }, sent: string[] = [], packets: string[] = [];
@@ -38,7 +42,10 @@ async function replay(selectedReports: unknown, supported: boolean, recordedRaw?
   const report = supported ? 'The requested label is Home.' : stale;
   let answer = JSON.stringify({ reply: subject, memory: [], openLoops: [{ kind: 'deferral', quote: subject, waitsOn: 'nothing' }] });
   const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false,
-    prepareModel: input => input.context,
+    prepareModel: input => {
+      if (omitReports && JSON.parse(input.context).pendingReports) throw Error('preview: complete prompt overflow');
+      return input.context;
+    },
     model: async input => {
       if (input.id.startsWith('obligation:')) return JSON.stringify({ outcome: 'report', report });
       packets.push(input.context); return answer;
@@ -57,9 +64,12 @@ async function replay(selectedReports: unknown, supported: boolean, recordedRaw?
     answer = recordedRaw ?? JSON.stringify({ reply, memory: [], ...(selectedReports === undefined ? {} : { selectedReports }) });
     await say(capture.sourceUpdate, capture.prompt);
     const packet = packets.at(-1)!;
-    expect(packet).toContain(JSON.stringify(report).slice(1, -1));
+    if (omitReports) {
+      expect(JSON.parse(packet).pendingReports).toBeUndefined();
+      expect(JSON.parse(packet).pendingReportsOmitted).toBe(1);
+    } else expect(packet).toContain(JSON.stringify(report).slice(1, -1));
     expect(packet).toContain(READY_RESULT);
-    expect(packet).toContain('prior answer or follow-up is not proof');
+    if (!omitReports) expect(packet).toContain('prior answer or follow-up is not proof');
     const turn = journal.view.order.at(-1)!;
     const expected = supported ? `${reply}\n\nFollow-up on "${subject}": ${report}` : current;
     if (recordedRaw === undefined) expect(turn.answer).toBe(expected);

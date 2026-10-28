@@ -2658,9 +2658,8 @@ export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLI
   'you have no external tools.', 'your only tools are the listed ones.'),
   'You have attempted nothing outside this step, so never call an avenue tried.',
   'Only this step\'s recorded tool calls ran outside it, so never call an avenue tried.');
-/** The answer packet's mark on a commitment whose work is finished and whose result waits for delivery (plan #492).
- * It states only what is known when the packet is built: the attachment is decided after the answer, inside the
- * reply's size bound, so a result past that bound waits for a later message. */
+/** A pending work report, whose claims still need the current answering mind's evidence judgment.
+ * Selection and delivery are separate; the existing size bound and receipt decide whether it was sent. */
 export const READY_RESULT = 'report awaiting current evidence review before delivery, otherwise a later message; not proof the work is done';
 const REPORT_SELECTION_GUIDANCE = 'Judge pendingReports.items against current-task evidence and your answer. '
   + 'A prior answer or follow-up is not proof of current capabilities. Return selectedReports:[key] only for reports '
@@ -7701,7 +7700,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const otherOperatorRequest = otherState ? describe(otherState, false) : undefined;
     const actionFacts = currentActionFacts(journal.view, now, question !== undefined && fromOperator(question)
       && (journal.view.genesis.forum !== true || operatorOnlyVerified), String(current ?? 'main'), zone);
-    const reportCandidates = awayFor === undefined ? [] : recentWithin(pendingReports(journal.view, { thread: current }).map(item => ({
+    const reportCandidates = awayFor === undefined || !fromOperator(awayFor) || awayFor.requestedAction ? [] : recentWithin(pendingReports(journal.view, { thread: current }).map(item => ({
       ...item, subject: clean(redact(item.subject).text, true), text: clean(redact(item.text).text, true) })).reverse(), MAX_ANSWER_BYTES).reverse();
     const packet = JSON.stringify({ now,
       ...(reportCandidates.length ? { pendingReports: { guidance: REPORT_SELECTION_GUIDANCE, items: reportCandidates } } : {}), ...(ports.workingActivity ? { progressReplies: {
@@ -8195,7 +8194,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             ? [...kept, ...kept.flatMap(value => withoutSiblingWords(value, true) ?? []),
               ...kept.flatMap(value => withoutSiblingWords(value) ?? [])] : kept;
         });
-        for (const context of variants.flatMap(searchVariants)) {
+        // Optional follow-ups never crowd out the current task or its evidence. Keep the debt,
+        // expose the omission, and accept no selection for text absent from the final packet.
+        const reportVariants = (value: string) => {
+          const packet = JSON.parse(value) as { pendingReports?: { items: unknown[] }; pendingReportsOmitted?: number };
+          if (!packet.pendingReports) return [value];
+          packet.pendingReportsOmitted = packet.pendingReports.items.length; delete packet.pendingReports;
+          return [value, JSON.stringify(packet)];
+        };
+        for (const context of variants.flatMap(reportVariants).flatMap(searchVariants)) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
           try {
