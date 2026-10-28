@@ -16,6 +16,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
+      - name: install checker dependencies
+        run: npm ci
       - name: changelogs carry every required field (rule 91)
         run: node scripts/validate-changelog.mjs docs/*.changelog.json docs/harvests/*.changelog.json
       - name: generated changelog markdown is current (rule 91)
