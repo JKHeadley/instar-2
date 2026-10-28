@@ -21,7 +21,8 @@ const fixture = () => JSON.parse(readFileSync(new URL('./fixtures/act-first-2026
 };
 // Historical captures predate the identity prefix, requested-step guidance and brief rationale.
 // Preserve those bytes; check the added guidance on the current routes below.
-const capturedSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(
+// Preserve historical captures; translate only this copy's declared tool-call allowance.
+const capturedSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace('Use at most 64 tool calls.', 'Use at most 32 tool calls.').replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(
   "You are an Instar 2.0 agent,", 'You are Instar,').replace(COMPLETE_REQUESTED_STEPS, '').replace(COMPLETE_REQUESTED_WORK, '');
 const decode = (run: Capture) => {
   const reading = readAnswer(JSON.parse(run.raw).result, { wrapped: 'accept' });
@@ -103,7 +104,7 @@ it('replays recorded tool results and final replies under their exact historical
   expect(captured.runs.map(run => run.name)).toEqual(['requested-verification', 'no-verification-needed']);
   for (const run of captured.runs) {
     // The recorded run predates only this full-set clause. Preserve the capture verbatim.
-    expect(run.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(
+    expect(run.system.replace(CLOSED_SET_SENTENCE, '')).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace('Use at most 64 tool calls.', 'Use at most 32 tool calls.').replace(MEMORY_DISAMBIGUATION, HISTORICAL_MEMORY).replace('give a brief decision rationale supported by the relevant evidence.', 'do all your reasoning there.').replace(
       COMPLETE_REQUESTED_WORK, ''));
     const answer = decode(run);
     const trace = toolTrace(run.admission.trim().split('\n').filter(Boolean));
