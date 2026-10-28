@@ -1,3 +1,4 @@
+import { selectReportFixture } from './select-report-fixture.js';
 import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -9,6 +10,8 @@ import { loopHealth } from './obligations.js';
 import { splitReply } from './reply-parts.js';
 
 // Read-only capture from the Studio journal. Models/transport are replayed, never called live.
+// Report selection is an explicit synthetic judgment to exercise the captured downstream review;
+// it is not evidence that the recorded model made a T1 selection or verified these claims.
 const capture = JSON.parse(readFileSync(new URL('./fixtures/gap-progress-final-2026-10-18.json', import.meta.url), 'utf8')) as {
   turns: { update: number; at: number; question: string; answer: string; revision: NonNullable<Turn['revision']>;
     checks: ReplyCheckResult[]; revisionReview: NonNullable<Turn['revisionReview']>; delivered: string }[];
@@ -19,7 +22,7 @@ const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const key = new Uint8Array(32).fill(48);
 const primary = (answer: string) => answer.split('\n\nFollow-up on "')[0]!;
-function world(hold = true, unknown = false) {
+function world(hold = true, unknown = false, selectReports = true) {
   const root = mkdtempSync(join(tmpdir(), 'gap-progress-final-')); roots.push(root);
   const path = join(root, 'journal.encrypted');
   let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '8993213212', chat: '7812716706', operator: '7812716706',
@@ -43,7 +46,7 @@ function world(hold = true, unknown = false) {
       }
       return seed ? JSON.stringify({ reply: capture.work.map(w => w.subject).join('\n'), memory: [],
         openLoops: capture.work.map(w => ({ kind: 'deferral', quote: w.subject, waitsOn: 'nothing' })) })
-        : primary(current.answer);
+        : selectReports ? selectReportFixture(primary(current.answer), input.context) : primary(current.answer);
     },
     replyCheck: { elapsedMs: () => 0,
       jev: async body => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(
@@ -119,5 +122,18 @@ it('a passing follow-up delivers and settles each report once instead of returni
     expect(w.journal.view.closed.size).toBe(3);
     const before = w.sent.length; await w.answer(2);
     expect(w.sent.slice(before)).toEqual([primary(capture.turns[2]!.answer)]);
+  } finally { w.journal.close(); }
+});
+
+it('a recorded answer without a report selection leaves every report owed across restart', async () => {
+  const w = world(false, false, false);
+  try {
+    await w.prepare(); w.reopen();
+    expect(w.sent.at(-1)).toBe(primary(capture.turns[0]!.answer));
+    expect(loopHealth(w.journal.view, capture.turns[0]!.at).awaitingDelivery).toBe(3);
+    expect(w.journal.view.closed.size).toBe(0);
+    expect(Object.values(w.journal.view.obligationWork).every(work => !work.report?.delivered && !work.withheld)).toBe(true);
+    expect(Object.values(w.journal.view.obligationWork).map(work => work.report?.text).sort())
+      .toEqual(capture.work.map(work => work.report).sort());
   } finally { w.journal.close(); }
 });

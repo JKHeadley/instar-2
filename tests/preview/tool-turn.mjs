@@ -962,7 +962,9 @@ export async function runToolTurn(options) {
   // Settle through the journal's unique failure-notice path; never replay tools or
   // interpret their results as a verified answer. Stops and incomplete traces stay held.
   const checks = trace.calls.filter(call => call.decision === 'allow' && call.result !== null).length;
-  if (!stopped() && checks > 0 && trace.calls.every(call => call.decision !== 'allow' || call.result !== null)
+  // The native loop can observe a stop even when the wrapper's callback has not.
+  // Its exact terminal outcome must survive; an interrupted tool is not a failed answer.
+  if (!stopped() && result?.native?.ended !== 'stopped' && checks > 0 && trace.calls.every(call => call.decision !== 'allow' || call.result !== null)
     && trace.children.length === 0 && (failure || result?.state === 'uncertain'
       || result?.state === 'rejected' && !result.capacity)) {
     return { result: { state: 'uncertain', toolChecks: checks, ...(result?.usage ? { usage: result.usage } : {}) }, turn, trace, session: plan };

@@ -27,6 +27,7 @@ Prompt finding: 849db3a6296a | protocol-literal | Preexisting memory-list test p
 Prompt finding: 85544c20941f | protocol-literal | Preexisting conversation-session test phrase, not an added behavioral instruction.
 Prompt finding: e8708c7fea24 | protocol-literal | Preexisting hallucinated-memory-rate test phrase, not an added behavioral instruction.
 Deferral: tests/preview/astra-two-short-independent.test.ts:76 | not-a-deferral=Regression assertion about pending delivery, not postponed work
+Deferral: tests/preview/astra-two-short-independent.test.ts:89 | not-a-deferral=Regression assertion that an omitted report remains owed, not postponed builder work
 Deferral: tests/preview/astra-fit-middle-independent.test.ts:76 | not-a-deferral=Regression assertion about pending delivery, not postponed work
 Deferral: tests/preview/astra-repair-envelope-independent.test.ts:76 | not-a-deferral=Regression assertion about pending delivery, not postponed work
 Deferral: tests/preview/astra-report-backlog-review.test.ts:65 | not-a-deferral=Regression assertion about pending delivery, not postponed work

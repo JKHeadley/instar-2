@@ -1,3 +1,4 @@
+import { selectReportFixture } from './select-report-fixture.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -19,7 +20,7 @@ const launched = (output: string, id: string): Answer => {
   const read = readAnswer(output, { wrapped: 'accept', evidence: [id] });
   return read.ok ? { text: read.value, usage } : { state: 'complete', failureClass: 'malformed', rawOutput: output, usage };
 };
-async function world(outputs: (string | Answer)[], options: { cap?: number; revisit?: number; refuseRepairPreparation?: boolean; afterCall?: (clock: { now: number; stopped: boolean }) => void } = {}) {
+async function world(outputs: (string | Answer)[], options: { selectReports?: boolean; cap?: number; revisit?: number; refuseRepairPreparation?: boolean; afterCall?: (clock: { now: number; stopped: boolean }) => void } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'work-output-repair-')), path = join(root, 'journal');
   const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
     grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: T0 + 10 * DAY, maxCalls: options.cap ?? 100,
@@ -34,8 +35,9 @@ async function world(outputs: (string | Answer)[], options: { cap?: number; revi
         if (output === undefined) throw Error('test has no output');
         return typeof output === 'string' ? launched(output, input.id) : output;
       }
-      return { text: JSON.stringify(sent.length ? { reply: 'Here is the answer.' }
-        : { reply: 'I will review the plan.', openLoops: [{ kind: 'deferral', quote: 'I will review the plan.', waitsOn: 'nothing' }] }), usage };
+      const answer = JSON.stringify(sent.length ? { reply: 'Here is the answer.' }
+        : { reply: 'I will review the plan.', openLoops: [{ kind: 'deferral', quote: 'I will review the plan.', waitsOn: 'nothing' }] });
+      return { text: options.selectReports === false ? answer : selectReportFixture(answer, input.context), usage };
     }, send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
   const say = async (update: number) => { worker.intake([{ update_id: update, message: { chat: { id: 7654321, type: 'private' },
     from: { id: 7654321 }, text: 'Please review the plan.', date: Math.floor(clock.now / 1000) } }]); await worker.drain(); };
@@ -168,5 +170,23 @@ it('a good intermediate result does not reset the lifetime short-retry cap', asy
     }
     expect(w.journal.view.obligationWork['commitment:0']).toMatchObject({ formatFailures: 3, failedAttempts: 3 });
     expect(obligationSchedule(w.journal.view)[0]!.slot).toBe(w.clock.now + DAY);
+  } finally { w.close(); }
+});
+
+it('a repaired report stays owed when the current answer omits selection, including across reopen', async () => {
+  const w = await world([fixture.calls[0]!.output, '{"outcome":"report","report":"The review is complete."}'],
+    { selectReports: false });
+  try {
+    await w.worker.workObligations();
+    await w.say(2); await w.say(3);
+    expect(w.sent.filter(text => text.includes('The review is complete.'))).toHaveLength(0);
+    expect(loopHealth(w.journal.view, w.clock.now).awaitingDelivery).toBe(1);
+    const replay = openPreviewJournal(w.path, key);
+    try {
+      expect(replay.view.closed.size).toBe(0);
+      expect(replay.view.obligationWork['commitment:0']?.report?.text).toBe('The review is complete.');
+      expect(replay.view.obligationWork['commitment:0']?.report?.delivered).toBeUndefined();
+      expect(replay.view.obligationWork['commitment:0']?.withheld).toBeUndefined();
+    } finally { replay.close(); }
   } finally { w.close(); }
 });
