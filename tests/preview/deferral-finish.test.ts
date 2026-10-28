@@ -1,3 +1,4 @@
+import { selectReportFixture } from './select-report-fixture.js';
 import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
 const HISTORICAL_MEMORY = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
 import { expect, it } from 'vitest';
@@ -65,13 +66,13 @@ for (const sample of capture.cases) it.each(['finished', 'restart', 'old-continu
     chat: capture.operator, grant: 'grant:recorded-deferral', configurationDigest: 'sha256:fixture',
     expires: now + 7 * 86400000, loopRevisitMs: 15 * 60000, maxCalls: 50, maxReplies: 20, maxTurns: 20, maxBytes: 65536, cursor: 0 });
   const ports = { now: () => now, stopped: () => false, checkOutbound: () => {},
-    model: async (input: { id: string; question: string }) => {
+    model: async (input: { id: string; question: string; context: string }) => {
       if (input.id.startsWith('summary:')) return capture.summaries[Math.min(summaries++, 2)]!.output;
       if (input.id.startsWith('obligation:')) {
         workQuestions.push(input.question);
         return read(mode === 'old-continue' ? sample.before.output : sample.after.output, input.id);
       }
-      return input.id === sample.answer.id ? read(sample.answer.output, input.id) : 'Hello.';
+      return input.id === sample.answer.id ? read(sample.answer.output, input.id) : selectReportFixture('Hello.', input.context);
     }, send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return sends.length; } };
   const intake = (worker: ReturnType<typeof createJournalWorker>, update: number, text: string) => worker.intake([
     { update_id: update, message: { chat: { id: Number(capture.operator), type: 'private' },

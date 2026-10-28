@@ -1,3 +1,4 @@
+import { selectReportFixture } from './select-report-fixture.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -34,7 +35,7 @@ it.each([true, false])('replays the recorded deferred report (delivery request: 
         child: null, detail: 'isolated replay of recorded output' }, input.id,
         shape => { throw Error(`recorded output refused: ${shape}`); });
       if (input.id.startsWith('obligation:')) { workCalls.push(input.id); return read(capture.work); }
-      if (input.id.endsWith(String(capture.provenance.hiUpdate))) return JSON.stringify({ reply: "Hey Justin! I'm here — what can I help with?" });
+      if (input.id.endsWith(String(capture.provenance.hiUpdate))) return selectReportFixture(JSON.stringify({ reply: "Hey Justin! I'm here — what can I help with?" }), input.context);
       return read(requested ? capture.answer : JSON.stringify(answer));
     },
     send: async input => { sends.push(input.expectedText); return sends.length; },

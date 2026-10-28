@@ -1,3 +1,4 @@
+import { selectReportFixture } from './select-report-fixture.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -242,7 +243,7 @@ it('keeps a finished promise pending until a reply in its originating topic can 
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
       model: async input => input.id.startsWith('obligation:') ? JSON.stringify({ outcome: 'report', report })
         : input.question === 'Check the invoice.' ? JSON.stringify({ reply: promise,
-          openLoops: [{ kind: 'deferral', quote: promise, waitsOn: 'nothing' }] }) : 'Noted.',
+          openLoops: [{ kind: 'deferral', quote: promise, waitsOn: 'nothing' }] }) : selectReportFixture('Noted.', input.context),
       checkOutbound: () => {}, send: async input => { sent.push({ text: input.expectedText,
         ...(input.thread === undefined ? {} : { thread: input.thread }) }); return sent.length; } });
     worker.intake([update(1, 'Check the invoice.', 7)]); await worker.drain();

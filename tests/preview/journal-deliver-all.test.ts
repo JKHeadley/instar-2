@@ -1,3 +1,4 @@
+import { selectReportFixture } from './select-report-fixture.js';
 // Plan row #492 (cint-L49 pre-switch gate, group D short, 2026-10-04 07:18-07:53, room two, 15-minute root
 // proofroom2-dshort15-20261004-071729): the deferred work ran on its revisit (D1b), but the operator's next message
 // ("hi", update 6232211) carried only the two OLDEST finished results — the answer assembly attached at most two
@@ -53,7 +54,7 @@ function world(root: string, work: (quote: string, attempt: number) => string, s
       }
       if (input.id.startsWith('summary:')) return summary();
       contexts.push(input.context);
-      return answers.shift() ?? JSON.stringify({ reply: 'Okay.', memory: [] });
+      return selectReportFixture(answers.shift() ?? JSON.stringify({ reply: 'Okay.', memory: [] }), input.context);
     },
     send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
   let update = 6232206;

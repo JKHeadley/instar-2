@@ -1,3 +1,4 @@
+import { selectReportFixture } from './select-report-fixture.js';
 // Rules 42 and 89: a live send consumes the journal's signed intent and settles as exactly
 // one of accepted, refused or unknown; infrastructure notices never speak as the agent.
 import { expect, it } from 'vitest';
@@ -37,8 +38,8 @@ it.each(['real-connect-recovery', 'real-connect-persistent', 'real-lost-receipt'
           ? JSON.stringify({ outcome: 'report', report: fixture.report })
           : input.id.startsWith('summary:')
             ? JSON.stringify({ summary: 'Earlier turns.', people: [], commitments: [], closed: [], memory: [] })
-            : JSON.stringify({ reply: answers++ === 0 ? fixture.acknowledgement : fixture.greeting, memory: [],
-              ...(answers === 1 ? { openLoops: [{ kind: 'deferral', quote: fixture.quote, waitsOn: 'nothing' }] } : {}) }),
+            : selectReportFixture(JSON.stringify({ reply: answers++ === 0 ? fixture.acknowledgement : fixture.greeting, memory: [],
+              ...(answers === 1 ? { openLoops: [{ kind: 'deferral', quote: fixture.quote, waitsOn: 'nothing' }] } : {}) }), input.context),
         send: async input => {
           sends++;
           if (sends === 1) return 1;

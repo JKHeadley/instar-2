@@ -327,6 +327,13 @@ export const REFUSED_SEND_NOTICE = 'I could not send my complete answer. Your re
 export const UNKNOWN_SEND_NOTICE = 'My answer may not have arrived. Your request and the answer remain in the conversation record. You can ask me for the answer again.';
 export const SAFETY_CEILING_NOTICE = 'Instar halted this work because its safety limit was reached. This was not an operator stop or a decision by the agent to finish. Unfinished work and any uncertain actions remain recorded; nothing is automatically retried.';
 export const UNKNOWN_ANSWER_NOTICE = 'The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.';
+/** Counts completed tool attempts, never successful checks or task completion. */
+function unknownAnswerNotice(turn: Pick<Turn, 'safetyCeiling' | 'toolChecks'>): string {
+  if (turn.safetyCeiling) return SAFETY_CEILING_NOTICE;
+  return turn.toolChecks === undefined ? UNKNOWN_ANSWER_NOTICE
+    : `${UNKNOWN_ANSWER_NOTICE} ${turn.toolChecks} tool checks returned results, but those results were not verified into an answer. The requested result remains unverified; no tool work was automatically repeated.`;
+}
+
 export const TOO_LONG_INPUT_NOTICE = 'Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
 export const TOO_LONG_REPLY_NOTICE = 'I produced an answer, but it was too long for one Telegram reply. I did not send part of it. Please ask for a shorter answer.';
 /** The one withholding floor on a reply's content (Rule 4): text SHAPED like a credential.
@@ -1184,6 +1191,7 @@ export type JournalRecord =
     rejected?: RejectedObligations;
     /** Completed obligation work whose result this answer carries to the operator (Rules 8, 92). */
     reports?: string[];
+    rejectedReports?: { key: string; text: string; objection: string }[];
     /** Rules 8, 56, 100: the one fixed reminder line (credential expiry stage or failing doorway check) this answer carries. */
     notices?: ReplyNotice[];
     /** Model-proposed promises and fulfillments, validated as exact quotes of this answer (Rule 10). */
@@ -1194,7 +1202,7 @@ export type JournalRecord =
     memoryFailure?: MemoryFailureProposal;
     at: number }
   | { kind: 'status-answer'; id: string; text: string; prompt: string; at: number }
-  | { kind: 'model-uncertain'; id: string; state: 'uncertain'; safetyCeiling?: 'deadline' | 'calls'; usage?: ModelUsage; latencyMs?: number; at: number }
+  | { kind: 'model-uncertain'; id: string; state: 'uncertain'; safetyCeiling?: 'deadline' | 'calls'; toolChecks?: number; usage?: ModelUsage; latencyMs?: number; at: number }
   | { kind: 'notice'; id: string; noticeClass: 'unknown-answer' | 'too-long-input'; at: number }
   // Non-additive: skipping this reservation would lose spend and the no-repeat fence.
   | { kind: 'held-notice-review-reserve'; id: string; prompt: string; at: number }
@@ -1259,8 +1267,8 @@ export type JournalRecord =
     loops?: ReplyLoop[]; blocker?: ProposedBlocker; blockerRechecks?: BlockerRecheck[];
     /** Obligation work results this sent reply delivers; delivery settles the obligation (Rules 8, 92). */
     reports?: string[];
-    /** Attached results this sent reply does NOT carry in full because a pre-send review removed or rewrote part of
-     * them, each with that review's objection: the result returns to owned work for a correction (Rules 8, 22, 46). */
+    /** Results explicitly rejected by the answering mind or removed by pre-send review,
+     * each with its objection: the result returns to owned work for a correction (Rules 8, 22, 46). */
     withheldReports?: { key: string; objection: string }[];
     /** Present when a pre-send review objected or could not decide; the reply was released anyway. */
     release?: ReplyRelease;
@@ -1461,7 +1469,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   toolRouted?: boolean;
   /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
   writer?: WriterRecord;
-  reserved: boolean; unusedToolCalls?: number; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; safetyCeiling?: 'deadline' | 'calls'; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentAt?: number; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; acknowledgementMode?: 'reaction-or-text'; heldNoticeSent?: number; heldNoticeSentAt?: number; acknowledgementPath?: 'reaction' | 'text'; memoryPending?: true; memoryUnresolved?: true; memoryUndecided?: true; datedPending?: true;
+  reserved: boolean; unusedToolCalls?: number; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; safetyCeiling?: 'deadline' | 'calls'; toolChecks?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentAt?: number; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; acknowledgementMode?: 'reaction-or-text'; heldNoticeSent?: number; heldNoticeSentAt?: number; acknowledgementPath?: 'reaction' | 'text'; memoryPending?: true; memoryUnresolved?: true; memoryUndecided?: true; datedPending?: true;
   /** This turn's own answer decided what it withdrew: the keys it cancelled, or none. Rules 57, 93: a
    * recorded decision, including "withdraws none", settles the reminder question this turn opened. */
   reminderDecided?: true; askConflict?: string; lastNamedPerson?: string;
@@ -1505,7 +1513,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   reservedAt?: number;
   /** Obligations the answer proposed; the intent of a reply that says them makes them durable. */
   answerLoops?: ReplyLoop[]; answerBlocker?: ProposedBlocker; answerRechecks?: BlockerRecheck[];
-  answerRejected?: RejectedObligations; answerReports?: string[]; answerNotices?: ReplyNotice[];
+  answerRejected?: RejectedObligations; answerReports?: string[]; answerRejectedReports?: { key: string; text: string; objection: string }[]; answerNotices?: ReplyNotice[];
   /** Validated model proposals from the answer, and the fulfillments recorded with the reply intent. */
   proposedPromises?: PromiseProposal[]; proposedFulfills?: FulfillmentProposal[]; intentFulfills?: number[];
   /** The operator action this turn's answer proposed; its reply carries the exact request or the refusal. */
@@ -2658,10 +2666,14 @@ export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLI
   'you have no external tools.', 'your only tools are the listed ones.'),
   'You have attempted nothing outside this step, so never call an avenue tried.',
   'Only this step\'s recorded tool calls ran outside it, so never call an avenue tried.');
-/** The answer packet's mark on a commitment whose work is finished and whose result waits for delivery (plan #492).
- * It states only what is known when the packet is built: the attachment is decided after the answer, inside the
- * reply's size bound, so a result past that bound waits for a later message. */
-export const READY_RESULT = 'finished, result awaiting delivery: follows your answer when this reply has room, otherwise a later message; the work is done, not still to do';
+/** A pending work report, whose claims still need the current answering mind's evidence judgment.
+ * Selection and delivery are separate; the existing size bound and receipt decide whether it was sent. */
+export const READY_RESULT = 'report awaiting current evidence review before delivery, otherwise a later message; not proof the work is done';
+const REPORT_SELECTION_GUIDANCE = 'Judge pendingReports.items against current-task evidence and your answer. '
+  + 'A prior answer or follow-up is not proof of current capabilities. Return selectedReports:[key] only for reports '
+  + 'whose claims remain supported and consistent now; the runner appends those verbatim. Return rejectedReports:[{key,objection}] '
+  + 'for offered unverifiable or contradictory reports, with a concise objection (at most 1000 bytes), to return them to owned rework. '
+  + 'Mere omission leaves reports unchanged; they remain owed, not completed or delivered. Explain relevant uncertainty without repeating unsupported claims.';
 /** Reads one work step's decision; anything malformed is a recorded failed attempt, never a guessed outcome. */
 export function obligationDecision(output: string, kind: 'commitment' | 'blocker', at: number, zone: string, previous: readonly RunCompletionItem[] = []):
   Pick<Extract<JournalRecord, { kind: 'obligation-result' }>, 'outcome' | 'report' | 'note' | 'waitsOn' | 'recheckAt' | 'assessment' | 'completion'> {
@@ -2761,11 +2773,13 @@ function applyIntentObligations(view: JournalView, turn: Turn, row: Extract<Jour
       .toString('utf8').replace(/\uFFFD+$/u, '').trim()
       || 'The requested result was omitted from its delivery intent; correct it before delivery.' })) : undefined);
   if (withheldReports !== undefined) {
-    // Only a commitment's attached result that this reply's text does not carry, never one it also delivers.
+    // Only an attached or explicitly rejected result absent from this reply, never one it also delivers.
     const keys = withheldReports.map(item => item?.key);
     if (!Array.isArray(withheldReports) || !withheldReports.length || new Set(keys).size !== keys.length
       || withheldReports.some(item => typeof item?.key !== 'string' || !item.key.startsWith('commitment:')
-        || !boundedText(item.objection, 1, 1000) || !turn.answerReports?.includes(item.key) || row.reports?.includes(item.key)
+        || !boundedText(item.objection, 1, 1000) || !(turn.answerReports?.includes(item.key)
+          || turn.answerRejectedReports?.some(rejected => rejected.key === item.key && rejected.objection === item.objection
+            && rejected.text === view.obligationWork[item.key]?.report?.text)) || row.reports?.includes(item.key)
         || !attachableReport(view.obligationWork[item.key]) || row.text.includes(view.obligationWork[item.key]!.report!.text)))
       throw Error('preview journal: invalid withheld report');
     for (const { key, objection } of withheldReports) {
@@ -4804,7 +4818,7 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
       throw Error('preview journal: limited answer receipt order');
     turn.limitedSent = row.message; sentOperatorRequest(view, row.id, 'limited', row.message); return;
   }
-  const replyCandidate = turn.answer ?? (turn.noticeClass === 'unknown-answer' ? (turn.safetyCeiling ? SAFETY_CEILING_NOTICE : UNKNOWN_ANSWER_NOTICE)
+  const replyCandidate = turn.answer ?? (turn.noticeClass === 'unknown-answer' ? unknownAnswerNotice(turn)
     : turn.noticeClass === 'too-long-input' ? TOO_LONG_INPUT_NOTICE : undefined);
 
   if (row.kind === 'reply-review-after-send') {
@@ -5032,7 +5046,10 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
     if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined) throw Error('preview journal: uncertain model order');
     if (row.safetyCeiling !== undefined && row.safetyCeiling !== 'deadline' && row.safetyCeiling !== 'calls')
       throw Error('preview journal: invalid safety ceiling');
+    if (row.toolChecks !== undefined && (!Number.isSafeInteger(row.toolChecks) || row.toolChecks < 1 || row.toolChecks > 64))
+      throw Error('preview journal: invalid failed tool check count');
     turn.modelState = row.state;
+    if (row.toolChecks !== undefined) turn.toolChecks = row.toolChecks;
     if (row.safetyCeiling) turn.safetyCeiling = row.safetyCeiling;
     if (row.latencyMs !== undefined) turn.answerMs = row.latencyMs;
     // This durable observation of the local invocation ending is also the notice due time.
@@ -5119,6 +5136,14 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
         || row.reports.some(key => !attachableReport(view.obligationWork[key]) || !row.text.includes(view.obligationWork[key]!.report!.text)))
         throw Error('preview journal: invalid obligation report');
       turn.answerReports = row.reports;
+    }
+    if (row.rejectedReports !== undefined) {
+      if (!Array.isArray(row.rejectedReports) || !row.rejectedReports.length || !operatorWriter(view, turn, true)
+        || new Set(row.rejectedReports.map(item => item.key)).size !== row.rejectedReports.length
+        || row.rejectedReports.some(item => !item.key.startsWith('commitment:') || !boundedText(item.objection, 1, 1000)
+          || !pendingReports(view, { thread: turn.thread }).some(report => report.key === item.key && report.text === item.text)
+          || row.reports?.includes(item.key) || row.text.includes(item.text))) throw Error('preview journal: invalid rejected report');
+      turn.answerRejectedReports = row.rejectedReports;
     }
     if (row.notices !== undefined) {
       if (!validAnswerNotices(row.notices, row.text)) throw Error('preview journal: invalid reply notice');
@@ -5994,7 +6019,7 @@ export interface PreviewPorts {
       /** Exact zero-token provider quota refusal, carried separately from semantic rejection. */ capacity?: ModelCapacity;
       /** A malformed answer's exact protocol defect (answer-reading.ts), named in the one format re-ask. */ defect?: string;
       /** Rejected work output, kept only for the same step's bounded format repair. */ rawOutput?: string}
-    | {state:'uncertain'; safetyCeiling?: 'deadline' | 'calls'; usage?: ModelUsage}>;
+    | {state:'uncertain'; safetyCeiling?: 'deadline' | 'calls'; toolChecks?: number; usage?: ModelUsage}>;
   /** Rule 42: a message id (accepted), null (UNKNOWN) or a closed outcome. Rule 89: `provenance`
    * is the journal's signature over exactly `target`, `chat`, `thread` and `text`. */
   send(input: { text: string; expectedText: string; formatting?: ReplyFormatting; chat: string; thread?: number; replyTo?: number; update: number;
@@ -7248,7 +7273,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }).slice(0, 2);
   };
   // The label follows the text actually intended: review can replace the notice with a holding reply.
-  const lostNotice = (item: Turn) => item.noticeClass !== undefined && [UNKNOWN_ANSWER_NOTICE, 'I lost my answer to that message. Please send it again.'].includes(sentText(item) ?? '');
+  const lostNotice = (item: Turn) => item.noticeClass !== undefined && [item.toolChecks === undefined ? UNKNOWN_ANSWER_NOTICE : unknownAnswerNotice(item), 'I lost my answer to that message. Please send it again.'].includes(sentText(item) ?? '');
   const modelFailure = (item: Turn) => item.answer === MODEL_FAILURE_REPLY
     && (item.failureClass !== undefined || item.modelState === 'rejected');
   const sizeRefused = (item: Turn) => item.noticeClass === 'too-long-input';
@@ -7697,7 +7722,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const otherOperatorRequest = otherState ? describe(otherState, false) : undefined;
     const actionFacts = currentActionFacts(journal.view, now, question !== undefined && fromOperator(question)
       && (journal.view.genesis.forum !== true || operatorOnlyVerified), String(current ?? 'main'), zone);
-    const packet = JSON.stringify({ now, ...(ports.workingActivity ? { progressReplies: {
+    const reportCandidates = awayFor === undefined || !fromOperator(awayFor) || awayFor.requestedAction ? [] : pendingReports(journal.view, { thread: current }).map(item => ({
+      ...item, subject: clean(redact(item.subject).text, true), text: clean(redact(item.text).text, true) }));
+    const packet = JSON.stringify({ now,
+      ...(reportCandidates.length ? { pendingReports: { guidance: REPORT_SELECTION_GUIDANCE, items: reportCandidates } } : {}), ...(ports.workingActivity ? { progressReplies: {
       cadenceMinutes: [2, 5, 10], thereafterMinutes: 10, maxLines: WORKING_PROGRESS_CAP, silenceMinutes: 2, source: 'fresh advancing admitted work evidence',
       note: 'While your answer is in progress, the host may send a bounded liveness-only line after silence and fresh work evidence. It does not narrate tools or claim progress. Any outbound resets silence; the final answer ends these lines.' } } : {}), clock: { utc: new Date(now).toISOString(), zone, day: localDay,
       time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`,
@@ -8188,7 +8216,35 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             ? [...kept, ...kept.flatMap(value => withoutSiblingWords(value, true) ?? []),
               ...kept.flatMap(value => withoutSiblingWords(value) ?? [])] : kept;
         });
-        for (const context of variants.flatMap(searchVariants)) {
+        // Optional follow-ups never crowd out the current task or its evidence. Keep the debt,
+        // expose the omission, and accept no selection for text absent from the final packet.
+        const reportVariants = function* (value: string) {
+          const packet = JSON.parse(value) as { pendingReports?: { items: unknown[] }; pendingReportsOmitted?: number };
+          yield value;
+          if (!packet.pendingReports) return;
+          const items = packet.pendingReports.items;
+          // A report's serialized size may differ from its cost in the prepared
+          // envelope. Try each whole report there, newest first, so large neighbors
+          // cannot hide a fitting result. Omitted reports stay owed in the journal.
+          for (const item of [...items].reverse()) {
+            packet.pendingReports.items = [item];
+            packet.pendingReportsOmitted = items.length - 1;
+            yield JSON.stringify(packet);
+          }
+          // Then try groups of complete reports before the age-ordered fallbacks.
+          for (let start = 1; start < items.length; start++) {
+            packet.pendingReports.items = items.slice(start);
+            packet.pendingReportsOmitted = start;
+            yield JSON.stringify(packet);
+          }
+          for (let count = items.length - 1; count >= 0; count--) {
+            if (count) packet.pendingReports!.items = items.slice(0, count);
+            else delete packet.pendingReports;
+            packet.pendingReportsOmitted = items.length - count;
+            yield JSON.stringify(packet);
+          }
+        };
+        for (const variant of variants) for (const reports of reportVariants(variant)) for (const context of searchVariants(reports)) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
           try {
@@ -9131,6 +9187,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const answerMs = duration(answerStarted);
           if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') {
             journal.append({ kind: 'model-uncertain', id: turn.id, state: 'uncertain',
+              ...(answer.toolChecks === undefined ? {} : { toolChecks: answer.toolChecks }),
               ...(answer.safetyCeiling ? { safetyCeiling: answer.safetyCeiling } : {}),
               ...('usage' in answer && answer.usage ? { usage: answer.usage } : {}), latencyMs: answerMs, at: ports.now() });
           } else if (typeof answer !== 'string' && 'failureClass' in answer) {
@@ -9151,17 +9208,23 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [],
               refusedFulfills = 0, operatorAction: OperatorActionProposal | undefined, unreadAction = false,
               memoryFailure: MemoryFailureProposal | undefined;
+            let selectedReports: unknown[] = [], rejectedReports: { key: string; objection: string }[] = [];
             const heldForgets: MemoryChange[] = [];
             if (output.trim()) try {
               const parsed = JSON.parse(output) as { reply?: unknown; correction?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown; cancelDeliveries?: unknown;
                 directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown; blockerRechecks?: unknown;
-                promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
+                selectedReports?: unknown; rejectedReports?: unknown; promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
               const replyValue = parsed?.reply;
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
               if (parsed && (typeof replyValue === 'string' || replyAnswer !== undefined)) {
                 separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string; decided = true;
+                if (Array.isArray(parsed.selectedReports)) selectedReports = parsed.selectedReports;
+                if (Array.isArray(parsed.rejectedReports) && parsed.rejectedReports.every(item => item
+                  && typeof item.key === 'string' && boundedText(item.objection, 1, 1000))
+                  && new Set(parsed.rejectedReports.map(item => item.key)).size === parsed.rejectedReports.length)
+                  rejectedReports = parsed.rejectedReports;
                 if (turn.grounding?.corrections.length && typeof parsed.correction === 'string'
                   && parsed.correction.trim() && parsed.correction.length <= MAX_ANSWER_BYTES) correction = parsed.correction.trim();
                 if (fromOperator(turn) && typeof parsed.lastNamedPerson === 'string'
@@ -9496,23 +9559,29 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (next && Buffer.byteLength(text) + Buffer.byteLength(next.line) + 2 <= 3500) {
               text = `${text.trimEnd()}\n\n${next.line}`; notices.push(next);
             }
-            // Rules 8, 92: EVERY completed obligation result rides the operator's next answer, the only send the grant
-            // allows, in schedule order, after the answer and its notice. A long reply is split into ordered messages
-            // at send (reply-parts.ts), so no result waits on a count or a one-message bound (live cint-L49 D1c: a cap of
-            // two kept the deferral's result back). The text stays inside the route's answer bound, the size every split
-            // reply is derived to carry; a result past it stays pending for the next answer, never dropped. A result
-            // another unsent answer already carries is not repeated. Each obligation keeps its own subject line: a shared
-            // originating turn and the same result text do not prove the same work (one message can open two loops
-            // that are both answered "Yes."), so no obligation settles under another's line.
+            // Rules 4, 8, 26, 116: a stored report is a proposal, not proof. Only attach results
+            // selected by the current answering mind from the exact packet it saw. Unselected work
+            // remains pending; absence, malformed output and stale selections never close a commitment.
+            const offeredReports = (JSON.parse(context) as { pendingReports?: {
+              items: { key: string; text: string }[] } }).pendingReports?.items ?? [];
             const reports: string[] = [], carried = new Set(journal.view.order
               .filter(item => item.id !== turn.id && item.intent === undefined && !actionWithdrawn(journal.view, item)).flatMap(item => item.answerReports ?? []));
             if (replying)
               for (const item of pendingReports(journal.view, { thread: turn.thread }).filter(entry => !carried.has(entry.key)
+                && selectedReports.includes(entry.key) && !rejectedReports.some(rejected => rejected.key === entry.key)
+                && offeredReports.some(offered => offered.key === entry.key && offered.text === entry.text)
                 && !obligations.deliveryCancels?.some(cancel => entry.key === `commitment:${cancel.id}`))) {
                 const line = reportLine(item);
                 if (Buffer.byteLength(text) + Buffer.byteLength(line) > MAX_ANSWER_BYTES) break;
                 text = `${text.trimEnd()}${line}`; reports.push(item.key);
               }
+            const rework = replying && text.trim() ? rejectedReports.flatMap(item => {
+              const report = offeredReports.find(offered => offered.key === item.key);
+              return report && item.key.startsWith('commitment:') && !selectedReports.includes(item.key) && !carried.has(item.key)
+                && pendingReports(journal.view, { thread: turn.thread }).some(entry => entry.key === item.key && entry.text === report.text)
+                && !text.includes(report.text) && !obligations.deliveryCancels?.some(cancel => item.key === `commitment:${cancel.id}`)
+                ? [{ ...item, text: report.text, objection: clean(redact(item.objection).text, true) }] : [];
+            }).filter(item => boundedText(item.objection, 1, 1000)) : [];
             // The claims are decided one last time against the reply exactly as it is written, by the same
             // rule the replay reads it back with; anything the final text no longer carries is counted refused.
             const written = text.trim() ? text : MODEL_FAILURE_REPLY;
@@ -9537,7 +9606,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(obligations.deliveryCancels?.length ? { deliveryCancels: obligations.deliveryCancels } : {}),
               ...(obligations.blocker ? { blocker: obligations.blocker } : {}),
               ...(obligations.blockerRechecks?.length ? { blockerRechecks: obligations.blockerRechecks } : {}),
-              ...(Object.keys(rejectedNow).length ? { rejected: rejectedNow } : {}), ...(reports.length ? { reports } : {}),
+              ...(Object.keys(rejectedNow).length ? { rejected: rejectedNow } : {}), ...(reports.length ? { reports } : {}), ...(rework.length ? { rejectedReports: rework } : {}),
               ...(notices.length ? { notices } : {}),
               ...(promises.length && text.trim() ? { promises: promises.filter(item => text.includes(item.quote)) } : {}),
               ...(keptFulfills.length ? { fulfills: keptFulfills } : {}),
@@ -9574,10 +9643,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Live 46039931: replacing that answer also erased the loop quoted only in it.
         const memoryReplyFailed = turn.memoryPending && !turn.memoryUnresolved && !requestDecided;
         let reply = turn.noticeClass === 'too-long-input' ? TOO_LONG_INPUT_NOTICE
-          : turn.noticeClass === 'unknown-answer' ? (turn.safetyCeiling ? SAFETY_CEILING_NOTICE : UNKNOWN_ANSWER_NOTICE)
+          : turn.noticeClass === 'unknown-answer' ? unknownAnswerNotice(turn)
           : memoryReplyFailed && turn.memoryUndecided ? MEMORY_UNDECIDED_REPLY
           : memoryAcknowledgement(turn) ?? (memoryReplyFailed ? 'I reviewed your memory request.'
-            : `${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? (turn.safetyCeiling ? SAFETY_CEILING_NOTICE : UNKNOWN_ANSWER_NOTICE)}`);
+            : `${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? unknownAnswerNotice(turn)}`);
         // Rule 110: a reply sent from a compacted context records its continuity account, and opens with the
         // fixed disclosure when that sentence is owed, on whatever text is finally sent (answer, loss, size or
         // holding notice). A silent account changes no text; its record still binds the text actually sent.
@@ -9675,7 +9744,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ruleIds: ['credential'], confidence: 1, path: 'holding', latencyMs: 0, candidateDigest }, at: ports.now() });
             decision = 'violation';
           } else if (fromOperator(turn) && (memoryReplyFailed && turn.memoryUndecided && reply === MEMORY_UNDECIDED_REPLY
-            || turn.noticeClass === 'unknown-answer' && turn.modelState === 'uncertain' && reply === (turn.safetyCeiling ? SAFETY_CEILING_NOTICE : UNKNOWN_ANSWER_NOTICE))
+            || turn.noticeClass === 'unknown-answer' && turn.modelState === 'uncertain' && reply === unknownAnswerNotice(turn))
             && (!previous || previous.path === 'holding' && previous.verdict === 'pass')) {
             // Exact, content-free report of the durable validation outcome (Rules 4/42/95).
             // A model review cannot repair memory or turn an unknown outcome into an answer.
@@ -10720,7 +10789,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const withheld = text ? turn.answerReports?.filter(key => key.startsWith('commitment:')
       && attachableReport(journal.view.obligationWork[key]) && !reply.includes(journal.view.obligationWork[key]!.report!.text))
       .map(key => ({ key, objection: text })) : undefined;
-    return withheld?.length ? { withheldReports: withheld } : {};
+    const explicit = turn.answerRejectedReports?.filter(item => attachableReport(journal.view.obligationWork[item.key])
+      && journal.view.obligationWork[item.key]?.report?.text === item.text && !reply.includes(item.text))
+      .map(({ key, objection }) => ({ key, objection })) ?? [];
+    const combined = [...withheld ?? [], ...explicit];
+    return combined.length ? { withheldReports: combined } : {};
   };
   /** The latest scheduled work result on commitment `id`, for the answer packet (Rules 8, 64). */
   const workState = (id: number) => {
@@ -10728,8 +10801,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (!work) return {};
     const checklist = work.completion?.some(item => item.state === 'open') ? { completion: work.completion } : {};
     if (work.inFlight !== undefined) return checklist;
-    // A finished result waiting for this reply is appended after the answer (live cint-L49: the model, not told, wrote
-    // "still queued" beside the result it was carrying).
+    // A report waiting for delivery is shown as such; the current mind must judge its evidence
+    // before selecting it. A report being present is not proof that its claims are true.
     if (attachableReport(work)) return { result: READY_RESULT };
     return work.waitsOn !== undefined ? { ...checklist, waitsOn: work.waitsOn!, need: clean(redact(work.note!).text, true) }
       : work.outcome === 'continue' ? { ...checklist, progress: clean(redact(work.note!).text, true) } : checklist;
