@@ -19,6 +19,7 @@ import { providerFixture, refused } from '../model-provider/fixture.js';
 import { observationCheck } from '../../src/judgment/model-adapter.js';
 import thinkingCapture from '../preview/fixtures/thinking-floor-opus-2026-10-20.json' with { type: 'json' };
 import summaryCapture from '../preview/fixtures/summary-cap-2026-10-26.json' with { type: 'json' };
+import shapeCapture from '../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json' with { type: 'json' };
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
 
@@ -130,10 +131,17 @@ for (const conversation of [false, true]) it(`enables thinking on the ${conversa
   expect(model[0].args.some((arg: string) => /thinking|effort/iu.test(arg))).toBe(false);
 });
 // Portable adapter contract: real recorded terminals, injected transport (no provider
-// or OS resource shim). Physical child coverage above remains independently required.
-for (const [label, accepted] of [['writer', true], ['review', true], ['overCap', false]] as const)
+// or OS resource shim). The seven historical shapes carry exact model/reply text in
+// a synthetic CLI wrapper with synthetic usage, not newly observed Opus answers.
+const thinkingReplays = [
+  ...(['writer', 'review', 'overCap'] as const).map(label => ({ label, accepted: label !== 'overCap',
+    frame: summaryCapture.liveReplay[label].frame })),
+  ...shapeCapture.otherShapes.map(row => ({ label: `${row.kind}:${row.id}`, accepted: true,
+    frame: { type: 'result', subtype: 'success', is_error: false, session_id: 'historical-shape-replay', result: row.raw,
+      usage: { input_tokens: 1, output_tokens: 1, output_tokens_details: { thinking_tokens: 0 } } } })),
+];
+for (const { label, accepted, frame } of thinkingReplays)
   it(`thinking-enabled Opus replays recorded ${label} without raising limits`, async () => {
-    const frame = summaryCapture.liveReplay[label].frame;
     const f = fixture({ conversation: true, model: 'claude-opus-5-5' });
     const launches: Parameters<ProductionProviderIO['execute']>[0][] = [];
     const profile = f.input.profile;
@@ -151,6 +159,7 @@ for (const [label, accepted] of [['writer', true], ['review', true], ['overCap',
     expect(observed.state).toBe(accepted ? 'complete' : 'uncertain');
     expect(observed.usage.outputTokens).toBe(frame.usage.output_tokens);
     expect(observed.usage.answerTokens).toBe(frame.usage.output_tokens - frame.usage.output_tokens_details.thinking_tokens);
+    if (accepted) expect(observed.bytes).toBe(frame.result);
     expect(launches).toHaveLength(3);
     expect(launches[2]!.args).toContain('claude-opus-5-5');
     expect(launches[2]!.env).toMatchObject({ MAX_THINKING_TOKENS: '2048', CLAUDE_CODE_MAX_OUTPUT_TOKENS: '4096',

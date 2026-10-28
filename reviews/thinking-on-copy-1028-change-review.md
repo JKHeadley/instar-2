@@ -29,6 +29,8 @@ Prompt finding: b1bb3946362d | protocol-literal | Existing unchanged protocol gu
 
 Subject (6 paths): src/assembly/production-provider.ts, tests/assembly/production-provider-subscription.test.ts, tests/preview/journal-provider.test.ts, tests/preview/live-failure-catalog.test.ts, tests/preview/reply-review-corpus.test.ts, tests/preview/stage2-recovery.test.ts
 
+Validation: Portable Claude replay includes the seven captured summary-writer, summary-uncertain, Jev-undecided, Jev-unsure, reply-review, delivered-reply and empty-reply shapes from retrospective-duty-followup-train-1-2026-10-08.json. Their text is exact; their CLI wrapper and usage are synthetic. Transport preserves those shapes for the existing downstream readers; no fresh model-output claim.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: change the existing env-only off setting to 2048, reusing generation headroom already present. No routing table, new flag, cap increase or migration. Exact activation, spend reservation and stop checks remain start guards; answer admission and reply review remain end guards. This is an offline candidate, not an unattended live completion claim.
