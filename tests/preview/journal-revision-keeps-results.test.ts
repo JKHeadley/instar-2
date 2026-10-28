@@ -1,3 +1,4 @@
+import { selectReportFixture } from './select-report-fixture.js';
 // Live pre-switch sb-w4-updaterecord 04bed622, 2026-10-07 09:19-09:55, room four, 15-minute root
 // proofroom4-dshort15-20261007-091933 (results preswitch-sb-w4-updaterecord-04bed622-20261007-091931/D-proofroom4-ps):
 // D1c FAILED. Three finished results waited (status-d1hi-before.json `awaitingDelivery: 3`). The reply to "hi" (update
@@ -73,7 +74,7 @@ it('a revision of the agent\'s prose keeps every result line verbatim, so the re
         }
         if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'Earlier turns.', people: [],
           commitments: [], closed: [], memory: [] });
-        return answers.shift() ?? JSON.stringify({ reply: 'Okay.', memory: [] });
+        return selectReportFixture(answers.shift() ?? JSON.stringify({ reply: 'Okay.', memory: [] }), input.context);
       },
       replyCheck: { elapsedMs: () => 0,
         jev: async (body: string) => ({ value: jevScores(body.includes(SELF_CLAIM) ? { claims_blocked: 0.6 } : {}) as unknown,
