@@ -32,9 +32,7 @@ export function subscriptionCallOutcome(result, promptBytes, elapsedMs, maxToken
     cancellationReason: ['stopped', 'stdin-error', 'gate-error', 'spawn-error', 'physical-error'].includes(result.cancellationReason)
       ? result.cancellationReason : null,
     limited: Boolean(result.limited),
-    rawOutputExcerpt: code !== null && code !== 0
-      ? boundedFailedStream(result.rawOutput ?? result.stdout ?? '', scrub, result.rawError ? 3072 : 4096)
-      : boundedExcerpt(result.rawOutput ?? result.stdout ?? '', scrub, result.rawError ? 3072 : 4096),
+    rawOutputExcerpt: boundedExcerpt(result.rawOutput ?? result.stdout ?? '', scrub, result.rawError ? 3072 : 4096),
     ...(result.rawError ? { rawErrorExcerpt: boundedExcerpt(result.rawError, scrub, 1024) } : {}),
   };
   return { exitCode: code, localLimit, elapsedMs: Math.max(0, Math.round(elapsedMs)), type, subtype, isError,
@@ -50,26 +48,6 @@ function boundedExcerpt(raw, scrub, limit) {
   while (Buffer.byteLength(excerpt) > limit) excerpt = excerpt.slice(0, -1);
   // Clipping can split a redaction marker into text the journal rejects as a credential.
   // Omit only that diagnostic excerpt; never let evidence capture discard a completed call.
-  return redact(excerpt).count > 0 ? '[provider excerpt omitted: redaction boundary]' : excerpt;
-}
-
-/** A failed JSONL tool turn can have megabytes of successful tool events before its
- * terminal error. Keep complete final events within the existing diagnostic bound. */
-function boundedFailedStream(raw, scrub, limit) {
-  let clean;
-  try { clean = scrub(typeof raw === 'string' ? raw : ''); }
-  catch { return '[provider excerpt unavailable: secret scrub failed]'; }
-  const lines = clean.trimEnd().split('\n');
-  if (lines.length < 2 || Buffer.byteLength(clean) <= limit
-    || !lines.some(line => line.startsWith('{"type":"thread.started"')))
-    return boundedExcerpt(clean, text => text, limit);
-  let tail = '';
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const candidate = `${lines[i]}${tail ? `\n${tail}` : ''}`;
-    if (Buffer.byteLength(candidate) > limit) break;
-    tail = candidate;
-  }
-  const excerpt = tail || boundedExcerpt(lines.at(-1), text => text, limit);
   return redact(excerpt).count > 0 ? '[provider excerpt omitted: redaction boundary]' : excerpt;
 }
 

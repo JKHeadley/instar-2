@@ -21,19 +21,6 @@ it('retains a genuine redacted Claude Code result capture', () => {
   expect(outcome.diagnostic.rawOutputExcerpt).toBe(stdout);
 });
 
-it('keeps the terminal Codex failure after long checked tool events', () => {
-  const stdout = [
-    JSON.stringify({ type: 'thread.started', thread_id: 'trial-thread' }),
-    JSON.stringify({ type: 'item.completed', item: { type: 'web_search', results: 'x'.repeat(12000) } }),
-    JSON.stringify({ type: 'turn.failed', error: { message: 'model call allowance exhausted' } }),
-  ].join('\n');
-  const outcome = subscriptionCallOutcome(physical(stdout, { code: 1 }), 75919, 33285, 16384, 16384);
-  expect(outcome.diagnostic.rawOutputExcerpt).toContain('turn.failed');
-  expect(outcome.diagnostic.rawOutputExcerpt).toContain('model call allowance exhausted');
-  expect(outcome.diagnostic.rawOutputExcerpt).not.toContain('x'.repeat(100));
-  expect(Buffer.byteLength(outcome.diagnostic.rawOutputExcerpt)).toBeLessThanOrEqual(4096);
-});
-
 it('distinguishes a parsed 2048-token over-cap result from a 120-second local timeout with a bounded raw excerpt', () => {
   const over = subscriptionCallOutcome(physical(frame(2049)), 4096, 25, 2048, 16384);
   expect(over).toMatchObject({ exitCode: 0, localLimit: 'output-cap', elapsedMs: 25, type: 'result', subtype: 'success',
