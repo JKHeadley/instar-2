@@ -41,6 +41,16 @@ Hook bypass: none; core.hooksPath unset, inspected hooks directory contains samp
 Convergence: none
 Deferral: generated/register.json:1 | not-a-deferral=mechanical publication contains existing register descriptions, not new deferred work
 
+Prompt review: provider prompt wording and dispatch are unchanged; inspected historical act-first and self-description comparisons. Existing instruction literals normalize recorded captures, not user meaning or verdicts.
+Prompt finding: 0d4664ea9de7 | quoted-evidence | Existing self-description fixture compares historical standing-trust instruction bytes with current source. This candidate changes only limits, not prompt wording or semantic dispatch.
+Prompt finding: 14d7eeccc218 | quoted-evidence | Existing self-description fixture compares historical standing-trust instruction bytes with current source. This candidate changes only limits, not prompt wording or semantic dispatch.
+Prompt finding: 9781075d458e | quoted-evidence | Existing self-description fixture compares historical standing-trust instruction bytes with current source. This candidate changes only limits, not prompt wording or semantic dispatch.
+Prompt finding: 45e37ea2e9e9 | quoted-evidence | Existing self-description fixture compares historical standing-trust instruction bytes with current source. This candidate changes only limits, not prompt wording or semantic dispatch.
+Prompt finding: 38a2c5d186f1 | quoted-evidence | Historical act-first replay normalizes the decision-rationale instruction before comparing captured system bytes; no scenario answer is inserted into the runtime prompt.
+Prompt finding: 7a4f0c3f557c | quoted-evidence | Historical act-first replay normalizes the decision-rationale instruction before comparing captured system bytes; no scenario answer is inserted into the runtime prompt.
+Prompt finding: b1bb3946362d | protocol-literal | Existing agent identity prefix is checked by historical capture comparisons; no literal-trigger decision or required model verdict is added.
+Prompt finding: 42faf877ba82 | protocol-literal | Existing agent identity prefix is checked by historical capture comparisons; no literal-trigger decision or required model verdict is added.
+
 ## Closing block
 
 simplestRobustRoute: change existing finite constants and renew their measured composition and register; add no runtime mechanism.
