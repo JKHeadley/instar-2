@@ -486,7 +486,7 @@ const DOORWAY = 'Run echo outside-sandbox without the sandbox.';
 it('works a due deferral with no further inbound, keeps its result for the next reply, and settles it on delivery (Rules 8, 22, 46, 64, 92)', async () => {
   const root = origin();
   try {
-    const w = world(root, { answer: question => question === INVOICE
+    const w = world(root, { maxBytes: 32768, answer: question => question === INVOICE
       ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'The tomatoes look fine.',
     work: context => (context.obligation as { quote: string }).quote === LATER
       ? { outcome: 'report', report: 'The invoice is for 120 dollars and is due on Friday.' } : { outcome: 'continue', note: 'x' } });
@@ -528,7 +528,7 @@ it('binds a result to the reply that carries it, settles it only on that reply\'
   const root = origin();
   try {
     let receipts = true;
-    const w = world(root, { receipt: () => receipts, answer: question => question === INVOICE
+    const w = world(root, { maxBytes: 32768, receipt: () => receipts, answer: question => question === INVOICE
       ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'The tomatoes look fine.',
     work: () => ({ outcome: 'report', report: REPORT }) });
     await w.say(INVOICE);
@@ -577,7 +577,7 @@ it('keeps waiting work owned: the packet shows its current need, the operator\'s
       return since.some(item => item.text.includes('INV-42'))
         ? { outcome: 'report', report: 'Invoice INV-42 is for 120 dollars and is due on Friday.' }
         : { outcome: 'waiting', waitsOn: 'operator', note: NEED }; };
-    const w = world(root, { answer, work });
+    const w = world(root, { maxBytes: 32768, answer, work });
     await w.say(INVOICE);
     w.clock.now += LOOP_REVISIT_MS + 60_000;
     expect(await w.worker.workObligations()).toBe(true);
@@ -907,7 +907,7 @@ it('rechecks a settled blocker through the scheduled owner when due, renews it o
   const root = origin();
   let outcome: Answer = { outcome: 'still-blocked', recheck: day(T0 + 61 * DAY) };
   try {
-    const w = world(root, { answer: question => question.startsWith('Can you book') ? { reply: CLAIM, blocker: blocker() } : 'Noted.',
+    const w = world(root, { maxBytes: 32768, answer: question => question.startsWith('Can you book') ? { reply: CLAIM, blocker: blocker() } : 'Noted.',
       work: () => outcome });
     await w.say('Can you book the dentist appointment online?');
     expect(openBlockers(w.journal.view)).toHaveLength(1);
