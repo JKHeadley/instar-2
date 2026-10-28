@@ -9879,11 +9879,25 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // none occurred verbatim and all three went back to owned work).
             const resultLines = pendingReports(journal.view).filter(item => turn.answerReports?.includes(item.key))
               .map(reportLine).filter(line => reply.includes(line));
+            // A mandatory content objection can be removed without rewriting the answer, but the
+            // resulting answer still needs its own contextual review. Keep part of the shared
+            // deadline for that review when the reviewer named a locatable claim. T1's real
+            // review took 18 s and its revision used the remaining 42 s; the coherent remainder
+            // never got checked and the full answer became a holding notice.
+            const scopedReviewReserveMs = 25_000;
+            const namedForReserve = holding && !audienceUnreviewed && !credentialHeldClass(turn, candidateDigest)
+              ? reviewHoldingFindings(turn, candidateDigest) : undefined;
+            const bodyForReserve = (actionHeader === undefined ? reply : reply.slice(actionHeader.length + 1))
+              .replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
+            const claimsForReserve = namedForReserve?.findings.flatMap(finding => namedClaimsIn(finding.reason, bodyForReserve)) ?? [];
+            const canReviewRemainder = claimsForReserve.length > 0
+              && substantiveReply(exciseNamedClaims(bodyForReserve, claimsForReserve).text);
+            const revisionDeadline = canReviewRemainder ? loopDeadline - scopedReviewReserveMs : loopDeadline;
             // Rule 89: the status command's report is the runner's own fixed account, signed as infrastructure, so
             // no model rewrites it; an objection to it stays a signal recorded with the send (Rule 86).
             const revisable = turn.noticeClass !== 'unknown-answer' && !(isStatusCommand(turn.text) && !turn.reserved);
             if (decision === 'violation' && revisable && ports.replyCheck.revise && originalPrompt !== undefined) {
-              if (!turn.revisionReserved && journal.view.calls < journal.view.limits.maxCalls && inTime()) {
+              if (!turn.revisionReserved && journal.view.calls < journal.view.limits.maxCalls && ports.now() < revisionDeadline) {
                 gate();
                 journal.append({ kind: 'reply-revision-reserve', id: turn.id, objections,
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
@@ -9895,7 +9909,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 try { outcome = await ports.replyCheck.revise({ text: concealSecretMaterial(redact(draft).text, heldValues), id: turn.id, originalPrompt,
                   ruleIds: objections.filter(item => item !== BARE_TOPIC_OBJECTION) as ReplyRule[], objections,
                   ...(checkRow?.findings ? { findings: checkRow.findings } : {}),
-                  ...(reason === undefined ? {} : { reason }), deadlineAt: loopDeadline }); }
+                  ...(reason === undefined ? {} : { reason }), deadlineAt: revisionDeadline }); }
                 catch { outcome = { state: 'failed' }; }
                 const text = outcome.state === 'complete' && typeof outcome.text === 'string'
                   ? renderCapabilityRevision(outcome.text.trim(), originalPrompt) : '';
@@ -10000,7 +10014,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const dispositions = turn.revision?.dispositions && validDispositions(turn.revision.dispositions, objections)
               ? turn.revision.dispositions : noDecisions(objections);
             const skipped: ResponseSkipped | undefined = decision === 'violation' && revisable && ports.replyCheck.revise && originalPrompt !== undefined
-              && !turn.revisionReserved ? !inTime() ? 'deadline' : journal.view.calls >= journal.view.limits.maxCalls ? 'call cap' : undefined : undefined;
+              && !turn.revisionReserved ? ports.now() >= revisionDeadline ? 'deadline' : journal.view.calls >= journal.view.limits.maxCalls ? 'call cap' : undefined : undefined;
             let note = reason ?? (decision === 'unavailable' || inTime() ? undefined : REPLY_CHECK_BUDGET_REASON);
             // D1c: an empty list left by excision must not delay unrelated finished work. Only the
             // runner's bound lines that survived excision may leave; the rejected remainder never does.
