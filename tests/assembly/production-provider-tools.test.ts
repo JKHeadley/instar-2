@@ -368,10 +368,14 @@ it('admits the increased CLI timeout and refuses one millisecond above it before
   expect(policy.limits).toMatchObject({ maxTurns: 16, maxToolCalls: 64, timeout: 600000 });
   const commands: number[] = [], input = f.input(), execute = input.io.execute;
   const route = value(createClaudeCodeSubscriptionRoute({ ...input, io: { ...input.io,
-    execute: async (command: Parameters<ProductionProviderIO['execute']>[0]) => { commands.push(command.timeout); return execute(command); } } }));
+    execute: async (command: Parameters<ProductionProviderIO['execute']>[0]) => {
+      expect(command.env.MAX_THINKING_TOKENS).toBe('2048');
+      commands.push(command.timeout); return execute(command); } } }));
   const bounds = { ...f.bounds, timeout: policy.timeout, deadline: 700000 };
   expect(await route.invoke('{}', bounds)).toMatchObject({ state: 'complete' });
   expect(commands.at(-1)).toBe(600000);
+  // The merged candidate must enable thinking in the same dispatch that uses the larger allowance.
+  expect(f.commands().at(-1).maxOut).toBe('34816');
   const count = commands.length;
   expect(await route.invoke('{}', { ...bounds, timeout: policy.timeout + 1 })).toMatchObject({ state: 'uncertain' });
   expect(commands).toHaveLength(count);
