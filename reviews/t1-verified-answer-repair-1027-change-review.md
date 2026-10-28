@@ -24,6 +24,8 @@ Decision: t1-repair-explicit | Admit only explicit offered rejection with an obj
 Decision: t1-repair-budget | Fit every report against the input envelope, count every omission, and advance through existing rework without a new scheduler. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/t1-verified-answer-repair-1027-PROGRESS.md
 Decision: t1-repair-replay | Extend the reviewer replays through corrected delivery, bounded-envelope backlog progress and recorded malformed neighbors; live acceptance stays with the desk. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/t1-verified-answer-repair-1027-PROGRESS.md
 
+Decision: t1-repair-forum-fixture | The direct-import run exposed a delivery fixture still assuming blind append; use the existing explicit synthetic selection helper so its topic-isolation assertions remain meaningful. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/t1-verified-answer-repair-1027-PROGRESS.md
+
 Prompt finding: 4106b49fff07 | protocol-literal | Unchanged protocol guidance, not a semantic keyword trigger — fixture-phrase tests/preview/journal.ts <- tests/preview/topic-awareness.test.ts: "you attempted nothing outside this reply, so never call an avenue tried; a missi"
 Prompt finding: 849db3a6296a | protocol-literal | Unchanged protocol guidance, not a semantic keyword trigger — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
 Prompt finding: 85544c20941f | protocol-literal | Unchanged protocol guidance, not a semantic keyword trigger — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-conversation-session.test.ts: "your messages are kept and i'll answer them then; you don't need to resend them."
@@ -31,9 +33,11 @@ Prompt finding: e8708c7fea24 | protocol-literal | Unchanged protocol guidance, n
 Deferral: tests/preview/astra-report-backlog-review.test.ts:65 | not-a-deferral=Regression assertion about pending delivery, not deferred builder work
 Deferral: tests/preview/astra-t1-recovery-review.test.ts:92 | not-a-deferral=Regression assertion about pending delivery, not deferred builder work
 
-Subject (10 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/astra-report-backlog-review.test.ts, tests/preview/astra-t1-recovery-review.test.ts, tests/preview/journal.ts
+Subject (11 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/astra-report-backlog-review.test.ts, tests/preview/astra-t1-recovery-review.test.ts, tests/preview/forum-routing.test.ts, tests/preview/journal.ts
 
 Validation: Both reviewer reproductions failed before the repair. Extended recorded replay and delivery neighbors pass (52 tests); typecheck and architecture pass. Register regenerated in shape-only replay mode from fc16df44ea8bda1a3acfd8c04eb8c877c02de50f. Source edit is 71 changed lines (52 additions, 19 deletions). Final pinned checks and host-dependent results are listed in the builder report.
+
+The direct-import run found the forum-routing delivery fixture still returning plain Noted while expecting automatic report attachment. It now uses the existing explicit-selection test helper, without changing topic-isolation or delivery assertions. This is test-only support beyond the two named reviewer replays.
 
 ## Closing block
 
