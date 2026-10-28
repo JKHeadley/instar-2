@@ -29,7 +29,7 @@ Prompt finding: 849db3a6296a | protocol-literal | Unchanged protocol guidance, n
 Prompt finding: 85544c20941f | protocol-literal | Unchanged protocol guidance, not a semantic keyword trigger — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-conversation-session.test.ts: "your messages are kept and i'll answer them then; you don't need to resend them."
 Prompt finding: e8708c7fea24 | protocol-literal | Unchanged protocol guidance, not a semantic keyword trigger — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 Deferral: tests/preview/astra-report-backlog-review.test.ts:65 | not-a-deferral=Regression assertion about pending delivery, not deferred builder work
-Deferral: tests/preview/astra-t1-recovery-review.test.ts:88 | not-a-deferral=Regression assertion about pending delivery, not deferred builder work
+Deferral: tests/preview/astra-t1-recovery-review.test.ts:92 | not-a-deferral=Regression assertion about pending delivery, not deferred builder work
 
 Subject (10 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/astra-report-backlog-review.test.ts, tests/preview/astra-t1-recovery-review.test.ts, tests/preview/journal.ts
 
