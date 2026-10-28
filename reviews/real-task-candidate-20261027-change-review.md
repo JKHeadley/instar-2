@@ -40,7 +40,8 @@ Subject (28 paths): generated/capabilities.json, generated/capabilities.md, gene
 
 ## Closing block
 
+Deferral: tests/preview/astra-two-short-independent.test.ts:89 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
+
 simplestRobustRoute: Combine the two isolated fixes, replay the register, run the full gate, and measure the same five user tasks on fresh copies before any switch.
 80/20: Two small production edits target the two observed failures; existing journal, notice, ownership, and send paths are reused.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-Deferral: tests/preview/astra-two-short-independent.test.ts:89 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work

@@ -41,9 +41,6 @@ Four delivery-mechanics fixtures use a 32768-byte context budget so their report
 
 ## Closing block
 
-simplestRobustRoute: This is the simplest robust route: give the existing answering mind the pending report and require its selection. The exact check prevents the observed automatic stale appendix without guessing meaning. Start: pending durable report and current task. End: selected report receives normal send receipt, or stays pending. Limits: existing envelope, answer size, call/spend cap, stop and unique send identity. No claim of a fresh unattended live-model proof.
-80/20: A bounded packet and exact selection replace the blind append; reuse the existing delivery and recovery lifecycle. No new service, store, review call or semantic filter.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 Deferral: generated/register.json:1 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
 Deferral: tests/preview/astra-fit-middle-independent.test.ts:76 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
 Deferral: tests/preview/astra-repair-envelope-independent.test.ts:76 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
@@ -51,3 +48,7 @@ Deferral: tests/preview/astra-report-backlog-review.test.ts:65 | not-a-deferral=
 Deferral: tests/preview/astra-t1-recovery-review.test.ts:92 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
 Deferral: tests/preview/astra-two-short-independent.test.ts:89 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
 Deferral: tests/preview/journal.ts:2673 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
+
+simplestRobustRoute: This is the simplest robust route: give the existing answering mind the pending report and require its selection. The exact check prevents the observed automatic stale appendix without guessing meaning. Start: pending durable report and current task. End: selected report receives normal send receipt, or stays pending. Limits: existing envelope, answer size, call/spend cap, stop and unique send identity. No claim of a fresh unattended live-model proof.
+80/20: A bounded packet and exact selection replace the blind append; reuse the existing delivery and recovery lifecycle. No new service, store, review call or semantic filter.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

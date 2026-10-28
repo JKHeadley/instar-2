@@ -38,12 +38,13 @@ Validation: Both reviewer reproductions failed before the repair. Extended recor
 
 ## Closing block
 
-simplestRobustRoute: This is the simplest robust route: extend the existing answer decision into withheld-report recovery and let existing input-envelope fitting carry all candidate evidence. Start: exact offered unbound report. End: corrected work and normal delivery receipt. Limits: secrets, spend, stop, durable intake, uniqueness and existing size bounds. No extra scheduler, cache or verifier. Studio review and unattended live-model acceptance remain desk-owned.
-80/20: Two reviewer reproductions plus malformed/omitted neighbors and restart-to-receipt recovery cover both repairs; the production edit stays below 100 changed lines.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 Deferral: generated/register.json:1 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
 Deferral: tests/preview/astra-fit-middle-independent.test.ts:76 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
 Deferral: tests/preview/astra-repair-envelope-independent.test.ts:76 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
 Deferral: tests/preview/astra-two-short-independent.test.ts:89 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
 Deferral: tests/preview/journal.ts:2673 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
 Deferral: tests/preview/t1-verified-answer.test.ts:72 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
+
+simplestRobustRoute: This is the simplest robust route: extend the existing answer decision into withheld-report recovery and let existing input-envelope fitting carry all candidate evidence. Start: exact offered unbound report. End: corrected work and normal delivery receipt. Limits: secrets, spend, stop, durable intake, uniqueness and existing size bounds. No extra scheduler, cache or verifier. Studio review and unattended live-model acceptance remain desk-owned.
+80/20: Two reviewer reproductions plus malformed/omitted neighbors and restart-to-receipt recovery cover both repairs; the production edit stays below 100 changed lines.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
