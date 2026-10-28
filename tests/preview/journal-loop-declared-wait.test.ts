@@ -1,3 +1,4 @@
+import { selectReportFixture } from './select-report-fixture.js';
 // Plan row #547 (diagnosis unit w4-d1b). Live build cint-L50 57e12273 gave opposite results for the same group D
 // short run on the same build. The passing run (room two, 21:45-23:11) answered its deferral with a loop that
 // waits on `nothing`, so the step was scheduled and ran in the quiet window. The failing run (room two, 23:33-00:40)
@@ -51,7 +52,7 @@ function world(root: string, answer: string, work: WorkAnswer[] = [{ outcome: 'r
         return JSON.stringify(work[Math.min(steps++, work.length - 1)]); }
       if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'Earlier turns.', people: [], commitments: [],
         closed: [], memory: [] });
-      return answers++ === 0 ? answer : JSON.stringify({ reply: 'Hey Justin — I\'m here.', memory: [] });
+      return answers++ === 0 ? answer : selectReportFixture(JSON.stringify({ reply: 'Hey Justin — I\'m here.', memory: [] }), input.context);
     },
     send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
   let update = 6232351;

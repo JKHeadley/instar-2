@@ -2661,7 +2661,11 @@ export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLI
 /** The answer packet's mark on a commitment whose work is finished and whose result waits for delivery (plan #492).
  * It states only what is known when the packet is built: the attachment is decided after the answer, inside the
  * reply's size bound, so a result past that bound waits for a later message. */
-export const READY_RESULT = 'finished, result awaiting delivery: follows your answer when this reply has room, otherwise a later message; the work is done, not still to do';
+export const READY_RESULT = 'report awaiting current evidence review before delivery, otherwise a later message; not proof the work is done';
+const REPORT_SELECTION_GUIDANCE = 'Judge pendingReports.items against current-task evidence and your answer. '
+  + 'A prior answer or follow-up is not proof of current capabilities. Return selectedReports:[key] only for reports '
+  + 'whose claims remain supported and consistent now; the runner appends those verbatim. Omit unverifiable or contradictory reports; '
+  + 'they remain owed, not completed or delivered. Explain relevant uncertainty without repeating unsupported claims.';
 /** Reads one work step's decision; anything malformed is a recorded failed attempt, never a guessed outcome. */
 export function obligationDecision(output: string, kind: 'commitment' | 'blocker', at: number, zone: string, previous: readonly RunCompletionItem[] = []):
   Pick<Extract<JournalRecord, { kind: 'obligation-result' }>, 'outcome' | 'report' | 'note' | 'waitsOn' | 'recheckAt' | 'assessment' | 'completion'> {
@@ -7697,7 +7701,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const otherOperatorRequest = otherState ? describe(otherState, false) : undefined;
     const actionFacts = currentActionFacts(journal.view, now, question !== undefined && fromOperator(question)
       && (journal.view.genesis.forum !== true || operatorOnlyVerified), String(current ?? 'main'), zone);
-    const packet = JSON.stringify({ now, ...(ports.workingActivity ? { progressReplies: {
+    const reportCandidates = awayFor === undefined ? [] : recentWithin(pendingReports(journal.view, { thread: current }).map(item => ({
+      ...item, subject: clean(redact(item.subject).text, true), text: clean(redact(item.text).text, true) })).reverse(), MAX_ANSWER_BYTES).reverse();
+    const packet = JSON.stringify({ now,
+      ...(reportCandidates.length ? { pendingReports: { guidance: REPORT_SELECTION_GUIDANCE, items: reportCandidates } } : {}), ...(ports.workingActivity ? { progressReplies: {
       cadenceMinutes: [2, 5, 10], thereafterMinutes: 10, maxLines: WORKING_PROGRESS_CAP, silenceMinutes: 2, source: 'fresh advancing admitted work evidence',
       note: 'While your answer is in progress, the host may send a bounded liveness-only line after silence and fresh work evidence. It does not narrate tools or claim progress. Any outbound resets silence; the final answer ends these lines.' } } : {}), clock: { utc: new Date(now).toISOString(), zone, day: localDay,
       time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`,
@@ -9151,17 +9158,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [],
               refusedFulfills = 0, operatorAction: OperatorActionProposal | undefined, unreadAction = false,
               memoryFailure: MemoryFailureProposal | undefined;
+            let selectedReports: unknown[] = [];
             const heldForgets: MemoryChange[] = [];
             if (output.trim()) try {
               const parsed = JSON.parse(output) as { reply?: unknown; correction?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown; cancelDeliveries?: unknown;
                 directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown; blockerRechecks?: unknown;
-                promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
+                selectedReports?: unknown; promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
               const replyValue = parsed?.reply;
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
               if (parsed && (typeof replyValue === 'string' || replyAnswer !== undefined)) {
                 separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string; decided = true;
+                if (Array.isArray(parsed.selectedReports)) selectedReports = parsed.selectedReports;
                 if (turn.grounding?.corrections.length && typeof parsed.correction === 'string'
                   && parsed.correction.trim() && parsed.correction.length <= MAX_ANSWER_BYTES) correction = parsed.correction.trim();
                 if (fromOperator(turn) && typeof parsed.lastNamedPerson === 'string'
@@ -9496,18 +9505,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (next && Buffer.byteLength(text) + Buffer.byteLength(next.line) + 2 <= 3500) {
               text = `${text.trimEnd()}\n\n${next.line}`; notices.push(next);
             }
-            // Rules 8, 92: EVERY completed obligation result rides the operator's next answer, the only send the grant
-            // allows, in schedule order, after the answer and its notice. A long reply is split into ordered messages
-            // at send (reply-parts.ts), so no result waits on a count or a one-message bound (live cint-L49 D1c: a cap of
-            // two kept the deferral's result back). The text stays inside the route's answer bound, the size every split
-            // reply is derived to carry; a result past it stays pending for the next answer, never dropped. A result
-            // another unsent answer already carries is not repeated. Each obligation keeps its own subject line: a shared
-            // originating turn and the same result text do not prove the same work (one message can open two loops
-            // that are both answered "Yes."), so no obligation settles under another's line.
+            // Rules 4, 8, 26, 116: a stored report is a proposal, not proof. Only attach results
+            // selected by the current answering mind from the exact packet it saw. Unselected work
+            // remains pending; absence, malformed output and stale selections never close a commitment.
+            const offeredReports = (JSON.parse(context) as { pendingReports?: {
+              items: { key: string; text: string }[] } }).pendingReports?.items ?? [];
             const reports: string[] = [], carried = new Set(journal.view.order
               .filter(item => item.id !== turn.id && item.intent === undefined && !actionWithdrawn(journal.view, item)).flatMap(item => item.answerReports ?? []));
             if (replying)
               for (const item of pendingReports(journal.view, { thread: turn.thread }).filter(entry => !carried.has(entry.key)
+                && selectedReports.includes(entry.key)
+                && offeredReports.some(offered => offered.key === entry.key && offered.text === entry.text)
                 && !obligations.deliveryCancels?.some(cancel => entry.key === `commitment:${cancel.id}`))) {
                 const line = reportLine(item);
                 if (Buffer.byteLength(text) + Buffer.byteLength(line) > MAX_ANSWER_BYTES) break;
@@ -10728,8 +10736,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (!work) return {};
     const checklist = work.completion?.some(item => item.state === 'open') ? { completion: work.completion } : {};
     if (work.inFlight !== undefined) return checklist;
-    // A finished result waiting for this reply is appended after the answer (live cint-L49: the model, not told, wrote
-    // "still queued" beside the result it was carrying).
+    // A report waiting for delivery is shown as such; the current mind must judge its evidence
+    // before selecting it. A report being present is not proof that its claims are true.
     if (attachableReport(work)) return { result: READY_RESULT };
     return work.waitsOn !== undefined ? { ...checklist, waitsOn: work.waitsOn!, need: clean(redact(work.note!).text, true) }
       : work.outcome === 'continue' ? { ...checklist, progress: clean(redact(work.note!).text, true) } : checklist;

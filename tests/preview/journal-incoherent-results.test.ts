@@ -1,3 +1,4 @@
+import { selectReportFixture } from './select-report-fixture.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -40,7 +41,7 @@ for (const mode of ['result', 'recorded-finding', 'none', 'credential', 'result-
     let checking = false, revisions = 0;
     const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false,
       prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', clock.now),
-      model: async input => input.id.startsWith('obligation:') ? JSON.stringify({ outcome: 'report', report }) : answer,
+      model: async input => input.id.startsWith('obligation:') ? JSON.stringify({ outcome: 'report', report }) : selectReportFixture(answer, input.context),
       replyCheck: { elapsedMs: () => 0,
         jev: async () => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(rules.map(rule =>
           [rule, { type: 'noul', noul: checking && rule === 'defers_work' ? 0.9 : 0.02 }])) }, latencyMs: 200 }),

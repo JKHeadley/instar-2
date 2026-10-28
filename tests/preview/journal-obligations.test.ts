@@ -1,3 +1,4 @@
+import { selectReportFixture } from './select-report-fixture.js';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { admitEffect, DEFAULT_EFFECT_POLICY, refusedEffectNotices } from './effect-doorway.mjs';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
@@ -100,7 +101,7 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
       }
       contexts.set(input.question, input.context);
       const answer = options.answer?.(input.question, input.context) ?? 'Noted.';
-      return typeof answer === 'string' ? answer : JSON.stringify({ memory: [], ...answer });
+      return selectReportFixture(typeof answer === 'string' ? answer : JSON.stringify({ memory: [], ...answer }), input.context);
     },
     send: async input => { if (options.receipt && !options.receipt(input.text)) return null; sent.push(input.text); return sent.length; },
     checkOutbound: () => {} });
