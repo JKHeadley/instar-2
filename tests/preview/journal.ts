@@ -8223,20 +8223,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           yield value;
           if (!packet.pendingReports) return;
           const items = packet.pendingReports.items;
-          // Fit complete reports even when oversized ones sit on both sides of a short
-          // report. Remove larger items first, with older items first on a tie; skipped
-          // items remain owed and are never interpreted as rejected or delivered.
-          const bySize = items.map((item, index) => ({ index, bytes: Buffer.byteLength(JSON.stringify(item)) }))
-            .sort((a, b) => b.bytes - a.bytes || a.index - b.index);
-          const skipped = new Set<number>();
-          for (const item of bySize) {
-            skipped.add(item.index);
-            if (skipped.size === items.length) break;
-            packet.pendingReports.items = items.filter((_, index) => !skipped.has(index));
-            packet.pendingReportsOmitted = skipped.size;
+          // A report's serialized size may differ from its cost in the prepared
+          // envelope. Try each whole report there, newest first, so large neighbors
+          // cannot hide a fitting result. Omitted reports stay owed in the journal.
+          for (const item of [...items].reverse()) {
+            packet.pendingReports.items = [item];
+            packet.pendingReportsOmitted = items.length - 1;
             yield JSON.stringify(packet);
           }
-          // Keep the earlier age-ordered fallbacks for a large report that fits alone.
+          // Then try groups of complete reports before the age-ordered fallbacks.
           for (let start = 1; start < items.length; start++) {
             packet.pendingReports.items = items.slice(start);
             packet.pendingReportsOmitted = start;
