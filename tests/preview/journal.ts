@@ -331,7 +331,7 @@ export const UNKNOWN_ANSWER_NOTICE = 'The answer-writing step did not complete. 
 function unknownAnswerNotice(turn: Pick<Turn, 'safetyCeiling' | 'toolChecks'>): string {
   if (turn.safetyCeiling) return SAFETY_CEILING_NOTICE;
   return turn.toolChecks === undefined ? UNKNOWN_ANSWER_NOTICE
-    : `${UNKNOWN_ANSWER_NOTICE} ${turn.toolChecks} tool checks returned results, but those results were not verified into an answer. The requested result remains unverified; no tool work was automatically repeated.`;
+    : `${UNKNOWN_ANSWER_NOTICE} ${turn.toolChecks} tool checks returned results, but those results were not verified into an answer. The requested result remains unverified. This notice does not retry the tool work.`;
 }
 
 export const TOO_LONG_INPUT_NOTICE = 'Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
