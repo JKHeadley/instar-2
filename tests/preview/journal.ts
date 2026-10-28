@@ -8223,8 +8223,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           yield value;
           if (!packet.pendingReports) return;
           const items = packet.pendingReports.items;
-          // A large old report must not hide a short later report. Try whole suffixes
-          // before the old prefix fallbacks; omitted reports remain owed in the journal.
+          // Fit complete reports even when oversized ones sit on both sides of a short
+          // report. Remove larger items first, with older items first on a tie; skipped
+          // items remain owed and are never interpreted as rejected or delivered.
+          const bySize = items.map((item, index) => ({ index, bytes: Buffer.byteLength(JSON.stringify(item)) }))
+            .sort((a, b) => b.bytes - a.bytes || a.index - b.index);
+          const skipped = new Set<number>();
+          for (const item of bySize) {
+            skipped.add(item.index);
+            if (skipped.size === items.length) break;
+            packet.pendingReports.items = items.filter((_, index) => !skipped.has(index));
+            packet.pendingReportsOmitted = skipped.size;
+            yield JSON.stringify(packet);
+          }
+          // Keep the earlier age-ordered fallbacks for a large report that fits alone.
           for (let start = 1; start < items.length; start++) {
             packet.pendingReports.items = items.slice(start);
             packet.pendingReportsOmitted = start;
