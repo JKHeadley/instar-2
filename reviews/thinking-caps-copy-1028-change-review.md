@@ -38,6 +38,16 @@ Integration findings: direct consumers exposed two stale test assumptions. tool-
 Prompt finding: 4b98dc2a1b9f | protocol-literal | Existing tools capability label compared with historical captures; no keyword-based model decision is added.
 Prompt finding: 95e349aaf4ac | protocol-literal | Existing standing-grant protocol text in the historical briefing comparison; original authority enforcement is unchanged.
 
+Prompt finding: 0abb3dc96311 | protocol-literal | Existing reply-review protocol preserved in the historical act-first replay. Only the tool-count comparison changes; no review instruction or parser is edited.
+Prompt finding: 5b486d8bd247 | protocol-literal | Existing reply-review protocol preserved in the historical act-first replay. Only the tool-count comparison changes; no review instruction or parser is edited.
+Prompt finding: 5fa1a20c4031 | protocol-literal | Existing reply-review protocol preserved in the historical act-first replay. Only the tool-count comparison changes; no review instruction or parser is edited.
+Prompt finding: 7c45ffbe90ad | protocol-literal | Existing reply-review protocol preserved in the historical act-first replay. Only the tool-count comparison changes; no review instruction or parser is edited.
+Prompt finding: aef7d91bef51 | protocol-literal | Existing reply-review protocol preserved in the historical act-first replay. Only the tool-count comparison changes; no review instruction or parser is edited.
+Prompt finding: b288d6ef1604 | protocol-literal | Existing reply-review protocol preserved in the historical act-first replay. Only the tool-count comparison changes; no review instruction or parser is edited.
+Prompt finding: e769ca9dd959 | protocol-literal | Existing reply-review protocol preserved in the historical act-first replay. Only the tool-count comparison changes; no review instruction or parser is edited.
+Prompt finding: f6d7f3274c85 | protocol-literal | Existing reply-review protocol preserved in the historical act-first replay. Only the tool-count comparison changes; no review instruction or parser is edited.
+Prompt finding: feadb66b8ad1 | protocol-literal | Existing reply-review protocol preserved in the historical act-first replay. Only the tool-count comparison changes; no review instruction or parser is edited.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: merge the two exact histories, preserving tests and provenance, with zero extra runtime edits. No new machinery. Existing activation and reservation are start guards; stop/spend/token/turn limits and output review remain limit and end guards. Copy candidate only; no autonomous or live completion claim.
