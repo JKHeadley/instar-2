@@ -37,9 +37,6 @@ Validation: Both reviewer reproductions failed before the repair. Extended recor
 
 ## Closing block
 
-simplestRobustRoute: This is the simplest robust route: extend the existing answer decision into withheld-report recovery and let existing input-envelope fitting carry all candidate evidence. Start: exact offered unbound report. End: corrected work and normal delivery receipt. Limits: secrets, spend, stop, durable intake, uniqueness and existing size bounds. No extra scheduler, cache or verifier. Studio review and unattended live-model acceptance remain desk-owned.
-80/20: Two reviewer reproductions plus malformed/omitted neighbors and restart-to-receipt recovery cover both repairs; the production edit stays below 100 changed lines.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Candidate import: This source review was carried by the exact candidate-ca93.patch onto train-164 for report-suite-repair-1027. Original validation statements describe the source unit, not a fresh independent verdict on this branch. Decision reports are routed to this repair report; the repair review records current validation.
 
@@ -52,3 +49,7 @@ Deferral: tests/preview/astra-two-short-independent.test.ts:89 | not-a-deferral=
 Deferral: tests/preview/journal.ts:2673 | not-a-deferral=Imported candidate protocol wording or pending-report regression assertion, not deferred builder work.
 
 Deferral: tests/preview/t1-verified-answer.test.ts:72 | not-a-deferral=Imported candidate protocol wording or pending-report regression assertion, not deferred builder work.
+
+simplestRobustRoute: This is the simplest robust route: extend the existing answer decision into withheld-report recovery and let existing input-envelope fitting carry all candidate evidence. Start: exact offered unbound report. End: corrected work and normal delivery receipt. Limits: secrets, spend, stop, durable intake, uniqueness and existing size bounds. No extra scheduler, cache or verifier. Studio review and unattended live-model acceptance remain desk-owned.
+80/20: Two reviewer reproductions plus malformed/omitted neighbors and restart-to-receipt recovery cover both repairs; the production edit stays below 100 changed lines.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

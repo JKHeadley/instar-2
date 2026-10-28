@@ -41,9 +41,6 @@ Four delivery-mechanics fixtures use a 32768-byte context budget so their report
 
 ## Closing block
 
-simplestRobustRoute: This is the simplest robust route: give the existing answering mind the pending report and require its selection. The exact check prevents the observed automatic stale appendix without guessing meaning. Start: pending durable report and current task. End: selected report receives normal send receipt, or stays pending. Limits: existing envelope, answer size, call/spend cap, stop and unique send identity. No claim of a fresh unattended live-model proof.
-80/20: A bounded packet and exact selection replace the blind append; reuse the existing delivery and recovery lifecycle. No new service, store, review call or semantic filter.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Candidate import: This source review was carried by the exact candidate-ca93.patch onto train-164 for report-suite-repair-1027. Original validation statements describe the source unit, not a fresh independent verdict on this branch. Decision reports are routed to this repair report; the repair review records current validation.
 
@@ -58,3 +55,7 @@ Deferral: tests/preview/astra-t1-recovery-review.test.ts:92 | not-a-deferral=Imp
 Deferral: tests/preview/astra-two-short-independent.test.ts:89 | not-a-deferral=Imported candidate protocol wording or pending-report regression assertion, not deferred builder work.
 
 Deferral: tests/preview/journal.ts:2673 | not-a-deferral=Imported candidate protocol wording or pending-report regression assertion, not deferred builder work.
+
+simplestRobustRoute: This is the simplest robust route: give the existing answering mind the pending report and require its selection. The exact check prevents the observed automatic stale appendix without guessing meaning. Start: pending durable report and current task. End: selected report receives normal send receipt, or stays pending. Limits: existing envelope, answer size, call/spend cap, stop and unique send identity. No claim of a fresh unattended live-model proof.
+80/20: A bounded packet and exact selection replace the blind append; reuse the existing delivery and recovery lifecycle. No new service, store, review call or semantic filter.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

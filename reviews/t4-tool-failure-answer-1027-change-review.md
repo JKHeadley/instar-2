@@ -22,9 +22,6 @@ Convergence: none
 Decision: t4-failure-notice | use the existing durable uncertainty notice after complete tool traces, with a bounded result count, instead of replaying a failed model turn or inventing a Mac handoff | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/report-suite-repair-1027-PROGRESS.md
 Prompt review: no model prompt changes. Real T4 update 46040734's prompt, six admitted tool inputs/results, null answer and exit 1 are replayed. The capture does not include native terminal stdout: the exit is injected at the local invocation boundary, not represented as a full provider-stream replay. Recorded summary-writer 715672480, uncertain summary 715672483, Jev undecided 715672482, Jev unsure 969389570, reply-review 969389923, delivered reply 715672479 and empty candidate 715672550 exercise unchanged completed-output or uncertain-output handling. The empty candidate is not claimed to be a delivered empty bubble. Isolated offline tests only; no live agent mutation or Telegram probe.
 
-simplestRobustRoute: This is the simplest route: reuse the journal's existing failure notice and unique-send guards after the tool runner records paired attempts. The only new durable fact is a bounded count needed for an honest report of what was attempted; no task facts are inferred from raw results. Existing stop, admission, byte/count, ownership, durable-intent and receipt guards remain. A continuation would add another paid call and require evidence that every outward effect was absent; this repair makes no such unsupported assumption. Shipped-path unattended live completion is not claimed; the desk owns live acceptance.
-80/20: repair the observed silent failure with a small change, replay the recorded case and nearest safety neighbours, and leave unrelated retry machinery unchanged.
-VERDICT: author submission; independent convergence is not claimed
 
 Candidate import: This source review was carried by the exact candidate-ca93.patch onto train-164 for report-suite-repair-1027. Original validation statements describe the source unit, not a fresh independent verdict on this branch. Decision reports are routed to this repair report; the repair review records current validation.
 
@@ -41,3 +38,7 @@ Deferral: tests/preview/astra-two-short-independent.test.ts:89 | not-a-deferral=
 Deferral: tests/preview/journal.ts:2673 | not-a-deferral=Imported candidate protocol wording or pending-report regression assertion, not deferred builder work.
 
 Deferral: tests/preview/t1-verified-answer.test.ts:72 | not-a-deferral=Imported candidate protocol wording or pending-report regression assertion, not deferred builder work.
+
+simplestRobustRoute: This is the simplest route: reuse the journal's existing failure notice and unique-send guards after the tool runner records paired attempts. The only new durable fact is a bounded count needed for an honest report of what was attempted; no task facts are inferred from raw results. Existing stop, admission, byte/count, ownership, durable-intent and receipt guards remain. A continuation would add another paid call and require evidence that every outward effect was absent; this repair makes no such unsupported assumption. Shipped-path unattended live completion is not claimed; the desk owns live acceptance.
+80/20: repair the observed silent failure with a small change, replay the recorded case and nearest safety neighbours, and leave unrelated retry machinery unchanged.
+VERDICT: author submission; independent convergence is not claimed

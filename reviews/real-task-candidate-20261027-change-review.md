@@ -40,10 +40,11 @@ Subject (28 paths): generated/capabilities.json, generated/capabilities.md, gene
 
 ## Closing block
 
-simplestRobustRoute: Combine the two isolated fixes, replay the register, run the full gate, and measure the same five user tasks on fresh copies before any switch.
-80/20: Two small production edits target the two observed failures; existing journal, notice, ownership, and send paths are reused.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Candidate import: This source review was carried by the exact candidate-ca93.patch onto train-164 for report-suite-repair-1027. Original validation statements describe the source unit, not a fresh independent verdict on this branch. Decision reports are routed to this repair report; the repair review records current validation.
 
 Deferral: tests/preview/astra-two-short-independent.test.ts:89 | not-a-deferral=Imported candidate protocol wording or pending-report regression assertion, not deferred builder work.
+
+simplestRobustRoute: Combine the two isolated fixes, replay the register, run the full gate, and measure the same five user tasks on fresh copies before any switch.
+80/20: Two small production edits target the two observed failures; existing journal, notice, ownership, and send paths are reused.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
