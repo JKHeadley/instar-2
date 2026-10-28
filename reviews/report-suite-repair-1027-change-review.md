@@ -43,3 +43,5 @@ Validation: Before repair the exact candidate reproduced 9 failures in 27 tests 
 simplestRobustRoute: This is the simplest robust route: update stale test model stand-ins to the existing explicit-selection protocol, preserving the runtime unchanged. The credible failure avoided is silently restoring automatic attachment of unsupported reports to satisfy obsolete model stubs. The exact offered/current checks, omission debt, correction, size bounds and send receipts remain held. No live or autonomous completion is claimed.
 80/20: Nine reproduced failures repaired with zero additional production lines, every prior assertion retained, and two negative restart neighbors added. Independent landing review and full suite remain desk-owned.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
+
+Deferral: tests/preview/astra-two-short-independent.test.ts:89 | not-a-deferral=Imported candidate protocol wording or pending-report regression assertion, not deferred builder work.
