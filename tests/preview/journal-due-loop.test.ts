@@ -1,3 +1,4 @@
+import { selectReportFixture } from './select-report-fixture.js';
 it('a lease lost while a poll returns refuses intake cleanly, while owned intake and genuine errors retain their outcomes', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-poll-lease-')));
   try {
@@ -62,7 +63,7 @@ function world(root: string, clock: { now: number }, deferred = false) {
       if (input.id.startsWith('obligation:')) { work.push(clock.now); return JSON.stringify({ outcome: 'report', report: RESULT }); }
       if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'Earlier turns.', people: [], commitments: [], closed: [], memory: [] });
       if (!answered) { answered = true; return JSON.stringify({ reply: HOLD, memory: [], openLoops: [{ kind: 'deferral', quote: HOLD, waitsOn: 'nothing' }] }); }
-      return JSON.stringify({ reply: 'Hi! What can I help you with?', memory: [] });
+      return selectReportFixture(JSON.stringify({ reply: 'Hi! What can I help you with?', memory: [] }), input.context);
     },
     // The connection is the test's: a send while it is down never reaches the operator.
     send: async input => { if (!online.value) throw Error('Telegram unreachable'); sent.push(input.text); return sent.length; },

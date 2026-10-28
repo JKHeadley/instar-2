@@ -1,3 +1,4 @@
+import { selectReportFixture } from './select-report-fixture.js';
 // Plan row #422 (live D run 2026-10-03, room two, 15-minute root): the open loop's scheduled step DID start on
 // its revisit with no inbound, twice per commitment, and every attempt settled `uncertain`, so no result ever waited
 // for the operator's next message. The model answered each time (11-12 s); what failed was the launcher's durable
@@ -46,7 +47,7 @@ function world(root: string, first = JSON.stringify({ reply: HOLD, memory: [], o
       if (input.id.startsWith('summary:')) return physical(input.id, JSON.stringify({ summary: 'Earlier turns.', people: [], commitments: [], closed: [], memory: [] }) /* no memory change: settles the ask's preference cue, as the live summary did */);
       // The first answer is the live deferral; every later one is the live reply to "hi".
       return physical(input.id, answers++ === 0 ? first
-        : JSON.stringify({ reply: 'Hi! What can I help you with?', memory: [] }));
+        : selectReportFixture(JSON.stringify({ reply: 'Hi! What can I help you with?', memory: [] }), input.context));
     },
     send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
   let update = 6231951;

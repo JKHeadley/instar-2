@@ -1,3 +1,4 @@
+import { selectReportFixture } from './select-report-fixture.js';
 // Plan row #477 (cint-L47 live D run 2026-10-04 02:25, room two, 15-minute root proofroom2-dshort15-20261004-022507):
 // the d1 deferral's step DID run on its revisit (02:43:47, slot = source + 15 min) and the model answered, but it wrote
 // the step question's own JSON ({"outcome":"continue",...}) after a line of prose instead of inside the Decision
@@ -128,7 +129,7 @@ function world(root: string, steps: Call[], task = true, review?: Review) {
       }
       if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'Earlier turns.', people: [], commitments: [], closed: [], memory: [] });
       return answers++ === 0 ? JSON.stringify({ reply: REPLY, memory: [], openLoops: [{ kind: 'deferral', quote: HOLD, waitsOn: 'nothing' }] })
-        : JSON.stringify({ reply: 'Hi! What can I help you with?', memory: [] });
+        : selectReportFixture(JSON.stringify({ reply: 'Hi! What can I help you with?', memory: [] }), input.context);
     },
     send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {},
     ...(review ? { replyCheck: reviewPort(review) } : {}) });

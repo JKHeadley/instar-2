@@ -1,3 +1,4 @@
+import { selectReportFixture } from './select-report-fixture.js';
 // Plan row #585 (live build sb-w4-d1b ceeb91f3, group D short, 2026-10-05 11:22-12:18, room two, 15-minute root
 // proofroom2-dshort15-20261005-112153, results D-proofroom2-20261005-112229): D1c FAILED. Three finished results
 // waited (status d1-24h: `awaitingDelivery: 3`, `deliveryInhibition: "no grant for unsolicited sends; 3 finished
@@ -87,7 +88,7 @@ function world(root: string, reports: Record<string, string>) {
       }
       if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'Earlier turns.', people: [],
         commitments: [], closed: [], memory: [] });
-      return answers.shift() ?? JSON.stringify({ reply: 'Okay.', memory: [] });
+      return selectReportFixture(answers.shift() ?? JSON.stringify({ reply: 'Okay.', memory: [] }), input.context);
     },
     replyCheck: { elapsedMs: () => 0,
       jev: async (body: string) => ({ value: jevScores(body.includes(DEFERRED_CLAIM) ? { defers_work: 0.9 } : {}) as unknown,
@@ -207,7 +208,7 @@ function liveWorld(root: string, reworked: (packet: { withheld?: { report: strin
       }
       if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'Earlier turns.', people: [],
         commitments: [], closed: [], memory: [] });
-      return answers.shift() ?? JSON.stringify({ reply: 'Okay.', memory: [] });
+      return selectReportFixture(answers.shift() ?? JSON.stringify({ reply: 'Okay.', memory: [] }), input.context);
     },
     replyCheck: { elapsedMs: () => 0,
       jev: async (body: string) => ({ value: jevScores(flagged(body) ? { defers_work: 0.9, unrecorded_blocker: 0.9 } : {}) as unknown, latencyMs: 170 }),
