@@ -93,14 +93,12 @@ it('derives and keeps the tools activation when the recorded grant covers the to
   expect(dated.status).toMatch(/Tools: the harness's full built-in set \(27 tools, each call decided at the admission hook\) and the root's MCP servers/u);
 });
 
-it.each([FULL_TOOLS_CLASS, GUIDANCE_ONLY_TOOLS_CLASS])('records class %s at launch with tools on, grant, class and full digest', { timeout: 60000 }, async policyClass => {
-  const on = await launch('class', record => withToolsGrant(record, false, undefined, policyClass));
-  expect(on.run.status, on.run.stderr).toBe(0);
-  expect(on.derived.invocationPolicyDigest).toBe(toolsDigest(on.conversation.model));
-  expect(on.run.stderr).toContain(`preview: tools on: grant offline-tools-grant (class ${policyClass}) covers tools policy ${toolsDigest(on.conversation.model)}`);
-  expect(on.status).toMatch(/Tools: the harness's full built-in set \(27 tools, each call decided at the admission hook\) and the root's MCP servers/u);
-  expect(on.runs.find(row => row.tools)?.tools).toEqual({ state: 'on', grant: 'offline-tools-grant', policyClass,
-    policyDigest: toolsDigest(on.conversation.model) });
+it.each([FULL_TOOLS_CLASS, GUIDANCE_ONLY_TOOLS_CLASS])('refuses larger bounds under class %s and records fresh exact authority', { timeout: 60000 }, async policyClass => {
+  const refused = await launch('class', record => withToolsGrant(record, false, undefined, policyClass));
+  expect(refused.run.status).not.toBe(0);
+  expect(refused.derived).toBeNull();
+  expect(refused.run.stderr).toContain('turn cap is absent or above the class ceiling');
+  expect(refused.sends).toEqual([]);
   // The exact-digest grant is recorded as such.
   const exact = await launch('exact', record => withToolsGrant(record));
   expect(exact.run.stderr).toContain('preview: tools on: grant offline-tools-grant (exact policy)');

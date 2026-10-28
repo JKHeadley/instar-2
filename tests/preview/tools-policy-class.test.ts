@@ -46,6 +46,10 @@ const resolve = (record: unknown, policy: unknown, digest = digestOf(policy)) =>
   resolveActivationAuthority(facts(digest), record, OPERATOR, BASE, NOW, owner, KEY, policy);
 const CLASS_GRANT = authority({ invocationPolicyClass: FULL_TOOLS_CLASS });
 /** A copy of `policy` with its launch arguments changed by `edit`. */
+const historicalCodex = () => {
+  const policy = codexToolsPolicy(MODEL);
+  return { ...policy, limits: { ...policy.limits, maxTurns: 8, timeout: 300000 }, timeout: 300000, maxTokens: 16384 };
+};
 const withArgs = (policy: Record<string, unknown>, edit: (args: string[]) => string[]) => ({ ...policy, args: edit([...policy.args as string[]]) });
 const setFlag = (flag: string, value: string) => (args: string[]) => { args[args.indexOf(flag) + 1] = value; return args; };
 
@@ -59,9 +63,15 @@ it('the recorded L43 and L44 tools policies are real (their digests are the live
     expect(resolve(CLASS_GRANT, build.policy)).toMatchObject({ kind: 'resolved', action: 'activate-subscription-preview',
       grant: 'justin-121996-tools-class', policyClass: { name: FULL_TOOLS_CLASS, policyDigest: build.digest } });
   }
-  // This build's own tools policy (cint-L45 onward) and the Codex doorway's tools policy are in the class too.
-  expect(resolve(CLASS_GRANT, subscriptionToolsPolicy(MODEL)).kind).toBe('resolved');
-  expect(toolsPolicyClassVerdict(FULL_TOOLS_CLASS, codexToolsPolicy(MODEL), digestOf(codexToolsPolicy(MODEL))).kind).toBe('covered');
+  // The copy candidate exceeds the historical class: it needs an exact-policy grant, never a widened old class.
+  const candidate = subscriptionToolsPolicy(MODEL);
+  expect(resolve(CLASS_GRANT, candidate)).toMatchObject({ kind: 'refused', reason: expect.stringContaining('turn cap') });
+  expect(resolve(authority({ invocationPolicyDigest: digestOf(candidate) }), candidate).kind).toBe('resolved');
+  expect(resolve(authority({ invocationPolicyClass: GUIDANCE_ONLY_TOOLS_CLASS,
+    invocationPolicyPins: guidanceOnlyPolicyPins(candidate) }), candidate).kind).toBe('refused');
+  const codex = codexToolsPolicy(MODEL);
+  expect(toolsPolicyClassVerdict(FULL_TOOLS_CLASS, codex, digestOf(codex)).kind).toBe('outside');
+  expect(resolve(authority({ invocationPolicyDigest: digestOf(codex) }), codex).kind).toBe('resolved');
   // L42 (six tools, no subagent caps) is outside the class; its own exact-digest grant still covers it, so a rollback keeps tools.
   const l42 = recorded.builds[0]!;
   expect(toolsPolicyClassVerdict(FULL_TOOLS_CLASS, l42.policy, l42.digest)).toMatchObject({ kind: 'outside', reason: expect.stringMatching(/maxChildren/u) });
@@ -93,7 +103,7 @@ it('a policy that removes a checkpoint or raises a cap is outside the class and 
   outside({ ...l44, limits: { ...(l44.limits as object), maxChildren: 3 } }, /maxChildren/u);
   outside({ ...l44, limits: { ...(l44.limits as object), maxToolCalls: 33 } }, /maxToolCalls/u);
   outside({ ...l44, retries: 1 }, /retries/u);
-  outside(withArgs(codexToolsPolicy(MODEL), args => args.filter(arg => arg !== '--ephemeral')), /session outside the journal/u);
+  outside(withArgs(historicalCodex(), args => args.filter(arg => arg !== '--ephemeral')), /session outside the journal/u);
   outside({ ...codexToolsPolicy(MODEL), limits: { maxTurns: 20, timeout: 300000, maxWriteBytes: 1048576 } }, /maxTurns/u);
   // The conversation policy (text only, no tools framing) is never covered by a tools class: the class cannot stand in for
   // the conversation grant.
@@ -165,13 +175,20 @@ it('the class reads the effective checkpoints, not labels: a reopened read or a 
   expect(codexDispatchCheckpoint([...policyArgs, ...hookArgs, '-c', 'openai_base_url="https://x"'])).toMatch(/another provider or base URL/u);
   expect(codexDispatchCheckpoint([...policyArgs, '--profile', 'direct', ...hookArgs])).toMatch(/profile or local provider/u);
   // A policy whose own arguments select a direct provider is outside the class through the full verdict too.
-  const direct = withArgs(codexToolsPolicy(MODEL) as unknown as Record<string, unknown>, args => [...args, '-c', 'model_provider=openai']);
+  const direct = withArgs(historicalCodex() as unknown as Record<string, unknown>, args => [...args, '-c', 'model_provider=openai']);
   expect(toolsPolicyClassVerdict(FULL_TOOLS_CLASS, direct, digestOf(direct))).toMatchObject({ kind: 'outside', reason: expect.stringMatching(/dispatch checkpoint/u) });
 });
 
+// Exercise historical guidance-only behavior inside its original ceilings, without widening that grant.
+const withinHistoricalCeilings = () => {
+  const policy = subscriptionToolsPolicy(MODEL);
+  return { ...policy, args: policy.args.map((arg, index) => index === policy.args.indexOf('--max-turns') + 1 ? '8' : arg),
+    limits: { ...policy.limits, maxTurns: 8, maxToolCalls: 32, timeout: 300000 }, timeout: 300000, maxTokens: 16384 };
+};
+
 // Observer #391: this is a NEW sealed class; the old permissive class keeps its meaning.
 it('guidance-only grants pin every execution field while full invocation evidence still changes with prose', () => {
-  const policy = subscriptionToolsPolicy(MODEL), digest = digestOf(policy);
+  const policy = withinHistoricalCeilings(), digest = digestOf(policy);
   const pins = guidanceOnlyPolicyPins(policy);
   const grant = authority({ invocationPolicyClass: GUIDANCE_ONLY_TOOLS_CLASS, invocationPolicyPins: pins });
   const changed = withArgs(policy, setFlag('--system-prompt', 'Revised guidance.'));
@@ -217,13 +234,14 @@ it('guidance-only grants pin every execution field while full invocation evidenc
 });
 
 it('guidance-only grants refuse a checkpoint-settings change even when the older class allows it', () => {
-  const policy = subscriptionToolsPolicy(MODEL);
+  const policy = withinHistoricalCeilings();
   const grant = authority({ invocationPolicyClass: GUIDANCE_ONLY_TOOLS_CLASS, invocationPolicyPins: guidanceOnlyPolicyPins(policy) });
   const original = provider.subscriptionToolSettings;
   const spy = vi.spyOn(provider, 'subscriptionToolSettings').mockImplementation((...args) =>
     JSON.stringify({ ...JSON.parse(original(...args)), extraSetting: true }));
   try {
-    expect(toolsPolicyClassVerdict(FULL_TOOLS_CLASS, policy, digestOf(policy)).kind).toBe('covered');
+    const historical = recorded.builds[2]!.policy;
+    expect(toolsPolicyClassVerdict(FULL_TOOLS_CLASS, historical, digestOf(historical)).kind).toBe('covered');
     expect(resolve(grant, policy)).toMatchObject({ kind: 'refused' });
   } finally { spy.mockRestore(); }
   expect(resolve(grant, policy)).toMatchObject({ kind: 'resolved' });

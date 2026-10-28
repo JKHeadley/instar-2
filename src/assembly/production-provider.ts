@@ -258,7 +258,8 @@ export const SUBSCRIPTION_TOOL_NAMES = Object.freeze(['Agent', 'Bash', 'CronCrea
  * `maxChildren` subagents at most in the whole turn, at any depth. `--max-budget-usd` is checked only after a turn and
  * overshoots by up to one turn (spike d3), so the flag sits one turn's margin below the ceiling and is a backstop only: the
  * binding spend floor is the upstream call reservation. */
-export const SUBSCRIPTION_TOOL_LIMITS = Object.freeze({ maxTurns: 8, maxToolCalls: 32, timeout: 300000,
+// Rules 55/60: finite copy-scoring allowance; the outer journal still reserves the whole liability before dispatch.
+export const SUBSCRIPTION_TOOL_LIMITS = Object.freeze({ maxTurns: 16, maxToolCalls: 64, timeout: 600000,
   budgetCeilingUsd: 1, oneTurnMarginUsd: 0.25, maxWriteBytes: 1048576, maxChildren: 2, childMaxTurns: 4 });
 /** The subagent type a tool turn starts: foreground, bounded turns, and (no `tools` field) the turn's whole tool set,
  * Agent included, so a subagent may delegate in turn within the turn's shared subagent budget. */

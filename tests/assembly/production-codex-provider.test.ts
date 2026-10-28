@@ -449,6 +449,7 @@ const recordedTurn = (name: string) => ({ events: readFileSync(join(TOOL_TURNS, 
 it('Rule 30 and revision 12: a Codex tool turn keeps its own tools, installs the hook and the model-dispatch checkpoint per turn', () => {
   // The same turn bounds as the Claude tool turn, so the runner's one reservation covers either doorway.
   expect(CODEX_TOOL_LIMITS.maxTurns).toBe(SUBSCRIPTION_TOOL_LIMITS.maxTurns);
+  expect(CODEX_TOOL_LIMITS.timeout).toBe(SUBSCRIPTION_TOOL_LIMITS.timeout);
   const args = codexToolsPolicy('gpt-6-astra').args;
   for (const flag of ['--ignore-rules', '--ephemeral', '--dangerously-bypass-approvals-and-sandbox',
     '--dangerously-bypass-hook-trust', 'web_search="live"']) expect(args).toContain(flag);
@@ -468,8 +469,8 @@ it('Rule 30 and revision 12: a Codex tool turn keeps its own tools, installs the
     deniedRoots: [], hook: { node: '/usr/local/bin/node', script: '/repo/tests/preview/tool-admission-hook.mjs' }, gate };
   const hooks = codexToolHookArgs(turn);
   expect(hooks).toEqual(['-c', `hooks.PreToolUse=[{matcher='*',hooks=[{type='command',command='/usr/local/bin/node /repo/tests/preview/`
-    + `tool-admission-hook.mjs pre /r/tool-turns/a-0/state',timeout=300}]}]`, '-c', `hooks.PostToolUse=[{matcher='*',hooks=[{type='command',`
-    + `command='/usr/local/bin/node /repo/tests/preview/tool-admission-hook.mjs post /r/tool-turns/a-0/state',timeout=300}]}]`,
+    + `tool-admission-hook.mjs pre /r/tool-turns/a-0/state',timeout=600}]}]`, '-c', `hooks.PostToolUse=[{matcher='*',hooks=[{type='command',`
+    + `command='/usr/local/bin/node /repo/tests/preview/tool-admission-hook.mjs post /r/tool-turns/a-0/state',timeout=600}]}]`,
   '-c', 'model_provider=instar-gate', '-c', `model_providers.instar-gate={name="OpenAI",base_url="${gate}/backend-api/codex",`
     + 'wire_api="responses",requires_openai_auth=true}', '-C', turn.workspace, '-']);
   expect(() => codexToolHookArgs({ ...turn, stateDirectory: "/r/it's" })).toThrow(/absolute and plain/u);
@@ -545,6 +546,12 @@ it('answers a Codex tool turn only when every tool item has an admitted call in 
   expect(command.args).toEqual([...toolPolicy.args, ...codexToolHookArgs(toolTurn)]);
   expect(command.cwd).toBe(realpathSync(workspace));
   expect(command.stdin.startsWith(CODEX_TOOLS_SYSTEM_PROMPT)).toBe(true);
+  // The larger time budget admits at its ceiling; one millisecond past it reaches no executable.
+  const longer = { ...bounds, deadline: 700000, timeout: 600000 };
+  expect((await tools(recorded.admission).invoke('{}', longer)).state).toBe('complete');
+  const before = f.commands().length;
+  expect((await tools(recorded.admission).invoke('{}', { ...longer, timeout: 600001 })).state).toBe('uncertain');
+  expect(f.commands()).toHaveLength(before);
   // A tool item with no admitted call behind it (the hook did not run, or its record is short) refuses the answer.
   const short = recorded.admission.split('\n').filter(line => !line.includes('"apply_patch"')).join('\n');
   expect((await tools(short).invoke('{"question":"tools"}', bounds)).state).toBe('rejected');

@@ -66,7 +66,7 @@ export const CODEX_CONVERSATION_SYSTEM_PROMPT = "You are an Instar 2.0 agent, sp
 export const CODEX_TOOLS_FRAMING = 'preview-codex-tools-v1';
 /** The same turn bounds as the Claude tool turn (`SUBSCRIPTION_TOOL_LIMITS`; equal by test), so the runner's one
  * reservation (`maxTurns - 1` calls beyond the answer's own) covers either doorway. */
-export const CODEX_TOOL_LIMITS = Object.freeze({ maxTurns: 8, timeout: 300000, maxWriteBytes: 1048576 });
+export const CODEX_TOOL_LIMITS = Object.freeze({ maxTurns: 16, timeout: 600000, maxWriteBytes: 1048576 });
 /** The fixed notice Codex 0.156.1 prints as an `error` item when the per-turn hook is trusted for the invocation
  * (recorded live 2026-10-03, tests/preview/fixtures/codex-tool-turn-2026-10-03). Exactly this text is not a failure
  * of a tool turn; any other error item still refuses it. */

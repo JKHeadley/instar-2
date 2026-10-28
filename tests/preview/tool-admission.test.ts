@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
 // @ts-expect-error The hook and its decision stay plain JavaScript: the harness runs them without a loader.
 import { admitEgress, admitToolCall, admitToolCallEffect, admitToolEffect, egressTarget, gitAdvertisement, gitFetchRequest, gitRepository, publicAddress, shellSandboxProfile, toolShellPrefix, toolTrace, webReadHost } from './tool-admission.mjs';
+import { SUBSCRIPTION_TOOL_LIMITS } from '../../src/assembly/production-provider.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { startClearHeldCheck } from './held-check-stub.js';
 // @ts-expect-error The doorway stays plain JavaScript, like the hook.
@@ -807,4 +808,12 @@ it('answers each admitted recorded call with an explicit one-call allow, never a
   const denied = hook(state, j('Write', { ...input, file_path: join(ws, '..', 'outside', 'recorded.txt') }));
   expect(denied.decision).toBe('deny');
   expect(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecision).toBe('deny');
+});
+
+it('the CLI hook admits beyond the old 32-call ceiling through call 64 and refuses call 65', () => {
+  const { state } = turn(SUBSCRIPTION_TOOL_LIMITS.maxToolCalls);
+  for (const used of [32, 63]) expect(hook(state, j('Read', { file_path: 'in.txt' }), used).decision).toBe('allow');
+  const exceeded = hook(state, j('Read', { file_path: 'in.txt' }), 64);
+  expect(exceeded.decision).toBe('deny');
+  expect(exceeded.stdout).toContain('per-step call cap 64 reached');
 });
