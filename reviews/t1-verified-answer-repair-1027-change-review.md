@@ -1,6 +1,7 @@
 # Change review — Rework explicitly rejected reports and fit all pending evidence
 
-Subject base: 236df8a74e795df8db685305c8b71869f2244df8
+Subject base: 9e04f28e9ef5d7c623e43e3197fde4620d8bd5c8
+Imported review scope: original candidate base 236df8a74e795df8db685305c8b71869f2244df8; rebound to the assigned train-164 base for this exact patch application.
 Review state: open
 Reviewed content: none
 Outcome: Explicitly rejected reports return to owned correction; complete candidate evidence uses the input envelope and every omitted item is counted.
@@ -40,3 +41,9 @@ Validation: Both reviewer reproductions failed before the repair. Extended recor
 simplestRobustRoute: This is the simplest robust route: extend the existing answer decision into withheld-report recovery and let existing input-envelope fitting carry all candidate evidence. Start: exact offered unbound report. End: corrected work and normal delivery receipt. Limits: secrets, spend, stop, durable intake, uniqueness and existing size bounds. No extra scheduler, cache or verifier. Studio review and unattended live-model acceptance remain desk-owned.
 80/20: Two reviewer reproductions plus malformed/omitted neighbors and restart-to-receipt recovery cover both repairs; the production edit stays below 100 changed lines.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
+Deferral: generated/register.json:1 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
+Deferral: tests/preview/astra-fit-middle-independent.test.ts:76 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
+Deferral: tests/preview/astra-repair-envelope-independent.test.ts:76 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
+Deferral: tests/preview/astra-two-short-independent.test.ts:89 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
+Deferral: tests/preview/journal.ts:2673 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
+Deferral: tests/preview/t1-verified-answer.test.ts:72 | not-a-deferral=Inherited candidate protocol or assertion about owed work, not deferred builder work
