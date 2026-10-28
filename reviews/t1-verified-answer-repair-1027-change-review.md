@@ -31,7 +31,9 @@ Prompt finding: e8708c7fea24 | protocol-literal | Unchanged protocol guidance, n
 Deferral: tests/preview/astra-report-backlog-review.test.ts:65 | not-a-deferral=Regression assertion about pending delivery, not deferred builder work
 Deferral: tests/preview/astra-t1-recovery-review.test.ts:88 | not-a-deferral=Regression assertion about pending delivery, not deferred builder work
 
-Subject (3 paths): tests/preview/astra-report-backlog-review.test.ts, tests/preview/astra-t1-recovery-review.test.ts, tests/preview/journal.ts
+Subject (10 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/astra-report-backlog-review.test.ts, tests/preview/astra-t1-recovery-review.test.ts, tests/preview/journal.ts
+
+Validation: Both reviewer reproductions failed before the repair. Extended recorded replay and delivery neighbors pass (52 tests); typecheck and architecture pass. Register regenerated in shape-only replay mode from fc16df44ea8bda1a3acfd8c04eb8c877c02de50f. Source edit is 71 changed lines (52 additions, 19 deletions). Final pinned checks and host-dependent results are listed in the builder report.
 
 ## Closing block
 
