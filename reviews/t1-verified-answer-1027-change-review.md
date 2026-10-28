@@ -35,7 +35,7 @@ Subject (25 paths): generated/capabilities.json, generated/capabilities.md, gene
 
 Decision: t1-envelope | Let optional report evidence yield under byte pressure before it crowds out the current answer; absent report text cannot authorize selection. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/t1-verified-answer-1027-PROGRESS.md
 
-Validation: Focused final replay and default-context floor pass (20 tests); delivery/revision neighbors pass (25 tests); all other changed delivery selection scenarios pass. Two untouched physical-bridge cases in journal-send-outcome remain host-dependent here; they are listed in the local report. Typecheck and build passed before the final small envelope refinement; final typecheck and gate checks are in progress. Generated register refreshed in replay mode from source commit 7753b15152202c4556dcd60371b8a301821ce2e4.
+Validation: Focused final replay and default-context floor pass (20 tests); delivery/revision neighbors pass (25 tests); all other changed delivery selection scenarios pass. Two untouched physical-bridge cases in journal-send-outcome remain host-dependent here; they are listed in the local report. Typecheck and build passed before the final small envelope refinement; final typecheck and gate outcomes are recorded in the builder report. Generated register refreshed in replay mode from source commit 7753b15152202c4556dcd60371b8a301821ce2e4.
 
 ## Closing block
 
