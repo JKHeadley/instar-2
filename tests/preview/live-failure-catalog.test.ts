@@ -25,7 +25,7 @@ const inJournal = async (run: (path: string) => Promise<void>) => {
 
 it('F01 thinking overflow: an over-cap review stays charged and held after replay; a capped result can complete', async () => {
   // Live failure: thinking consumed the shared output allowance, leaving no review verdict.
-  expect(SUBSCRIPTION_THINKING_ENV.MAX_THINKING_TOKENS).toBe('0');
+  expect(SUBSCRIPTION_THINKING_ENV.MAX_THINKING_TOKENS).toBe('2048');
   expect(subscriptionConversationPolicy('claude-sonnet-5').maxTokens).toBe(2048);
   await inJournal(async path => {
     const journal = openPreviewJournal(path, key, genesis());

@@ -15,7 +15,7 @@ const frame = { type: 'result', subtype: process.env.STUB_SUBTYPE || 'success', 
   session_id: 'offline-probe', result: ${JSON.stringify(JSON.stringify(decision))},
   usage: { input_tokens: 1, output_tokens: Number(process.env.STUB_OUTPUT_TOKENS) } };
 if (process.env.CLAUDE_CODE_MAX_RETRIES !== '0' || process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS !== '2048'
-  || process.env.MAX_THINKING_TOKENS !== '0') process.exit(3);
+  || process.env.MAX_THINKING_TOKENS !== '2048') process.exit(3);
 process.stdout.write(JSON.stringify(frame));
 process.exit(Number(process.env.STUB_EXIT_CODE || '0'));
 `, { mode: 0o755 });

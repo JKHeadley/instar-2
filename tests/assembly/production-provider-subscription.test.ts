@@ -26,7 +26,7 @@ const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const hash = (value: unknown) => canonical(value).kind === 'Success' ?
   (canonical(value) as { kind: 'Success'; value: { hash: string } }).value.hash : '';
-function fixture(options: { descriptor?: boolean; status?: object; terminal?: string; pending?: boolean; resultBytes?: number; rawBytes?: number; tokens?: number; thinking?: unknown; invalidUtf8?: boolean; malformedAuth?: boolean; conversation?: boolean } = {}) {
+function fixture(options: { model?: string; descriptor?: boolean; status?: object; terminal?: string; pending?: boolean; resultBytes?: number; rawBytes?: number; tokens?: number; thinking?: unknown; invalidUtf8?: boolean; malformedAuth?: boolean; conversation?: boolean } = {}) {
   const f = factsFixture(), root = realpathSync(mkdtempSync(join(tmpdir(), 'subscription-offline-'))); roots.push(root);
   const home = join(root, 'home'), configDirectory = join(root, 'config'), workingDirectory = join(root, 'work');
   for (const path of [home, configDirectory, workingDirectory]) mkdirSync(path, { mode: 0o700 });
@@ -63,7 +63,7 @@ function fixture(options: { descriptor?: boolean; status?: object; terminal?: st
     executable, artifact: `sha256:${createHash('sha256').update(source).digest('hex')}`, version: '2.1.280',
     activationReference: 'activation:synthetic', loginProfileIdentity: '', managedConfigurationDigest: '' };
   const profile: ProviderSubscriptionProfile = Object.freeze({ ...seed, ...io.inspectSubscriptionProfile(seed) });
-  const model = 'claude-synthetic-exact-1';
+  const model = options.model ?? 'claude-synthetic-exact-1';
   const activation: SubscriptionActivationRecord = { type: 'SubscriptionActivationRecord', schemaVersion: 1,
     reference: profile.activationReference, waiver: 'synthetic-waiver', p11: 'synthetic-p11', reviewedHead: 'synthetic-head',
     trial: 'synthetic-trial', baseConfigurationDigest: hash('synthetic-config'), profileDigest: hash(profile),
@@ -119,16 +119,50 @@ it('spawns the synthetic subscription CLI with exact bytes, args and allowlisted
 const CURRENT_DIGESTS = { 'preview-decision-system-v2': 'sha256:ddf74607ea84a54ad11e7db935e7516d8a4bad0065087402afdc2ecec334e074',
   // 2026-10-22 composed supersession and brief-rationale guidance; activation requires a verified policy successor.
   [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:ee765e147e86a6ea8923f5ce542d150a129a86c461d1315c9595b1131c9dc8e6' } as const;
-for (const conversation of [false, true]) it(`sends thinking off on the ${conversation ? 'conversation' : 'decision'} framing, args unchanged`, async () => {
-  const f = fixture({ conversation });
+for (const conversation of [false, true]) it(`enables thinking on the ${conversation ? 'conversation' : 'decision'} framing, args unchanged`, async () => {
+  const f = fixture({ conversation, model: 'claude-opus-5-5' });
   expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('complete');
   const model = f.commands().filter(row => row.args.includes('--print'));
   expect(model).toHaveLength(1);
-  expect(model[0].env.MAX_THINKING_TOKENS).toBe('0'); expect(f.launched.at(-1)!.MAX_THINKING_TOKENS).toBe('0');
+  expect(model[0].env.MAX_THINKING_TOKENS).toBe('2048'); expect(f.launched.at(-1)!.MAX_THINKING_TOKENS).toBe('2048');
   expect(model[0].env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('4096');
   expect(model[0].args).toEqual((conversation ? subscriptionConversationPolicy : subscriptionInvocationPolicy)(f.input.model).args);
   expect(model[0].args.some((arg: string) => /thinking|effort/iu.test(arg))).toBe(false);
 });
+// Portable adapter contract: real recorded terminals, injected transport (no provider
+// or OS resource shim). Physical child coverage above remains independently required.
+for (const [label, accepted] of [['writer', true], ['review', true], ['overCap', false]] as const)
+  it(`thinking-enabled Opus replays recorded ${label} without raising limits`, async () => {
+    const frame = summaryCapture.liveReplay[label].frame;
+    const f = fixture({ conversation: true, model: 'claude-opus-5-5' });
+    const launches: Parameters<ProductionProviderIO['execute']>[0][] = [];
+    const profile = f.input.profile;
+    const io = { ...f.input.io, execute: async (command: Parameters<ProductionProviderIO['execute']>[0]) => {
+      launches.push(command);
+      const stdout = command.args[0] === '--version' ? '2.1.280 (Claude Code)' : command.args[0] === 'auth'
+        ? JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', analyticsDisabled: true,
+          projectsDirectory: `${profile.configDirectory}/projects`, configDirectory: profile.configDirectory,
+          email: profile.expectedAccount, orgId: profile.organization, orgName: 'synthetic', subscriptionType: profile.plan })
+        : JSON.stringify(frame);
+      return { code: 0, limited: false, stdout, stdoutBytes: Buffer.from(stdout) };
+    } };
+    const route = value(createClaudeCodeSubscriptionRoute({ ...f.input, io }));
+    const observed = await route.invoke('recorded replay', f.bounds);
+    expect(observed.state).toBe(accepted ? 'complete' : 'uncertain');
+    expect(observed.usage.outputTokens).toBe(frame.usage.output_tokens);
+    expect(observed.usage.answerTokens).toBe(frame.usage.output_tokens - frame.usage.output_tokens_details.thinking_tokens);
+    expect(launches).toHaveLength(3);
+    expect(launches[2]!.args).toContain('claude-opus-5-5');
+    expect(launches[2]!.env).toMatchObject({ MAX_THINKING_TOKENS: '2048', CLAUDE_CODE_MAX_OUTPUT_TOKENS: '4096',
+      CLAUDE_CODE_MAX_RETRIES: '0' });
+    for (const bounds of [{ ...f.bounds, maxTokens: 2049 }, { ...f.bounds, maxCharge: 1 },
+      { ...f.bounds, automaticRetries: 1 as 0 }])
+      expect((await route.invoke('refused bounds', bounds)).state).toBe('uncertain');
+    expect(launches).toHaveLength(3);
+    f.stop();
+    expect((await route.invoke('stopped', f.bounds)).state).toBe('uncertain');
+    expect(launches).toHaveLength(3);
+  });
 it('keeps both current activation policy digests; a policy-borne thinking field would void the activation', () => {
   const f = fixture({ conversation: true }), model = 'claude-sonnet-5';
   for (const [framing, digest] of Object.entries(CURRENT_DIGESTS)) {
@@ -238,21 +272,23 @@ for (const tokens of [2048, 2049]) it(`enforces ${tokens} observed output tokens
 for (const [tokens, thinking, state] of [[3286, 2048, 'complete'], [4096, 2048, 'complete'], [4097, 2048, 'uncertain'],
   [3286, -1, 'uncertain'], [3286, 5000, 'uncertain'], [3286, '2048', 'uncertain']] as const)
   it(`checks the output cap on answer tokens: ${tokens} output with ${String(thinking)} thinking is ${state}`, async () => {
-    const f = fixture({ tokens, thinking });
+    const f = fixture({ model: 'claude-opus-5-5', tokens, thinking });
     const observed = await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds);
     expect(observed.state).toBe(state);
     expect(observed.usage.outputTokens).toBe(tokens);
+    expect(f.launched.at(-1)!.MAX_THINKING_TOKENS).toBe('2048');
   });
 for (const [label, accepted] of [['writer', true], ['review', true], ['overCap', false]] as const)
   it(`replays the real S0b ${label} through admission with thinking room but the same answer cap`, async () => {
     const frame = summaryCapture.liveReplay[label].frame;
-    const f = fixture({ conversation: true, terminal: JSON.stringify(frame) });
+    const f = fixture({ conversation: true, model: 'claude-opus-5-5', terminal: JSON.stringify(frame) });
     const observed = await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('recorded replay', f.bounds);
     expect(observed.state).toBe(accepted ? 'complete' : 'uncertain');
     expect(observed.usage.outputTokens).toBe(frame.usage.output_tokens);
     expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
     expect(f.commands().find(row => row.args.includes('--print')).env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('4096');
     expect(f.bounds.maxTokens).toBe(2048);
+    expect(f.launched.at(-1)!.MAX_THINKING_TOKENS).toBe('2048');
   });
 it('replays recorded Opus usage through the subscription adapter and effect/invocation owners, retaining total accounting', async () => {
   const recorded = thinkingCapture.recorded.usage;

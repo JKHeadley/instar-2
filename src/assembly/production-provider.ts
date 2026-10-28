@@ -453,11 +453,12 @@ export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: strin
     hooks: { PreToolUse: hook('pre'), PermissionRequest: hook('permission'), PostToolUse: hook('post'), SubagentStart: hook('child-start'), SubagentStop: hook('child-stop') },
   });
 }
-/** Extended thinking off for every subscription call. Claude Code 2.1.280 maps
- * MAX_THINKING_TOKENS=0 to thinking {type:"disabled"} (claude-sonnet-5 accepts it);
- * for that adaptive model a positive budget is ignored, so off is the only bound.
+/** Enable thinking using the existing 2048-token generation headroom. A positive
+ * budget enables adaptive thinking on Opus 5.5; its numeric value is NOT a thinking
+ * ceiling on adaptive models. The CLI total-generation ceiling and the adapter's
+ * answer-token admission remain the bounds; total output is retained in usage.
  * Env-only by design: it is not part of the activation-bound policy digest. */
-export const SUBSCRIPTION_THINKING_ENV = Object.freeze({ MAX_THINKING_TOKENS: '0' });
+export const SUBSCRIPTION_THINKING_ENV = Object.freeze({ MAX_THINKING_TOKENS: '2048' });
 export type SubscriptionFraming = 'preview-decision-system-v2' | typeof SUBSCRIPTION_CONVERSATION_FRAMING
   | typeof SUBSCRIPTION_TOOLS_FRAMING | typeof SUBSCRIPTION_NATIVE_FRAMING;
 /** Exact policy and system prompt for a framing; the historical v2 default is unchanged. */
