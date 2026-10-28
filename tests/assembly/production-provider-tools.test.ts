@@ -368,15 +368,47 @@ it('admits the increased CLI timeout and refuses one millisecond above it before
   expect(policy.limits).toMatchObject({ maxTurns: 16, maxToolCalls: 64, timeout: 600000 });
   const commands: number[] = [], input = f.input(), execute = input.io.execute;
   const route = value(createClaudeCodeSubscriptionRoute({ ...input, io: { ...input.io,
-    execute: async (command: Parameters<ProductionProviderIO['execute']>[0]) => {
-      expect(command.env.MAX_THINKING_TOKENS).toBe('2048');
-      commands.push(command.timeout); return execute(command); } } }));
+    execute: async (command: Parameters<ProductionProviderIO['execute']>[0]) => { commands.push(command.timeout); return execute(command); } } }));
   const bounds = { ...f.bounds, timeout: policy.timeout, deadline: 700000 };
   expect(await route.invoke('{}', bounds)).toMatchObject({ state: 'complete' });
   expect(commands.at(-1)).toBe(600000);
-  // The merged candidate must enable thinking in the same dispatch that uses the larger allowance.
-  expect(f.commands().at(-1).maxOut).toBe('34816');
   const count = commands.length;
   expect(await route.invoke('{}', { ...bounds, timeout: policy.timeout + 1 })).toMatchObject({ state: 'uncertain' });
   expect(commands).toHaveLength(count);
+});
+
+// Combined copy adapter contract: recorded text, synthetic CLI wrapping and injected transport.
+// Physical launcher tests above remain intact for the native host; this makes no provider call.
+it('combines thinking and expanded tool bounds on recorded shapes with exact refusal neighbors', async () => {
+  const capture = JSON.parse(readFileSync(new URL('../preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8'));
+  for (const shape of capture.otherShapes) {
+    const f = fixture(), input = f.input(), launches: Parameters<ProductionProviderIO['execute']>[0][] = [];
+    const profile = input.profile, policy = subscriptionToolsPolicy(f.model);
+    const io = { ...input.io, execute: async (command: Parameters<ProductionProviderIO['execute']>[0]) => {
+      launches.push(command);
+      const stdout = command.args[0] === '--version' ? '2.1.280 (Claude Code)' : command.args[0] === 'auth'
+        ? JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', analyticsDisabled: true,
+          projectsDirectory: `${profile.configDirectory}/projects`, configDirectory: profile.configDirectory,
+          email: profile.expectedAccount, orgId: profile.organization, orgName: 'synthetic', subscriptionType: profile.plan })
+        : JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: shape.raw,
+          num_turns: 16, session_id: 'combined-recorded-shape', usage: { input_tokens: 1, output_tokens: 1 } });
+      return { code: 0, limited: false, stdout, stdoutBytes: Buffer.from(stdout) };
+    } };
+    let active = true;
+    const route = value(createClaudeCodeSubscriptionRoute({ ...input, io, active: () => active }));
+    const bounds = { ...f.bounds, timeout: policy.timeout, deadline: 700000 };
+    expect(await route.invoke('recorded copy replay', bounds), shape.id).toMatchObject({ state: 'complete', bytes: shape.raw });
+    expect(launches).toHaveLength(3);
+    expect(launches[2]).toMatchObject({ timeout: 600000,
+      env: { MAX_THINKING_TOKENS: '2048', CLAUDE_CODE_MAX_OUTPUT_TOKENS: '34816', CLAUDE_CODE_MAX_RETRIES: '0' } });
+    expect(launches[2]!.args[launches[2]!.args.indexOf('--max-turns') + 1]).toBe('16');
+    expect(policy.limits.maxToolCalls).toBe(64);
+    for (const refused of [{ ...bounds, timeout: 600001 }, { ...bounds, maxTokens: policy.maxTokens + 1 },
+      { ...bounds, maxCharge: 1 }, { ...bounds, automaticRetries: 1 as 0 }])
+      expect((await route.invoke('outside bound', refused)).state).toBe('uncertain');
+    expect(launches).toHaveLength(3);
+    active = false;
+    expect((await route.invoke('stopped copy', bounds)).state).toBe('uncertain');
+    expect(launches).toHaveLength(3);
+  }
 });

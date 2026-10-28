@@ -1,14 +1,14 @@
 # Change review — bounded tool-turn copy candidate
 
-Subject base: f2798733d43e
+Subject base: f2798733d43ee4460aac33c40e2f9364a0e52d04
 Review state: open
 Reviewed content: none
 Outcome: allow longer tool work on an isolated candidate for desk scoring.
 Affected rules: 1, 30, 36, 42, 49, 55, 57, 58, 60, 74, 101, 103, 111, 113, 115, 116.
 Affected floors: secrets, spend cap, stop, durable intake, no duplicate sends and output review retain their existing enforcement.
 Operator questions: none for building this authorized copy. Its changed policy requires fresh covering authority before activation; an old class or guidance-only pin does not authorize the increase.
-Suggested tier: bounded resource-policy change
-Declared tier: bounded resource-policy change
+Suggested tier: critical
+Declared tier: critical
 Multi-machine posture: no new state; each owning runner uses the shared finite policy. Ownership, replication demands and journal authority are unchanged.
 
 simplestRobustRoute: raise the existing three constants and prove the existing boundaries. No new loop, scheduler, grant class, timeout mechanism or override is introduced. The outer journal reserves the entire liability before dispatch, the hook admits tools, and the existing model/output checks handle termination. This is a candidate submission, not an autonomous-completion or live-release claim.
@@ -35,4 +35,23 @@ Copy measurement before release: desk runs the same real tasks on frozen r3 and 
 
 Undo and recovery: revert this candidate commit and use the prior covering activation. Do not mutate a running journal or reuse uncertain sends.
 Hook bypass: none; core.hooksPath unset, inspected hooks directory contains sample hooks only.
-Convergence: author submission for desk independent review.
+Convergence: none
+
+Tier rationale: Bounded resource-policy change submitted for isolated copy scoring, with independent review still open.
+Bug class: none
+Bug evidence: none
+Prompt review: Combined-copy metadata renewal; original source prompts are unchanged. Existing literals below describe protocol, not test-dependent decision logic.
+Prompt finding: 0d4664ea9de7 | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "run without another yes. the operator can tighten or revoke trust through setup-"
+Prompt finding: 14d7eeccc218 | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
+Prompt finding: 38a2c5d186f1 | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-provider.ts <- tests/preview/act-first.test.ts: "give a brief decision rationale supported by the relevant evidence."
+Prompt finding: 42faf877ba82 | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-codex-provider.ts <- tests/preview/act-first.test.ts: "you are an instar 2.0 agent,"
+Prompt finding: 45e37ea2e9e9 | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
+Prompt finding: 7a4f0c3f557c | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-codex-provider.ts <- tests/preview/act-first.test.ts: "give a brief decision rationale supported by the relevant evidence."
+Prompt finding: 9781075d458e | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "the effect doorway reports any refusal and its reason; say so plainly."
+Prompt finding: b1bb3946362d | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-provider.ts <- tests/preview/act-first.test.ts: "you are an instar 2.0 agent,"
+
+## Closing block
+
+simplestRobustRoute: Raise the existing finite constants and preserve the existing guards; no new mechanism. This is the simplest robust route and no live-completion claim is made.
+80/20: Existing boundary tests and recorded replays cover the candidate; Studio owns native proof, independent review and same-task scoring.
+VERDICT: author submission; no independent verdict

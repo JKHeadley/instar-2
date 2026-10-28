@@ -18,7 +18,7 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none
 Convergence: none
-Decision: thinking-existing-headroom | Enable adaptive thinking with positive 2048 while preserving the already allocated generation headroom and answer-token accounting; do not import 1.x effort pins or widen limits. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/thinking-on-copy-1028-PROGRESS.md
+Decision: thinking-existing-headroom | Enable adaptive thinking with positive 2048 while preserving the already allocated generation headroom and answer-token accounting; do not import 1.x effort pins or widen limits. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/thinking-caps-copy-1028-PROGRESS.md
 Prompt review: No prompt or decision parser changes. Existing protocol literals below are unchanged; offline real captured usage and summary outputs exercise enabled launch, with existing recorded-shape regressions covering review and empty replies.
 Prompt finding: 0d4664ea9de7 | protocol-literal | Existing unchanged protocol guidance, not a new keyword decision — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "run without another yes. the operator can tighten or revoke trust through setup-"
 Prompt finding: 14d7eeccc218 | protocol-literal | Existing unchanged protocol guidance, not a new keyword decision — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
@@ -30,6 +30,11 @@ Prompt finding: b1bb3946362d | protocol-literal | Existing unchanged protocol gu
 Subject (6 paths): src/assembly/production-provider.ts, tests/assembly/production-provider-subscription.test.ts, tests/preview/journal-provider.test.ts, tests/preview/live-failure-catalog.test.ts, tests/preview/reply-review-corpus.test.ts, tests/preview/stage2-recovery.test.ts
 
 Validation: Portable Claude replay includes the seven captured summary-writer, summary-uncertain, Jev-undecided, Jev-unsure, reply-review, delivered-reply and empty-reply shapes from retrospective-duty-followup-train-1-2026-10-08.json. Their text is exact; their CLI wrapper and usage are synthetic. Transport preserves those shapes for the existing downstream readers; no fresh model-output claim.
+
+Combined-copy provenance: original thinking-only report destination was /Users/dabombstudio/.instar/agents/echo/.instar/lanes/thinking-on-copy-1028-PROGRESS.md; the combined handoff now also names the inherited decision. Original commits and replay evidence remain in history.
+
+Prompt finding: 42faf877ba82 | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-codex-provider.ts <- tests/preview/act-first.test.ts: "you are an instar 2.0 agent,"
+Prompt finding: 7a4f0c3f557c | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-codex-provider.ts <- tests/preview/act-first.test.ts: "give a brief decision rationale supported by the relevant evidence."
 
 ## Closing block
 
