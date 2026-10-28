@@ -15,9 +15,9 @@ Undo and recovery: Revert the isolated branch before any switch. No live journal
 Multi-machine posture: Conversation ownership and send receipts remain the current authorities; these changes add no cross-machine state.
 Layer below: Reuses the existing reply-review deadline, claim excision, tool trace, and unique uncertainty notice; no second send path was introduced.
 Bug class: integration
-Bug evidence: T1 stopped copy and exact review timing in .instar/lanes/real-task-candidate-20261027/PROGRESS.md; tests/preview/t1-review-budget-replay.test.ts reproduces coherent and incoherent remainder boundaries; T4 stopped copy has six paired results and exit 1; tests/preview/tool-failure-answer.test.ts covers gate refusal with complete and incomplete traces. Focused combined tests passed 96/96; typecheck, register check and lint passed. Full suite and five-task candidate score remain pending.
+Bug evidence: reproducer=tests/preview/t1-review-budget-replay.test.ts; gate-reproducer=tests/preview/tool-failure-answer.test.ts; T1 stopped copy and exact review timing are in .instar/lanes/real-task-candidate-20261027/PROGRESS.md; T4 stopped copy has six paired results and exit 1. Focused combined tests passed 96/96; typecheck, register check and lint passed. Full suite and five-task candidate score remain pending.
 Hook bypass: none
-Convergence: Independent scoped reviewer found no concrete safety or correctness defect and cleared isolated copy trial; live acceptance still depends on full suite and task score.
+Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
 Decision: real-task-r3-review-budget-1028 | Reserve 25 seconds for mandatory review of a claim-excised remainder so a slow full revision cannot consume the whole review deadline. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/real-task-candidate-20261027/PROGRESS.md
 Decision: real-task-r3-gate-notice-1028 | Permit the existing unique uncertain notice only after all admitted tool results are paired, no child remains, and no stop occurred. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/real-task-candidate-20261027/PROGRESS.md
