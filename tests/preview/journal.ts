@@ -1184,6 +1184,7 @@ export type JournalRecord =
     rejected?: RejectedObligations;
     /** Completed obligation work whose result this answer carries to the operator (Rules 8, 92). */
     reports?: string[];
+    rejectedReports?: { key: string; text: string; objection: string }[];
     /** Rules 8, 56, 100: the one fixed reminder line (credential expiry stage or failing doorway check) this answer carries. */
     notices?: ReplyNotice[];
     /** Model-proposed promises and fulfillments, validated as exact quotes of this answer (Rule 10). */
@@ -1259,8 +1260,8 @@ export type JournalRecord =
     loops?: ReplyLoop[]; blocker?: ProposedBlocker; blockerRechecks?: BlockerRecheck[];
     /** Obligation work results this sent reply delivers; delivery settles the obligation (Rules 8, 92). */
     reports?: string[];
-    /** Attached results this sent reply does NOT carry in full because a pre-send review removed or rewrote part of
-     * them, each with that review's objection: the result returns to owned work for a correction (Rules 8, 22, 46). */
+    /** Results explicitly rejected by the answering mind or removed by pre-send review,
+     * each with its objection: the result returns to owned work for a correction (Rules 8, 22, 46). */
     withheldReports?: { key: string; objection: string }[];
     /** Present when a pre-send review objected or could not decide; the reply was released anyway. */
     release?: ReplyRelease;
@@ -1505,7 +1506,7 @@ export interface Turn { workingProgress?: WorkingProgress[]; waitingProgress?: {
   reservedAt?: number;
   /** Obligations the answer proposed; the intent of a reply that says them makes them durable. */
   answerLoops?: ReplyLoop[]; answerBlocker?: ProposedBlocker; answerRechecks?: BlockerRecheck[];
-  answerRejected?: RejectedObligations; answerReports?: string[]; answerNotices?: ReplyNotice[];
+  answerRejected?: RejectedObligations; answerReports?: string[]; answerRejectedReports?: { key: string; text: string; objection: string }[]; answerNotices?: ReplyNotice[];
   /** Validated model proposals from the answer, and the fulfillments recorded with the reply intent. */
   proposedPromises?: PromiseProposal[]; proposedFulfills?: FulfillmentProposal[]; intentFulfills?: number[];
   /** The operator action this turn's answer proposed; its reply carries the exact request or the refusal. */
@@ -2663,8 +2664,9 @@ export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLI
 export const READY_RESULT = 'report awaiting current evidence review before delivery, otherwise a later message; not proof the work is done';
 const REPORT_SELECTION_GUIDANCE = 'Judge pendingReports.items against current-task evidence and your answer. '
   + 'A prior answer or follow-up is not proof of current capabilities. Return selectedReports:[key] only for reports '
-  + 'whose claims remain supported and consistent now; the runner appends those verbatim. Omit unverifiable or contradictory reports; '
-  + 'they remain owed, not completed or delivered. Explain relevant uncertainty without repeating unsupported claims.';
+  + 'whose claims remain supported and consistent now; the runner appends those verbatim. Return rejectedReports:[{key,objection}] '
+  + 'for offered unverifiable or contradictory reports, with a concise objection (at most 1000 bytes), to return them to owned rework. '
+  + 'Mere omission leaves reports unchanged; they remain owed, not completed or delivered. Explain relevant uncertainty without repeating unsupported claims.';
 /** Reads one work step's decision; anything malformed is a recorded failed attempt, never a guessed outcome. */
 export function obligationDecision(output: string, kind: 'commitment' | 'blocker', at: number, zone: string, previous: readonly RunCompletionItem[] = []):
   Pick<Extract<JournalRecord, { kind: 'obligation-result' }>, 'outcome' | 'report' | 'note' | 'waitsOn' | 'recheckAt' | 'assessment' | 'completion'> {
@@ -2764,11 +2766,13 @@ function applyIntentObligations(view: JournalView, turn: Turn, row: Extract<Jour
       .toString('utf8').replace(/\uFFFD+$/u, '').trim()
       || 'The requested result was omitted from its delivery intent; correct it before delivery.' })) : undefined);
   if (withheldReports !== undefined) {
-    // Only a commitment's attached result that this reply's text does not carry, never one it also delivers.
+    // Only an attached or explicitly rejected result absent from this reply, never one it also delivers.
     const keys = withheldReports.map(item => item?.key);
     if (!Array.isArray(withheldReports) || !withheldReports.length || new Set(keys).size !== keys.length
       || withheldReports.some(item => typeof item?.key !== 'string' || !item.key.startsWith('commitment:')
-        || !boundedText(item.objection, 1, 1000) || !turn.answerReports?.includes(item.key) || row.reports?.includes(item.key)
+        || !boundedText(item.objection, 1, 1000) || !(turn.answerReports?.includes(item.key)
+          || turn.answerRejectedReports?.some(rejected => rejected.key === item.key && rejected.objection === item.objection
+            && rejected.text === view.obligationWork[item.key]?.report?.text)) || row.reports?.includes(item.key)
         || !attachableReport(view.obligationWork[item.key]) || row.text.includes(view.obligationWork[item.key]!.report!.text)))
       throw Error('preview journal: invalid withheld report');
     for (const { key, objection } of withheldReports) {
@@ -5122,6 +5126,14 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
         || row.reports.some(key => !attachableReport(view.obligationWork[key]) || !row.text.includes(view.obligationWork[key]!.report!.text)))
         throw Error('preview journal: invalid obligation report');
       turn.answerReports = row.reports;
+    }
+    if (row.rejectedReports !== undefined) {
+      if (!Array.isArray(row.rejectedReports) || !row.rejectedReports.length || !operatorWriter(view, turn, true)
+        || new Set(row.rejectedReports.map(item => item.key)).size !== row.rejectedReports.length
+        || row.rejectedReports.some(item => !item.key.startsWith('commitment:') || !boundedText(item.objection, 1, 1000)
+          || !pendingReports(view, { thread: turn.thread }).some(report => report.key === item.key && report.text === item.text)
+          || row.reports?.includes(item.key) || row.text.includes(item.text))) throw Error('preview journal: invalid rejected report');
+      turn.answerRejectedReports = row.rejectedReports;
     }
     if (row.notices !== undefined) {
       if (!validAnswerNotices(row.notices, row.text)) throw Error('preview journal: invalid reply notice');
@@ -7700,8 +7712,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const otherOperatorRequest = otherState ? describe(otherState, false) : undefined;
     const actionFacts = currentActionFacts(journal.view, now, question !== undefined && fromOperator(question)
       && (journal.view.genesis.forum !== true || operatorOnlyVerified), String(current ?? 'main'), zone);
-    const reportCandidates = awayFor === undefined || !fromOperator(awayFor) || awayFor.requestedAction ? [] : recentWithin(pendingReports(journal.view, { thread: current }).map(item => ({
-      ...item, subject: clean(redact(item.subject).text, true), text: clean(redact(item.text).text, true) })).reverse(), MAX_ANSWER_BYTES).reverse();
+    const reportCandidates = awayFor === undefined || !fromOperator(awayFor) || awayFor.requestedAction ? [] : pendingReports(journal.view, { thread: current }).map(item => ({
+      ...item, subject: clean(redact(item.subject).text, true), text: clean(redact(item.text).text, true) }));
     const packet = JSON.stringify({ now,
       ...(reportCandidates.length ? { pendingReports: { guidance: REPORT_SELECTION_GUIDANCE, items: reportCandidates } } : {}), ...(ports.workingActivity ? { progressReplies: {
       cadenceMinutes: [2, 5, 10], thereafterMinutes: 10, maxLines: WORKING_PROGRESS_CAP, silenceMinutes: 2, source: 'fresh advancing admitted work evidence',
@@ -8196,13 +8208,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         });
         // Optional follow-ups never crowd out the current task or its evidence. Keep the debt,
         // expose the omission, and accept no selection for text absent from the final packet.
-        const reportVariants = (value: string) => {
+        const reportVariants = function* (value: string) {
           const packet = JSON.parse(value) as { pendingReports?: { items: unknown[] }; pendingReportsOmitted?: number };
-          if (!packet.pendingReports) return [value];
-          packet.pendingReportsOmitted = packet.pendingReports.items.length; delete packet.pendingReports;
-          return [value, JSON.stringify(packet)];
+          yield value;
+          if (!packet.pendingReports) return;
+          const total = packet.pendingReports.items.length;
+          while (packet.pendingReports?.items.length) {
+            packet.pendingReports.items.pop();
+            packet.pendingReportsOmitted = total - packet.pendingReports.items.length;
+            if (!packet.pendingReports.items.length) delete packet.pendingReports;
+            yield JSON.stringify(packet);
+          }
         };
-        for (const context of variants.flatMap(reportVariants).flatMap(searchVariants)) {
+        for (const variant of variants) for (const reports of reportVariants(variant)) for (const context of searchVariants(reports)) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
           try {
@@ -9165,19 +9183,23 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [],
               refusedFulfills = 0, operatorAction: OperatorActionProposal | undefined, unreadAction = false,
               memoryFailure: MemoryFailureProposal | undefined;
-            let selectedReports: unknown[] = [];
+            let selectedReports: unknown[] = [], rejectedReports: { key: string; objection: string }[] = [];
             const heldForgets: MemoryChange[] = [];
             if (output.trim()) try {
               const parsed = JSON.parse(output) as { reply?: unknown; correction?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown; cancelDeliveries?: unknown;
                 directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown; blockerRechecks?: unknown;
-                selectedReports?: unknown; promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
+                selectedReports?: unknown; rejectedReports?: unknown; promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
               const replyValue = parsed?.reply;
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
               if (parsed && (typeof replyValue === 'string' || replyAnswer !== undefined)) {
                 separatedAnswer = replyAnswer; text = replyAnswer ?? replyValue as string; decided = true;
                 if (Array.isArray(parsed.selectedReports)) selectedReports = parsed.selectedReports;
+                if (Array.isArray(parsed.rejectedReports) && parsed.rejectedReports.every(item => item
+                  && typeof item.key === 'string' && boundedText(item.objection, 1, 1000))
+                  && new Set(parsed.rejectedReports.map(item => item.key)).size === parsed.rejectedReports.length)
+                  rejectedReports = parsed.rejectedReports;
                 if (turn.grounding?.corrections.length && typeof parsed.correction === 'string'
                   && parsed.correction.trim() && parsed.correction.length <= MAX_ANSWER_BYTES) correction = parsed.correction.trim();
                 if (fromOperator(turn) && typeof parsed.lastNamedPerson === 'string'
@@ -9521,13 +9543,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               .filter(item => item.id !== turn.id && item.intent === undefined && !actionWithdrawn(journal.view, item)).flatMap(item => item.answerReports ?? []));
             if (replying)
               for (const item of pendingReports(journal.view, { thread: turn.thread }).filter(entry => !carried.has(entry.key)
-                && selectedReports.includes(entry.key)
+                && selectedReports.includes(entry.key) && !rejectedReports.some(rejected => rejected.key === entry.key)
                 && offeredReports.some(offered => offered.key === entry.key && offered.text === entry.text)
                 && !obligations.deliveryCancels?.some(cancel => entry.key === `commitment:${cancel.id}`))) {
                 const line = reportLine(item);
                 if (Buffer.byteLength(text) + Buffer.byteLength(line) > MAX_ANSWER_BYTES) break;
                 text = `${text.trimEnd()}${line}`; reports.push(item.key);
               }
+            const rework = replying && text.trim() ? rejectedReports.flatMap(item => {
+              const report = offeredReports.find(offered => offered.key === item.key);
+              return report && item.key.startsWith('commitment:') && !selectedReports.includes(item.key) && !carried.has(item.key)
+                && pendingReports(journal.view, { thread: turn.thread }).some(entry => entry.key === item.key && entry.text === report.text)
+                && !text.includes(report.text) && !obligations.deliveryCancels?.some(cancel => item.key === `commitment:${cancel.id}`)
+                ? [{ ...item, text: report.text, objection: clean(redact(item.objection).text, true) }] : [];
+            }).filter(item => boundedText(item.objection, 1, 1000)) : [];
             // The claims are decided one last time against the reply exactly as it is written, by the same
             // rule the replay reads it back with; anything the final text no longer carries is counted refused.
             const written = text.trim() ? text : MODEL_FAILURE_REPLY;
@@ -9552,7 +9581,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(obligations.deliveryCancels?.length ? { deliveryCancels: obligations.deliveryCancels } : {}),
               ...(obligations.blocker ? { blocker: obligations.blocker } : {}),
               ...(obligations.blockerRechecks?.length ? { blockerRechecks: obligations.blockerRechecks } : {}),
-              ...(Object.keys(rejectedNow).length ? { rejected: rejectedNow } : {}), ...(reports.length ? { reports } : {}),
+              ...(Object.keys(rejectedNow).length ? { rejected: rejectedNow } : {}), ...(reports.length ? { reports } : {}), ...(rework.length ? { rejectedReports: rework } : {}),
               ...(notices.length ? { notices } : {}),
               ...(promises.length && text.trim() ? { promises: promises.filter(item => text.includes(item.quote)) } : {}),
               ...(keptFulfills.length ? { fulfills: keptFulfills } : {}),
@@ -10735,7 +10764,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const withheld = text ? turn.answerReports?.filter(key => key.startsWith('commitment:')
       && attachableReport(journal.view.obligationWork[key]) && !reply.includes(journal.view.obligationWork[key]!.report!.text))
       .map(key => ({ key, objection: text })) : undefined;
-    return withheld?.length ? { withheldReports: withheld } : {};
+    const explicit = turn.answerRejectedReports?.filter(item => attachableReport(journal.view.obligationWork[item.key])
+      && journal.view.obligationWork[item.key]?.report?.text === item.text && !reply.includes(item.text))
+      .map(({ key, objection }) => ({ key, objection })) ?? [];
+    const combined = [...withheld ?? [], ...explicit];
+    return combined.length ? { withheldReports: combined } : {};
   };
   /** The latest scheduled work result on commitment `id`, for the answer packet (Rules 8, 64). */
   const workState = (id: number) => {
