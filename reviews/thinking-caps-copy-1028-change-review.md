@@ -35,6 +35,9 @@ Validation scope: the inherited physical CLI cases require a host supporting the
 
 Integration findings: direct consumers exposed two stale test assumptions. tool-persist now checks 23/46/70 reserved calls and the 15/16 retry boundary. selfdesc-abilities translates only the declared 64-to-32 tool-limit sentence when comparing historical captures; original captured bytes and judge digests remain intact. No runtime repair was needed.
 
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Existing tools capability label compared with historical captures; no keyword-based model decision is added.
+Prompt finding: 95e349aaf4ac | protocol-literal | Existing standing-grant protocol text in the historical briefing comparison; original authority enforcement is unchanged.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: merge the two exact histories, preserving tests and provenance, with zero extra runtime edits. No new machinery. Existing activation and reservation are start guards; stop/spend/token/turn limits and output review remain limit and end guards. Copy candidate only; no autonomous or live completion claim.

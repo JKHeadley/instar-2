@@ -50,6 +50,9 @@ Prompt finding: 7a4f0c3f557c | protocol-literal | Unchanged existing protocol gu
 Prompt finding: 9781075d458e | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "the effect doorway reports any refusal and its reason; say so plainly."
 Prompt finding: b1bb3946362d | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-provider.ts <- tests/preview/act-first.test.ts: "you are an instar 2.0 agent,"
 
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Existing tools capability label compared with historical captures; no keyword-based model decision is added.
+Prompt finding: 95e349aaf4ac | protocol-literal | Existing standing-grant protocol text in the historical briefing comparison; original authority enforcement is unchanged.
+
 ## Closing block
 
 simplestRobustRoute: Raise the existing finite constants and preserve the existing guards; no new mechanism. This is the simplest robust route and no live-completion claim is made.

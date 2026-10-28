@@ -36,6 +36,9 @@ Combined-copy provenance: original thinking-only report destination was /Users/d
 Prompt finding: 42faf877ba82 | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-codex-provider.ts <- tests/preview/act-first.test.ts: "you are an instar 2.0 agent,"
 Prompt finding: 7a4f0c3f557c | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-codex-provider.ts <- tests/preview/act-first.test.ts: "give a brief decision rationale supported by the relevant evidence."
 
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Existing tools capability label compared with historical captures; no keyword-based model decision is added.
+Prompt finding: 95e349aaf4ac | protocol-literal | Existing standing-grant protocol text in the historical briefing comparison; original authority enforcement is unchanged.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: change the existing env-only off setting to 2048, reusing generation headroom already present. No routing table, new flag, cap increase or migration. Exact activation, spend reservation and stop checks remain start guards; answer admission and reply review remain end guards. This is an offline candidate, not an unattended live completion claim.
