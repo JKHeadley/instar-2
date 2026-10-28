@@ -15,7 +15,7 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
   grant: 'grant:offline', configurationDigest: 'sha256:offline', expires: 9999999999999,
   maxCalls: 200, maxReplies: 20, maxTurns: 20, maxBytes: 131072, cursor: 0 };
 type Mode = 'exit-1' | 'rejected' | 'uncertain' | 'success' | 'missing-result' | 'stop' | 'no-checks';
-async function replay(mode: Mode, returned?: unknown, unknownSend = false) {
+async function replay(mode: Mode, returned?: unknown, unknownSend = false, gateRefused = false) {
   const root = mkdtempSync(join(tmpdir(), 'tool-failure-answer-')), path = join(root, 'journal');
   let journal = openPreviewJournal(path, key, genesis), launches = 0, stopped = false;
   const sent: string[] = [];
@@ -26,6 +26,11 @@ async function replay(mode: Mode, returned?: unknown, unknownSend = false) {
       const outcome = await runToolTurn({ journal, root, id: input.id, prepared: '{}', promptLimit: 131072,
         deniedRoots: [root], operations: SINGLE_MACHINE_PROFILE.operations, now: () => 1000, redactText: (text: string) => text,
         stopped: () => stopped, fallback: async () => { throw Error('unexpected fallback'); },
+        ...(gateRefused ? {
+          admission: { maxCalls: 8, harness: 'codex-cli', confinedShell: false },
+          gate: { base: () => 'http://127.0.0.1:1/claim', open: () => {},
+            close: () => ({ refused: true, openDelegations: [] }), settle: () => {} },
+        } : {}),
         scratch: (directory: string) => { const path = join(directory, 'vol'); mkdirSync(path, { recursive: true }); return path; },
         detach: () => true, unmount: () => true,
         invoke: async (turn: { stateDirectory: string }) => {
@@ -69,6 +74,21 @@ for (const mode of ['exit-1', 'rejected', 'uncertain'] as const) it(`T4 ${mode}:
   expect(result.before).toMatchObject({ modelState: 'uncertain', toolChecks: 6, noticeClass: 'unknown-answer', sent: 1 });
   expect(result.after).toMatchObject({ modelState: 'uncertain', toolChecks: 6, sent: 1 });
   expect(result.after?.answer).toBeUndefined();
+});
+
+it('a refused host checkpoint after six checked tools reaches one honest notice', async () => {
+  const result = await replay('exit-1', undefined, false, true);
+  expect(result.launches).toBe(1);
+  expect(result.sent).toHaveLength(1);
+  expect(result.sent[0]).toContain('6 tool checks returned results');
+  expect(result.after).toMatchObject({ modelState: 'uncertain', toolChecks: 6, noticeClass: 'unknown-answer' });
+});
+
+it('a refused host checkpoint with an incomplete tool result remains held', async () => {
+  const result = await replay('missing-result', undefined, false, true);
+  expect(result.launches).toBe(1);
+  expect(result.sent).toEqual([]);
+  expect(result.after?.toolChecks).toBeUndefined();
 });
 
 for (const mode of ['missing-result', 'stop', 'no-checks'] as const) it(`${mode}: incomplete evidence or stop never authorizes replay or the checked-results notice`, async () => {

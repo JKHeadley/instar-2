@@ -956,7 +956,6 @@ export async function runToolTurn(options) {
   if (failure && !trace.consistent) throw failure;
   if (!trace.consistent) throw Error('preview: a tool ran without its admission record');
   // A model call refused at the allowance, or a delegation that never returned: the answer cannot account for the turn.
-  if (gated?.refused) throw Error('preview: a model call past the tool turn\'s reserved allowance was refused');
   if (gated && gated.openDelegations.length > 0) throw Error('preview: a delegated agent did not return before the tool turn ended');
   // T4 update 46040734: tool results preceded a failed model turn, not an answer.
   // Settle through the journal's unique failure-notice path; never replay tools or
@@ -964,11 +963,13 @@ export async function runToolTurn(options) {
   const checks = trace.calls.filter(call => call.decision === 'allow' && call.result !== null).length;
   // The native loop can observe a stop even when the wrapper's callback has not.
   // Its exact terminal outcome must survive; an interrupted tool is not a failed answer.
-  if (!stopped() && result?.native?.ended !== 'stopped' && checks > 0 && trace.calls.every(call => call.decision !== 'allow' || call.result !== null)
-    && trace.children.length === 0 && (failure || result?.state === 'uncertain'
+  if (!stopped() && result?.native?.ended !== 'stopped' && checks > 0
+    && trace.calls.every(call => call.decision !== 'allow' || call.result !== null)
+    && trace.children.length === 0 && (gated?.refused || failure || result?.state === 'uncertain'
       || result?.state === 'rejected' && !result.capacity)) {
     return { result: { state: 'uncertain', toolChecks: checks, ...(result?.usage ? { usage: result.usage } : {}) }, turn, trace, session: plan };
   }
+  if (gated?.refused) throw Error('preview: a model call past the tool turn\'s reserved allowance was refused');
   if (failure) throw failure;
   // Proof-room update 46039724: a resumed session was rejected before any model tokens
   // or tools ran. Its ended session is already recorded and removed above. Recover once
