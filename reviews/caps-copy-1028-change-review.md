@@ -40,7 +40,7 @@ Convergence: none
 Tier rationale: Bounded resource-policy change submitted for isolated copy scoring, with independent review still open.
 Bug class: none
 Bug evidence: none
-Prompt review: Combined-copy metadata renewal; original source prompts are unchanged. Existing literals below describe protocol, not test-dependent decision logic.
+Prompt review: Combined-copy metadata renewal; original authored guidance is unchanged; the tool-limit interpolation renders 64 instead of 32. Existing literals below describe protocol, not test-dependent decision logic.
 Prompt finding: 0d4664ea9de7 | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "run without another yes. the operator can tighten or revoke trust through setup-"
 Prompt finding: 14d7eeccc218 | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
 Prompt finding: 38a2c5d186f1 | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-provider.ts <- tests/preview/act-first.test.ts: "give a brief decision rationale supported by the relevant evidence."

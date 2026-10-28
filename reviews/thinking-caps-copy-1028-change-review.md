@@ -19,7 +19,7 @@ Bug evidence: none
 Hook bypass: none
 Convergence: none
 Decision: thinking-caps-merge | Merge both exact histories without new runtime edits; add portable joint dispatch replay to detect composition regressions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/thinking-caps-copy-1028-PROGRESS.md
-Prompt review: No prompt or parser edits. Existing literal findings below remain protocol guidance. Preserve recorded shapes and validate thinking in the same injected adapter dispatch as the expanded tool allowance. Exact seven recorded texts are preserved in synthetic CLI wrappers; no new model outputs claimed.
+Prompt review: No hand-authored prompt or parser edits; the existing tool-limit sentence renders 64 instead of 32 from the changed constant. Existing literal findings below remain protocol guidance. Preserve recorded shapes and validate thinking in the same injected adapter dispatch as the expanded tool allowance. Exact seven recorded texts are preserved in synthetic CLI wrappers; no new model outputs claimed.
 Prompt finding: 0d4664ea9de7 | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "run without another yes. the operator can tighten or revoke trust through setup-"
 Prompt finding: 14d7eeccc218 | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
 Prompt finding: 38a2c5d186f1 | protocol-literal | Unchanged existing protocol guidance; no prompt edits in either candidate — fixture-phrase src/assembly/production-provider.ts <- tests/preview/act-first.test.ts: "give a brief decision rationale supported by the relevant evidence."
@@ -32,6 +32,8 @@ Prompt finding: b1bb3946362d | protocol-literal | Unchanged existing protocol gu
 Subject (17 paths): register-source/owner-references/preview.json, src/assembly/production-codex-provider.ts, src/assembly/production-provider.ts, tests/assembly/production-codex-provider.test.ts, tests/assembly/production-provider-subscription.test.ts, tests/assembly/production-provider-tools.test.ts, tests/preview/admission-gate.test.ts, tests/preview/installed-harness-logins.test.ts, tests/preview/journal-obligations.test.ts, tests/preview/journal-provider.test.ts, tests/preview/live-failure-catalog.test.ts, tests/preview/native-loop.test.ts, tests/preview/reply-review-corpus.test.ts, tests/preview/stage2-recovery.test.ts, tests/preview/tool-admission.test.ts, tests/preview/tools-default.test.ts, tests/preview/tools-policy-class.test.ts
 
 Validation scope: the inherited physical CLI cases require a host supporting the resource launcher. Mama /bin/sh rejects ulimit -u before synthetic CLI execution. Portable combined replays retain real recorded text and test enlarged bounds, their refusal neighbors and stop without altering that launcher.
+
+Integration findings: direct consumers exposed two stale test assumptions. tool-persist now checks 23/46/70 reserved calls and the 15/16 retry boundary. selfdesc-abilities translates only the declared 64-to-32 tool-limit sentence when comparing historical captures; original captured bytes and judge digests remain intact. No runtime repair was needed.
 
 ## Closing block
 

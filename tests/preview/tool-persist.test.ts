@@ -103,7 +103,7 @@ it('recovers the recorded zero-work rejected resume once, from the journal with 
   expect(harness.seen[2]!.history).toBe('');
   expect(harness.seen[2]!.prepared).toBe('durable current packet');
   // Every invocation's full liability is reserved before dispatch; recovery adds its base call too.
-  expect(seenCalls).toEqual([15, 30, 46]);
+  expect(seenCalls).toEqual([23, 46, 70]);
   expect(traceSession(journal)).toMatchObject({ resumed: 1, fresh: 2, ended: 1 });
   const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key, undefined, undefined, true);
   expect(reopened.view.toolTurns).toEqual(journal.view.toolTurns);
@@ -124,8 +124,8 @@ it.each(['uncertain', 'capacity', 'unknown-input', 'spent-input', 'spent-output'
     if (mode === 'spent-input') result.usage.inputTokens = 1;
     if (mode === 'spent-output') result.usage.outputTokens = 1;
     if (mode === 'stop') stopped = true;
-    if (mode === 'cap') journal.view.limits.maxCalls = journal.view.calls + 7;
-    if (mode === 'cap-exact' && calls === 2) journal.view.limits.maxCalls = journal.view.calls + 8;
+    if (mode === 'cap') journal.view.limits.maxCalls = journal.view.calls + 15;
+    if (mode === 'cap-exact' && calls === 2) journal.view.limits.maxCalls = journal.view.calls + 16;
     if (mode === 'tool') appendFileSync(join(turn.stateDirectory, 'admission.jsonl'), `${JSON.stringify({ phase: 'pre', n: 1, tool: 'Read', id: 'tool-one', decision: 'allow', input: '{}' })}\n`);
     if (mode === 'child') appendFileSync(join(turn.stateDirectory, 'admission.jsonl'), `${JSON.stringify({ phase: 'pre', n: 1, tool: 'Agent', id: 'child-one', kind: 'subagent', decision: 'allow', input: '{}' })}\n${JSON.stringify({ phase: 'child-start', agent: 'agent-one' })}\n`);
     return result;
