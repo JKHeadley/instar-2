@@ -8222,11 +8222,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const packet = JSON.parse(value) as { pendingReports?: { items: unknown[] }; pendingReportsOmitted?: number };
           yield value;
           if (!packet.pendingReports) return;
-          const total = packet.pendingReports.items.length;
-          while (packet.pendingReports?.items.length) {
-            packet.pendingReports.items.pop();
-            packet.pendingReportsOmitted = total - packet.pendingReports.items.length;
-            if (!packet.pendingReports.items.length) delete packet.pendingReports;
+          const items = packet.pendingReports.items;
+          // A large old report must not hide a short later report. Try whole suffixes
+          // before the old prefix fallbacks; omitted reports remain owed in the journal.
+          for (let start = 1; start < items.length; start++) {
+            packet.pendingReports.items = items.slice(start);
+            packet.pendingReportsOmitted = start;
+            yield JSON.stringify(packet);
+          }
+          for (let count = items.length - 1; count >= 0; count--) {
+            if (count) packet.pendingReports!.items = items.slice(0, count);
+            else delete packet.pendingReports;
+            packet.pendingReportsOmitted = items.length - count;
             yield JSON.stringify(packet);
           }
         };

@@ -65,7 +65,9 @@ it.each([false, true])('a later supported report is offered and delivered (tight
     expect(sent.filter(text => text.includes('Follow-up on')).join()).toContain('The requested label is Home.');
     if (tight) {
       expect(packets[start]!.pendingReportsOmitted).toBeGreaterThan(0);
-      expect(journal.view.obligationWork['commitment:0']?.withheld?.text).toBe(stale);
+      expect(pendingReports(journal.view).some(item => item.key === 'commitment:0'),
+        'omitted old report remains owed').toBe(true);
+      expect(journal.view.obligationWork['commitment:0']?.withheld).toBeUndefined();
     }
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
