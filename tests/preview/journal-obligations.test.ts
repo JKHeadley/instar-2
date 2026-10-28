@@ -1396,7 +1396,7 @@ it('tells scheduled work and the reply review what the call actually had: no too
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('names tools in the packet exactly when its dispatch, after the base call is reserved, runs them: answers and scheduled work at seven and eight remaining calls (review round 2, finding 1)', async () => {
+it('names tools in the packet exactly when its dispatch, after the base call is reserved, runs them: answers and scheduled work just below and at the remaining-call boundary (review round 2, finding 1)', async () => {
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   type Seen = { packet: string; dispatch: boolean };
   const tools = (context: string | Record<string, unknown>) =>
@@ -1418,7 +1418,7 @@ it('names tools in the packet exactly when its dispatch, after the base call is 
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
   // Scheduled work: the packet is prepared before `obligation-start` counts its call. The calls an earlier answer used
-  // are measured first, so the cap leaves exactly seven or eight at the moment the work's packet is prepared.
+  // are measured first, so the cap leaves one below or exactly enough when the work's packet is prepared.
   const probe = origin();
   let used: number;
   try {
@@ -1451,7 +1451,8 @@ it('re-reads the tool route for a format re-ask or timeout replacement after a t
   // cap and not at the smaller, where it answers text-only. The packet the review and revision read is that second one.
   const timedOut = (JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/lostanswer-live-2026-10-02.json'), 'utf8')) as
     { lostFirstCall: { callOutcomes: Record<string, unknown>[] } }).lostFirstCall.callOutcomes[0]!;
-  for (const mode of ['format-retry', 'answer-replace'] as const) for (const cap of [12, 18]) {
+  const twoTurns = 2 * SUBSCRIPTION_TOOL_LIMITS.maxTurns + 2; // two parent turns plus review room, below child reservation
+  for (const mode of ['format-retry', 'answer-replace'] as const) for (const cap of [SUBSCRIPTION_TOOL_LIMITS.maxTurns + 4, twoTurns]) {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'selfdesc-retry-')));
     const now = 1790000000000;
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(23), {
@@ -1492,7 +1493,7 @@ it('re-reads the tool route for a format re-ask or timeout replacement after a t
       worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
         date: Math.floor(now / 1000), text: 'What tools can you use now?' } }]);
       await worker.drain();
-      const tools = cap === 18, final = tools ? 'listed' : 'none';
+      const tools = cap === twoTurns, final = tools ? 'listed' : 'none';
       expect(seen).toEqual([{ packet: 'listed', actual: 'listed' }, { packet: final, actual: final }]);
       const id = journal.view.order[0]!.id;
       expect(declaredObligations(journal.view, id, now).capabilities.externalTools).toBe(final);
