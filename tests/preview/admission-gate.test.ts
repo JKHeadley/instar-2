@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { SessionWorkEdge } from '../../src/assembly/production-session-work.js';
+import { SUBSCRIPTION_TOOL_LIMITS } from '../../src/assembly/production-provider.js';
 import { modelGateLaunch } from '../../src/assembly/production-session-driver.js';
 // @ts-expect-error the checkpoint stays plain JavaScript
 import { canonical, createAdmissionGate, createToolEffectOwner, toolOperation } from './admission-gate.mjs';
@@ -159,4 +160,16 @@ it('routes a new wake to the installed checkpoint, which still refuses absent au
   expect(await ask()).toMatchObject({ decision: 'deny', reason: expect.stringContaining('closed') });
   expect(admitToolCall(call, config, 51, {})).toMatchObject({ decision: 'deny', reason: expect.stringContaining('call cap') });
   expect(w.received).toEqual([]);
+});
+
+it.each(['claude-code', 'codex-cli'])('the copy allowance admits 16 model calls through %s and refuses the seventeenth', async framework => {
+  const w = await world();
+  w.gate.open('copy-cap', { framework, allowance: SUBSCRIPTION_TOOL_LIMITS.maxTurns, edge: w.edge });
+  const path = framework === 'codex-cli' ? '/backend-api/codex/responses' : '/v1/messages';
+  const url = `${w.gate.base('copy-cap')}${path}`;
+  for (let call = 1; call <= 16; call++) expect((await w.send(url)).status, `call ${call}`).toBe(200);
+  expect(w.received).toHaveLength(16);
+  expect((await w.send(url)).status).toBe(400);
+  expect(w.received).toHaveLength(16);
+  expect(w.gate.state('copy-cap')).toMatchObject({ calls: 16, refused: true, refusalReason: 'calls' });
 });

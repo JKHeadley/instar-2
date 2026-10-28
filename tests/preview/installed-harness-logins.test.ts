@@ -9,7 +9,6 @@ import { createHarnessLoginPool, loadHarnessLogins } from './harness-login-pool.
 import { successiveWorld, offlineProfile, offlineActivationAuthority, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
 import { authoritySealKey, resolveActivationAuthority, sealAuthorityRecord } from './activation-authority.js';
 import { subscriptionDoorway, DEFAULT_SUBSCRIPTION_DOORWAY } from '../../src/assembly/production-provider.js';
-import { FULL_TOOLS_CLASS } from './tools-policy-class.js';
 import { buildRunArgv } from '../../scripts/product-run.mjs';
 import { encoded } from './stage2-provider.js';
 
@@ -31,12 +30,12 @@ function fixture() {
     const activation = { ...world.activation(), reference: profile.activationReference, profileDigest: encoded(profile).hash,
       expectedAccount: profile.expectedAccount, observedAccount: profile.expectedAccount };
     const authority = offlineActivationAuthority(activation);
-    const classGrant = { ...authority.grants[0], id: `${reference}-tools`, scope: { ...authority.grants[0].scope,
-      invocationPolicyDigest: undefined, invocationPolicyClass: FULL_TOOLS_CLASS } };
-    delete classGrant.scope.invocationPolicyDigest;
+    // This candidate exceeds the old class; each synthetic login explicitly grants its exact policy.
+    const toolsGrant = { ...authority.grants[0], id: `${reference}-tools`, scope: { ...authority.grants[0].scope,
+      invocationPolicyDigest: encoded(doorway.policyFor(world.model, doorway.toolsFraming)).hash } };
     const row = { profile: join(root, `${reference}.json`), activation: join(root, `${reference}-activation.json`), authority: join(root, `${reference}-authority.json`) };
     writeFileSync(row.profile, JSON.stringify(profile)); writeFileSync(row.activation, JSON.stringify(activation));
-    writeFileSync(row.authority, JSON.stringify(sealAuthorityRecord({ ...authority, grants: [...authority.grants, classGrant] }, authoritySealKey(OFFLINE_STORAGE_KEY))));
+    writeFileSync(row.authority, JSON.stringify(sealAuthorityRecord({ ...authority, grants: [...authority.grants, toolsGrant] }, authoritySealKey(OFFLINE_STORAGE_KEY))));
     return row;
   });
   const options = row => ({ model: world.model, 'harness-user': 'offline', 'login-profile': row.profile,
@@ -201,7 +200,7 @@ it('retains admitted secondary identity even when its profile disappears before 
   expect(loadHarnessLogins(selected.options).entries[1].profile.reference).toBe('member-b');
 });
 
-it('prepares explicit tools successors under each own class grant and refuses uncovered successors', () => {
+it('prepares explicit tools successors under each own exact grant and refuses uncovered successors', () => {
   const f = fixture();
   const current = f.logins.map(row => ({ ...read(row.activation),
     invocationPolicyDigest: encoded(f.doorway.policyFor(f.world.model, f.doorway.toolsFraming)).hash }));
@@ -226,7 +225,7 @@ it('prepares explicit tools successors under each own class grant and refuses un
   }
   for (const index of [1, 0]) {
     const row = f.logins[index], authority = read(row.authority);
-    authority.grants = authority.grants.filter(grant => !grant.scope.invocationPolicyClass);
+    authority.grants = authority.grants.filter(grant => !grant.id.endsWith('-tools'));
     writeFileSync(row.authority, JSON.stringify(sealAuthorityRecord(authority, authoritySealKey(OFFLINE_STORAGE_KEY))));
     if (index === 1) expect(read(f.prepare('build-c')).logins[1].unavailable).toBeDefined();
     else expect(() => f.prepare('build-d')).toThrow(/grant/);

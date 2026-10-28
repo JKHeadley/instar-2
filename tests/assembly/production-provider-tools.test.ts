@@ -14,7 +14,7 @@ import { createClaudeCodeSubscriptionRoute, subscriptionConversationPolicy, subs
   SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_TOOL_RUNTIME_READS,
   SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS, SUBSCRIPTION_NATIVE_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS,
   validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
-import type { SubscriptionActivationRecord, SubscriptionToolTurn } from '../../src/assembly/production-provider.js';
+import type { ProductionProviderIO, SubscriptionActivationRecord, SubscriptionToolTurn } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { COMPLETE_REQUESTED_WORK } from '../../src/assembly/tool-answer-guidance.js';
 import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
@@ -117,11 +117,13 @@ it('tells the model it has the whole tool set and how each call is bounded, and 
     + 'ask one short clarifying question with a distinguishing detail. Answer directly when the question identifies one; ignore corrected or forgotten items. ';
   expect(completion.policy.args[prompt]).toContain(oldMemory);
   expect({ ...current, args: current.args.map((arg, index) => index === prompt
-    ? completion.policy.args[prompt].replace(closedSet, '').replace(oldMemory, MEMORY_DISAMBIGUATION).replace('do all your reasoning there.', 'give a brief decision rationale supported by the relevant evidence.') : arg) })
+    ? completion.policy.args[prompt].replace('at most 32 tool calls', 'at most 64 tool calls').replace(closedSet, '').replace(oldMemory, MEMORY_DISAMBIGUATION).replace('do all your reasoning there.', 'give a brief decision rationale supported by the relevant evidence.') : arg) })
     .toEqual(current);
-  expect({ ...completion.policy, args: completion.policy.args.map((arg: string, index: number) => index === prompt ? current.args[prompt] : arg) })
-    .toEqual(current);
-  expect(guidanceOnlyPolicyPins(current)).toBe(guidanceOnlyPolicyPins(completion.policy));
+  // Resource changes require a newly admitted policy; never classify them as guidance-only.
+  expect({ ...completion.policy, limits: current.limits, timeout: current.timeout, maxTokens: current.maxTokens,
+    args: completion.policy.args.map((arg: string, index: number) => index === prompt ? current.args[prompt]
+      : index === current.args.indexOf('--max-turns') + 1 ? '16' : arg) }).toEqual(current);
+  expect(guidanceOnlyPolicyPins(current)).not.toBe(guidanceOnlyPolicyPins(completion.policy));
   expect(hash(completion.policy)).toBe(completion.digest);
   expect(completion.digest).not.toBe(previous.digest);
 });
@@ -358,4 +360,19 @@ it('delivers complete-step/full-set guidance with the recorded T/t1 and c1 reque
       expect(system.includes('You have no tools')).toBe(framing === SUBSCRIPTION_CONVERSATION_FRAMING);
     }
   }
+});
+
+// Fake executable only: verify the admitted time ceiling at dispatch without waiting ten minutes.
+it('admits the increased CLI timeout and refuses one millisecond above it before dispatch', async () => {
+  const f = fixture(), policy = subscriptionToolsPolicy(f.model);
+  expect(policy.limits).toMatchObject({ maxTurns: 16, maxToolCalls: 64, timeout: 600000 });
+  const commands: number[] = [], input = f.input(), execute = input.io.execute;
+  const route = value(createClaudeCodeSubscriptionRoute({ ...input, io: { ...input.io,
+    execute: async (command: Parameters<ProductionProviderIO['execute']>[0]) => { commands.push(command.timeout); return execute(command); } } }));
+  const bounds = { ...f.bounds, timeout: policy.timeout, deadline: 700000 };
+  expect(await route.invoke('{}', bounds)).toMatchObject({ state: 'complete' });
+  expect(commands.at(-1)).toBe(600000);
+  const count = commands.length;
+  expect(await route.invoke('{}', { ...bounds, timeout: policy.timeout + 1 })).toMatchObject({ state: 'uncertain' });
+  expect(commands).toHaveLength(count);
 });

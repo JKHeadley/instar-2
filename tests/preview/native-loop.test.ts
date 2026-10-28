@@ -277,7 +277,7 @@ describe('the loop', () => {
 
   it('holds the per-turn tool-call cap through the hook\'s slots across steps', async () => {
     const eight = ask(...Array.from({ length: 8 }, (_, i) => ['Bash', { command: `echo ${String(i)}` }] as [string, Record<string, unknown>]));
-    // One step of eight past the cap (32 at cint-L43, w4-toolsfull's per-step count).
+    // One step of eight past the current shared cap.
     const asks = Math.ceil(SUBSCRIPTION_TOOL_LIMITS.maxToolCalls / 8) + 1;
     const run = await nativeTurn([...Array.from({ length: asks }, () => eight), answer('capped')]);
     const pre = admission(run.stateDirectory).filter(row => row.phase === 'pre');
@@ -631,4 +631,31 @@ child.unref(); process.stdout.write(String(child.pid));`;
   it('refuses to run without a host resource owner', async () => {
     await expect(nativeTurn([answer('x')], { resources: {} as Owner })).rejects.toThrow(/no host resource owner/u);
   });
+});
+
+it('the default native budget answers on model call 16 and refuses tools requested on that last call', async () => {
+  // Denied paths exercise real admission without spawning sixteen physical tool workers.
+  const request = () => ask(['Read', { file_path: '/outside-copy-allowance' }]);
+  const positive = await nativeTurn((_envelope, index) => index === 15 ? answer('complete on call 16') : request());
+  expect(positive.outcome.result).toMatchObject({ value: 'complete on call 16', native: { models: 16, ended: 'answered' } });
+  const exceeded = await nativeTurn(request);
+  expect(exceeded.outcome.result).toMatchObject({ failureClass: 'step-cap', native: { models: 16, steps: 16, ended: 'step-cap' } });
+  expect(admission(exceeded.stateDirectory).filter(row => row.phase === 'pre')).toHaveLength(15);
+  expect(exceeded.envelopes).toHaveLength(16);
+});
+
+// Observer #106: verbatim read-only journal captures, including non-answer shapes, at a newly reachable step.
+it('replays recorded writer, uncertain, Jev, review and empty shapes after the old eighth-call boundary', async () => {
+  const capture = JSON.parse(readFileSync(join(__dirname, 'fixtures/retrospective-duty-followup-train-1-2026-10-08.json'), 'utf8'));
+  for (const shape of capture.otherShapes) {
+    const recorded = shape.kind === 'summary-uncertain' ? { state: JSON.parse(shape.raw).state } : answer(shape.raw);
+    const run = await nativeTurn((_envelope, index) => index < 8
+      ? ask(['Read', { file_path: '/outside-copy-allowance' }]) : recorded);
+    expect(run.envelopes, shape.id).toHaveLength(9);
+    const failed = shape.kind === 'summary-uncertain' || shape.raw === '';
+    expect(run.outcome.result.native, shape.id).toMatchObject({ models: 9, calls: 0, ended: failed ? 'step-failed' : 'answered' });
+    if (shape.kind === 'summary-uncertain') expect(run.outcome.result.state).toBe('uncertain');
+    else expect(run.outcome.result.value, shape.id).toBe(shape.raw);
+    if (shape.raw === '') expect(run.outcome.result.failureClass).toBe('empty');
+  }
 });
