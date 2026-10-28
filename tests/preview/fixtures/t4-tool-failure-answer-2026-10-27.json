@@ -1,0 +1,53 @@
+{
+  "task": "T4",
+  "sourceUpdate": 46040734,
+  "prompt": "Make a handoff I can give another person who is setting up a fresh Mac for my agent. Start at the one-line install, continue through sign-in and Telegram, and finish with the first real conversation. Name what you can verify from your current capabilities and what must be checked on that Mac. Keep it actionable and under 250 words.\n\nTrial identifier: baseline-20261027-T4.",
+  "answer": null,
+  "intent": null,
+  "telegramMessageId": null,
+  "toolAttempts": [
+    {
+      "n": 2,
+      "tool": "Bash",
+      "decision": "allow",
+      "input": "{\"command\":\"rg --files -g '*instar*' -g '*README*' -g '*setup*' -g '*install*'\"}",
+      "result": "\"zsh:1: command not found: rg\\n\""
+    },
+    {
+      "n": 1,
+      "tool": "webrun",
+      "decision": "allow",
+      "input": "{\"search_query\":[{\"q\":\"Instar agent install Mac Telegram installation\"}],\"response_length\":\"short\"}",
+      "result": "[{\"type\":\"input_text\",\"text\":\"instar - npm (https://www.npmjs.com/package/instar)\\nciteturn0search0 [wordlim: 200] Crawled: last month; The wizard discovers …"
+    },
+    {
+      "n": 3,
+      "tool": "webrun",
+      "decision": "allow",
+      "input": "{\"open\":[{\"ref_id\":\"https://instar.sh\"},{\"ref_id\":\"https://github.com/JKHeadley/instar\"}],\"response_length\":\"long\"}",
+      "result": "[{\"type\":\"input_text\",\"text\":\"Instar — Claude Code, with a mind of its own (https://instar.sh/)\\nciteturn1view0 [wordlim: 200] Crawled: today; Content type: …"
+    },
+    {
+      "n": 4,
+      "tool": "Bash",
+      "decision": "allow",
+      "input": "{\"command\":\"find . -maxdepth 2 -type f\"}",
+      "result": "\"\""
+    },
+    {
+      "n": 5,
+      "tool": "webrun",
+      "decision": "allow",
+      "input": "{\"click\":[{\"ref_id\":\"turn1view1\",\"id\":161},{\"ref_id\":\"turn1view1\",\"id\":162}],\"response_length\":\"long\"}",
+      "result": "[{\"type\":\"input_text\",\"text\":\"Installation | Instar (https://instar.sh/installation/)\\nciteturn2view0 [wordlim: 200] Crawled: today; Content type: text/html;…"
+    },
+    {
+      "n": 6,
+      "tool": "webrun",
+      "decision": "allow",
+      "input": "{\"click\":[{\"ref_id\":\"turn2view0\",\"id\":15}],\"search_query\":[{\"q\":\"site.code.claude.com/docs setup first login claude\"}],\"response_length\":\"short\"}",
+      "result": "[{\"type\":\"input_text\",\"text\":\"Your first day in Claude Code | Claude Help Center (https://support.claude.com/en/articles/14552382-your-first-day-in-claude-code)…"
+    }
+  ],
+  "modelExit": 1
+}
