@@ -13,9 +13,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # the governed-document check counts approved versions on main
+          ref: ${{ github.event.pull_request.head.sha || github.sha }} # Rule 74 reviews the proposed commits, not GitHub's synthetic merge commit
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
+      - name: install checker dependencies
+        run: npm ci
       - name: changelogs carry every required field (rule 91)
         run: node scripts/validate-changelog.mjs docs/*.changelog.json docs/harvests/*.changelog.json
       - name: generated changelog markdown is current (rule 91)
