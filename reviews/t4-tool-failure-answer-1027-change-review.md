@@ -16,6 +16,7 @@ Multi-machine posture: the current conversation owner records the result and use
 Layer below: inspected the native Codex provider's nonzero terminal handling, the conversation-session owner's no-replay guards, runToolTurn cleanup and durable trace, and the journal's unknown-answer intent and receipt path. Inspected 1.x SessionManager process-exit classification and DeliveryFailureSentinel (now src/monitoring/delivery-failure-sentinel.ts) with its recovery-policy module. Reused their distinction between incomplete work and completion, bounded settlement and no replay on ambiguous effects. Their tmux respawn and Telegram retry engines do not fit a failed model answer and are not transplanted.
 Bug class: integration
 Bug evidence: reproducer=tests/preview/tool-failure-answer.test.ts
+Validation: 21 focused cases cover the recorded failed invocation, actual captured model shapes, ambiguous send and restart, stop, incomplete traces, successful answers after individual tool errors, and both ends of the durable count bound. Existing unknown-answer notice tests pass 7/7.
 Hook bypass: none
 Convergence: none
 Decision: t4-failure-notice | use the existing durable uncertainty notice after complete tool traces, with a bounded result count, instead of replaying a failed model turn or inventing a Mac handoff | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/t4-tool-failure-answer-1027-PROGRESS.md

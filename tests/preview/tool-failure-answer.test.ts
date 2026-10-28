@@ -103,3 +103,15 @@ for (const shape of shapes) it(`recorded ${shape.kind} ${shape.id} retains its o
     expect(result.after?.toolChecks).toBe(6);
   } else expect(result.after?.toolChecks).toBeUndefined();
 });
+
+for (const count of [0, 1, 64, 65, 1.5, NaN]) it(`failed check count ${count} respects the durable evidence bound`, () => {
+  const root = mkdtempSync(join(tmpdir(), 'tool-failure-count-'));
+  const journal = openPreviewJournal(join(root, 'journal'), key, genesis), id = 'telegram:12345678:update:1';
+  try {
+    journal.append({ kind: 'intake', id, update: 1, text: 'test', raw: JSON.stringify({ update_id: 1 }), accepted: true, cursor: 2, at: 1000 });
+    journal.append({ kind: 'reserve', id, at: 1000 });
+    const append = () => journal.append({ kind: 'model-uncertain', id, state: 'uncertain', toolChecks: count, at: 1000 });
+    if (count === 1 || count === 64) { append(); expect(journal.view.turns.get(id)?.toolChecks).toBe(count); }
+    else expect(append).toThrow('invalid failed tool check count');
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
