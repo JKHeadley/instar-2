@@ -97,13 +97,15 @@ export async function runOnboarding(rootInput, io, custodian) {
   if (completed !== null) {
     if (completed.agentId !== identity.agentId) throw Error('setup completion belongs to another agent');
     verifyInstalled(root, request);
-    io.write('Already set up. Your recorded role and choices are unchanged.\n');
+    io.write('Already set up. Your recorded role and choices are unchanged.\n'
+      + 'Next: npx github:JKHeadley/instar-2 prepare-login (use the same installation directory).\n');
     return 0;
   }
   configureTrust(root, 'setup', request);
   verifyInstalled(root, request);
   publishSetupRecord(join(state, 'completed.json'), { agentId: identity.agentId });
   io.write('Role setup complete. Your role, starting trust, monthly limit and sensitive matters are recorded.\n'
+    + 'Next: npx github:JKHeadley/instar-2 prepare-login (use the same installation directory).\n'
     + 'Subscription sign-in, channels and activation are separate installation steps; no paid use is enabled here.\n');
   return 0;
 }

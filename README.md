@@ -22,9 +22,23 @@ matters are sensitive. Each answer is saved as you give it, so running the same 
 resumes where you stopped. The agent's records go in `~/.instar2`; name another folder after
 `setup` to put them elsewhere.
 
-What it does not do yet: sign in a model subscription, connect Telegram, or start the agent.
-Those installation steps are designed in [docs/14-the-assembly.md](docs/14-the-assembly.md)
-("Fresh installation") and are still to build.
+Next, prepare your subscription account in the terminal:
+
+```sh
+npx github:JKHeadley/instar-2 prepare-login
+```
+
+It asks for `anthropic` or `openai` and your account name or email, saves that selection,
+and resumes an existing selection without asking again. Use the same installation directory
+after `prepare-login` if you chose a custom one. Never enter credentials here. Automation can
+still pipe a JSON object with only `provider` and `account` to the same command.
+
+This is account preparation, not sign-in. Fresh installation currently stops before protected
+custody/recovery, operator enrollment, phone confirmation, Telegram pairing and login admission.
+The remaining implementation is tracked in
+[the custody/recovery work item](docs/defects/install-custody-recovery-composition.md) and
+[Fresh installation](docs/14-the-assembly.md). `instar2 run` consumes already admitted installation
+records; role setup and account preparation alone cannot create those records or start an agent.
 
 The npm package named `instar2` is someone else's and is not this project. Install from this
 repository as above.

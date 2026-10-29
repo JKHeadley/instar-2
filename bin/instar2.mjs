@@ -5,17 +5,27 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 const [command, root = join(homedir(), '.instar2'), ...extra] = process.argv.slice(2);
 if (command === 'prepare-login') {
-  const { prepareLogin, LoginPreparationRefused } = await import('../scripts/login-preparation.mjs');
+  const { prepareLogin, promptLoginPreparation, LOGIN_PREPARATION_SAVED, LoginPreparationRefused } = await import('../scripts/login-preparation.mjs');
   try {
-    if (extra.length || process.stdin.isTTY) throw Error('one nonsecret selection required');
-    let input = '';
-    for await (const chunk of process.stdin) {
-      input += chunk;
-      if (input.length > 4096) throw Error('selection too large');
+    if (extra.length) throw Error('one nonsecret selection required');
+    if (process.stdin.isTTY) {
+      const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
+      const iterator = lines[Symbol.asyncIterator]();
+      try {
+        process.exitCode = await promptLoginPreparation(root, {
+          write: text => process.stdout.write(text),
+          read: async () => { const line = await iterator.next(); return line.done ? null : line.value; },
+        });
+      } finally { lines.close(); process.stdin.destroy(); }
+    } else {
+      let input = '';
+      for await (const chunk of process.stdin) {
+        input += chunk;
+        if (input.length > 4096) throw Error('selection too large');
+      }
+      prepareLogin(root, JSON.parse(input));
+      process.stdout.write(LOGIN_PREPARATION_SAVED);
     }
-    prepareLogin(root, JSON.parse(input));
-    process.stdout.write('Login preparation saved. No login is connected or authorized.\n'
-      + 'Protected operator enrollment and phone confirmation are not implemented in this build.\n');
   } catch (error) {
     process.stderr.write(`${error instanceof LoginPreparationRefused ? error.message
       : 'Login preparation refused. Check the installation and supply only provider and account; details suppressed.'}\n`);
