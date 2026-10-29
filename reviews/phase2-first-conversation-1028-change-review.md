@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Continue the fresh role-setup path with terminal account-selection prompts through prepare-login, retaining piped JSON compatibility. This is partial installation work, not a first-conversation claim.
 Affected rules: 1, 4, 5, 26, 34, 35, 42, 44, 49, 62, 74, 80, 100, 101, 102, 111, 113, 116
-Affected floors: No credentials requested, provider invoked, account admitted or paid use enabled. Stop, spend, durable intake and outbound review remain in the existing runner. Preparation keeps its existing fsync/no-replace publication and null authority/custody. No sends occur.
+Affected floors: Secrets: no credentials requested or provider invoked. Spend cap: no account admitted or paid use enabled. Stop and durable intake remain in the existing runner. No duplicate sends: no sends occur and outbound review is unchanged. Preparation keeps its existing fsync/no-replace publication and null authority/custody.
 Operator questions: none
 Suggested tier: significant
 Declared tier: significant
