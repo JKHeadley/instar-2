@@ -4438,6 +4438,25 @@ probe. This change does not widen the staleness bound or retain stale evidence o
 error (purpose least revelation; Rules 28, 32, 60, 95). Observations never admit an effect or
 make an UNKNOWN send retry; an observation write failure does not change the operation's result.
 
+A recorded `test-copy` also enables content-free `model-request` phase observations at the
+existing admission checkpoint. Normal roots leave this observer disabled. Each record's `id`
+is the owning edge (for an answer: `tool-turn:<answer-id>:<attempt>`). `ordinal` counts counted
+POST attempts in arrival order, including refusals; `admittedCalls` counts admitted requests,
+never tools. `request.result` distinguishes admission, exhausted allowance, unavailable durable
+reservation, and a closed/stopped claim. Admission is permission to forward, not proof that the
+provider answered. Probes, token counting, unknown claims and incorrect checkpoint secrets emit
+no request record. Endpoint paths come from a fixed protocol allowlist; queries are discarded
+and every other path is `[omitted]`. No request/response body, header, credential or profile path
+is captured by this diagnostic.
+
+Capture stops at 64 observations per opened claim; observation 64 carries `limitReached: true`
+and cannot establish the absence of later requests. A diagnostic write failure does not change
+admission or streaming, so missing records are not evidence that no call happened. These rows
+use the existing encrypted journal and survive compaction; `status.phaseTimings` exposes only
+the latest 100 phase observations. Inspect older evidence with the current journal reader.
+Keep that reader for a copy that contains the new phase: an older reader may reject it. No live
+root migration, new endpoint, sidecar, model prompt or eight-call allowance change is involved.
+
 Idle diagnostics record transitions: the audience observer records its first verdict and changes
 in that verdict, while still checking on every pass. Repeated acknowledgement timer callbacks and
 send preflights with no transport entry record only changes in phase. Every physical send attempt

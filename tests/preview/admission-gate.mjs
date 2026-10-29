@@ -21,6 +21,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 import { nestedSessionWorkClose, nestedSessionWorkEdge, sessionWorkEffect } from '../../src/assembly/production-session-work.js';
+import { MODEL_REQUEST_PATHS, MODEL_REQUEST_DIAGNOSTIC_LIMIT } from './phase-timing.js';
 import { doorwayRecord, HELD_CHECK_MAX_BYTES, heldRefusal } from './tool-admission.mjs';
 
 /** Where each harness's model calls go after admission: fixed, so this server can never be used to reach anything else. */
@@ -85,17 +86,36 @@ export function createToolEffectOwner({ decide, append, prepared, stopped, now }
   });
 }
 
+/** Test copies alone retain content-free request observations in the existing encrypted journal.
+ * Failure is diagnostic loss, never a changed admission; missing ordinals are not evidence of no call. */
+export function testCopyModelRequestObserver(journal) {
+  return journal.view.testCopy ? row => journal.append(row) : null;
+}
+
 /**
  * Starts the checkpoint. `append` writes one durable record (a child edge, its close, an effect record) and throws when it
  * cannot; `effects` is the effect owner; `stopped` is the runner's stop authority. `upstreams` and `request` exist so a test
  * can stand in for the provider; production uses the fixed upstreams over TLS. `held` is the runner's held-secret check
  * (tool-turn.mjs heldVerdict) for `kind: 'held'`; absent, every such check refuses.
  */
-export async function createAdmissionGate({ append, effects, stopped, now, held = () => 'unavailable', upstreams = MODEL_UPSTREAMS, request = null }) {
+export async function createAdmissionGate({ append, effects, stopped, now, held = () => 'unavailable', upstreams = MODEL_UPSTREAMS, request = null, observeModelRequest = null }) {
   const secret = randomBytes(16).toString('hex');
   const claims = new Map();
   const reply = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
   const refuseModel = (res, message) => reply(res, 400, { type: 'error', error: { type: 'invalid_request_error', message } });
+
+  const observe = (state, rest, result) => {
+    if (!observeModelRequest || state.requestObservations >= MODEL_REQUEST_DIAGNOSTIC_LIMIT) return;
+    const ordinal = ++state.requestObservations;
+    // Only fixed protocol literals leave this boundary. Never persist a URL, query, header or body.
+    const path = rest.split('?', 1)[0];
+    try { observeModelRequest({ kind: 'phase-timing', id: state.edge.id, phase: 'model-request',
+      measurements: { ordinal, admittedCalls: state.calls, admitted: result === 'admitted',
+        limitReached: ordinal === MODEL_REQUEST_DIAGNOSTIC_LIMIT },
+      request: { path: MODEL_REQUEST_PATHS.includes(path) ? path : '[omitted]', result },
+      at: now(), forward: { generation: 4, additive: true } }); }
+    catch { /* Evidence unavailable: never alter forwarding, refusals or streaming. */ }
+  };
 
   const admit = (state, call) => {
     const tool = String(call.tool_name ?? ''), id = String(call.tool_use_id ?? '');
@@ -182,6 +202,8 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     if (!match || match[1] !== secret) { req.resume(); return reply(res, 404, { error: 'not found' }); }
     const state = claims.get(match[2]), rest = match[3] ?? '/';
     if (!state || state.closed || stopped()) {
+      if (state && rest !== '/admit' && req.method === 'POST' && !UNCOUNTED.some(pattern => pattern.test(rest)))
+        observe(state, rest, 'closed-or-stopped');
       req.resume();
       return rest === '/admit' ? reply(res, 200, { decision: 'deny', reason: 'admission: this step is closed or a stop is held; nothing runs' })
         : refuseModel(res, 'instar: this step is closed or stopped; nothing is dispatched');
@@ -205,13 +227,16 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     if (req.method === 'POST' && !UNCOUNTED.some(pattern => pattern.test(rest))) {
       if (state.calls >= state.allowance) {
         state.refused = true; state.refusalReason = 'calls'; req.resume();
+        observe(state, rest, 'allowance-exhausted');
         return refuseModel(res, `instar: this step's reserved model-call allowance (${state.allowance}) is used; the call was not dispatched`);
       }
       try { state.reserveCall?.(state.calls + 1); } catch {
         state.refused = true; state.refusalReason ??= 'reservation-unavailable'; req.resume();
+        observe(state, rest, 'reservation-unavailable');
         return refuseModel(res, 'instar: durable call reservation unavailable; nothing was dispatched');
       }
       state.calls += 1;
+      observe(state, rest, 'admitted');
     }
     const upstream = upstreams[state.framework];
     const headers = { ...req.headers, host: upstream.host };
@@ -235,7 +260,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     open(claim, { framework, allowance, edge, reserveCall }) {
       if (!claimPattern.test(claim) || !upstreams[framework] || !Number.isSafeInteger(allowance) || allowance < 1 || !edge?.id)
         throw Error('admission gate: claim, framework, allowance and edge required');
-      claims.set(claim, { framework, allowance, edge, reserveCall, calls: 0, refused: false, refusalReason: null, closed: false, delegations: new Map(), effects: new Map(), toolPreparations: 0 });
+      claims.set(claim, { framework, allowance, edge, reserveCall, requestObservations: 0, calls: 0, refused: false, refusalReason: null, closed: false, delegations: new Map(), effects: new Map(), toolPreparations: 0 });
     },
     /** Closes a claim: no further call or admission passes. Returns its final state. */
     close(claim) { const state = claims.get(claim); if (state) state.closed = true; return this.state(claim); },

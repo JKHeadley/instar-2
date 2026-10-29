@@ -28,7 +28,7 @@ import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, createSubscriptionVe
 import { attachEgress, attachSessionVolume, networkToolReads, readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
   TOOLS_DEFAULT_ACTIVATION, createHeldSecrets, custodyHeldSources, heldSpan, heldVerdict } from './tool-turn.mjs';
 import { prepareSessionAdmission, sessionAdmissionCommand, SESSION_ADMISSION_KEPT } from './session-admission.mjs';
-import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
+import { createAdmissionGate, createToolEffectOwner, testCopyModelRequestObserver } from './admission-gate.mjs';
 import { admitToolCallEffect } from './tool-admission.mjs';
 import { grantVolume, HARNESS_OFF_REASON, HARNESS_SESSION_BRIDGE, harnessCredentialValues, harnessGate, harnessHookPath, harnessRefusedNotice, harnessSessionAdmission,
   harnessSessionLayout, harnessStatusLine, readHarnessLogin } from './harness-user.mjs';
@@ -2619,7 +2619,7 @@ async function main() {
       const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
         || wallNow() >= journal.view.expires || !active() || sessionAccountsChanged();
       const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
-      gate = await createAdmissionGate({ append: appendWork, stopped: gateStopped, now: wallNow, held: heldVerdict(heldSecrets),
+      gate = await createAdmissionGate({ observeModelRequest: testCopyModelRequestObserver(journal), append: appendWork, stopped: gateStopped, now: wallNow, held: heldVerdict(heldSecrets),
         effects: createToolEffectOwner({ decide: (tool, input, parent) => conversationSession && sessionConnectors.has(parent.child)
           ? admitSessionConnector({ tool, input, config: admissionConfig(), mcp: readRootMcp(root), enabled: accountActions,
             now: wallNow(), decide: admitToolCallEffect })

@@ -1,0 +1,27 @@
+# Change review — counted model-request evidence in test copies
+
+Subject base: f2798733d43ee4460aac33c40e2f9364a0e52d04
+Review state: open
+Reviewed content: none
+Outcome: A new test-copy trial retains ordered, bounded, content-free admission observations in its existing encrypted journal, correlated to the answer attempt without relying on tool count.
+Affected rules: Purpose Rules 2 and 3, least revelation; Rules 1, 5, 13, 26, 32, 34, 35, 41, 42, 49, 60, 70, 74, 75, 95, 101, 102, 111, 113 and 116.
+Affected floors: Secrets are excluded by fixed protocol fields, never copied from bodies or headers. Spend cap and all refusals are unchanged. Stop, no duplicate sends and durable intake retain their existing enforcement. Diagnostic failure grants nothing and changes no admission result.
+Operator questions: none
+Suggested tier: critical
+Declared tier: ordinary
+Tier rationale: Small optional observer at the existing checkpoint; no admission, provider selection, prompt, output parsing, quota, stop or delivery policy change. Enabled only by an existing recorded test-copy binding.
+Side effects: At most 64 small encrypted appends per opened claim on test copies; each append uses the existing durable writer before forwarding/refusal. This adds local write latency but no deadline, timeout, body buffering or stream change. Normal roots have no observer. The latest-100 status projection can age out rows; full encrypted evidence survives compaction. Unknown paths are explicitly omitted, not asserted to equal a known endpoint. An admitted record does not establish successful dispatch or response. Failed diagnostic writes can leave gaps; absent records cannot establish no request occurred.
+Undo and recovery: Remove the observer wiring to disable new capture, retaining the current reader and encrypted journal. An old reader may reject the new phase; never downgrade the reader of an already instrumented copy or remove its records. No live migration is needed. Do not rerun an uncertain turn or copy an old journal over new intake.
+Multi-machine posture: The running owner's checkpoint emits into its existing encrypted journal; existing journal retention and replication apply. Ordinals belong to one opened claim on that owner, not a global request counter. No new store, sidecar, machine requirement or authority is introduced.
+Layer below: Checked actual POST counting and token-count/probe exemptions, reservation-before-forward, refusal branches, streaming pipe, tool-turn edge identity, recorded test-copy binding, phase schema, encrypted append, compaction and reopened projection. Read both governing documents in full and the two supplied desk reports. Reviewed the 1.x JsonlStore's writer-side bounds and archive distinction; retain the same bounded-observation principle in the existing encrypted 2.0 store instead of introducing plaintext rotation or transplanting the class.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/admission-gate.test.ts
+Hook bypass: none; core.hooksPath unset and the common hooks directory contains only sample hooks, inspected before commit.
+Convergence: none
+Prompt review: No model input, prompt, output parser or accept/escalate/refuse decision changes. Real recorded CLI method/path shapes from fixtures/model-gate-requests-2026-10-03.json replay through the observer. Those loopback captures carry no Telegram update id. The encrypted copy test uses synthetic update 46040751 only for correlation and is not represented as a live replay. R4T4 update 46040747 and R5BT1 update 46040750 are evidence of missing counted requests, not replay inputs. Summary/Jev/reply-review bodies and delivered bubbles cannot affect this observer; no model-facing repair or new T4 score is claimed.
+Decision: T4-requests-1 | Reuse encrypted phase observations only for recorded test copies, keyed by owning edge; count request attempts separately from admitted calls and leave admission decisions intact. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/t4-counted-requests-1029-PROGRESS.md
+Decision: T4-requests-2 | Retain only fixed endpoint paths with no queries; mark arbitrary paths omitted. Bound each claim at 64 observations with an explicit limit marker; diagnostic failure never changes the observed operation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/t4-counted-requests-1029-PROGRESS.md
+
+simplestRobustRoute: This is the simplest robust route: one optional callback at the existing counted-POST boundary and the existing encrypted phase schema. Tool counts cannot reconstruct model requests, and ephemeral Codex has no normal transcript. No new store, endpoint, retry, accounting policy or transcript collector is needed. Start scope is the recorded copy binding and authenticated existing claim; end evidence is admission/refusal only, explicitly not provider success; bounds are 64 observations and fixed fields. The eight-call floor and ordinary default route are unchanged. The desk owns fresh nonserving-account copy proof and independent acceptance.
+80/20: Local HTTP/provider and encrypted-copy tests cover both sides of admission, reservation failure, closed/stopped claims, default/disabled/failed observers, bounded capture, sensitive bytes and compaction/reopen. The author submits targeted evidence; full gate and fresh copy trial remain the desk's responsibility.
+VERDICT: author submission; independent desk review pending

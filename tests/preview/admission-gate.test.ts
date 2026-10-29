@@ -3,13 +3,17 @@
 // provider actually received. Rule 106: the request shapes real Claude Code and Codex CLIs sent through a loopback
 // forwarder (fixtures/model-gate-requests-2026-10-03.json) replay through it, each model call counted exactly once.
 import { createServer, request, type IncomingMessage, type Server } from 'node:http';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { openPreviewJournal } from './journal.js';
+import { makeTestCopy } from './test-copy.js';
+import { checkPhaseTiming, MODEL_REQUEST_DIAGNOSTIC_LIMIT, type PhaseTiming } from './phase-timing.js';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { SessionWorkEdge } from '../../src/assembly/production-session-work.js';
 import { modelGateLaunch } from '../../src/assembly/production-session-driver.js';
 // @ts-expect-error the checkpoint stays plain JavaScript
-import { canonical, createAdmissionGate, createToolEffectOwner, toolOperation } from './admission-gate.mjs';
+import { canonical, createAdmissionGate, createToolEffectOwner, toolOperation, testCopyModelRequestObserver } from './admission-gate.mjs';
 // @ts-expect-error the hook's decision stays plain JavaScript
 import { admitToolCall, admitToolCallEffect } from './tool-admission.mjs';
 
@@ -18,7 +22,7 @@ const RECORDED = JSON.parse(readFileSync(join(__dirname, 'fixtures/model-gate-re
 const closers: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of closers.splice(0)) await close(); });
 
-async function world(options: { stopped?: () => boolean; held?: () => string } = {}) {
+async function world(options: { stopped?: () => boolean; held?: () => string; observeModelRequest?: ((row: PhaseTiming) => void) | null } = {}) {
   // The stand-in provider: records what it received and answers with a small streamed body.
   const received: [string, string, string][] = [];
   const upstream: Server = createServer((req: IncomingMessage, res) => {
@@ -31,7 +35,7 @@ async function world(options: { stopped?: () => boolean; held?: () => string } =
   closers.push(() => new Promise(resolve => upstream.close(() => resolve())));
   const rows: unknown[] = [];
   const stopped = options.stopped ?? (() => false);
-  const gate = await createAdmissionGate({ append: (row: unknown) => rows.push(row), stopped, now: () => 5,
+  const gate = await createAdmissionGate({ observeModelRequest: options.observeModelRequest, append: (row: unknown) => rows.push(row), stopped, now: () => 5,
     ...(options.held ? { held: options.held } : {}),
     effects: createToolEffectOwner({ decide: (tool: string, input: unknown) => admitToolCallEffect(tool, input, { operations: [] }, Date.now()),
       append: (row: unknown) => rows.push(row), stopped, now: () => 5, prepared: () => false }),
@@ -159,4 +163,112 @@ it('routes a new wake to the installed checkpoint, which still refuses absent au
   expect(await ask()).toMatchObject({ decision: 'deny', reason: expect.stringContaining('closed') });
   expect(admitToolCall(call, config, 51, {})).toMatchObject({ decision: 'deny', reason: expect.stringContaining('call cap') });
   expect(w.received).toEqual([]);
+});
+
+
+it('journals eight admitted requests and the ninth refusal in a real encrypted test copy, correlated to the answer attempt', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'counted-requests-')), copy = root + '-copy';
+  const key = new Uint8Array(32).fill(71), at = 1790000000000;
+  const source = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '12345678',
+    chat: '7654321', operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
+    expires: at + 86400000, maxCalls: 20, maxReplies: 10, maxTurns: 10, maxBytes: 262144, cursor: 0 });
+  expect(testCopyModelRequestObserver(source)).toBeNull();
+  source.close();
+  const original = readFileSync(join(root, 'journal.encrypted'));
+  makeTestCopy({ sourceRoot: root, root: copy, key, now: at,
+    binding: { bot: '87654321', chat: '7654321' } });
+  const path = join(copy, 'journal.encrypted');
+  let journal = openPreviewJournal(path, key);
+  try {
+    const w = await world({ observeModelRequest: testCopyModelRequestObserver(journal) });
+    w.gate.open('claim-copy', { framework: 'codex-cli', allowance: 8,
+      edge: { ...w.edge, id: 'tool-turn:tg:46040751:answer:1', parent: 'tg:46040751:answer' } });
+    const url = w.gate.base('claim-copy') + '/backend-api/codex/responses?token=PRIVATE-QUERY';
+    for (let i = 1; i <= 9; i++) {
+      const answer = await w.send(url, 'POST', '{"input":"PRIVATE-BODY /Users/private/profile"}');
+      expect(answer.status).toBe(i <= 8 ? 200 : 400);
+      if (i <= 8) expect(answer.body).toBe('data: one\n\ndata: two\n\n');
+    }
+    expect(w.received).toHaveLength(8);
+    expect(w.gate.state('claim-copy')).toMatchObject({ calls: 8, refused: true, refusalReason: 'calls' });
+    const rows = journal.view.phaseTimings!;
+    expect(rows).toHaveLength(9);
+    expect(rows.map(row => row.measurements.ordinal)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(rows.map(row => row.request?.result)).toEqual([...Array(8).fill('admitted'), 'allowance-exhausted']);
+    expect(rows.every(row => row.id === 'tool-turn:tg:46040751:answer:1')).toBe(true);
+    expect(rows[8]).toMatchObject({ request: { path: '/backend-api/codex/responses' }, measurements: { admittedCalls: 8, admitted: false } });
+    const evidence = JSON.stringify(rows);
+    for (const privateText of ['PRIVATE', '/Users/', 'authorization', 'DUMMY-NOT-A-TOKEN', 'data: one', w.gate.base('claim-copy')])
+      expect(evidence).not.toContain(privateText);
+    journal.compact(); journal.close(); journal = openPreviewJournal(path, key);
+    expect(journal.view.phaseTimings).toEqual(rows);
+    expect(readFileSync(path).includes(Buffer.from('tool-turn:tg:46040751:answer:1'))).toBe(false);
+    expect(readFileSync(join(root, 'journal.encrypted'))).toEqual(original);
+  } finally { journal.close(); rmSync(copy, { recursive: true, force: true }); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('replays captured CLI method/path shapes into diagnostics without counting probes or token counting', async () => {
+  for (const framework of ['claude-code', 'codex-cli']) {
+    const rows: PhaseTiming[] = [];
+    const w = await world({ observeModelRequest: row => { checkPhaseTiming(row); rows.push(row); } });
+    w.gate.open('recorded-copy', { framework, allowance: 8, edge: w.edge });
+    const base = w.gate.base('recorded-copy');
+    for (const [method, path] of RECORDED[framework]!.requests) await w.send(base + path, method);
+    await w.send(base + '/v1/messages/count_tokens?beta=true');
+    expect(rows).toHaveLength(RECORDED[framework]!.modelCalls);
+    expect(rows[0]).toMatchObject({ measurements: { ordinal: 1, admittedCalls: 1, admitted: true },
+      request: { path: framework === 'codex-cli' ? '/backend-api/codex/responses' : '/v1/messages', result: 'admitted' } });
+  }
+});
+
+it('bounds observations, omits arbitrary path bytes, and distinguishes reservation, stop and closed refusals', async () => {
+  const rows: PhaseTiming[] = []; let stop = false;
+  const w = await world({ stopped: () => stop, observeModelRequest: row => { checkPhaseTiming(row); rows.push(row); } });
+  w.gate.open('bounded-copy', { framework: 'codex-cli', allowance: 8, edge: w.edge,
+    reserveCall: () => { throw Error('PRIVATE-RESERVATION-ERROR'); } });
+  const url = w.gate.base('bounded-copy') + '/PRIVATE-PATH?secret=PRIVATE-QUERY';
+  await w.send(url);
+  stop = true; await w.send(url); stop = false;
+  w.gate.close('bounded-copy');
+  for (let i = 0; i < MODEL_REQUEST_DIAGNOSTIC_LIMIT + 10; i++) await w.send(url);
+  expect(w.received).toHaveLength(0);
+  expect(rows).toHaveLength(MODEL_REQUEST_DIAGNOSTIC_LIMIT);
+  expect(rows.slice(0, 3).map(row => row.request?.result)).toEqual(['reservation-unavailable', 'closed-or-stopped', 'closed-or-stopped']);
+  expect(rows.every(row => row.request?.path === '[omitted]')).toBe(true);
+  expect(rows.at(-1)?.measurements).toMatchObject({ ordinal: 64, limitReached: true, admittedCalls: 0 });
+  expect(JSON.stringify(rows)).not.toContain('PRIVATE');
+});
+
+it('default, disabled and failed diagnostics preserve admission and streamed bytes', async () => {
+  for (const observeModelRequest of [undefined, null, () => { throw Error('disk full'); }]) {
+    const w = await world(observeModelRequest === undefined ? {} : { observeModelRequest });
+    w.gate.open('no-evidence', { framework: 'codex-cli', allowance: 1, edge: w.edge });
+    const url = w.gate.base('no-evidence') + '/backend-api/codex/responses';
+    expect(await w.send(url)).toEqual({ status: 200, body: 'data: one\n\ndata: two\n\n' });
+    expect((await w.send(url)).status).toBe(400);
+    expect(w.received).toHaveLength(1);
+    expect(w.rows).toEqual([]);
+  }
+  const boot = readFileSync(join(__dirname, 'journal-agent.mjs'), 'utf8');
+  expect(boot).toContain('createAdmissionGate({ observeModelRequest: testCopyModelRequestObserver(journal),');
+});
+
+it('rejects sensitive or malformed diagnostic fields at the journal schema boundary', () => {
+  const row: PhaseTiming = { kind: 'phase-timing', id: 'tool-turn:answer:1', phase: 'model-request',
+    measurements: { ordinal: 1, admittedCalls: 1, admitted: true, limitReached: false },
+    request: { path: '/backend-api/codex/responses', result: 'admitted' }, at: 5,
+    forward: { generation: 4, additive: true } };
+  expect(() => checkPhaseTiming(row)).not.toThrow();
+  for (const patch of [
+    { request: { ...row.request, path: '/PRIVATE' } },
+    { request: { ...row.request, headers: 'PRIVATE' } },
+    { request: { ...row.request, result: 'PRIVATE' } },
+    { request: undefined },
+    { measurements: { ...row.measurements, ordinal: 65 } },
+    { measurements: { ...row.measurements, ordinal: 0 } },
+    { measurements: { ...row.measurements, admitted: false } },
+    { measurements: { ...row.measurements, limitReached: true } },
+    { measurements: { ...row.measurements, body: 'PRIVATE' } },
+    { phase: 'auth' },
+  ]) expect(() => checkPhaseTiming({ ...row, ...patch } as PhaseTiming)).toThrow();
 });

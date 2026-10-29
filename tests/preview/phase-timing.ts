@@ -1,7 +1,13 @@
+/** Fixed protocol paths only: arbitrary request paths can contain credentials or profile names. */
+export const MODEL_REQUEST_PATHS = ['/v1/messages', '/backend-api/codex/responses',
+  '/backend-api/codex/responses/compact', '/v1/responses', '/responses', '[omitted]'] as const;
+export const MODEL_REQUEST_DIAGNOSTIC_LIMIT = 64;
+const modelRequestResults = ['admitted', 'allowance-exhausted', 'reservation-unavailable', 'closed-or-stopped'] as const;
 /** Content-free observations on the existing encrypted journal, never admission evidence.
  * One record per send attempt or checked phase; failures cannot change the observed operation. */
 export type PhaseTiming = {
-  kind: 'phase-timing'; id: string; phase: 'acknowledgement' | 'send' | 'audience' | 'version' | 'auth' | 'jev-disclosure' | 'jev-admission' | 'jev';
+  kind: 'phase-timing'; id: string; phase: 'acknowledgement' | 'send' | 'audience' | 'version' | 'auth' | 'jev-disclosure' | 'jev-admission' | 'jev' | 'model-request';
+  request?: { path: typeof MODEL_REQUEST_PATHS[number]; result: typeof modelRequestResults[number] };
   measurements: Record<string, number | boolean>; at: number;
   forward: { generation: 4; additive: true };
   /** Compacted idle samples represented by this row, excluding the separately kept tail. */
@@ -10,13 +16,24 @@ export type PhaseTiming = {
 const fields = new Set(['scheduledDueAt', 'callbackEnteredAt', 'timerCallback', 'sendEnteredAt',
   'audienceAdmittedAt', 'transportBegunAt', 'transportReturnedAt', 'attempt', 'provedNotSentAttempts',
   'cacheHit', 'elapsedMs', 'accepted', 'failed']);
+const requestFields = new Set(['ordinal', 'admittedCalls', 'admitted', 'limitReached']);
 export function checkPhaseTiming(row: PhaseTiming): void {
-  if (!['acknowledgement', 'send', 'audience', 'version', 'auth', 'jev-disclosure', 'jev-admission', 'jev'].includes(row.phase)
+  if (!['acknowledgement', 'send', 'audience', 'version', 'auth', 'jev-disclosure', 'jev-admission', 'jev', 'model-request'].includes(row.phase)
     || typeof row.id !== 'string' || row.id.length > 256
     || !row.measurements || typeof row.measurements !== 'object' || Array.isArray(row.measurements)
-    || !Object.entries(row.measurements).every(([key, value]) => fields.has(key)
+    || !Object.entries(row.measurements).every(([key, value]) => (row.phase === 'model-request' ? requestFields : fields).has(key)
       && (typeof value === 'boolean' || typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)))
     throw Error('preview journal: invalid phase timing');
+  if (row.phase === 'model-request') {
+    const m = row.measurements, r = row.request;
+    if (!r || !MODEL_REQUEST_PATHS.includes(r.path) || !modelRequestResults.includes(r.result)
+      || Object.keys(r).some(key => !['path', 'result'].includes(key))
+      || Object.keys(m).length !== 4 || !Number.isSafeInteger(m.ordinal) || Number(m.ordinal) < 1
+      || Number(m.ordinal) > MODEL_REQUEST_DIAGNOSTIC_LIMIT || !Number.isSafeInteger(m.admittedCalls)
+      || Number(m.admittedCalls) < 0 || m.admitted !== (r.result === 'admitted')
+      || m.limitReached !== (m.ordinal === MODEL_REQUEST_DIAGNOSTIC_LIMIT))
+      throw Error('preview journal: invalid model request observation');
+  } else if (row.request !== undefined) throw Error('preview journal: request outside model request observation');
   if (row.observations && (!isIdleAudienceTiming(row)
     || !Number.isSafeInteger(row.observations.count) || row.observations.count < 1
     || !Number.isSafeInteger(row.observations.firstAt) || row.observations.firstAt < 0
