@@ -37,6 +37,9 @@ it.each([
   expect(doorway.policyFor('model', doorway.toolsFraming!)).toEqual(policy);
   expect(doorway.toolTurn).toMatchObject({ perDispatch: true });
   expect(subscriptionDoorway(id).toolsFraming).toBe(old.framing);
+  const cyclic: Record<string, unknown> = { ...policy }; cyclic.self = cyclic;
+  expect(toolsPolicyClassVerdict(PER_DISPATCH_TOOLS_CLASS, cyclic, hash(policy))).toEqual({ kind: 'outside', reason: 'the presented policy is not canonical' });
+  expect(toolsPolicyClassVerdict(PER_DISPATCH_TOOLS_CLASS, { ...policy, extra: undefined }, hash(policy)).kind).toBe('outside');
   for (const changed of [{ ...policy, retries: 1 }, { ...policy, timeout: 300001 },
     { ...policy, modelRequests: 'none' }, { ...policy, limits: { ...policy.limits, maxTurns: 99 } },
     { ...policy, maxTokens: policy.maxTokens + 1 }])
@@ -63,10 +66,14 @@ it.each(['claude-code-subscription', 'codex-cli-subscription'].flatMap(id => [12
   const gate = await createAdmissionGate({ append: () => {}, effects: {}, stopped: () => false, now: () => 10,
     upstreams: { [framework]: { host: '127.0.0.1', port, secure: false } } });
   const callPath = recorded[framework]!.requests.find(([method, requestPath]) => method === 'POST' && !requestPath.includes('count_tokens'))![1];
+  let openedTransport: string | undefined;
+  const observedGate = { ...gate, open: (claim: string, options: { edge: { transport: string } }) => {
+    openedTransport = options.edge.transport; gate.open(claim, options);
+  } };
   try {
     const run = runToolTurn({ journal, root, id: 'telegram:12345678:update:9', prepared: '{}', promptLimit: 32768,
       deniedRoots: [root], operations: [], now: () => 10, stopped: () => false, redactText: (text: string) => text,
-      admission: doorway.toolTurn, system: doorway.toolTurn!.system, gate,
+      admission: doorway.toolTurn, system: doorway.toolTurn!.system, gate: observedGate,
       scratch: (turn: string) => { const volume = join(turn, 'vol'); mkdirSync(volume, { recursive: true }); return volume; },
       detach: () => true, fallback: () => { throw Error('unexpected fallback'); },
       invoke: async (turn: { gate: string }) => {
@@ -76,6 +83,7 @@ it.each(['claude-code-subscription', 'codex-cli-subscription'].flatMap(id => [12
       } });
     if (requests === 12) expect((await run).result).toEqual({ state: 'complete', value: 'answer' });
     else await expect(run).rejects.toThrow(/reserved allowance/u);
+    expect(openedTransport).toBe(framework === 'claude-code' ? 'claude-code on this machine' : 'codex exec on this machine');
     expect(received).toHaveLength(12);
     expect(journal.view.calls).toBe(12);
     expect(journal.view.toolTurns).toMatchObject({ invocations: 1, reservedCalls: 11, open: [], dispatchOrdinals: {} });

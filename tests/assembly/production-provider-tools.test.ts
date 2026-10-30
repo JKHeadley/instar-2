@@ -367,7 +367,7 @@ it('per-dispatch Claude uses the host endpoint and refuses an absent checkpoint 
   const policy = subscriptionPerDispatchToolsPolicy(f.model);
   const gate = `http://127.0.0.1:4100/${'a'.repeat(32)}/candidate`;
   const base = f.input();
-  const input = { ...base, framing: SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING,
+  const input = { ...base, framing: SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING as typeof SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING,
     activation: { ...base.activation, invocationPolicyDigest: hash(policy) },
     io: { ...base.io, execute: directExecute }, toolTurn: { ...f.toolTurn, gate } };
   expect(createClaudeCodeSubscriptionRoute({ ...input, toolTurn: f.toolTurn }).kind).toBe('Refused');

@@ -210,7 +210,10 @@ export function toolsPolicyClassVerdict(policyClass: unknown, policy: unknown, d
     const p = record(policy), limits = record(p.limits);
     if (p.modelRequests !== 'durable-per-dispatch' || Object.hasOwn(limits, 'maxTurns') || Object.hasOwn(limits, 'childMaxTurns'))
       return outside('the candidate requires per-dispatch reservations without per-answer model-call ceilings');
-    if ((encoded(policy) as { hash: string }).hash !== digest) return outside('the presented policy is not the one the activation names');
+    let candidateDigest: string;
+    try { candidateDigest = (encoded(policy) as { hash: string }).hash; }
+    catch { return outside('the presented policy is not canonical'); }
+    if (candidateDigest !== digest) return outside('the presented policy is not the one the activation names');
     if (!Array.isArray(p.args) || !p.args.every(arg => typeof arg === 'string')) return outside('the candidate has no launch arguments');
     const args = [...p.args as string[]];
     if (args.some(arg => arg === '--max-turns' || arg.startsWith('--max-turns='))) return outside('the candidate retains a per-answer turn ceiling');
