@@ -121,6 +121,8 @@ it('moves only an idle topic; the in-flight topic finishes on A then moves, with
   await f.port.run(f.request('7:second')); await f.port.run(f.request('7:first'));
   expect(f.deliveries.map(row => [row.topic, row.login])).toEqual([['8', 0], ['7', 0], ['8', 1], ['7', 1]]);
   expect(f.pool.state.handoffs.map(row => row.topic)).toEqual(['8', '7']);
+  expect(f.pool.state.switches).toHaveLength(1);
+  expect(f.pool.notices()).toHaveLength(1);
   expect(f.edges.filter(row => row.type === 'SessionWorkEdge' && !row.drawsOn)).toHaveLength(1);
   expect(Object.values(f.state().topics).reduce((sum, row) => sum + row.spent, 0)).toBe(4);
   await f.port.close();

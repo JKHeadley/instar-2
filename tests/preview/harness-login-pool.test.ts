@@ -33,6 +33,49 @@ function fixture(names = ['serving-a', 'serving-b'], changes = {}) {
 }
 const limit = { state: 'uncertain', failure: { failureClass: 'limit', resetAt: null } };
 
+it.each(['selection-first', 'handoff-first'])('records one runner transition across topic completions and selection (%s)', order => {
+  const f = fixture();
+  let hot = 0;
+  const usage = () => ({ version: 1, accounts: f.configuration.entries.map((entry, index) => ({
+    email: entry.profile.expectedAccount, configHome: entry.profile.configDirectory,
+    lastQuota: { measuredAt: new Date(f.clock.at).toISOString(),
+      fiveHour: { utilizationPct: index === hot ? 80 : 20, resetsAt: new Date(f.clock.at + 3600000).toISOString() },
+      sevenDay: { utilizationPct: 20, resetsAt: new Date(f.clock.at + 3600000).toISOString() } },
+  })) });
+  const settings = { ...f.settings, usage };
+  let pool = createHarnessLoginPool(settings);
+  const complete = id => {
+    expect(pool.selectSession(hot).index).toBe(1 - hot);
+    const move = { id, from: f.configuration.entries[hot].profile.reference,
+      to: f.configuration.entries[1 - hot].profile.reference, attempt: pool.state.handoffAttempts.at(-1).sequence };
+    pool.recordHandoff(move);
+    pool.recordHandoff(move);
+  };
+  if (order === 'selection-first') pool.select();
+  complete('topic-7:1');
+  pool = createHarnessLoginPool(settings);
+  complete('topic-8:1');
+  expect(pool.select(false, 0).index).toBe(1);
+  expect(pool.state.switches).toHaveLength(1);
+  expect(pool.state.handoffs).toHaveLength(2);
+  expect(pool.state.handoffAttempts.every(row => row.phase === 'completed')).toBe(true);
+  const first = pool.notices(); expect(first).toHaveLength(1);
+  const sent = [{ id: 'reply:1', answerNotices: first, sent: 2 }];
+  expect(openReplyNotices(sent, pool.notices(), 'reply:2')).toEqual([]);
+  expect(pool.status()).toContain('five-hour 80%');
+  expect(pool.status()).toContain('five-hour 20%');
+  hot = 1; f.clock.at++;
+  complete('topic-7:2');
+  hot = 0; f.clock.at++;
+  complete('topic-7:3');
+  expect(pool.state.switches.map(row => [row.from, row.to])).toEqual([
+    ['serving-a', 'serving-b'], ['serving-b', 'serving-a'], ['serving-a', 'serving-b'],
+  ]);
+  expect(pool.notices()).toHaveLength(3);
+  expect(openReplyNotices(sent, pool.notices(), 'reply:3')).toHaveLength(2);
+  expect(new Set(pool.notices().map(row => row.key)).size).toBe(3);
+});
+
 it('replays the captured weekly limit: A fails, next call uses B, switch is durable and notice is offered once', () => {
   const f = fixture(), calls = [];
   const a = f.pool.select(); calls.push(a.profile.reference);

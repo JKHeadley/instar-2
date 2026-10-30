@@ -296,7 +296,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
         reason: unavailable.has(current) || signedOut.has(current) ? 'member-unavailable' : reason, at, sequence: state.switches.length + 1 };
       if (requireRoom) persist({ ...state, handoffAttempts: [...(state.handoffAttempts ?? []),
         { ...event, sequence: (state.handoffAttempts?.length ?? 0) + 1, phase: 'prepared' }] });
-      else persist({ ...state, active: index, switches: [...state.switches, event] });
+      else if (state.active !== index) persist({ ...state, active: index, switches: [...state.switches, event] });
       return next;
     }
     // 1.x all-hot brake: optimization must not strand usable work simply because
@@ -321,8 +321,12 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       if (attempt < 0 || !next) fail('handoff has no prepared selection');
       persist({ ...state, active: next.index,
         handoffAttempts: attempts.map((event, index) => index === attempt ? { ...event, phase: 'completed' } : event),
-        switches: [...state.switches, { from: move.from, to: move.to, reason: attempts[attempt].reason,
-          at: now(), sequence: state.switches.length + 1 }],
+        // Topics complete independently, often after selection already moved the runner.
+        // Retain every completion, but only an active-login change is a runner switch.
+        // This durable boundary survives restart and permits a later return to this login.
+        switches: state.active === next.index ? state.switches : [...state.switches,
+          { from: move.from, to: move.to, reason: attempts[attempt].reason,
+            at: now(), sequence: state.switches.length + 1 }],
         handoffs: [...(state.handoffs ?? []), { ...move, machine, at: now() }] });
     },
     /** limit-notice-1020: read-only mirror of select()'s exclusions. Null while any reviewed login may have
