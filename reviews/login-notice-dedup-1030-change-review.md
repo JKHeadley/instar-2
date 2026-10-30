@@ -15,7 +15,7 @@ Undo and recovery: Revert the module change without rewriting pool or topic stat
 Multi-machine posture: Deliberately machine-local under the existing root writer lease; the runner's active login is local, and per-topic custody remains under the existing owning-host fence. No new store or cross-host write.
 Layer below: Traced scripts/topic-login-pool.mjs prepareTurn to selectSession and recordHandoff, including topic-specific IDs and restart reconciliation. Traced both switch append sites and notices() in tests/preview/harness-login-pool.mjs and openReplyNotices in credential-reminders.ts. Multiple topics migrating A to B generate different completion IDs; the old append sites count each as a new runner transition. The real topic host test reproduces this without replacing the handoff implementation.
 Bug class: integration
-Bug evidence: reproducer=tests/preview/topic-login-pool.test.ts and tests/preview/harness-login-pool.test.ts; three new assertions/cases failed before repair with 2, 3 and 4 switch records instead of one, then all 243 targeted tests passed
+Bug evidence: reproducer=tests/preview/topic-login-pool.test.ts; three new assertions/cases failed before repair with 2, 3 and 4 switch records instead of one, then all 243 targeted tests passed
 Hook bypass: none; core.hooksPath unset, shared hooks directory inspected and contains sample hooks only.
 Convergence: none
 Prompt review: No model prompt, parser, accept/escalate/refuse decision, model choice or wording changed. Existing recorded-shape replays in the direct-import tests remain green; no new live provider invocation.
