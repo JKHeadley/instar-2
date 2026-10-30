@@ -38,6 +38,6 @@ Prompt finding: 849db3a6296a | protocol-literal | journal-memory-list asserts th
 
 ## Closing block
 
-simplestRobustRoute: reuse the existing HTTP checkpoint, durable journal and authority resolver. Replace only the per-answer preallocation with per-dispatch reservations, keeping independent resource and time ceilings. A callback without a committed receipt would permit unaccounted requests, and removing Claude's max-turns flag without routing its model calls through this checkpoint would bypass resource admission. No new service or authority issuer is introduced. Independent approval and a 5/5 real-task copy score are activation prerequisites owned by the desk.
+simplestRobustRoute: reuse the existing HTTP checkpoint, durable journal and authority resolver. Replace only the per-answer preallocation with per-dispatch reservations, keeping independent resource and time ceilings. A callback without a committed receipt would permit unaccounted requests, and removing Claude's max-turns flag without routing its model calls through this checkpoint would bypass resource admission. No new service or authority issuer is introduced. The edge records the adapter-declared framework without harness-name branching in the runner. Independent approval and a 5/5 real-task copy score are activation prerequisites owned by the desk.
 80/20: author submission; independent review pending.
 VERDICT: author submission; not an independent approval

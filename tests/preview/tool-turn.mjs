@@ -888,7 +888,7 @@ export async function runToolTurn(options) {
           } } : {}), edge: { type: 'SessionWorkEdge', schemaVersion: 1,
         id: `tool-turn:${id}:${attempt}`, parent: id, child: `tool-turn:${id}`, scope: turn.workspace, owner, authority: 'the reviewed tools activation',
         budget: { steps: 1, deadline: openedAt + SUBSCRIPTION_TOOL_LIMITS.timeout, maxResultBytes: 16384, calls: perDispatch ? journal.view.limits.maxCalls - journal.view.calls + 1 : SUBSCRIPTION_TOOL_LIMITS.maxTurns, tokens: null },
-        exitTest: 'the turn returned one admitted answer', placement: `machine:${owner}`, transport: admission.framework === 'claude-code' ? 'claude-code on this machine' : 'codex exec on this machine',
+        exitTest: 'the turn returned one admitted answer', placement: `machine:${owner}`, transport: admission.framework ? `${admission.framework} on this machine` : 'codex exec on this machine',
         resultDestination: `answer of ${id}`, openedAt } });
     }
     if (kept) {

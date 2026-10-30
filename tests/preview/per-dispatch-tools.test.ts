@@ -83,7 +83,7 @@ it.each(['claude-code-subscription', 'codex-cli-subscription'].flatMap(id => [12
       } });
     if (requests === 12) expect((await run).result).toEqual({ state: 'complete', value: 'answer' });
     else await expect(run).rejects.toThrow(/reserved allowance/u);
-    expect(openedTransport).toBe(framework === 'claude-code' ? 'claude-code on this machine' : 'codex exec on this machine');
+    expect(openedTransport).toBe(`${framework} on this machine`);
     expect(received).toHaveLength(12);
     expect(journal.view.calls).toBe(12);
     expect(journal.view.toolTurns).toMatchObject({ invocations: 1, reservedCalls: 11, open: [], dispatchOrdinals: {} });
