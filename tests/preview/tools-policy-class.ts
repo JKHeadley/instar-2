@@ -14,11 +14,13 @@
 // and needs a new verified approval. Tool names are not part of the class: offering more or fewer tools behind the same
 // hook changes ability, not a checkpoint. The stop is the runner's, outside every policy, and no policy can remove it.
 import { encoded } from '../../src/assembly/boundary.js';
-import { SUBSCRIPTION_DOORWAYS, subscriptionToolSettings, SUBSCRIPTION_SESSION_FRAMING, SUBSCRIPTION_TOOLS_FRAMING } from '../../src/assembly/production-provider.js';
-import { CODEX_TOOLS_FRAMING, codexToolHookArgs } from '../../src/assembly/production-codex-provider.js';
+import { SUBSCRIPTION_DOORWAYS, SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING, subscriptionToolSettings, SUBSCRIPTION_SESSION_FRAMING, SUBSCRIPTION_TOOLS_FRAMING } from '../../src/assembly/production-provider.js';
+import { CODEX_TOOLS_FRAMING, CODEX_PER_DISPATCH_TOOLS_FRAMING, codexToolHookArgs } from '../../src/assembly/production-codex-provider.js';
 
 /** The one class a standing full-tools grant may name. A changed meaning is a new class id, never an edit of this one. */
 export const FULL_TOOLS_CLASS = 'full-tools-checkpointed-v1';
+/** Pre-approval candidate: recognizing this class is not a grant. Old grants never cover it. */
+export const PER_DISPATCH_TOOLS_CLASS = 'full-tools-per-dispatch-v1';
 /** The reviewed ceilings of the class: the bounds the full-tools policy carried when 121996 was recorded against it. */
 export const FULL_TOOLS_CEILINGS = Object.freeze({ maxTurns: 8, maxToolCalls: 32, maxChildren: 2, childMaxTurns: 4,
   budgetCeilingUsd: 1, timeout: 300000, maxWriteBytes: 1048576 });
@@ -204,6 +206,36 @@ export function conversationLimitsPolicyPins(policy: unknown): string {
 /** Whether the build's own policy, whose full canonical digest must be `digest`, lies in the sealed class. */
 export function toolsPolicyClassVerdict(policyClass: unknown, policy: unknown, digest: string, pins?: unknown): ToolsClassVerdict {
   const outside = (reason: string): ToolsClassVerdict => ({ kind: 'outside', reason });
+  if (policyClass === PER_DISPATCH_TOOLS_CLASS) {
+    const p = record(policy), limits = record(p.limits);
+    if (p.modelRequests !== 'durable-per-dispatch' || Object.hasOwn(limits, 'maxTurns') || Object.hasOwn(limits, 'childMaxTurns'))
+      return outside('the candidate requires per-dispatch reservations without per-answer model-call ceilings');
+    if ((encoded(policy) as { hash: string }).hash !== digest) return outside('the presented policy is not the one the activation names');
+    if (!Array.isArray(p.args) || !p.args.every(arg => typeof arg === 'string')) return outside('the candidate has no launch arguments');
+    const args = [...p.args as string[]];
+    if (args.some(arg => arg === '--max-turns' || arg.startsWith('--max-turns='))) return outside('the candidate retains a per-answer turn ceiling');
+    // Reuse the reviewed checkpoints, restoring only the removed count fields in this local
+    // projection. This never changes the old class or presents this projection to authority.
+    let framing: string;
+    if (p.framing === SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING) {
+      framing = SUBSCRIPTION_TOOLS_FRAMING;
+      try {
+        const agents = record(JSON.parse(valueAfter(args, '--agents') ?? ''));
+        if (Object.values(agents).some(agent => Object.hasOwn(record(agent), 'maxTurns')))
+          return outside('a candidate subagent retains a per-answer turn ceiling');
+      } catch { return outside('candidate subagent definitions unreadable'); }
+      args.push('--max-turns', String(FULL_TOOLS_CEILINGS.maxTurns));
+    } else if (p.framing === CODEX_PER_DISPATCH_TOOLS_FRAMING) framing = CODEX_TOOLS_FRAMING;
+    else return outside('the candidate framing is not supported');
+    // Output size, total tokens and elapsed time remain resource ceilings, independent of request count.
+    for (const [field, ceiling] of [['maxTokens', 16384], ['maxOutputBytes', 16384], ['timeout', FULL_TOOLS_CEILINGS.timeout],
+      ['maxRawTerminalBytes', 1048576], ['maxCaptureBytes', 1048576]] as const)
+      if (!capped(p[field], ceiling)) return outside(`the candidate ${field} resource ceiling differs`);
+    const projected = { ...p, args, framing, limits: { ...limits, maxTurns: FULL_TOOLS_CEILINGS.maxTurns,
+      ...(framing === SUBSCRIPTION_TOOLS_FRAMING ? { childMaxTurns: FULL_TOOLS_CEILINGS.childMaxTurns } : {}) } };
+    const verdict = toolsPolicyClassVerdict(FULL_TOOLS_CLASS, projected, (encoded(projected) as { hash: string }).hash);
+    return verdict.kind === 'covered' ? { kind: 'covered', policyClass, framing: p.framing as string, digest } : verdict;
+  }
   if (policyClass === CONVERSATION_LIMITS_CLASS) {
     try {
       if ((encoded(policy) as { hash: string }).hash !== digest) return outside('the presented policy is not the one the activation names');

@@ -18,7 +18,7 @@ const RECORDED = JSON.parse(readFileSync(join(__dirname, 'fixtures/model-gate-re
 const closers: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of closers.splice(0)) await close(); });
 
-async function world(options: { stopped?: () => boolean; held?: () => string } = {}) {
+async function world(options: { stopped?: () => boolean; held?: () => string; now?: () => number } = {}) {
   // The stand-in provider: records what it received and answers with a small streamed body.
   const received: [string, string, string][] = [];
   const upstream: Server = createServer((req: IncomingMessage, res) => {
@@ -31,7 +31,7 @@ async function world(options: { stopped?: () => boolean; held?: () => string } =
   closers.push(() => new Promise(resolve => upstream.close(() => resolve())));
   const rows: unknown[] = [];
   const stopped = options.stopped ?? (() => false);
-  const gate = await createAdmissionGate({ append: (row: unknown) => rows.push(row), stopped, now: () => 5,
+  const gate = await createAdmissionGate({ append: (row: unknown) => rows.push(row), stopped, now: options.now ?? (() => 5),
     ...(options.held ? { held: options.held } : {}),
     effects: createToolEffectOwner({ decide: (tool: string, input: unknown) => admitToolCallEffect(tool, input, { operations: [] }, Date.now()),
       append: (row: unknown) => rows.push(row), stopped, now: () => 5, prepared: () => false }),
@@ -159,4 +159,72 @@ it('routes a new wake to the installed checkpoint, which still refuses absent au
   expect(await ask()).toMatchObject({ decision: 'deny', reason: expect.stringContaining('closed') });
   expect(admitToolCall(call, config, 51, {})).toMatchObject({ decision: 'deny', reason: expect.stringContaining('call cap') });
   expect(w.received).toEqual([]);
+});
+
+
+it.each(['claude-code', 'codex-cli'])('candidate %s dispatches beyond eight with a durable receipt for every call', async framework => {
+  const w = await world();
+  const reserved: number[] = [];
+  w.gate.open('candidate', { framework, allowance: null, deadline: 100, edge: w.edge,
+    reserveCall: (ordinal: number) => { reserved.push(ordinal); return ordinal; } });
+  const paths = RECORDED[framework]!.requests.filter(([method, path]) => method === 'POST' && !path.includes('count_tokens'));
+  expect(paths).not.toHaveLength(0);
+  for (let i = 0; i < 12; i++) {
+    const [method, path] = paths[i % paths.length]!;
+    expect((await w.send(`${w.gate.base('candidate')}${path}`, method)).status).toBe(200);
+  }
+  expect(reserved).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
+  expect(w.received).toHaveLength(12);
+  expect(w.gate.close('candidate')).toMatchObject({ calls: 12, closed: true, refused: false });
+});
+
+it.each(['stop', 'deadline', 'budget', 'durability', 'missing-receipt', 'async-receipt'])('candidate refuses %s before dispatch', async failure => {
+  let stopped = false, clock = 5, fail = false;
+  const w = await world({ stopped: () => stopped, now: () => clock });
+  const reserved: number[] = [];
+  w.gate.open('candidate', { framework: 'claude-code', allowance: null, deadline: 100, edge: w.edge,
+    reserveCall: (ordinal: number) => {
+      if (fail && ['budget', 'durability'].includes(failure)) throw Error(failure);
+      if (fail && failure === 'missing-receipt') return undefined;
+      if (fail && failure === 'async-receipt') return Promise.resolve(ordinal);
+      reserved.push(ordinal); return ordinal;
+    } });
+  const url = `${w.gate.base('candidate')}/v1/messages`;
+  expect((await w.send(url)).status).toBe(200);
+  fail = true;
+  if (failure === 'stop') stopped = true;
+  if (failure === 'deadline') clock = 100;
+  expect((await w.send(url)).status).toBe(400);
+  expect(w.received).toHaveLength(1);
+  expect(reserved).toEqual([1]);
+});
+
+it('candidate cannot open without a finite future deadline and durable reservation owner', async () => {
+  const w = await world();
+  const base = { framework: 'codex-cli', allowance: null, edge: w.edge };
+  for (const options of [{}, { deadline: 100 }, { deadline: Infinity, reserveCall: () => 1 },
+    { deadline: 5, reserveCall: () => 1 }, { reserveCall: () => 1 }])
+    expect(() => w.gate.open('candidate', { ...base, ...options })).toThrow();
+});
+
+
+it('candidate rechecks the deadline after a slow durable reservation', async () => {
+  let clock = 5;
+  const w = await world({ now: () => clock });
+  const reserved: number[] = [];
+  w.gate.open('slow', { framework: 'codex-cli', allowance: null, deadline: 100, edge: w.edge,
+    reserveCall: (ordinal: number) => { reserved.push(ordinal); clock = 100; return ordinal; } });
+  expect((await w.send(`${w.gate.base('slow')}/backend-api/codex/responses`)).status).toBe(400);
+  expect(reserved).toEqual([1]); expect(w.received).toEqual([]);
+});
+
+it('candidate retains the delegated-child resource ceiling', async () => {
+  const w = await world();
+  w.gate.open('children', { framework: 'claude-code', allowance: null, deadline: 100, edge: w.edge,
+    maxDelegations: 1, reserveCall: (ordinal: number) => ordinal });
+  const send = async (tool_use_id: string) => JSON.parse((await w.send(`${w.gate.base('children')}/admit`, 'POST',
+    JSON.stringify({ kind: 'delegation', phase: 'pre', tool_name: 'Agent', tool_use_id }))).body);
+  expect(await send('first')).toMatchObject({ decision: 'allow' });
+  expect(await send('second')).toMatchObject({ decision: 'deny', reason: expect.stringContaining('child resource') });
+  expect(w.rows).toHaveLength(1);
 });

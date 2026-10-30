@@ -1344,8 +1344,9 @@ export type JournalRecord =
   /** A tool turn (Part Thirteen §9, docs/17-harness-adapters): its whole liability (`calls` model attempts beyond the answer's own
    * reservation) is reserved before dispatch and retained; a short allowance answers without tools; the
    * trace records each tool call, its admission and its result after the turn. */
-  | { kind: 'tool-turn'; phase: 'reserved'; id: string; attempt: number; calls: number; delegation?: ToolDelegation;
+  | { kind: 'tool-turn'; phase: 'reserved'; id: string; attempt: number; calls: number; perDispatch?: true; delegation?: ToolDelegation;
       mcp?: { servers: string[]; reads: number; digest: string }; workspace?: ToolWorkspaceRow; at: number }
+  | { kind: 'tool-turn'; phase: 'call-reserved'; id: string; attempt: number; ordinal: number; at: number }
   | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size' | 'mcp credential unavailable' | 'harness identity unavailable'; at: number }
   | { kind: 'tool-turn'; phase: 'trace'; id: string; attempt: number; calls: ToolTraceCall[]; consistent: boolean;
       edges?: ToolChildEdge[]; egress?: ToolEgressRequest[]; egressRequests?: number; egressLimited?: string; workspaceBytes: number | null;
@@ -3690,7 +3691,7 @@ export const TOOL_ATTEMPTS_PARTIAL_MEANING = 'The first tool calls this reply\'s
   + 'later calls are not shown. A refused call is not an attempt at an avenue. A tool result the reply reports may come from an omitted '
   + 'call, so its absence here does not show that the call or result did not happen.';
 const attemptExcerpt = (text: string) => text.length > TOOL_ATTEMPT_EXCERPT_CHARS ? `${text.slice(0, TOOL_ATTEMPT_EXCERPT_CHARS)}…` : text;
-export interface ToolTurnStats { invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number;
+export interface ToolTurnStats { dispatchOrdinals?: Record<string, number>; invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number;
   /** Turns answered without tools because an MCP server's SecretRef could not be opened from custody. */
   refusedCredential?: number;
   /** Plan #473: turns answered without tools because the separate harness user was not ready, and the latest such
@@ -3744,8 +3745,21 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   const key = row.phase === 'refused' ? '' : `${row.id}#${String(row.attempt)}`;
   // The latest attempt's route is the turn's current capability; an earlier trace stays as history (Rules 78, 84).
   const routed = view.turns.get(row.id);
-  if (routed && row.phase !== 'trace') routed.toolRouted = row.phase === 'reserved';
+  if (routed && (row.phase === 'reserved' || row.phase === 'refused')) routed.toolRouted = row.phase === 'reserved';
+  if (row.phase === 'call-reserved') {
+    const previous = stats.dispatchOrdinals?.[key];
+    const charge = row.ordinal === 1 ? 0 : 1; // The worker reserved the first model call before preparing tools.
+    if (!stats.open.includes(key) || previous === undefined || row.ordinal !== previous + 1
+      || !Number.isSafeInteger(row.ordinal) || view.calls + charge > view.limits.maxCalls
+      || view.stop !== null || row.at >= view.expires) throw Error('preview journal: per-dispatch reservation refused');
+    view.calls += charge;
+    view.toolTurns = { ...stats, reservedCalls: stats.reservedCalls + charge,
+      dispatchOrdinals: { ...stats.dispatchOrdinals, [key]: row.ordinal } };
+    return;
+  }
   if (row.phase === 'reserved') {
+    if (row.perDispatch !== undefined && (row.perDispatch !== true || row.calls > 1))
+      throw Error('preview journal: per-dispatch opening reservation differs');
     if (!Number.isSafeInteger(row.attempt) || row.attempt < 0 || !Number.isSafeInteger(row.calls) || row.calls < 0
       || view.calls + row.calls > view.limits.maxCalls || stats.open.includes(key)) throw Error('preview journal: tool turn reservation or cap');
     // The reservation covers the delegated children's whole budget: an edge can never spend past it.
@@ -3759,6 +3773,7 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     view.calls += row.calls;
     if (routed) routed.unusedToolCalls = (routed.unusedToolCalls ?? 0) + row.calls;
     view.toolTurns = { ...stats, invocations: stats.invocations + 1, reservedCalls: stats.reservedCalls + row.calls, open: [...stats.open, key],
+      ...(row.perDispatch ? { dispatchOrdinals: { ...stats.dispatchOrdinals, [key]: 0 } } : {}),
       ...(w?.kept === false ? { overflow: (stats.overflow ?? 0) + 1 } : {}),
       ...(w?.kept === true && !(stats.workspaces ?? []).includes(w.key) ? { workspaces: [...(stats.workspaces ?? []), w.key] } : {}) };
     return;
@@ -3824,7 +3839,9 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   const requests = egress.filter(entry => entry.kind !== 'tunnel'), allowed = requests.filter(entry => entry.decision === 'allow').length;
   const network = requests.length || stats.network ? { admitted: (stats.network?.admitted ?? 0) + allowed,
     refused: (stats.network?.refused ?? 0) + requests.length - allowed } : undefined;
-  view.toolTurns = { ...stats, toolCalls: stats.toolCalls + admitted, toolRefusals: stats.toolRefusals + row.calls.length - admitted,
+  const dispatchOrdinals = stats.dispatchOrdinals ? { ...stats.dispatchOrdinals } : undefined;
+  if (dispatchOrdinals) delete dispatchOrdinals[key];
+  view.toolTurns = { ...stats, ...(dispatchOrdinals ? { dispatchOrdinals } : {}), toolCalls: stats.toolCalls + admitted, toolRefusals: stats.toolRefusals + row.calls.length - admitted,
     inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key), ...(children ? { children } : {}),
     ...(sessions ? { sessions } : {}),
     ...(volume?.lost ? { workspacesLost: (stats.workspacesLost ?? 0) + 1 } : {}),

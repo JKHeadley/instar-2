@@ -153,6 +153,8 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
         return { decision: 'allow', reason: 'delegation returned' };
       }
       if (state.delegations.has(id)) return { decision: 'deny', reason: 'admission: this delegation was already admitted' };
+      if (state.maxDelegations !== undefined && state.delegations.size >= state.maxDelegations)
+        return { decision: 'deny', reason: 'admission: delegated child resource ceiling reached' };
       const edge = nestedSessionWorkEdge(state.edge, { id, tool }, now());
       try { append(edge); } catch { return { decision: 'deny', reason: 'admission: the delegation edge could not be recorded' }; }
       state.delegations.set(id, { edge, open: true, async: false, handles: [] });
@@ -181,7 +183,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     const match = /^\/([0-9a-f]{32})\/([^/]+)(\/.*)?$/u.exec(req.url ?? '');
     if (!match || match[1] !== secret) { req.resume(); return reply(res, 404, { error: 'not found' }); }
     const state = claims.get(match[2]), rest = match[3] ?? '/';
-    if (!state || state.closed || stopped()) {
+    if (!state || state.closed || stopped() || (state.deadline !== undefined && now() >= state.deadline)) {
       req.resume();
       return rest === '/admit' ? reply(res, 200, { decision: 'deny', reason: 'admission: this step is closed or a stop is held; nothing runs' })
         : refuseModel(res, 'instar: this step is closed or stopped; nothing is dispatched');
@@ -193,7 +195,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       req.on('end', () => {
         // Authority is read again now the whole request is here: a claim closed or a stop raised while the body was
         // arriving refuses, so nothing is admitted on a reading taken before the withdrawal.
-        if (state.closed || claims.get(match[2]) !== state || stopped())
+        if (state.closed || claims.get(match[2]) !== state || stopped() || (state.deadline !== undefined && now() >= state.deadline))
           return reply(res, 200, { decision: 'deny', reason: 'admission: this step is closed or a stop is held; nothing runs' });
         let verdict;
         try { verdict = admit(state, JSON.parse(body)); } catch { verdict = { decision: 'deny', reason: 'admission: request unreadable or unrecordable' }; }
@@ -203,15 +205,21 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
     }
     // Model dispatch: the allowance is taken before the call is forwarded, and a call past it is never forwarded.
     if (req.method === 'POST' && !UNCOUNTED.some(pattern => pattern.test(rest))) {
-      if (state.calls >= state.allowance) {
+      if (state.allowance !== null && state.calls >= state.allowance) {
         state.refused = true; state.refusalReason = 'calls'; req.resume();
         return refuseModel(res, `instar: this step's reserved model-call allowance (${state.allowance}) is used; the call was not dispatched`);
       }
-      try { state.reserveCall?.(state.calls + 1); } catch {
+      try {
+        const receipt = state.reserveCall?.(state.calls + 1);
+        if (state.allowance === null && receipt !== state.calls + 1) throw Error('exact durable reservation receipt required');
+      } catch {
         state.refused = true; state.refusalReason ??= 'reservation-unavailable'; req.resume();
         return refuseModel(res, 'instar: durable call reservation unavailable; nothing was dispatched');
       }
       state.calls += 1;
+    }
+    if (state.closed || stopped() || (state.deadline !== undefined && now() >= state.deadline)) {
+      req.resume(); return refuseModel(res, 'instar: claim stopped, closed or deadline reached before dispatch');
     }
     const upstream = upstreams[state.framework];
     const headers = { ...req.headers, host: upstream.host };
@@ -231,11 +239,21 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
   return Object.freeze({
     /** The model endpoint and admission root for one claim. */
     base(claim) { if (!claimPattern.test(claim)) throw Error('admission gate: exact claim required'); return `http://127.0.0.1:${port}/${secret}/${claim}`; },
-    /** Opens a claim with its reserved allowance and the edge its delegations hang from; a new open starts from nothing. */
-    open(claim, { framework, allowance, edge, reserveCall }) {
-      if (!claimPattern.test(claim) || !upstreams[framework] || !Number.isSafeInteger(allowance) || allowance < 1 || !edge?.id)
+    /** Opens a claim with its reserved allowance and the edge its delegations hang from.
+     * Candidate per-dispatch mode uses allowance:null, a finite deadline, and a synchronous
+     * durable reservation callback returning the exact ordinal after committing it. There is
+     * no per-answer count ceiling. The owner must enforce its separately authorized resource
+     * budget before returning the receipt. Missing, async or failed receipts refuse dispatch.
+     * This mode conveys no authority and is not selected by existing tool-turn callers. */
+    open(claim, { framework, allowance, edge, reserveCall, deadline, maxDelegations }) {
+      const perDispatch = allowance === null && typeof reserveCall === 'function'
+        && Number.isSafeInteger(deadline) && deadline > now();
+      if (!claimPattern.test(claim) || !upstreams[framework]
+        || (!perDispatch && (!Number.isSafeInteger(allowance) || allowance < 1)) || !edge?.id
+        || (deadline !== undefined && (!Number.isSafeInteger(deadline) || deadline <= now()))
+        || (maxDelegations !== undefined && (!Number.isSafeInteger(maxDelegations) || maxDelegations < 0)))
         throw Error('admission gate: claim, framework, allowance and edge required');
-      claims.set(claim, { framework, allowance, edge, reserveCall, calls: 0, refused: false, refusalReason: null, closed: false, delegations: new Map(), effects: new Map(), toolPreparations: 0 });
+      claims.set(claim, { framework, allowance, edge, reserveCall, deadline, maxDelegations, calls: 0, refused: false, refusalReason: null, closed: false, delegations: new Map(), effects: new Map(), toolPreparations: 0 });
     },
     /** Closes a claim: no further call or admission passes. Returns its final state. */
     close(claim) { const state = claims.get(claim); if (state) state.closed = true; return this.state(claim); },

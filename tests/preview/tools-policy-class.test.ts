@@ -13,7 +13,7 @@ import { authoritySealKey, PREVIEW_DESK, resolveActivationAuthority, sealAuthori
 import { CONVERSATION_LIMITS_CLASS, conversationLimitsPolicyPins, claudeSettingsCheckpoints, codexDispatchCheckpoint, FULL_TOOLS_CLASS, GUIDANCE_ONLY_TOOLS_CLASS, guidanceOnlyPolicyPins, toolsPolicyClassVerdict } from './tools-policy-class.js';
 import { encoded } from '../../src/assembly/boundary.js';
 import { subscriptionConversationPolicy, subscriptionToolSettings, subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';
-import { codexToolHookArgs, codexToolsPolicy } from '../../src/assembly/production-codex-provider.js';
+import { codexPerDispatchToolsPolicy, codexToolHookArgs, codexToolsPolicy } from '../../src/assembly/production-codex-provider.js';
 
 const recorded = JSON.parse(readFileSync('tests/preview/fixtures/tools-policies-L42-L44-2026-10-03.json', 'utf8')) as
   { builds: { build: string; grant: string; model: string; digest: string; policy: Record<string, unknown> }[] };
@@ -299,4 +299,8 @@ it('replays train-46 and train-47 conversation policies with only worker limits 
   const revoked = sealAuthorityRecord({ ...grant, revocations: [{ grantId: grant.grants[0]!.id,
     at: NOW - 10, by: OPERATOR, source: 'withdrawn' }] }, KEY);
   expect(resolve(revoked, policy).kind).toBe('refused');
+});
+
+it('the existing full-tools grant cannot authorize the per-dispatch successor', () => {
+  expect(resolve(CLASS_GRANT, codexPerDispatchToolsPolicy(MODEL)).kind).toBe('refused');
 });

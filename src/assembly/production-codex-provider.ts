@@ -109,6 +109,18 @@ export function codexToolsPolicy(model: string) {
   maxInputBytes: CODEX_CONVERSATION_MAX_PROMPT_BYTES, maxOutputBytes: 16384, maxRawTerminalBytes: 1048576,
   maxMetadataBytes: 8192, maxCaptureBytes: 1048576 });
 }
+/** Candidate successor; the historical tools policy and its class retain their meaning. */
+export const CODEX_PER_DISPATCH_TOOLS_FRAMING = 'preview-codex-tools-per-dispatch-v1';
+export const CODEX_PER_DISPATCH_TOOLS_SYSTEM = CODEX_TOOLS_SYSTEM_PROMPT.replace(
+  `The whole turn, subagents included, has at most ${CODEX_TOOL_LIMITS.maxTurns} model calls; a call past them is refused and the turn ends with no answer.`,
+  'Every model call, subagents included, reserves its resources durably before dispatch; stop, time and resource limits still apply.');
+export function codexPerDispatchToolsPolicy(model: string) {
+  const base = codexToolsPolicy(model);
+  const { maxTurns: _turns, ...limits } = base.limits;
+  return Object.freeze({ ...base, system: CODEX_PER_DISPATCH_TOOLS_SYSTEM, limits: Object.freeze(limits),
+    framing: CODEX_PER_DISPATCH_TOOLS_FRAMING, modelRequests: 'durable-per-dispatch' as const,
+    gate: 'admission-gate.mjs: every model call requires an exact durable per-dispatch reservation and a live deadline' });
+}
 const PLAIN_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
 /** The per-turn arguments that install the admission hook on a Codex tool turn and send every model call of it through
  * the host's model-dispatch checkpoint (`turn.gate`, required), then read the prompt from stdin. */
@@ -152,8 +164,9 @@ export function codexConversationPolicy(model: string) {
 }
 /** Exact policy and instructions for a framing this doorway serves; anything else refuses. */
 export function codexSubscriptionPolicyFor(model: string, framing: string = CODEX_CONVERSATION_FRAMING) {
-  ensure(framing === CODEX_CONVERSATION_FRAMING || framing === CODEX_TOOLS_FRAMING, 'codex subscription framing unsupported');
-  return framing === CODEX_TOOLS_FRAMING ? { policy: codexToolsPolicy(model), system: CODEX_TOOLS_SYSTEM_PROMPT }
+  ensure(framing === CODEX_CONVERSATION_FRAMING || framing === CODEX_TOOLS_FRAMING || framing === CODEX_PER_DISPATCH_TOOLS_FRAMING, 'codex subscription framing unsupported');
+  return framing === CODEX_PER_DISPATCH_TOOLS_FRAMING ? { policy: codexPerDispatchToolsPolicy(model), system: CODEX_PER_DISPATCH_TOOLS_SYSTEM }
+    : framing === CODEX_TOOLS_FRAMING ? { policy: codexToolsPolicy(model), system: CODEX_TOOLS_SYSTEM_PROMPT }
     : { policy: codexConversationPolicy(model), system: CODEX_CONVERSATION_SYSTEM_PROMPT };
 }
 
@@ -335,7 +348,7 @@ export function createCodexSubscriptionRoute(input:
     const framing = config.framing ?? CODEX_CONVERSATION_FRAMING;
     const { policy, system } = codexSubscriptionPolicyFor(config.model, framing);
     const promptBytes = config.raisedPromptBytes ?? policy.maxPromptBytes;
-    const tools = framing === CODEX_TOOLS_FRAMING, toolTurn = config.toolTurn;
+    const tools = framing === CODEX_TOOLS_FRAMING || framing === CODEX_PER_DISPATCH_TOOLS_FRAMING, toolTurn = config.toolTurn;
     ensure(tools === (toolTurn !== undefined), 'codex tool turn and framing differ');
     const modelArgs = toolTurn ? [...policy.args, ...codexToolHookArgs(toolTurn)] : policy.args;
     if (toolTurn) ensure(config.io.realpath(toolTurn.workspace) === toolTurn.workspace
@@ -499,11 +512,12 @@ export function codexSubscriptionDoorway(): SubscriptionDoorway {
         && frames.disallowedItems.length === 0 && frames.thread && frames.answer?.trim() ? [] : null;
     },
     contract: CODEX_SUBSCRIPTION_CONTRACT,
-    framings: Object.freeze([CODEX_CONVERSATION_FRAMING, CODEX_TOOLS_FRAMING]),
+    framings: Object.freeze([CODEX_CONVERSATION_FRAMING, CODEX_TOOLS_FRAMING, CODEX_PER_DISPATCH_TOOLS_FRAMING]),
     conversationFraming: CODEX_CONVERSATION_FRAMING,
     // Rule 30: the same scoped-tool answer route as the Claude doorway, its safeguards enforced at the admission
     // hook rather than by removing the shell. Long and scheduled work also runs as a full delegated session.
     toolsFraming: CODEX_TOOLS_FRAMING,
+    perDispatchTools: Object.freeze({ framing: CODEX_PER_DISPATCH_TOOLS_FRAMING, system: CODEX_PER_DISPATCH_TOOLS_SYSTEM, framework: 'codex-cli' as const }),
     toolTurn: Object.freeze({ system: CODEX_TOOLS_SYSTEM_PROMPT, maxCalls: CODEX_TOOL_LIMITS.maxTurns,
       harness: 'codex', confinedShell: true }),
     policyFor: (model: string, framing: string): SubscriptionPolicyBounds =>

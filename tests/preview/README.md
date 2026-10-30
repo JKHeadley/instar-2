@@ -4537,3 +4537,28 @@ model id. Failed exchanges, local ceilings and stale evidence retain their exist
 meaning. Replaced doorway entries remain retired history and do not appear as active
 unavailable models in status, capability context or reply notices. Restarting an
 existing root applies this reconciliation without another store or probe.
+
+### Per-dispatch tool answers — pre-approval candidate
+
+`--tools-requests per-dispatch` selects the candidate
+`full-tools-per-dispatch-v1` policy class and the corresponding Claude/Codex
+provider framing. It is not enabled by default, and an existing
+`full-tools-checkpointed-v1` grant does not authorize it. The desk must obtain the
+independent P-02 approval and complete the required real-task copy proof before
+activation. This branch issues no authority.
+
+The candidate has no per-answer model-request count ceiling. Each request of the
+answer and its delegated children passes the host checkpoint, which commits its
+resource reservation before forwarding. The first request uses the worker's
+already reserved base attempt; subsequent requests consume the existing
+installation-wide allowance. A failed reservation, stop, or expired finite
+turn deadline refuses before dispatch. Existing subscription account/model checks,
+extra-usage policy, dollar backstop, output/token/byte bounds, tool admission,
+shell confinement, child concurrency policy and duplicate-effect protection stay
+in force. This does not remove the installation-wide allowance or the separate
+conversation-session work budget, and it makes no new billing guarantee.
+
+New `tool-turn/call-reserved` rows retain the dispatch ordinals and charges across
+restarts. Older readers cannot replay these new raw phases; retain the candidate
+journal and use a compatible reader when recovering. Never delete records or
+repeat uncertain effects to roll back.

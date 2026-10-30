@@ -799,9 +799,10 @@ export function reconcileToolTurns({ journal, root, redactText, now }) {
 /** Whether the call allowance holds a tool turn's whole liability. The packet that names the tools and the turn's own
  * reservation use this one predicate, so an answer is told it has tools only when its turn will run with them. The packet
  * is prepared before its base call is reserved, so it passes that call as `unreserved`; dispatch runs after it. */
-export const toolTurnFits = (view, unreserved = 0) => view.calls + unreserved + SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1 <= view.limits.maxCalls;
+export const toolTurnFits = (view, unreserved = 0, perDispatch = false) => view.calls + unreserved
+  + (perDispatch ? 0 : SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1) <= view.limits.maxCalls;
 /** The packet's side of `toolTurnFits`: its own base call is not reserved yet when it is prepared. */
-export const toolPacketFits = view => toolTurnFits(view, 1);
+export const toolPacketFits = (view, perDispatch = false) => toolTurnFits(view, 1, perDispatch);
 /** How many subagents the allowance holds (Rule 114 budget share): each reserves its whole `childMaxTurns` before dispatch,
  * taken only from allowance beyond this turn's own liability AND one further plain tool turn (its base call and its
  * liability), so a subagent budget never costs the next answer (a format re-ask, a replacement, the next message) its
@@ -823,7 +824,9 @@ export async function runToolTurn(options) {
   completed = result => result?.state === 'complete', egress = undefined, networkTools = networkToolReads,
   system = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, admission = CLAUDE_TOOL_ADMISSION, gate = null, owner = 'this machine', harness = null, heldSecrets = null,
   recoveringResume = false } = options;
-  const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
+  const perDispatch = admission.perDispatch === true;
+  const checkpointed = perDispatch || !!admission.harness;
+  const extra = perDispatch ? 0 : SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   const refuse = reason => { journal.append({ kind: 'tool-turn', phase: 'refused', id, reason, at: now() }); return fallback(); };
   // Plan #473: a Claude Code turn with no harness user (`{ready: false, refused: true, reason}`, journal-agent.mjs
   // identityRefusalOf) is refused and answered text only, never run as the operator's account.
@@ -831,7 +834,7 @@ export async function runToolTurn(options) {
   // Any other harness user that is not ready never runs a turn, nor lets one fall back to the runner's own account.
   if (harness && harness.ready !== true) throw Error(`preview: the harness identity is unavailable (${String(harness.reason ?? 'not ready')})`);
   // A recovery needs its own base call too; only the first base was reserved by the worker.
-  if (!toolTurnFits(journal.view, recoveringResume ? 1 : 0)) return refuse('call cap');
+  if (!toolTurnFits(journal.view, recoveringResume ? 1 : 0, perDispatch)) return refuse('call cap');
   if (Buffer.byteLength(prepared) + Buffer.byteLength(system) + TOOL_NOTICE_MAX_BYTES > promptLimit) return refuse('prompt size');
   // Rule 100: a server's SecretRefs are opened from custody before anything is reserved; held in memory only.
   const mcpValues = {}, served = [];
@@ -849,7 +852,7 @@ export async function runToolTurn(options) {
   const attempt = journal.view.toolTurns?.invocations ?? 0;
   // A checkpointed harness's subagents spend from the turn's one allowance at the checkpoint (every model call of the
   // tree passes it), so no separate subagent budget is reserved for it.
-  const children = admission.harness ? 0 : toolChildrenFit(journal.view, recoveringResume ? 1 : 0);
+  const children = checkpointed ? 0 : toolChildrenFit(journal.view, recoveringResume ? 1 : 0);
   // Rule 60: the conversation's kept workspace, or (past the root's bound) a fresh one-turn volume and no kept session.
   const space = conversationWorkspace(root, conversation);
   const kept = space.directory !== null;
@@ -860,15 +863,15 @@ export async function runToolTurn(options) {
   const used = kept && (journal.view.toolTurns?.workspaces ?? []).includes(space.key);
   const quotes = kept ? forgottenQuotes(journal.view) : [];
   // Rule 114: the edge's authority and budget share are durable before dispatch, with the turn's whole liability.
-  journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt, calls: extra + children * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns + (recoveringResume ? 1 : 0),
+  journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt, ...(perDispatch ? { perDispatch: true } : {}), calls: extra + children * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns + (recoveringResume ? 1 : 0),
     delegation: { children, turnsEach: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, type: SUBSCRIPTION_SUBAGENT_TYPE, authority },
     ...(mcp ? { mcp: { servers: Object.keys(mcp.servers), reads: mcp.reads.length, digest: mcp.digest } } : {}),
     workspace: { key: space.key, kept }, at: now() });
   let turn = null, result, failure = null, plan = null, volume = null, notice = '', closeSecrets = null, checkpoint = null, claim = null, gated = null;
   try {
     // A harness with no model-call limit of its own runs only through the checkpoint: no checkpoint, no tool turn.
-    if (admission.harness && !gate) throw Error('preview: this tool turn needs the host admission checkpoint');
-    if (admission.harness) claim = `tool-turn-${createHash('sha256').update(id, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
+    if (checkpointed && !gate) throw Error('preview: this tool turn needs the host admission checkpoint');
+    if (checkpointed) claim = `tool-turn-${createHash('sha256').update(id, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
     turn = prepareToolTurn({ root, operation: id, attempt, operations, effectPolicy, irreversibleTerm, children, mcp, scratch,
       volume: kept ? space : null, authority, admission, ...(claim ? { gate: gate.base(claim) } : {}),
       ...(harness ? { harness: { user: harness.user, runner: harness.runner, hookScript: harness.hookScript,
@@ -876,9 +879,15 @@ export async function runToolTurn(options) {
     if (claim) {
       // The turn's own edge: the parent its delegations hang from (its durable record is the journal's reserved row).
       const openedAt = now();
-      gate.open(claim, { framework: 'codex-cli', allowance: SUBSCRIPTION_TOOL_LIMITS.maxTurns, edge: { type: 'SessionWorkEdge', schemaVersion: 1,
+      gate.open(claim, { framework: admission.framework ?? 'codex-cli', allowance: perDispatch ? null : SUBSCRIPTION_TOOL_LIMITS.maxTurns,
+        ...(perDispatch ? { ...(!admission.harness ? { maxDelegations: SUBSCRIPTION_TOOL_LIMITS.maxChildren } : {}), deadline: Math.min(journal.view.expires, openedAt + SUBSCRIPTION_TOOL_LIMITS.timeout),
+          reserveCall: ordinal => {
+            if (stopped()) throw Error('tool turn stopped or authority withdrawn');
+            journal.append({ kind: 'tool-turn', phase: 'call-reserved', id, attempt, ordinal, at: now() });
+            return ordinal;
+          } } : {}), edge: { type: 'SessionWorkEdge', schemaVersion: 1,
         id: `tool-turn:${id}:${attempt}`, parent: id, child: `tool-turn:${id}`, scope: turn.workspace, owner, authority: 'the reviewed tools activation',
-        budget: { steps: 1, deadline: openedAt + SUBSCRIPTION_TOOL_LIMITS.timeout, maxResultBytes: 16384, calls: SUBSCRIPTION_TOOL_LIMITS.maxTurns, tokens: null },
+        budget: { steps: 1, deadline: openedAt + SUBSCRIPTION_TOOL_LIMITS.timeout, maxResultBytes: 16384, calls: perDispatch ? journal.view.limits.maxCalls - journal.view.calls + 1 : SUBSCRIPTION_TOOL_LIMITS.maxTurns, tokens: null },
         exitTest: 'the turn returned one admitted answer', placement: `machine:${owner}`, transport: 'codex exec on this machine',
         resultDestination: `answer of ${id}`, openedAt } });
     }
@@ -978,7 +987,7 @@ export async function runToolTurn(options) {
   // the original rejection instead of degrading the requested work to a text-only call.
   if (!recoveringResume && plan?.resume && result?.state === 'rejected' && !result.capacity
     && result.usage?.inputComplete === true && result.usage.inputTokens === 0 && result.usage.outputTokens === 0
-    && trace.calls.length === 0 && trace.children.length === 0 && !stopped() && toolTurnFits(journal.view, 1)) {
+    && trace.calls.length === 0 && trace.children.length === 0 && !stopped() && toolTurnFits(journal.view, 1, perDispatch)) {
     return runToolTurn({ ...options, recoveringResume: true });
   }
   return { result, turn, trace, session: plan };

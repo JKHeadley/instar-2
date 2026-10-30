@@ -13,13 +13,14 @@ import { createClaudeCodeSubscriptionRoute, subscriptionConversationPolicy, subs
   SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOL_LIMITS,
   SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_TOOL_RUNTIME_READS,
   SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS, SUBSCRIPTION_NATIVE_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS,
-  validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
+  validateSubscriptionActivation, subscriptionPerDispatchToolsPolicy, SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord, SubscriptionToolTurn } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { COMPLETE_REQUESTED_WORK } from '../../src/assembly/tool-answer-guidance.js';
 import { MEMORY_DISAMBIGUATION } from '../../src/assembly/memory-answer-guidance.js';
 import { guidanceOnlyPolicyPins } from '../preview/tools-policy-class.js';
 import { prepareJournalEnvelope } from '../preview/journal-envelope.js';
+import { directExecute } from './direct-execute.js';
 import { factsFixture, value } from '../facts/fixtures.js';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
@@ -183,11 +184,11 @@ it('writes settings that refuse every read from the root down except the scratch
     .toThrow(/too long for the harness temporary directory/u);
 });
 
-function fixture(options: { outputTokens?: number } = {}) {
+function fixture(options: { outputTokens?: number; perDispatch?: boolean } = {}) {
   const f = factsFixture(), root = realpathSync(mkdtempSync(join(RUNNER_TMP_ROOT, 'subscription-tools-'))); roots.push(root);
   const home = join(root, 'home'), configDirectory = join(root, 'config'), workingDirectory = join(root, 'work');
   // The scratch volume's mount point is short (the harness temporary directory must fit 44 bytes), as the runner allocates it.
-  const scratch = realpathSync(mkdtempSync('/private/tmp/itt-')); roots.push(scratch);
+  const scratch = realpathSync(mkdtempSync(options.perDispatch ? '/tmp/itt-' : '/private/tmp/itt-')); roots.push(scratch);
   const workspace = join(scratch, 'ws'), stateDirectory = join(root, 'turn', 'state');
   for (const path of [home, configDirectory, workingDirectory, workspace, stateDirectory]) mkdirSync(path, { recursive: true, mode: 0o700 });
   const executable = join(root, 'synthetic-cli.mjs'), report = join(root, 'commands.jsonl');
@@ -200,7 +201,7 @@ function fixture(options: { outputTokens?: number } = {}) {
   const source = `#!${process.execPath}\nimport {appendFileSync} from 'node:fs';
     let stdin='';for await(const chunk of process.stdin)stdin+=chunk;
     appendFileSync(${JSON.stringify(report)},JSON.stringify({args:process.argv.slice(2),cwd:process.cwd(),stdin,tmpdir:process.env.CLAUDE_CODE_TMPDIR??null,
-      memory:process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY??null,compact:process.env.DISABLE_AUTO_COMPACT??null,
+      gate:process.env.ANTHROPIC_BASE_URL??null,memory:process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY??null,compact:process.env.DISABLE_AUTO_COMPACT??null,
       maxOut:process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS??null})+'\\n');
     if(process.argv[2]==='--version')process.stdout.write('2.1.280 (Claude Code)\\n');
     else if(process.argv[2]==='auth')process.stdout.write(${JSON.stringify(JSON.stringify(status))});
@@ -358,4 +359,28 @@ it('delivers complete-step/full-set guidance with the recorded T/t1 and c1 reque
       expect(system.includes('You have no tools')).toBe(framing === SUBSCRIPTION_CONVERSATION_FRAMING);
     }
   }
+});
+
+
+it('per-dispatch Claude uses the host endpoint and refuses an absent checkpoint before launching', async () => {
+  const f = fixture({ perDispatch: true });
+  const policy = subscriptionPerDispatchToolsPolicy(f.model);
+  const gate = `http://127.0.0.1:4100/${'a'.repeat(32)}/candidate`;
+  const base = f.input();
+  const input = { ...base, framing: SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING,
+    activation: { ...base.activation, invocationPolicyDigest: hash(policy) },
+    io: { ...base.io, execute: directExecute }, toolTurn: { ...f.toolTurn, gate } };
+  expect(createClaudeCodeSubscriptionRoute({ ...input, toolTurn: f.toolTurn }).kind).toBe('Refused');
+  expect(f.commands()).toEqual([]);
+  const route = value(createClaudeCodeSubscriptionRoute(input));
+  expect(await route.invoke('{"question":"wc"}', f.bounds)).toMatchObject({ state: 'complete', bytes: f.answer });
+  expect(f.commands()[2].gate).toBe(gate);
+  expect(f.commands()[2].args).not.toContain('--max-turns');
+  expect(f.commands()[2].args).toContain('--max-budget-usd');
+  expect(f.commands()[2].args).toContain('--settings');
+  // Current account/model, managed hook, and exact-policy checks still gate construction.
+  expect(createClaudeCodeSubscriptionRoute({ ...input, model: 'claude-other' }).kind).toBe('Refused');
+  expect(createClaudeCodeSubscriptionRoute({ ...input, activation: base.activation }).kind).toBe('Refused');
+  f.disableHooks(true);
+  expect(createClaudeCodeSubscriptionRoute(input).kind).toBe('Refused');
 });

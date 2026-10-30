@@ -12,7 +12,7 @@ import { CODEX_ADMITTED_ITEM_TYPES, CODEX_CONVERSATION_FRAMING, CODEX_CONVERSATI
   CODEX_TOOL_ITEM_TYPES, CODEX_TOOL_LIMITS, CODEX_TOOLS_FRAMING, CODEX_TOOLS_SYSTEM_PROMPT, codexToolHookArgs, codexToolsPolicy,
   CODEX_LOGIN_STATUS_STDERR_LINE, CODEX_SUBSCRIPTION_DOORWAY_ID, CODEX_SUBSCRIPTION_VERSION, codexConversationPolicy,
   codexSessionPolicy, codexSubscriptionDoorway, codexVersionLine, createCodexSubscriptionRoute, parseCodexEventStream,
-  validateCodexActivation } from '../../src/assembly/production-codex-provider.js';
+  validateCodexActivation, codexPerDispatchToolsPolicy, CODEX_PER_DISPATCH_TOOLS_FRAMING } from '../../src/assembly/production-codex-provider.js';
 import { SESSION_WORK_LIMITS, SESSION_WORK_RESIDUAL } from '../../src/assembly/production-session-work.js';
 import { SUBSCRIPTION_DOORWAYS, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOL_LIMITS, subscriptionDoorway } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
@@ -70,24 +70,25 @@ it('admits the reviewed 0.156.1 activation and refuses the retired and unreviewe
   }
 });
 
-it('replays the live 0.156.1 answer through the admitted doorway and the application reader', async () => {
+it.each([false, true])('replays the live 0.156.1 answer through the admitted doorway (per-dispatch=%s)', async perDispatch => {
   const capture = JSON.parse(readFileSync('tests/preview/fixtures/codex-answer-0.156.1.json', 'utf8')) as {
     recordedAgainst: string; envelope: string; captures: { code: number; stdout: string }[] };
   expect(capture.recordedAgainst).toBe(codexVersionLine(CODEX_SUBSCRIPTION_VERSION));
   const f = fixture(), run = capture.captures.at(-1)!;
   f.serveText(run.stdout, run.code);
-  const route = value(createCodexSubscriptionRoute(f.input()));
-  const observed = await route.invoke(capture.envelope, f.bounds);
+  const selected = perDispatch ? perDispatchInput(f) : { input: f.input(), bounds: f.bounds };
+  const route = value(createCodexSubscriptionRoute(selected.input));
+  const observed = await route.invoke(capture.envelope, selected.bounds);
   expect(observed.state).toBe('complete');
   expect(readAnswer(observed.bytes!)).toMatchObject({ ok: true, envelope: 'flat' });
   expect(observed.usage.inputTokens).toBeGreaterThan(0);
   expect(observed.usage.outputTokens).toBeGreaterThan(0);
   // Identical recorded bytes with a contradictory process outcome cannot become an answer.
   f.serveText(run.stdout, 1);
-  expect((await route.invoke(capture.envelope, f.bounds)).state).toBe('uncertain');
+  expect((await route.invoke(capture.envelope, selected.bounds)).state).toBe('uncertain');
 });
 
-it('preserves recorded summary, Jev, review and delivered reply shapes on the newly admitted version', async () => {
+it.each([false, true])('preserves recorded summary, Jev, review and delivered reply shapes (per-dispatch=%s)', async perDispatch => {
   const corpus = JSON.parse(readFileSync('tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json', 'utf8')) as {
     otherShapes: { kind: string; id: string; raw: string }[] };
   expect(corpus.otherShapes.map(row => row.kind)).toEqual(['summary-writer', 'summary-uncertain', 'jev-undecided',
@@ -95,14 +96,15 @@ it('preserves recorded summary, Jev, review and delivered reply shapes on the ne
   const capture = JSON.parse(readFileSync('tests/preview/fixtures/codex-answer-0.156.1.json', 'utf8')) as {
     captures: { stdout: string }[] };
   const events = capture.captures.at(-1)!.stdout.trim().split('\n').map(line => JSON.parse(line));
-  const f = fixture(), route = value(createCodexSubscriptionRoute(f.input()));
+  const f = fixture(), selected = perDispatch ? perDispatchInput(f) : { input: f.input(), bounds: f.bounds };
+  const route = value(createCodexSubscriptionRoute(selected.input));
   for (const row of corpus.otherShapes) {
     // Replay historical model bytes in the captured transport shape; these are not
     // claimed as new Codex model outputs. The doorway must not reinterpret them.
     const stream = events.map(event => JSON.stringify(event.type === 'item.completed'
       ? { ...event, item: { ...event.item, text: row.raw } } : event)).join('\n') + '\n';
     f.serveText(stream, 0);
-    const observed = await route.invoke(JSON.stringify({ replay: row.id }), f.bounds);
+    const observed = await route.invoke(JSON.stringify({ replay: row.id }), selected.bounds);
     if (row.raw.length) expect(observed, row.id).toMatchObject({ state: 'complete', bytes: row.raw });
     else expect(observed.state, row.id).not.toBe('complete');
   }
@@ -221,6 +223,20 @@ function fixture() {
     serve: (name: string, code = recorded.exitCodes[name] ?? 0) => { stream = recorded.streams[name]!; exit = code; plan(); },
     serveText: (text: string, code: number) => { stream = text; exit = code; plan(); },
     commands: () => { try { return readFileSync(report, 'utf8').trim().split('\n').map(line => JSON.parse(line)); } catch { return []; } } };
+}
+
+function perDispatchInput(f: ReturnType<typeof fixture>) {
+  const policy = codexPerDispatchToolsPolicy(f.model);
+  const workspace = join(f.root, 'workspace'), stateDirectory = join(f.root, 'state');
+  mkdirSync(workspace); mkdirSync(stateDirectory);
+  const input = f.input();
+  return { input: { ...input, framing: CODEX_PER_DISPATCH_TOOLS_FRAMING, activation: f.activation(hash(policy)),
+    io: { ...f.io, admittedToolCalls: () => 0 },
+    toolTurn: { scratch: workspace, workspace, stateDirectory, deniedRoots: [f.profile.home],
+      hook: { node: process.execPath, script: join(process.cwd(), 'tests/preview/tool-admission-hook.mjs') },
+      gate: `http://127.0.0.1:4100/${'a'.repeat(32)}/candidate` },
+    adapterEvidenceContract: { ...input.adapterEvidenceContract, maxRawTerminalBytes: policy.maxRawTerminalBytes } },
+    bounds: { ...f.bounds, maxTokens: policy.maxTokens } };
 }
 
 it.each([250, 58_900, 59_000])('recomputes Codex review time after a %i ms authority check', async checkMs => {

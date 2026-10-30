@@ -13,7 +13,7 @@ import { subscriptionActivationEndAllowed } from './subscription-window.js';
 // Rule 30: the Codex adapter owns its own parser, policy and route; only its registry
 // entry is named here. The two modules import each other (see the cycle note in that file).
 import { codexSubscriptionDoorway } from './production-codex-provider.js';
-import { sessionLaunchFlags } from './production-session-driver.js';
+import { modelGateLaunch, sessionLaunchFlags } from './production-session-driver.js';
 import { conversationSessionPolicy } from './production-conversation-session.js';
 import { SESSION_WORK_RESIDUAL, sessionWorkPolicy } from './production-session-work.js';
 import type { ConfinedProviderRoute, ProviderResponseEvidenceDraft } from './provider-invocation.js';
@@ -312,6 +312,21 @@ export function subscriptionToolsPolicy(model: string) {
   maxInputBytes: SUBSCRIPTION_CONVERSATION_MAX_PROMPT_BYTES, maxOutputBytes: 16384, maxRawTerminalBytes: 65536,
   maxMetadataBytes: 8192, maxCaptureBytes: 1048576 });
 }
+/** Candidate only: independent approval must cover this successor framing. Historical policies remain exact. */
+export const SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING = 'preview-tools-per-dispatch-v1';
+export const SUBSCRIPTION_PER_DISPATCH_TOOLS_SYSTEM = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(
+  `each up to ${SUBSCRIPTION_TOOL_LIMITS.childMaxTurns} turns, each result returning`, 'each result returning');
+export function subscriptionPerDispatchToolsPolicy(model: string) {
+  const base = subscriptionToolsPolicy(model);
+  const { maxTurns: _turns, childMaxTurns: _childTurns, ...limits } = base.limits;
+  const args = [...base.args];
+  args.splice(args.indexOf('--max-turns'), 2);
+  args[args.indexOf('--system-prompt') + 1] = SUBSCRIPTION_PER_DISPATCH_TOOLS_SYSTEM;
+  args[args.indexOf('--agents') + 1] = JSON.stringify(Object.fromEntries(Object.entries(SUBSCRIPTION_SUBAGENT_DEFINITION)
+    .map(([name, { maxTurns: _max, ...definition }]) => [name, definition])));
+  return Object.freeze({ ...base, args: Object.freeze(args), limits: Object.freeze(limits),
+    framing: SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING, modelRequests: 'durable-per-dispatch' as const });
+}
 /** Native-harness answer framing (Rule 115; the native tool rule, Part Thirteen §9 in docs/17-harness-adapters): Instar runs
  * the agent loop itself. Each model call is the conversation policy's single text-only completion (no harness tools, one
  * turn); the model proposes tool calls as its answer, and the runner admits each through the same admission hook, runs it
@@ -459,12 +474,14 @@ export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: strin
  * Env-only by design: it is not part of the activation-bound policy digest. */
 export const SUBSCRIPTION_THINKING_ENV = Object.freeze({ MAX_THINKING_TOKENS: '0' });
 export type SubscriptionFraming = 'preview-decision-system-v2' | typeof SUBSCRIPTION_CONVERSATION_FRAMING
-  | typeof SUBSCRIPTION_TOOLS_FRAMING | typeof SUBSCRIPTION_NATIVE_FRAMING;
+  | typeof SUBSCRIPTION_TOOLS_FRAMING | typeof SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING | typeof SUBSCRIPTION_NATIVE_FRAMING;
 /** Exact policy and system prompt for a framing; the historical v2 default is unchanged. */
 export function subscriptionPolicyFor(model: string, framing: SubscriptionFraming = 'preview-decision-system-v2') {
   ensure(framing === 'preview-decision-system-v2' || framing === SUBSCRIPTION_CONVERSATION_FRAMING
-    || framing === SUBSCRIPTION_TOOLS_FRAMING || framing === SUBSCRIPTION_NATIVE_FRAMING, 'subscription framing unsupported');
-  return framing === SUBSCRIPTION_TOOLS_FRAMING
+    || framing === SUBSCRIPTION_TOOLS_FRAMING || framing === SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING || framing === SUBSCRIPTION_NATIVE_FRAMING, 'subscription framing unsupported');
+  return framing === SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING
+    ? { policy: subscriptionPerDispatchToolsPolicy(model), system: SUBSCRIPTION_PER_DISPATCH_TOOLS_SYSTEM }
+    : framing === SUBSCRIPTION_TOOLS_FRAMING
     ? { policy: subscriptionToolsPolicy(model), system: SUBSCRIPTION_TOOLS_SYSTEM_PROMPT }
     : framing === SUBSCRIPTION_NATIVE_FRAMING
       ? { policy: subscriptionNativePolicy(model), system: SUBSCRIPTION_NATIVE_SYSTEM_PROMPT }
@@ -560,7 +577,10 @@ export function createClaudeCodeSubscriptionRoute(input:
     const framing = config.framing ?? 'preview-decision-system-v2';
     const { policy, system } = subscriptionPolicyFor(config.model, framing);
     const promptBytes = config.raisedPromptBytes ?? policy.maxPromptBytes;
-    const tools = framing === SUBSCRIPTION_TOOLS_FRAMING;
+    const perDispatch = framing === SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING;
+    const tools = framing === SUBSCRIPTION_TOOLS_FRAMING || perDispatch;
+    const gateEnv = perDispatch ? modelGateLaunch('claude-code', config.toolTurn?.gate ?? '').env : [];
+    const checkpointEnv = Object.fromEntries(gateEnv.map(value => [value.slice(0, value.indexOf('=')), value.slice(value.indexOf('=') + 1)]));
     ensure(tools === (config.toolTurn !== undefined), 'subscription tool turn and framing differ');
     const toolSettings = config.toolTurn ? subscriptionToolSettings(config.toolTurn, profile.home) : null;
     const sessionArgs = config.toolTurn ? subscriptionSessionArgs(config.toolTurn.session) : [];
@@ -623,7 +643,7 @@ export function createClaudeCodeSubscriptionRoute(input:
         // budget: train-163 produced truncated continuations even for 1775-1821 answer tokens under a 2048 cap.
         const env = Object.freeze({ PATH: policy.path, HOME: profile.home, CLAUDE_CONFIG_DIR: profile.configDirectory,
           CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(subscriptionGenerationTokens(policy.maxTokens)),
-          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', ...SUBSCRIPTION_THINKING_ENV,
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', ...SUBSCRIPTION_THINKING_ENV, ...checkpointEnv,
           ...(config.toolTurn ? { CLAUDE_CODE_TMPDIR: config.toolTurn.scratch, ...SUBSCRIPTION_TOOL_SESSION_ENV } : {}) });
         const command = async (args: readonly string[], stdin: string, timeout: number, maxBytes: number,
           allowFailureFrame = false) => {
@@ -781,7 +801,7 @@ export async function admitClaudeSubscriptionSession(input: Readonly<{
 /** Narrows a client-supplied framing string to one this adapter owns; anything else refuses. */
 export function asSubscriptionFraming(framing: string): SubscriptionFraming {
   ensure(framing === 'preview-decision-system-v2' || framing === SUBSCRIPTION_CONVERSATION_FRAMING
-    || framing === SUBSCRIPTION_TOOLS_FRAMING, 'subscription framing unsupported');
+    || framing === SUBSCRIPTION_TOOLS_FRAMING || framing === SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING, 'subscription framing unsupported');
   return framing;
 }
 /** The adapter-owned parts of a subscription route's evidence contract. */
@@ -826,7 +846,9 @@ export interface SubscriptionDoorway {
   /** How a tool turn through this doorway is laid out, or null with no tools framing: its system prompt, the
    * admission hook's per-turn call slots, the harness the hook stops past them (null when the harness has its
    * own turn limit), and whether the hook confines the shell itself (when the harness's own sandbox is not used). */
-  readonly toolTurn: Readonly<{ system: string; maxCalls: number; harness: string | null; confinedShell: boolean }> | null;
+  readonly toolTurn: Readonly<{ system: string; maxCalls: number; harness: string | null; confinedShell: boolean;
+    perDispatch?: true; framework?: import('./production-session-driver.js').SessionFramework }> | null;
+  readonly perDispatchTools?: Readonly<{ framing: string; system: string; framework: import('./production-session-driver.js').SessionFramework }>;
   policyFor(model: string, framing: string): SubscriptionPolicyBounds;
   /** Exact adapter-owned instructions, for prompt measurement and invocation evidence. */
   systemFor(model: string, framing: string): string;
@@ -882,8 +904,9 @@ export const SUBSCRIPTION_DOORWAYS: Readonly<Record<string, SubscriptionDoorway>
     },
     contract: Object.freeze({ parserReference: 'claude-code-json-result', parserVersion: '1', terminalReasonField: 'subtype',
       successfulFinalReplyReasons: Object.freeze(['success']) }),
-    framings: Object.freeze(['preview-decision-system-v2', SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_TOOLS_FRAMING]),
+    framings: Object.freeze(['preview-decision-system-v2', SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING]),
     conversationFraming: SUBSCRIPTION_CONVERSATION_FRAMING, toolsFraming: SUBSCRIPTION_TOOLS_FRAMING,
+    perDispatchTools: Object.freeze({ framing: SUBSCRIPTION_PER_DISPATCH_TOOLS_FRAMING, system: SUBSCRIPTION_PER_DISPATCH_TOOLS_SYSTEM, framework: 'claude-code' as const }),
     toolTurn: Object.freeze({ system: SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls,
       harness: null, confinedShell: false }),
     policyFor: (model: string, framing: string): SubscriptionPolicyBounds =>
@@ -905,8 +928,12 @@ export const SUBSCRIPTION_DOORWAYS: Readonly<Record<string, SubscriptionDoorway>
 /** The doorway an existing installation used before doorways were selectable. */
 export const DEFAULT_SUBSCRIPTION_DOORWAY = 'claude-code-subscription';
 /** Refuses an unregistered doorway rather than guessing one. */
-export function subscriptionDoorway(id: string): SubscriptionDoorway {
+export function subscriptionDoorway(id: string, perDispatchTools = false): SubscriptionDoorway {
   const doorway = Object.hasOwn(SUBSCRIPTION_DOORWAYS, id) ? SUBSCRIPTION_DOORWAYS[id] : undefined;
   if (!doorway) throw new Error(`subscription doorway ${id} is not registered`);
-  return doorway;
+  if (!perDispatchTools) return doorway;
+  ensure(doorway.perDispatchTools && doorway.toolTurn, 'doorway has no per-dispatch tools candidate');
+  const candidate = doorway.perDispatchTools!;
+  return Object.freeze({ ...doorway, toolsFraming: candidate.framing,
+    toolTurn: Object.freeze({ ...doorway.toolTurn!, system: candidate.system, perDispatch: true as const, framework: candidate.framework }) });
 }

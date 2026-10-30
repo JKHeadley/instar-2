@@ -787,7 +787,9 @@ async function main() {
   // Rule 30: every activation check, policy bound and route construction below goes through the
   // selected doorway, so a root configured for another registered doorway runs on that doorway's
   // CLI, model shape and parser instead of the first one that happened to be written here.
-  const doorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY);
+  if (options['tools-requests'] !== undefined && options['tools-requests'] !== 'per-dispatch')
+    throw Error('preview: --tools-requests must be per-dispatch');
+  const doorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY, options['tools-requests'] === 'per-dispatch');
 
   const root = resolve(required(options, 'root'));
   if (['run', 'install-login', 'prepare-logins'].includes(command)) assertAgentPaths({ root });
@@ -2161,7 +2163,7 @@ async function main() {
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
       replyReviewTiming: conversationSession ? 'after-send' : 'before-send',
-      toolRoute: id => conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id) ? true : preparation.active() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
+      toolRoute: id => conversationSession && /^telegram:[0-9]+:update:[0-9]+$/u.test(id) ? true : preparation.active() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view, doorway.toolTurn?.perDispatch === true),
       // Scheduled obligations keep their existing route; continuing operator conversation is selected below.
       // The session route is taken only while its grant holds and the call allowance can hold the
       // step's whole reserved liability on top of the obligation's own start.
@@ -2615,7 +2617,7 @@ async function main() {
     // becomes a durable child edge first, and each consequential tool passes the effect owner, which decides it by the
     // effect doorway's four tests under the installation's current effect policy (read at each decision, so a policy
     // withdrawn or unreadable mid-step refuses), exactly as an unchecked tool turn's hook does.
-    if (sessionSetup !== null || doorway.toolTurn?.harness) {
+    if (sessionSetup !== null || doorway.toolTurn?.harness || doorway.toolTurn?.perDispatch) {
       const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
         || wallNow() >= journal.view.expires || !active() || sessionAccountsChanged();
       const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
