@@ -100,7 +100,7 @@ const rateConfig = { turnDeadlineMs: 120_000, requireTurnHook: true,
 
 it('joins a terminal result to a lost worker observation without treating it as a completed turn', () => {
   const f = fixture('claude-code'), identity = f.launch();
-  const name = f.journal.sessions[0].name;
+  const name = f.journal.sessions[0]!.name;
   Object.assign(f.config.io, { readTerminal: () => ({ code: 137, signal: null,
     workerExitClaim: { workerPid: 42, code: null, signal: 'SIGKILL' } }) });
   f.config.io.tmux(['kill-session', '-t', `=${name}:`]);
