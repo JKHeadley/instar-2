@@ -706,7 +706,7 @@ describe('a delegated session as the harness user', () => {
     const inbox = join(fresh('terminal-adversarial'), 'inbox'); mkdirSync(inbox);
     const name = `instar20-${'d'.repeat(24)}`, claimPath = join(inbox, `terminal-${name}.json`);
     const base = { v: 1, name, launcherPid: 41, workerPid: 42, code: null, signal: 'SIGKILL', endedAt: 1234 };
-    const assess = payload => {
+    const assess = (payload: unknown) => {
       writeFileSync(claimPath, JSON.stringify(payload));
       const path = recordSessionTerminal({ inbox, name, startedAt: 1000, wrapperPid: 40, code: 137, signal: null });
       const text = readFileSync(path, 'utf8');
