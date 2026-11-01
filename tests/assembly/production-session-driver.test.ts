@@ -107,7 +107,7 @@ it('joins a terminal result to a lost worker observation without treating it as 
   const observed = value(f.driver.observe({ operation: 'op', processIdentity: identity }));
   expect(observed).toMatchObject({ phase: 'exit-observed' });
   expect(observed.detail).toContain('wrapper code=137');
-  expect(observed.detail).toContain('worker code=unknown signal=SIGKILL');
+  expect(observed.detail).toContain('unverified worker claim code=unknown signal=SIGKILL');
 });
 const recordedLimit = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8')).result as string;
 const throttleFixture = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/server-throttle.json', import.meta.url), 'utf8')) as {

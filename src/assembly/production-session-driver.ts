@@ -630,7 +630,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           const terminal = config.io.readTerminal?.(session.name);
           const worker = terminal?.workerExitClaim;
           const detail = terminal
-            ? `tmux session exited; wrapper code=${String(terminal.code)} signal=${terminal.signal ?? 'none'}; worker code=${String(worker?.code ?? 'unknown')} signal=${worker?.signal ?? 'unknown'}`
+            ? `tmux session exited; wrapper code=${String(terminal.code)} signal=${terminal.signal ?? 'none'}; unverified worker claim code=${String(worker?.code ?? 'unknown')} signal=${worker?.signal ?? 'unknown'}`
             : 'tmux session exited; terminal result unavailable';
           return { phase: 'exit-observed' as const, evidence: session.identity, detail };
         }

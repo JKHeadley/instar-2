@@ -13,11 +13,17 @@
 // It ends with the harness: its exit status, or the signal's. A pane closed under it (tmux kill-session) hangs up sudo,
 // which relays the hang-up to the launcher, which ends the harness's whole tree.
 import { spawn } from 'node:child_process';
-import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { constants as osConstants } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { harnessCommand, prepareSubscriptionInteractive } from '../../scripts/production-boot-io.mjs';
 import { HARNESS_LAUNCHER, readHarnessLogin } from './harness-user.mjs';
+
+const validSignal = value => value === null || typeof value === 'string' && Object.hasOwn(osConstants.signals, value);
+const validCode = value => value === null || Number.isSafeInteger(value) && value >= 0 && value <= 255;
+const validPid = value => Number.isSafeInteger(value) && value > 0;
+const SPAWN_ERRORS = new Set(['EACCES', 'EAGAIN', 'EIO', 'EMFILE', 'ENFILE', 'ENOENT', 'ENOMEM', 'ENOTDIR', 'EPERM', 'ESRCH', 'ETIMEDOUT']);
 
 /** The sudo command for one interactive harness launch: harnessCommand's, in the launcher's terminal mode. */
 export function harnessSessionCommand({ user, profile, executable, args, env, login = readHarnessLogin, cwd = process.cwd(), stdio = false }) {
@@ -38,17 +44,32 @@ export function recordSessionTerminal({ inbox, name, startedAt, wrapperPid, code
   const directory = join(dirname(inbox), 'terminal-reports');
   let workerExitClaim = null;
   try {
-    const claim = JSON.parse(readFileSync(join(inbox, `terminal-${name}.json`), 'utf8'));
-    if (claim.v === 1 && Number.isSafeInteger(claim.workerPid) && claim.workerPid > 0
-      && (claim.code === null || Number.isSafeInteger(claim.code))
-      && (claim.signal === null || typeof claim.signal === 'string')) {
+    // The harness user controls this name. Open without following links or waiting
+    // on special files, then read at most 4 KiB from a regular single-link file.
+    const fd = openSync(join(inbox, `terminal-${name}.json`), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    let claim;
+    try {
+      const meta = fstatSync(fd);
+      if (meta.isFile() && meta.nlink === 1 && meta.size > 0 && meta.size <= 4096) {
+        const bytes = Buffer.alloc(4097);
+        const read = readSync(fd, bytes, 0, bytes.length, 0);
+        if (read === meta.size) claim = JSON.parse(bytes.subarray(0, read).toString('utf8'));
+      }
+    } finally { closeSync(fd); }
+    if (claim?.v === 1 && claim.name === name
+      && validPid(claim.launcherPid)
+      && validPid(claim.workerPid) && claim.workerPid !== claim.launcherPid
+      && validCode(claim.code)
+      && validSignal(claim.signal) && (claim.code === null) !== (claim.signal === null)
+      && Number.isSafeInteger(claim.endedAt) && claim.endedAt >= startedAt - 5000 && claim.endedAt <= Date.now() + 5000) {
       workerExitClaim = { launcherPid: claim.launcherPid, workerPid: claim.workerPid,
         code: claim.code, signal: claim.signal, endedAt: claim.endedAt };
     }
   } catch { /* the launcher may have died before it could report */ }
-  const record = { v: 1, name, bridgePid: process.pid, wrapperPid: wrapperPid ?? null,
-    startedAt, endedAt: Date.now(), code: code ?? null, signal: signal ?? null,
-    errorCode, workerExitClaim };
+  const record = { v: 1, name, bridgePid: process.pid, wrapperPid: validPid(wrapperPid) ? wrapperPid : null,
+    startedAt: Number.isSafeInteger(startedAt) && startedAt >= 0 ? startedAt : null,
+    endedAt: Date.now(), code: validCode(code) ? code : null, signal: validSignal(signal) ? signal : null,
+    errorCode: SPAWN_ERRORS.has(errorCode) ? errorCode : null, workerExitClaim };
   try {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const path = join(directory, `${name}.json`), temp = `${path}.${process.pid}.tmp`;

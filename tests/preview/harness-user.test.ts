@@ -334,6 +334,18 @@ describe('the launcher', () => {
     expect(env).toContain('CLAUDE_CODE_TMPDIR=');
     expect(await waitFor(() => !alive(pidOf(out, 'same-group')) && !alive(pidOf(out, 'own-group')))).toBe(true);
   });
+  it('does not open a planted FIFO at the terminal-result name before propagating exit', () => {
+    const out = fresh('launcher-fifo');
+    const name = `instar20-${'c'.repeat(24)}`;
+    const target = join(out, `terminal-${name}.json`);
+    expect(spawnSync('mkfifo', [target]).status).toBe(0);
+    const result = spawnSync(process.execPath, [launcher, `OUT=${out}`,
+      `INSTAR_SESSION_NAME=${name}`, `INSTAR_SESSION_INBOX=${out}`, '--', fake, 'exit'],
+    { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' }, timeout: 4000 });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(7);
+    expect(JSON.parse(readFileSync(target, 'utf8'))).toMatchObject({ name, code: 7 });
+  });
   it('keeps a temporary directory the command names, and refuses the terminal mode with no terminal', async () => {
     // This checks environment forwarding, not a mounted tool volume. A fabricated
     // /private/tmp/itt-* path unnecessarily invokes the host-wide lsof census.
@@ -668,7 +680,7 @@ describe('a delegated session as the harness user', () => {
     const inbox = join(fresh('terminal-report'), 'inbox');
     mkdirSync(inbox);
     const name = `instar20-${'a'.repeat(24)}`;
-    writeFileSync(join(inbox, `terminal-${name}.json`), JSON.stringify({ v: 1, launcherPid: 41,
+    writeFileSync(join(inbox, `terminal-${name}.json`), JSON.stringify({ v: 1, name, launcherPid: 41,
       workerPid: 42, code: null, signal: 'SIGKILL', endedAt: 1234, credential: 'must-not-copy' }));
     const path = recordSessionTerminal({ inbox, name, startedAt: 1000, wrapperPid: 40, code: 137, signal: null });
     const record = JSON.parse(readFileSync(path, 'utf8'));
@@ -680,9 +692,55 @@ describe('a delegated session as the harness user', () => {
       cwd: fresh('terminal-cwd'), lifecycleDirectory: inbox });
     expect(io.readTerminal(name)).toMatchObject({ code: 137, signal: null,
       workerExitClaim: { workerPid: 42, signal: 'SIGKILL' } });
+    const corrupted = JSON.parse(readFileSync(path, 'utf8'));
+    corrupted.signal = 'SIGTERM\nSECRET_MARKER';
+    corrupted.workerExitClaim.signal = 'SIGKILL\nSECRET_MARKER';
+    writeFileSync(path, JSON.stringify(corrupted));
+    expect(io.readTerminal(name)).toMatchObject({ signal: null, workerExitClaim: { signal: null } });
     rmSync(join(inbox, `terminal-${name}.json`));
     const unknown = JSON.parse(readFileSync(recordSessionTerminal({ inbox, name,
       startedAt: 1000, wrapperPid: 40, code: null, signal: 'SIGHUP' }), 'utf8'));
     expect(unknown.workerExitClaim).toBeNull();
+  });
+  it('rejects untrusted terminal claims without reading links, FIFOs, huge files or secret-bearing fields', () => {
+    const inbox = join(fresh('terminal-adversarial'), 'inbox'); mkdirSync(inbox);
+    const name = `instar20-${'d'.repeat(24)}`, claimPath = join(inbox, `terminal-${name}.json`);
+    const base = { v: 1, name, launcherPid: 41, workerPid: 42, code: null, signal: 'SIGKILL', endedAt: 1234 };
+    const assess = payload => {
+      writeFileSync(claimPath, JSON.stringify(payload));
+      const path = recordSessionTerminal({ inbox, name, startedAt: 1000, wrapperPid: 40, code: 137, signal: null });
+      const text = readFileSync(path, 'utf8');
+      expect(JSON.parse(text).workerExitClaim).toBeNull();
+      expect(text).not.toContain('SECRET_MARKER');
+      rmSync(claimPath);
+    };
+    assess({ ...base, signal: 'SIGKILL\nSECRET_MARKER' });
+    assess({ ...base, launcherPid: { secret: 'SECRET_MARKER' } });
+    assess({ ...base, workerPid: { secret: 'SECRET_MARKER' } });
+    assess({ ...base, endedAt: { secret: 'SECRET_MARKER' } });
+    assess({ ...base, code: { secret: 'SECRET_MARKER' } });
+    assess({ ...base, code: 7, signal: 'SIGKILL' });
+    assess({ ...base, endedAt: -100000 });
+    writeFileSync(claimPath, Buffer.alloc(8192, 65));
+    expect(JSON.parse(readFileSync(recordSessionTerminal({ inbox, name, startedAt: 1000,
+      wrapperPid: 40, code: 137, signal: null }), 'utf8')).workerExitClaim).toBeNull();
+    rmSync(claimPath);
+    expect(spawnSync('mkfifo', [claimPath]).status).toBe(0);
+    const began = Date.now();
+    expect(JSON.parse(readFileSync(recordSessionTerminal({ inbox, name, startedAt: 1000,
+      wrapperPid: 40, code: 137, signal: null }), 'utf8')).workerExitClaim).toBeNull();
+    expect(Date.now() - began).toBeLessThan(1000);
+    rmSync(claimPath);
+    const secret = join(inbox, 'secret.json'); writeFileSync(secret, JSON.stringify({ ...base, secret: 'SECRET_MARKER' }));
+    symlinkSync(secret, claimPath);
+    const text = readFileSync(recordSessionTerminal({ inbox, name, startedAt: 1000,
+      wrapperPid: 40, code: 137, signal: null }), 'utf8');
+    expect(JSON.parse(text).workerExitClaim).toBeNull();
+    expect(text).not.toContain('SECRET_MARKER');
+    const sanitized = readFileSync(recordSessionTerminal({ inbox, name, startedAt: 1000,
+      wrapperPid: { secret: 'SECRET_MARKER' }, code: { secret: 'SECRET_MARKER' },
+      signal: 'SIGTERM\nSECRET_MARKER', errorCode: 'SECRET_MARKER' }), 'utf8');
+    expect(sanitized).not.toContain('SECRET_MARKER');
+    expect(JSON.parse(sanitized)).toMatchObject({ wrapperPid: null, code: null, signal: null, errorCode: null });
   });
 });

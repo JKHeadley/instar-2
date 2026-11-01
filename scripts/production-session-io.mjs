@@ -3,6 +3,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync, chmodSync, constants,
   openSync, closeSync, fsyncSync, fstatSync, lstatSync, realpathSync, statSync, unlinkSync, readSync, rmSync, linkSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
+import { constants as osConstants } from 'node:os';
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertAgentPaths } from './agent-paths.mjs';
@@ -118,12 +119,14 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
         if (!meta.isFile() || meta.nlink !== 1 || meta.size > 4096) return null;
         const value = JSON.parse(readFileSync(path, 'utf8'));
         if (value.v !== 1 || value.name !== name) return null;
-        return { code: Number.isSafeInteger(value.code) ? value.code : null,
-          signal: typeof value.signal === 'string' ? value.signal : null,
-          workerExitClaim: value.workerExitClaim && Number.isSafeInteger(value.workerExitClaim.workerPid)
+        const validCode = code => Number.isSafeInteger(code) && code >= 0 && code <= 255;
+        const validSignal = signal => typeof signal === 'string' && Object.hasOwn(osConstants.signals, signal);
+        return { code: validCode(value.code) ? value.code : null,
+          signal: validSignal(value.signal) ? value.signal : null,
+          workerExitClaim: value.workerExitClaim && Number.isSafeInteger(value.workerExitClaim.workerPid) && value.workerExitClaim.workerPid > 0
             ? { workerPid: value.workerExitClaim.workerPid,
-              code: Number.isSafeInteger(value.workerExitClaim.code) ? value.workerExitClaim.code : null,
-              signal: typeof value.workerExitClaim.signal === 'string' ? value.workerExitClaim.signal : null }
+              code: validCode(value.workerExitClaim.code) ? value.workerExitClaim.code : null,
+              signal: validSignal(value.workerExitClaim.signal) ? value.workerExitClaim.signal : null }
             : null };
       } catch { return null; }
     },
