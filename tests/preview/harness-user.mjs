@@ -265,8 +265,11 @@ export function tmpCanary(base = '/private/tmp') {
  * or null when the probe could not run (no sudo rule, no user, no launcher). */
 export function probeAccess(specs, { user = HARNESS_USER, launcher = HARNESS_LAUNCHER, exec = execFileSync } = {}) {
   let text;
-  try { text = exec('/usr/bin/sudo', ['-n', '-u', user, launcher, '--probe', ...specs], { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'ignore'] }); }
-  catch { return null; }
+  try { text = exec('/usr/bin/sudo', ['-n', '-u', user, launcher, '--probe', ...specs], { encoding: 'utf8', timeout: 10000, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }); }
+  catch (error) {
+    process.stderr.write(`[harness-probe] failed code=${String(error?.code ?? 'unknown')} signal=${String(error?.signal ?? 'none')} bytes=${String(error?.stdout?.length ?? 0)}\n`);
+    return null;
+  }
   const rows = text.split('\n').filter(Boolean).map(line => { try { return JSON.parse(line); } catch { return null; } });
   return rows.length === specs.length && rows.every(row => row && typeof row.ok === 'boolean') ? rows : null;
 }

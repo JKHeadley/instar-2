@@ -17,6 +17,8 @@ import { createProcessInventory } from '../../scripts/process-inventory.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { harnessExecutable, harnessReadiness, harnessStatusLine, HARNESS_PROFILE, removeHarnessState, grantVolume, HARNESS_VOLUME_MARK, harnessGate, HARNESS_RECHECK_MS, readHarnessLogin, storeHarnessLogin, plaintextLogins, closeOperatorTmp, sweptEntryHeld, tmpCanary, HARNESS_TMP, harnessCredentialValues, harnessRefusedNotice, HARNESS_HOOK_FILES, HARNESS_OFF_REASON, harnessSocketDirectory, ensureDirectory } from './harness-user.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
+import { probeAccess } from './harness-user.mjs';
+// @ts-expect-error The runner side stays plain JavaScript.
 import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { harnessSessionCommand } from './harness-session.mjs';
@@ -82,6 +84,16 @@ describe('readiness: the switch is decided from live state, a refusal names its 
     plaintext: () => [], tmp: () => ({ entries: ['/private/tmp/closed'], failed: 0 }), canary, held: () => true, ...overrides });
   it('is ready when the user, launcher, hook, pinned copy, custody login, closed /private/tmp and the kernel\'s answers all hold', () => {
     expect(ready()).toEqual({ ready: true, user: '_instarharness', uid: 498, hookScript: '/h/hook/x/tool-admission-hook.mjs' });
+  });
+  it('retains a probe response larger than the default command buffer', () => {
+    const specs = Array.from({ length: 20_000 }, (_, i) => `r:/private/tmp/probe-${String(i).padStart(5, '0')}`);
+    const output = specs.map(spec => JSON.stringify({ path: spec.slice(2), mode: 'r', ok: false, code: 'EACCES' })).join('\n') + '\n';
+    expect(Buffer.byteLength(output)).toBeGreaterThan(1024 * 1024);
+    const rows = probeAccess(specs, { exec: (_command: string, _args: string[], options: { maxBuffer: number }) => {
+      if (options.maxBuffer < Buffer.byteLength(output)) throw Object.assign(new Error('buffer full'), { code: 'ENOBUFS' });
+      return output;
+    } });
+    expect(rows).toHaveLength(specs.length);
   });
   it('refuses each missing condition by name', () => {
     expect(ready({ exec: exec('none') })).toEqual({ ready: false, reason: 'no user _instarharness' });
