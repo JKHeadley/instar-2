@@ -13,7 +13,8 @@
 // It ends with the harness: its exit status, or the signal's. A pane closed under it (tmux kill-session) hangs up sudo,
 // which relays the hang-up to the launcher, which ends the harness's whole tree.
 import { spawn } from 'node:child_process';
-import { readFileSync, realpathSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { harnessCommand, prepareSubscriptionInteractive } from '../../scripts/production-boot-io.mjs';
 import { HARNESS_LAUNCHER, readHarnessLogin } from './harness-user.mjs';
@@ -28,6 +29,33 @@ export function harnessSessionCommand({ user, profile, executable, args, env, lo
   const at = command.args.indexOf('--handoff');
   if (at < 0) throw Error('preview: the harness command has no hand-off');
   return { ...command, args: [...command.args.slice(0, at + 1), '--tty', ...command.args.slice(at + 1)] };
+}
+
+/** Operator-owned record of the sudo wrapper's terminal status. The harness user's
+ * own child status is included as an advisory join, never as an authority verdict. */
+export function recordSessionTerminal({ inbox, name, startedAt, wrapperPid, code, signal, errorCode = null }) {
+  if (!inbox?.startsWith('/') || !/^instar20-[a-f0-9]{24}$/u.test(name ?? '')) return null;
+  const directory = join(dirname(inbox), 'terminal-reports');
+  let workerExitClaim = null;
+  try {
+    const claim = JSON.parse(readFileSync(join(inbox, `terminal-${name}.json`), 'utf8'));
+    if (claim.v === 1 && Number.isSafeInteger(claim.workerPid) && claim.workerPid > 0
+      && (claim.code === null || Number.isSafeInteger(claim.code))
+      && (claim.signal === null || typeof claim.signal === 'string')) {
+      workerExitClaim = { launcherPid: claim.launcherPid, workerPid: claim.workerPid,
+        code: claim.code, signal: claim.signal, endedAt: claim.endedAt };
+    }
+  } catch { /* the launcher may have died before it could report */ }
+  const record = { v: 1, name, bridgePid: process.pid, wrapperPid: wrapperPid ?? null,
+    startedAt, endedAt: Date.now(), code: code ?? null, signal: signal ?? null,
+    errorCode, workerExitClaim };
+  try {
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+    const path = join(directory, `${name}.json`), temp = `${path}.${process.pid}.tmp`;
+    writeFileSync(temp, JSON.stringify(record) + '\n', { mode: 0o600 });
+    renameSync(temp, path);
+    return path;
+  } catch { return null; } // instrumentation must never change the worker result
 }
 
 const invoked = process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -46,10 +74,18 @@ if (invoked) {
     command = harnessSessionCommand({ user, profile: JSON.parse(readFileSync(profilePath, 'utf8')), executable, args,
       stdio, env: { ...process.env }, login: profile => readHarnessLogin(profile, custody) });
   } catch (error) { process.stderr.write(`harness-session: ${String(error?.message ?? error)}\n`); process.exit(125); }
+  const startedAt = Date.now();
   const child = spawn(command.executable, command.args, { env: command.env, stdio: ['pipe', 'inherit', 'inherit'] });
   child.stdin.on('error', () => {});
   if (stdio) { child.stdin.write(command.stdin, 'utf8'); process.stdin.pipe(child.stdin); }
   else child.stdin.end(command.stdin, 'utf8');
-  child.on('error', () => process.exit(126));
-  child.on('exit', (code, signal) => { if (signal) process.kill(process.pid, signal); process.exit(code ?? 1); });
+  const terminal = (code, signal, errorCode = null) => recordSessionTerminal({
+    inbox: process.env.INSTAR_SESSION_INBOX, name: process.env.INSTAR_SESSION_NAME,
+    startedAt, wrapperPid: child.pid, code, signal, errorCode });
+  child.on('error', error => { terminal(126, null, error?.code ?? 'spawn-error'); process.exit(126); });
+  child.on('exit', (code, signal) => {
+    terminal(code, signal);
+    if (signal) process.kill(process.pid, signal);
+    process.exit(code ?? 1);
+  });
 }

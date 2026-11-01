@@ -21,7 +21,9 @@ import { probeAccess } from './harness-user.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { harnessSessionCommand } from './harness-session.mjs';
+import { harnessSessionCommand, recordSessionTerminal } from './harness-session.mjs';
+// @ts-expect-error Physical host JavaScript stays outside pure core.
+import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { prepareToolTurn, pruneToolTurns, runToolTurn, serveTurnSocket, toolStatusLines, TOOL_MCP_LAUNCHER, TOOL_TURN_PRIVATE } from './tool-turn.mjs';
 
@@ -318,8 +320,13 @@ describe('the launcher', () => {
 
   it('passes exactly the given environment and the exit code, and ends what the harness left behind', async () => {
     const out = fresh('launcher-exit');
-    const result = spawnSync(process.execPath, [launcher, `OUT=${out}`, 'MARK=a b', '--', fake, 'exit'], { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', LEAK: 'no' } });
+    const name = `instar20-${'b'.repeat(24)}`;
+    const result = spawnSync(process.execPath, [launcher, `OUT=${out}`, 'MARK=a b',
+      `INSTAR_SESSION_NAME=${name}`, `INSTAR_SESSION_INBOX=${out}`, '--', fake, 'exit'],
+    { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', LEAK: 'no' } });
     expect(result.status).toBe(7);
+    expect(JSON.parse(readFileSync(join(out, `terminal-${name}.json`), 'utf8')))
+      .toMatchObject({ v: 1, code: 7, signal: null });
     const env = readFileSync(join(out, 'env'), 'utf8');
     expect(env).toContain('MARK=a b'); expect(env).not.toContain('LEAK');
     // Absent from the command's environment, the temporary directory is the harness area's own (`tmp` beside `bin`).
@@ -656,5 +663,26 @@ describe('a delegated session as the harness user', () => {
     expect(readFileSync(join(profile.configDirectory, '.claude.json'), 'utf8')).not.toContain('synthetic-login');
     expect(() => harnessSessionCommand({ user: '_instarharness', profile, executable: '/x', args: [], env: {},
       login: () => { throw Error('the login custody file is not the runner\'s alone'); } })).toThrow(/not the runner's alone/u);
+  });
+  it('persists a host terminal result joined to the worker result, with unknown when the worker could not report', () => {
+    const inbox = join(fresh('terminal-report'), 'inbox');
+    mkdirSync(inbox);
+    const name = `instar20-${'a'.repeat(24)}`;
+    writeFileSync(join(inbox, `terminal-${name}.json`), JSON.stringify({ v: 1, launcherPid: 41,
+      workerPid: 42, code: null, signal: 'SIGKILL', endedAt: 1234, credential: 'must-not-copy' }));
+    const path = recordSessionTerminal({ inbox, name, startedAt: 1000, wrapperPid: 40, code: 137, signal: null });
+    const record = JSON.parse(readFileSync(path, 'utf8'));
+    expect(record).toMatchObject({ name, wrapperPid: 40, code: 137, signal: null,
+      workerExitClaim: { workerPid: 42, code: null, signal: 'SIGKILL' } });
+    expect(readFileSync(path, 'utf8')).not.toContain('must-not-copy');
+    const io = createProductionSessionIO({ stateDirectory: join(fresh('terminal-state'), 'state'),
+      tmuxPath: '/synthetic', home: fresh('terminal-home'), configHome: fresh('terminal-config'),
+      cwd: fresh('terminal-cwd'), lifecycleDirectory: inbox });
+    expect(io.readTerminal(name)).toMatchObject({ code: 137, signal: null,
+      workerExitClaim: { workerPid: 42, signal: 'SIGKILL' } });
+    rmSync(join(inbox, `terminal-${name}.json`));
+    const unknown = JSON.parse(readFileSync(recordSessionTerminal({ inbox, name,
+      startedAt: 1000, wrapperPid: 40, code: null, signal: 'SIGHUP' }), 'utf8'));
+    expect(unknown.workerExitClaim).toBeNull();
   });
 });

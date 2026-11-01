@@ -110,6 +110,23 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
       return readdirSync(inboxDirectory).filter(file => file.startsWith(`${name}.`) && file.endsWith('.json'))
         .slice(-100).flatMap(file => { try { return [JSON.parse(readFileSync(join(inboxDirectory, file), 'utf8'))]; } catch { return []; } });
     },
+    readTerminal(name) {
+      if (!/^instar20-[a-f0-9]{24}$/u.test(name)) return null;
+      const path = join(dirname(inboxDirectory), 'terminal-reports', `${name}.json`);
+      try {
+        const meta = lstatSync(path);
+        if (!meta.isFile() || meta.nlink !== 1 || meta.size > 4096) return null;
+        const value = JSON.parse(readFileSync(path, 'utf8'));
+        if (value.v !== 1 || value.name !== name) return null;
+        return { code: Number.isSafeInteger(value.code) ? value.code : null,
+          signal: typeof value.signal === 'string' ? value.signal : null,
+          workerExitClaim: value.workerExitClaim && Number.isSafeInteger(value.workerExitClaim.workerPid)
+            ? { workerPid: value.workerExitClaim.workerPid,
+              code: Number.isSafeInteger(value.workerExitClaim.code) ? value.workerExitClaim.code : null,
+              signal: typeof value.workerExitClaim.signal === 'string' ? value.workerExitClaim.signal : null }
+            : null };
+      } catch { return null; }
+    },
     /**
      * At most `maxBytes + 1` bytes of a delegated step's result file; null when it does not exist. The child controls
      * the destination, and this read runs with the host's broader authority, so custody is enforced here: the final

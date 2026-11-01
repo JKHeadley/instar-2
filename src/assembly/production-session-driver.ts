@@ -51,6 +51,9 @@ export interface SessionIO {
   load(): SessionJournal;
   save(journal: SessionJournal): void;
   readInbox(name: string): readonly Readonly<{ kind: 'turn-closed' | 'compact'; sessionId: string; at: number; receiptId?: string }>[];
+  /** Physical bridge terminal metadata; absent until a worker actually exits. */
+  readTerminal?(name: string): Readonly<{ code: number | null; signal: string | null;
+    workerExitClaim: Readonly<{ workerPid: number; code: number | null; signal: string | null }> | null }> | null;
   transcriptExists(framework: SessionFramework, id: string, cwd: string, configHome: string): boolean;
   armDeadline(name: string, identity: string, deadline: number): void;
 }
@@ -623,7 +626,14 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         const session = loadSession(input.processIdentity);
         if (config.stopped()) { stop(); return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'stop authority active' }; }
         if (session.deadlineHalt) return { phase: 'exit-observed' as const, evidence: `safety-ceiling:deadline:${session.identity}`, detail: 'per-turn deadline exceeded; closure must be reconciled', safetyDeadline: session.deadlineHalt.deadline };
-        if (!alive(session.name)) return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'tmux session exited' };
+        if (!alive(session.name)) {
+          const terminal = config.io.readTerminal?.(session.name);
+          const worker = terminal?.workerExitClaim;
+          const detail = terminal
+            ? `tmux session exited; wrapper code=${String(terminal.code)} signal=${terminal.signal ?? 'none'}; worker code=${String(worker?.code ?? 'unknown')} signal=${worker?.signal ?? 'unknown'}`
+            : 'tmux session exited; terminal result unavailable';
+          return { phase: 'exit-observed' as const, evidence: session.identity, detail };
+        }
         verifyLive(session);
         const pane = capture(session.name);
         try {
