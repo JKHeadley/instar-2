@@ -7,7 +7,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 // @ts-expect-error physical JS host is intentionally outside the pure core
@@ -57,6 +57,28 @@ it('counts a Codex session\'s model calls from its rollout, attributed by its ow
   // Another Codex run in the same login home (an answer turn, the operator's own work) is not this session's.
   writeFileSync(join(folder, 'rollout-other.jsonl'), lines('/somewhere/else'));
   expect(w.io.modelCalls('codex-cli', w.scope, w.login, since)).toBe(shapes.codex.modelCalls);
+});
+
+it('counts each Codex rollout once across the fall-back clock change', () => {
+  const originalTz = process.env.TZ;
+  process.env.TZ = 'America/Los_Angeles';
+  vi.useFakeTimers();
+  try {
+    // Nov 1 2026 is 25 hours in Los Angeles. At 23:30, the 24-hour
+    // scan samples both 00:30 and 23:30 inside the same calendar folder.
+    const now = new Date('2026-11-02T07:30:00.000Z');
+    vi.setSystemTime(now);
+    const w = world();
+    const folder = today(w.login); mkdirSync(folder, { recursive: true });
+    const file = join(folder, 'rollout-fall-back.jsonl');
+    writeFileSync(file, `${shapes.codex.lines.map(line => line.replace('"<project>"', JSON.stringify(w.scope))).join('\n')}\n`);
+    utimesSync(file, now, now);
+    expect(w.io.modelCalls('codex-cli', w.scope, w.login, now.getTime() - 1000)).toBe(shapes.codex.modelCalls);
+  } finally {
+    vi.useRealTimers();
+    if (originalTz === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTz;
+  }
 });
 
 it('an unreadable or oversized transcript is unknown, never zero', () => {

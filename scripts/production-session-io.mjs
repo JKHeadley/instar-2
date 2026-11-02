@@ -188,11 +188,16 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
         // Codex: date-partitioned rollouts in this login home, from the step's start date to today,
         // each attributed to the session by the working directory its own first record names.
         let calls = 0;
+        const visitedFolders = new Set();
         const day = 86_400_000;
         for (let at = since - day; at <= Date.now() + day; at += day) {
           const date = new Date(at);
           const folder = join(directory, 'sessions', String(date.getFullYear()), String(date.getMonth() + 1).padStart(2, '0'),
             String(date.getDate()).padStart(2, '0'));
+          // A fall-back day is 25 hours long. Two 24-hour samples can name the
+          // same local calendar folder, but its calls still count only once.
+          if (visitedFolders.has(folder)) continue;
+          visitedFolders.add(folder);
           if (!existsSync(folder)) continue;
           for (const name of readdirSync(folder)) {
             const file = join(folder, name);
