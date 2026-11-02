@@ -18,9 +18,9 @@ Bug class: live-path
 Bug evidence: reproducer=tests/assembly/production-provider-subscription.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/preview-trial-root/justin-group-20261010/session-work-state/conversation.json
 Hook bypass: none
 Convergence: none
-Verification: Delegated-session admission test now asserts zero auth-status commands while preserving artifact and profile checks. Targeted tests, exact-head full suite and live retest pending.
+Verification: Delegated-session admission test asserts zero auth-status commands while preserving artifact and profile checks (103/103 passed). The refreshed native composition contract passed 10/10 on the current bytes. Exact-head full suite and live retest pending.
 Prompt review: No model-facing prompt changed.
-Subject: src/assembly/production-provider.ts, tests/assembly/production-provider-subscription.test.ts, generated/*
+Subject: src/assembly/production-provider.ts, src/assembly/harness.declarations.json, tests/assembly/production-provider-subscription.test.ts, generated/*
 
 Decision: auth-status-session-parity-1311 | Delegated session admission verifies the selected profile and executable, then lets the real Claude Code session establish whether the login works; no metadata-only status call gates dispatch. | reported=reviews/auth-admit-retry-1102-change-review.md
 
