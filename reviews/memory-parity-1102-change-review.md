@@ -15,7 +15,9 @@ Undo and recovery: Switch the live runner back to frozen build 15234a73c if the 
 Multi-machine posture: This only changes the Studio's 2.0 source and its frozen candidate. No Mama PC build or installed 1.x session is changed.
 Layer below: The macOS process inventory and resource owner still sample the worker tree and enforce the aggregate ceiling. The launch shim retains its CPU, process, and handle limits.
 Bug class: live-path
-Bug evidence: reproducer=Live message 709 launched worker PID 30347 at 14:29:09 PST and started the 1.x vitest lint test; resource owner recorded limit-kill at 14:30:51 PST for memoryBytes 2422652928, above its former 2147483648-byte launch ceiling. live=The 64 GiB Studio had 79% free memory and the group journal settled message 709 uncertain with a lost worker, leaving #2190 unfinished.
+Bug evidence: reproducer=tests/preview/topic-worker-capacity.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/pipeline/switch-runner-frozen-memory-parity-1102-a93dbb23-1793660359-26817.json
+
+Live message 709 launched worker PID 30347 at 14:29:09 PST and started the 1.x vitest lint test. The resource owner recorded a limit-kill at 14:30:51 PST for memoryBytes 2422652928, above its former 2147483648-byte launch ceiling. The 64 GiB Studio had 79% free memory, and the group journal settled message 709 uncertain with a lost worker, leaving #2190 unfinished. The linked switch record shows the replacement build answering at 15:02 PST; message 711 is the live continuation check.
 Hook bypass: none
 Convergence: none
 Decision: memory-parity-1102 | Set task memory to the existing 18 GiB host-owned aggregate, retaining the host ceiling and other limits, per the observer's direct 1.x parity request. | reported=reviews/memory-parity-1102-change-review.md
