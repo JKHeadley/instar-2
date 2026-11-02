@@ -132,6 +132,7 @@ import { createProductionSessionDriver, createProductionConversationAdapter } fr
 import { createSessionProtocolIO } from '../../scripts/session-protocol-io.mjs';
 import { lifecycleHookPath, installLifecycleHook } from '../../scripts/conversation-lifecycle-io.mjs';
 import { createConversationHostStore } from '../../scripts/conversation-host-store.mjs';
+import { admitSessionOrQueue } from '../../scripts/session-auth-admission.mjs';
 import { CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
 import { createTopicWorkerCapacity } from '../../scripts/topic-worker-capacity.mjs';
 import { createTopicLoginHandoff } from '../../scripts/topic-login-pool.mjs';
@@ -2665,6 +2666,7 @@ async function main() {
       const admissionBase = layout ? layout.admission : join(root, 'session-work-state', 'admission');
       const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
       const configurationFor = (topic, binding, handoff = null) => {
+        let authRetryAt = 0;
         const contextGrounding = () => join(binding.physical().inboxDirectory, `context-${topic ?? 'main'}.txt`);
         const driverConfiguration = resolveIntake => ({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
@@ -2779,9 +2781,15 @@ async function main() {
             const connectors = sessionConnectors.get(claim); sessionConnectors.delete(claim);
             connectors?.close().catch(() => {}); } },
         resources: { admit: async () => {
+          if (wallNow() < authRetryAt) return null;
           if (loginPool) loginRuntimes.get(binding.entry().index).check('session');
           else sessionAdapter.validateActivation(sessionActivation, binding.entry().profile, required(options, 'model'), wallNow(), journal.view.expires);
-          await doorway.session.admit({ profile: binding.entry().profile, io: binding.admissionIO(), deadline: wallNow() + 15000, now: wallNow });
+          if (!await admitSessionOrQueue(() => doorway.session.admit({ profile: binding.entry().profile,
+            io: binding.admissionIO(), deadline: wallNow() + 15000, now: wallNow }))) {
+            authRetryAt = wallNow() + 5000;
+            return null;
+          }
+          authRetryAt = 0;
           const held = await hostResources.hold('maintenance', { timeout: 30000, stopped: binding.stopped });
           return held === null ? null : { attach: child => held.attach({ pid: Number(child.split(':')[1]), cwd: project }),
             release: async () => (await held.release()).verified };
