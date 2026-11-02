@@ -1,7 +1,7 @@
 # Rule coverage
 
-Register generation: sha256:c258e26846b59ec3912404d190e5edd69aca7f283669f8b8cd9024e145738326
-Source commit: ecc8ab7e5da0cfeed7211ed8c71f80e6b3b9302f
+Register generation: sha256:3423559dd81ec905c2da8b56dc8374141bdbb76f0f57f09c60eb60bf7f10c366
+Source commit: a919cde5854e3d8e20ffee7a5d0e4bcfa0ab85cd
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -14946,7 +14946,7 @@ Authority: shape-only; entering-force verification required at consumption.
       "id": "deferred:slack-intake-v1:36",
       "rule": 36,
       "holder": "slack-intake-v1",
-      "dueBy": 1793404800000,
+      "dueBy": 1794096000000,
       "part": 4,
       "owner": "echo (agent)",
       "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
@@ -14955,7 +14955,7 @@ Authority: shape-only; entering-force verification required at consumption.
       "id": "deferred:telegram-intake-v1:36",
       "rule": 36,
       "holder": "telegram-intake-v1",
-      "dueBy": 1793404800000,
+      "dueBy": 1794096000000,
       "part": 4,
       "owner": "echo (agent)",
       "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
