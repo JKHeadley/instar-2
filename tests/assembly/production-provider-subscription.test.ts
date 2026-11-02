@@ -608,7 +608,7 @@ it('re-reads the journal end at every call: a predecessor-end route stops dispat
   expect(createClaudeCodeSubscriptionRoute({ ...input, activation: f.input.activation }).kind).toBe('Success');
 });
 
-it('admits Claude session work under its reviewed grant without a metadata-only auth probe', async () => {
+it('admits Claude session work under its reviewed grant and verifies a stored login', async () => {
   const f = fixture();
   const session = subscriptionDoorway('claude-code-subscription').session;
   expect(session.framework).toBe('claude-code');
@@ -623,19 +623,39 @@ it('admits Claude session work under its reviewed grant without a metadata-only 
   expect(() => session.validateActivation(activation, profile, model, 1000)).toThrow(/policy differs/u);
   expect(() => session.validateActivation({ ...grant, acceptedResiduals: ['other'] }, profile, model, 1000)).toThrow(/admitted-session residual/u);
   await expect(session.admit({ profile, io, deadline: 20_000, now: () => 1000 })).resolves.toBeUndefined();
-  expect(f.commands().filter(row => row.args[0] === 'auth')).toHaveLength(0);
+  expect(f.commands().filter(row => row.args[0] === 'auth')).toHaveLength(1);
   await expect(session.admit({ profile: { ...profile, artifact: 'sha256:changed' }, io, deadline: 20_000, now: () => 1000 }))
     .rejects.toThrow(/executable changed/u);
 });
+it('uses the real session, not status metadata, for a descriptor handoff', async () => {
+  const f = fixture({ descriptor: true, status: { loggedIn: false } });
+  const { profile, io } = f.input as unknown as { profile: ProviderSubscriptionProfile;
+    io: Parameters<ReturnType<typeof subscriptionDoorway>['session']['admit']>[0]['io'] };
+  await expect(subscriptionDoorway('claude-code-subscription').session.admit({ profile, io, deadline: 20_000, now: () => 1000 }))
+    .resolves.toBeUndefined();
+  expect(f.commands().filter(row => row.args[0] === 'auth')).toHaveLength(0);
+});
 for (const status of [{ authMethod: 'api_key' }, { apiKeySource: 'ANTHROPIC_API_KEY' }, { subscriptionType: 'console' }])
-  it(`does not trust metadata-only status ${JSON.stringify(status)} for delegated admission`, async () => {
+  it(`refuses a stored delegated login on status ${JSON.stringify(status)}`, async () => {
     const f = fixture({ status });
     const { profile, io } = f.input as unknown as { profile: ProviderSubscriptionProfile;
       io: Parameters<ReturnType<typeof subscriptionDoorway>['session']['admit']>[0]['io'] };
     await expect(subscriptionDoorway('claude-code-subscription').session.admit({ profile, io, deadline: 20_000, now: () => 1000 }))
-      .resolves.toBeUndefined();
-    expect(f.commands().filter(row => row.args[0] === 'auth')).toHaveLength(0);
+      .rejects.toThrow(/authentication status refused/u);
   });
+it('refuses a stored delegated login whose reported account differs from the selected profile', async () => {
+  const f = fixture();
+  const { profile, io: original } = f.input as unknown as { profile: ProviderSubscriptionProfile;
+    io: Parameters<ReturnType<typeof subscriptionDoorway>['session']['admit']>[0]['io'] };
+  const io = { ...original, execute: async (command: Parameters<typeof original.execute>[0]) => {
+    const result = await original.execute(command);
+    if (command.args[0] !== 'auth') return result;
+    const stdout = JSON.stringify({ ...JSON.parse(result.stdout), email: 'other@example.invalid' });
+    return { ...result, stdout, stdoutBytes: Buffer.from(stdout) };
+  } };
+  await expect(subscriptionDoorway('claude-code-subscription').session.admit({ profile, io, deadline: 20_000, now: () => 1000 }))
+    .rejects.toThrow(/authentication status refused/u);
+});
 it('accepts a descriptor login only from a host that declares the hand-off, and only in its exact shape', async () => {
   const handed = fixture({ descriptor: true });
   expect((await value(createClaudeCodeSubscriptionRoute(handed.input)).invoke('request', handed.bounds)).state).toBe('complete');

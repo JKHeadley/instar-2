@@ -756,9 +756,10 @@ export function validateSubscriptionSessionActivation(record: SubscriptionActiva
   ensure(record.acceptedResiduals.includes(SESSION_WORK_RESIDUAL), 'session work grant does not accept the admitted-session residual');
 }
 /** Before every delegated Claude session, verify the executable and the selected
- * login home's identity and reviewed configuration. The launched session itself
- * establishes whether the subscription can serve work; `auth status` only reads
- * local metadata and can refuse a working login. */
+ * login home's identity and reviewed configuration. A descriptor handoff carries
+ * only a token, so its `auth status` cannot prove the account; the real session
+ * establishes availability. Without a descriptor handoff, retain the account,
+ * organization and plan check before launch. */
 export async function admitClaudeSubscriptionSession(input: Readonly<{
   profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile;
   io: SubscriptionProviderIO; deadline: number; now: () => number }>): Promise<void> {
@@ -771,6 +772,16 @@ export async function admitClaudeSubscriptionSession(input: Readonly<{
     && observed.managedConfigurationDigest === profile.managedConfigurationDigest,
   'subscription profile or managed configuration changed');
   ensure(input.deadline > input.now(), 'session admission deadline exhausted');
+  if (io.descriptorLogin !== true) {
+    const timeout = Math.min(5000, input.deadline - input.now());
+    const result = await io.execute({ executable: profile.executable, args: ['auth', 'status', '--json'],
+      cwd: profile.workingDirectory, env: Object.freeze({ PATH: '/usr/bin:/bin', HOME: profile.home,
+        CLAUDE_CONFIG_DIR: profile.configDirectory }), stdin: '', timeout, maxBytes: 8192 });
+    ensure(!result.limited && result.code === 0, 'subscription authentication status unavailable');
+    let status: unknown = null;
+    try { status = JSON.parse(result.stdout); } catch { status = null; }
+    ensure(claudeSubscriptionStatusAccepted(status, profile), 'subscription authentication status refused');
+  }
 }
 /** Narrows a client-supplied framing string to one this adapter owns; anything else refuses. */
 export function asSubscriptionFraming(framing: string): SubscriptionFraming {
