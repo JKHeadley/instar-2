@@ -265,7 +265,10 @@ export function tmpCanary(base = '/private/tmp') {
  * or null when the probe could not run (no sudo rule, no user, no launcher). */
 export function probeAccess(specs, { user = HARNESS_USER, launcher = HARNESS_LAUNCHER, exec = execFileSync } = {}) {
   let text;
-  try { text = exec('/usr/bin/sudo', ['-n', '-u', user, launcher, '--probe', ...specs], { encoding: 'utf8', timeout: 10000, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }); }
+  // The kernel deny proof covers every operator-owned /private/tmp entry. On a
+  // busy Studio that list can exceed two thousand paths; keep the proof intact
+  // and allow the one-shot probe enough time to finish.
+  try { text = exec('/usr/bin/sudo', ['-n', '-u', user, launcher, '--probe', ...specs], { encoding: 'utf8', timeout: 45000, maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }); }
   catch (error) {
     process.stderr.write(`[harness-probe] failed code=${String(error?.code ?? 'unknown')} signal=${String(error?.signal ?? 'none')} bytes=${String(error?.stdout?.length ?? 0)}\n`);
     return null;

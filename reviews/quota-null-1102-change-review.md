@@ -18,14 +18,16 @@ Bug class: live-path
 Bug evidence: reproducer=tests/preview/harness-login-pool.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 Hook bypass: none
 Convergence: none
-Verification: Focused quota-reader and login-pool tests 97/97 PASS at 11:17 PST. The four targeted files passed 132 tests (one skipped) at 11:51 after adding the real 1.x fallback case. Exact-head preflight and live reply evidence pending.
+Verification: Focused quota-reader and login-pool tests 97/97 PASS at 11:17 PST. The four targeted files passed 132 tests (one skipped) at 11:51 after adding the real 1.x fallback case. At 12:08, harness-user, login-pool and quota-reader tests passed 147/147 after raising the bounded harness access probe to cover the current large /private/tmp census. Exact-head preflight and live reply evidence pending.
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
 Prompt review: No model-facing prompt or fixture text changed. The user-visible pool status says five-hour unreported when the provider omits it. No model-facing prompt changed.
 
-Subject (11 paths): scripts/claude-pool-quota.mjs, tests/preview/claude-pool-quota.test.ts, tests/preview/harness-login-pool.mjs, tests/preview/harness-login-pool.test.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
+Subject (13 paths): scripts/claude-pool-quota.mjs, tests/preview/claude-pool-quota.test.ts, tests/preview/harness-login-pool.mjs, tests/preview/harness-login-pool.test.ts, tests/preview/harness-user.mjs, tests/preview/harness-user.test.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 Decision: weekly-parity-1114 | Justin ordered shipped 1.x quota behavior for 2.0; source commit 05db58a09 and generated register commit 7761e4159 are both inside this reviewed change. Missing short telemetry is unreported, active scoped weekly caps remain checked, and actual provider refusals keep their holds. | reported=reviews/quota-null-1102-change-review.md
 Decision: fallback-weekly-1150 | The live provider quota endpoint returned 429 at 11:50 while the fresh 1.x pool snapshot showed Echo at 11% weekly with no five-hour field and no 2.0 marker. A 2.0-only marker cannot be required for that 1.x snapshot; a fresh, valid weekly window and absent short window are sufficient. | reported=reviews/quota-null-1102-change-review.md
+Decision: register-pin-1154 | Generated register files were pinned to source commit 7a484f2d7 in commit 37945c153; this is the generated counterpart of the reviewed weekly fallback source, with no additional runtime behavior. | reported=reviews/quota-null-1102-change-review.md
+Decision: harness-probe-1208 | The copied canary refused before launch because the separate harness user's required access proof timed out at 10 seconds while checking more than 2,700 operator-owned temporary entries. Keep every kernel access check and allow that bounded one-shot proof up to 45 seconds; never fall back to the operator's account. | reported=reviews/quota-null-1102-change-review.md
 
 ## Closing block
 

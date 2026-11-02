@@ -91,8 +91,9 @@ describe('readiness: the switch is decided from live state, a refusal names its 
     const specs = Array.from({ length: 20_000 }, (_, i) => `r:/private/tmp/probe-${String(i).padStart(5, '0')}`);
     const output = specs.map(spec => JSON.stringify({ path: spec.slice(2), mode: 'r', ok: false, code: 'EACCES' })).join('\n') + '\n';
     expect(Buffer.byteLength(output)).toBeGreaterThan(1024 * 1024);
-    const rows = probeAccess(specs, { exec: (_command: string, _args: string[], options: { maxBuffer: number }) => {
+    const rows = probeAccess(specs, { exec: (_command: string, _args: string[], options: { maxBuffer: number; timeout: number }) => {
       if (options.maxBuffer < Buffer.byteLength(output)) throw Object.assign(new Error('buffer full'), { code: 'ENOBUFS' });
+      expect(options.timeout).toBeGreaterThanOrEqual(30_000);
       return output;
     } });
     expect(rows).toHaveLength(specs.length);
