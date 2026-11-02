@@ -68,9 +68,9 @@ import { createProcessInventory, loadTenOwner } from './process-inventory.mjs';
 const GiB = 1024 ** 3;
 /** Ceilings use the NativeLaunchLimits field names of the effect doorway. */
 export const RESOURCE_CEILINGS = Object.freeze({
-  launch: Object.freeze({ memoryBytes: 2 * GiB, processCount: 32, handleCount: 1024, cpuMilliseconds: 600_000 }),
-  // The aggregate is exactly the launch slots times the per-launch allocation: the Six installation
-  // domain's capacity, so every admitted launch has its whole allocation reserved.
+  // A Claude Code task can use the host-owned memory budget, as in 1.x. The aggregate
+  // remains the host safety ceiling; Six reserves an equal share for admission only.
+  launch: Object.freeze({ memoryBytes: 18 * GiB, processCount: 32, handleCount: 1024, cpuMilliseconds: 600_000 }),
   aggregate: Object.freeze({ memoryBytes: 18 * GiB, processCount: 288, launches: 9 }),
   reserveLaunches: 1,
   sampleMs: 1000,
