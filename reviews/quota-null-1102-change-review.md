@@ -13,7 +13,7 @@ Tier rationale: Changes live login admission on a serving runner. Full exact-hea
 Side effects: A weekly-only approved account can be selected when its five-hour field is explicitly null and the provider lists weekly limits only; no account is added, no credential or message is copied.
 Undo and recovery: Keep this worktree isolated until gated. If installed and the live check fails, restore the previously attested build through the paused switch while retaining the current journal and queued turn.
 Multi-machine posture: Studio-local serving login pool; no remote machine or shared quota file is changed.
-Layer below: The provider OAuth usage endpoint returned HTTP 200 with `five_hour:null`, weekly utilization 8%, and weekly-only limits for Echo at 08:49 PST. The official Claude /usage view displayed only weekly usage. The imported 1.x snapshot drops the null; the 2.x live reader carries the explicit fact.
+Layer below: The provider OAuth usage endpoint returned HTTP 200 with `five_hour:null`, weekly utilization 8%, and weekly-only limits for Echo at 08:49 PST. The official Claude /usage view displayed only weekly usage. The imported 1.x snapshot drops the null; the 2.x live reader carries the explicit fact. Treating that pair as no configured five-hour window is an inference from the response shape and the official client view, subject to independent review.
 Bug class: provider-declared absent quota window interpreted as incomplete telemetry
 Bug evidence: Live message 701 remained queued with primary at 99% weekly; fresh 1.x poll read 13/13 but all lacked five-hour values. Current 2.x selector requires both windows for a destination. Ledger 2026-11-02 08:50 PST.
 Hook bypass: none
