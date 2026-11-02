@@ -24,6 +24,8 @@ Prompt review: No model-facing prompt or fixture text changed. The user-visible 
 
 Subject (11 paths): scripts/claude-pool-quota.mjs, tests/preview/claude-pool-quota.test.ts, tests/preview/harness-login-pool.mjs, tests/preview/harness-login-pool.test.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
+Decision: weekly-parity-1114 | Justin ordered shipped 1.x quota behavior for 2.0; source commit 05db58a09 and generated register commit 7761e4159 are both inside this reviewed change. Missing short telemetry is unreported, active scoped weekly caps remain checked, and actual provider refusals keep their holds. | reported=reviews/quota-null-1102-change-review.md
+
 ## Closing block
 
 simplestRobustRoute: Keep the current reader and selection path; carry an unreported marker and all active weekly limits from the raw response to the selector.
