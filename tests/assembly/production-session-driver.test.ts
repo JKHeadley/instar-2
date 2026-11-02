@@ -97,6 +97,18 @@ function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: 
 const rateConfig = { turnDeadlineMs: 120_000, requireTurnHook: true,
   confinement: 'admitted' as const, toolAdmission: { command: () => '/hook', timeoutSeconds: 10 },
   modelGate: () => 'http://127.0.0.1:1234/' + 'a'.repeat(32) + '/claim' };
+
+it('joins a terminal result to a lost worker observation without treating it as a completed turn', () => {
+  const f = fixture('claude-code'), identity = f.launch();
+  const name = f.journal.sessions[0]!.name;
+  Object.assign(f.config.io, { readTerminal: () => ({ code: 137, signal: null,
+    workerExitClaim: { workerPid: 42, code: null, signal: 'SIGKILL' } }) });
+  f.config.io.tmux(['kill-session', '-t', `=${name}:`]);
+  const observed = value(f.driver.observe({ operation: 'op', processIdentity: identity }));
+  expect(observed).toMatchObject({ phase: 'exit-observed' });
+  expect(observed.detail).toContain('wrapper code=137');
+  expect(observed.detail).toContain('unverified worker claim code=unknown signal=SIGKILL');
+});
 const recordedLimit = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8')).result as string;
 const throttleFixture = JSON.parse(readFileSync(new URL('../fixtures/provider-failure/server-throttle.json', import.meta.url), 'utf8')) as {
   result: string; overloaded: string; pane: string;

@@ -31,8 +31,9 @@
 // It is installed by the runner at HARNESS_BIN/harness-launch (owned by the runner's account, unwritable by the harness
 // user) and is plain Node with no imports outside node:, because the harness user can read nothing else of the repo.
 import { spawn, execFileSync } from 'node:child_process';
-import { accessSync, closeSync, constants, openSync, readdirSync, readSync, realpathSync, statSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { accessSync, closeSync, constants, openSync, readdirSync, readSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(realpathSync(fileURLToPath(import.meta.url)));
@@ -187,6 +188,20 @@ child.on('error', () => { clearInterval(watch); teardown(); process.exit(126); }
 child.on('exit', (code, signal) => {
   clearInterval(watch);
   teardown();
+  // The pane can disappear before its host observes the worker's last frame. Keep
+  // only process metadata in the already admitted session inbox; never copy output
+  // or custody bytes into a diagnostic. The host records its own wrapper result too.
+  if (/^instar20-[a-f0-9]{24}$/u.test(env.INSTAR_SESSION_NAME ?? '') && env.INSTAR_SESSION_INBOX?.startsWith('/')) {
+    const path = join(env.INSTAR_SESSION_INBOX, `terminal-${env.INSTAR_SESSION_NAME}.json`);
+    const temp = `${path}.${randomUUID()}.tmp`;
+    try {
+      // Exclusive temp creation and rename never open a planted final FIFO or symlink.
+      writeFileSync(temp, JSON.stringify({ v: 1, name: env.INSTAR_SESSION_NAME,
+        launcherPid: process.pid, workerPid: child.pid, code, signal, endedAt: Date.now() }) + '\n',
+      { flag: 'wx', mode: 0o600 });
+      renameSync(temp, path);
+    } catch { try { unlinkSync(temp); } catch {} /* diagnostic capture cannot change the harness exit */ }
+  }
   if (signal) { for (const name of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.removeAllListeners(name); process.kill(process.pid, signal); }
   process.exit(code ?? 1);
 });

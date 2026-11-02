@@ -3,6 +3,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync, chmodSync, constants,
   openSync, closeSync, fsyncSync, fstatSync, lstatSync, realpathSync, statSync, unlinkSync, readSync, rmSync, linkSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
+import { constants as osConstants } from 'node:os';
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertAgentPaths } from './agent-paths.mjs';
@@ -110,6 +111,25 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
       return readdirSync(inboxDirectory).filter(file => file.startsWith(`${name}.`) && file.endsWith('.json'))
         .slice(-100).flatMap(file => { try { return [JSON.parse(readFileSync(join(inboxDirectory, file), 'utf8'))]; } catch { return []; } });
     },
+    readTerminal(name) {
+      if (!/^instar20-[a-f0-9]{24}$/u.test(name)) return null;
+      const path = join(dirname(inboxDirectory), 'terminal-reports', `${name}.json`);
+      try {
+        const meta = lstatSync(path);
+        if (!meta.isFile() || meta.nlink !== 1 || meta.size > 4096) return null;
+        const value = JSON.parse(readFileSync(path, 'utf8'));
+        if (value.v !== 1 || value.name !== name) return null;
+        const validCode = code => Number.isSafeInteger(code) && code >= 0 && code <= 255;
+        const validSignal = signal => typeof signal === 'string' && Object.hasOwn(osConstants.signals, signal);
+        return { code: validCode(value.code) ? value.code : null,
+          signal: validSignal(value.signal) ? value.signal : null,
+          workerExitClaim: value.workerExitClaim && Number.isSafeInteger(value.workerExitClaim.workerPid) && value.workerExitClaim.workerPid > 0
+            ? { workerPid: value.workerExitClaim.workerPid,
+              code: validCode(value.workerExitClaim.code) ? value.workerExitClaim.code : null,
+              signal: validSignal(value.workerExitClaim.signal) ? value.workerExitClaim.signal : null }
+            : null };
+      } catch { return null; }
+    },
     /**
      * At most `maxBytes + 1` bytes of a delegated step's result file; null when it does not exist. The child controls
      * the destination, and this read runs with the host's broader authority, so custody is enforced here: the final
@@ -168,11 +188,16 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
         // Codex: date-partitioned rollouts in this login home, from the step's start date to today,
         // each attributed to the session by the working directory its own first record names.
         let calls = 0;
+        const visitedFolders = new Set();
         const day = 86_400_000;
         for (let at = since - day; at <= Date.now() + day; at += day) {
           const date = new Date(at);
           const folder = join(directory, 'sessions', String(date.getFullYear()), String(date.getMonth() + 1).padStart(2, '0'),
             String(date.getDate()).padStart(2, '0'));
+          // A fall-back day is 25 hours long. Two 24-hour samples can name the
+          // same local calendar folder, but its calls still count only once.
+          if (visitedFolders.has(folder)) continue;
+          visitedFolders.add(folder);
           if (!existsSync(folder)) continue;
           for (const name of readdirSync(folder)) {
             const file = join(folder, name);

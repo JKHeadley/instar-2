@@ -17,9 +17,13 @@ import { createProcessInventory } from '../../scripts/process-inventory.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { harnessExecutable, harnessReadiness, harnessStatusLine, HARNESS_PROFILE, removeHarnessState, grantVolume, HARNESS_VOLUME_MARK, harnessGate, HARNESS_RECHECK_MS, readHarnessLogin, storeHarnessLogin, plaintextLogins, closeOperatorTmp, sweptEntryHeld, tmpCanary, HARNESS_TMP, harnessCredentialValues, harnessRefusedNotice, HARNESS_HOOK_FILES, HARNESS_OFF_REASON, harnessSocketDirectory, ensureDirectory } from './harness-user.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
+import { probeAccess } from './harness-user.mjs';
+// @ts-expect-error The runner side stays plain JavaScript.
 import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { harnessSessionCommand } from './harness-session.mjs';
+import { harnessSessionCommand, recordSessionTerminal } from './harness-session.mjs';
+// @ts-expect-error Physical host JavaScript stays outside pure core.
+import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { prepareToolTurn, pruneToolTurns, runToolTurn, serveTurnSocket, toolStatusLines, TOOL_MCP_LAUNCHER, TOOL_TURN_PRIVATE } from './tool-turn.mjs';
 
@@ -82,6 +86,16 @@ describe('readiness: the switch is decided from live state, a refusal names its 
     plaintext: () => [], tmp: () => ({ entries: ['/private/tmp/closed'], failed: 0 }), canary, held: () => true, ...overrides });
   it('is ready when the user, launcher, hook, pinned copy, custody login, closed /private/tmp and the kernel\'s answers all hold', () => {
     expect(ready()).toEqual({ ready: true, user: '_instarharness', uid: 498, hookScript: '/h/hook/x/tool-admission-hook.mjs' });
+  });
+  it('retains a probe response larger than the default command buffer', () => {
+    const specs = Array.from({ length: 20_000 }, (_, i) => `r:/private/tmp/probe-${String(i).padStart(5, '0')}`);
+    const output = specs.map(spec => JSON.stringify({ path: spec.slice(2), mode: 'r', ok: false, code: 'EACCES' })).join('\n') + '\n';
+    expect(Buffer.byteLength(output)).toBeGreaterThan(1024 * 1024);
+    const rows = probeAccess(specs, { exec: (_command: string, _args: string[], options: { maxBuffer: number }) => {
+      if (options.maxBuffer < Buffer.byteLength(output)) throw Object.assign(new Error('buffer full'), { code: 'ENOBUFS' });
+      return output;
+    } });
+    expect(rows).toHaveLength(specs.length);
   });
   it('refuses each missing condition by name', () => {
     expect(ready({ exec: exec('none') })).toEqual({ ready: false, reason: 'no user _instarharness' });
@@ -306,14 +320,31 @@ describe('the launcher', () => {
 
   it('passes exactly the given environment and the exit code, and ends what the harness left behind', async () => {
     const out = fresh('launcher-exit');
-    const result = spawnSync(process.execPath, [launcher, `OUT=${out}`, 'MARK=a b', '--', fake, 'exit'], { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', LEAK: 'no' } });
+    const name = `instar20-${'b'.repeat(24)}`;
+    const result = spawnSync(process.execPath, [launcher, `OUT=${out}`, 'MARK=a b',
+      `INSTAR_SESSION_NAME=${name}`, `INSTAR_SESSION_INBOX=${out}`, '--', fake, 'exit'],
+    { encoding: 'utf8', env: { PATH: '/usr/bin:/bin', LEAK: 'no' } });
     expect(result.status).toBe(7);
+    expect(JSON.parse(readFileSync(join(out, `terminal-${name}.json`), 'utf8')))
+      .toMatchObject({ v: 1, code: 7, signal: null });
     const env = readFileSync(join(out, 'env'), 'utf8');
     expect(env).toContain('MARK=a b'); expect(env).not.toContain('LEAK');
     // Absent from the command's environment, the temporary directory is the harness area's own (`tmp` beside `bin`).
     expect(env).toContain(`TMPDIR=${join(dir, '..', 'tmp').replace(/\/launcher\/\.\./u, '')}`);
     expect(env).toContain('CLAUDE_CODE_TMPDIR=');
     expect(await waitFor(() => !alive(pidOf(out, 'same-group')) && !alive(pidOf(out, 'own-group')))).toBe(true);
+  });
+  it('does not open a planted FIFO at the terminal-result name before propagating exit', () => {
+    const out = fresh('launcher-fifo');
+    const name = `instar20-${'c'.repeat(24)}`;
+    const target = join(out, `terminal-${name}.json`);
+    expect(spawnSync('mkfifo', [target]).status).toBe(0);
+    const result = spawnSync(process.execPath, [launcher, `OUT=${out}`,
+      `INSTAR_SESSION_NAME=${name}`, `INSTAR_SESSION_INBOX=${out}`, '--', fake, 'exit'],
+    { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' }, timeout: 4000 });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(7);
+    expect(JSON.parse(readFileSync(target, 'utf8'))).toMatchObject({ name, code: 7 });
   });
   it('keeps a temporary directory the command names, and refuses the terminal mode with no terminal', async () => {
     // This checks environment forwarding, not a mounted tool volume. A fabricated
@@ -644,5 +675,72 @@ describe('a delegated session as the harness user', () => {
     expect(readFileSync(join(profile.configDirectory, '.claude.json'), 'utf8')).not.toContain('synthetic-login');
     expect(() => harnessSessionCommand({ user: '_instarharness', profile, executable: '/x', args: [], env: {},
       login: () => { throw Error('the login custody file is not the runner\'s alone'); } })).toThrow(/not the runner's alone/u);
+  });
+  it('persists a host terminal result joined to the worker result, with unknown when the worker could not report', () => {
+    const inbox = join(fresh('terminal-report'), 'inbox');
+    mkdirSync(inbox);
+    const name = `instar20-${'a'.repeat(24)}`;
+    writeFileSync(join(inbox, `terminal-${name}.json`), JSON.stringify({ v: 1, name, launcherPid: 41,
+      workerPid: 42, code: null, signal: 'SIGKILL', endedAt: 1234, credential: 'must-not-copy' }));
+    const path = recordSessionTerminal({ inbox, name, startedAt: 1000, wrapperPid: 40, code: 137, signal: null });
+    const record = JSON.parse(readFileSync(path, 'utf8'));
+    expect(record).toMatchObject({ name, wrapperPid: 40, code: 137, signal: null,
+      workerExitClaim: { workerPid: 42, code: null, signal: 'SIGKILL' } });
+    expect(readFileSync(path, 'utf8')).not.toContain('must-not-copy');
+    const io = createProductionSessionIO({ stateDirectory: join(fresh('terminal-state'), 'state'),
+      tmuxPath: '/synthetic', home: fresh('terminal-home'), configHome: fresh('terminal-config'),
+      cwd: fresh('terminal-cwd'), lifecycleDirectory: inbox });
+    expect(io.readTerminal(name)).toMatchObject({ code: 137, signal: null,
+      workerExitClaim: { workerPid: 42, signal: 'SIGKILL' } });
+    const corrupted = JSON.parse(readFileSync(path, 'utf8'));
+    corrupted.signal = 'SIGTERM\nSECRET_MARKER';
+    corrupted.workerExitClaim.signal = 'SIGKILL\nSECRET_MARKER';
+    writeFileSync(path, JSON.stringify(corrupted));
+    expect(io.readTerminal(name)).toMatchObject({ signal: null, workerExitClaim: { signal: null } });
+    rmSync(join(inbox, `terminal-${name}.json`));
+    const unknown = JSON.parse(readFileSync(recordSessionTerminal({ inbox, name,
+      startedAt: 1000, wrapperPid: 40, code: null, signal: 'SIGHUP' }), 'utf8'));
+    expect(unknown.workerExitClaim).toBeNull();
+  });
+  it('rejects untrusted terminal claims without reading links, FIFOs, huge files or secret-bearing fields', () => {
+    const inbox = join(fresh('terminal-adversarial'), 'inbox'); mkdirSync(inbox);
+    const name = `instar20-${'d'.repeat(24)}`, claimPath = join(inbox, `terminal-${name}.json`);
+    const base = { v: 1, name, launcherPid: 41, workerPid: 42, code: null, signal: 'SIGKILL', endedAt: 1234 };
+    const assess = (payload: unknown) => {
+      writeFileSync(claimPath, JSON.stringify(payload));
+      const path = recordSessionTerminal({ inbox, name, startedAt: 1000, wrapperPid: 40, code: 137, signal: null });
+      const text = readFileSync(path, 'utf8');
+      expect(JSON.parse(text).workerExitClaim).toBeNull();
+      expect(text).not.toContain('SECRET_MARKER');
+      rmSync(claimPath);
+    };
+    assess({ ...base, signal: 'SIGKILL\nSECRET_MARKER' });
+    assess({ ...base, launcherPid: { secret: 'SECRET_MARKER' } });
+    assess({ ...base, workerPid: { secret: 'SECRET_MARKER' } });
+    assess({ ...base, endedAt: { secret: 'SECRET_MARKER' } });
+    assess({ ...base, code: { secret: 'SECRET_MARKER' } });
+    assess({ ...base, code: 7, signal: 'SIGKILL' });
+    assess({ ...base, endedAt: -100000 });
+    writeFileSync(claimPath, Buffer.alloc(8192, 65));
+    expect(JSON.parse(readFileSync(recordSessionTerminal({ inbox, name, startedAt: 1000,
+      wrapperPid: 40, code: 137, signal: null }), 'utf8')).workerExitClaim).toBeNull();
+    rmSync(claimPath);
+    expect(spawnSync('mkfifo', [claimPath]).status).toBe(0);
+    const began = Date.now();
+    expect(JSON.parse(readFileSync(recordSessionTerminal({ inbox, name, startedAt: 1000,
+      wrapperPid: 40, code: 137, signal: null }), 'utf8')).workerExitClaim).toBeNull();
+    expect(Date.now() - began).toBeLessThan(1000);
+    rmSync(claimPath);
+    const secret = join(inbox, 'secret.json'); writeFileSync(secret, JSON.stringify({ ...base, secret: 'SECRET_MARKER' }));
+    symlinkSync(secret, claimPath);
+    const text = readFileSync(recordSessionTerminal({ inbox, name, startedAt: 1000,
+      wrapperPid: 40, code: 137, signal: null }), 'utf8');
+    expect(JSON.parse(text).workerExitClaim).toBeNull();
+    expect(text).not.toContain('SECRET_MARKER');
+    const sanitized = readFileSync(recordSessionTerminal({ inbox, name, startedAt: 1000,
+      wrapperPid: { secret: 'SECRET_MARKER' }, code: { secret: 'SECRET_MARKER' },
+      signal: 'SIGTERM\nSECRET_MARKER', errorCode: 'SECRET_MARKER' }), 'utf8');
+    expect(sanitized).not.toContain('SECRET_MARKER');
+    expect(JSON.parse(sanitized)).toMatchObject({ wrapperPid: null, code: null, signal: null, errorCode: null });
   });
 });
