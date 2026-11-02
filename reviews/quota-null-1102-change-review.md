@@ -17,11 +17,11 @@ Layer below: The provider OAuth usage endpoint returned HTTP 200 with `five_hour
 Bug class: provider-declared absent quota window interpreted as incomplete telemetry
 Bug evidence: Live message 701 remained queued with primary at 99% weekly; fresh 1.x poll read 13/13 but all lacked five-hour values. Current 2.x selector requires both windows for a destination. Ledger 2026-11-02 08:50 PST.
 Hook bypass: none
-Convergence: Focused quota-reader and login-pool tests 93/93 PASS; direct selector boundary PASS; typecheck PASS. Full gate and independent review pending.
+Convergence: Focused quota-reader and login-pool tests 93/93 PASS; direct selector boundary PASS; typecheck PASS. Lint, register:check and typecheck PASS after exact source pin regeneration; full gate and independent review pending.
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
 Prompt review: No model-facing prompt or fixture text changed. The user-visible pool status now says five-hour not applicable only when that specific provider fact is present.
 
-Subject (4 paths): scripts/claude-pool-quota.mjs, tests/preview/claude-pool-quota.test.ts, tests/preview/harness-login-pool.mjs, tests/preview/harness-login-pool.test.ts
+Subject (11 paths): scripts/claude-pool-quota.mjs, tests/preview/claude-pool-quota.test.ts, tests/preview/harness-login-pool.mjs, tests/preview/harness-login-pool.test.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 ## Closing block
 
