@@ -1,6 +1,6 @@
 # Change review — restore a full working session for Justin's live agent
 
-Subject base: 99d890574
+Subject base: 99d890574a1731f5f4954e54ebe17f4702c781e4
 Review state: frozen
 Reviewed content: sha256:b737c8b91b0801767009dd3a39701f947713512b20fcb0ad7d1dcb4e0c7551ab
 Outcome: charge real model calls against the existing journal spending cap instead of stopping each task after a small allowance; remove the extra per-task CPU, process, and file-handle ceilings; give admitted shell work a writable temporary directory; preserve the host-wide resource floor and the four-hour conversation deadline.
