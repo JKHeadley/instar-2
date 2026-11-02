@@ -14,10 +14,11 @@ Side effects: A weekly-only approved account can be selected when its five-hour 
 Undo and recovery: Keep this worktree isolated until gated. If installed and the live check fails, restore the previously attested build through the paused switch while retaining the current journal and queued turn.
 Multi-machine posture: Studio-local serving login pool; no remote machine or shared quota file is changed.
 Layer below: The provider OAuth usage endpoint returned HTTP 200 with `five_hour:null`, weekly utilization 8%, and weekly-only limits for Echo at 08:49 PST. The official Claude /usage view displayed only weekly usage. The imported 1.x snapshot drops the null; the 2.x live reader carries the explicit fact. Treating that pair as no configured five-hour window is an inference from the response shape and the official client view, subject to independent review.
-Bug class: provider-declared absent quota window interpreted as incomplete telemetry
+Bug class: live-path
 Bug evidence: Live message 701 remained queued with primary at 99% weekly; fresh 1.x poll read 13/13 but all lacked five-hour values. Current 2.x selector requires both windows for a destination. Ledger 2026-11-02 08:50 PST.
 Hook bypass: none
-Convergence: Focused quota-reader and login-pool tests 93/93 PASS; direct selector boundary PASS; typecheck PASS. Lint, register:check and typecheck PASS after exact source pin regeneration; full gate and independent review pending.
+Convergence: none
+Verification: Focused quota-reader and login-pool tests 93/93 PASS; direct selector boundary PASS; typecheck, lint and register:check PASS after exact source pin regeneration. Full gate and independent review pending.
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
 Prompt review: No model-facing prompt or fixture text changed. The user-visible pool status now says five-hour not applicable only when that specific provider fact is present.
 
