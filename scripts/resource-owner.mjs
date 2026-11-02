@@ -70,7 +70,7 @@ const GiB = 1024 ** 3;
 export const RESOURCE_CEILINGS = Object.freeze({
   // A Claude Code task can use the host-owned memory budget, as in 1.x. The aggregate
   // remains the host safety ceiling; Six reserves an equal share for admission only.
-  launch: Object.freeze({ memoryBytes: 18 * GiB, processCount: 32, handleCount: 1024, cpuMilliseconds: 600_000 }),
+  launch: Object.freeze({ memoryBytes: 18 * GiB, processCount: 288, handleCount: null, cpuMilliseconds: null }),
   aggregate: Object.freeze({ memoryBytes: 18 * GiB, processCount: 288, launches: 9 }),
   reserveLaunches: 1,
   sampleMs: 1000,
@@ -108,7 +108,7 @@ const LIMIT_SCRIPT = [
   '  if [ "$s" = unlimited ] || [ "$s" -gt "$2" ]; then ulimit -S "$1" "$2" || exit 125; fi',
   '  if [ "$h" = unlimited ] || [ "$h" -gt "$2" ]; then ulimit -H "$1" "$2" || exit 125; fi',
   '}',
-  'lim -n "$1"; lim -t "$2"; if [ -n "$3" ]; then lim -u "$3"; fi',
+  'if [ -n "$1" ]; then lim -n "$1"; fi; if [ -n "$2" ]; then lim -t "$2"; fi; if [ -n "$3" ]; then lim -u "$3"; fi',
   'u=; for v in $4; do u="$u -u $v"; done; shift 5',
   'exec /usr/bin/env $u "$@"'].join('\n');
 
@@ -117,12 +117,12 @@ const LIMIT_SCRIPT = [
 export const LIMIT_FILE = fileURLToPath(new URL('./limit-exec.sh', import.meta.url));
 export const LIMIT_FILE_TEXT = `shift\n${LIMIT_SCRIPT}\n`;
 export function limitedFileArgv({ label, executable, args, handles, cpuSeconds, processLimit, env }) {
-  return [LIMIT_FILE, label, String(handles), String(cpuSeconds), processLimit === null ? '' : String(processLimit),
+  return [LIMIT_FILE, label, handles === null ? '' : String(handles), cpuSeconds === null ? '' : String(cpuSeconds), processLimit === null ? '' : String(processLimit),
     SHELL_VARIABLES.filter(name => env?.[name] === undefined).join(' '), '', executable, ...args];
 }
 /** The shim argv for one limited process: the one definition every launch uses. */
 export function limitedArgv({ executable, args, handles, cpuSeconds, processLimit, env, gated }) {
-  return ['-c', LIMIT_SCRIPT, 'instar-launch', String(handles), String(cpuSeconds), processLimit === null ? '' : String(processLimit),
+  return ['-c', LIMIT_SCRIPT, 'instar-launch', handles === null ? '' : String(handles), cpuSeconds === null ? '' : String(cpuSeconds), processLimit === null ? '' : String(processLimit),
     SHELL_VARIABLES.filter(name => env?.[name] === undefined).join(' '), gated ? 'gate' : '', executable, ...args];
 }
 
@@ -346,7 +346,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     const id = randomUUID();
     let reserved;
     try { reserved = ports.allocation.reserve({ launch: id, work, memoryBytes: ceilings.launch.memoryBytes,
-      processCount: ceilings.launch.processCount }); }
+      processCount: Math.ceil(ceilings.aggregate.processCount / ceilings.aggregate.launches) }); }
     catch (error) { reserved = { ok: false, reason: String(error?.message ?? error) }; }
     if (!reserved?.ok) {
       counters.allocationRefusals = (counters.allocationRefusals ?? 0) + 1;
@@ -514,7 +514,8 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
         if (over('owned-process-memory', 'bytes', lease.memoryBytes, ceilings.launch.memoryBytes)) terminate(lease, 'memory');
         else if (over('owned-process-count', 'processes', lease.processes, ceilings.launch.processCount)) terminate(lease, 'processes');
         // The tree's summed CPU against its budget: each process is also held by RLIMIT_CPU.
-        else if (over('owned-process-cpu', 'ms', lease.cpuMilliseconds, ceilings.launch.cpuMilliseconds)) terminate(lease, 'cpu');
+        else if (ceilings.launch.cpuMilliseconds !== null
+          && over('owned-process-cpu', 'ms', lease.cpuMilliseconds, ceilings.launch.cpuMilliseconds)) terminate(lease, 'cpu');
       }
       const aggregate = (kind, unit, value, ceiling) => ports.compare(measured(kind, 'host-owned-launches', unit, value, at),
         measured(kind, 'host-owned-launches', unit, ceiling, at)) > 0;
@@ -616,8 +617,8 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     return false;
   }
   function run(input, lease, uidProcesses) {
-    const handles = Math.max(16, ceilings.launch.handleCount);
-    const cpuSeconds = Math.max(1, Math.ceil(ceilings.launch.cpuMilliseconds / 1000));
+    const handles = ceilings.launch.handleCount;
+    const cpuSeconds = ceilings.launch.cpuMilliseconds === null ? null : Math.max(1, Math.ceil(ceilings.launch.cpuMilliseconds / 1000));
     lease.enforcement = enforcement(); lease.uidProcesses = uidProcesses;
     // The join covers the whole private area the launch may write to, not just its working directory:
     // `input.area` (a caller's private scratch volume holding both the working directory and the launch's
@@ -835,11 +836,11 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       inherited = { state: 'unknown' }; return inherited;
     }
     const pair = (soft, hard) => ({ soft, hard });
-    const effective = (hard, ceiling) => hard === 'unlimited' ? ceiling : Math.min(hard, ceiling);
+    const effective = (hard, ceiling) => ceiling === null ? hard : hard === 'unlimited' ? ceiling : Math.min(hard, ceiling);
     inherited = { state: 'observed', at: ports.now(), handles: pair(values[0], values[1]), cpuSeconds: pair(values[2], values[3]),
       userProcesses: pair(values[4], values[5]),
       effectivePerLaunch: { handleCount: effective(values[1], ceilings.launch.handleCount),
-        cpuSeconds: effective(values[3], Math.ceil(ceilings.launch.cpuMilliseconds / 1000)) } };
+        cpuSeconds: effective(values[3], ceilings.launch.cpuMilliseconds === null ? null : Math.ceil(ceilings.launch.cpuMilliseconds / 1000)) } };
     return inherited;
   }
   return Object.freeze({

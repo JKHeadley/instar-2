@@ -3,7 +3,7 @@ import { boundary, ensure, freeze, take } from './boundary.js';
 import type { HarnessInputDelivery as ConversationDelivery, HarnessAdapterPort, HarnessWorkerHandle as ConversationWorker } from './contracts.js';
 import { canonical, type Result } from '../index.js';
 import { sessionWorkPolicy, SESSION_WORK_LIMITS } from './production-session-work.js';
-import type { SessionWorkConfig, SessionWorkEdge, SessionWorkEdgeClose, SessionWorkLease,
+import type { SessionWorkConfig, SessionWorkEdge, SessionWorkEdgeClose, SessionWorkCall, SessionWorkLease,
   SessionWorkOutcome, SessionWorkRequest } from './production-session-work.js';
 
 /** One conversation, one admission and one reserved allowance. Turns do not replenish it.
@@ -61,7 +61,10 @@ export interface ConversationSessionStore {
   load(): ConversationState | null;
   save(state: ConversationState): void;
 }
-export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'createDriver'> {
+export interface ConversationSessionConfig extends Omit<SessionWorkConfig, 'createDriver' | 'append'> {
+  readonly append: (record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkCall) => void;
+  /** Charge calls at dispatch against the shared journal cap, rather than reserving a task quota. */
+  readonly callAccounting?: 'per-call';
   /** Called only between turns, serialized with queue draining and idle maintenance.
    * False retains the queued input without dispatch; the ordinary host tick retries. */
   readonly prepareTurn?: (input: Readonly<{ claim: string | null; retire: () => Promise<void> }>) => Promise<boolean>;
@@ -110,14 +113,15 @@ const safeName = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,120}$/u;
 export const CONVERSATION_SESSION_EXIT_TEST =
   'each input has one stable bounded result and a closed harness turn; the conversation closes with its admission and resources released';
 
-/** One reserved allowance for a proof-room conversation. The parent cap still decides
- * whether it fits; a turn never refreshes it. */
+/** Conversation calls are charged to the journal's shared spend cap at dispatch.
+ * This structural maximum only validates the integer; the live journal supplies the actual cap. */
 export const CONVERSATION_SESSION_LIMITS = Object.freeze({ ...SESSION_WORK_LIMITS,
-  maxStepsPerLaunch: 64, maxCallsPerStep: 128, deadlineMs: 14_400_000, maxSessions: 8, idleMs: 14_400_000,
+  maxStepsPerLaunch: 64, maxCallsPerStep: 1_000_000, maxResultBytes: 1_048_576,
+  deadlineMs: 14_400_000, maxSessions: 8, idleMs: 14_400_000,
   minCpuIdlePercent: 12, minFreeMemoryBytes: 2 * 1024 ** 3, minFreeMemoryFraction: 0.1 });
 export function conversationSessionPolicy(input: Parameters<typeof sessionWorkPolicy>[0]) {
   const base = sessionWorkPolicy(input);
-  return Object.freeze({ ...base, admission: Object.freeze({ ...base.admission, allowance: CONVERSATION_SESSION_LIMITS.maxCallsPerStep }), limits: CONVERSATION_SESSION_LIMITS,
+  return Object.freeze({ ...base, admission: Object.freeze({ ...base.admission, allowance: 'journal-spend-cap', charge: 'per-call' }), limits: CONVERSATION_SESSION_LIMITS,
     exitTest: CONVERSATION_SESSION_EXIT_TEST,
     prompt: conversationSessionPrompt({ question: '<task>', context: '<context>' }, '<result destination>') });
 }
@@ -171,7 +175,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
     for (const [name, value, minimum, maximum] of [
       ['deadline', config.deadlineMs, 1, 14_400_000], ['poll', config.pollMs, 25, 5_000],
       ['result bytes', config.maxResultBytes, 1, 1_048_576], ['turns', config.maxSteps, 1, 64],
-      ['calls', config.maxCalls, 1, 256],
+      ['calls', config.maxCalls, 1, 1_000_000],
     ] as const) ensure(Number.isSafeInteger(value) && value >= minimum && value <= maximum, `bounded conversation ${name} required`);
     ensure(config.workingScope.startsWith('/') && config.resultDirectory.startsWith('/')
       && ![config.workingScope, config.resultDirectory].some(path => path.split('/').some(part => part === '..' || part === '.'))
@@ -328,6 +332,7 @@ export function createConversationSessionPort(config: ConversationSessionConfig)
         const edge: SessionWorkEdge = freeze({ type: 'SessionWorkEdge', schemaVersion: 1, id: `${claim}:edge`, parent: config.parent,
           child: claim, scope: config.workingScope, owner: config.owner, authority: request.authority,
           budget: { steps: 1, deadline: config.allowanceDeadline, maxResultBytes: config.maxResultBytes, calls: config.maxCalls, tokens: null },
+          ...(config.callAccounting === 'per-call' ? { charge: 'per-call' as const } : {}),
           exitTest: CONVERSATION_SESSION_EXIT_TEST, placement: config.placement, transport: config.transport,
           resultDestination: config.resultDirectory, openedAt: now });
         // Persist reservation intent before append. An interrupted reservation is held for

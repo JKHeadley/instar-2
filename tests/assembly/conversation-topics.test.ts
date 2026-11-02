@@ -1,13 +1,13 @@
 import { afterEach, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openPreviewJournal } from '../preview/journal.js';
 import { createConversationTopicsPort } from '../../src/assembly/conversation-topics.js';
 import type { ConversationTopicsConfig, ConversationTopicsState } from '../../src/assembly/conversation-topics.js';
 import type { HarnessInputDelivery, HarnessWorkerHandle } from '../../src/assembly/contracts.js';
-import type { SessionWorkEdge, SessionWorkEdgeClose } from '../../src/assembly/production-session-work.js';
+import type { SessionWorkEdge, SessionWorkEdgeClose, SessionWorkCall } from '../../src/assembly/production-session-work.js';
 import { assemblyRuntimeFixture } from './runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
 import { nestedSessionWorkEdge, nestedSessionWorkClose } from '../../src/assembly/production-session-work.js';
@@ -21,22 +21,23 @@ const digest = (text: string) => `sha256:${createHash('sha256').update(text).dig
 const tick = () => new Promise<void>(resolve => setTimeout(resolve, 1));
 async function until(test: () => boolean) { for (let i = 0; i < 500 && !test(); i++) await tick(); expect(test()).toBe(true); }
 
-function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16, lifetime = 2000) {
+function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16, lifetime = 2000, perCall = false) {
   let state: ConversationTopicsState | null = null, now = 1000, live = 0, peak = 0, stopped = false, authorized = true, saveFails = false;
   let batchOutput: string | undefined, evidenceUnreadable = false;
   let uncertainEffects: number | undefined = 0;
   const refusedClose = new Set<string>(), failedClose = new Set<string>();
   const exited = new Set<string>(), held = new Set<string>(), launches: { topic: string; worker: HarnessWorkerHandle }[] = [];
   const delivered: { topic: string; input: HarnessInputDelivery }[] = [], closed: string[] = [];
-  const edges: (SessionWorkEdge | SessionWorkEdgeClose)[] = [];
+  const edges: (SessionWorkEdge | SessionWorkEdgeClose)[] = [], calls: SessionWorkCall[] = [];
   const config: ConversationTopicsConfig = {
     context: assemblyRuntimeFixture().c, conversation: 'operator', topicOf: operation => operation.split(':')[0]!,
     allowanceDeadline: Math.max(100000, lifetime * 2), authorized: () => authorized, currentAuthority: () => 'grant',
     maxSessions, idleMs: lifetime === 2000 ? 500 : lifetime, deadlineMs: lifetime, pollMs: 25, maxSteps: 3, maxCalls, maxResultBytes: 65536,
+    ...(perCall ? { callAccounting: 'per-call' as const } : {}),
     now: () => now, stopped: () => stopped, parent: 'run', owner: 'machine', placement: 'local', transport: 'fake',
     workingScope: '/scope', resultDirectory: '/scope/results', artifact: 'artifact', incarnation: 'boot',
     store: { load: () => structuredClone(state), save: next => { if (saveFails) throw Error('disk'); state = structuredClone(next); } },
-    append: row => { edges.push(row); },
+    append: row => { if (row.type === 'SessionWorkCall') calls.push(row); else edges.push(row); },
     recoveryEdges: () => { if (evidenceUnreadable) throw Error('unreadable journal'); return edges; },
     resources: { admit: async () => { if (live >= resourceCap) return null; live++; peak = Math.max(peak, live); return { attach: async () => {}, release: async () => { live--; return true; } }; } },
     io: { modelCalls: () => { throw Error('must not count another topic transcript'); }, wait: tick,
@@ -69,7 +70,7 @@ function fixture(maxSessions = 2, maxCalls = 6, resourceCap = 16, lifetime = 200
   };
   let port = value(createConversationTopicsPort(config));
   const request = (operation: string) => ({ operation, question: 'hello', context: 'shared memory: Wren; own topic history', authority: 'grant' });
-  return { get port() { return port; }, config, request, held, exited, refusedClose, failedClose, launches, delivered, closed, edges,
+  return { get port() { return port; }, config, request, held, exited, refusedClose, failedClose, launches, delivered, closed, edges, calls,
     batchOutput: (text: string) => { batchOutput = text; },
     unreadableEvidence: () => { evidenceUnreadable = true; },
     uncertainEffects: (count: number | undefined) => { uncertainEffects = count; },
@@ -91,6 +92,33 @@ it('two topics run concurrently with separate queues, cursors and claims under o
   expect(f.state().topics['7']?.inputs[0]?.cursor).toBe(2);
   expect(await f.port.run(f.request('7:a'))).toMatchObject({ state: 'complete' });
   expect(f.delivered).toHaveLength(2); await f.port.close();
+});
+
+it('lets a live conversation pass the former 16-call stop while recording every dispatch', async () => {
+  const f = fixture(2, 9000, 16, 600000, true); f.held.add('7');
+  const pending = f.port.run(f.request('7:task'));
+  await until(() => f.delivered.length === 1);
+  const claim = f.launches[0]!.worker.claim;
+  const recordedBefore = f.calls.length;
+  const first = f.state().topics['7']!.claimCalls + 1;
+  for (let ordinal = first; ordinal < first + 20; ordinal++) f.port.reserveCall(claim, ordinal);
+  expect(f.calls).toHaveLength(recordedBefore + 20);
+  expect(f.state().topics['7']!.spent).toBeGreaterThan(16);
+  expect(f.state().edge?.charge).toBe('per-call');
+  f.held.delete('7'); expect(await pending).toMatchObject({ state: 'complete' });
+  await f.port.close();
+});
+
+it('retires a partially used fixed allowance before upgrading to per-call charging', async () => {
+  const f = fixture(1, 6, 16, 600000);
+  expect(await f.port.run(f.request('7:before'))).toMatchObject({ state: 'complete' });
+  expect(f.state().edge?.charge).toBeUndefined();
+  Object.assign(f.config, { callAccounting: 'per-call', maxCalls: 9000 });
+  f.restart();
+  expect(await f.port.run(f.request('7:after'))).toMatchObject({ state: 'complete' });
+  expect(f.state().edge?.charge).toBe('per-call');
+  expect(f.state().edge?.budget.calls).toBe(9000);
+  await f.port.close();
 });
 
 it('the cap queues durably, retires an idle topic and resumes it with a fresh identity and saved history', async () => {
@@ -643,7 +671,7 @@ it.each(['before-append', 'after-append', 'before-reset'] as const)('renewal rec
   const append = f.config.append, save = f.config.store.save;
   let injected = false;
   const crashingAppend: ConversationTopicsConfig['append'] = row => {
-    if (row.id === 'operator:allowance:renew' && !injected && crash !== 'before-reset') {
+    if (row.type !== 'SessionWorkCall' && row.id === 'operator:allowance:renew' && !injected && crash !== 'before-reset') {
       injected = true;
       if (crash === 'after-append') append(row);
       throw Error('simulated crash');
@@ -762,7 +790,7 @@ it.each(recordedCapacityShapes.otherShapes)('renewal dispatches preserved record
 
 it.each([128, 7500])('renewal uses the real journal budget and survives reopen (already reserved=%s)', async reserved => {
   const f = await exhaustedIncident();
-  const root = mkdtempSync(join(tmpdir(), 'allowance-renew-')); renewalRoots.push(root);
+  const root = mkdtempSync(join(realpathSync(tmpdir()), 'allowance-renew-')); renewalRoots.push(root);
   const open = () => openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(61), {
     kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 7500, maxReplies: 30,
@@ -779,7 +807,8 @@ it.each([128, 7500])('renewal uses the real journal budget and survives reopen (
   if (reserved > 128) journal.append({ kind: 'session-work', record: { ...edge, id: 'prior-reservations',
     budget: { ...edge.budget, calls: reserved - 128 } }, at: 1000 });
   for (const record of f.edges) journal.append({ kind: 'session-work', record, at: 1000 });
-  const append: ConversationTopicsConfig['append'] = record => { journal.append({ kind: 'session-work', record, at: 1000 }); f.edges.push(record); };
+  const append: ConversationTopicsConfig['append'] = record => { journal.append({ kind: 'session-work', record, at: 1000 });
+    if (record.type === 'SessionWorkCall') f.calls.push(record); else f.edges.push(record); };
   Object.assign(f.config, { append });
   Object.assign(f.config, { recoveryEdges: () => journal.sessionWorkRecords() }); f.restart();
   try {

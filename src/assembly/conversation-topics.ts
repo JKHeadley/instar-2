@@ -42,14 +42,14 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       'topic custody identity differs');
     ensure(!state.legacy || state.legacy.version === 1 && Array.isArray(state.legacy.inputs)
       && Number.isSafeInteger(state.legacy.spent) && state.legacy.spent >= 0, 'legacy custody malformed');
-    ensure(!state.edge || state.reserved && state.edge.budget.calls === config.maxCalls, 'topic reservation interrupted or allowance changed');
+    ensure(!state.edge || state.reserved && Number.isSafeInteger(state.edge.budget.calls), 'topic reservation interrupted');
     ensure(Number.isSafeInteger(state.allowanceEpoch ?? 0) && (state.allowanceEpoch ?? 0) >= 0,
       'allowance epoch malformed');
     ensure(state.allowanceDeadline === undefined || Number.isSafeInteger(state.allowanceDeadline) && state.allowanceDeadline > 0,
       'allowance lifetime malformed');
     ensure(!state.renewal || state.edge && state.renewal.id === `${state.edge.id}:renew`
-      && state.renewal.edge === state.edge.id && state.renewal.calls === config.maxCalls
-      && state.renewal.reserved === config.maxCalls, 'allowance renewal intent malformed');
+      && state.renewal.edge === state.edge.id && state.renewal.calls === state.edge.budget.calls
+      && state.renewal.reserved === state.edge.budget.calls, 'allowance renewal intent malformed');
     const persist = (patch: Partial<ConversationTopicsState>) => {
       const next = freeze({ ...state, ...patch }); config.store.save(next); state = next;
     };
@@ -57,7 +57,8 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       state.edge?.budget.deadline ?? config.allowanceDeadline);
     const spent = () => Object.values(state.topics).reduce((sum, row) => sum + row.spent,
       state.allowanceEpoch ? 0 : state.legacy?.spent ?? 0);
-    ensure(spent() <= config.maxCalls, 'shared topic allowance exceeded');
+    const allowanceCalls = () => state.edge?.budget.calls ?? config.maxCalls;
+    ensure(spent() <= allowanceCalls(), 'shared topic allowance exceeded');
     const hosts = new Map<string, ConversationSessionPort>();
     const active = new Set<string>();
     const busy = new Map<string, number>();
@@ -83,11 +84,11 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
       ensure(Object.keys(state.topics).length < 4096 || topic in state.topics, 'topic custody capacity reached');
       const local = config.topicConfig?.(topic);
       const io = local?.io ?? config.io, resources = local?.resources ?? config.resources;
-      const result = createConversationSessionPort({ ...config, ...local, batchWaiting: true, conversation: `${config.conversation}:${topic}`, allowanceDeadline: parentDeadline(),
+      const result = createConversationSessionPort({ ...config, ...local, maxCalls: allowanceCalls(), batchWaiting: true, conversation: `${config.conversation}:${topic}`, allowanceDeadline: parentDeadline(),
         stopped: () => stopped || config.stopped(),
         prepareTurn: async input => (local?.prepareTurn ?? config.prepareTurn)?.(input) ?? true,
         store: { load: () => state.topics[topic] ?? null, save: next => {
-          ensure(spent() - (state.topics[topic]?.spent ?? 0) + next.spent <= config.maxCalls, 'installation call allowance exhausted');
+          ensure(spent() - (state.topics[topic]?.spent ?? 0) + next.spent <= allowanceCalls(), 'installation call allowance exhausted');
           persist({ topics: { ...state.topics, [topic]: next } });
         } },
         createAdapter: local?.createAdapter ?? (resolve => config.createAdapter(topic, resolve)),
@@ -106,7 +107,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
           // directory-wide transcript count would charge other topics a second time.
           modelCalls: () => state.topics[topic]?.spent ?? 0,
           prepareAdmission: (claim, edge) => {
-            const remaining = config.maxCalls - spent(); ensure(remaining > 0, 'installation call allowance exhausted');
+            const remaining = allowanceCalls() - spent(); ensure(remaining > 0, 'installation call allowance exhausted');
             return io.prepareAdmission(claim, { ...edge, topic, budget: { ...edge.budget, calls: Math.min(edge.budget.calls, remaining) } });
           } },
         resources: { admit: async () => {
@@ -188,7 +189,9 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
     let renewing: Promise<void> | null = null;
     const renewIfIdle = (): Promise<void> => {
       if (renewing) return renewing;
-      if (!state.edge || spent() !== config.maxCalls || [...busy.values()].some(count => count > 0)
+      if (!state.edge || (spent() !== allowanceCalls()
+          && !(config.callAccounting === 'per-call' && state.edge.charge !== 'per-call'))
+        || [...busy.values()].some(count => count > 0)
         || stopped || config.stopped() || !config.authorized() || config.now() >= parentDeadline()
         || cleanupInhibited()) return Promise.resolve();
       renewing = (async () => {
@@ -203,7 +206,7 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
         if (!pending) persist({ renewal: { type: 'SessionWorkEdgeClose', schemaVersion: 1,
           id: `${edge.id}:renew`, edge: edge.id, child: null, state: 'complete',
           detail: 'Exhausted allowance retired; topic custody retained for renewal.', evidence: edge.id,
-          resultBytes: null, closedAt: config.now(), calls: spent(), reserved: config.maxCalls } });
+          resultBytes: null, closedAt: config.now(), calls: spent(), reserved: allowanceCalls() } });
         // An interrupted append is reconciled against the durable journal, never
         // inferred from an in-memory flag. Closing does not refund spent calls.
         if (pending) ensure(config.recoveryEdges, 'allowance renewal needs journal reconciliation');
@@ -281,9 +284,13 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
         return hostFor(topic).collect(operation);
       },
       reserveCall: (claim: string, ordinal: number) => {
-        ensure(recovered && spent() < config.maxCalls, 'installation call allowance exhausted or host recovering');
+        ensure(recovered && spent() < allowanceCalls(), 'installation call allowance exhausted or host recovering');
         const topic = Object.keys(state.topics).find(key => state.topics[key]!.claim === claim);
         ensure(topic !== undefined, 'unknown topic claim'); hostFor(topic!).reserveCall(claim, ordinal);
+        // The host state is persisted first. If the journal append fails, the hook refuses
+        // dispatch; a call is never sent without a durable charge against the shared cap.
+        if (state.edge?.charge === 'per-call') config.append({ type: 'SessionWorkCall', schemaVersion: 1,
+          edge: state.edge.id, ordinal: spent(), at: config.now() });
       },
       retireIdle: async () => {
         if ([...busy.values()].some(count => count > 0)) return false;

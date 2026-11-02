@@ -740,6 +740,17 @@ it('lowers the process limit without forking under it: a launch already at its l
   expect(() => launch('/bin/sh', ['-c', '(/bin/echo forked); /bin/echo after'])).toThrow();
 });
 
+it('inherits the host CPU and file-handle limits and gives one worker the host process budget', () => {
+  expect(RESOURCE_CEILINGS.launch.cpuMilliseconds).toBeNull();
+  expect(RESOURCE_CEILINGS.launch.handleCount).toBeNull();
+  expect(RESOURCE_CEILINGS.launch.processCount).toBe(RESOURCE_CEILINGS.aggregate.processCount);
+  const command = 'ulimit -S -n; ulimit -S -t';
+  const inherited = execFileSync('/bin/sh', ['-c', command], { encoding: 'utf8' });
+  const argv = limitedFileArgv({ label: 'CHECK', executable: '/bin/sh', args: ['-c', command],
+    handles: null, cpuSeconds: null, processLimit: null, env: { PATH: '/usr/bin:/bin' } });
+  expect(execFileSync('/bin/sh', argv, { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } })).toBe(inherited);
+});
+
 it('keeps the file shim identical to the one limit script, and holds the transport child\'s handles with argv[1] preserved', () => {
   expect(readFileSync(LIMIT_FILE, 'utf8')).toBe(LIMIT_FILE_TEXT);
   const root = dir();

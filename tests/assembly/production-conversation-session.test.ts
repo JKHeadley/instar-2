@@ -47,7 +47,9 @@ function fixture(options: Partial<Pick<ConversationSessionConfig, 'maxCalls' | '
       prepareAdmission: (_claim, edge) => { admissions.push(edge); }, closeAdmission: claim => { closed.push(claim); },
       admissionState: () => ({ refused, refusalReason: refused ? 'calls' : null, openDelegations: [], uncertainEffects: 0 }) },
     resources: { admit: async () => ({ attach: async () => {}, release: async () => { releases++; return releaseOK; } }) },
-    context: f.c, now: () => clock, stopped: () => stopped, append: row => { edges.push(row); },
+    context: f.c, now: () => clock, stopped: () => stopped, append: row => {
+      if (row.type !== 'SessionWorkCall') edges.push(row);
+    },
     parent: 'run-1', owner: 'machine-1', placement: 'local', transport: 'fake', workingScope: '/scope',
     resultDirectory: '/scope/results', artifact: 'artifact', incarnation: 'incarnation',
     deadlineMs: 2000, pollMs: 100, maxCalls: 6, maxSteps: 3, maxResultBytes: 65536, ...options,
@@ -191,7 +193,7 @@ it.each(['stop', 'release'] as const)('reports %s cleanup uncertainty and never 
 it('conflicting identity, escaped paths, invalid bounds and missing durable storage refuse', async () => {
   const f = fixture(); await f.port.run(f.request('one'));
   await expect(f.port.run({ ...f.request('one'), question: 'different' })).rejects.toThrow(/conflicts/);
-  for (const patch of [{ maxCalls: 0 }, { maxCalls: 257 }, { maxSteps: 65 }, { pollMs: 0 }, { deadlineMs: 14400001 },
+  for (const patch of [{ maxCalls: 0 }, { maxCalls: 1_000_001 }, { maxSteps: 65 }, { pollMs: 0 }, { deadlineMs: 14400001 },
     { resultDirectory: '/scope/../elsewhere' }, { resultDirectory: '/outside' }, { conversation: '../escape' },
     { store: undefined as never }]) expect(createConversationSessionPort({ ...f.config, ...patch }).kind).toBe('Refused');
   await f.port.close();
@@ -394,11 +396,12 @@ it('an input arriving during idle retirement waits for exact stop before replace
   await f.port.close();
 });
 
-it('the activation policy names the same topic cap and one shared allowance as the runner', () => {
+it('the activation policy charges calls against the journal spending cap', () => {
   const policy = conversationSessionPolicy({ framing: 'fixture', framework: 'claude-code', model: 'fixture', launch: [] });
   expect(policy.limits).toEqual(CONVERSATION_SESSION_LIMITS);
-  expect(policy.limits).toMatchObject({ maxSessions: 8, idleMs: 14400000, maxCallsPerStep: 128 });
-  expect(policy.admission.allowance).toBe(128);
+  expect(policy.limits).toMatchObject({ maxSessions: 8, idleMs: 14400000, maxCallsPerStep: 1_000_000 });
+  expect(policy.admission.allowance).toBe('journal-spend-cap');
+  expect(policy.admission.charge).toBe('per-call');
 });
 
 it.each([200000, 50000])('reopen enforces the earlier persisted/admitted parent deadline with config %s', async allowanceDeadline => {

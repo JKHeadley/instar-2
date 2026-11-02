@@ -66,6 +66,8 @@ export interface SessionActivityObservation {
 export interface ProductionSessionConfig {
   readonly operatorOwnUse: true; readonly confinement: 'unconfined' | 'admitted'; readonly framework: SessionFramework;
   readonly executable: string; readonly cwd: string; readonly home: string; readonly configHome: string;
+  /** Private writable scratch for shell temp files inside the admitted sandbox. */
+  readonly scratchDir?: string;
   readonly context: AssemblyDecodeContext; readonly io: SessionIO; readonly now: () => number;
   readonly stopped: () => boolean; readonly resolveIntake: (id: string, digest: string) => string;
   readonly maxSessions: number; readonly turnDeadlineMs: number; readonly readyTimeoutMs: number;
@@ -422,7 +424,9 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     if (admitted && config.connectors) args.push(...sessionConnectorArgs(config.framework, config.connectors(claim)));
     const gate = config.modelGate ? modelGateLaunch(config.framework, config.modelGate(claim)) : null;
     if (gate) args.push(...gate.args);
-    const harnessEnv = [...(admitted && config.framework === 'claude-code' ? ADMITTED_CLAUDE_ENV : []), ...(gate?.env ?? [])];
+    const harnessEnv = [...(admitted && config.framework === 'claude-code' ? ADMITTED_CLAUDE_ENV : []),
+      ...(admitted && config.scratchDir ? [`TMPDIR=${config.scratchDir}`, `CLAUDE_CODE_TMPDIR=${config.scratchDir}`] : []),
+      ...(gate?.env ?? [])];
     try { run(['new-session', '-d', '-s', name, '-c', config.cwd, '-x', '100', '-y', '30',
       '-e', `HOME=${config.home}`, '-e', `CLAUDE_CONFIG_DIR=${config.configHome}`,
       '-e', `CODEX_HOME=${config.configHome}`, '-e', `INSTAR_SESSION_NAME=${name}`,

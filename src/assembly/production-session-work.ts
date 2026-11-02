@@ -20,11 +20,18 @@ export interface SessionWorkEdge {
   /** `calls` is this step's model-call liability, reserved against the call cap when the edge is
    * recorded and enforced on the child's own transcript; `tokens` stays absent (no token meter). */
   readonly budget: Readonly<{ steps: 1; deadline: number; maxResultBytes: number; calls: number; tokens: null }>;
+  /** Conversation work charges each model call against the journal's shared spend cap at dispatch. */
+  readonly charge?: 'per-call';
   readonly exitTest: string; readonly placement: string; readonly transport: string;
   readonly resultDestination: string; readonly openedAt: number;
   /** Set on a child edge a delegated agent opens inside a step (a subagent): the edge whose reserved call liability it
    * draws on. Its model calls pass the same model-dispatch checkpoint against that reservation, so it reserves nothing new. */
   readonly drawsOn?: string;
+}
+/** A model call admitted before dispatch under a conversation edge. */
+export interface SessionWorkCall {
+  readonly type: 'SessionWorkCall'; readonly schemaVersion: 1;
+  readonly edge: string; readonly ordinal: number; readonly at: number;
 }
 /**
  * Rules 1, 2, 114 on a consequential tool call: the effect owner's record of one exact operation, written before the

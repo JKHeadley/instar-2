@@ -1533,7 +1533,7 @@ async function main() {
   const workActivity = new Map();
   const conversationSession = conversationSessionOf(options);
   const accountActions = conversationAccountActions(options);
-  const sessionLimits = conversationSession ? { ...CONVERSATION_SESSION_LIMITS,
+  let sessionLimits = conversationSession ? { ...CONVERSATION_SESSION_LIMITS,
     maxSessions: options['topic-worker-ceiling'] === undefined ? CONVERSATION_SESSION_LIMITS.maxSessions
       : number(options['topic-worker-ceiling'], 'topic-worker-ceiling', 1, CONVERSATION_SESSION_LIMITS.maxSessions) } : SESSION_WORK_LIMITS;
   const sessionAdapter = conversationSession ? doorway.session.conversation : doorway.session;
@@ -1733,6 +1733,10 @@ async function main() {
     }
     journal = openPreviewJournal(journalPath, key(), initial, undefined, false, undefined, false, origin);
     shared?.start(journal);
+    // The journal's existing spend cap is the only model-call ceiling for a live
+    // conversation. Its per-call dispatch record charges that cap as work proceeds.
+    if (conversationSession) sessionLimits = { ...sessionLimits,
+      maxCallsPerStep: journal.view.limits.maxCalls, maxResultBytes: 1_048_576 };
     const g = journal.view.genesis;
     // Rules 60 and 61: this process's one resource owner, with the constitutional
     // measurement, priority-brake and incarnation owners as its decision ports.
@@ -2667,6 +2671,7 @@ async function main() {
       const configurationFor = (topic, binding, handoff = null) => {
         const contextGrounding = () => join(binding.physical().inboxDirectory, `context-${topic ?? 'main'}.txt`);
         const driverConfiguration = resolveIntake => ({ operatorOwnUse: true, confinement: 'admitted',
+          ...(conversationSession ? { scratchDir: join(project, '.tmp') } : {}),
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
             // A hook invocation is bounded independently of the four-hour conversation lifetime.
             timeoutSeconds: Math.min(3600, Math.ceil(sessionLimits.deadlineMs / 1000)) }, modelGate: claim => gate.base(claim),
@@ -2787,6 +2792,7 @@ async function main() {
             release: async () => (await held.release()).verified };
         } },
         context, now: wallNow, stopped: conversationSession ? hostStopped : binding.stopped,
+        ...(conversationSession ? { callAccounting: 'per-call' } : {}),
         ...(!conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords() } : {}),
         append: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
         parent: `launch:${conversationOf(g)}`, owner: ownerMachine, placement: `machine:${ownerMachine}`,

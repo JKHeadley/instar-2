@@ -45,7 +45,7 @@ import { unlabeledRecall } from './answer-provenance.js';
 import { interpretStepJev, stepQuestionFor, stepQuestionsFor, type StepCheckResult } from './step-check.js';
 import type { Directive, VerifiedPrincipal } from '../../src/index.js';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
-import type { SessionWorkEdge, SessionWorkEdgeClose, SessionWorkEffect, SessionWorkOutcome } from '../../src/assembly/production-session-work.js';
+import type { SessionWorkEdge, SessionWorkEdgeClose, SessionWorkCall, SessionWorkEffect, SessionWorkOutcome } from '../../src/assembly/production-session-work.js';
 import type { ExhaustionAvenue } from '../../src/rungraph/index.js';
 import { consumeResult } from '../../src/index.js';
 import type { Json } from '../../src/index.js';
@@ -1257,7 +1257,7 @@ export type JournalRecord =
    * as a session with no edge before it, or an edge with no close and no later launch, is visible
    * in the journal. The edge reserves the step's whole model-call liability against the call cap
    * (retained, like a tool turn's); otherwise the obligation's own result carries the state. */
-  | { kind: 'session-work'; record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkEffect; at: number }
+  | { kind: 'session-work'; record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkCall | SessionWorkEffect; at: number }
   | { kind: 'obligation-result'; obligation: string; slot: number; outcome: ObligationOutcome; completion?: readonly RunCompletionItem[]; failureClass?: 'malformed'; report?: string; note?: string;
     recoveryHeld?: true;
     assessment?: BlockerAssessment;
@@ -1618,6 +1618,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   obligationWork: Record<string, ObligationWork>; rejectedObligations: number;
   /** Open registered children, including helpers; replay and snapshots retain ownership without a new store. */
   activeSessionWork?: Record<string, SessionWorkEdge>;
+  /** Calls charged before dispatch under a shared conversation edge. */
+  sessionWorkCallOrdinals?: Record<string, number>;
   /** Confirmed cleanup occurrences, independent of current worker availability. */
   reapHistory?: ReapHistory;
   changeHistory: RecordedChange[]; undos: { change: number; trigger: string; at: number }[];
@@ -2572,8 +2574,17 @@ function currentSiblingWords(view: JournalView, currentTopic: string, maxBytes: 
 
 /** Rules 60, 61, 114: an edge reserves its step's whole model-call liability before the child
  * exists, and refuses when the call allowance cannot hold it. */
-function projectSessionWork(view: JournalView, record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkEffect): void {
+function projectSessionWork(view: JournalView, record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkCall | SessionWorkEffect): void {
   validateSessionWorkRow(record);
+  if (record.type === 'SessionWorkCall') {
+    const edge = view.activeSessionWork?.[record.edge];
+    const prior = view.sessionWorkCallOrdinals?.[record.edge] ?? 0;
+    if (edge?.charge !== 'per-call' || edge.drawsOn !== undefined || record.ordinal !== prior + 1
+      || view.calls >= view.limits.maxCalls) throw Error('preview journal: conversation call reserve refused');
+    view.sessionWorkCallOrdinals = { ...view.sessionWorkCallOrdinals, [record.edge]: record.ordinal };
+    view.calls += 1;
+    return;
+  }
   // The effect owner's stable identities: one prepared record per identity, so the same send is never prepared twice.
   if (record.type === 'SessionWorkEffect') {
     const prepared = view.toolEffects ?? (view.toolEffects = []);
@@ -2587,9 +2598,10 @@ function projectSessionWork(view: JournalView, record: SessionWorkEdge | Session
         ...(subject === undefined ? {} : { subject }), state }].slice(-64);
     return;
   }
-  if (record.type === 'SessionWorkEdge' && record.drawsOn === undefined
+  if (record.type === 'SessionWorkEdge' && record.drawsOn === undefined && record.charge !== 'per-call'
     && view.calls + record.budget.calls > view.limits.maxCalls) throw Error('preview journal: session work call cap');
   const active = view.activeSessionWork ?? (view.activeSessionWork = {});
+  const closingEdge = record.type === 'SessionWorkEdgeClose' ? active[record.edge] : undefined;
   if (record.type === 'SessionWorkEdge') active[record.id] = record;
   else {
     const history = recordIdleReap(view.reapHistory, active[record.edge], record);
@@ -2601,17 +2613,23 @@ function projectSessionWork(view: JournalView, record: SessionWorkEdge | Session
   // A close whose child made more model calls than its edge reserved charges the excess, so the remaining
   // allowance never exceeds the real one. Unknown calls stay unknown: nothing is charged or credited.
   if (record.type === 'SessionWorkEdgeClose') {
-    if (typeof record.calls === 'number' && typeof record.reserved === 'number' && record.calls > record.reserved)
+    if (closingEdge?.charge !== 'per-call' && typeof record.calls === 'number' && typeof record.reserved === 'number' && record.calls > record.reserved)
       view.calls += record.calls - record.reserved;
     return;
   }
-  view.calls += record.budget.calls;
+  if (record.charge !== 'per-call') view.calls += record.budget.calls;
 }
 /** Rules 2, 60, 114: a delegated-session edge or close is accepted only complete and bounded, so a
  * malformed row is refused here rather than stored unread. */
-export function validateSessionWorkRow(record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkEffect): void {
+export function validateSessionWorkRow(record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkCall | SessionWorkEffect): void {
   const text = (value: unknown, max: number) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
   const stamp = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+  if (record?.type === 'SessionWorkCall') {
+    if (record.schemaVersion !== 1 || !text(record.edge, 1024)
+      || !Number.isSafeInteger(record.ordinal) || record.ordinal < 1 || !stamp(record.at))
+      throw Error('preview journal: conversation call reserve incomplete');
+    return;
+  }
   if (record?.type === 'SessionWorkEffect') {
     if (record.schemaVersion !== 1 || ![record.id, record.edge, record.operation, record.digest, record.detail].every(value => text(value, 1024))
       || !/^sha256:[0-9a-f]{64}$/u.test(record.id) || !['prepared', 'observed'].includes(record.state) || !stamp(record.at)
@@ -2626,6 +2644,7 @@ export function validateSessionWorkRow(record: SessionWorkEdge | SessionWorkEdge
       record.authority, record.exitTest, record.placement, record.transport, record.resultDestination]
       .every(value => text(value, 1024))
       || record.budget?.steps !== 1 || !stamp(record.budget.deadline) || record.budget.tokens !== null
+      || (record.charge !== undefined && record.charge !== 'per-call')
       || !Number.isSafeInteger(record.budget.calls) || record.budget.calls <= 0
       || !Number.isSafeInteger(record.budget.maxResultBytes) || record.budget.maxResultBytes <= 0
       || (record.drawsOn !== undefined && record.drawsOn !== record.parent)
@@ -5691,7 +5710,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       return rows;
     };
     const sessionWorkRecords = (): readonly (SessionWorkEdge | SessionWorkEdgeClose)[] =>
-      recoveryRecords(row => row.kind === 'session-work').flatMap(row => row.kind === 'session-work' && row.record.type !== 'SessionWorkEffect' ? [row.record] : []);
+      recoveryRecords(row => row.kind === 'session-work').flatMap(row => row.kind === 'session-work'
+        && (row.record.type === 'SessionWorkEdge' || row.record.type === 'SessionWorkEdgeClose') ? [row.record] : []);
     // The ordinary tool-backed obligation uses the same durable checkpoint as its normal return:
     // recorded model output, verified process allocation return, and settled tool/child results.
     const obligationCheckpoint = (id: string): (SessionWorkOutcome & { usage?: ModelUsage }) | null => {

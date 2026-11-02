@@ -22,7 +22,7 @@ const hash = (text: string) => `sha256:${createHash('sha256').update(text).diges
 const fixtureRoots: string[] = [];
 afterEach(() => { for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: Partial<Pick<ProductionSessionConfig,
-  'confinement' | 'toolAdmission' | 'modelGate' | 'turnDeadlineMs' | 'launchVia' | 'requireTurnHook' | 'observeActivity'>> = {}) {
+  'confinement' | 'toolAdmission' | 'modelGate' | 'turnDeadlineMs' | 'launchVia' | 'requireTurnHook' | 'observeActivity' | 'scratchDir'>> = {}) {
   const f = assemblyRuntimeFixture(); let now = 1000, stopped = false, pane = '❯ ', sends = 0;
   const root = mkdtempSync(join(tmpdir(), 'instar-session-test-')); fixtureRoots.push(root);
   const homes = { a: join(root, 'login-a'), b: join(root, 'login-b') };
@@ -861,7 +861,7 @@ it('refuses changed identity and protects named sessions from stop', () => {
 });
 
 it.each(['claude-code', 'codex-cli'] as const)('an admitted %s session launches with every tool, the admission hook and the model-dispatch checkpoint', framework => {
-  const f = fixture(framework);
+  const f = fixture(framework, { scratchDir: '/scope/.tmp' });
   const toolAdmission = { command: (claim: string, phase: 'pre' | 'post' | 'permission') => `/node /repo/hook.mjs ${phase} /state/${claim}`, timeoutSeconds: 600 };
   const modelGate = (claim: string) => `http://127.0.0.1:4100/${'a'.repeat(32)}/${claim}`;
   const driver = createProductionSessionDriver({ ...f.config, confinement: 'admitted', toolAdmission, modelGate });
@@ -877,6 +877,8 @@ it.each(['claude-code', 'codex-cli'] as const)('an admitted %s session launches 
     expect(settings.hooks.PostToolUseFailure).toEqual(settings.hooks.PostToolUse);
     // No background model traffic, and every model call the session makes goes to this claim's checkpoint.
     expect(spawned).toContain('DISABLE_NON_ESSENTIAL_MODEL_CALLS=1');
+    expect(spawned).toContain('TMPDIR=/scope/.tmp');
+    expect(spawned).toContain('CLAUDE_CODE_TMPDIR=/scope/.tmp');
     expect(spawned).toContain(`ANTHROPIC_BASE_URL=${modelGate('topic')}`);
   } else {
     expect(spawned).toEqual(expect.arrayContaining(['--dangerously-bypass-approvals-and-sandbox', '--dangerously-bypass-hook-trust',
@@ -1007,7 +1009,7 @@ function journalDriverConfiguration(conversationSession: boolean, base: ReturnTy
   const scope = {
     conversationSession, sessionLimits: conversationSession ? CONVERSATION_SESSION_LIMITS : SESSION_WORK_LIMITS,
     sessionAdmissionCommand: () => () => '/fixture/admission', admissionBase: '/fixture/admission', layout: null,
-    gate: { base: () => ({}) }, framework: base.framework, project: base.cwd,
+    gate: { base: () => ({}) }, framework: base.framework, project: base.cwd, join,
     binding: { entry: () => ({ profile: { executable: base.executable, home: base.home, configDirectory: base.configHome } }),
       physical: () => ({ ...base.io, inboxDirectory: '/fixture/inbox' }), stopped: base.stopped },
     required: () => 'fixture-model', options: {}, context: base.context, wallNow: base.now, handoff: null,
