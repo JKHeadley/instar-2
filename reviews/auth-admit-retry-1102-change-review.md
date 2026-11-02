@@ -4,8 +4,8 @@ Subject base: 81517fbe093c525559ee497fcd79bf964b07459b
 Review state: open
 Reviewed content: none
 Outcome: The 12:34 live #2190 task reached the per-topic conversation host on sagemind-echo. The host recorded `subscription authentication status unavailable`, no child worker, and zero input-dispatch attempts. It settled the task uncertain and sent failure notice 704. A same-login read-only status call at 12:42 passed in 775 ms. The failed call's exit code or timeout detail was not retained, so its immediate cause is unknown.
-Affected rules: Durable intake, no duplicate execution, bounded admission, subscription-only login, and the existing provider-limit pool behavior.
-Affected floors: Secrets and harness identity unchanged; worker launch still requires a successful status check. Spend and stop boundaries unchanged. The same request ID stays queued before dispatch and gets no extra allowance.
+Affected rules: R1 no duplicate sends and durable intake, R68 queued accepted work across launches, R70 live-path reproduction, and R95 subscription-pool placement.
+Affected floors: No duplicate sends and durable intake are preserved by retaining the same request ID before dispatch. Secrets and harness identity are unchanged; worker launch still requires a successful status check. Spend and stop boundaries are unchanged; the queued request gets no extra allowance.
 Operator questions: none
 Suggested tier: significant
 Declared tier: significant
@@ -15,9 +15,9 @@ Undo and recovery: Revert the source and generated register in an isolated workt
 Multi-machine posture: This is within the Studio-local conversation host; it adds no shared owner, sender, or credential path.
 Layer below: The installed host's `resources.admit` checks `claude auth status --json` under `_instarharness` for the selected Echo profile before any worker launch. Its generic failure was treated as an uncertain completed attempt despite zero dispatch. The host already has a null-resource result path that keeps the request queued and retries on the ordinary tick.
 Bug class: live-path
-Bug evidence: 2026-11-02 12:34 task message 703, journal update 969390656, reply 704; encrypted host state `session-work-state/conversation.json` records the exact error, zero attempts, and no child.
+Bug evidence: reproducer=tests/preview/session-auth-admission.test.ts plus tests/assembly/production-conversation-session.test.ts; live=2026-11-02 12:34 task message 703, journal update 969390656, reply 704; encrypted host state `session-work-state/conversation.json` records the exact error, zero attempts, and no child.
 Hook bypass: none
-Convergence: The same request ID is retried only before any dispatch; an observed rejected login or any other admission error does not enter this path.
+Convergence: none
 Verification: `session-auth-admission.test.ts` 2/2 and `production-conversation-session.test.ts` 172/172 pass; build passes. Exact-head full suite and live retest pending.
 Prompt review: No model-facing prompt changed.
 Subject: scripts/session-auth-admission.mjs, tests/preview/journal-agent.mjs, tests/preview/session-auth-admission.test.ts, generated/*
