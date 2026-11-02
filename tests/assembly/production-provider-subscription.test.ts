@@ -608,7 +608,7 @@ it('re-reads the journal end at every call: a predecessor-end route stops dispat
   expect(createClaudeCodeSubscriptionRoute({ ...input, activation: f.input.activation }).kind).toBe('Success');
 });
 
-it('admits Claude session work only under its own reviewed grant and a live subscription sign-in', async () => {
+it('admits Claude session work under its reviewed grant without a metadata-only auth probe', async () => {
   const f = fixture();
   const session = subscriptionDoorway('claude-code-subscription').session;
   expect(session.framework).toBe('claude-code');
@@ -623,16 +623,18 @@ it('admits Claude session work only under its own reviewed grant and a live subs
   expect(() => session.validateActivation(activation, profile, model, 1000)).toThrow(/policy differs/u);
   expect(() => session.validateActivation({ ...grant, acceptedResiduals: ['other'] }, profile, model, 1000)).toThrow(/admitted-session residual/u);
   await expect(session.admit({ profile, io, deadline: 20_000, now: () => 1000 })).resolves.toBeUndefined();
+  expect(f.commands().filter(row => row.args[0] === 'auth')).toHaveLength(0);
   await expect(session.admit({ profile: { ...profile, artifact: 'sha256:changed' }, io, deadline: 20_000, now: () => 1000 }))
     .rejects.toThrow(/executable changed/u);
 });
 for (const status of [{ authMethod: 'api_key' }, { apiKeySource: 'ANTHROPIC_API_KEY' }, { subscriptionType: 'console' }])
-  it(`refuses a delegated session on status ${JSON.stringify(status)}`, async () => {
+  it(`does not trust metadata-only status ${JSON.stringify(status)} for delegated admission`, async () => {
     const f = fixture({ status });
     const { profile, io } = f.input as unknown as { profile: ProviderSubscriptionProfile;
       io: Parameters<ReturnType<typeof subscriptionDoorway>['session']['admit']>[0]['io'] };
     await expect(subscriptionDoorway('claude-code-subscription').session.admit({ profile, io, deadline: 20_000, now: () => 1000 }))
-      .rejects.toThrow(/authentication status refused/u);
+      .resolves.toBeUndefined();
+    expect(f.commands().filter(row => row.args[0] === 'auth')).toHaveLength(0);
   });
 it('accepts a descriptor login only from a host that declares the hand-off, and only in its exact shape', async () => {
   const handed = fixture({ descriptor: true });

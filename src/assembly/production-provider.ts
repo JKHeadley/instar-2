@@ -755,8 +755,10 @@ export function validateSubscriptionSessionActivation(record: SubscriptionActiva
   validateClaudeActivation(record, profile, model, now, encoded((conversation ? subscriptionConversationSessionPolicy : subscriptionSessionPolicy)(model)).hash, journalEnd);
   ensure(record.acceptedResiduals.includes(SESSION_WORK_RESIDUAL), 'session work grant does not accept the admitted-session residual');
 }
-/** Before every delegated Claude session: the exact executable, the login home's identity and
- * reviewed configuration, and a live `auth status` showing this profile's subscription sign-in. */
+/** Before every delegated Claude session, verify the executable and the selected
+ * login home's identity and reviewed configuration. The launched session itself
+ * establishes whether the subscription can serve work; `auth status` only reads
+ * local metadata and can refuse a working login. */
 export async function admitClaudeSubscriptionSession(input: Readonly<{
   profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile;
   io: SubscriptionProviderIO; deadline: number; now: () => number }>): Promise<void> {
@@ -768,15 +770,7 @@ export async function admitClaudeSubscriptionSession(input: Readonly<{
   ensure(observed.loginProfileIdentity === profile.loginProfileIdentity
     && observed.managedConfigurationDigest === profile.managedConfigurationDigest,
   'subscription profile or managed configuration changed');
-  const timeout = Math.min(5000, input.deadline - input.now());
-  ensure(timeout > 0, 'session admission deadline exhausted');
-  const result = await io.execute({ executable: profile.executable, args: ['auth', 'status', '--json'],
-    cwd: profile.workingDirectory, env: Object.freeze({ PATH: '/usr/bin:/bin', HOME: profile.home,
-      CLAUDE_CONFIG_DIR: profile.configDirectory }), stdin: '', timeout, maxBytes: 8192 });
-  ensure(!result.limited && result.code === 0, 'subscription authentication status unavailable');
-  let status: unknown = null;
-  try { status = JSON.parse(result.stdout); } catch { status = null; }
-  ensure(claudeSubscriptionStatusAccepted(status, profile, io.descriptorLogin === true), 'subscription authentication status refused');
+  ensure(input.deadline > input.now(), 'session admission deadline exhausted');
 }
 /** Narrows a client-supplied framing string to one this adapter owns; anything else refuses. */
 export function asSubscriptionFraming(framing: string): SubscriptionFraming {
