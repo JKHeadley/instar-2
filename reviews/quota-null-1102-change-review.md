@@ -15,7 +15,7 @@ Undo and recovery: Keep this worktree isolated until gated. If installed and the
 Multi-machine posture: Studio-local serving login pool; no remote machine or shared quota file is changed.
 Layer below: The provider OAuth usage endpoint returned HTTP 200 with `five_hour:null`, weekly utilization 8%, and weekly-only limits for Echo at 08:49 PST. The official Claude /usage view displayed only weekly usage. The imported 1.x snapshot drops the null; the 2.x live reader carries the explicit fact. Treating that pair as no configured five-hour window is an inference from the response shape and the official client view, subject to independent review.
 Bug class: live-path
-Bug evidence: reproducer=tests/preview/harness-login-pool.test.ts weekly-only fallback boundary and tests/preview/claude-pool-quota.test.ts explicit-null response; live=2026-11-02 08:50 PST SEAM-LEDGER: message 701 queued with primary 99% weekly, fresh 1.x poll 13/13 missing five-hour values, provider HTTP 200 `five_hour:null` for Echo fallback; current selector requires both windows.
+Bug evidence: reproducer=tests/preview/harness-login-pool.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 Hook bypass: none
 Convergence: none
 Verification: Focused quota-reader and login-pool tests 93/93 PASS; direct selector boundary PASS; typecheck, lint and register:check PASS after exact source pin regeneration. Full gate and independent review pending.
