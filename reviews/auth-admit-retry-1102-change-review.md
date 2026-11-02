@@ -1,6 +1,6 @@
 # Change review — queue a task when the pre-dispatch subscription status check is unavailable
 
-Subject base: 81517fbe0
+Subject base: 81517fbe093c525559ee497fcd79bf964b07459b
 Review state: open
 Reviewed content: none
 Outcome: The 12:34 live #2190 task reached the per-topic conversation host on sagemind-echo. The host recorded `subscription authentication status unavailable`, no child worker, and zero input-dispatch attempts. It settled the task uncertain and sent failure notice 704. A same-login read-only status call at 12:42 passed in 775 ms. The failed call's exit code or timeout detail was not retained, so its immediate cause is unknown.
