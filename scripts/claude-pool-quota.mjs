@@ -6,9 +6,9 @@ const ENDPOINT = 'https://api.anthropic.com/api/oauth/usage';
 const INTERVAL = 60_000, BREAKER = 30 * 60_000;
 export function mapClaudeUsage(body, measuredAt) {
   const snapshot = { source: 'oauth-usage-endpoint-fallback', measuredAt: new Date(measuredAt).toISOString() };
-  // The provider explicitly returns null when this account has no five-hour
-  // window. Keep that fact distinct from an omitted or malformed reading.
-  // A weekly-only limits list corroborates the null; never synthesize 0%.
+  // An explicit null with a weekly-only limits list is evidence this response
+  // advertises no five-hour window. Keep it distinct from omitted or malformed
+  // telemetry; never synthesize a zero-percent reading.
   if (body && Object.hasOwn(body, 'five_hour') && body.five_hour === null
     && Array.isArray(body.limits) && body.limits.length > 0
     && body.limits.every(limit => limit?.group === 'weekly')) snapshot.fiveHourNotApplicable = true;
