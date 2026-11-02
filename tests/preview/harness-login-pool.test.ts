@@ -188,15 +188,12 @@ const capacity = (f, measuredAt = f.clock.at) => ({ version: 1, accounts: f.conf
     fiveHour: { utilizationPct: 0, resetsAt: new Date(f.clock.at + 5 * 3600_000).toISOString() },
     sevenDay: { utilizationPct: 0, resetsAt: new Date(f.clock.at + 7 * 86400_000).toISOString() } },
 })) });
-it('admits a weekly-only fallback only with fresh explicit non-applicability evidence', () => {
+it('admits a fresh 1.x weekly-only fallback without a 2.0 marker', () => {
   const f = fixture();
   const reading = capacity(f);
   reading.accounts[0].lastQuota.sevenDay.utilizationPct = 99;
   delete reading.accounts[1].lastQuota.fiveHour;
   reading.accounts[1].lastQuota.sevenDay.utilizationPct = 8;
-  const partial = createHarnessLoginPool({ ...f.settings, usage: () => reading });
-  expect(partial.selectSession(0)).toBeNull();
-  reading.accounts[1].lastQuota.fiveHourUnreported = true;
   const weeklyOnly = createHarnessLoginPool({ ...f.settings, usage: () => reading });
   expect(weeklyOnly.selectSession(0)?.index).toBe(1);
   expect(weeklyOnly.status()).toContain('five-hour unreported');
@@ -205,6 +202,18 @@ it('admits a weekly-only fallback only with fresh explicit non-applicability evi
   reading.accounts[1].lastQuota.sevenDay.utilizationPct = 8;
   reading.accounts[1].lastQuota.measuredAt = new Date(f.clock.at - 300001).toISOString();
   expect(weeklyOnly.selectSession(0)).toBeNull();
+});
+it('uses the 1.x weekly snapshot when the live quota endpoint has no reading', () => {
+  const f = fixture(); const fallback = capacity(f);
+  fallback.accounts[0].lastQuota.sevenDay.utilizationPct = 99;
+  delete fallback.accounts[1].lastQuota.fiveHour;
+  fallback.accounts[1].lastQuota.sevenDay.utilizationPct = 11;
+  const live = { version: 1, accounts: f.configuration.entries.map(({ profile }) => ({
+    email: profile.expectedAccount, configHome: profile.configDirectory,
+    status: 'unknown', lastQuota: null,
+  })) };
+  const pool = createHarnessLoginPool({ ...f.settings, quotaReader: { read: () => live }, usage: () => fallback });
+  expect(pool.selectSession(0)?.index).toBe(1);
 });
 it('uses weekly-only capacity but refuses an active scoped weekly cap', () => {
   const f = fixture(); const reading = capacity(f);
@@ -601,13 +610,14 @@ it.each(['fiveHour', 'sevenDay'])('fresh partial live %s outranks older complete
   expect(pool.selectSession(0)).toBeNull();
   expect(pool.state.handoffAttempts ?? []).toEqual([]);
   expect(pool.state.holds[1]).toMatchObject({ reason: 'usage-threshold', observedAt: f.clock.at });
-  // A partial low reading also cannot invent the missing destination window.
+  // A missing weekly window still cannot admit; a missing short window uses
+  // the fresh weekly reading, as the shipped 1.x pool does.
   live.accounts[1].lastQuota[window].utilizationPct = 20;
   const low = fixture();
   const partial = createHarnessLoginPool({ ...settings, statePath: low.settings.statePath });
-  expect(partial.selectSession(0)).toBeNull();
+  expect(partial.selectSession(0)?.index ?? null).toBe(window === 'sevenDay' ? 1 : null);
   expect(partial.state.holds[1]).toBeUndefined();
-  expect(partial.state.handoffAttempts ?? []).toEqual([]);
+  expect(partial.state.handoffAttempts?.length ?? 0).toBe(window === 'sevenDay' ? 1 : 0);
 });
 
 it.each([70, 95])('configured cutoff %s remains held after telemetry disappears', thresholdPercent => {

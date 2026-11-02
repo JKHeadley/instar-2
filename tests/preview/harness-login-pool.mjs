@@ -148,7 +148,9 @@ function harnessQuotaReading(document, profile, now, usageAccount) {
       && Number.isFinite(Date.parse(window?.resetsAt)) && Date.parse(window.resetsAt) > now
       ? { utilizationPct: window.utilizationPct, resetAt: Date.parse(window.resetsAt) } : null) : [];
   return { at, windows, scoped, scopedUnknown: quota?.scopedWeeklyUnknown === true || scoped.includes(null),
-    fiveHourUnreported: quota?.fiveHourUnreported === true && shortAbsent && windows[0] === null };
+    // 1.x snapshots have no fiveHourUnreported marker. Absence beside a fresh,
+    // valid weekly window has the same meaning as live provider omission.
+    fiveHourUnreported: shortAbsent && windows[0] === null };
 }
 
 const capacityWindows = reading => reading?.windows[1] && !reading.scopedUnknown

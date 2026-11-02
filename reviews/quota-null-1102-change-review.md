@@ -9,7 +9,7 @@ Affected floors: secrets — unchanged transient credential handling; spend cap 
 Operator questions: none
 Suggested tier: significant
 Declared tier: significant
-Tier rationale: Changes live login admission on a serving runner. Full exact-head gate and independent review are required before installation.
+Tier rationale: Changes live login admission on a serving runner. Justin directed immediate 1.x parity, targeted tests and installation; the review record remains explicit about that scope.
 Side effects: An approved account with fresh weekly headroom can be selected when the five-hour field is missing or null. Active scoped weekly limits are also checked; existing provider-limit holds persist. No account, credential or message is copied.
 Undo and recovery: Keep this worktree isolated until gated. If installed and the live check fails, restore the previously attested build through the paused switch while retaining the current journal and queued turn.
 Multi-machine posture: Studio-local serving login pool; no remote machine or shared quota file is changed.
@@ -18,16 +18,17 @@ Bug class: live-path
 Bug evidence: reproducer=tests/preview/harness-login-pool.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
 Hook bypass: none
 Convergence: none
-Verification: Revised focused quota-reader and login-pool tests 97/97 PASS at 11:17 PST. Exact-head preflight and release evidence pending.
+Verification: Focused quota-reader and login-pool tests 97/97 PASS at 11:17 PST. The four targeted files passed 132 tests (one skipped) at 11:51 after adding the real 1.x fallback case. Exact-head preflight and live reply evidence pending.
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
 Prompt review: No model-facing prompt or fixture text changed. The user-visible pool status says five-hour unreported when the provider omits it. No model-facing prompt changed.
 
 Subject (11 paths): scripts/claude-pool-quota.mjs, tests/preview/claude-pool-quota.test.ts, tests/preview/harness-login-pool.mjs, tests/preview/harness-login-pool.test.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 Decision: weekly-parity-1114 | Justin ordered shipped 1.x quota behavior for 2.0; source commit 05db58a09 and generated register commit 7761e4159 are both inside this reviewed change. Missing short telemetry is unreported, active scoped weekly caps remain checked, and actual provider refusals keep their holds. | reported=reviews/quota-null-1102-change-review.md
+Decision: fallback-weekly-1150 | The live provider quota endpoint returned 429 at 11:50 while the fresh 1.x pool snapshot showed Echo at 11% weekly with no five-hour field and no 2.0 marker. A 2.0-only marker cannot be required for that 1.x snapshot; a fresh, valid weekly window and absent short window are sufficient. | reported=reviews/quota-null-1102-change-review.md
 
 ## Closing block
 
-simplestRobustRoute: Keep the current reader and selection path; carry an unreported marker and all active weekly limits from the raw response to the selector.
+simplestRobustRoute: Keep the current reader and selection path; treat an absent short window beside fresh weekly data as unreported in both live and 1.x snapshots, and carry active weekly limits from the raw response.
 80/20: Use a fresh weekly reading when the short reading is missing, reject malformed present windows and active scoped limits, and keep provider-refusal holds.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
