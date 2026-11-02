@@ -6,6 +6,12 @@ const ENDPOINT = 'https://api.anthropic.com/api/oauth/usage';
 const INTERVAL = 60_000, BREAKER = 30 * 60_000;
 export function mapClaudeUsage(body, measuredAt) {
   const snapshot = { source: 'oauth-usage-endpoint-fallback', measuredAt: new Date(measuredAt).toISOString() };
+  // The provider explicitly returns null when this account has no five-hour
+  // window. Keep that fact distinct from an omitted or malformed reading.
+  // A weekly-only limits list corroborates the null; never synthesize 0%.
+  if (body && Object.hasOwn(body, 'five_hour') && body.five_hour === null
+    && Array.isArray(body.limits) && body.limits.length > 0
+    && body.limits.every(limit => limit?.group === 'weekly')) snapshot.fiveHourNotApplicable = true;
   for (const [wire, field] of [['five_hour', 'fiveHour'], ['seven_day', 'sevenDay']]) {
     const window = body?.[wire];
     // Unlike 1.x's Number(undefined ?? 0), missing/partial windows stay unknown.
@@ -63,7 +69,7 @@ export function createClaudePoolQuota({ entries, now, stopped, validate, credent
         }, redirect: 'error', signal: controller.signal });
         if (response.ok) {
           snapshot = mapClaudeUsage(await readBody(response), start);
-          observation = snapshot.fiveHour && snapshot.sevenDay ? 'measured' : 'partial';
+          observation = (snapshot.fiveHour || snapshot.fiveHourNotApplicable) && snapshot.sevenDay ? 'measured' : 'partial';
         } else {
           observation = `http-${response.status}`;
           await response.body?.cancel().catch(() => {});

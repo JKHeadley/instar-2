@@ -141,8 +141,12 @@ function harnessQuotaReading(document, profile, now, usageAccount) {
     && Number.isFinite(window.utilizationPct) && window.utilizationPct >= 0 && window.utilizationPct <= 100
     && typeof window.resetsAt === 'string' && Number.isFinite(Date.parse(window.resetsAt)) && Date.parse(window.resetsAt) > now
     ? { utilizationPct: window.utilizationPct, resetAt: Date.parse(window.resetsAt) } : null);
-  return { at, windows };
+  return { at, windows, fiveHourNotApplicable: quota?.fiveHourNotApplicable === true && windows[0] === null };
 }
+
+const capacityWindows = reading => reading?.windows[1]
+  && (reading.windows[0] || reading.fiveHourNotApplicable)
+  ? reading.windows.filter(Boolean) : null;
 
 function quotaLimit(reading, threshold) {
   const windows = reading?.windows.filter(window => window && window.utilizationPct >= threshold) ?? [];
@@ -252,7 +256,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       if (limit) hold(entry, { ...limit, observedAt: quota.at });
       const previous = state.holds[entry.index];
       if (previous?.resetAt === null && quota && quota.at > previous.observedAt
-        && quota.windows.every(window => window && window.utilizationPct < threshold)) {
+        && capacityWindows(quota)?.every(window => window.utilizationPct < threshold)) {
         const holds = { ...state.holds };
         delete holds[entry.index];
         persist({ ...state, holds });
@@ -268,7 +272,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     const reason = limited(current) ? state.holds[current].reason : pressure?.reason;
     const usable = !limited(current) && !unavailable.has(current) && !signedOut.has(current);
     if (usable && !pressure) {
-      if (onlyCurrent && (!source || !source.windows.every(window => window && window.utilizationPct <= Math.max(0, threshold - 15)))) return null;
+      if (onlyCurrent && !capacityWindows(source)?.every(window => window.utilizationPct <= Math.max(0, threshold - 15))) return null;
       return admitted(entries[current], tools, requireRoom);
     }
     if (onlyCurrent) return null;
@@ -276,14 +280,14 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     // Fresh, complete windows are mandatory for a proactive destination (QuotaTracker).
     const candidates = entries.filter(entry => entry.index !== current).map(entry => {
       const quota = harnessQuotaReading(reading, entry.profile, at, entry.usageAccount);
-      const complete = quota && quota.windows.every(Boolean);
-      const utilization = complete ? Math.max(...quota.windows.map(window => window.utilizationPct)) : null;
-      const hours = complete ? Math.max(0.25, (Math.min(...quota.windows.map(window => window.resetAt)) - at) / 3_600_000) : Infinity;
-      return { index: entry.index, quota, utilization, score: complete ? (100 - utilization) / hours : -1 };
+      const windows = capacityWindows(quota);
+      const utilization = windows ? Math.max(...windows.map(window => window.utilizationPct)) : null;
+      const hours = windows ? Math.max(0.25, (Math.min(...windows.map(window => window.resetAt)) - at) / 3_600_000) : Infinity;
+      return { index: entry.index, quota, utilization, score: windows ? (100 - utilization) / hours : -1 };
     }).sort((a, b) => b.score - a.score || a.index - b.index);
     for (const { index, quota, utilization } of candidates) {
       if (limited(index) || unavailable.has(index) || signedOut.has(index)) continue;
-      if (requireRoom && (!quota || !quota.windows.every(window => window && window.utilizationPct <= Math.max(0, threshold - 15)))) continue;
+      if (requireRoom && !capacityWindows(quota)?.every(window => window.utilizationPct <= Math.max(0, threshold - 15))) continue;
       // 1.x SwapAntiThrash target-headroom brake. Durable cutoff/provider holds and
       // the existing five-attempt cap prevent reversals without a new swap ledger.
       if (reason === 'usage-threshold'
@@ -337,7 +341,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
         const quota = harnessQuotaReading(reading, entry.profile, at, entry.usageAccount);
         const limit = quotaLimit(quota, configuration.threshold), held = state.holds[entry.index];
         const recovered = held?.resetAt === null && quota && quota.at > held.observedAt
-          && quota.windows.every(window => window && window.utilizationPct < threshold);
+          && capacityWindows(quota)?.every(window => window.utilizationPct < threshold);
         const holding = held && !recovered && (held.resetAt === null || held.resetAt > at);
         if (!holding && !limit) return null;
         const known = [holding ? held.resetAt : at, limit ? limit.resetAt : at];
@@ -381,7 +385,7 @@ export function harnessLoginPoolStatus(configuration, state, unavailable, usage,
         : held && (held.resetAt === null || held.resetAt > at)
           ? `hold ${held.reason}, reset ${held.resetAt ?? 'unknown'}` : 'no observed hold')
       + (quota?.windows.some(Boolean) ? `; fresh usage, switches at ${Math.min(configuration.threshold, 80)}%`
-        + `; five-hour ${quota.windows[0]?.utilizationPct ?? 'unknown'}%, weekly ${quota.windows[1]?.utilizationPct ?? 'unknown'}%, measured at ${quota.at}`
+        + `; five-hour ${quota.fiveHourNotApplicable ? 'not applicable' : `${quota.windows[0]?.utilizationPct ?? 'unknown'}%`}, weekly ${quota.windows[1]?.utilizationPct ?? 'unknown'}%, measured at ${quota.at}`
         : '; usage stale or unavailable, switching only after a typed limit reply');
   });
   const last = state.switches.at(-1);

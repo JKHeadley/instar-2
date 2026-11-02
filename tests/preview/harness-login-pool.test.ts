@@ -188,6 +188,24 @@ const capacity = (f, measuredAt = f.clock.at) => ({ version: 1, accounts: f.conf
     fiveHour: { utilizationPct: 0, resetsAt: new Date(f.clock.at + 5 * 3600_000).toISOString() },
     sevenDay: { utilizationPct: 0, resetsAt: new Date(f.clock.at + 7 * 86400_000).toISOString() } },
 })) });
+it('admits a weekly-only fallback only with fresh explicit non-applicability evidence', () => {
+  const f = fixture();
+  const reading = capacity(f);
+  reading.accounts[0].lastQuota.sevenDay.utilizationPct = 99;
+  delete reading.accounts[1].lastQuota.fiveHour;
+  reading.accounts[1].lastQuota.sevenDay.utilizationPct = 8;
+  const partial = createHarnessLoginPool({ ...f.settings, usage: () => reading });
+  expect(partial.selectSession(0)).toBeNull();
+  reading.accounts[1].lastQuota.fiveHourNotApplicable = true;
+  const weeklyOnly = createHarnessLoginPool({ ...f.settings, usage: () => reading });
+  expect(weeklyOnly.selectSession(0)?.index).toBe(1);
+  expect(weeklyOnly.status()).toContain('five-hour not applicable');
+  reading.accounts[1].lastQuota.sevenDay.utilizationPct = 80;
+  expect(weeklyOnly.selectSession(0)).toBeNull();
+  reading.accounts[1].lastQuota.sevenDay.utilizationPct = 8;
+  reading.accounts[1].lastQuota.measuredAt = new Date(f.clock.at - 300001).toISOString();
+  expect(weeklyOnly.selectSession(0)).toBeNull();
+});
 const exhaustSessions = pool => {
   const observation = { kind: 'Success', value: { phase: 'pause-observed', detail: 'rate-limited' } };
   for (let n = 0; n < 2; n++) expect(observeHarnessSessionLimit(pool, pool.select('session'), observation)).toBe(observation);

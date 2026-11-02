@@ -53,6 +53,20 @@ it.each([null, {}, { five_hour: { utilization: null, resets_at: body.five_hour.r
   const result = mapClaudeUsage(input, at);
   expect(result.fiveHour).toBeUndefined(); expect(result.sevenDay).toBeUndefined();
 });
+it('records only an explicit provider null with weekly-only limits as no five-hour window', async () => {
+  const weekly = { seven_day: body.seven_day, limits: [{ group: 'weekly', percent: 8 }] };
+  for (const wire of [undefined, { utilization: null }, 'bad']) {
+    const result = mapClaudeUsage({ ...weekly, ...(wire === undefined ? {} : { five_hour: wire }) }, at);
+    expect(result.fiveHourNotApplicable).toBeUndefined();
+  }
+  expect(mapClaudeUsage({ ...weekly, five_hour: null, limits: [] }, at).fiveHourNotApplicable).toBeUndefined();
+  expect(mapClaudeUsage({ ...weekly, five_hour: null, limits: [{ group: 'daily' }] }, at).fiveHourNotApplicable).toBeUndefined();
+  const f = fixture(); f.fetchImpl.mockImplementation(async () => new Response(JSON.stringify({ ...weekly, five_hour: null })));
+  await f.quota.refresh();
+  expect(f.quota.read().accounts[0]).toMatchObject({ observation: 'measured',
+    lastQuota: { fiveHourNotApplicable: true, sevenDay: { utilizationPct: 31 } } });
+  expect(f.quota.read().accounts[0].lastQuota.fiveHour).toBeUndefined();
+});
 it('bounds response bytes and keeps failed observations out of quota data', async () => {
   const f = fixture(); f.fetchImpl.mockResolvedValue(new Response('x'.repeat(65537)));
   await f.quota.refresh(); expect(f.quota.read().accounts[0].lastQuota).toBeNull();
