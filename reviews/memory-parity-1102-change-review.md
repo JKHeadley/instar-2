@@ -14,15 +14,15 @@ Side effects: One worker may use more than 2 GiB and up to the 18 GiB host-owned
 Undo and recovery: Switch the live runner back to frozen build 15234a73c if the canary fails or the host ceiling causes a new stop; its journal and working copy are retained.
 Multi-machine posture: This only changes the Studio's 2.0 source and its frozen candidate. No Mama PC build or installed 1.x session is changed.
 Layer below: The macOS process inventory and resource owner still sample the worker tree and enforce the aggregate ceiling. The launch shim retains its CPU, process, and handle limits.
-Bug class: A per-task resource policy incompatible with ordinary Claude Code test execution.
+Bug class: live-path
 Bug evidence: Live message 709 launched worker PID 30347 at 14:29:09 PST; resource owner recorded limit-kill at 14:30:51 PST for memoryBytes 2422652928, above its former 2147483648-byte launch ceiling, while the 64 GiB Studio had 79% free memory.
 Hook bypass: none
-Convergence: Targeted resource and capacity tests 44/44 pass, native harness contract 10/10 passes after exact composition recertification, build and lint pass; exact-head full suite remains the follow-up gate.
+Convergence: none
 Decision: memory-parity-1102 | Set task memory to the existing 18 GiB host-owned aggregate, retaining the host ceiling and other limits, per the observer's direct 1.x parity request. | reported=reviews/memory-parity-1102-change-review.md
 Deferral: generated/register.json:1 | not-a-deferral=generated register content is regenerated for the committed source and is not deferred work.
 
 ## Closing block
 
 simplestRobustRoute: Change the launch memory constant to the already-enforced host aggregate value, keep the aggregate check and equal-share admission, and recertify the native composition. No new configuration or policy layer is needed.
-80/20: One resource constant and one pinned policy test changed. Targeted owner tests 44/44 and native contract 10/10 pass; full suite is a follow-up exact-head gate.
+80/20: One resource constant and one pinned policy test changed. Targeted owner tests 44/44 and native contract 10/10 pass; full suite is a follow-up exact-head gate. The live path is not claimed converged until the real group task finishes.
 VERDICT: author submission; this record asserts no independent verdict
