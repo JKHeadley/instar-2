@@ -53,19 +53,26 @@ it.each([null, {}, { five_hour: { utilization: null, resets_at: body.five_hour.r
   const result = mapClaudeUsage(input, at);
   expect(result.fiveHour).toBeUndefined(); expect(result.sevenDay).toBeUndefined();
 });
-it('records only an explicit provider null with weekly-only limits as no five-hour window', async () => {
+it('uses a weekly reading when the five-hour field is absent, as the shipped pool does', async () => {
   const weekly = { seven_day: body.seven_day, limits: [{ group: 'weekly', percent: 8 }] };
-  for (const wire of [undefined, { utilization: null }, 'bad']) {
+  for (const wire of [undefined, null]) {
     const result = mapClaudeUsage({ ...weekly, ...(wire === undefined ? {} : { five_hour: wire }) }, at);
-    expect(result.fiveHourNotApplicable).toBeUndefined();
+    expect(result.fiveHourUnreported).toBe(true);
+    expect(result.fiveHour).toBeUndefined();
   }
-  expect(mapClaudeUsage({ ...weekly, five_hour: null, limits: [] }, at).fiveHourNotApplicable).toBeUndefined();
-  expect(mapClaudeUsage({ ...weekly, five_hour: null, limits: [{ group: 'daily' }] }, at).fiveHourNotApplicable).toBeUndefined();
+  for (const wire of [{ utilization: null }, 'bad'])
+    expect(mapClaudeUsage({ ...weekly, five_hour: wire }, at).fiveHourUnreported).toBeUndefined();
   const f = fixture(); f.fetchImpl.mockImplementation(async () => new Response(JSON.stringify({ ...weekly, five_hour: null })));
   await f.quota.refresh();
   expect(f.quota.read().accounts[0]).toMatchObject({ observation: 'measured',
-    lastQuota: { fiveHourNotApplicable: true, sevenDay: { utilizationPct: 31 } } });
-  expect(f.quota.read().accounts[0].lastQuota.fiveHour).toBeUndefined();
+    lastQuota: { fiveHourUnreported: true, sevenDay: { utilizationPct: 31 } } });
+});
+it('retains active scoped weekly pressure and rejects malformed scoped readings', () => {
+  const weekly = { seven_day: body.seven_day, five_hour: null };
+  const scoped = { kind: 'weekly_scoped', group: 'weekly', percent: 100, resets_at: body.seven_day.resets_at,
+    is_active: true, scope: { model: { id: 'claude-opus-5-5' } } };
+  expect(mapClaudeUsage({ ...weekly, limits: [scoped] }, at).scopedWeekly[0].utilizationPct).toBe(100);
+  expect(mapClaudeUsage({ ...weekly, limits: [{ ...scoped, percent: null }] }, at).scopedWeeklyUnknown).toBe(true);
 });
 it('bounds response bytes and keeps failed observations out of quota data', async () => {
   const f = fixture(); f.fetchImpl.mockResolvedValue(new Response('x'.repeat(65537)));

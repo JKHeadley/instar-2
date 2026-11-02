@@ -141,15 +141,22 @@ function harnessQuotaReading(document, profile, now, usageAccount) {
     && Number.isFinite(window.utilizationPct) && window.utilizationPct >= 0 && window.utilizationPct <= 100
     && typeof window.resetsAt === 'string' && Number.isFinite(Date.parse(window.resetsAt)) && Date.parse(window.resetsAt) > now
     ? { utilizationPct: window.utilizationPct, resetAt: Date.parse(window.resetsAt) } : null);
-  return { at, windows, fiveHourNotApplicable: quota?.fiveHourNotApplicable === true && windows[0] === null };
+  const rawShort = quota?.fiveHour;
+  const shortAbsent = rawShort === undefined || rawShort === null;
+  const scoped = Array.isArray(quota?.scopedWeekly) ? quota.scopedWeekly.map(window =>
+    Number.isFinite(window?.utilizationPct) && window.utilizationPct >= 0 && window.utilizationPct <= 100
+      && Number.isFinite(Date.parse(window?.resetsAt)) && Date.parse(window.resetsAt) > now
+      ? { utilizationPct: window.utilizationPct, resetAt: Date.parse(window.resetsAt) } : null) : [];
+  return { at, windows, scoped, scopedUnknown: quota?.scopedWeeklyUnknown === true || scoped.includes(null),
+    fiveHourUnreported: quota?.fiveHourUnreported === true && shortAbsent && windows[0] === null };
 }
 
-const capacityWindows = reading => reading?.windows[1]
-  && (reading.windows[0] || reading.fiveHourNotApplicable)
-  ? reading.windows.filter(Boolean) : null;
+const capacityWindows = reading => reading?.windows[1] && !reading.scopedUnknown
+  && (reading.windows[0] || reading.fiveHourUnreported)
+  ? [...reading.windows.filter(Boolean), ...reading.scoped] : null;
 
 function quotaLimit(reading, threshold) {
-  const windows = reading?.windows.filter(window => window && window.utilizationPct >= threshold) ?? [];
+  const windows = [...(reading?.windows ?? []), ...(reading?.scoped ?? [])].filter(window => window && window.utilizationPct >= threshold);
   return windows.length ? { reason: 'usage-threshold', resetAt: Math.max(...windows.map(window => window.resetAt)) } : null;
 }
 
@@ -256,6 +263,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       if (limit) hold(entry, { ...limit, observedAt: quota.at });
       const previous = state.holds[entry.index];
       if (previous?.resetAt === null && quota && quota.at > previous.observedAt
+        && (previous.reason !== 'provider-limit' || quota.windows[0])
         && capacityWindows(quota)?.every(window => window.utilizationPct < threshold)) {
         const holds = { ...state.holds };
         delete holds[entry.index];
@@ -341,6 +349,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
         const quota = harnessQuotaReading(reading, entry.profile, at, entry.usageAccount);
         const limit = quotaLimit(quota, configuration.threshold), held = state.holds[entry.index];
         const recovered = held?.resetAt === null && quota && quota.at > held.observedAt
+          && (held.reason !== 'provider-limit' || quota.windows[0])
           && capacityWindows(quota)?.every(window => window.utilizationPct < threshold);
         const holding = held && !recovered && (held.resetAt === null || held.resetAt > at);
         if (!holding && !limit) return null;
@@ -385,7 +394,7 @@ export function harnessLoginPoolStatus(configuration, state, unavailable, usage,
         : held && (held.resetAt === null || held.resetAt > at)
           ? `hold ${held.reason}, reset ${held.resetAt ?? 'unknown'}` : 'no observed hold')
       + (quota?.windows.some(Boolean) ? `; fresh usage, switches at ${Math.min(configuration.threshold, 80)}%`
-        + `; five-hour ${quota.fiveHourNotApplicable ? 'not applicable' : `${quota.windows[0]?.utilizationPct ?? 'unknown'}%`}, weekly ${quota.windows[1]?.utilizationPct ?? 'unknown'}%, measured at ${quota.at}`
+        + `; five-hour ${quota.fiveHourUnreported ? 'unreported' : `${quota.windows[0]?.utilizationPct ?? 'unknown'}%`}, weekly ${quota.windows[1]?.utilizationPct ?? 'unknown'}%, measured at ${quota.at}`
         : '; usage stale or unavailable, switching only after a typed limit reply');
   });
   const last = state.switches.at(-1);

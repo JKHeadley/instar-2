@@ -196,15 +196,40 @@ it('admits a weekly-only fallback only with fresh explicit non-applicability evi
   reading.accounts[1].lastQuota.sevenDay.utilizationPct = 8;
   const partial = createHarnessLoginPool({ ...f.settings, usage: () => reading });
   expect(partial.selectSession(0)).toBeNull();
-  reading.accounts[1].lastQuota.fiveHourNotApplicable = true;
+  reading.accounts[1].lastQuota.fiveHourUnreported = true;
   const weeklyOnly = createHarnessLoginPool({ ...f.settings, usage: () => reading });
   expect(weeklyOnly.selectSession(0)?.index).toBe(1);
-  expect(weeklyOnly.status()).toContain('five-hour not applicable');
+  expect(weeklyOnly.status()).toContain('five-hour unreported');
   reading.accounts[1].lastQuota.sevenDay.utilizationPct = 80;
   expect(weeklyOnly.selectSession(0)).toBeNull();
   reading.accounts[1].lastQuota.sevenDay.utilizationPct = 8;
   reading.accounts[1].lastQuota.measuredAt = new Date(f.clock.at - 300001).toISOString();
   expect(weeklyOnly.selectSession(0)).toBeNull();
+});
+it('uses weekly-only capacity but refuses an active scoped weekly cap', () => {
+  const f = fixture(); const reading = capacity(f);
+  reading.accounts[0].lastQuota.sevenDay.utilizationPct = 99;
+  const target = reading.accounts[1].lastQuota;
+  delete target.fiveHour; target.fiveHourUnreported = true; target.sevenDay.utilizationPct = 9;
+  target.scopedWeekly = [{ utilizationPct: 100, resetsAt: target.sevenDay.resetsAt, model: 'claude-opus-5-5' }];
+  expect(createHarnessLoginPool({ ...f.settings, usage: () => reading }).selectSession(0)).toBeNull();
+});
+it('does not erase an unknown provider refusal from weekly-only telemetry', () => {
+  const f = fixture(['serving-a']); const entry = f.pool.select();
+  f.pool.observe(entry, { failure: { failureClass: 'limit' } });
+  const reading = capacity(f); const q = reading.accounts[0].lastQuota;
+  delete q.fiveHour; q.fiveHourUnreported = true; q.sevenDay.utilizationPct = 9;
+  f.clock.at += 1000; q.measuredAt = new Date(f.clock.at).toISOString();
+  const pool = createHarnessLoginPool({ ...f.settings, usage: () => reading });
+  expect(() => pool.select()).toThrow(/no reviewed login/);
+  expect(pool.state.holds[0].reason).toBe('provider-limit');
+});
+it('rejects contradictory unreported and malformed short-window snapshots', () => {
+  const f = fixture(); const reading = capacity(f);
+  reading.accounts[0].lastQuota.sevenDay.utilizationPct = 99;
+  const q = reading.accounts[1].lastQuota;
+  q.fiveHourUnreported = true; q.fiveHour = { utilizationPct: -1, resetsAt: q.sevenDay.resetsAt };
+  expect(createHarnessLoginPool({ ...f.settings, usage: () => reading }).selectSession(0)).toBeNull();
 });
 const exhaustSessions = pool => {
   const observation = { kind: 'Success', value: { phase: 'pause-observed', detail: 'rate-limited' } };

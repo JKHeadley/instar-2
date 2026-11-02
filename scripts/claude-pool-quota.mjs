@@ -6,12 +6,18 @@ const ENDPOINT = 'https://api.anthropic.com/api/oauth/usage';
 const INTERVAL = 60_000, BREAKER = 30 * 60_000;
 export function mapClaudeUsage(body, measuredAt) {
   const snapshot = { source: 'oauth-usage-endpoint-fallback', measuredAt: new Date(measuredAt).toISOString() };
-  // An explicit null with a weekly-only limits list is evidence this response
-  // advertises no five-hour window. Keep it distinct from omitted or malformed
-  // telemetry; never synthesize a zero-percent reading.
-  if (body && Object.hasOwn(body, 'five_hour') && body.five_hour === null
-    && Array.isArray(body.limits) && body.limits.length > 0
-    && body.limits.every(limit => limit?.group === 'weekly')) snapshot.fiveHourNotApplicable = true;
+  // Claude's current usage response omits the five-hour reading for every account.
+  // Match shipped 1.x admission: use the weekly reading when the short window is
+  // unreported, and let an actual provider limit trigger the normal swap.
+  if (body && (!Object.hasOwn(body, 'five_hour') || body.five_hour === null)) snapshot.fiveHourUnreported = true;
+  if (Array.isArray(body?.limits)) {
+    const active = body.limits.filter(limit => limit?.is_active === true && limit.group === 'weekly');
+    snapshot.scopedWeekly = active.map(limit => ({
+      utilizationPct: limit.percent, resetsAt: limit.resets_at, model: limit.scope?.model?.id ?? limit.scope?.model?.display_name ?? null,
+    }));
+    if (snapshot.scopedWeekly.some(limit => !Number.isFinite(limit.utilizationPct) || limit.utilizationPct < 0
+      || limit.utilizationPct > 100 || !Number.isFinite(Date.parse(limit.resetsAt)))) snapshot.scopedWeeklyUnknown = true;
+  }
   for (const [wire, field] of [['five_hour', 'fiveHour'], ['seven_day', 'sevenDay']]) {
     const window = body?.[wire];
     // Unlike 1.x's Number(undefined ?? 0), missing/partial windows stay unknown.
@@ -69,7 +75,7 @@ export function createClaudePoolQuota({ entries, now, stopped, validate, credent
         }, redirect: 'error', signal: controller.signal });
         if (response.ok) {
           snapshot = mapClaudeUsage(await readBody(response), start);
-          observation = (snapshot.fiveHour || snapshot.fiveHourNotApplicable) && snapshot.sevenDay ? 'measured' : 'partial';
+          observation = (snapshot.fiveHour || snapshot.fiveHourUnreported) && snapshot.sevenDay ? 'measured' : 'partial';
         } else {
           observation = `http-${response.status}`;
           await response.body?.cancel().catch(() => {});
