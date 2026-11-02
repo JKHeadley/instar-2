@@ -28,6 +28,7 @@ Decision: weekly-parity-1114 | Justin ordered shipped 1.x quota behavior for 2.0
 Decision: fallback-weekly-1150 | The live provider quota endpoint returned 429 at 11:50 while the fresh 1.x pool snapshot showed Echo at 11% weekly with no five-hour field and no 2.0 marker. A 2.0-only marker cannot be required for that 1.x snapshot; a fresh, valid weekly window and absent short window are sufficient. | reported=reviews/quota-null-1102-change-review.md
 Decision: register-pin-1154 | Generated register files were pinned to source commit 7a484f2d7 in commit 37945c153; this is the generated counterpart of the reviewed weekly fallback source, with no additional runtime behavior. | reported=reviews/quota-null-1102-change-review.md
 Decision: harness-probe-1208 | The copied canary refused before launch because the separate harness user's required access proof timed out at 10 seconds while checking more than 2,700 operator-owned temporary entries. Keep every kernel access check and allow that bounded one-shot proof up to 45 seconds; never fall back to the operator's account. | reported=reviews/quota-null-1102-change-review.md
+Decision: register-pin-1210 | Regenerate the source register from committed harness-probe and weekly-fallback source 10cb7823c, preserving the exact source pin and adding no runtime decision. | reported=reviews/quota-null-1102-change-review.md
 
 ## Closing block
 
