@@ -15,7 +15,7 @@ Undo and recovery: Revert the source and generated register in an isolated workt
 Multi-machine posture: This is within the Studio-local conversation host; it adds no shared owner, sender, or credential path.
 Layer below: The installed host's `resources.admit` checks `claude auth status --json` under `_instarharness` for the selected Echo profile before any worker launch. Its generic failure was treated as an uncertain completed attempt despite zero dispatch. The host already has a null-resource result path that keeps the request queued and retries on the ordinary tick.
 Bug class: live-path
-Bug evidence: reproducer=tests/preview/session-auth-admission.test.ts plus tests/assembly/production-conversation-session.test.ts; live=2026-11-02 12:34 task message 703, journal update 969390656, reply 704; encrypted host state `session-work-state/conversation.json` records the exact error, zero attempts, and no child.
+Bug evidence: reproducer=tests/preview/session-auth-admission.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/preview-trial-root/justin-group-20261010/session-work-state/conversation.json
 Hook bypass: none
 Convergence: none
 Verification: `session-auth-admission.test.ts` 2/2 and `production-conversation-session.test.ts` 172/172 pass; build passes. Exact-head full suite and live retest pending.
