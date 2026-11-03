@@ -879,6 +879,7 @@ it.each(['claude-code', 'codex-cli'] as const)('an admitted %s session launches 
     expect(spawned).toContain('DISABLE_NON_ESSENTIAL_MODEL_CALLS=1');
     expect(spawned).toContain('TMPDIR=/scope/.tmp');
     expect(spawned).toContain('CLAUDE_CODE_TMPDIR=/scope/.tmp');
+    expect(spawned).toContain('TMUX_TMPDIR=/scope/.tmp');
     expect(spawned).toContain(`ANTHROPIC_BASE_URL=${modelGate('topic')}`);
   } else {
     expect(spawned).toEqual(expect.arrayContaining(['--dangerously-bypass-approvals-and-sandbox', '--dangerously-bypass-hook-trust',

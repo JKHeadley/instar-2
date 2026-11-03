@@ -425,7 +425,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const gate = config.modelGate ? modelGateLaunch(config.framework, config.modelGate(claim)) : null;
     if (gate) args.push(...gate.args);
     const harnessEnv = [...(admitted && config.framework === 'claude-code' ? ADMITTED_CLAUDE_ENV : []),
-      ...(admitted && config.scratchDir ? [`TMPDIR=${config.scratchDir}`, `CLAUDE_CODE_TMPDIR=${config.scratchDir}`] : []),
+      ...(admitted && config.scratchDir ? [`TMPDIR=${config.scratchDir}`, `CLAUDE_CODE_TMPDIR=${config.scratchDir}`, `TMUX_TMPDIR=${config.scratchDir}`] : []),
       ...(gate?.env ?? [])];
     try { run(['new-session', '-d', '-s', name, '-c', config.cwd, '-x', '100', '-y', '30',
       '-e', `HOME=${config.home}`, '-e', `CLAUDE_CONFIG_DIR=${config.configHome}`,
