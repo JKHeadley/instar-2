@@ -247,7 +247,11 @@ describe('probes observe underlying state', () => {
     expect(plan('reply-review-reached').probe(reviewed.ports())).toMatchObject({ disposition: 'passed', observed: { sentAnswers: 1, reviewed: 1 } });
     reviewed.journal.close();
   });
-  it('summary and step duties hold over every member: one checked sibling never hides an unchecked one', () => {
+  it('PREVIEW-RULE-PROBES summary and step duties hold over every member: one checked sibling never hides an unchecked one', () => {
+    const checked = view({ summaries: [{ faithfulness: { verdict: 'unavailable' } }] as unknown as JournalView['summaries'] });
+    expect(plan('summary-checked').probe({ now: () => T0, liveView: () => checked } as ProofPorts))
+      .toMatchObject({ disposition: 'passed', observed: { summaries: 1, checked: 1, unchecked: 0 } });
+    expect(plan('summary-checked').probe({ now: () => T0, liveView: () => view({}) } as ProofPorts).disposition).toBe('unknown');
     const mixed = view({ summaries: [{ faithfulness: { verdict: 'unavailable' } }, {}] as unknown as JournalView['summaries'] });
     expect(plan('summary-checked').probe({ now: () => T0, liveView: () => mixed } as ProofPorts))
       .toMatchObject({ disposition: 'failed', observed: { summaries: 2, checked: 1, unchecked: 1 } });
@@ -265,7 +269,7 @@ describe('probes observe underlying state', () => {
       disposition: 'passed', observed: { inhibition: 'operator' } });
     w.journal.close();
   });
-  it('delivery outcomes read Telegram acceptance and its source time: accepted passes, unknown fails, none or old is unknown', async () => {
+  it('PREVIEW-RULE-PROBES delivery outcomes read Telegram acceptance and its source time: accepted passes, unknown fails, none or old is unknown', async () => {
     const w = await world();
     expect(plan('reply-delivered').probe(w.ports())).toMatchObject({ disposition: 'unknown', observedAt: null });
     await w.say('what is the plan');

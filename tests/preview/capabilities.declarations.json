@@ -118,12 +118,12 @@
         "rule": 43,
         "class": "partial",
         "evidence": {
-          "kind": "probe",
-          "id": "P9-PREVIEW-reply-delivered",
-          "stage": "runtime"
+          "kind": "fixture",
+          "id": "PREVIEW-RULE-PROBES",
+          "stage": "build"
         },
-        "portion": "the runner reads Telegram's acceptance of the newest operator reply and its source time",
-        "remainder": "no canary traffic is authorized: the probe proves this outcome only from real operator traffic inside its freshness window, and reports unknown otherwise"
+        "portion": "the runner reads Telegram's acceptance of the newest operator reply and its source time; the current probe is exercised against missing and present underlying evidence by PREVIEW-RULE-PROBES",
+        "remainder": "no canary traffic is authorized: the probe proves this outcome only from real operator traffic inside its freshness window, and reports unknown otherwise; the build fixture is not an exact-head live run, verified Part Two extract or semantic review"
       }
     ]
   },
@@ -656,12 +656,12 @@
         "rule": 9,
         "class": "partial",
         "evidence": {
-          "kind": "probe",
-          "id": "P9-PREVIEW-summary-checked",
-          "stage": "runtime"
+          "kind": "fixture",
+          "id": "PREVIEW-RULE-PROBES",
+          "stage": "build"
         },
-        "portion": "its freshness probe reads the verdicts it recorded",
-        "remainder": "requested summaries are reviewed by the reply reviewer, not this one"
+        "portion": "its freshness probe reads the verdicts it recorded; the current probe is exercised against missing and present underlying evidence by PREVIEW-RULE-PROBES",
+        "remainder": "verdict presence does not certify summary faithfulness or every observation duty; the build fixture is not an exact-head live run, verified Part Two extract or semantic review"
       }
     ]
   },
