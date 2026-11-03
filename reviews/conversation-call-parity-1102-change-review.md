@@ -15,7 +15,7 @@ Undo and recovery: retain the prior frozen build and switch back if the live pro
 Multi-machine posture: this candidate builds on the Studio and changes the installed Studio runner. Mama PC builders and unrelated agents do not inherit the altered task limits until they separately install this source.
 Layer below: journal call append and projection, conversation host reservation, native Claude Code launch, OS resource wrapper, sandbox temporary-file creation, and the real Telegram task.
 Bug class: unit
-Bug evidence: reproducer=tests/assembly/conversation-topics.test.ts; other=tests/preview/journal-conversation-call-accounting.test.ts
+Bug evidence: reproducer=tests/assembly/conversation-topics.test.ts; other=tests/preview/journal-conversation-call-accounting.test.ts; tmux-scratch=tests/assembly/production-session-driver.test.ts; native-contract=tests/preview/native-harness-contract.test.ts (10/10 after the composition declaration refresh)
 Hook bypass: none
 Convergence: none
 Prompt review: no new task instructions or model behavior prompt is added. The activation policy states that the journal cap charges calls individually.
