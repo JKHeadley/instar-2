@@ -20,6 +20,7 @@ Bug evidence: reproducer=tests/preview/topic-worker-capacity.test.ts; live=/User
 Live message 709 launched worker PID 30347 at 14:29:09 PST and started the 1.x vitest lint test. The resource owner recorded a limit-kill at 14:30:51 PST for memoryBytes 2422652928, above its former 2147483648-byte launch ceiling. The 64 GiB Studio had 79% free memory, and the group journal settled message 709 uncertain with a lost worker, leaving #2190 unfinished. The linked switch record shows the replacement build answering at 15:02 PST; message 711 is the live continuation check.
 Hook bypass: none
 Convergence: none
+Prompt review: This earlier round is open because later evidence edits invalidated its frozen digest. The fixture-trigger and neutral-dispatch audit for the later call-parity source edits is recorded in reviews/conversation-call-parity-1102-change-review.md; this memory-limit repair adds no new prompt dispatch rule.
 Decision: memory-parity-1102 | Set task memory to the existing 18 GiB host-owned aggregate, retaining the host ceiling and other limits, per the observer's direct 1.x parity request. | reported=reviews/memory-parity-1102-change-review.md
 Deferral: generated/register.json:1 | not-a-deferral=generated register content is regenerated for the committed source and is not deferred work.
 
