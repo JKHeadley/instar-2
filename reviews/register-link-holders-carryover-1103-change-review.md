@@ -17,7 +17,8 @@ Layer below: Existing Hold decoder, owner-reference artifact hashing, rule graph
 Bug class: none
 Bug evidence: Controlled mutations below fail the selected tests; restored source passes the focused suite.
 Hook bypass: none
-Convergence: none; independent review remains the desk's responsibility
+Review repair: The publication changes bytes covered by operator-worker-parity-1102; its frozen round is explicitly reopened under Rule 109. Historical review findings remain intact; this does not renew that approval or authorize deployment.
+Convergence: none
 
 ## Scope and counts
 

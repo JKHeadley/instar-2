@@ -1,8 +1,9 @@
 # Change review — restore 1.x task affordances to the operator worker
 
 Subject base: 9eb45d51c82114916701ad8d0f30c7961fa6a834
-Review state: frozen
-Reviewed content: sha256:adadbee991a36c032e69f47b62acab481207d7e403d29aa77c36a6f46ce7dd6e
+Review state: open
+Reviewed content: none
+Review reopening: The register-link-holders-carryover-1103 publication changes this review's generated-register subject. The old frozen digest no longer covers the current bytes; its round is void and the desk must independently review the current publication. No worker-permission or credential behavior is changed by this reopening.
 Review note: the 18:53 independent review found that the handed GitHub token was not in the runner's held-secret set. Successor 6f8bc9bd3 caches and registers the exact token before launch and binds the bridge handoff to its SHA-256. Astra re-reviewed 80442a615 and returned GO for code; full gate and live publication are still pending. The worker-owned TMPDIR remains the supported temporary path; hardcoded /tmp paths inherit a restrictive ACL.
 Outcome: Give a separately identified operator work session ordinary local port, system temporary directory, file, network, and GitHub push/PR access. Hand the existing Echo GitHub vault token to the worker at launch through the owner-side bridge. Correct seven obsolete limit assertions and the slow renewal test timeout.
 Affected rules: 1, 12, 27, 37, 48, 49, 60, 65, 70, 71, 74, 75, 101, 102, 105, 109, 111, 113, 114, 115, 116
