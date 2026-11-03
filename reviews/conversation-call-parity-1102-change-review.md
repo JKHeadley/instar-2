@@ -2,7 +2,7 @@
 
 Subject base: 99d890574a1731f5f4954e54ebe17f4702c781e4
 Review state: frozen
-Reviewed content: sha256:0da9bc7430e965e1ea8996fee8d48f5da497f0f073d1965e20cce12291257005
+Reviewed content: sha256:e982db1f73bb17a681f10117e41fe4237fb38c68f980ddb4802e9727fd1912fd
 Outcome: charge real model calls against the existing journal spending cap instead of stopping each task after a small allowance; remove the extra per-task CPU, process, and file-handle ceilings; give admitted shell work a writable temporary directory, including tmux sockets; preserve the host-wide resource floor and the four-hour conversation deadline.
 Affected rules: 1, 12, 27, 37, 48, 49, 60, 65, 70, 71, 74, 75, 101, 102, 107, 109, 111, 113, 114, 116
 Affected floors: secrets — the existing admitted harness identity and secret custody stay in place; spend cap — each model call is durably charged before dispatch and the journal-wide cap is unchanged; stop — host-wide CPU/memory/process safety and the four-hour deadline remain; no duplicate sends — the delivery journal and Telegram receipt path are unchanged; durable intake — pending input and the saved working copy are retained across a switch.
