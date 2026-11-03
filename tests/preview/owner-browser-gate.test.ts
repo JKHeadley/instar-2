@@ -130,3 +130,18 @@ it('a forged post under another tool cannot complete an in-flight owner observat
   w.release(); expect(await pending).toEqual(observation);
   expect(w.rows.map(row => row.state)).toEqual(['prepared', 'observed']);
 });
+it('the reserved owner connector never inherits a configured MCP credential or arbitrary command', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'owner-namespace-'));
+  close.push(async () => { rmSync(root, { recursive: true, force: true }); });
+  const port = await prepareSessionConnectors({ privateDirectory: root, identity: null, check: () => 'clear', ownerRead: async () => observation,
+    mcp: { servers: { owner_github: { command: '/arbitrary/command', env: { COOKIE: { secretRef: 'browser-cookie' } } } },
+      secrets: { owner_github: { COOKIE: 'browser-cookie' } } },
+    resolveSecret: () => { throw Error('must not resolve owner credential for the worker'); } });
+  close.push(() => port.close());
+  const prepared = port.launch();
+  expect(prepared.launch.owner_github.command).toBe(process.execPath);
+  expect(prepared.launch.owner_github.args[0]).toMatch(/owner-browser-client.mjs$/u);
+  expect(prepared.launch.owner_github.env).toBeUndefined();
+  expect(prepared.nonces).toBeUndefined();
+  expect(readFileSync(prepared.config, 'utf8')).not.toMatch(/COOKIE|browser-cookie|arbitrary/u);
+});
