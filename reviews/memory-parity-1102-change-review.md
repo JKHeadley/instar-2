@@ -1,8 +1,8 @@
 # Change review — Claude Code task memory parity
 
 Subject base: 15234a73c39c0ae35cdd1b92ed6321754315df3e
-Review state: frozen
-Reviewed content: sha256:75682b5faaa304d9b46ea72b4fc441e758c73efefcbbc4f0c4c51c47368ea9a6
+Review state: open
+Reviewed content: none
 Outcome: Let a 2.0 Claude Code task use the existing 18 GiB host-owned memory budget instead of killing its process tree at 2 GiB, so the live 1.x maintenance task can run its tests. Retain the aggregate 18 GiB ceiling and the process, handle, CPU, and launch limits.
 Affected rules: 60, 105
 Affected floors: secrets — no secret or credential path changes; spend cap — no model reservation or spending change; stop — the host aggregate and kernel limits remain, with a larger task memory allowance; no duplicate sends — no send or replay path changes; durable intake — no intake or journal change.

@@ -19,6 +19,12 @@ Bug evidence: reproducer=tests/assembly/conversation-topics.test.ts; other=tests
 Hook bypass: none
 Convergence: none
 Prompt review: no new task instructions or model behavior prompt is added. The activation policy states that the journal cap charges calls individually.
+Prompt finding: 4106b49fff07 | protocol-literal | Existing no-false-attempt instruction is unchanged; the awareness test checks that literal, not a new classifier.
+Prompt finding: 85544c20941f | protocol-literal | Existing queued-message acknowledgement is unchanged; the session test checks its fixed wording.
+Prompt finding: e8708c7fea24 | protocol-literal | Existing source-attribution instruction is unchanged; the recall test checks that it reaches the prompt.
+Prompt finding: 0725f0150c56 | protocol-literal | Existing role and tool-refusal instruction is unchanged; the assembly test checks the fixed prompt contract.
+Prompt finding: 27d7720e7977 | protocol-literal | Existing memory-record label is unchanged; the assembly test checks the fixed prompt contract.
+Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory response is unchanged; the memory-list test checks its renderer.
 
 Verification: typecheck, build, lint, and register check passed at source head 7b67acc98. The native harness contract passed 10/10. Focused conversation, journal, driver, and resource tests passed 528/529 before correcting one obsolete assertion that still expected a 128-call limit; the corrected session suite passed 172/172. The exact-head full gate and live #2190 continuation are pending, so no product completion is claimed here.
 Residue: live-2190 | high | the real Telegram task stopped after using the prior call allowance; the saved working copy must resume under the new build and produce a useful answer.
