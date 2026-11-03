@@ -6,6 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import { openPreviewJournal } from './journal.js';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
@@ -21,7 +22,7 @@ import { probeAccess } from './harness-user.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { harnessSessionCommand, recordSessionTerminal } from './harness-session.mjs';
+import { harnessSessionCommand, recordSessionTerminal, verifiedGithubToken } from './harness-session.mjs';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
@@ -32,6 +33,17 @@ afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 const fresh = (name: string) => { const dir = join(scratch, name); mkdirSync(dir, { recursive: true, mode: 0o700 }); return realpathSync(dir); };
 
 describe('the harness command line', () => {
+  it('refuses a rotated GitHub token before making a worker command', () => {
+    const token = 'ghp_synthetic_worker_credential_0123456789';
+    const digest = createHash('sha256').update(token).digest('hex');
+    let reads = 0;
+    const read = () => { reads++; return token; };
+    expect(verifiedGithubToken(read, digest)).toBe(token);
+    expect(verifiedGithubToken(read, digest)).toBe(token);
+    expect(reads).toBe(2);
+    expect(() => verifiedGithubToken(() => 'rotated', digest)).toThrow(/credential changed/u);
+    expect(() => verifiedGithubToken(read, 'invalid')).toThrow(/binding unavailable/u);
+  });
   const runAs = { user: '_instarharness', launcher: '/h/bin/harness-launch', login: () => 'sk-ant-oat01-synthetic-login', plan: 'max' };
   it('runs the launcher as the harness user through sudo: the environment as arguments, the login only in the stdin hand-off', () => {
     const command = harnessCommand({ executable: '/h/bin/claude-2.1.280', args: ['-p', '--model', 'm'], env: { HOME: '/h/home', CLAUDE_CONFIG_DIR: '/h/config', SKIP: undefined },

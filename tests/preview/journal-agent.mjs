@@ -1802,8 +1802,23 @@ async function main() {
     // held for the runner's life, so a source that later changes or becomes unreadable cannot drop a value an active
     // context may already hold; a source that cannot be read now is reported unavailable (createHeldSecrets).
     const harnessLoginProfiles = options['harness-user'] === undefined ? [] : loginConfiguration.entries.map(entry => entry.profile);
+    const operatorGithubScript = conversationSession && options['operator-records']
+      ? join(dirname(options['operator-records']), '.instar/scripts/secret-get.mjs') : null;
+    const workerGithubToken = operatorGithubScript && existsSync(operatorGithubScript)
+      ? (() => {
+          try {
+            const value = execFileSync(process.execPath, [operatorGithubScript, 'github_token'],
+              { cwd: dirname(dirname(dirname(operatorGithubScript))), encoding: 'utf8', timeout: 10000,
+                stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+            if (!value) throw Error('empty');
+            return value;
+          } catch { throw Error('preview: worker GitHub credential unavailable'); }
+        })() : null;
+    const workerGithubDigest = workerGithubToken
+      ? createHash('sha256').update(workerGithubToken, 'utf8').digest('hex') : null;
     const heldSecrets = createHeldSecrets({
       environment: () => Object.entries(process.env).flatMap(([name, value]) => name.startsWith('INSTAR_SECRET_') && value ? [value] : []),
+      ...(workerGithubToken ? { 'worker github': () => [workerGithubToken] } : {}),
       ...custodyHeldSources(custody, () => readRootMcp(root)?.secrets ?? {}),
       // Each member is a separate source: missing secondary custody cannot discard a readable primary value.
       ...Object.fromEntries(harnessLoginProfiles.flatMap((profile, index) => [
@@ -2708,8 +2723,8 @@ async function main() {
           } } : {}),
           // As the harness user: the pane runs the harness through the bridge, which hands it the custody login.
           ...(layout ? { launchVia: [process.execPath, HARNESS_SESSION_BRIDGE,
-            ...(conversationSession && options['operator-records'] && existsSync(join(dirname(options['operator-records']), '.instar/scripts/secret-get.mjs'))
-              ? ['--github-secret-script', join(dirname(options['operator-records']), '.instar/scripts/secret-get.mjs')] : []),
+            ...(workerGithubDigest ? ['--github-secret-script', operatorGithubScript,
+              '--github-secret-digest', workerGithubDigest] : []),
             options['harness-user'],
             realpathSync(binding.entry().profilePath), '--'] } : {}) });
         return ({

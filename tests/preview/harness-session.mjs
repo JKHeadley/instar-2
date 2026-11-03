@@ -13,6 +13,7 @@
 // It ends with the harness: its exit status, or the signal's. A pane closed under it (tmux kill-session) hangs up sudo,
 // which relays the hang-up to the launcher, which ends the harness's whole tree.
 import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { closeSync, constants, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { constants as osConstants } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -37,6 +38,14 @@ export function harnessSessionCommand({ user, profile, executable, args, env, lo
   const at = command.args.indexOf('--handoff');
   if (at < 0) throw Error('preview: the harness command has no hand-off');
   return { ...command, args: [...command.args.slice(0, at + 1), '--tty', ...command.args.slice(at + 1)] };
+}
+
+export function verifiedGithubToken(read, expectedDigest) {
+  if (!/^[a-f0-9]{64}$/u.test(expectedDigest ?? '')) throw Error('worker GitHub credential binding unavailable');
+  const token = read();
+  if (!token || createHash('sha256').update(token, 'utf8').digest('hex') !== expectedDigest)
+    throw Error('worker GitHub credential changed; restart the runner');
+  return token;
 }
 
 /** Operator-owned record of the sudo wrapper's terminal status. The harness user's
@@ -86,24 +95,26 @@ if (invoked) {
   const words = process.argv.slice(2);
   const custody = words[0] === '--custody' ? words.splice(0, 2)[1] : undefined;
   const githubScript = words[0] === '--github-secret-script' ? words.splice(0, 2)[1] : undefined;
+  const githubDigest = words[0] === '--github-secret-digest' ? words.splice(0, 2)[1] : undefined;
   const stdio = words[2] === '--stdio';
   if (stdio) words.splice(2, 1);
   const [user, profilePath, split, executable, ...args] = words;
   if ((custody !== undefined && !custody.startsWith('/')) || (githubScript !== undefined && !githubScript.startsWith('/'))
+    || (githubScript !== undefined) !== (githubDigest !== undefined)
     || !user || !profilePath || split !== '--' || !executable) {
-    process.stderr.write('usage: harness-session.mjs [--custody LOGIN.json] [--github-secret-script PATH] USER PROFILE.json -- EXECUTABLE ARG ...\n');
+    process.stderr.write('usage: harness-session.mjs [--custody LOGIN.json] [--github-secret-script PATH --github-secret-digest SHA256] USER PROFILE.json -- EXECUTABLE ARG ...\n');
     process.exit(125);
   }
   let command;
   try {
     command = harnessSessionCommand({ user, profile: JSON.parse(readFileSync(profilePath, 'utf8')), executable, args,
       stdio, env: { ...process.env }, login: profile => readHarnessLogin(profile, custody),
-      ...(githubScript ? { githubToken: () => {
+      ...(githubScript ? { githubToken: () => verifiedGithubToken(() => {
         try { return execFileSync(process.execPath, [githubScript, 'github_token'],
           { cwd: dirname(dirname(dirname(githubScript))), encoding: 'utf8', timeout: 10000,
             stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
         catch { throw Error('worker GitHub credential unavailable'); }
-      } } : {}) });
+      }, githubDigest) } : {}) });
   } catch (error) { process.stderr.write(`harness-session: ${String(error?.message ?? error)}\n`); process.exit(125); }
   const startedAt = Date.now();
   const child = spawn(command.executable, command.args, { env: command.env, stdio: ['pipe', 'inherit', 'inherit'] });

@@ -7,9 +7,20 @@ import { secretMaterialIn } from './reply-check.js';
 const launcher = readFileSync('tests/preview/journal-agent.mjs', 'utf8');
 const start = launcher.indexOf('    const heldSecrets = createHeldSecrets({');
 const end = launcher.indexOf('    const heldSecretValues =', start);
-const collect = new Function('createHeldSecrets', 'custodyHeldSources', 'custody', 'readRootMcp', 'root',
+const collectBlock = new Function('createHeldSecrets', 'custodyHeldSources', 'custody', 'readRootMcp', 'root',
   'harnessLoginProfiles', 'readHarnessLogin', 'harnessCredentialValues', 'process', 'loginConfiguration',
+  'workerGithubToken',
   `${launcher.slice(start, end)}\nreturn heldSecrets;`);
+const collect = (...args) => collectBlock(...args, null);
+
+it('holds the exact worker GitHub token and its encoded forms before launch', () => {
+  const token = 'ghp_synthetic_worker_credential_0123456789';
+  const held = collectBlock(createHeldSecrets, () => ({}), {}, () => null, 'unused', [],
+    () => '', () => [], { env: {} }, { entries: [] }, token);
+  expect(heldVerdict(held)(token)).toBe('held');
+  expect(heldVerdict(held)(Buffer.from(token).toString('base64'))).toBe('held');
+  expect(heldVerdict(held)(Buffer.from(token).toString('hex'))).toBe('held');
+});
 
 it.each(['login', 'profile'])('isolates missing secondary %s custody and retains every readable value across later loss', source => {
   expect(start).toBeGreaterThan(0); expect(end).toBeGreaterThan(start);
