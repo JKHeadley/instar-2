@@ -63,11 +63,16 @@ it.each([false, true])('shipped session admission forwards listed connectors and
     }
     const launch = config.sessionConfiguration().connectors('step');
     const args = sessionConnectorArgs('claude-code', launch);
-    if (configured) {
-      expect(launch.servers).toEqual(['harmless']);
-      expect(JSON.parse(readFileSync(launch.config, 'utf8'))).toEqual({ mcpServers: servers });
+    if (configured || conversationSession) {
+      expect(launch.servers).toEqual([...(configured ? ['harmless'] : []), ...(conversationSession ? ['owner_github'] : [])]);
+      expect(JSON.parse(readFileSync(launch.config, 'utf8'))).toEqual({ mcpServers: launch.launch });
+      if (configured) expect(launch.launch.harmless).toEqual(servers.harmless);
+      if (conversationSession) {
+        expect(launch.launch.owner_github.args[0]).toMatch(/owner-browser-client.mjs$/u);
+        expect(decide('mcp__owner_github__observe', { page: 'account-profile' }, { child: 'step' }).admitted).toBe(false);
+      }
       expect(args).toEqual(['--strict-mcp-config', '--mcp-config', launch.config]);
-      expect(sessionConnectorArgs('codex-cli', launch).join(' ')).toContain('mcp_servers.harmless=');
+      expect(sessionConnectorArgs('codex-cli', launch).join(' ')).toContain(`mcp_servers.${configured ? 'harmless' : 'owner_github'}=`);
     } else expect(args).toEqual(['--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}']);
   }
 });

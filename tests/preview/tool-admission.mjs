@@ -31,6 +31,7 @@
 //   consequential tool passes its effect owner with the exact operation and input, and every shell command runs under
 //   the step's own confined sandbox profile (`config.shellProfile`). A route with no checkpoint refuses a delegation of
 //   that kind, and its consequential tools go to the effect doorway as above.
+import { OWNER_BROWSER_TOOL, ownerBrowserRequest, ownerBrowserPolicy } from './owner-browser-contract.mjs';
 import { createHash } from 'node:crypto';
 import { dirname, join, sep } from 'node:path';
 import { isIP } from 'node:net';
@@ -235,6 +236,7 @@ export function toolCallProposals(tool, input) {
  * owner applies the never-twice identity to it. The host checkpoint's effect owner decides with this same function. */
 // Rules 1/26: a read-listed tool can still execute an effect. Share the input check with the hook and effect owner.
 function configuredMcpRead(tool, input, config) {
+  if (tool === OWNER_BROWSER_TOOL) return false;
   if (!tool.startsWith('mcp__') || config.mcpReads?.includes(tool) !== true) return false;
   if (tool === 'mcp__playwright__browser_tabs') return input?.action === 'list';
   if (tool === 'mcp__playwright__browser_navigate') {
@@ -246,6 +248,14 @@ function configuredMcpRead(tool, input, config) {
   return true;
 }
 export function admitToolCallEffect(tool, input, config, now) {
+  if (tool === OWNER_BROWSER_TOOL) {
+    let policy;
+    try { policy = decodeEffectPolicy(config.effectPolicy); } catch { /* exact grant unavailable */ }
+    if (!ownerBrowserRequest(input) || !policy || !ownerBrowserPolicy(policy, now))
+      return { admitted: false, disposition: 'refused', effect: 'tool:mcp', target: tool,
+        reason: 'owner browser requires the exact account-profile request, reversible registration and current EchoOfDawn read grant (Rules 18/57)' };
+    return admitToolEffect({ effect: 'tool:mcp', target: tool }, config, now);
+  }
   const network = CODEX_NETWORK_READ_TOOLS.includes(tool);
   const accountRead = configuredMcpRead(tool, input, config);
   const verdicts = toolCallProposals(tool, input).map(proposal => (network || accountRead) && !policyNames(config, proposal)

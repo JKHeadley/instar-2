@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
 import { nextObligationAt } from './journal.js';
 import { createNextDueWake } from '../../src/transport/index.js';
 import { createClaudePoolQuota } from '../../scripts/claude-pool-quota.mjs';
@@ -2638,7 +2639,11 @@ async function main() {
       const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
         || wallNow() >= journal.view.expires || !active() || sessionAccountsChanged();
       const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
-      gate = await createAdmissionGate({ append: appendWork, stopped: gateStopped, now: wallNow, held: heldVerdict(heldSecrets),
+      gate = await createAdmissionGate({
+        ownerBrowser: conversationSession ? createOwnerBrowser({ binding: () => readOwnerBrowserBinding(root),
+          hold: bounds => hostResources.hold('maintenance', bounds), scrub: text => redact(text).text,
+          held: heldVerdict(heldSecrets), now: wallNow }) : null,
+        append: appendWork, stopped: gateStopped, now: wallNow, held: heldVerdict(heldSecrets),
         effects: createToolEffectOwner({ decide: (tool, input, parent) => conversationSession && sessionConnectors.has(parent.child)
           ? admitSessionConnector({ tool, input, config: admissionConfig(), mcp: readRootMcp(root), enabled: accountActions,
             now: wallNow(), decide: admitToolCallEffect })
@@ -2795,7 +2800,7 @@ async function main() {
               sessionConnectors.set(claim, await prepareSessionConnectors({ mcp,
                 privateDirectory: privateDirectory ?? state, identity, workspace: project,
                 resolveSecret: name => createSecretCustody(root, key(), wallNow).resolve(secretRef(name)),
-                check: heldVerdict(heldSecrets) }));
+                check: heldVerdict(heldSecrets), ownerRead: conversationSession ? (id, input) => gate.observeOwner(claim, id, input) : null }));
             }
             gate.open(claim, { framework, allowance: edge.budget.calls, edge,
               ...(conversationSession ? { reserveCall: ordinal => sessionWork.port.reserveCall(claim, ordinal) } : {}) }); },

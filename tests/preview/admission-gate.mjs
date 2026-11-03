@@ -17,6 +17,7 @@
 //
 // Credentials pass through in the child's own request headers and are neither read nor kept here. The server binds
 // 127.0.0.1 only and serves only paths under its random secret, so another local process cannot spend a claim.
+import { OWNER_BROWSER_TOOL, ownerBrowserRequest, ownerBrowserRefused } from './owner-browser-contract.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
@@ -61,19 +62,23 @@ export function toolOperation(tool) {
  */
 export function createToolEffectOwner({ decide, append, prepared, stopped, now }) {
   return Object.freeze({
-    admit({ parent, tool, input, call }) {
+    authorized({ parent, tool, input }) { try { return !stopped() && decide(tool, input, parent).admitted === true; } catch { return false; } },
+    admit({ parent, tool, input, call, ownerCause }) {
       const operation = toolOperation(tool);
       let verdict;
       try { verdict = decide(tool, input, parent); } catch (error) { return { admitted: false, reason: `effect owner: the effect doorway could not decide (${String(error?.message ?? error)}); refused` }; }
       const doorway = doorwayRecord(verdict);
       if (!verdict.admitted) return { admitted: false, reason: verdict.reason, doorway };
+      if (ownerCause !== undefined && (typeof verdict.localCause !== 'string' || tool !== OWNER_BROWSER_TOOL))
+        return { admitted: false, reason: 'owner read requires a complete local cause', doorway };
       if (stopped()) return { admitted: false, reason: 'effect owner: a stop is held', doorway };
       const payload = digest(canonical(input));
       const identity = digest(`${parent.child}\n${operation}\n${payload}${verdict.consequential ? '' : `\n${String(call)}`}`);
       if (prepared(identity)) return { admitted: false, reason: `effect owner: ${operation} with this exact input was already prepared (${identity}); never sent twice`, doorway };
       try { append(sessionWorkEffect({ id: identity, edge: parent.id, operation, digest: payload, state: 'prepared', detail: 'admitted for dispatch', at: now(),
         ...(parent.topic === undefined ? {} : { topic: parent.topic, source: digest(parent.child), subject: payload }),
-        ...(verdict.localCause === undefined ? {} : { cause: verdict.localCause }) })); }
+        ...(verdict.localCause === undefined ? {} : { cause: ownerCause === undefined ? verdict.localCause
+          : JSON.stringify({ authorization: JSON.parse(verdict.localCause), ownerBrowser: ownerCause }) }) })); }
       catch { return { admitted: false, reason: 'effect owner: the request could not be recorded before dispatch', doorway }; }
       return { admitted: true, reason: `${verdict.reason}; effect owner: ${operation} prepared as ${identity}`, identity, operation, digest: payload, doorway };
     },
@@ -91,7 +96,7 @@ export function createToolEffectOwner({ decide, append, prepared, stopped, now }
  * can stand in for the provider; production uses the fixed upstreams over TLS. `held` is the runner's held-secret check
  * (tool-turn.mjs heldVerdict) for `kind: 'held'`; absent, every such check refuses.
  */
-export async function createAdmissionGate({ append, effects, stopped, now, held = () => 'unavailable', upstreams = MODEL_UPSTREAMS, request = null }) {
+export async function createAdmissionGate({ append, effects, stopped, now, held = () => 'unavailable', ownerBrowser = null, upstreams = MODEL_UPSTREAMS, request = null }) {
   const secret = randomBytes(16).toString('hex');
   const claims = new Map();
   const reply = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -159,8 +164,15 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       return { decision: 'allow', reason: `delegation recorded as ${edge.id}: the subagent's calls and tools pass this same checkpoint` };
     }
     if (call.kind === 'effect') {
+      // The hook may admit only the thin client. Execution and durable preparation happen together below;
+      // a hook post is never evidence that the owner read completed.
+      if (tool === OWNER_BROWSER_TOOL) return ownerBrowser && ownerBrowserRequest(call.tool_input)
+        && effects.authorized({ parent: state.edge, tool, input: call.tool_input })
+        ? { decision: 'allow', reason: 'owner read client allowed; owner rechecks at execution' }
+        : { decision: 'deny', reason: 'owner read scope or current grant unavailable' };
       if (call.phase === 'post') {
         const admitted = state.effects.get(id);
+        if (admitted?.ownerRead) return { decision: 'deny', reason: 'only the owner can complete this observation' };
         if (admitted) { effects.observed({ parent: state.edge, ...admitted, resultBytes: Number(call.result_bytes) || 0 }); state.effects.delete(id); }
         return { decision: 'allow', reason: 'effect observed' };
       }
@@ -229,13 +241,41 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const port = server.address().port;
   return Object.freeze({
+    /** Called only by the existing per-claim connector socket, never an arbitrary URL or script. */
+    async observeOwner(claim, call, input) {
+      const state = claims.get(claim);
+      const closed = () => !state || claims.get(claim) !== state || state.closed || stopped()
+        || !Number.isSafeInteger(state.edge.budget?.deadline) || now() >= state.edge.budget.deadline;
+      const authorized = () => !closed() && effects.authorized({ parent: state.edge, tool: OWNER_BROWSER_TOOL, input });
+      if (!ownerBrowserRequest(input) || !/^[A-Za-z0-9._:-]{1,200}$/u.test(call) || !ownerBrowser || !authorized())
+        return ownerBrowserRefused('scope-grant-or-owner-unavailable');
+      if (state.effects.has(call)) return ownerBrowserRefused('identity-in-use');
+      if (state.ownerReads.has(call)) return ownerBrowserRefused('already-prepared');
+      if (state.ownerReads.size >= state.allowance) return ownerBrowserRefused('claim-read-budget');
+      let bindingSnapshot;
+      try { bindingSnapshot = ownerBrowser.binding(); } catch { return { status: 'unavailable' }; }
+      // Set before any await. The effect owner's durable identity also survives a process restart.
+      state.ownerReads.add(call);
+      const prepared = effects.admit({ parent: state.edge, tool: OWNER_BROWSER_TOOL, input, call, ownerCause: bindingSnapshot });
+      if (!prepared.admitted) return ownerBrowserRefused('preparation-refused');
+      state.toolPreparations++;
+      state.effects.set(call, { ...prepared, ownerRead: true });
+      try {
+        const result = await ownerBrowser({ input, stopped: () => !authorized(), deadline: state.edge.budget.deadline, bindingSnapshot });
+        if (!authorized() || canonical(ownerBrowser.binding()) !== canonical(bindingSnapshot)) return ownerBrowserRefused('withdrawn');
+        if (held(JSON.stringify(result)) !== 'clear') return ownerBrowserRefused('output-secret-check');
+        effects.observed({ parent: state.edge, ...prepared, resultBytes: Buffer.byteLength(JSON.stringify(result)) });
+        state.effects.delete(call);
+        return result;
+      } catch { return { status: 'unavailable' }; }
+    },
     /** The model endpoint and admission root for one claim. */
     base(claim) { if (!claimPattern.test(claim)) throw Error('admission gate: exact claim required'); return `http://127.0.0.1:${port}/${secret}/${claim}`; },
     /** Opens a claim with its reserved allowance and the edge its delegations hang from; a new open starts from nothing. */
     open(claim, { framework, allowance, edge, reserveCall }) {
       if (!claimPattern.test(claim) || !upstreams[framework] || !Number.isSafeInteger(allowance) || allowance < 1 || !edge?.id)
         throw Error('admission gate: claim, framework, allowance and edge required');
-      claims.set(claim, { framework, allowance, edge, reserveCall, calls: 0, refused: false, refusalReason: null, closed: false, delegations: new Map(), effects: new Map(), toolPreparations: 0 });
+      claims.set(claim, { framework, allowance, edge, reserveCall, calls: 0, refused: false, refusalReason: null, closed: false, delegations: new Map(), effects: new Map(), ownerReads: new Set(), toolPreparations: 0 });
     },
     /** Closes a claim: no further call or admission passes. Returns its final state. */
     close(claim) { const state = claims.get(claim); if (state) state.closed = true; return this.state(claim); },

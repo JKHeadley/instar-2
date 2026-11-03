@@ -387,13 +387,23 @@ export const heldSpan = (heldSecrets, extra = []) => {
  * `unavailable`, plan #507), and each SecretRef-bearing MCP server its resolved environment, once, to a launcher
  * presenting that server's name and nonce (Rule 100: the launch configuration holds no SecretRef value). Returns a
  * `close()` that stops serving and removes the socket's directory. */
-export async function serveTurnSocket(socket, { nonces = {}, values = {}, shared = false, check = () => 'unavailable' } = {}) {
+export async function serveTurnSocket(socket, { nonces = {}, values = {}, shared = false, check = () => 'unavailable', ownerRead = null } = {}) {
   const pending = new Map(Object.entries(values));
   const server = createServer({ allowHalfOpen: true }, link => {
     let text = '', over = false;
     link.setEncoding('utf8');
     link.on('data', chunk => { if (text.length + chunk.length > HELD_CHECK_MAX_BYTES * 2) over = true; else text = `${text}${chunk}`; });
-    link.on('end', () => {
+    link.on('end', async () => {
+      if (text.startsWith('owner-read ')) {
+        let result = { status: 'refused', reason: 'request-scope' };
+        try {
+          if (!over && text.length <= 1024 && ownerRead) {
+            const row = JSON.parse(text.slice(11));
+            if (row && Object.keys(row).sort().join(',') === 'id,input') result = await ownerRead(row.id, row.input);
+          }
+        } catch { result = { status: 'unavailable' }; }
+        link.end(JSON.stringify(result)); return;
+      }
       // Preserve the separator for an empty check payload (browser_snapshot {}).
       const line = text.replace(/\r?\n$/u, '');
       if (line.startsWith('check ')) {
