@@ -153,3 +153,16 @@ it('a binding changed during the Apple Event cannot release content', async () =
   expect(await adapter({ input: { page: 'account-profile' }, stopped: () => false, deadline: 100, bindingSnapshot: binding }))
     .toEqual({ status: 'refused', reason: 'profile-withdrawn' });
 });
+
+it('withdrawal during process lookup prevents the next Apple Event, including stop, deadline and binding changes', async () => {
+  for (const reason of ['stop', 'deadline', 'binding']) {
+    let stop = false, clock = 10, current = binding;
+    const calls: string[] = [];
+    const adapter = createOwnerBrowser({ binding: () => current, platform: 'darwin', uid: 501, now: () => clock,
+      hold: async () => ({ release: async () => {} }), scrub: (s: string) => s, held: () => 'clear',
+      execute: async (command: string) => { calls.push(command); if (reason === 'stop') stop = true;
+        if (reason === 'deadline') clock = 100; if (reason === 'binding') current = { ...binding, userDataDir: '/other' }; return table; } });
+    expect((await adapter({ input: { page: 'account-profile' }, stopped: () => stop, deadline: 100, bindingSnapshot: binding })).status).toBe('refused');
+    expect(calls).toEqual(['/bin/ps']);
+  }
+});

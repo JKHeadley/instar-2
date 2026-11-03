@@ -105,6 +105,8 @@ export function createOwnerBrowser({ binding, hold, scrub, held, now = Date.now,
         const table = await execute('/bin/ps', ['-axo', 'pid=,uid=,args='], controller.signal);
         const pid = chromePid(table, initial, uid);
         if (pid === null) return { status: 'unavailable' };
+        if (withdrawn()) return ownerBrowserRefused('closed-or-stopped');
+        if (JSON.stringify(binding()) !== JSON.stringify(initial)) return ownerBrowserRefused('profile-withdrawn');
         const raw = await execute('/usr/bin/osascript', ['-l', 'JavaScript', '-e', OWNER_BROWSER_APPLE_EVENT, String(pid)], controller.signal);
         if (withdrawn()) return ownerBrowserRefused('closed-or-stopped');
         if (JSON.stringify(binding()) !== JSON.stringify(initial)) return ownerBrowserRefused('profile-withdrawn');
