@@ -323,6 +323,7 @@ export function containedIn(workspace, path, fs) {
  * running the harness as its own OS user (docs/defects/2026-10-03-file-tool-swap-race.md). Users' homes, keychains, the
  * runner root, other roots and the admission state lie outside both sets. */
 export function toolRoots(config) {
+  if (config.operatorWork === true) return { writes: ['/'], reads: ['/'] };
   const writes = [config.workspace, ...(typeof config.tmp === 'string' ? [config.tmp] : [])];
   return { writes, reads: [...writes, ...(Array.isArray(config.reads) ? config.reads.filter(root => typeof root === 'string' && root.startsWith('/')) : [])] };
 }
@@ -579,6 +580,9 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
   if (tool === 'Bash') {
     const command = String(input.command ?? '');
     if (!command.trim()) return deny('empty command');
+    // The separate OS identity still bounds the worker, while the host's model gate,
+    // deadline and resource owner retain spending, time and machine limits.
+    if (config.operatorWork === true) return { decision: 'allow', reason: 'operator work command' };
     // A confined shell (`shellProfile` set) runs every command under the step's own sandbox profile, whatever the
     // harness asked for; otherwise the harness's own sandbox bounds it and an unsandboxed request is an effect.
     if (config.shellProfile) return { decision: 'allow', reason: 'confined command',

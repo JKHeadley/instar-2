@@ -423,6 +423,12 @@ export function harnessCommand(input, runAs, read = path => readFileSync(path, '
     .map(([key, value]) => `${key}=${String(value)}`);
   const args = [...input.args], header = { login: runAs.login() };
   if (typeof header.login !== 'string' || !header.login) throw Error('preview: harness login unavailable');
+  if (runAs.githubToken !== undefined) {
+    const token = runAs.githubToken();
+    if (typeof token !== 'string' || !/^[\x21-\x7e]{1,4096}$/u.test(token))
+      throw Error('preview: worker GitHub credential unavailable');
+    header.github = token;
+  }
   for (let at = 0; at < args.length - 1; at++) {
     if (args[at] !== '--mcp-config' || !isAbsolute(args[at + 1])) continue;
     if (header.mcp !== undefined) throw Error('preview: more than one MCP configuration file');

@@ -40,6 +40,11 @@ describe('the harness command line', () => {
       'CLAUDE_CONFIG_DIR=/h/config', 'CLAUDE_CODE_SUBSCRIPTION_TYPE=max', '--', '/h/bin/claude-2.1.280', '-p', '--model', 'm'], env: { PATH: '/usr/bin:/bin' },
     stdin: `${JSON.stringify({ login: 'sk-ant-oat01-synthetic-login' })}\nx` });
     expect(JSON.stringify(command.args)).not.toContain('synthetic-login');
+    const github = harnessCommand({ executable: '/h/bin/claude-2.1.280', args: [], env: {} },
+      { ...runAs, githubToken: () => 'ghp_synthetic_worker_token' });
+    expect(JSON.parse(github.stdin.split('\n')[0])).toEqual({
+      login: 'sk-ant-oat01-synthetic-login', github: 'ghp_synthetic_worker_token' });
+    expect(JSON.stringify(github.args)).not.toContain('ghp_synthetic_worker_token');
     // A preflight with no stdin still carries the login line, and nothing else.
     expect(harnessCommand({ executable: '/x', args: ['--version'], env: {} }, runAs).stdin).toBe(`${JSON.stringify({ login: 'sk-ant-oat01-synthetic-login' })}\n`);
   });
@@ -383,7 +388,8 @@ describe('the launcher', () => {
     writeFileSync(reader, `#!/bin/sh\nenv | sort > "$OUT/env"\necho "$@" > "$OUT/args"\ncat <&3 > "$OUT/fd3"\ncat /dev/fd/4 > "$OUT/fd4"\n`
       + `cat <&3 > "$OUT/fd3-again"\ncat > "$OUT/stdin"\n`, { mode: 0o755 });
     chmodSync(reader, 0o755);
-    const header = JSON.stringify({ login: 'sk-ant-oat01-synthetic-login', mcp: '{"mcpServers":{}}' });
+    const header = JSON.stringify({ login: 'sk-ant-oat01-synthetic-login', mcp: '{"mcpServers":{}}',
+      github: 'ghp_synthetic_worker_token' });
     const result = spawnSync(process.execPath, [launcher, '--handoff', `OUT=${out}`, '--', reader, '--mcp-config', '/dev/fd/4'],
       { input: `${header}\nthe prompt\nline two`, encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } });
     expect(result.status).toBe(0);
@@ -393,7 +399,10 @@ describe('the launcher', () => {
     expect(readFileSync(join(out, 'stdin'), 'utf8')).toBe('the prompt\nline two');
     const env = readFileSync(join(out, 'env'), 'utf8');
     expect(env).toContain('CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3');
+    expect(env).toContain('GH_TOKEN=ghp_synthetic_worker_token');
+    expect(env).toContain('GIT_TERMINAL_PROMPT=0');
     expect(env + readFileSync(join(out, 'args'), 'utf8')).not.toContain('synthetic-login');
+    expect(readFileSync(join(out, 'args'), 'utf8')).not.toContain('ghp_synthetic_worker_token');
     // A malformed or missing hand-off line runs nothing.
     for (const input of ['not json\n', '{"login":"has space"}\n', '{"other":"x"}\n', ''])
       expect(spawnSync(process.execPath, [launcher, '--handoff', `OUT=${out}`, '--', reader], { input, encoding: 'utf8' }).status).toBe(125);

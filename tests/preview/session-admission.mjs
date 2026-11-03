@@ -35,21 +35,24 @@ export const sessionAdmissionCommand = ({ base, node = process.execPath, script 
  * read-only, once written.
  */
 export function prepareSessionAdmission({ base, claim, workspace, maxCalls, gate, maxWriteBytes = 1048576, operations = [], effectPolicy,
-  irreversibleTerm, mcpReads = [], harness = null, prepare = prepareHarnessState }) {
+  irreversibleTerm, mcpReads = [], harness = null, operatorWork = false, prepare = prepareHarnessState }) {
   if (typeof gate !== 'string' || !/^http:\/\/127\.0\.0\.1:[0-9]+\/[0-9a-f]{32}\/[A-Za-z0-9._-]+$/u.test(gate))
     throw Error('session admission: the host checkpoint address is required');
+  if (operatorWork && !harness) throw Error('session admission: operator work requires a separate harness identity');
   const state = stateOf(base, claim);
   mkdirSync(base, { recursive: true, mode: 0o700 });
   rmSync(state, { recursive: true, force: true });
   const opened = harness ? prepare(state, harness.user, harness.runner) : (mkdirSync(state, { mode: 0o700 }), null);
   const real = realpathSync(workspace), tmp = join(real, '.tmp');
   mkdirSync(tmp, { recursive: true, mode: 0o700 });
-  const shellProfile = join(realpathSync(state), 'shell.sb');
-  writeFileSync(shellProfile, shellSandboxProfile({ workspace: real, tmp }), { mode: 0o600 });
-  writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: real, tmp, maxCalls, maxWriteBytes,
-    gate, shellProfile, mcpReads: [...mcpReads], delegation: true, networkReads: true, operations: [...operations],
+  const shellProfile = operatorWork ? null : join(realpathSync(state), 'shell.sb');
+  if (shellProfile) writeFileSync(shellProfile, shellSandboxProfile({ workspace: real, tmp }), { mode: 0o600 });
+  writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: real, tmp, maxCalls,
+    maxWriteBytes: operatorWork ? Number.MAX_SAFE_INTEGER : maxWriteBytes,
+    gate, ...(shellProfile ? { shellProfile } : {}), ...(operatorWork ? { operatorWork: true } : {}),
+    mcpReads: [...mcpReads], delegation: true, networkReads: true, operations: [...operations],
     ...(effectPolicy === undefined ? {} : { effectPolicy }), ...(irreversibleTerm === undefined ? {} : { irreversibleTerm }) }), { mode: 0o600 });
-  if (opened) opened.open([join(state, 'config.json'), shellProfile]);
+  if (opened) opened.open([join(state, 'config.json'), ...(shellProfile ? [shellProfile] : [])]);
   pruneSessionAdmission(base, claim);
   return state;
 }

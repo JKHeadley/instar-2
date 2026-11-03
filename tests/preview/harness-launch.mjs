@@ -96,8 +96,9 @@ function readHeader() {
       process.stdin.off('data', take); process.stdin.off('end', ended); process.stdin.pause();
       let header;
       try { header = JSON.parse(held.subarray(0, end).toString('utf8')); } catch { fail('hand-off header unreadable'); }
-      if (!header || typeof header !== 'object' || Array.isArray(header) || Object.keys(header).some(key => !['login', 'mcp'].includes(key))
+      if (!header || typeof header !== 'object' || Array.isArray(header) || Object.keys(header).some(key => !['login', 'mcp', 'github'].includes(key))
         || (header.login !== undefined && (typeof header.login !== 'string' || !/^[\x21-\x7e]{1,4096}$/u.test(header.login)))
+        || (header.github !== undefined && (typeof header.github !== 'string' || !/^[\x21-\x7e]{1,4096}$/u.test(header.github)))
         || (header.mcp !== undefined && typeof header.mcp !== 'string')) fail('hand-off header malformed');
       resolve({ header, remainder: held.subarray(end + 1) });
     };
@@ -167,6 +168,11 @@ const watch = setInterval(() => {
 const { header, remainder } = handoff ? await readHeader() : { header: null, remainder: null };
 if (tty && remainder.length) fail('--tty takes only the hand-off header on stdin');
 if (header?.login !== undefined) env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR = '3';
+if (header?.github !== undefined) {
+  env.GH_TOKEN = header.github;
+  env.GIT_TERMINAL_PROMPT = '0';
+  env.GH_PROMPT_DISABLED = '1';
+}
 // The harness runs in its own process group (and session), so one group signal reaches every process it did not move. An
 // interactive one stays in this group instead, the terminal's foreground, or it could not read the terminal; the tree walk
 // and the tracking still find every descendant.

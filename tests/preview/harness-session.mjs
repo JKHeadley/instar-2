@@ -12,7 +12,7 @@
 //
 // It ends with the harness: its exit status, or the signal's. A pane closed under it (tmux kill-session) hangs up sudo,
 // which relays the hang-up to the launcher, which ends the harness's whole tree.
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { closeSync, constants, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { constants as osConstants } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -26,9 +26,11 @@ const validPid = value => Number.isSafeInteger(value) && value > 0;
 const SPAWN_ERRORS = new Set(['EACCES', 'EAGAIN', 'EIO', 'EMFILE', 'ENFILE', 'ENOENT', 'ENOMEM', 'ENOTDIR', 'EPERM', 'ESRCH', 'ETIMEDOUT']);
 
 /** The sudo command for one interactive harness launch: harnessCommand's, in the launcher's terminal mode. */
-export function harnessSessionCommand({ user, profile, executable, args, env, login = readHarnessLogin, cwd = process.cwd(), stdio = false }) {
+export function harnessSessionCommand({ user, profile, executable, args, env, login = readHarnessLogin,
+  githubToken = null, cwd = process.cwd(), stdio = false }) {
   const command = harnessCommand({ executable, args, env, stdin: '' },
-    { user, launcher: HARNESS_LAUNCHER, login: () => login(profile), plan: profile.plan });
+    { user, launcher: HARNESS_LAUNCHER, login: () => login(profile), plan: profile.plan,
+      ...(githubToken ? { githubToken } : {}) });
   // Upgrade profiles installed before interactive bootstrap, only after custody validated.
   prepareSubscriptionInteractive(profile.configDirectory, cwd);
   if (stdio) return command;
@@ -83,17 +85,25 @@ const invoked = process.argv[1] && realpathSync(process.argv[1]) === fileURLToPa
 if (invoked) {
   const words = process.argv.slice(2);
   const custody = words[0] === '--custody' ? words.splice(0, 2)[1] : undefined;
+  const githubScript = words[0] === '--github-secret-script' ? words.splice(0, 2)[1] : undefined;
   const stdio = words[2] === '--stdio';
   if (stdio) words.splice(2, 1);
   const [user, profilePath, split, executable, ...args] = words;
-  if ((custody !== undefined && !custody.startsWith('/')) || !user || !profilePath || split !== '--' || !executable) {
-    process.stderr.write('usage: harness-session.mjs [--custody LOGIN.json] USER PROFILE.json -- EXECUTABLE ARG ...\n');
+  if ((custody !== undefined && !custody.startsWith('/')) || (githubScript !== undefined && !githubScript.startsWith('/'))
+    || !user || !profilePath || split !== '--' || !executable) {
+    process.stderr.write('usage: harness-session.mjs [--custody LOGIN.json] [--github-secret-script PATH] USER PROFILE.json -- EXECUTABLE ARG ...\n');
     process.exit(125);
   }
   let command;
   try {
     command = harnessSessionCommand({ user, profile: JSON.parse(readFileSync(profilePath, 'utf8')), executable, args,
-      stdio, env: { ...process.env }, login: profile => readHarnessLogin(profile, custody) });
+      stdio, env: { ...process.env }, login: profile => readHarnessLogin(profile, custody),
+      ...(githubScript ? { githubToken: () => {
+        try { return execFileSync(process.execPath, [githubScript, 'github_token'],
+          { cwd: dirname(dirname(dirname(githubScript))), encoding: 'utf8', timeout: 10000,
+            stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
+        catch { throw Error('worker GitHub credential unavailable'); }
+      } } : {}) });
   } catch (error) { process.stderr.write(`harness-session: ${String(error?.message ?? error)}\n`); process.exit(125); }
   const startedAt = Date.now();
   const child = spawn(command.executable, command.args, { env: command.env, stdio: ['pipe', 'inherit', 'inherit'] });

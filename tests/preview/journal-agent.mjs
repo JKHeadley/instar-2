@@ -2707,7 +2707,10 @@ async function main() {
             return { text: `Restore this recorded conversation as history only. Do not repeat actions or answer old questions. Wait for the next delivered input.\n${turn.prompt}\nLAST RECORDED REPLY\n${turn.intent}`, source: `journal:${turn.id}` };
           } } : {}),
           // As the harness user: the pane runs the harness through the bridge, which hands it the custody login.
-          ...(layout ? { launchVia: [process.execPath, HARNESS_SESSION_BRIDGE, options['harness-user'],
+          ...(layout ? { launchVia: [process.execPath, HARNESS_SESSION_BRIDGE,
+            ...(conversationSession && options['operator-records'] && existsSync(join(dirname(options['operator-records']), '.instar/scripts/secret-get.mjs'))
+              ? ['--github-secret-script', join(dirname(options['operator-records']), '.instar/scripts/secret-get.mjs')] : []),
+            options['harness-user'],
             realpathSync(binding.entry().profilePath), '--'] } : {}) });
         return ({
         ...(conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
@@ -2749,14 +2752,16 @@ async function main() {
             }
             const mcp = readRootMcp(root);
             if (conversationSession) sessionMcpDigest = mcp?.digest ?? null;
+            const operatorWork = Boolean(conversationSession && identity);
             const state = prepareSessionAdmission({ mcpReads: mcp?.reads ?? [], base: admissionBase, claim, workspace: project, maxCalls: edge.budget.calls,
-              gate: gate.base(claim), ...admissionConfig(), ...(identity ? { harness: { user: identity.user, runner: identity.runner } } : {}) });
+              gate: gate.base(claim), ...admissionConfig(), ...(identity ? { harness: { user: identity.user, runner: identity.runner } } : {}),
+              operatorWork });
             // The step's shell network checkpoint (egress-proxy.mjs): the confined shell's one network path, deciding every
             // request by the same effect doorway, under its request and byte bounds; stopped when the step's claim closes.
             // As the harness user its private state stays the runner's alone, outside the harness-readable step state.
             const tmp = join(project, '.tmp');
             let privateDirectory;
-            if (identity) {
+            if (identity && !operatorWork) {
               const egressBase = join(root, 'session-work-state', 'egress');
               privateDirectory = join(egressBase, claim);
               rmSync(privateDirectory, { recursive: true, force: true });
@@ -2766,7 +2771,7 @@ async function main() {
                 .sort((a, b) => b.at - a.at).slice(SESSION_ADMISSION_KEPT - 1)
                 .forEach(({ name }) => rmSync(join(egressBase, name), { recursive: true, force: true }));
             }
-            stepEgress.set(claim, (await attachEgress({ stateDirectory: state, ...(privateDirectory ? { privateDirectory } : {}), scratch: tmp,
+            if (!operatorWork) stepEgress.set(claim, (await attachEgress({ stateDirectory: state, ...(privateDirectory ? { privateDirectory } : {}), scratch: tmp,
               home: join(tmp, 'home') }, undefined, networkToolReads(), { check: heldVerdict(heldSecrets), span: () => heldSpan(heldSecrets) })).proxy);
             {
               // Every tool-using session receives the same reviewed root connector set.

@@ -145,7 +145,7 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     const status = JSON.parse(statusRun.stdout);
     // Rules 60/61: every launch was admitted by the one owner and none is left running.
     expect(status.resources).toMatchObject({ version: 1, active: [], waiting: [],
-      inherited: { state: 'observed', effectivePerLaunch: { handleCount: expect.any(Number) } },
+      inherited: { state: 'observed', effectivePerLaunch: { handleCount: 'unlimited' } },
       counters: { admitted: seen.trim().split('\n').length * 2, refusedCapacity: 0 } }); // each actual call launches its model command and no-prompt check; shutdown can retain an unlaunched reservation
     expect(status.calls).toBeGreaterThanOrEqual(seen.trim().split('\n').length);
     expect(seen).not.toContain('I got your message.'); // fixed template never reaches a model review

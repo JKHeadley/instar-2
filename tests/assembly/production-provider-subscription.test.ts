@@ -814,8 +814,8 @@ it('keeps scheduled work policy unchanged and requires the exact continuing-sess
   const { profile, activation, model } = f.input;
   const conversation = session.conversation!;
   const policy = conversation.policy(model);
-  expect(policy.limits).toMatchObject({ maxStepsPerLaunch: 64, maxCallsPerStep: 128, deadlineMs: 4 * 60 * 60 * 1000 });
-  expect(policy.admission.allowance).toBe(policy.limits.maxCallsPerStep);
+  expect(policy.limits).toMatchObject({ maxStepsPerLaunch: 64, maxCallsPerStep: 1_000_000, deadlineMs: 4 * 60 * 60 * 1000 });
+  expect(policy.admission.allowance).toBe('journal-spend-cap');
   expect(policy.prompt).toContain('wait for the next message');
   expect(policy.prompt).not.toContain('You have no tools');
   const granted = { ...activation, invocationPolicyDigest: hash(policy), acceptedResiduals: [SESSION_WORK_RESIDUAL] };

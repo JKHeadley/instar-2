@@ -51,7 +51,7 @@ it('pins the shipped Rule 60 vector and reaches and holds both launch and answer
   // @ts-expect-error host owner is JavaScript
   const { RESOURCE_CEILINGS, createResourceOwner } = await import('../../scripts/resource-owner.mjs');
   expect(RESOURCE_CEILINGS).toMatchObject({
-    launch: { memoryBytes: 18 * 1024 ** 3, processCount: 32, handleCount: 1024, cpuMilliseconds: 600_000 },
+    launch: { memoryBytes: 18 * 1024 ** 3, processCount: 288, handleCount: null, cpuMilliseconds: null },
     aggregate: { memoryBytes: 18 * 1024 ** 3, processCount: 288, launches: 9 }, reserveLaunches: 1,
   });
   for (const ceiling of [9, 2]) {

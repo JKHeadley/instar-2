@@ -102,6 +102,24 @@ it('lays out a fresh admission state per step: config with the checkpoint addres
     .toThrow(/checkpoint address/u);
 });
 
+it('gives a separately identified operator worker ordinary shell and file access while retaining the host gate', async () => {
+  const s = await step();
+  const prepare = (state: string) => { mkdirSync(state, { mode: 0o700 }); return { open: () => {} }; };
+  expect(() => prepareSessionAdmission({ base: s.base, claim: s.claim, workspace: s.ws,
+    maxCalls: 24, gate: s.gate.base(s.claim), operatorWork: true })).toThrow(/separate harness identity/u);
+  const state = prepareSessionAdmission({ base: s.base, claim: s.claim, workspace: s.ws,
+    maxCalls: 24, gate: s.gate.base(s.claim), operatorWork: true,
+    harness: { user: '_instarharness', runner: 'operator' }, prepare });
+  const config = JSON.parse(readFileSync(join(state, 'config.json'), 'utf8'));
+  expect(config).toMatchObject({ operatorWork: true, gate: s.gate.base(s.claim), maxCalls: 24 });
+  expect(config.shellProfile).toBeUndefined();
+  expect(existsSync(join(state, 'shell.sb'))).toBe(false);
+  const shell = await hook(state, call('Bash', { command: 'python3 -m http.server 0' }));
+  expect(shell.decision).toBe('allow');
+  expect(shell.command).toBeNull(); // exact command, without the old sandbox wrapper or egress proxy
+  expect((await hook(state, call('Read', { file_path: join(s.outside, 'canary.txt') }))).decision).toBe('allow');
+});
+
 it('admits the full tool set: ordinary work, network reads, delegation as a child edge; scope and unregistered effects refuse', async () => {
   const s = await step();
   const decide = async (tool: string, input: object, id?: string) => (await hook(s.state, call(tool, input, id))).decision;

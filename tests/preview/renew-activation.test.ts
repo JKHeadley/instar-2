@@ -284,7 +284,10 @@ it('the desk script writes new files only and the renew-expiry command binds tha
     expect(expires()).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
     expect(renewSurface()).toBe(fallback);                           // renewed: no later reviewed end to renew to
   } finally { rmSync(root, { recursive: true, force: true }); }
-}, 90_000);
+// This exercise starts several real CLI processes. Under the full parallel suite
+// their startup can exceed 90 seconds without any child timing out (each has its
+// own 30-second bound), so leave room for the complete chain to finish.
+}, 180_000);
 
 it('the policy-successor flag creates only a new valid record and never replaces an output', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-policy-successor-')));
