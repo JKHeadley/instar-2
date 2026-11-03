@@ -28,7 +28,7 @@ export const OWNER_BROWSER_DOM = `JSON.stringify((function(){
   if(location.href!==${JSON.stringify(OWNER_BROWSER_URL)}) { location.assign(${JSON.stringify(OWNER_BROWSER_URL)}); return {status:'loading'}; }
   if(document.readyState!=='complete') return {status:'loading'};
   var login=document.querySelector('meta[name="user-login"]');
-  if(!login || !login.content) return {status:'login-required'};
+  if(!login || !login.content) return {status:'unavailable'};
   if(login.content!=='EchoOfDawn') return {status:'refused',reason:'account-mismatch'};
   return {status:'observed',origin:location.origin,path:location.pathname,account:'EchoOfDawn',title:document.title.slice(0,256)};
 })())`;

@@ -123,7 +123,7 @@ it('executes the actual fixed DOM read: exact authenticated account, signed out,
   expect(read('EchoOfDawn').result).toMatchObject({ status: 'observed', account: 'EchoOfDawn' });
   expect(read('Justin').result).toEqual({ status: 'refused', reason: 'account-mismatch' });
   expect(read('EchoOfDawn-other').result.status).toBe('refused');
-  expect(read(null).result.status).toBe('login-required');
+  expect(read(null).result.status).toBe('unavailable');
   expect(read(null, '/login', true).result.status).toBe('login-required');
   expect(read('EchoOfDawn', '/elsewhere')).toEqual({ result: { status: 'loading' }, navigated: ['https://github.com/settings/profile'] });
 });
