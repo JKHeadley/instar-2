@@ -1,7 +1,7 @@
 # Rule coverage
 
-Register generation: sha256:69523e50fdd4029be7b8a80736f19f9313c06ff9158201f7b26256a12f911e2d
-Source commit: 6f8bc9bd3860d230ab405dff40bcaf4e6ba95e4b
+Register generation: sha256:fdbd8eeecaea52dfcc97dcdb13463eff66b05e5bcfa072270b5106d0a16ee675
+Source commit: 2602f8d6cab943082853ed7acde61e2d1024ecca
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -9,9 +9,9 @@ Authority: shape-only; entering-force verification required at consumption.
 |---|---:|
 | held-reviewed | 0 |
 | held-unreviewed | 0 |
-| declared | 3 |
-| partial | 24 |
-| deferred | 3 |
+| declared | 2 |
+| partial | 27 |
+| deferred | 1 |
 | gap | 110 |
 
 {
@@ -14924,24 +14924,6 @@ Authority: shape-only; entering-force verification required at consumption.
     }
   ],
   "loops": [
-    {
-      "id": "deferred:resource-owner.admit:60",
-      "rule": 60,
-      "holder": "resource-owner.admit",
-      "dueBy": 1797292800000,
-      "part": 10,
-      "owner": "echo (agent)",
-      "overdueAction": "Register the host funnel's can-fail fixture with part ten (its ceiling, answer-reserve and kill tests are written at tests/integration/resource-owner.test.ts) and replace this deferral with a partial hold citing it; if that is not done by the ceiling, raise an operator attention item naming rule 60 as unproven in the register."
-    },
-    {
-      "id": "deferred:resource-owner.admit:61",
-      "rule": 61,
-      "holder": "resource-owner.admit",
-      "dueBy": 1797292800000,
-      "part": 10,
-      "owner": "echo (agent)",
-      "overdueAction": "Register the same part-ten fixture for the funnel's priority brake and answer reserve (tests/integration/resource-owner.test.ts: maintenance keeps the reserve, defers while elevated, and reclaims by stopping maintenance first) and replace this deferral with a partial hold citing it; if that is not done by the ceiling, raise an operator attention item naming rule 61 as unproven in the register."
-    },
     {
       "id": "deferred:slack-intake-v1:36",
       "rule": 36,

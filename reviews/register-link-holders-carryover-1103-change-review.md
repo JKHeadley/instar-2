@@ -14,7 +14,7 @@ Side effects: Two resource holds move from deferred to partial; one parser claim
 Undo and recovery: Revert the source/test/declaration changes together and regenerate from that committed source. Restore the desk carryover from its named backup if its annotations must be withdrawn; preserve subsequent desk edits.
 Multi-machine posture: Register publication is shared source metadata; resource admission evidence is deliberately host-local and makes no peer or confinement claim. No new durable state or replication protocol.
 Layer below: Existing Hold decoder, owner-reference artifact hashing, rule graph class derivation, source/construct binding, replay builder and actual admission/probe functions were inspected. The missing verified Part Two chain remains missing.
-Bug class: evidence linkage, not a runtime bug repair
+Bug class: none
 Bug evidence: Controlled mutations below fail the selected tests; restored source passes the focused suite.
 Hook bypass: none
 Convergence: none; independent review remains the desk's responsibility
@@ -24,7 +24,9 @@ Convergence: none; independent review remains the desk's responsibility
 This is steps 2 and 4 of the desk's register-link slice. Steps 1 and 3 are not implemented.
 The source base is exactly the deployed backup, not origin/main. Its replay generation was
 `sha256:fc22f87ac1adfe3c1fe1a55ffad1d697514b753e20e191c32bf128d9d6a17fab`.
-The new publication's source and generation are in `generated/source.json`; the output-only
+The publication pins source `2602f8d6cab943082853ed7acde61e2d1024ecca` and generation
+`sha256:fdbd8eeecaea52dfcc97dcdb13463eff66b05e5bcfa072270b5106d0a16ee675`
+in `generated/source.json`; the output-only
 publication commit follows the source commit because a commit cannot contain its own hash.
 
 The baseline has 8/118 rules with `enforcedBy` entries: 4, 9, 14, 36, 43, 60, 61, 66.
