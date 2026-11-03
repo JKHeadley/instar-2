@@ -56,6 +56,8 @@ it('refuses malformed request, unknown/closed/expired claim, owner loss, stop, g
     expect(await w.gate.observeOwner('claim', 'one', input)).toMatchObject({ status: 'refused' }); expect(w.count()).toBe(0);
   }
   const w = await world();
+  for (const id of [null, undefined, 17, {}, '', 'x'.repeat(201)])
+    expect(await w.gate.observeOwner('claim', id, input)).toMatchObject({ status: 'refused' });
   for (const value of [{ page: 'account-profile', url: 'https://evil.test' }, {}, null])
     expect(await w.gate.observeOwner('claim', 'one', value)).toMatchObject({ status: 'refused' });
   expect(await w.gate.observeOwner('missing', 'one', input)).toMatchObject({ status: 'refused' });

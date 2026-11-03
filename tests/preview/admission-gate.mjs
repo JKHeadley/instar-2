@@ -247,7 +247,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       const closed = () => !state || claims.get(claim) !== state || state.closed || stopped()
         || !Number.isSafeInteger(state.edge.budget?.deadline) || now() >= state.edge.budget.deadline;
       const authorized = () => !closed() && effects.authorized({ parent: state.edge, tool: OWNER_BROWSER_TOOL, input });
-      if (!ownerBrowserRequest(input) || !/^[A-Za-z0-9._:-]{1,200}$/u.test(call) || !ownerBrowser || !authorized())
+      if (!ownerBrowserRequest(input) || typeof call !== 'string' || !/^[A-Za-z0-9._:-]{1,200}$/u.test(call) || !ownerBrowser || !authorized())
         return ownerBrowserRefused('scope-grant-or-owner-unavailable');
       if (state.effects.has(call)) return ownerBrowserRefused('identity-in-use');
       if (state.ownerReads.has(call)) return ownerBrowserRefused('already-prepared');
