@@ -15,7 +15,7 @@
       },
       {
         "what": "Rule 72 names default-on for the fleet as the last rung, measured thresholds, and a threshold raising a feature for a decision rather than flipping it.",
-        "why": "Matches the Maturation Path article the operator approved for the 1.x registry, so the two books carry the same obligation.",
+        "why": "Brings the main obligations of the Maturation Path article the operator approved for the 1.x registry into the rule book. The 1.x article carries more operating detail (two independent readings, the form of a preference exception, rungs derived from what ships); the alignment map names that difference.",
         "ref": "Justin, 2026-11-03: \"we should have a FUNDAMENTAL REQUIREMENT that 1.x and 2.0 constitution/rule book always stay aligned for ALL updates\"; wording approved 2026-11-03. Final-head GitHub code-owner approval and merge pending."
       }
     ]

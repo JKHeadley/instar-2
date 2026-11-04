@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Rule 119 — One Constitution, Two Books Aligned (docs/specs/constitution-alignment.md).
+ * Rule 119 — One Constitution, Two Books Aligned (design: JKHeadley/instar docs/specs/constitution-alignment.md).
  *
  * Every change to either book names its counterpart in the other, or says why
  * it has none. This reads existence only: is there a line, does it name a real
@@ -136,7 +136,8 @@ export function readPr(repo, number, { ghPagesFn = ghPages, ghFn = gh } = {}) {
     baseRefName: pr.base?.ref,
     body: pr.body ?? '',
     mergedAt: pr.merged_at,
-    files: ghPagesFn(`repos/${repo}/pulls/${number}/files?per_page=100`).map((f) => f.filename),
+    // A rename's old path counts too: moving a book out of its path is a change to the book.
+    files: ghPagesFn(`repos/${repo}/pulls/${number}/files?per_page=100`).flatMap((f) => (f.previous_filename ? [f.filename, f.previous_filename] : [f.filename])),
   };
 }
 
