@@ -1,19 +1,19 @@
 # Change review — One Constitution, Two Books Aligned
 
 Subject base: 2f46478df4fd512e74d612ac494dc88441aa3bd6
-Review state: open
-Reviewed content: none
+Review state: frozen
+Reviewed content: sha256:0156f60d5d333bedfc9d72d8a1baef2192fb28eee00c9d8de86e07badb3a5702
 Outcome: Record the operator's 2026-11-03 direction as Rule 119, One Constitution, Two Books Aligned: every change to either book names its counterpart in the other or says why it has none, a map names the differences, and the master governs. Match Rule 72 to the Maturation Path wording the operator approved for 1.x. Wording approved in topic 137053.
-Affected rules: 1 and 69 (a checked rule, naming its enforcement), 72 (reworded), 74 and 109 (the review holds meaning), 91 (no history in the governed body), 116 (simplest robust route).
+Affected rules: new 119; 72 (reworded) and 73 (shares its machinery); 1 and 69 (a checked rule, naming its enforcement); 74 and 109 (the review holds meaning); 90 and 91 (the changelog carries the history, none in the governed body); 116 (simplest robust route).
 Affected floors: secrets — no custody or revelation changes; spend cap — no provider calls; stop — no cancellation changes; no duplicate sends — no messaging changes; durable intake — no intake changes
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Changes the governing constitution, even though the implementation is a small script and text.
-Side effects: The rule inventory grows to 119; the replay anchor, its pin, the generated register and the end-to-end rule-count assertion follow it. document-checks fires on PR body edits, and gains a separate counterpart job. That job shows red and does not block merging, because the ruleset requires no status checks. No model-facing excerpt changes and no runtime path changes.
+Side effects: The rule inventory grows to 119; the replay anchor, its pin, the generated register and the end-to-end rule-count assertion follow it. document-checks fires on PR body edits, and gains a separate counterpart job. That job shows red and does not block merging, because the ruleset requires no status checks; it reads red today because the named 1.x counterpart, JKHeadley/instar#2687, is stacked on a feature branch rather than targeting main. No model-facing excerpt changes and no runtime path changes.
 Undo and recovery: Revert this amendment together with its anchor, pin, count assertion and generated outputs; preserve the governing history through a corrective revision if already approved.
 Multi-machine posture: Machine-independent: repository text and CI, with GitHub as the only state.
-Layer below: The full rule book, Rules 72 and 119's neighbours for overlap; scripts/register-source.mjs four-column parser and bootstrap declarations; scripts/build-register.mjs replay anchor and approvedConversion pin; src/rulegraph/graph.ts bootstrap-rule matching (117 of 118 recorded rule hashes reproduced unchanged, only Rule 72 differs); tests/e2e/register.test.ts rule-count consumer.
+Layer below: The full rule book, Rules 72 and 119's neighbours for overlap; scripts/register-source.mjs four-column parser and bootstrap declarations; scripts/build-register.mjs replay anchor and approvedConversion pin; src/rulegraph/graph.ts bootstrap-rule matching (117 of 118 recorded rule hashes reproduced unchanged, only Rule 72 differs); tests/e2e/register.test.ts rule-count consumer; the 1.x copy of scripts/check-constitution-pairing.mjs at JKHeadley/instar#2689, byte-identical to this one.
 Bug class: none
 Bug evidence: none
 Hook bypass: none
@@ -21,6 +21,10 @@ Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
 Deferral: generated/conversion.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
 Deferral: generated/register.json:1 | not-a-deferral=one-line generated JSON is re-emitted whole; its matches are pre-existing rule text, not new deferrals
+
+Publication source: commit 231cc3d01 on this branch, regenerated through scripts/build-register.mjs --replay. Following the Rule 118 amendment, --now 1792195200000 (2026-10-17) was used, because the real clock refuses every replay build on main while overdue deadlines stand. The clock is not embedded in outputs: `node scripts/build-register.mjs --check --now 1792195200000` passes against these generated files with 119 rules. Rule 119 remains a coverage gap in the register rather than a fabricated holder.
+
+Known red, outside this change: on the real clock `npm run register:check` and one case of tests/e2e/register.test.ts stop at "P3-NF-24: deadline passed for deferred:slack-intake-v1:36", the same refusal main gives. Nothing in this change touches that declaration, and it is not edited here. PR 188 moves the overdue ceilings; its own head passes register:check on the real clock.
 
 Subject (16 paths): .github/workflows/document-checks.yml, docs/01-the-rules.changelog.json, docs/01-the-rules.changelog.md, docs/01-the-rules.md, generated/capabilities.json, generated/capabilities.md, generated/conversion.json, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, register-source/bootstrap-anchor.json, scripts/build-register.mjs, scripts/check-constitution-pairing.mjs, tests/e2e/register.test.ts
 
