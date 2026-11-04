@@ -20,6 +20,8 @@ Hook bypass: none
 Review repair: The publication changes bytes covered by operator-worker-parity-1102; its frozen round is explicitly reopened under Rule 109. Historical review findings remain intact; this does not renew that approval or authorize deployment.
 Convergence: none
 
+**1.x first (Rules 49/116):** `JKHeadley/instar:docs/STANDARDS-REGISTRY.md` and `JKHeadley/instar:scripts/standards-coverage.mjs` provide the precedent for named guards, resolvable references and rejecting false coverage claims; this evidence-only extension uses the established 2.0 code-adjacent declarations, owner-reference catalog and `scripts/build-register.mjs` builder because they already bind those references to scoped evidence and publish explicit partial/shape-only limits, so porting the 1.x coverage scanner would duplicate the existing mechanism without establishing missing authority or live outcomes.
+
 ## Scope and counts
 
 This is steps 2 and 4 of the desk's register-link slice. Steps 1 and 3 are not implemented.
