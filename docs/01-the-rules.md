@@ -55,13 +55,13 @@ meaning.
 
 | Group | Count |
 |---|---|
-| Checkable now | 21 |
+| Checkable now | 22 |
 | Free from the core | 9 |
 | Needs building | 75 |
 | Held by the mind | 13 |
-| **Total** | **118** |
+| **Total** | **119** |
 
-Twenty-one of one hundred eighteen can be checked by a script today. That is the honest starting
+Twenty-two of one hundred nineteen can be checked by a script today. That is the honest starting
 position, and it is roughly what 1.x's own record shows: 92 checks in the running system, 20
 confirmed on.
 
@@ -207,7 +207,7 @@ reconstructable from the log* — argues the same way.
 
 ---
 
-### Checkable now — 21 of 118
+### Checkable now — 22 of 119
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -232,8 +232,9 @@ reconstructable from the log* — argues the same way.
 | 83 | The Agent Carries the Loop | A promise is the agent's job to finish, never the user's job to remember. | A commitment cannot be created without declaring who owns it and what it waits on. Refused at creation. |
 | 91 | A Document Reads as Its First Version | A governed document reads as if written once, today: no revision notes, review responses, or "what changed" prose in the body. Its history lives beside it in `NAME.changelog.json`, one entry per revision, each change linking to the commit or review comment that caused it. Full text: `docs/rules/91-a-document-reads-as-its-first-version.md`. | A script walks every governed document and fails on a revision marker in the body; `scripts/validate-changelog.mjs` fails the sibling changelog on any missing field. Governed is a property a document declares (or a rule names it and then it must declare), never a folder. |
 | 106 | A Link Handed to a Human Works | Every link sent to a person is complete and clickable from where they are: never localhost, never a bare id where a name exists, never a path only the agent can open. | A lint over link shapes at the outbound doorway — 1.x already refuses localhost links in automated sends. (First stated by the operator at #22873, #20131, #19466; recovered by the 2026-08-26 re-sweep.) |
+| 119 | One Constitution, Two Books Aligned | The 1.x registry and the 2.0 purpose and rule book are one constitution, and they stay aligned on every update. Every change to either book names its counterpart change in the other, or says why it has none (it concerns only that version, or it changes no obligation). Where the two differ, the alignment map says so by name, and the master governs. No difference is silent. | A script reads each pull request touching either book and flags one with no declared counterpart; the 1.x merge tool refuses it. A daily check reads both repositories' history and raises any merged change whose pair never landed. Whether two wordings carry the same obligation, and whether a stated "none" is honest, is held by the independent review of the change. |
 
-### Free from the core — 9 of 118
+### Free from the core — 9 of 119
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -247,7 +248,7 @@ reconstructable from the log* — argues the same way.
 | 78 | No Manual Work (user *or* agent) | Capturing context and using available tools is automatic. Neither the user nor the agent should have to remember a feature exists. | Free once the capability list is generated from the modules rather than hand-written. The check: no hand-maintained list exists. |
 | 84 | Agent Awareness | Every feature is written into the agent's own briefing. A capability the agent doesn't know about, it doesn't have. Identity, self-knowledge, reflection and growth are present by default; the agent explains itself and its actual abilities in the person's language. | Free from the same generation as #78. A hand-maintained briefing is exactly how 1.x lost this one. |
 
-### Needs building — 75 of 118
+### Needs building — 75 of 119
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -290,7 +291,7 @@ reconstructable from the log* — argues the same way.
 | 66 | A Decision That Can Block Must Live Where the Checks Can See It | Every place that can refuse or gate lives somewhere the enforcement tooling actually inspects. | Needs the same blocking-site registry as #4. |
 | 68 | An Autonomous Run Must Outlive Its Session | A delegated run is durable work; the session running it is disposable. No session event may silently end the run. | A registered run with time left always has either a live session or a queued revival. |
 | 70 | Bug-Fix Evidence Bar | A fix carries evidence of the kind its class of bug requires before it can be called fixed. | Needs evidence to be typed rather than prose. |
-| 72 | Maturation Path | Every feature graduates test agent → development agent → fleet, with a declared graduation test and deadline. | Every gated feature declares both and the deadline is enforced. The direct fix for 20-of-92. |
+| 72 | Maturation Path | Every feature graduates test agent → development agent → fleet, with a declared graduation test and deadline, and with default-on for the fleet as the last rung unless a recorded user-preference decision keeps it off. Every rung has machine-checkable thresholds against the feature's own logged behaviour. A threshold met raises the feature to the recurring review, whose model decides; it never flips anything by itself. A fleet default stays a reviewed code change. | Every gated feature declares both and the deadline is enforced. The direct fix for 20-of-92. 1.x holds the thresholds in its feature ladder and fails the build on a switched-off flag with no entry; 2.0's equivalent needs building. |
 | 73 | A Dark Feature Guards Nothing | A safety feature that ships switched off protects nothing. It must have a date to graduate or be called what it is. | Same machinery as #72. |
 | 76 | User-Facing Fixes Ship Live | A fix to what the user experiences ships on by default. The dark-launch ladder is for risky new capabilities, never for UX fixes. | Use the glossary's user-facing classification; live-surface proof is required independently of the sign-off list. |
 | 77 | The User Experience Is the Product | The user's ability to reach the agent and get a timely, coherent answer outranks internal caution when they conflict. | Reachability and response time are measurable. Coherence, and the ranking against caution, are held by the mind. |
@@ -336,7 +337,7 @@ feature can do that and still need a second provider to run at all. A person who
 agent may have only one subscription. If a feature quietly depends on a second one, that person gets a
 weaker agent and is never told why.
 
-### Held by the mind — 13 of 118
+### Held by the mind — 13 of 119
 
 These are binding. Their adequacy is judged through the applicable review, with recorded evidence.
 
@@ -370,4 +371,5 @@ document's history is in `01-the-rules.changelog.json` beside it. Rules 114 and 
 operator's review of the big-picture design on PR #12. Rule 116 comes from the operator's
 2026-09-23 skills-over-scripts direction and adoption of the simplicity audit as a fundamental
 Occam's Razor / Simplest Robust Route development standard. Rule 118 comes from the operator's
-2026-10-26 direction that an Instar agent is always fully functional with a single AI provider.*
+2026-10-26 direction that an Instar agent is always fully functional with a single AI provider. Rule 119 comes
+from the operator's 2026-11-03 direction that the 1.x and 2.0 rule books always stay aligned for all updates.*
