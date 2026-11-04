@@ -1,6 +1,6 @@
 # Change review — restore abandoned worker slot recovery
 
-Subject base: 2a9b1522d50b82164ad023f79de0d602de9b5f15
+Subject base: 2a9b1522d9911faab2a4511e8d8ef53e870f7691
 Review state: frozen
 Reviewed content: sha256:2e6d60046c42e26413f84aad61a68d79dca84e114e38ec65524e30a77cdf24f2
 Outcome: Restore the previously reviewed recovery of dead launch reservations on the answering live base, without adding another behavior change.
