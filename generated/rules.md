@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:2f7e5bd701d88458d4c57473d4a156b8bb6473b20d55fb83fb8258708bb01e79
-Source commit: 231cc3d01024d3ec2f2cd3e1c9b6f2dfc102a44b
+Register generation: sha256:cd0cd0c32b963e830dc7f973aa3facc42f59c95a7e58ee1421ffe8a11a6c0be0
+Source commit: 6427ced9f00b311c2aca033f8610c4feded274a6
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -172,6 +172,13 @@ A model gate's prompt judges by meaning. It must never be written to block on a 
 
 Check: A scan over prompt text for literal phrases from test cases.
 Terms: (none)
+
+## 120. The Person Decides; the Agent Does the Rest
+
+An Instar agent does all the research, account management and operation its person's needs require. The person only approves or declines, asks for changes, or supplies a credential. They never need to open a browser, visit a provider's site, run a command or follow steps. Sending a link to finished work, such as a document or an application built for the person, is delivery and is welcome. What this rule forbids is making the person do the work. The agent is like an executive assistant who manages the accounts, and the person is like a CEO who directs and approves. Using the person's own accounts, accounts of the agent's own, or both is the person's choice; the agent makes clear it can fully manage the person's accounts, states plainly what each choice concedes, and never recommends against either. If a service truly needs the person themselves, the agent reduces that to one credential or one tap on the easiest surface available. The app and dashboard exist to make approvals and credentials effortless, and neither is required. Extends #23 and #82 from when to escalate and how to ask, to what the person's whole part is.
+
+Check: An outbound check that holds a message giving the person any task other than a decision, a requested change or a credential, tested on both sides with paraphrases, including that a link to finished work passes. A live proof for each supported service: a fresh agent enables it through a real conversation, and the record shows the person did nothing but approve and supply credentials.
+Terms: term:surface
 
 ## 13. Quantitative Claims Must Bind a Subject
 
