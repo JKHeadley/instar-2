@@ -1,8 +1,8 @@
 # Change review — restore abandoned worker slot recovery
 
 Subject base: 1d10dea2e7b0e88d35f964fa456573451229ac33
-Review state: open
-Reviewed content: none
+Review state: frozen
+Reviewed content: sha256:33c36f5c594216843c389ba090ec75b445c5531fe110fc3a6e819f0631ce92d9
 Outcome: Restore the previously reviewed recovery of dead launch reservations on the answering live base, without adding another behavior change.
 Affected rules: 60, 61, 49, 74, 101, 112, 113
 Affected carryover rows: 21, 47, 50
@@ -27,6 +27,8 @@ Subject (10 paths): generated/capabilities.json, generated/capabilities.md, gene
 
 Decision: RR-RESTORE-1 | Restored only resource-owner code and its can-fail tests from 45ce50d0 onto 1d10dea2; no unrelated source change. | reported=.instar/lanes/SEAM-LEDGER.md
 Decision: RR-RESTORE-2 | The focused resource-owner file passed 39/39. Native composition passed 10/10 after its exact digest was declared. | reported=.instar/lanes/SEAM-LEDGER.md
+
+Decision: RR-RESTORE-3 | Independent Astra read-only review of cba79ee69 found the restored resource owner byte-identical to 45ce50d0 and returned YES conditional on exact-head gates. It warned that complete settlement can take time under denied process reads, and that the three named carryover rows are not closed by this contribution alone. | reported=.instar/lanes/SEAM-LEDGER.md
 
 ## Closing block
 
