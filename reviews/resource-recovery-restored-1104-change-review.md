@@ -25,10 +25,10 @@ Deferral: none
 
 Subject (10 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, scripts/resource-owner.mjs, src/assembly/harness.declarations.json, tests/integration/resource-owner.test.ts
 
-Decision: RR-RESTORE-1 | Restored only resource-owner code and its can-fail tests from 45ce50d0 onto 1d10dea2; no unrelated source change. | reported=.instar/lanes/SEAM-LEDGER.md
-Decision: RR-RESTORE-2 | The focused resource-owner file passed 39/39. Native composition passed 10/10 after its exact digest was declared. | reported=.instar/lanes/SEAM-LEDGER.md
+Decision: RR-RESTORE-1 | Restored only resource-owner code and its can-fail tests from 45ce50d0 onto 1d10dea2; no unrelated source change. | reported=reviews/resource-recovery-restored-1104-report.md
+Decision: RR-RESTORE-2 | The focused resource-owner file passed 39/39. Native composition passed 10/10 after its exact digest was declared. | reported=reviews/resource-recovery-restored-1104-report.md
 
-Decision: RR-RESTORE-3 | Independent Astra read-only review of cba79ee69 found the restored resource owner byte-identical to 45ce50d0 and returned YES conditional on exact-head gates. It warned that complete settlement can take time under denied process reads, and that the three named carryover rows are not closed by this contribution alone. | reported=.instar/lanes/SEAM-LEDGER.md
+Decision: RR-RESTORE-3 | Independent Astra read-only review of cba79ee69 found the restored resource owner byte-identical to 45ce50d0 and returned YES conditional on exact-head gates. It warned that complete settlement can take time under denied process reads, and that the three named carryover rows are not closed by this contribution alone. | reported=reviews/resource-recovery-restored-1104-report.md
 
 ## Closing block
 

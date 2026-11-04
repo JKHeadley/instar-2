@@ -1,0 +1,5 @@
+# Restoring worker reservation recovery on the answering build
+
+- RR-RESTORE-1: Copied `scripts/resource-owner.mjs` and `tests/integration/resource-owner.test.ts` byte-for-byte from the former live build `45ce50d0` onto answering build `1d10dea2`. The source change restores a complete settlement census and a read-only elevated fallback for denied process reads. It does not change conversation dispatch.
+- RR-RESTORE-2: Focused resource-owner tests passed 39/39. Native composition passed 10/10 after updating the declared digest for the copied source. The first exact-head full run passed its code tests and durability tests; its final review check rejected this report's original external ledger locator. This report is the correction. The corrected exact-head release run and live proof remain due.
+- RR-RESTORE-3: Independent Astra reviewed the copied source at `cba79ee69`, confirmed byte identity with `45ce50d0`, and returned YES conditional on exact-head gates and real live work. Complete settlement may be slow when process reads are denied. The change contributes to carryover rows 21, 47 and 50; it does not prove those rows closed.
