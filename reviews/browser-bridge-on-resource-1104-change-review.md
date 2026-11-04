@@ -14,6 +14,7 @@ Side effects: The configured agent-owned Chrome tab can navigate through two to 
 Undo and recovery: Restore live 47b9c823 if the combined build fails. Retain prepared and uncertain effect records; do not replay an uncertain identity.
 Multi-machine posture: Owner browser stays local to its signed-in profile; worker remains separate. No new remote credential or browser fallback.
 Layer below: Compared the two parent trees and the seven generated conflicts. No production source file conflicted; browser source is byte-identical to reviewed 24194ed8, and resource-owner source is byte-identical to live 47b9c823.
+1.x reference: Reuses the PID-addressed Chrome Apple Event and active-tab behavior in 1.x `src/core/PlainChromeReloginBrowser.ts` and `src/templates/scripts/browser/chrome-js.sh`, and dead-holder recovery from `src/core/hostTestRunnerSemaphore.ts`. The 2.0 owner bridge keeps profile custody on the owner side and adds only bounded named-page sequencing; its resource recovery also requires a descendant census before returning worker capacity. This does not claim general 1.x browser parity before the real multi-step group task.
 Bug class: none
 Bug evidence: none
 Hook bypass: none
