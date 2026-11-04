@@ -26,9 +26,9 @@ Subject (2 paths): scripts/resource-owner.mjs, tests/integration/resource-owner.
 
 Decision: R1 | The new recovery test passes with 80 unrelated candidates and a dead launch, fails when the complete recovery join is removed, and retains the debit for an unreadable candidate. | reported=targeted test run 2026-11-03 20:19 PST and negative control 20:22 PST
 Decision: R3 | The ordinary-settlement test passes with 80 unrelated candidates and a verified returned debit. Removing the complete settlement join makes it fail. | reported=targeted test and negative control 2026-11-03 20:24 PST
-Decision: R2 | Full resource-owner integration file passed 38/38 before the final fallback correction. The added privileged-read failure test passes; final 39-case file and exact-head gate remain required before switch. | reported=targeted test run 2026-11-03 20:43 PST
+Decision: R2 | Final resource-owner integration file passes 39/39, including the denied privileged-read fallback and both-read-denied membership case. Exact-head full gate and independent Astra review remain required before switch. | reported=focused test run 2026-11-03 20:44 PST
 Decision: R4 | The changed resource owner is in the native harness composition. Its actual contract cases passed 9/10; the one failed assertion was the prior certified byte digest. Re-declared the measured composition digest after the contract run, then rerun this test and lint before full gate. | reported=native contract 2026-11-03 20:36 PST
-Decision: R5 | A denied privileged lsof read returns null and triggers the ordinary read, while both denied reads still keep membership unknown. The final fallback branch has a direct can-fail test; its native composition digest was refreshed again. | reported=targeted test 2026-11-03 20:43 PST
+Decision: R5 | A denied privileged lsof read returns null and triggers the ordinary read, while both denied reads still keep membership unknown. The final fallback branch has a direct can-fail test; its native composition digest was refreshed again and all 10 native harness contract tests pass. | reported=focused test run 2026-11-03 20:44 PST
 
 ## Closing block
 
