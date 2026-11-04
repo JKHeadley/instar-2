@@ -16,9 +16,9 @@ Undo and recovery: revert this source change. Journal shape is unchanged, so old
 Multi-machine posture: the existing owner, journal intent binding and receipt protocol remain authoritative across restart and ownership transfer; no new machine-local or shared state.
 Layer below: summary/request recording, recordReplyLoop, fulfillmentSupported, answer report admission, applyIntentObligations, sentObligations and receipt closure. Neither captured commitment had agentPromise; widening that validator would be the wrong repair.
 Bug class: live-path
-Bug evidence: tests/preview/fixtures/report-settlement-46040806-2026-11-04.json; tests/preview/report-settlement-live.test.ts
+Bug evidence: reproducer=tests/preview/report-settlement-live.test.ts; live=tests/preview/fixtures/report-settlement-46040806-2026-11-04.json
 Hook bypass: none. core.hooksPath was unset; the resolved common hooks directory contained only sample hooks.
-Convergence: author submission; independent review and exact-head live copy trial remain with the desk.
+Convergence: none
 
 ## Cause and limits
 
