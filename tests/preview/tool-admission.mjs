@@ -251,9 +251,9 @@ export function admitToolCallEffect(tool, input, config, now) {
   if (tool === OWNER_BROWSER_TOOL) {
     let policy;
     try { policy = decodeEffectPolicy(config.effectPolicy); } catch { /* exact grant unavailable */ }
-    if (!ownerBrowserRequest(input) || !policy || !ownerBrowserPolicy(policy, now))
+    if (!ownerBrowserRequest(input) || !policy || !ownerBrowserPolicy(policy, now, input))
       return { admitted: false, disposition: 'refused', effect: 'tool:mcp', target: tool,
-        reason: 'owner browser requires the exact account-profile request, reversible registration and current EchoOfDawn read grant (Rules 18/57)' };
+        reason: 'owner browser requires the bounded page request and same-grant page scope, reversible registration and current EchoOfDawn read grant (Rules 18/57)' };
     return admitToolEffect({ effect: 'tool:mcp', target: tool }, config, now);
   }
   const network = CODEX_NETWORK_READ_TOOLS.includes(tool);

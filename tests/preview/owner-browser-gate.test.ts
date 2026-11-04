@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { connect } from 'node:net';
+import { runInNewContext } from 'node:vm';
 import { spawn } from 'node:child_process';
 // @ts-expect-error physical checkpoint
 import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
@@ -12,30 +13,34 @@ import { admitToolCallEffect } from './tool-admission.mjs';
 import { prepareSessionConnectors, admitSessionConnector } from './session-connectors.mjs';
 // @ts-expect-error plain fixed contract
 import { OWNER_BROWSER_TOOL } from './owner-browser-contract.mjs';
+// @ts-expect-error physical owner adapter
+import { createOwnerBrowser } from './owner-browser.mjs';
 const close: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const fn of close.splice(0).reverse()) await fn(); });
 const input = { page: 'account-profile' };
 const observation = { status: 'observed', page: 'account-profile', account: 'EchoOfDawn', title: 'Your profile', observedAt: 10, truncated: false };
-async function world() {
+async function world(options: { browser?: ReturnType<typeof createOwnerBrowser>; disabled?: boolean; pages?: string[] } = {}) {
   let stopped = false, owner = true, time = 10, failAppend = false, failObserved = false, granted = true, check = 'clear';
+  let grantId = 'read';
   let dispatches = 0, block = false, release = () => {};
   const rows: { id: string; state?: string; cause?: string }[] = [];
   const policy = () => ({ type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [],
     registered: [{ effect: 'tool:mcp', target: OWNER_BROWSER_TOOL, consequence: 'data', reversibility: 'reversible', reach: 'agent', costUsd: 0, source: 'operator:read' }],
-    grants: granted ? [{ id: 'read', effect: 'tool:mcp', target: OWNER_BROWSER_TOOL, approves: ['scope'], source: 'operator:read', custodian: 'owner', recovery: 'withdraw', expiresAt: 100 }] : [] });
+    grants: granted ? [{ id: grantId, ...(options.pages ? { ownerBrowserPages: options.pages } : {}), effect: 'tool:mcp', target: OWNER_BROWSER_TOOL, approves: ['scope'], source: 'operator:read', custodian: 'owner', recovery: 'withdraw', expiresAt: 100 }] : [] });
   const append = (row: { id: string; state?: string }) => { if (failAppend || (failObserved && row.state === 'observed')) throw Error('disk unavailable'); rows.push(row); };
   const effects = createToolEffectOwner({ append, stopped: () => stopped || !owner, now: () => time,
     prepared: (id: string) => rows.some(row => row.id === id),
     decide: (tool: string, value: unknown) => admitSessionConnector({ tool, input: value, config: { operations: [], effectPolicy: policy() }, mcp: null,
       enabled: false, now: time, decide: admitToolCallEffect }) });
   const gate = await createAdmissionGate({ append, effects, stopped: () => stopped || !owner, now: () => time, held: () => check,
-    ownerBrowser: Object.assign(async () => { dispatches++; if (block) await new Promise<void>(resolve => { release = resolve; }); return observation; },
+    ownerBrowser: options.disabled ? null : options.browser ?? Object.assign(async () => { dispatches++; if (block) await new Promise<void>(resolve => { release = resolve; }); return observation; },
       { binding: () => ({ profileId: 'echoofdawn-github', account: 'EchoOfDawn', ownership: 'agent' }) }) });
   close.push(() => gate.stop());
   const edge = { id: 'session-work-edge:test:1', child: 'claim', budget: { deadline: 100 } };
   const open = () => gate.open('claim', { framework: 'claude-code', allowance: 2, edge }); open();
   return { gate, rows, effects, edge, open, count: () => dispatches, release: () => release(),
-    set: (patch: { stop?: boolean; owner?: boolean; now?: number; append?: boolean; observed?: boolean; grant?: boolean; held?: string; block?: boolean }) => {
+    set: (patch: { grantId?: string; stop?: boolean; owner?: boolean; now?: number; append?: boolean; observed?: boolean; grant?: boolean; held?: string; block?: boolean }) => {
+      grantId = patch.grantId ?? grantId;
       stopped = patch.stop ?? stopped; owner = patch.owner ?? owner; time = patch.now ?? time; failAppend = patch.append ?? failAppend;
       failObserved = patch.observed ?? failObserved; granted = patch.grant ?? granted; check = patch.held ?? check; block = patch.block ?? block;
     } };
@@ -146,4 +151,53 @@ it('the reserved owner connector never inherits a configured MCP credential or a
   expect(prepared.launch.owner_github.env).toBeUndefined();
   expect(prepared.nonces).toBeUndefined();
   expect(readFileSync(prepared.config, 'utf8')).not.toMatch(/COOKIE|browser-cookie|arbitrary/u);
+});
+
+it('executes an authorized sequence through the real MCP socket, admission and DOM; a disabled bridge cannot pass', async () => {
+  for (const [disabled, count] of [[false, 2], [true, 2], [false, 4]] as const) {
+    const pages = Array.from({ length: count }, (_, i) => i % 2 ? 'account-repositories' : 'account-profile');
+    let url = new URL('https://github.com/settings/profile'), evaluations = 0;
+    const browser = createOwnerBrowser({ binding: () => ({ profileId: 'echoofdawn-github', userDataDir: '/owned/chrome' }),
+      platform: 'darwin', uid: 501, now: () => 10, hold: async () => ({ release: async () => {} }), wait: async () => {},
+      scrub: (s: string) => s, held: () => 'clear', execute: async (command: string, args: string[]) => {
+        if (command === '/bin/ps') return '81453 501 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=/owned/chrome';
+        evaluations++;
+        return runInNewContext(args.at(-1)!, { location: { href: url.href, origin: url.origin, pathname: url.pathname, search: url.search,
+          assign: (target: string) => { url = new URL(target); } }, document: { readyState: 'complete', title: count === 4 ? '\ud800'.repeat(256) : `Title ${url.pathname}`,
+          querySelector: (selector: string) => selector.startsWith('form') ? null : { content: 'EchoOfDawn' } } });
+      } });
+    const w = await world({ browser, disabled, pages }), root = mkdtempSync(join(tmpdir(), 'owner-sequence-'));
+    close.push(async () => { rmSync(root, { recursive: true, force: true }); });
+    const port = await prepareSessionConnectors({ mcp: null, privateDirectory: root, identity: null, check: () => 'clear',
+      ownerRead: (id: string, value: unknown) => w.gate.observeOwner('claim', id, value) });
+    close.push(() => port.close());
+    const server = port.launch().launch.owner_github;
+    const child = spawn(server.command, server.args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    const reply = new Promise<string>((resolve, reject) => { let text = ''; child.stdout.on('data', chunk => { text += chunk; });
+      child.on('error', reject); child.on('exit', code => code === 0 ? resolve(text) : reject(Error(`client exit ${code}`))); });
+    child.stdin.end(`${JSON.stringify({ jsonrpc: '2.0', id: 41, method: 'tools/call', params: { name: 'observe', arguments: { pages } } })}\n`);
+    const result = JSON.parse(JSON.parse(await reply).result.content[0].text);
+    if (disabled) { expect(result.status).toBe('refused'); expect(evaluations).toBe(0); expect(w.rows).toEqual([]); }
+    else {
+      expect(result.status).toBe('observed'); expect(result.observations.map((row: { page: string }) => row.page)).toEqual(pages);
+      expect(evaluations).toBe(count * 2 - 1);
+      if (count === 4) expect(Buffer.byteLength(JSON.stringify(result))).toBeGreaterThan(4096);
+      expect(w.rows.map(row => row.state)).toEqual(['prepared', 'observed']);
+      expect(JSON.parse(w.rows[0]!.cause!).authorization.input).toEqual({ pages });
+    }
+  }
+});
+
+it('refuses ungranted, expired and stopped sequences and withholds observations when the exact grant is replaced', async () => {
+  const pages = ['account-profile', 'account-repositories'];
+  const uncovered = await world();
+  expect((await uncovered.gate.observeOwner('claim', 'sequence', { pages })).status).toBe('refused'); expect(uncovered.count()).toBe(0);
+  for (const patch of [{ now: 100 }, { stop: true }, { grant: false }]) {
+    const w = await world({ pages }); w.set(patch);
+    expect((await w.gate.observeOwner('claim', 'sequence', { pages })).status).toBe('refused'); expect(w.count()).toBe(0);
+  }
+  const w = await world({ pages }); w.set({ block: true });
+  const result = w.gate.observeOwner('claim', 'sequence', { pages });
+  w.set({ grantId: 'replacement-read' }); w.release();
+  expect((await result).status).toBe('refused'); expect(w.rows.map(row => row.state)).toEqual(['prepared']);
 });
