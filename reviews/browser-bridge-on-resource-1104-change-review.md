@@ -1,0 +1,30 @@
+# Change review — browser bridge on current live resource recovery
+
+Subject base: 47b9c8234e85856ca3aeee322927621139af4342
+Review state: open
+Reviewed content: none
+Outcome: Merge the independently reviewed bounded owner GitHub read sequence onto the answering resource-recovery build, retaining its worker-slot repair. The only merge conflicts were generated register outputs; regenerate those against the merged source commit.
+Affected rules: 1, 4, 18, 28, 34, 36, 42, 44, 49, 55, 57, 60, 61, 62, 63, 66, 74, 78, 84, 95, 100, 101, 103, 111, 113, 116
+Affected floors: secrets — owner-side fixed DOM projection and scrub stay in place; spend cap — no model budget change; stop — the same claim and deadline bound every read; no duplicate sends — read-only operation admits no send or write; durable intake — existing effect preparation and exact grant remain prerequisites.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: The combined browser and live worker paths touch protected task execution and require an exact-head full gate and live proof.
+Side effects: The configured agent-owned Chrome tab can navigate through two to four named GitHub pages. The worker receives bounded observations, not profile custody. The resource-owner recovery remains as in the live build.
+Undo and recovery: Restore live 47b9c823 if the combined build fails. Retain prepared and uncertain effect records; do not replay an uncertain identity.
+Multi-machine posture: Owner browser stays local to its signed-in profile; worker remains separate. No new remote credential or browser fallback.
+Layer below: Compared the two parent trees and the seven generated conflicts. No production source file conflicted; browser source is byte-identical to reviewed 24194ed8, and resource-owner source is byte-identical to live 47b9c823.
+Bug class: none
+Bug evidence: none
+Hook bypass: none
+Convergence: claimed
+Prompt review: no prompt or model dispatch change.
+Deferral: generated/register.json:1 | not-a-deferral=generated source hash was regenerated from the merged commit; the original branch's separate missing Part Two authority is unchanged and remains open.
+
+Decision: BROWSER-MERGE-1104-1 | Merge reviewed 24194ed8 onto live 47b9c823; retain live generated output only for the merge commit, then regenerate all seven outputs from that exact merged source. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/SEAM-LEDGER.md
+
+## Closing block
+
+simplestRobustRoute: Reuse the existing owner read bridge with explicit page scope and the live resource recovery, under the same grant and custody boundary.
+80/20: The two browser test files and register lifecycle test passed 31/31 on the combined branch. Full exact-head suite, independent combination review and a real signed-in multi-step group task remain required before release. No new browser service or credential custody path.
+VERDICT: author submission; this record asserts no independent verdict.
