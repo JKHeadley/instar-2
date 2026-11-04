@@ -50,8 +50,7 @@ Prompt finding: 85544c20941f | protocol-literal | Existing runner protocol or fi
 Prompt finding: e8708c7fea24 | protocol-literal | Existing runner protocol or fixed status text; unchanged by this repair and not a semantic answer prescription.
 Deferral: tests/preview/fixtures/report-settlement-46040806-2026-11-04.json:53 | not-a-deferral=Captured model text or replay setup/description, not deferred implementation work.
 Deferral: tests/preview/fixtures/report-settlement-46040806-2026-11-04.json:54 | not-a-deferral=Captured model text or replay setup/description, not deferred implementation work.
-Deferral: tests/preview/report-settlement-live.test.ts:71 | not-a-deferral=Captured model text or replay setup/description, not deferred implementation work.
-Deferral: tests/preview/report-settlement-live.test.ts:149 | not-a-deferral=Captured model text or replay setup/description, not deferred implementation work.
+Deferral: tests/preview/report-settlement-live.test.ts:72 | not-a-deferral=Captured model text or replay setup/description, not deferred implementation work.
 
 simplestRobustRoute: this is the simplest robust route: reuse current model report selection and the existing bounded format retry, deduplicate only exact already-present result bytes, and retain the existing final-text and receipt checks. Semantic merging or a new settlement protocol would add authority and recovery machinery without being necessary for the captured case.
 80/20: author checks complete; independent review and exact-head live delivery remain desk-owned.

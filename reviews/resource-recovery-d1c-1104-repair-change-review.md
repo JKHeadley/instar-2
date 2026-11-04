@@ -26,7 +26,7 @@ Generated artifacts: the seven generated register files refresh source pins from
 
 Verification: claim-scoped-floor also passes (14 cases), for 25 targeted cases total. The added combined case fails on repair base with zero result occurrences; the wrapped neighbor passes. After repair, 11 regression cases pass, including all four wrapped/verbatim draft and omitted/quoted revision combinations, one selected key, omitted result, unknown receipt, claim removal and old unsupported fulfillment proposals. Captured request 46040805, answer 46040806 and the retained one real repaired-model response are replayed. Typecheck passes. Final gate output is retained in the absolute desk PROGRESS record.
 
-Residue: carryover row 01 remains OPEN for request/report/receipt-bound live proof; the previous D.sh aggregate-count proof cannot distinguish delivery from rework. One recorded response is not a reliability estimate or deployed D1c pass.
+Evidence limits: carryover row 01 remains OPEN for request/report/receipt-bound live proof; the previous D.sh aggregate-count proof cannot distinguish delivery from rework. One recorded response is not a reliability estimate or deployed D1c pass.
 
 Prompt finding: 4106b49fff07 | protocol-literal | Existing runner protocol text, unchanged by this repair.
 Prompt finding: 849db3a6296a | protocol-literal | Existing runner protocol text, unchanged by this repair.
