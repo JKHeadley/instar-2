@@ -27,6 +27,7 @@ Subject (2 paths): scripts/resource-owner.mjs, tests/integration/resource-owner.
 Decision: R1 | The new recovery test passes with 80 unrelated candidates and a dead launch, fails when the complete recovery join is removed, and retains the debit for an unreadable candidate. | reported=targeted test run 2026-11-03 20:19 PST and negative control 20:22 PST
 Decision: R3 | The ordinary-settlement test passes with 80 unrelated candidates and a verified returned debit. Removing the complete settlement join makes it fail. | reported=targeted test and negative control 2026-11-03 20:24 PST
 Decision: R2 | Full resource-owner integration file passes 38/38, including the unreadable-cwd negative case with both privileged and ordinary reads denied. Full exact-head gate and independent Astra review remain required before any switch. | reported=targeted test run 2026-11-03 20:30 PST
+Decision: R4 | The changed resource owner is in the native harness composition. Its actual contract cases passed 9/10; the one failed assertion was the prior certified byte digest. Re-declared the measured composition digest after the contract run, then rerun this test and lint before full gate. | reported=native contract 2026-11-03 20:36 PST
 
 ## Closing block
 
