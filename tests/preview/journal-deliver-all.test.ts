@@ -97,7 +97,7 @@ it('the work step is told its sent reply is not the result; a valid report that 
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
 
-it('distinct obligations with the same result text each keep their own subject line (Rules 8, 46)', async () => {
+it('distinct obligations with the same result text name both subjects with one result (Rules 8, 46)', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-deliver-same-')));
   try {
     const MONDAY = 'I\'ll check whether Monday is free and report later.', FRIDAY = 'I\'ll check whether Friday is free and report later.';
@@ -109,8 +109,9 @@ it('distinct obligations with the same result text each keep their own subject l
     const sends = w.sent.length;
     w.clock.now += MINUTE; await w.say('hi', JSON.stringify({ reply: 'Yes. Hi!', memory: [] }));
     const reply = w.sent.slice(sends).join('\n');
-    expect(reply).toContain(`Follow-up on "${MONDAY}": Yes.`);
-    expect(reply).toContain(`Follow-up on "${FRIDAY}": Yes.`);
+    expect(reply).toContain(`Follow-up on "${MONDAY}"; "${FRIDAY}": Yes.`);
+    expect(reply.split('Yes.').length - 1).toBe(1);
+    expect(w.journal.view.order.at(-1)!.answerReports).toHaveLength(2);
     expect(loopHealth(w.journal.view, w.clock.now).awaitingDelivery).toBe(0);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -129,8 +130,9 @@ it('two loops opened by one message keep both subjects even when both answers re
     const sends = w.sent.length;
     await w.say('hi', JSON.stringify({ reply: 'Hi!', memory: [] }));
     const reply = w.sent.slice(sends).join('\n');
-    expect(reply).toContain(`Follow-up on "${MONDAY}": Yes.`);
-    expect(reply).toContain(`Follow-up on "${FRIDAY}": Yes.`);
+    expect(reply).toContain(`Follow-up on "${MONDAY}"; "${FRIDAY}": Yes.`);
+    expect(reply.split('Yes.').length - 1).toBe(1);
+    expect(w.journal.view.order.at(-1)!.answerReports).toHaveLength(2);
     expect(loopHealth(w.journal.view, w.clock.now).awaitingDelivery).toBe(0);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }

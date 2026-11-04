@@ -19,7 +19,7 @@ const decode = (raw: string) => {
   return result.value;
 };
 
-async function replay(mode: 'selected' | 'omitted' | 'old-retry' | 'one-selected' | 'unknown' | 'trimmed' | 'verbatim' | 'revision', verbatimRevision = false, revisionKeepsResult = false) {
+async function replay(mode: 'selected' | 'omitted' | 'old-retry' | 'one-selected' | 'unknown' | 'trimmed' | 'verbatim' | 'revision', verbatimRevision = false, revisionKeepsResult = false, distinctRevisionSubjects = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'report-settlement-'))), path = join(root, 'journal');
   const key = new Uint8Array(32).fill(47);
   let now = 1793779584482, later = false, attempts = 0;
@@ -31,8 +31,8 @@ async function replay(mode: 'selected' | 'omitted' | 'old-retry' | 'one-selected
   const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
     prepareModel: input => mode === 'revision' ? prepareJournalEnvelope(input, 'claude-opus-5-5', 'offline', now) : input.context,
     model: async input => {
-      if (!later) return JSON.stringify({ reply: mode === 'revision' ? captured.commitment.quote : captured.acknowledgement.text,
-        memory: [], dated: [], openLoops: mode === 'revision' ? [{ kind: 'judgment', quote: captured.commitment.quote, waitsOn: 'nothing' }] : captured.acknowledgement.loops });
+      if (!later) return JSON.stringify({ reply: mode === 'revision' && !distinctRevisionSubjects ? captured.commitment.quote : captured.acknowledgement.text,
+        memory: [], dated: [], openLoops: mode === 'revision' && !distinctRevisionSubjects ? [{ kind: 'judgment', quote: captured.commitment.quote, waitsOn: 'nothing' }] : captured.acknowledgement.loops });
       if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'The planning result remains owed.', people: [], commitments: [], closed: [] });
       attempts++;
       if (mode === 'old-retry') return decode(captured.answers[Math.min(attempts - 1, 1)]!);
@@ -47,8 +47,8 @@ async function replay(mode: 'selected' | 'omitted' | 'old-retry' | 'one-selected
       elapsedMs: () => 0,
       jev: async () => ({ latencyMs: 1, value: { model: 'jev-1.13.0', answers: { raw_path: { type: 'noul', noul: later ? 0.9 : 0.01 } } } }),
       escalate: async (_text, _id, _prompt, _rules, _deadline, operation) => ({
-        verdict: operation === 'revision' ? 'pass' as const : 'violation' as const,
-        ruleIds: operation === 'revision' ? [] : ['raw_path' as const], confidence: null, latencyMs: 1 }),
+        verdict: !later || operation === 'revision' ? 'pass' as const : 'violation' as const,
+        ruleIds: !later || operation === 'revision' ? [] : ['raw_path' as const], confidence: null, latencyMs: 1 }),
       revise: async () => ({ state: 'complete' as const, text: revisedText,
         dispositions: [{ objection: 'raw_path', decision: 'accept' as const, reason: 'Revised the introduction.' }] }),
     } } : {}),
@@ -156,4 +156,15 @@ it.each([[false, false], [true, false], [false, true], [true, true]])('a revisio
   expect(result.turn.intent!.split(captured.reports[0]!).length - 1).toBe(1);
   expect(result.closed).toEqual([1, 2]);
   for (const key of keys) expect(result.work[key]!.report).toMatchObject({ boundTo: result.turn.id, delivered: result.turn.id });
+});
+
+it.each([false, true])('keeps both distinct selected subjects through revision with one exact result (quoted: %s)', async keepsResult => {
+  const result = await replay('revision', true, keepsResult, true);
+  expect(result.turn.answerReports).toEqual(keys);
+  expect(result.sent).toHaveLength(1);
+  expect(result.turn.intent).toContain(`Follow-up on "${captured.commitment.quote.slice(0, 80)}`);
+  expect(result.turn.intent).toContain(`; "${captured.acknowledgement.loops[0]!.quote.slice(0, 80)}`);
+  expect(result.turn.intent!.split(captured.reports[0]!).length - 1).toBe(1);
+  expect(result.closed).toEqual([1, 2]);
+  expect(result.waiting).toEqual([]);
 });

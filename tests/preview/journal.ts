@@ -9592,18 +9592,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const reports: string[] = [], carried = new Set(journal.view.order
               .filter(item => item.id !== turn.id && item.intent === undefined && !actionWithdrawn(journal.view, item)).flatMap(item => item.answerReports ?? []));
             if (replying)
-              for (const item of pendingReports(journal.view, { thread: turn.thread }).filter(entry => !carried.has(entry.key)
+              for (const group of reportGroups(pendingReports(journal.view, { thread: turn.thread }).filter(entry => !carried.has(entry.key)
                 && selectedReports.includes(entry.key) && !rejectedReports.some(rejected => rejected.key === entry.key)
                 && offeredReports.some(offered => offered.key === entry.key && offered.text === entry.text)
-                && !obligations.deliveryCancels?.some(cancel => entry.key === `commitment:${cancel.id}`))) {
-                // Selection is per identity; rendering is per exact result. Never infer selection from
-                // matching text. The final-text check and receipt still bind/settle every selected key.
-                if (!text.includes(item.text)) {
-                  const line = reportLine(item);
-                  if (Buffer.byteLength(text) + Buffer.byteLength(line) > MAX_ANSWER_BYTES) break;
-                  text = `${text.trimEnd()}${line}`;
-                }
-                reports.push(item.key);
+                && !obligations.deliveryCancels?.some(cancel => entry.key === `commitment:${cancel.id}`)))) {
+                // Selection is per identity; rendering is per exact result. Equal answers to distinct
+                // subjects still name every subject, without repeating the result or inferring selection.
+                const candidate = carryReport(text, group);
+                if (Buffer.byteLength(candidate) > MAX_ANSWER_BYTES) break;
+                text = candidate;
+                reports.push(...group.keys);
               }
             const rework = replying && text.trim() ? rejectedReports.flatMap(item => {
               const report = offeredReports.find(offered => offered.key === item.key);
@@ -9907,9 +9905,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // review of the revision sees it and an objection to the prose never withholds a result (live pre-switch
             // sb-w4-updaterecord 04bed622, room four, D1c: the revision folded three results into its own wording, so
             // none occurred verbatim and all three went back to owned work).
-            const results = [...new Map(pendingReports(journal.view)
-              .filter(item => turn.answerReports?.includes(item.key) && reply.includes(item.text))
-              .map(item => [item.text, { text: item.text, line: reply.includes(reportLine(item)) ? reportLine(item) : item.text }])).values()];
+            const results = reportGroups(pendingReports(journal.view)
+              .filter(item => turn.answerReports?.includes(item.key) && reply.includes(item.text)))
+              .map(item => ({ ...item, line: reply.includes(item.line) ? item.line : item.text }));
             // A mandatory content objection can be removed without rewriting the answer, but the
             // resulting answer still needs its own contextual review. Keep part of the shared
             // deadline for that review when the reviewer named a locatable claim. T1's real
@@ -9970,8 +9968,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 let body = turn.revision.text.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
                 if (continuity && body.startsWith(continuity.disclosure)) body = body.slice(continuity.disclosure.length).trimStart();
                 const prose = actionHeader === undefined ? disclosed(body) : `${actionHeader}\n${body}`;
-                const candidate = `${prose.trimEnd()}${results.filter(item => !prose.includes(item.text))
-                  .map(item => item.line === item.text ? `\n\n${item.text}` : item.line).join('')}`;
+                const candidate = results.reduce(carryReport, prose);
                 // The agent keeping its draft unchanged is its answer, not a new candidate: nothing to re-review.
                 // The same text with a newly declared investigation record is a new candidate (plan #104).
                 if (!redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate)) {
@@ -10811,9 +10808,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     return result;
   };
-  /** The runner's line that carries one finished result in a reply (Rules 8, 92). */
-  const reportLine = (item: { subject: string; text: string }) =>
-    `\n\nFollow-up on "${clip(clean(redact(item.subject).text, true), 160)}": ${item.text}`;
+  /** Exact result grouping keeps every independently selected subject and identity (Rules 8, 46, 92). */
+  const reportGroups = (items: ReturnType<typeof pendingReports>) => {
+    const groups = new Map<string, typeof items>();
+    for (const item of items) groups.set(item.text, [...(groups.get(item.text) ?? []), item]);
+    return [...groups].map(([text, entries]) => {
+      const subjects = [...new Set(entries.map(item => clip(clean(redact(item.subject).text, true), 160)))];
+      return { text, keys: entries.map(item => item.key), sharedSubjects: subjects.length > 1,
+        line: `Follow-up on ${subjects.map(subject => `"${subject}"`).join('; ')}: ${text}` };
+    });
+  };
+  const carryReport = (text: string, item: { text: string; line: string; sharedSubjects: boolean }) => {
+    if (!text.includes(item.text)) return `${text.trimEnd()}\n\n${item.line}`;
+    // A bare shared result (for example "Yes.") cannot erase which selected questions it answers.
+    return item.sharedSubjects && !text.includes(item.line) ? text.replace(item.text, item.line) : text;
+  };
   /** The declared obligations a reply about to be sent actually says (Rules 6, 20-23, 99). */
   const sentObligations = (turn: Turn, reply: string, at: number) => {
     const open = new Set(openBlockers(journal.view).map(item => item.id));
