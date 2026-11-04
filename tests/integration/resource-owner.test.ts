@@ -320,6 +320,12 @@ it('ordinary settlement returns its debit with more than 64 unrelated cwd candid
   expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
 });
 
+it('treats a failed privileged cwd read as unavailable, allowing the ordinary-read fallback', async () => {
+  const unreadable = await hostQuery('/usr/bin/sudo',
+    ['-n', '/usr/sbin/lsof', '-a', '-d', 'cwd', '-p', '999999999', '-Fpn', '-w']);
+  expect(unreadable).toBeNull();
+});
+
 it('records launch evidence durably before the provider runs, and never runs a launch it could not record', { timeout: 30000 }, async () => {
   const root = dir(), ledgerPath = join(root, 'owned-launches.json'), marker = join(root, 'ran');
   // The provider reads the ledger as its first act: its own row must already be there.

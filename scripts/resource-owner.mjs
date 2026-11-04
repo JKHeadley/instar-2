@@ -142,7 +142,7 @@ export function hostQuery(file, args) {
       execFile(file, args, { timeout: settlementCwd ? 10000 : QUERY_TIMEOUT_MS,
         maxBuffer: settlementCwd ? 4 * 1024 * 1024 : 1024 * 1024, env: { PATH: '/usr/bin:/bin' } }, (error, stdout) => {
         // pgrep exits 1 when nothing matches; ps may exit 1 when a listed pid ended.
-        if (error && (typeof error.code !== 'number' || error.code > 1)) resolve(null);
+        if (error && (settlementCwd || typeof error.code !== 'number' || error.code > 1)) resolve(null);
         else resolve(String(stdout));
       });
     } catch { resolve(null); }
