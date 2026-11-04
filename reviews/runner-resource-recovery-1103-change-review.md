@@ -15,20 +15,21 @@ Side effects: At launch settlement and restart recovery, the owner asks password
 Undo and recovery: Revert this commit before a new switch. Existing undecidable rows stay in the ledger and their Six debits stay reserved. A verified-gone row closes through the existing settlement API exactly once.
 Multi-machine posture: Host-local process census and Six facts stay on the machine that owns the runner. No remote state or shared credential changes.
 Layer below: Ordinary cleanup could leave a ledger row and Six debit unresolved when its 64-candidate live-sampling budget yielded a partial result; recover() then inherited the same budget and also failed to return it. Nine open sets filled the installation. Settlement and recovery now check up to the existing complete census bound and use a read-only privileged cwd query for the separate harness account. Live one-second sampling remains bounded at 64. A failed or incomplete read remains unknown.
-Bug class: live accepted message waited before worker launch while the live runner stayed healthy.
-Bug evidence: Telegram 734 accepted at 19:45; only infrastructure ACK 735; resources.json recorded nine Six allocation refusals and zero active launches. Controlled recovery with full cwd census returned 9/9 old open sets and the same build resumed work. Message 736 later reported interruption caused by the controlled restart; it is not a browser result.
+Bug class: live-path
+Bug evidence: reproducer=tests/integration/resource-owner.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/owner-browser-live-config-1103/resource-recovery-evidence-1103.md
 Hook bypass: none
-Convergence: 1.x direct Claude sessions have no Six debit; its test semaphore immediately reclaims a provably dead holder PID. The 2.0 recovery retains its stronger escaped-descendant check and gives that one-time check sufficient scope.
+Convergence: claimed
+1.x reference: src/core/hostTestRunnerSemaphore.ts reclaims a provably dead holder PID; 2.0 retains escaped-descendant checks with a complete one-time census.
 Prompt review: no prompt change.
 Deferral: none
 
 Subject (2 paths): scripts/resource-owner.mjs, tests/integration/resource-owner.test.ts
 
-Decision: R1 | The new recovery test passes with 80 unrelated candidates and a dead launch, fails when the complete recovery join is removed, and retains the debit for an unreadable candidate. | reported=targeted test run 2026-11-03 20:19 PST and negative control 20:22 PST
-Decision: R3 | The ordinary-settlement test passes with 80 unrelated candidates and a verified returned debit. Removing the complete settlement join makes it fail. | reported=targeted test and negative control 2026-11-03 20:24 PST
-Decision: R2 | Final resource-owner integration file passes 39/39, including the denied privileged-read fallback and both-read-denied membership case. Exact-head full gate and independent Astra review remain required before switch. | reported=focused test run 2026-11-03 20:44 PST
-Decision: R4 | The changed resource owner is in the native harness composition. Its actual contract cases passed 9/10; the one failed assertion was the prior certified byte digest. Re-declared the measured composition digest after the contract run, then rerun this test and lint before full gate. | reported=native contract 2026-11-03 20:36 PST
-Decision: R5 | A denied privileged lsof read returns null and triggers the ordinary read, while both denied reads still keep membership unknown. The final fallback branch has a direct can-fail test; its native composition digest was refreshed again and all 10 native harness contract tests pass. | reported=focused test run 2026-11-03 20:44 PST
+Decision: RR1 | The new recovery test passes with 80 unrelated candidates and a dead launch, fails when the complete recovery join is removed, and retains the debit for an unreadable candidate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/owner-browser-live-config-1103/resource-recovery-evidence-1103.md
+Decision: RR3 | The ordinary-settlement test passes with 80 unrelated candidates and a verified returned debit. Removing the complete settlement join makes it fail. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/owner-browser-live-config-1103/resource-recovery-evidence-1103.md
+Decision: RR2 | Final resource-owner integration file passes 39/39, including the denied privileged-read fallback and both-read-denied membership case. Exact-head full gate and independent Astra review remain required before switch. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/owner-browser-live-config-1103/resource-recovery-evidence-1103.md
+Decision: RR4 | The changed resource owner is in the native harness composition. Its actual contract cases passed 9/10; the one failed assertion was the prior certified byte digest. Re-declared the measured composition digest after the contract run, then rerun this test and lint before full gate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/owner-browser-live-config-1103/resource-recovery-evidence-1103.md
+Decision: RR5 | A denied privileged lsof read returns null and triggers the ordinary read, while both denied reads still keep membership unknown. The final fallback branch has a direct can-fail test; its native composition digest was refreshed again and all 10 native harness contract tests pass. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/owner-browser-live-config-1103/resource-recovery-evidence-1103.md
 
 ## Closing block
 
