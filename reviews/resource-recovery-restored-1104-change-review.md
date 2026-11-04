@@ -2,7 +2,7 @@
 
 Subject base: 1d10dea2e7b0e88d35f964fa456573451229ac33
 Review state: frozen
-Reviewed content: sha256:33c36f5c594216843c389ba090ec75b445c5531fe110fc3a6e819f0631ce92d9
+Reviewed content: sha256:2e6d60046c42e26413f84aad61a68d79dca84e114e38ec65524e30a77cdf24f2
 Outcome: Restore the previously reviewed recovery of dead launch reservations on the answering live base, without adding another behavior change.
 Affected rules: 60, 61, 49, 74, 101, 112, 113
 Affected carryover rows: 21, 47, 50
@@ -16,7 +16,7 @@ Undo and recovery: Revert this restore before another switch. Undecidable rows r
 Multi-machine posture: Host-local census and Six allocation remain with the runner owner. No remote state or credential change.
 Layer below: The current live build inherited 13 unresolved old launch rows after rollback. This restores the same complete settlement census and privileged-read fallback that was live in 45ce50d0; it does not change conversation dispatch.
 Bug class: live-path
-Bug evidence: tests/integration/resource-owner.test.ts; live root owned-launches.json contained 13 orphan rows at 08:12:02 PST on 2026-11-04.
+Bug evidence: reproducer=tests/integration/resource-owner.test.ts (39 can-fail cases); live=.instar/lanes/preview-trial-root/justin-group-20261010/owned-launches.json had 13 orphan rows at 08:12:02 PST on 2026-11-04.
 Hook bypass: none
 Convergence: claimed
 1.x reference: src/core/hostTestRunnerSemaphore.ts returns a holder when its PID is provably dead; this implementation also accounts for escaped descendants.
@@ -25,10 +25,10 @@ Deferral: none
 
 Subject (10 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, scripts/resource-owner.mjs, src/assembly/harness.declarations.json, tests/integration/resource-owner.test.ts
 
-Decision: RR-RESTORE-1 | Restored only resource-owner code and its can-fail tests from 45ce50d0 onto 1d10dea2; no unrelated source change. | reported=reviews/resource-recovery-restored-1104-report.md
-Decision: RR-RESTORE-2 | The focused resource-owner file passed 39/39. Native composition passed 10/10 after its exact digest was declared. | reported=reviews/resource-recovery-restored-1104-report.md
+Decision: RR-RESTORE-1 | Restored only resource-owner code and its can-fail tests from 45ce50d0 onto 1d10dea2; no unrelated source change. | reported=docs/release-evidence/resource-recovery-restored-1104-report.md
+Decision: RR-RESTORE-2 | The focused resource-owner file passed 39/39. Native composition passed 10/10 after its exact digest was declared. | reported=docs/release-evidence/resource-recovery-restored-1104-report.md
 
-Decision: RR-RESTORE-3 | Independent Astra read-only review of cba79ee69 found the restored resource owner byte-identical to 45ce50d0 and returned YES conditional on exact-head gates. It warned that complete settlement can take time under denied process reads, and that the three named carryover rows are not closed by this contribution alone. | reported=reviews/resource-recovery-restored-1104-report.md
+Decision: RR-RESTORE-3 | Independent Astra read-only review of cba79ee69 found the restored resource owner byte-identical to 45ce50d0 and returned YES conditional on exact-head gates. It warned that complete settlement can take time under denied process reads, and that the three named carryover rows are not closed by this contribution alone. | reported=docs/release-evidence/resource-recovery-restored-1104-report.md
 
 ## Closing block
 
