@@ -111,7 +111,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/secret-custody.test.ts",
-        "hash": "sha256:9c0dd8dd76c59cb4856be241d509b0355c173b20d7ec01bbbc95a2768f3f6277"
+        "hash": "sha256:0a998aa470c755f539197daae667114096d519ce11c401c32019d6464d658e2c"
       }
     },
     {
@@ -144,6 +144,22 @@
       "artifact": {
         "path": "tests/preview/journal-conversation-session.test.ts",
         "hash": "sha256:365cbb867c146966a36ed5188068d1f3905554cedf7f58ebdb44dde7cc10a703"
+      }
+    },
+    {
+      "id": "PREVIEW-RESOURCE-ADMISSION",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/resource-admission-evidence.test.ts",
+        "hash": "sha256:70327b1c14c67ff05a0863bdb1288f89b824aae5cd7627961455e94120ff39f5"
+      }
+    },
+    {
+      "id": "PREVIEW-RULE-PROBES",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/proofs.test.ts",
+        "hash": "sha256:b84d1410fd6f663997907d804dd2a01c364a6d3320bc98d22dcad48ed34f72c8"
       }
     }
   ],

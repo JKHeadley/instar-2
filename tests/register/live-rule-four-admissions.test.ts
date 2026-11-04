@@ -55,15 +55,12 @@ describe('the live enumeration rule 4 asks for', () => {
     for (const rule of [60, 61]) {
       const holders = live.filter(d => (d.holds ?? []).some(h => h.rule === rule));
       expect(holders.map(d => d.id)).toEqual(['resource-owner.admit']);
-      // Deferred, not partial: the ceiling is enforced in code, but the can-fail fixture that
-      // proves it belongs to part ten's host tests and is not registered in the catalog yet.
-      // A deferral carries a part, a dated ceiling, an owner and an overdue action.
       const hold = (holders[0]!.holds ?? []).find(h => h.rule === rule) as
-        { class: string; part?: number; ceiling?: number; owner?: string; overdueAction?: string };
-      expect(hold.class).toBe('deferred');
-      expect(hold.part).toBe(10);
-      expect(hold.ceiling).toBeGreaterThan(1791000000000);
-      expect(hold.owner).toBeTruthy(); expect(hold.overdueAction).toBeTruthy();
+        { class: string; evidence?: { id: string; stage: string }; portion?: string; remainder?: string };
+      expect(hold.class).toBe('partial');
+      expect(hold.evidence).toEqual({ kind: 'fixture', id: 'PREVIEW-RESOURCE-ADMISSION', stage: 'build' });
+      expect(hold.portion).toBeTruthy();
+      expect(hold.remainder).toContain('Part Two');
     }
   });
 });

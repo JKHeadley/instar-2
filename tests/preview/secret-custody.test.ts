@@ -8,7 +8,7 @@ import { expect, it } from 'vitest';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { createSecretCustody, dueCredentialReminders, jwtExpiry, reminderSchedule, secretRef } from './secret-custody.js';
 import type { CredentialRecord } from './secret-custody.js';
-import { credentialSpans } from '../../src/recall/redact.js';
+import { credentialSpans, redact } from '../../src/recall/redact.js';
 
 const key = new Uint8Array(32).fill(23);
 const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'secret-custody-')));
@@ -22,6 +22,11 @@ it('PREVIEW-SECRET-WALL finds the exact credential spans redaction would remove'
   const spans = credentialSpans(text).map(s => [text.slice(s.start, s.end), s.kind]);
   expect(spans).toEqual([[TOKEN, 'github-token'], ['abcdefghijklmnopqrstuv', 'bearer-token'], ['hunter2hunter2', 'assigned-secret']]);
   expect(credentialSpans('no secrets here, just a 4-digit code 8637')).toEqual([]);
+});
+
+it('PREVIEW-SECRET-WALL removes a credential at the declared wall and preserves ordinary text', () => {
+  expect(redact(`keep this context ${TOKEN}`)).toEqual({ text: 'keep this context [redacted credential]', count: 1 });
+  expect(redact('keep this ordinary context')).toEqual({ text: 'keep this ordinary context', count: 0 });
 });
 
 it('returns a SecretRef only after a durable, read-back vault write, and never stores the value in the registry', () => {

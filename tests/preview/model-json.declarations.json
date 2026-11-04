@@ -42,13 +42,14 @@
     "holds": [
       {
         "rule": 36,
-        "class": "held",
+        "class": "partial",
         "evidence": {
           "kind": "fixture",
           "id": "PREVIEW-MODEL-JSON-ON-CAPTURE",
           "stage": "build"
         },
-        "semanticallyReviewed": "never"
+        "portion": "the real redacted provider result capture parses as one bare object; malformed and ambiguous neighbors are refused",
+        "remainder": "this capture proves only parseModelJson, not every real-world parser or every delivered model shape; no verified Part Two extract or independent semantic review"
       }
     ]
   }
