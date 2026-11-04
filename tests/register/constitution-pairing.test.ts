@@ -124,7 +124,7 @@ describe('runDaily', () => {
     const ghFn = (args: string[]) => {
       const path = args[1]!;
       const pulls = path.match(/commits\/(\w+)\/pulls$/);
-      if (pulls) return JSON.stringify(overrides.pullsFor?.(pulls[1]) ?? []);
+      if (pulls) return JSON.stringify(overrides.pullsFor?.(pulls[1]!) ?? []);
       if (/commits\/\w+$/.test(path)) return JSON.stringify({ commit: { committer: { date: '2026-11-01T00:00:00Z' } } });
       const pr = path.match(/pulls\/(\d+)$/);
       if (pr) return JSON.stringify({ state: 'closed', merged_at: '2026-11-02T00:00:00Z', base: { ref: 'main' }, body: 'no line' });

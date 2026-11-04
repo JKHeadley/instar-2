@@ -2,7 +2,6 @@
 export const INSTAR: string;
 export const INSTAR_2: string;
 export const WINDOW_MS: number;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
 export function touchesBook(repo: string, files: string[]): boolean;
 export function parseDeclaration(body: unknown): Any;
