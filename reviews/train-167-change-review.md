@@ -4,12 +4,12 @@ Subject base: 45ce50d0244ea2a29cb2bd31cd72f5eb44ea3003
 Review state: open
 Reviewed content: none
 Outcome: Integrate the exact reviewed report-delivery head and preserve its single-result rendering while retaining every selected subject through answer assembly and revision.
-Affected rules: 1, 4, 8, 10, 26, 34, 36, 37, 49, 57, 58, 69, 70, 74, 83, 90, 92, 101, 102, 111, 112, 113, 116
+Affected rules: 1, 4, 8, 10, 26, 34, 36, 37, 46, 49, 57, 58, 69, 70, 74, 83, 90, 92, 101, 102, 111, 112, 113, 116
 Affected floors: secrets — existing scrub/review; spend cap — existing bounded calls; stop — unchanged; no duplicate sends — exact selected text rendered once and unknown receipts remain unresolved; durable intake — unchanged journal and intent protocol.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
-Tier rationale: Integrates a model-facing delivered-result repair; exact reviewed bytes, no new integration runtime code.
+Tier rationale: Integrates a model-facing delivered-result repair and resolves its subject-label regression in answer assembly and revision; receipt and authority boundaries remain unchanged.
 Side effects: The integration repair renders one shared result under all its independently selected subjects. Existing single-subject behavior remains; grouping never infers selection or fulfillment authority. Shared headings can consume more bounded answer bytes, so a group that does not fit remains pending. Existing final-text, claim-scoped review and complete-receipt checks remain authoritative.
 Undo and recovery: Keep current live build until desk acceptance; revert the integration if rejected. Journal schema remains compatible; preserve uncertain delivery records and never resend an unknown effect.
 Multi-machine posture: Existing journal ownership, durable intent and receipt protocol unchanged across restart and owner transfer. No new store or peer requirement.
@@ -38,9 +38,9 @@ Subject (11 paths): generated/capabilities.json, generated/capabilities.md, gene
 Decision: train-167-merge | Ordinary merge of exact reviewed 4abd1a9a957766de3b05afeeb1ab16f16033b1cd; member report /Users/dabombstudio/.instar/agents/echo/.instar/lanes/resource-recovery-d1c-1104-PROGRESS.md exists on Studio. Fast-forward preserves reviewed bytes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-167-PROGRESS.md
 Decision: train-167-A | Preserve member and live-base behaviors; the subject-label integration regression is resolved by train-167-subjects. No merge conflicts or changelog edits. No hand-edited generated files. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-167-PROGRESS.md
 Decision: train-167-B | Use supplied separate train-167 checkout already created at exact 45ce50d0244ea2a29cb2bd31cd72f5eb44ea3003; reflog and ancestry verified. No main merge or branch reset. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-167-PROGRESS.md
-Decision: train-167-C | No product conflict and no member left out. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-167-PROGRESS.md
+Decision: train-167-C | No unresolvable product conflict and no member left out. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-167-PROGRESS.md
 Decision: train-167-D | Targeted checks on Studio; no host exemption invoked. Full-suite and live proof belong to desk; no serving login or live-root action. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-167-PROGRESS.md
-Decision: train-167-desk | Run existing cint-L37 repin/build/rehash/register replay from the reviewed source head; no added pipeline machinery. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-167-PROGRESS.md
+Decision: train-167-desk | Run existing cint-L37 repin/build/rehash/register replay from reviewed head and then source repair ee11b5d704cd5ab797a22d0bd284afcd38117e1d; no added pipeline machinery. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-167-PROGRESS.md
 
 Decision: train-167-subjects | Preserve distinct selected subject labels alongside one exact result, including revision; initial importer failures and reviewed-head four-case red replay are retained. No member omitted. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-167-PROGRESS.md
 
