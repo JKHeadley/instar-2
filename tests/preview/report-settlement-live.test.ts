@@ -19,13 +19,14 @@ const decode = (raw: string) => {
   return result.value;
 };
 
-async function replay(mode: 'selected' | 'omitted' | 'old-retry' | 'one-selected' | 'unknown' | 'trimmed' | 'verbatim' | 'revision') {
+async function replay(mode: 'selected' | 'omitted' | 'old-retry' | 'one-selected' | 'unknown' | 'trimmed' | 'verbatim' | 'revision', verbatimRevision = false, revisionKeepsResult = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'report-settlement-'))), path = join(root, 'journal');
   const key = new Uint8Array(32).fill(47);
   let now = 1793779584482, later = false, attempts = 0;
   let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '8993213212', chat: '7812716706', operator: '7812716706',
     grant: 'offline', configurationDigest: 'sha256:offline', expires: 9999999999999,
     maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 409600, cursor: 0, loopRevisitMs: 900000 });
+  const revisedText = revisionKeepsResult ? `The priorities are below.\n\n${captured.reports[0]}` : 'The priorities are below.';
   const sent: string[] = [], retryPackets: string[] = [];
   const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
     prepareModel: input => mode === 'revision' ? prepareJournalEnvelope(input, 'claude-opus-5-5', 'offline', now) : input.context,
@@ -39,7 +40,7 @@ async function replay(mode: 'selected' | 'omitted' | 'old-retry' | 'one-selected
       if (attempts === 1) return decode(captured.answers[0]!);
       retryPackets.push(input.context);
       if (mode === 'selected' || mode === 'unknown' || mode === 'trimmed') return decode(captured.repairReplay.output);
-      return JSON.stringify({ reply: mode === 'verbatim' ? captured.reports[0] : 'Here is the planning answer.',
+      return JSON.stringify({ reply: mode === 'verbatim' || verbatimRevision ? captured.reports[0] : 'Here is the planning answer.',
         memory: [], dated: [], selectedReports: mode === 'one-selected' ? [keys[0]] : keys, fulfilled: [] });
     },
     ...(mode === 'revision' ? { replyCheck: {
@@ -48,7 +49,7 @@ async function replay(mode: 'selected' | 'omitted' | 'old-retry' | 'one-selected
       escalate: async (_text, _id, _prompt, _rules, _deadline, operation) => ({
         verdict: operation === 'revision' ? 'pass' as const : 'violation' as const,
         ruleIds: operation === 'revision' ? [] : ['raw_path' as const], confidence: null, latencyMs: 1 }),
-      revise: async () => ({ state: 'complete' as const, text: 'The priorities are below.',
+      revise: async () => ({ state: 'complete' as const, text: revisedText,
         dispositions: [{ objection: 'raw_path', decision: 'accept' as const, reason: 'Revised the introduction.' }] }),
     } } : {}),
     ...(mode === 'trimmed' ? { replyCheck: {
@@ -146,9 +147,13 @@ it('review removal of the exact result cannot settle either report', async () =>
 });
 
 // Synthetic neighbor: two different declarations can have the same displayed subject as well as result.
-it('a revision carries an identical follow-up line once while settling both selected identities', async () => {
-  const result = await replay('revision');
-  expect(result.turn.revision?.text).toBe('The priorities are below.');
+it.each([[false, false], [true, false], [false, true], [true, true]])('a revision carries an identical result once while settling both selected identities (verbatim draft: %s, revision: %s)', async (verbatim, keepsResult) => {
+  const result = await replay('revision', verbatim, keepsResult);
+  expect(result.turn.revision?.text).toBe(keepsResult ? `The priorities are below.\n\n${captured.reports[0]}` : 'The priorities are below.');
+  expect(result.sent).toHaveLength(1);
+  expect(result.turn.answerReports).toEqual(keys);
+  expect(result.waiting).toEqual([]);
   expect(result.turn.intent!.split(captured.reports[0]!).length - 1).toBe(1);
   expect(result.closed).toEqual([1, 2]);
+  for (const key of keys) expect(result.work[key]!.report).toMatchObject({ boundTo: result.turn.id, delivered: result.turn.id });
 });

@@ -9902,13 +9902,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // below; nothing the agent says releases a mandatory floor on its own (Rules 4, 57, 86).
             let revised: string | undefined, unchangedRevision: string | undefined;
             const originalPrompt = projectedReplyPrompt(turn.prompt) ?? reviewPrompt;
-            // Rules 8, 22, 92: the finished results this reply carries are the runner's lines, not the agent's draft. A
-            // revision rewrites only the agent's prose; each result line is attached again exactly as written, so the
+            // Rules 8, 22, 92: independently selected exact results survive revision whether the draft
+            // quoted them or the runner appended them. A revision rewrites only the surrounding prose, so the
             // review of the revision sees it and an objection to the prose never withholds a result (live pre-switch
             // sb-w4-updaterecord 04bed622, room four, D1c: the revision folded three results into its own wording, so
             // none occurred verbatim and all three went back to owned work).
-            const resultLines = [...new Set(pendingReports(journal.view).filter(item => turn.answerReports?.includes(item.key))
-              .map(reportLine).filter(line => reply.includes(line)))];
+            const results = [...new Map(pendingReports(journal.view)
+              .filter(item => turn.answerReports?.includes(item.key) && reply.includes(item.text))
+              .map(item => [item.text, { text: item.text, line: reply.includes(reportLine(item)) ? reportLine(item) : item.text }])).values()];
             // A mandatory content objection can be removed without rewriting the answer, but the
             // resulting answer still needs its own contextual review. Keep part of the shared
             // deadline for that review when the reviewer named a locatable claim. T1's real
@@ -9934,7 +9935,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 let outcome: Awaited<ReturnType<NonNullable<NonNullable<PreviewPorts['replyCheck']>['revise']>>> | { state: 'failed'; text?: undefined; usage?: undefined; dispositions?: undefined; blocker?: undefined; promises?: undefined; fulfills?: undefined };
                 // The draft is revised without its Rule 110 disclosure, which code adds back to the final text, and
                 // without the runner's own result lines, which code attaches again verbatim below.
-                const draft = resultLines.reduce((text, line) => text.replace(line, ''),
+                const draft = results.reduce((text, item) => text.replace(item.line, ''),
                   continuity?.spoken ? reply.replace(`${continuity.disclosure} `, '') : reply);
                 try { outcome = await ports.replyCheck.revise({ text: concealSecretMaterial(redact(draft).text, heldValues), id: turn.id, originalPrompt,
                   ruleIds: objections.filter(item => item !== BARE_TOPIC_OBJECTION) as ReplyRule[], objections,
@@ -9969,7 +9970,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 let body = turn.revision.text.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
                 if (continuity && body.startsWith(continuity.disclosure)) body = body.slice(continuity.disclosure.length).trimStart();
                 const prose = actionHeader === undefined ? disclosed(body) : `${actionHeader}\n${body}`;
-                const candidate = `${prose.trimEnd()}${resultLines.filter(line => !prose.includes(line)).join('')}`;
+                const candidate = `${prose.trimEnd()}${results.filter(item => !prose.includes(item.text))
+                  .map(item => item.line === item.text ? `\n\n${item.text}` : item.line).join('')}`;
                 // The agent keeping its draft unchanged is its answer, not a new candidate: nothing to re-review.
                 // The same text with a newly declared investigation record is a new candidate (plan #104).
                 if (!redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate)) {
@@ -10055,7 +10057,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               && !credentialHeldClass(turn, candidateDigest) && withheld?.removed.length && nothingLeft
               && resultRemainder !== undefined && checkedRemainder?.verdict === 'violation'
               && checkedRemainder.ruleIds.length === 1 && checkedRemainder.ruleIds[0] === 'incoherent_remainder'
-              ? resultLines.filter(line => resultRemainder.includes(line)) : [];
+              ? results.filter(item => resultRemainder.includes(item.line)).map(item => item.line) : [];
             if (revised !== undefined) { reply = revised; mentionedKeys = []; objection = reason ?? objections.join(', '); }
             else if (scoped !== undefined) { reply = scoped; mentionedKeys = []; }
             else if (deliverableResults.length) {
