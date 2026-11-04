@@ -3,7 +3,7 @@
 import { spawn } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
-import { OWNER_BROWSER_URL, ownerBrowserRequest, ownerBrowserRefused } from './owner-browser-contract.mjs';
+import { OWNER_BROWSER_PAGES, ownerBrowserPages, ownerBrowserRequest, ownerBrowserRefused } from './owner-browser-contract.mjs';
 
 export function readOwnerBrowserBinding(root) {
   const row = JSON.parse(readFileSync(join(root, 'owner-browser.json'), 'utf8'));
@@ -23,15 +23,17 @@ export function chromePid(table, binding, uid) {
 }
 // Fixed DOM code, no worker script, body, form values, hidden inputs or storage. The exact authenticated login
 // meta is checked in the same evaluation as location/title; a body mentioning EchoOfDawn is insufficient.
-export const OWNER_BROWSER_DOM = `JSON.stringify((function(){
+export const ownerBrowserDom = (page = 'account-profile') => `JSON.stringify((function(){
   if(location.origin==='https://github.com' && (location.pathname==='/login' || document.querySelector('form[action="/session"]'))) return {status:'login-required'};
-  if(location.href!==${JSON.stringify(OWNER_BROWSER_URL)}) { location.assign(${JSON.stringify(OWNER_BROWSER_URL)}); return {status:'loading'}; }
+  if(location.origin!=='https://github.com') return {status:'refused',reason:'navigation-scope'};
   if(document.readyState!=='complete') return {status:'loading'};
   var login=document.querySelector('meta[name="user-login"]');
   if(!login || !login.content) return {status:'unavailable'};
   if(login.content!=='EchoOfDawn') return {status:'refused',reason:'account-mismatch'};
-  return {status:'observed',origin:location.origin,path:location.pathname,account:'EchoOfDawn',title:document.title.slice(0,256)};
+  if(location.href!==${JSON.stringify(OWNER_BROWSER_PAGES[page])}) { location.assign(${JSON.stringify(OWNER_BROWSER_PAGES[page])}); return {status:'loading'}; }
+  return {status:'observed',origin:location.origin,path:location.pathname+location.search,account:'EchoOfDawn',title:document.title.slice(0,256)};
 })())`;
+export const OWNER_BROWSER_DOM = ownerBrowserDom();
 export const OWNER_BROWSER_APPLE_EVENT = `ObjC.import('Foundation');
 function fc(s){return (s.charCodeAt(0)<<24)|(s.charCodeAt(1)<<16)|(s.charCodeAt(2)<<8)|s.charCodeAt(3);}
 function run(argv){
@@ -43,21 +45,21 @@ function run(argv){
  const t=spec('prop',w,'prop',D.descriptorWithTypeCode(fc('acTa')));
  const ev=D.appleEventWithEventClassEventIDTargetDescriptorReturnIDTransactionID(fc('CrSu'),fc('ExJa'),D.descriptorWithProcessIdentifier(Number(argv[0])),-1,0);
  ev.setParamDescriptorForKeyword(t,fc('----'));
- ev.setParamDescriptorForKeyword(D.descriptorWithString(${JSON.stringify(OWNER_BROWSER_DOM)}),fc('JvSc'));
+ ev.setParamDescriptorForKeyword(D.descriptorWithString(argv[1]),fc('JvSc'));
  const res=ev.sendEventWithOptionsTimeoutError(0x3,2,null);
  if(!res || res.isNil()) return '{}';
  const out=res.paramDescriptorForKeyword(fc('----'));return !out || out.isNil() ? '{}' : ObjC.unwrap(out.stringValue);
 }`;
 /** Strict projection: raw responses/errors never leave the owner. */
-export function ownerBrowserObservation(raw, now, scrub, held) {
+export function ownerBrowserObservation(raw, now, scrub, held, page = 'account-profile') {
   if (typeof raw !== 'string' || Buffer.byteLength(raw) > 4096) return { status: 'unavailable' };
   let row; try { row = JSON.parse(raw); } catch { return { status: 'unavailable' }; }
   if (row?.status === 'login-required') return { status: 'login-required' };
-  if (row?.status === 'refused') return ownerBrowserRefused('account-mismatch');
-  if (row?.status !== 'observed' || row.origin !== 'https://github.com' || row.path !== '/settings/profile'
+  if (row?.status === 'refused') return ownerBrowserRefused(row.reason === 'navigation-scope' ? 'navigation-scope' : 'account-mismatch');
+  if (row?.status !== 'observed' || row.origin !== 'https://github.com' || row.path !== OWNER_BROWSER_PAGES[page]?.slice('https://github.com'.length)
     || row.account !== 'EchoOfDawn' || typeof row.title !== 'string' || row.title.length > 256) return { status: 'unavailable' };
   const title = scrub(row.title).replace(/[\u0000-\u001f\u007f<>]/gu, '').slice(0, 256);
-  const result = { status: 'observed', page: 'account-profile', account: 'EchoOfDawn', observedAt: now,
+  const result = { status: 'observed', page, account: 'EchoOfDawn', observedAt: now,
     title, truncated: row.title.length === 256 };
   return held(JSON.stringify(result)) === 'clear' ? result : ownerBrowserRefused('output-secret-check');
 }
@@ -93,6 +95,7 @@ export function createOwnerBrowser({ binding, hold, scrub, held, now = Date.now,
     const withdrawn = () => stopped() || now() >= expires;
     const timer = setInterval(() => { if (withdrawn()) controller.abort(); }, 25);
     let slot;
+    const pages = ownerBrowserPages(input), observations = [];
     try {
       if (withdrawn()) return ownerBrowserRefused('closed-or-stopped');
       const initial = binding();
@@ -107,11 +110,17 @@ export function createOwnerBrowser({ binding, hold, scrub, held, now = Date.now,
         if (pid === null) return { status: 'unavailable' };
         if (withdrawn()) return ownerBrowserRefused('closed-or-stopped');
         if (JSON.stringify(binding()) !== JSON.stringify(initial)) return ownerBrowserRefused('profile-withdrawn');
-        const raw = await execute('/usr/bin/osascript', ['-l', 'JavaScript', '-e', OWNER_BROWSER_APPLE_EVENT, String(pid)], controller.signal);
+        const raw = await execute('/usr/bin/osascript', ['-l', 'JavaScript', '-e', OWNER_BROWSER_APPLE_EVENT, String(pid), ownerBrowserDom(pages[observations.length])], controller.signal);
         if (withdrawn()) return ownerBrowserRefused('closed-or-stopped');
         if (JSON.stringify(binding()) !== JSON.stringify(initial)) return ownerBrowserRefused('profile-withdrawn');
         let loading = false; try { loading = JSON.parse(raw)?.status === 'loading'; } catch { /* strict parser below refuses */ }
-        if (!loading) return ownerBrowserObservation(raw, now(), scrub, held);
+        if (!loading) {
+          const page = pages[observations.length], result = ownerBrowserObservation(raw, now(), scrub, held, page);
+          if (result.status !== 'observed' || input.page) return result;
+          observations.push({ ...result, url: OWNER_BROWSER_PAGES[page] });
+          if (observations.length === pages.length) return { status: 'observed', observations };
+          continue;
+        }
         await wait(250);
       }
       return { status: 'unavailable' };

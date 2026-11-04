@@ -62,7 +62,11 @@ export function toolOperation(tool) {
  */
 export function createToolEffectOwner({ decide, append, prepared, stopped, now }) {
   return Object.freeze({
-    authorized({ parent, tool, input }) { try { return !stopped() && decide(tool, input, parent).admitted === true; } catch { return false; } },
+    authorized({ parent, tool, input, cause }) { try {
+      if (stopped()) return false;
+      const verdict = decide(tool, input, parent);
+      return verdict.admitted === true && (cause === undefined || verdict.localCause === cause);
+    } catch { return false; } },
     admit({ parent, tool, input, call, ownerCause }) {
       const operation = toolOperation(tool);
       let verdict;
@@ -80,7 +84,7 @@ export function createToolEffectOwner({ decide, append, prepared, stopped, now }
         ...(verdict.localCause === undefined ? {} : { cause: ownerCause === undefined ? verdict.localCause
           : JSON.stringify({ authorization: JSON.parse(verdict.localCause), ownerBrowser: ownerCause }) }) })); }
       catch { return { admitted: false, reason: 'effect owner: the request could not be recorded before dispatch', doorway }; }
-      return { admitted: true, reason: `${verdict.reason}; effect owner: ${operation} prepared as ${identity}`, identity, operation, digest: payload, doorway };
+      return { admitted: true, reason: `${verdict.reason}; effect owner: ${operation} prepared as ${identity}`, identity, operation, digest: payload, doorway, localCause: verdict.localCause };
     },
     observed({ parent, identity, operation, digest: payload, resultBytes }) {
       append(sessionWorkEffect({ id: identity, edge: parent.id, operation, digest: payload, state: 'observed',
@@ -246,7 +250,8 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       const state = claims.get(claim);
       const closed = () => !state || claims.get(claim) !== state || state.closed || stopped()
         || !Number.isSafeInteger(state.edge.budget?.deadline) || now() >= state.edge.budget.deadline;
-      const authorized = () => !closed() && effects.authorized({ parent: state.edge, tool: OWNER_BROWSER_TOOL, input });
+      let cause;
+      const authorized = () => !closed() && effects.authorized({ parent: state.edge, tool: OWNER_BROWSER_TOOL, input, cause });
       if (!ownerBrowserRequest(input) || typeof call !== 'string' || !/^[A-Za-z0-9._:-]{1,200}$/u.test(call) || !ownerBrowser || !authorized())
         return ownerBrowserRefused('scope-grant-or-owner-unavailable');
       if (state.effects.has(call)) return ownerBrowserRefused('identity-in-use');
@@ -258,6 +263,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, held 
       state.ownerReads.add(call);
       const prepared = effects.admit({ parent: state.edge, tool: OWNER_BROWSER_TOOL, input, call, ownerCause: bindingSnapshot });
       if (!prepared.admitted) return ownerBrowserRefused('preparation-refused');
+      cause = prepared.localCause;
       state.toolPreparations++;
       state.effects.set(call, { ...prepared, ownerRead: true });
       try {

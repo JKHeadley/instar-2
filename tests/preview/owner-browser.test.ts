@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 // @ts-expect-error owner physical adapter
-import { createOwnerBrowser, runOwnerBrowserHelper, chromePid, readOwnerBrowserBinding, ownerBrowserObservation, OWNER_BROWSER_DOM } from './owner-browser.mjs';
+import { createOwnerBrowser, runOwnerBrowserHelper, chromePid, readOwnerBrowserBinding, ownerBrowserObservation, ownerBrowserDom, OWNER_BROWSER_DOM } from './owner-browser.mjs';
 // @ts-expect-error hook contract stays plain JavaScript
 import { OWNER_BROWSER_TOOL, ownerBrowserRequest } from './owner-browser-contract.mjs';
 // @ts-expect-error hook stays plain JavaScript
@@ -84,7 +84,7 @@ it('reserves host capacity, uses only PID-addressed fixed code and settles withi
     execute: async (command: string, args: string[]) => { calls.push([command, args]); return command === '/bin/ps' ? table : good; } });
   expect(await adapter({ input: { page: 'account-profile' }, stopped: () => false, deadline: 100 })).toMatchObject({ status: 'observed' });
   expect(calls.map(row => row[0])).toEqual(['/bin/ps', '/usr/bin/osascript']);
-  expect(calls[1]![1].at(-1)).toBe('81453'); expect(released).toBe(1);
+  expect(calls[1]![1].at(-2)).toBe('81453'); expect(released).toBe(1);
   calls.length = 0;
   expect(await adapter({ input: { page: 'account-profile' }, stopped: () => true, deadline: 100 })).toMatchObject({ status: 'refused' });
   expect(calls).toHaveLength(0);
@@ -114,7 +114,7 @@ it('executes the actual fixed DOM read: exact authenticated account, signed out,
   const read = (account: string | null, path = '/settings/profile', loginPage = false) => {
     const navigated: string[] = [];
     const result = JSON.parse(runInNewContext(OWNER_BROWSER_DOM, {
-      location: { href: `https://github.com${path}`, origin: 'https://github.com', pathname: path, assign: (url: string) => navigated.push(url) },
+      location: { href: `https://github.com${path}`, origin: 'https://github.com', pathname: path, search: '', assign: (url: string) => navigated.push(url) },
       document: { readyState: 'complete', title: 'Your profile', querySelector: (selector: string) => selector.startsWith('form')
         ? (loginPage ? {} : null) : (account === null ? null : { content: account }) },
     }, { timeout: 100 }));
@@ -164,5 +164,80 @@ it('withdrawal during process lookup prevents the next Apple Event, including st
         if (reason === 'deadline') clock = 100; if (reason === 'binding') current = { ...binding, userDataDir: '/other' }; return table; } });
     expect((await adapter({ input: { page: 'account-profile' }, stopped: () => stop, deadline: 100, bindingSnapshot: binding })).status).toBe('refused');
     expect(calls).toEqual(['/bin/ps']);
+  }
+});
+
+it('admits a bounded sequence only with every page in one explicit grant, never a union or malformed scope', () => {
+  const input = { pages: ['account-profile', 'account-repositories'] };
+  const check = (value: unknown, p: unknown) => admitToolCallEffect(OWNER_BROWSER_TOOL, value, { effectPolicy: p }, 5).admitted;
+  const p = policy();
+  expect(check(input, p)).toBe(false);
+  Object.assign(p.grants[0]!, { ownerBrowserPages: input.pages });
+  expect(check(input, p)).toBe(true);
+  for (const pages of [[], ['account-profile'], Array(5).fill('account-profile'), ['account-profile', 'https://evil.test'], ['account-profile', 'settings-tokens']])
+    expect(check({ pages }, p)).toBe(false);
+  for (const action of ['click', 'submit', 'evaluate', 'navigate']) expect(check({ ...input, action }, p)).toBe(false);
+  for (const scope of ['account-profile,account-repositories', {}, [null], ['account-profile', 'unknown']]) {
+    Object.assign(p.grants[0]!, { ownerBrowserPages: scope }); expect(check(input, p)).toBe(false);
+  }
+  Object.assign(p.grants[0]!, { ownerBrowserPages: ['account-profile'] });
+  p.grants.push({ ...p.grants[0]!, id: 'other', ownerBrowserPages: ['account-repositories'] } as typeof p.grants[number]);
+  expect(check(input, p)).toBe(false);
+});
+
+it('runs two verified DOM steps under one bound and withholds both on stop, expiry, redirect, wrong account or profile', async () => {
+  for (const failure of ['none', 'stop', 'deadline', 'origin', 'account', 'profile', 'secret', 'loading']) {
+    let url = new URL('https://github.com/settings/profile'), clock = 10, stop = false, current = binding, observed = 0, evaluations = 0;
+    const visited: string[] = [];
+    const adapter = createOwnerBrowser({ binding: () => current, platform: 'darwin', uid: 501, now: () => clock,
+      hold: async () => ({ release: async () => {} }), scrub: (s: string) => s, held: (s: string) => s.includes('synthetic-secret') ? 'held' : 'clear',
+      wait: async () => { clock++; }, execute: async (command: string, args: string[]) => {
+        if (command === '/bin/ps') return table;
+        evaluations++;
+        if (observed && failure === 'loading') return '{"status":"loading"}';
+        const raw = runInNewContext(args.at(-1)!, {
+          location: { href: url.href, origin: url.origin, pathname: url.pathname, search: url.search,
+            assign: (target: string) => { url = new URL(failure === 'origin' ? 'https://evil.test/' : target); } },
+          document: { readyState: 'complete', title: failure === 'secret' && observed ? 'synthetic-secret' : `Page ${url.pathname}`,
+            querySelector: (selector: string) => selector.startsWith('form') ? null : { content: failure === 'account' && observed ? 'Justin' : 'EchoOfDawn' } },
+        }, { timeout: 100 });
+        if (JSON.parse(raw).status === 'observed') {
+          observed++; visited.push(url.href);
+          if (failure === 'stop') stop = true;
+          if (failure === 'deadline') clock = 100;
+          if (failure === 'profile') current = { ...binding, userDataDir: '/operator/chrome' };
+        }
+        return raw;
+      } });
+    const result = await adapter({ input: { pages: ['account-profile', 'account-repositories'] }, stopped: () => stop, deadline: 100, bindingSnapshot: binding });
+    if (failure === 'none') {
+      expect(result.status).toBe('observed'); expect(result.observations.map((row: { url: string }) => row.url)).toEqual(visited);
+      expect(visited).toEqual(['https://github.com/settings/profile', 'https://github.com/EchoOfDawn?tab=repositories']);
+      expect(evaluations).toBe(3);
+    } else {
+      expect(result.status, failure).not.toBe('observed'); expect(result.observations).toBeUndefined();
+      expect(JSON.stringify(result)).not.toMatch(/synthetic-secret|Page |operator\/chrome/u);
+    }
+    expect(evaluations).toBeLessThanOrEqual(40);
+  }
+});
+
+it('rejects an off-origin starting page before navigation and verifies account before any navigation', () => {
+  for (const origin of ['https://evil.test', 'https://github.com.evil.test', 'https://github.com']) {
+    const navigations: string[] = [];
+    const result = JSON.parse(runInNewContext(ownerBrowserDom('account-repositories'), {
+      location: { origin, href: `${origin}/settings/profile`, pathname: '/settings/profile', search: '', assign: (url: string) => navigations.push(url) },
+      document: { readyState: 'complete', querySelector: (selector: string) => selector.startsWith('form') ? null : ({ content: 'Justin' }) },
+    }));
+    expect(result.status).toBe('refused'); expect(navigations).toEqual([]);
+  }
+});
+
+it('replays the real summary, Jev, reply-review and delivered shapes on the new sequence path', () => {
+  const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')).otherShapes;
+  const p = policy(); Object.assign(p.grants[0]!, { ownerBrowserPages: ['account-profile', 'account-repositories'] });
+  for (const row of shapes) {
+    expect(ownerBrowserObservation(row.raw, 1, (s: string) => s, () => 'clear', 'account-repositories'), row.id).toEqual({ status: 'unavailable' });
+    expect(admitToolCallEffect(OWNER_BROWSER_TOOL, { pages: ['account-profile', row.raw] }, { effectPolicy: p }, 5).admitted, row.id).toBe(false);
   }
 });
