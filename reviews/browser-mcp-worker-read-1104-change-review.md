@@ -1,8 +1,8 @@
 # Change review — worker reads connector launch configuration
 
 Subject base: bcbe1def1642146c18f1e0d569ab84016fa6454e
-Review state: open
-Reviewed content: none
+Review state: frozen
+Reviewed content: sha256:45a99d4fcd6dce556a74c085c814e9915699d85a6d1f567d4155b45e6728de2e
 Outcome: Grant the worker read access to the generated MCP launch configuration before its continuing session starts. Keep the configuration owned by the operator and read-only to the worker. Regenerate the source-pinned register against the committed repair.
 Affected rules: 31, 63, 74, 78, 95, 101, 103, 111, 113, 116
 Affected floors: secrets — only the already redacted launch file is readable, not credential custody; spend cap — unchanged; stop — unchanged; no duplicate sends — no new effect path; durable intake — unchanged.
