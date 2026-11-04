@@ -1,6 +1,6 @@
 # Change review — restore abandoned worker slot recovery
 
-Subject base: 2a9b1522d9911faab2a4511e8d8ef53e870f7691
+Subject base: 2e0b79a606478ac0598e5ef4c3f4ea7055b1337f
 Review state: frozen
 Reviewed content: sha256:2e6d60046c42e26413f84aad61a68d79dca84e114e38ec65524e30a77cdf24f2
 Outcome: Restore the previously reviewed recovery of dead launch reservations on the answering live base, without adding another behavior change.
@@ -16,7 +16,7 @@ Undo and recovery: Revert this restore before another switch. Undecidable rows r
 Multi-machine posture: Host-local census and Six allocation remain with the runner owner. No remote state or credential change.
 Layer below: The current live build inherited 13 unresolved old launch rows after rollback. This restores the same complete settlement census and privileged-read fallback that was live in 45ce50d0; it does not change conversation dispatch.
 Bug class: live-path
-Bug evidence: reproducer=tests/integration/resource-owner.test.ts (39 can-fail cases); live=.instar/lanes/preview-trial-root/justin-group-20261010/owned-launches.json had 13 orphan rows at 08:12:02 PST on 2026-11-04.
+Bug evidence: reproducer=tests/integration/resource-owner.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/preview-trial-root/justin-group-20261010/owned-launches.json
 Hook bypass: none
 Convergence: claimed
 1.x reference: src/core/hostTestRunnerSemaphore.ts returns a holder when its PID is provably dead; this implementation also accounts for escaped descendants.
