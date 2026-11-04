@@ -57,11 +57,11 @@ meaning.
 |---|---|
 | Checkable now | 22 |
 | Free from the core | 9 |
-| Needs building | 75 |
+| Needs building | 76 |
 | Held by the mind | 13 |
-| **Total** | **119** |
+| **Total** | **120** |
 
-Twenty-two of one hundred nineteen can be checked by a script today. That is the honest starting
+Twenty-two of one hundred twenty can be checked by a script today. That is the honest starting
 position, and it is roughly what 1.x's own record shows: 92 checks in the running system, 20
 confirmed on.
 
@@ -207,7 +207,7 @@ reconstructable from the log* — argues the same way.
 
 ---
 
-### Checkable now — 22 of 119
+### Checkable now — 22 of 120
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -234,7 +234,7 @@ reconstructable from the log* — argues the same way.
 | 106 | A Link Handed to a Human Works | Every link sent to a person is complete and clickable from where they are: never localhost, never a bare id where a name exists, never a path only the agent can open. | A lint over link shapes at the outbound doorway — 1.x already refuses localhost links in automated sends. (First stated by the operator at #22873, #20131, #19466; recovered by the 2026-08-26 re-sweep.) |
 | 119 | One Constitution, Two Books Aligned | The 1.x registry and the 2.0 purpose and rule book are one constitution, and they stay aligned on every update. Every change to either book names its counterpart change in the other, or says why it has none (it concerns only that version, or it changes no obligation). Where the two differ, the alignment map says so by name, and the master governs. No difference is silent. | A script reads each pull request touching either book and flags one with no declared counterpart; the 1.x merge tool refuses it. A daily check reads both repositories' history and raises any merged change whose pair never landed. Whether two wordings carry the same obligation, and whether a stated "none" is honest, is held by the independent review of the change. |
 
-### Free from the core — 9 of 119
+### Free from the core — 9 of 120
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -248,7 +248,7 @@ reconstructable from the log* — argues the same way.
 | 78 | No Manual Work (user *or* agent) | Capturing context and using available tools is automatic. Neither the user nor the agent should have to remember a feature exists. | Free once the capability list is generated from the modules rather than hand-written. The check: no hand-maintained list exists. |
 | 84 | Agent Awareness | Every feature is written into the agent's own briefing. A capability the agent doesn't know about, it doesn't have. Identity, self-knowledge, reflection and growth are present by default; the agent explains itself and its actual abilities in the person's language. | Free from the same generation as #78. A hand-maintained briefing is exactly how 1.x lost this one. |
 
-### Needs building — 75 of 119
+### Needs building — 76 of 120
 
 | # | Standard | What it means | How it's checked |
 |---|---|---|---|
@@ -327,6 +327,7 @@ reconstructable from the log* — argues the same way.
 | 115 | The System Has a Native Harness | Instar ships a first-party harness built only on the same public core ports available to every other harness. It can use any registered model doorway and can develop, test, extend, and repair Instar itself. It is the reference client, never a privileged bypass. | The native harness runs the full harness contract suite against every compatible registered model doorway; an architecture lint refuses private core imports or special-case authority, and the self-hosting suite builds and installs a real local capability through it. (Operator review of PR #12; makes rule 2 concrete.) |
 | 117 | One Agent, Many Sessions | Sessions running at the same time are one agent. Each knows what the others have said, promised and done, as close to real time as the system allows, and an agent never gives its operator contradictory answers from two places. Where awareness lags, the session says so instead of guessing. | Two-session tests run in desk proof rooms on every build: one session acts or speaks, another is asked about it, and it must answer correctly (LIVE-PATH-PLAN.md section g, rows a to d). Status: partial until (a) and (b) pass live. |
 | 118 | One Provider Is Enough | An agent with exactly one AI provider, whichever one it is (Anthropic, OpenAI, Google, and so on), is fully functional. A second provider (a separate decision model, a reviewer from another model family, a cheaper model routed off the main one) is an optimization only: it may make a feature better, faster or cheaper, never possible. Every feature that uses a second provider declares what it does when there is only one, and that behaviour delivers the feature rather than refusing, holding or switching it off. Extends #30 from harnesses to providers. An outage of the one provider is #67's case, not this rule's. | A single-provider boot test for each supported harness: a fresh installation with only that harness's own provider configured passes the live end-to-end proofs (#43, #62), including a real conversation with the operator, with nothing refused, held or switched off for want of another provider. A declaration check: every place that calls a provider other than the agent's main one carries a declared single-provider behaviour, and a missing declaration fails the build. |
+| 120 | The Person Decides; the Agent Does the Rest | An Instar agent does all the research, account management and operation its person's needs require. The person only approves or declines, asks for changes, or supplies a credential. They never need to open a browser, visit a provider's site, run a command or follow steps. Sending a link to finished work, such as a document or an application built for the person, is delivery and is welcome. What this rule forbids is making the person do the work. The agent is like an executive assistant who manages the accounts, and the person is like a CEO who directs and approves. Using the person's own accounts, accounts of the agent's own, or both is the person's choice; the agent makes clear it can fully manage the person's accounts, states plainly what each choice concedes, and never recommends against either. If a service truly needs the person themselves, the agent reduces that to one credential or one tap on the easiest surface available. The app and dashboard exist to make approvals and credentials effortless, and neither is required. Extends #23 and #82 from when to escalate and how to ask, to what the person's whole part is. | An outbound check that holds a message giving the person any task other than a decision, a requested change or a credential, tested on both sides with paraphrases, including that a link to finished work passes. A live proof for each supported service: a fresh agent enables it through a real conversation, and the record shows the person did nothing but approve and supply credentials. |
 
 **Value — rationale for Rule 117.** Rule 31 covers coherence across machines. Sessions also
 need coherence while running at the same time on one machine: continuity from one session to
@@ -337,7 +338,9 @@ feature can do that and still need a second provider to run at all. A person who
 agent may have only one subscription. If a feature quietly depends on a second one, that person gets a
 weaker agent and is never told why.
 
-### Held by the mind — 13 of 119
+**Value — rationale for Rule 120.** Rules 23 and 82 tell an agent when not to stop and how to ask, but no rule states what the person's whole part is. So an agent can follow them and still write "get a key from the provider" as a step for the person. It is a persistent trap: a sign-up feels like something only a person can do. The person hired an assistant, and their part is judgment.
+
+### Held by the mind — 13 of 120
 
 These are binding. Their adequacy is judged through the applicable review, with recorded evidence.
 
@@ -372,4 +375,5 @@ operator's review of the big-picture design on PR #12. Rule 116 comes from the o
 2026-09-23 skills-over-scripts direction and adoption of the simplicity audit as a fundamental
 Occam's Razor / Simplest Robust Route development standard. Rule 118 comes from the operator's
 2026-10-26 direction that an Instar agent is always fully functional with a single AI provider. Rule 119 comes
-from the operator's 2026-11-03 direction that the 1.x and 2.0 rule books always stay aligned for all updates.*
+from the operator's 2026-11-03 direction that the 1.x and 2.0 rule books always stay aligned for all updates. Rule 120 comes from the operator's
+2026-11-03 direction that the person only ever approves, asks for changes or supplies credentials.*
