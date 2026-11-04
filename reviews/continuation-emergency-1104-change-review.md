@@ -16,9 +16,9 @@ Undo and recovery: Revert to c4ac82ee only if it can answer the retained real ta
 Multi-machine posture: No transfer or new authority; this is a projection of the owner's existing journal.
 Layer below: The pre-dispatch 128,000-byte continuation refusal happened before a worker could start. The projected context gets the accepted task to the model.
 Bug class: live-path
-Bug evidence: reproducer=tests/preview/continuation-grounding.test.ts and tests/assembly/production-session-driver.test.ts; live=.instar/lanes/preview-trial-root/justin-group-20261010/runs.jsonl records message 745 refusal, while message 747 started a worker and reply 748 was delivered.
+Bug evidence: reproducer=tests/preview/continuation-grounding.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/preview-trial-root/justin-group-20261010/runs.jsonl
 Hook bypass: none
-Convergence: partial; byte-budget and trailing-constraint repair is open on a separate branch.
+Convergence: none
 1.x reference: 1.x compacts an overlong session rather than refusing the next task solely for prior context length.
 Prompt review: The grounding text tells the worker that earlier history may be omitted. Independent review found the first version does not always retain the latest instruction's tail.
 Deferral: none
