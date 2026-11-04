@@ -272,6 +272,60 @@ it('recovery joins a sandboxed launch row by its recorded sandbox: a root-cwd su
   expect(gone.orphans).toEqual([]); expect(gone.rows).toEqual([]); expect(gone.closes).toEqual(['recovery-observed-gone:native']);
 });
 
+it('recovery checks more than the live 64-candidate bound, while an unreadable possible worker keeps the debit', async () => {
+  const start = 'Sat Oct 3 15:00:00 2026', childStart = 'Sat Oct 3 15:00:01 2026';
+  const run = async (unread: boolean) => {
+    const root = dir(), area = join(root, 'scratch'), ledgerPath = join(root, 'launches.json');
+    const closes: string[] = [], candidates = Array.from({ length: 80 }, (_, i) => 42000 + i);
+    writeFileSync(ledgerPath, JSON.stringify({ version: 1, launches: { stale: {
+      pid: 41001, start, owner: { pid: 41000, start }, members: { 41001: start },
+      workingArea: area, allocation: 'stale-set' } } }));
+    const query = async (file: string, args: string[]) => {
+      if (file === '/bin/sh') return '256\n1024\nunlimited\nunlimited\n1024\n2048\n';
+      if (file === '/bin/ps' && args[0] === '-U') return candidates.map(pid =>
+        `${pid} 1 ${pid} 501 4096 0:00.10 S ${childStart} /bin/sleep 60`).join('\n') + '\n';
+      if (file === '/bin/ps' && args[0] === '-o') return candidates.includes(Number(args.at(-1))) ? childStart : '';
+      if (file === '/usr/bin/sudo') return candidates.filter(pid => !unread || pid !== candidates.at(-1))
+        .map(pid => `p${pid}\nn/\n`).join('');
+      if (file === '/usr/sbin/lsof') return null;
+      throw Error(`unexpected query ${file}`);
+    };
+    const owner = createResourceOwner(ceilings());
+    await owner.attach({ ledgerPath, query, allocation: {
+      close: (_set: string, cause: string) => { closes.push(cause); return { ok: true }; }, open: () => [] } });
+    return { rows: Object.keys(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches), closes, orphans: owner.snapshot().orphans };
+  };
+  expect(await run(false)).toMatchObject({ rows: [], closes: ['recovery-observed-gone:stale'] });
+  expect(await run(true)).toMatchObject({ rows: ['stale'], closes: [], orphans: [{ state: 'unknown' }] });
+});
+
+it('ordinary settlement returns its debit with more than 64 unrelated cwd candidates', { timeout: 30000 }, async () => {
+  const root = dir(), ledgerPath = join(root, 'launches.json');
+  const program = script(root, 'done.mjs', `process.stdout.write('done');`);
+  const fake = Array.from({ length: 80 }, (_, i) => 920000 + i);
+  const fakeRows = fake.map(pid => `${pid} 1 ${pid} 501 4096 0:00.10 S Mon Nov  3 15:00:00 2027 /bin/sleep 60`).join('\n');
+  const query = async (file: string, args: string[]) => {
+    if (file === '/bin/ps' && args[0] === '-U' && args.includes('pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command='))
+      return (await hostQuery(file, args)) + fakeRows + '\n';
+    if (file === '/usr/sbin/lsof' || file === '/usr/bin/sudo') {
+      const real = await hostQuery(file, args);
+      return real === null ? null : real + fake.map(pid => `p${pid}\nn/\n`).join('');
+    }
+    return hostQuery(file, args);
+  };
+  const owner = createResourceOwner(ceilings());
+  await owner.attach({ ledgerPath, allocation: six(root), query });
+  const result = await owner.execute(input(root, program), 'answer');
+  expect(result).toMatchObject({ code: 0, stdout: 'done', resources: { cleanup: 'verified', allocation: { state: 'returned' } } });
+  expect(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches).toEqual({});
+});
+
+it('treats a failed privileged cwd read as unavailable, allowing the ordinary-read fallback', async () => {
+  const unreadable = await hostQuery('/usr/bin/sudo',
+    ['-n', '/usr/sbin/lsof', '-a', '-d', 'cwd', '-p', '999999999', '-Fpn', '-w']);
+  expect(unreadable).toBeNull();
+});
+
 it('records launch evidence durably before the provider runs, and never runs a launch it could not record', { timeout: 30000 }, async () => {
   const root = dir(), ledgerPath = join(root, 'owned-launches.json'), marker = join(root, 'ran');
   // The provider reads the ledger as its first act: its own row must already be there.
@@ -413,7 +467,8 @@ it('an unreadable working directory of a live candidate is unknown membership: c
   const escape = script(root, 'escape.mjs', `import { spawn } from 'node:child_process'; import { writeFileSync } from 'node:fs';
 const c = spawn('/bin/sleep', ['20'], { detached: true, stdio: 'ignore' }); c.unref(); writeFileSync(process.argv[2], String(c.pid));`);
   // The working-directory lookup fails (as a denied lsof does); every other observation is real.
-  const blind = (file: string, args: string[]) => file === '/usr/sbin/lsof' ? Promise.resolve(null) : hostQuery(file, args);
+  const blind = (file: string, args: string[]) => file === '/usr/sbin/lsof' || file === '/usr/bin/sudo'
+    ? Promise.resolve(null) : hostQuery(file, args);
   const allocation = six(root);
   const owner = createResourceOwner({ ...ceilings(), sampleMs: 60000 });
   await owner.attach({ ledgerPath, allocation, query: blind });
