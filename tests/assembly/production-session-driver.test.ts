@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error -- host composition module is JavaScript, exercised at runtime.
 import { observeInstalledSessionLogin } from '../preview/installed-harness-logins.mjs';
+// @ts-expect-error -- host-only continuation projection is JavaScript, exercised at runtime.
+import { boundedContinuationGrounding } from '../preview/continuation-grounding.mjs';
 // @ts-expect-error Host-only JavaScript projection.
 import { createWorkingActivities } from '../preview/working-activity.mjs';
 import { sessionLoginNotices, type SessionLoginObservation } from '../preview/credential-reminders.js';
@@ -759,6 +761,22 @@ it('refuses an unbounded continuation before launching a replacement', () => {
     incarnation: 'next', workingScope: '/work', handles: [] }), 'bounded context');
   expect(f.calls.filter(row => row[0] === 'new-session')).toHaveLength(1);
   expect(f.journal.continuationRefusals?.[0]?.reason).toContain('bounded context');
+});
+
+it('starts a replacement worker when the prior model envelope exceeds the context bound', () => {
+  const f = fixture(), id = f.launch();
+  value(f.driver.saveResume(id, '12345678-1234-1234-1234-123456789abc'));
+  const prompt = JSON.stringify({ messages: [
+    { role: 'user', content: 'Continue the issue' },
+    { role: 'context', content: 'old history '.repeat(15000) },
+  ] });
+  expect(Buffer.byteLength(prompt)).toBeGreaterThan(128000);
+  const driver = createProductionSessionDriver({ ...f.config, home: f.homes.b, configHome: f.homes.b, maxSessions: 2,
+    continuation: () => ({ text: boundedContinuationGrounding('Prior work summary', [{ prompt, intentBody: 'Prior reply' }]), source: 'journal:prior' }) });
+  value(driver.launch({ operation: 'next', claim: 'topic', artifact: 'sha256:test',
+    incarnation: 'next', workingScope: '/work', handles: [] }));
+  expect(f.calls.filter(row => row[0] === 'new-session')).toHaveLength(2);
+  expect(f.journal.continuationRefusals ?? []).toHaveLength(0);
 });
 
 it('keeps the current session when context-wall continuation is unavailable', () => {

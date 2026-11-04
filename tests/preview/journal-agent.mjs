@@ -133,6 +133,7 @@ import { createProductionSessionDriver, createProductionConversationAdapter } fr
 import { createSessionProtocolIO } from '../../scripts/session-protocol-io.mjs';
 import { lifecycleHookPath, installLifecycleHook } from '../../scripts/conversation-lifecycle-io.mjs';
 import { createConversationHostStore } from '../../scripts/conversation-host-store.mjs';
+import { boundedContinuationGrounding } from './continuation-grounding.mjs';
 import { CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
 import { createTopicWorkerCapacity } from '../../scripts/topic-worker-capacity.mjs';
 import { createTopicLoginHandoff } from '../../scripts/topic-login-pool.mjs';
@@ -2722,9 +2723,10 @@ async function main() {
               // The lifecycle directory already grants inherited access to this admitted harness.
               return { text, source: `journal:${operation}` };
             }
-            const turn = journal.view.order.filter(item => item.accepted && String(item.thread ?? 'main') === topic && item.prompt && item.sent !== undefined && item.intent).at(-1);
+            const turns = journal.view.order.filter(item => item.accepted && String(item.thread ?? 'main') === topic && item.prompt && item.sent !== undefined && item.intent);
+            const turn = turns.at(-1), summary = liveSummaries(journal.view).at(-1);
             if (!turn) throw Error('preview: durable conversation grounding unavailable');
-            return { text: `Restore this recorded conversation as history only. Do not repeat actions or answer old questions. Wait for the next delivered input.\n${turn.prompt}\nLAST RECORDED REPLY\n${turn.intent}`, source: `journal:${turn.id}` };
+            return { text: boundedContinuationGrounding(summary?.text, turns), source: `journal:${turn.id}` };
           } } : {}),
           // As the harness user: the pane runs the harness through the bridge, which hands it the custody login.
           ...(layout ? { launchVia: [process.execPath, HARNESS_SESSION_BRIDGE,
