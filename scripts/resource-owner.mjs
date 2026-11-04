@@ -138,7 +138,9 @@ const measured = (kind, instance, unit, value, at) => ({ subject: { kind, instan
 export function hostQuery(file, args) {
   return new Promise(resolve => {
     try {
-      execFile(file, args, { timeout: QUERY_TIMEOUT_MS, maxBuffer: 1024 * 1024, env: { PATH: '/usr/bin:/bin' } }, (error, stdout) => {
+      const settlementCwd = file === '/usr/bin/sudo' && args[0] === '-n' && args[1] === '/usr/sbin/lsof';
+      execFile(file, args, { timeout: settlementCwd ? 10000 : QUERY_TIMEOUT_MS,
+        maxBuffer: settlementCwd ? 4 * 1024 * 1024 : 1024 * 1024, env: { PATH: '/usr/bin:/bin' } }, (error, stdout) => {
         // pgrep exits 1 when nothing matches; ps may exit 1 when a listed pid ended.
         if (error && (typeof error.code !== 'number' || error.code > 1)) resolve(null);
         else resolve(String(stdout));
@@ -392,6 +394,15 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
   const inventory = createProcessInventory({ query: (file, args) => query(file, args), now: () => ports.now(),
     monotonic: () => ports.monotonic(), identity: HOST_IDENTITY, limit: censusLimit, freshForMs: 2 * ceilings.sampleMs,
     uid: ownUid, uids: () => harnessUid === null ? [ownUid] : [ownUid, harnessUid] });
+  // Settlement and recovery are bounded reads, not the per-second live sample. A
+  // detached worker may have left its process group, so inspect every candidate's
+  // cwd. sudo is non-interactive and read-only; a denied read remains unknown.
+  const settlementInventory = createProcessInventory({ query: async (file, args) => {
+    if (file !== '/usr/sbin/lsof') return query(file, args);
+    return await query('/usr/bin/sudo', ['-n', file, ...args]) ?? await query(file, args);
+  }, now: () => ports.now(), monotonic: () => ports.monotonic(), identity: HOST_IDENTITY,
+  limit: censusLimit, freshForMs: 2 * ceilings.sampleMs, uid: ownUid,
+  uids: () => harnessUid === null ? [ownUid] : [ownUid, harnessUid] });
   const harnessRow = (snapshot, pid) => harnessUid !== null && snapshot.processes.find(p => p.pid === pid)?.uid === harnessUid;
   const rootOf = lease => ({ id: lease.id, pid: lease.pid, known: lease.known, workingArea: lease.workingArea ?? null,
     sandboxArea: lease.sandboxArea ?? null, start: lease.known.get(lease.pid) ?? null });
@@ -402,18 +413,19 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
   async function census(leases) { return joinRoots(leases.filter(l => l.pid).map(rootOf)); }
   /** The one membership join, shared by live cleanup and restart recovery: a recovered root carries the
    * same working-area and sandbox declarations its launch row recorded, so recovery joins exactly as live does. */
-  async function joinRoots(roots) {
+  async function joinRoots(roots, settlement = false) {
     let snapshot, ten;
     // An owner module that cannot load is a failed census (unknown), never an empty one.
-    try { ten = await loadTenOwner(); snapshot = await inventory.census(); }
+    const source = settlement ? settlementInventory : inventory;
+    try { ten = await loadTenOwner(); snapshot = await source.census(); }
     catch { return { state: 'failed', snapshot: { id: `inventory:${randomUUID()}`, adapter: 'unavailable', adapterDigest: 'unavailable' },
       members: null, rows: null }; }
     const { launchMembership, joinWorkingArea, joinSandbox } = ten;
     if (snapshot.status === 'failed') return { state: 'failed', snapshot, members: null, rows: null };
     const { members, candidates } = launchMembership(snapshot, roots, process.pid);
     const joined = new Map(members);
-    const read = candidates.slice(0, ceilings.candidateLimit ?? RESOURCE_CEILINGS.candidateLimit);
-    const cwds = read.length ? await inventory.workingDirectories(read) : new Map();
+    const read = candidates.slice(0, settlement ? censusLimit : ceilings.candidateLimit ?? RESOURCE_CEILINGS.candidateLimit);
+    const cwds = read.length ? await source.workingDirectories(read) : new Map();
     if (read.length) for (const [pid, member] of joinWorkingArea(snapshot, roots, read, cwds)) joined.set(pid, member);
     // The sandbox join: a candidate the working-area join missed (it changed directory out of the area) is still a
     // member of a sandboxed launch if the kernel says it is in that launch's sandbox instance. An unreadable reading is
@@ -422,7 +434,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     const unjoined = read.filter(pid => !joined.has(pid));
     let unboxed = 0;
     if (areas.length && unjoined.length) {
-      const readings = typeof joinSandbox === 'function' ? await inventory.sandboxes(unjoined, areas) : new Map();
+      const readings = typeof joinSandbox === 'function' ? await source.sandboxes(unjoined, areas) : new Map();
       if (typeof joinSandbox === 'function') for (const [pid, member] of joinSandbox(snapshot, roots, unjoined, readings)) joined.set(pid, member);
       unboxed = await unreadCandidates(snapshot, unjoined.filter(pid => readings.get(pid)?.state !== 'observed'), new Map());
     }
@@ -554,7 +566,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
   /** This launch's live members in one census (recorded incarnations, group, ancestry and working
    * area); `null` when the census failed or was partial: absence is then unproven. */
   async function liveMembers(lease) {
-    const seen = await census([...launches.values()]);
+    const seen = await joinRoots([...launches.values()].filter(l => l.pid).map(rootOf), true);
     if (seen.state !== 'complete' && !seen.waiting) return null;
     const mine = [...seen.members].filter(([pid, member]) => member.launch === lease.id && !seen.rows.get(pid).zombie)
       .map(([pid]) => [pid, seen.rows.get(pid).start, seen.rows.get(pid).uid]);
@@ -789,7 +801,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     let escaped = null;
     if (roots.length) {
       let joined = null;
-      try { joined = await joinRoots(roots); } catch { joined = null; }
+      try { joined = await joinRoots(roots, true); } catch { joined = null; }
       // Anything short of a complete census (a partial read, an unread working directory or an unreadable
       // sandbox reading) leaves membership unknown, so every row stays.
       if (joined?.state === 'complete') {
