@@ -34,6 +34,8 @@ Relevant carryover: absolute desk file carryover-1028.md, row 01, “PromiseBeac
 
 ## Verification
 
+The seven generated register artifacts are refreshed from source commit dcf3b8c3b1d289296cd13ca042929f2c821bb447. This record also covers that refresh; it changes source pins, not runtime authority or coverage claims.
+
 The regression reconstructs two waiting reports from the captured request, reply loop and exact result bytes. An unrelated id 0 is a stated synthetic placeholder. It feeds both old outputs through readAnswer and the worker, then the new real replay output through the same route. Positive cases assert one result occurrence, one send, both intent bindings and receipt settlements, with disk reopen. Negative neighbors cover no result, only one selected key, UNKNOWN receipt and claim-scoped report removal.
 
 Can-fail check: with journal.ts restored temporarily to base 45ce50d0, the two positive cases fail with 2 and 3 result occurrences instead of 1. Restoring the repair passes. Additional recorded-shape compatibility checks use summary-cascade-stall (715672479–715672500, uncertain 492/496/497, undecided Jev 0.38), claim-scoped-floor (969389898/969389899) and run-completion's retained real otherShapes. Empty context/output fixtures are not evidence that Telegram delivered an empty message.
