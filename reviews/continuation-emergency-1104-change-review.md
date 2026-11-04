@@ -1,8 +1,8 @@
 # Change review — emergency continuation projection after login handoff
 
 Subject base: c4ac82ee82df5988a9a3522752a96272b00d4a62
-Review state: frozen
-Reviewed content: sha256:1d91a87d2b04d35077a82aaffe2d51d8abe87ce5ea3ab2381c7729c6c93e0945
+Review state: open
+Reviewed content: none
 Outcome: Start a live worker after a journal continuation exceeds the bounded context by projecting the current summary and recent turns; keep the omission visible.
 Affected rules: 110
 Affected carryover rows: 03
