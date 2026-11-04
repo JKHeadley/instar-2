@@ -40,10 +40,7 @@ The regression reconstructs two waiting reports from the captured request, reply
 
 Can-fail check: with journal.ts restored temporarily to base 45ce50d0, the two positive cases fail with 2 and 3 result occurrences instead of 1. Restoring the repair passes. Additional recorded-shape compatibility checks use summary-cascade-stall (715672479–715672500, uncertain 492/496/497, undecided Jev 0.38), claim-scoped-floor (969389898/969389899) and run-completion's retained real otherShapes. Empty context/output fixtures are not evidence that Telegram delivered an empty message.
 
-simplestRobustRoute: this is the simplest robust route: reuse current model report selection and the existing bounded format retry, deduplicate only exact already-present result bytes, and retain the existing final-text and receipt checks. Semantic merging or a new settlement protocol would add authority and recovery machinery without being necessary for the captured case.
 
-80/20: author checks complete; independent review and exact-head live delivery remain desk-owned.
-VERDICT: author submission; this record asserts no independent verdict.
 
 Prompt finding: 4106b49fff07 | protocol-literal | Existing runner protocol or fixed status text; unchanged by this repair and not a semantic answer prescription.
 Prompt finding: 849db3a6296a | protocol-literal | Existing runner protocol or fixed status text; unchanged by this repair and not a semantic answer prescription.
@@ -53,3 +50,7 @@ Deferral: tests/preview/fixtures/report-settlement-46040806-2026-11-04.json:53 |
 Deferral: tests/preview/fixtures/report-settlement-46040806-2026-11-04.json:54 | not-a-deferral=Captured model text or replay setup/description, not deferred implementation work.
 Deferral: tests/preview/report-settlement-live.test.ts:71 | not-a-deferral=Captured model text or replay setup/description, not deferred implementation work.
 Deferral: tests/preview/report-settlement-live.test.ts:149 | not-a-deferral=Captured model text or replay setup/description, not deferred implementation work.
+
+simplestRobustRoute: this is the simplest robust route: reuse current model report selection and the existing bounded format retry, deduplicate only exact already-present result bytes, and retain the existing final-text and receipt checks. Semantic merging or a new settlement protocol would add authority and recovery machinery without being necessary for the captured case.
+80/20: author checks complete; independent review and exact-head live delivery remain desk-owned.
+VERDICT: author submission; this record asserts no independent verdict.
