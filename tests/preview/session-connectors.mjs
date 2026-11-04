@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prepareMcpLaunch, serveTurnSocket } from './tool-turn.mjs';
-import { harnessSocketDirectory, harnessHookPath } from './harness-user.mjs';
+import { grantAcl, harnessAcl, harnessSocketDirectory, harnessHookPath } from './harness-user.mjs';
 
 export async function prepareSessionConnectors({ mcp, privateDirectory, identity, workspace, resolveSecret,
   check, ownerRead = null, socketDirectory = () => identity ? harnessSocketDirectory(identity.user) : realpathSync(mkdtempSync(join(tmpdir(), 'ism-'))) }) {
@@ -28,6 +28,7 @@ export async function prepareSessionConnectors({ mcp, privateDirectory, identity
       owner_github: { command: process.execPath, args: [client, socket] } } } : mcp;
     const prepared = prepareMcpLaunch({ mcp: configured, privateDirectory, socket, workspace,
       harness: identity ? { hookScript: harnessHookPath() } : null });
+    if (identity && prepared) grantAcl([prepared.config], [harnessAcl.readOnly(identity.user)]);
     close.rearm(prepared?.nonces ?? {}, values);
     return prepared;
   } };

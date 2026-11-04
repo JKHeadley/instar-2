@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import { prepareSessionConnectors } from './session-connectors.mjs';
 // @ts-expect-error physical host boundary
 import { readRootMcp } from './tool-turn.mjs';
+// @ts-expect-error physical host boundary
+import { grantAcl, harnessAcl, HARNESS_TURNS, HARNESS_USER } from './harness-user.mjs';
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
 const run = (command: string, args: string[]) => new Promise<{ code: number | null; out: string }>((resolve, reject) => {
@@ -52,5 +54,19 @@ it('keeps the default browser home on the continuing session workspace', async (
   try {
     expect(port.launch().launch.playwright.env.CFFIXED_USER_HOME).toBe(root);
     expect(port.launch().launch.playwright.env.CFFIXED_USER_HOME).toBe(root);
+  } finally { await port.close(); }
+});
+const nativeHarness = process.platform === 'darwin' && spawnSync('sudo', ['-n', '-u', '_instarharness', 'true']).status === 0;
+it.skipIf(!nativeHarness)('opens the exact MCP launch file to the worker account before a continuing session starts', async () => {
+  const root = mkdtempSync(join(HARNESS_TURNS, 'session-mcp-read-')); roots.push(root);
+  grantAcl([root], [harnessAcl.search(HARNESS_USER)]);
+  const port = await prepareSessionConnectors({ mcp: null, privateDirectory: root, identity: { user: HARNESS_USER },
+    ownerRead: async () => ({ status: 'unavailable' }), resolveSecret: () => { throw Error('no secret expected'); }, check: () => 'clear' });
+  try {
+    const launch = port.launch();
+    expect(launch.servers).toEqual(['owner_github']);
+    const read = spawnSync('sudo', ['-n', '-u', HARNESS_USER, '/bin/cat', launch.config], { encoding: 'utf8' });
+    expect(read.status).toBe(0);
+    expect(Object.keys(JSON.parse(read.stdout).mcpServers)).toEqual(['owner_github']);
   } finally { await port.close(); }
 });
