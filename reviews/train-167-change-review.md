@@ -14,8 +14,8 @@ Side effects: The integration repair renders one shared result under all its ind
 Undo and recovery: Keep current live build until desk acceptance; revert the integration if rejected. Journal schema remains compatible; preserve uncertain delivery records and never resend an unknown effect.
 Multi-machine posture: Existing journal ownership, durable intent and receipt protocol unchanged across restart and owner transfer. No new store or peer requirement.
 Layer below: Read constitution, member reports and reviewed source; inspect pendingReports, current-model selection, reply revision, sentObligations and receipt settlement. The direct-consumer sweep exposed erased subject labels in journal-deliver-all; reconcile subject identity with exact-result deduplication and test the same association through revision.
-Bug class: none
-Bug evidence: none
+Bug class: integration
+Bug evidence: reproducer=tests/preview/journal-deliver-all.test.ts
 Hook bypass: none
 Convergence: none
 Prompt review: Preserve reviewed report guidance and existing bounded format retry. Replay captured request 46040805 and answer 46040806 plus original rejected fulfillment outputs and the recorded corrected model response; summary/uncertain/Jev/reply-review/empty-context neighbors are covered by retained fixtures. No fresh live call or deployed proof claimed.
