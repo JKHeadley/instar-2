@@ -1,6 +1,6 @@
 # Change review — restore abandoned worker slot recovery
 
-Subject base: 1d10dea2e7b0e88d35f964fa456573451229ac33
+Subject base: 2a9b1522d50b82164ad023f79de0d602de9b5f15
 Review state: frozen
 Reviewed content: sha256:2e6d60046c42e26413f84aad61a68d79dca84e114e38ec65524e30a77cdf24f2
 Outcome: Restore the previously reviewed recovery of dead launch reservations on the answering live base, without adding another behavior change.
@@ -23,7 +23,7 @@ Convergence: claimed
 Prompt review: no prompt change.
 Deferral: none
 
-Subject (10 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, scripts/resource-owner.mjs, src/assembly/harness.declarations.json, tests/integration/resource-owner.test.ts
+Subject (11 paths): docs/release-evidence/resource-recovery-restored-1104-report.md, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, scripts/resource-owner.mjs, src/assembly/harness.declarations.json, tests/integration/resource-owner.test.ts
 
 Decision: RR-RESTORE-1 | Restored only resource-owner code and its can-fail tests from 45ce50d0 onto 1d10dea2; no unrelated source change. | reported=docs/release-evidence/resource-recovery-restored-1104-report.md
 Decision: RR-RESTORE-2 | The focused resource-owner file passed 39/39. Native composition passed 10/10 after its exact digest was declared. | reported=docs/release-evidence/resource-recovery-restored-1104-report.md
