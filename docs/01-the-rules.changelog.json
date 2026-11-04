@@ -1,5 +1,26 @@
 [
   {
+    "revision": 18,
+    "date": "2026-11-03",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, 2026-11-03: \"we should have a FUNDAMENTAL REQUIREMENT that 1.x and 2.0 constitution/rule book always stay aligned for ALL updates\"; wording approved 2026-11-03. Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Add Rule 119, One Constitution, Two Books Aligned, in Checkable now; update the group and total counts and the source note.",
+        "why": "The two books are one constitution, but nothing kept their texts together, and changes to one repeatedly never reached the other.",
+        "ref": "Justin, 2026-11-03: \"we should have a FUNDAMENTAL REQUIREMENT that 1.x and 2.0 constitution/rule book always stay aligned for ALL updates\"; wording approved 2026-11-03. Final-head GitHub code-owner approval and merge pending."
+      },
+      {
+        "what": "Rule 72 names default-on for the fleet as the last rung, measured thresholds, and a threshold raising a feature for a decision rather than flipping it.",
+        "why": "Brings the main obligations of the Maturation Path article the operator approved for the 1.x registry into the rule book. The 1.x article carries more operating detail (two independent readings, the form of a preference exception, rungs derived from what ships); the alignment map names that difference.",
+        "ref": "Justin, 2026-11-03: \"we should have a FUNDAMENTAL REQUIREMENT that 1.x and 2.0 constitution/rule book always stay aligned for ALL updates\"; wording approved 2026-11-03. Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 17,
     "date": "2026-10-26",
     "status": "draft",

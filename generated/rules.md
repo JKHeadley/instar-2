@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:7df76cff3e884ec0a8b3a1f908cf5ca1b21c1821185a51865e08a1333e83801e
-Source commit: daa0de815f77718d647d6afd2fda51ad0a26551b
+Register generation: sha256:2f7e5bd701d88458d4c57473d4a156b8bb6473b20d55fb83fb8258708bb01e79
+Source commit: 231cc3d01024d3ec2f2cd3e1c9b6f2dfc102a44b
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -158,6 +158,13 @@ An agent with exactly one AI provider, whichever one it is (Anthropic, OpenAI, G
 
 Check: A single-provider boot test for each supported harness: a fresh installation with only that harness's own provider configured passes the live end-to-end proofs (#43, #62), including a real conversation with the operator, with nothing refused, held or switched off for want of another provider. A declaration check: every place that calls a provider other than the agent's main one carries a declared single-provider behaviour, and a missing declaration fails the build.
 Terms: term:feature
+
+## 119. One Constitution, Two Books Aligned
+
+The 1.x registry and the 2.0 purpose and rule book are one constitution, and they stay aligned on every update. Every change to either book names its counterpart change in the other, or says why it has none (it concerns only that version, or it changes no obligation). Where the two differ, the alignment map says so by name, and the master governs. No difference is silent.
+
+Check: A script reads each pull request touching either book and flags one with no declared counterpart; the 1.x merge tool refuses it. A daily check reads both repositories' history and raises any merged change whose pair never landed. Whether two wordings carry the same obligation, and whether a stated "none" is honest, is held by the independent review of the change.
+Terms: (none)
 
 ## 12. Intelligent Prompts
 
@@ -623,10 +630,10 @@ Terms: (none)
 
 ## 72. Maturation Path
 
-Every feature graduates test agent → development agent → fleet, with a declared graduation test and deadline.
+Every feature graduates test agent → development agent → fleet, with a declared graduation test and deadline, and with default-on for the fleet as the last rung unless a recorded user-preference decision keeps it off. Every rung has machine-checkable thresholds against the feature's own logged behaviour. A threshold met raises the feature to the recurring review, whose model decides; it never flips anything by itself. A fleet default stays a reviewed code change.
 
-Check: Every gated feature declares both and the deadline is enforced. The direct fix for 20-of-92.
-Terms: term:feature
+Check: Every gated feature declares both and the deadline is enforced. The direct fix for 20-of-92. 1.x holds the thresholds in its feature ladder and fails the build on a switched-off flag with no entry; 2.0's equivalent needs building.
+Terms: term:feature, term:user
 
 ## 73. A Dark Feature Guards Nothing
 

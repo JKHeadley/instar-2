@@ -1,7 +1,7 @@
 # Generated glossary
 
-Register generation: sha256:7df76cff3e884ec0a8b3a1f908cf5ca1b21c1821185a51865e08a1333e83801e
-Source commit: daa0de815f77718d647d6afd2fda51ad0a26551b
+Register generation: sha256:2f7e5bd701d88458d4c57473d4a156b8bb6473b20d55fb83fb8258708bb01e79
+Source commit: 231cc3d01024d3ec2f2cd3e1c9b6f2dfc102a44b
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -237,7 +237,7 @@ Used by: rule:102, rule:105, rule:62, rule:8, rule:80, rule:87
 A principal the agent serves — any standing. Every operator is a user; a user with only
 requester standing is a user the agent works *for* but does not take *binding* decisions from.
 
-Used by: rule:114, rule:14, rule:2, rule:28, rule:35, rule:52, rule:54, rule:62, rule:76, rule:77, rule:78, rule:83, rule:85, rule:87, rule:95
+Used by: rule:114, rule:14, rule:2, rule:28, rule:35, rule:52, rule:54, rule:62, rule:72, rule:76, rule:77, rule:78, rule:83, rule:85, rule:87, rule:95
 
 ## user-facing
 
