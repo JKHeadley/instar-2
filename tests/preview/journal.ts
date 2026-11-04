@@ -2692,7 +2692,11 @@ const REPORT_SELECTION_GUIDANCE = 'Judge pendingReports.items against current-ta
   + 'A prior answer or follow-up is not proof of current capabilities. Return selectedReports:[key] only for reports '
   + 'whose claims remain supported and consistent now; the runner appends those verbatim. Return rejectedReports:[{key,objection}] '
   + 'for offered unverifiable or contradictory reports, with a concise objection (at most 1000 bytes), to return them to owned rework. '
-  + 'Mere omission leaves reports unchanged; they remain owed, not completed or delivered. Explain relevant uncertainty without repeating unsupported claims.';
+  + 'Mere omission leaves reports unchanged; they remain owed, not completed or delivered. '
+  + 'For a prepared result, select every supported report key, including duplicates: identical report text is included only once, '
+  + 'and each selected report settles only after that text is delivered. Keep your own reply brief rather than paraphrasing the selected result. '
+  + 'fulfilled is only for recorded agent promises, not every agent-owned request or reply loop; use selectedReports for prepared results. '
+  + 'Explain relevant uncertainty without repeating unsupported claims.';
 /** Reads one work step's decision; anything malformed is a recorded failed attempt, never a guessed outcome. */
 export function obligationDecision(output: string, kind: 'commitment' | 'blocker', at: number, zone: string, previous: readonly RunCompletionItem[] = []):
   Pick<Extract<JournalRecord, { kind: 'obligation-result' }>, 'outcome' | 'report' | 'note' | 'waitsOn' | 'recheckAt' | 'assessment' | 'completion'> {
@@ -9075,7 +9079,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               return 'promises must quote an exact sentence of this reply; when, if present, must be copied from that sentence';
             if (fulfillmentProposals(value.fulfilled, body,
               item => offeredPromises().has(item.id) && fulfillmentSupported(item, body, journal.view.commitments)) === undefined)
-              return 'fulfilled must name an offered agent promise and quote an exact excerpt of this new reply, not the old promise; omit it if no promise was carried out';
+              return 'fulfilled must name an offered recorded agent promise and quote an exact excerpt of this new reply, not the old promise; '
+                + 'an agent-owned request or reply loop is not necessarily an agent promise. ' + REPORT_SELECTION_GUIDANCE;
             if (!turn.requestedAction && fromOperator(turn) && Array.isArray(value.dated)) {
               const admitted = datedFrom(value.dated, turn);
               // S update 715676632 copied packet.now instead of datedClock.at. A supplied but
@@ -9591,9 +9596,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 && selectedReports.includes(entry.key) && !rejectedReports.some(rejected => rejected.key === entry.key)
                 && offeredReports.some(offered => offered.key === entry.key && offered.text === entry.text)
                 && !obligations.deliveryCancels?.some(cancel => entry.key === `commitment:${cancel.id}`))) {
-                const line = reportLine(item);
-                if (Buffer.byteLength(text) + Buffer.byteLength(line) > MAX_ANSWER_BYTES) break;
-                text = `${text.trimEnd()}${line}`; reports.push(item.key);
+                // Selection is per identity; rendering is per exact result. Never infer selection from
+                // matching text. The final-text check and receipt still bind/settle every selected key.
+                if (!text.includes(item.text)) {
+                  const line = reportLine(item);
+                  if (Buffer.byteLength(text) + Buffer.byteLength(line) > MAX_ANSWER_BYTES) break;
+                  text = `${text.trimEnd()}${line}`;
+                }
+                reports.push(item.key);
               }
             const rework = replying && text.trim() ? rejectedReports.flatMap(item => {
               const report = offeredReports.find(offered => offered.key === item.key);
@@ -9897,8 +9907,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // review of the revision sees it and an objection to the prose never withholds a result (live pre-switch
             // sb-w4-updaterecord 04bed622, room four, D1c: the revision folded three results into its own wording, so
             // none occurred verbatim and all three went back to owned work).
-            const resultLines = pendingReports(journal.view).filter(item => turn.answerReports?.includes(item.key))
-              .map(reportLine).filter(line => reply.includes(line));
+            const resultLines = [...new Set(pendingReports(journal.view).filter(item => turn.answerReports?.includes(item.key))
+              .map(reportLine).filter(line => reply.includes(line)))];
             // A mandatory content objection can be removed without rewriting the answer, but the
             // resulting answer still needs its own contextual review. Keep part of the shared
             // deadline for that review when the reviewer named a locatable claim. T1's real
