@@ -43,7 +43,7 @@ export function applyCommitmentStoreRecord(current: CommitmentStoreView | undefi
     view.rows[item.id] = item;
   }
   if (row.meta) {
-    if (row.meta.replicationSeq !== undefined) view.replicationSeq = row.meta.replicationSeq;
+    if (row.meta.replicationSeq !== undefined) { view.replicationSeq = row.meta.replicationSeq; view.highWater = Math.max(view.highWater ?? 0, row.meta.replicationSeq); }
     if (row.meta.storeIncarnation !== undefined) view.storeIncarnation = row.meta.storeIncarnation;
     if (row.meta.drops !== undefined) view.drops = row.meta.drops;
   }

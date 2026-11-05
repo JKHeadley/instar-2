@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { createJournalWorker, openPreviewJournal } from '../preview/journal-test-worker.js';
 import { durableProjection } from '../preview/journal.js';
-import { createCommitmentHost, mirrorKey, type CommitmentHostPorts } from '../preview/commitment-host.js';
+import { commitmentStoreReport, createCommitmentHost, mirrorKey, type CommitmentHostPorts } from '../preview/commitment-host.js';
+import { sentinelReport } from '../preview/live-sentinels.js';
 
 const key = new Uint8Array(32).fill(41);
 const START = Date.UTC(2026, 8, 26, 17);
@@ -429,5 +430,29 @@ it('another owner\'s rows win: a host that stood by rebuilds from the journal', 
     w.host.tick();
     expect(w.host.tracker().get('CMT-777')?.userRequest).toBe('from the peer');
     expect(w.host.tracker().record({ type: 'one-time-action', userRequest: 'x', agentResponse: 'y' }).id).toBe('CMT-778');
+  } finally { w.close(); }
+});
+
+it('a stop holds everything: no sweep, no beacon step and no mirror on the tick', () => {
+  const w = world({ tracker: { autoExpiry: { enabled: true, dryRun: false, maxAgeDays: 1 } } });
+  try {
+    w.host.tick();
+    const c = w.host.tracker().record({ type: 'one-time-action', userRequest: 'x', agentResponse: 'y', owner: 'agent' });
+    w.clock.now = START + 10 * 86_400_000;
+    const frames = w.journal.view.commitmentStore!.frames;
+    w.clock.now = genesis.expires + 1;
+    expect(w.host.tick()).toEqual({ ran: 0, failures: [] });
+    expect(w.journal.view.commitmentStore!.frames).toBe(frames);
+    expect(w.host.tracker().get(c.id)?.status).toBe('pending');
+  } finally { w.close(); }
+});
+
+it('status reads only the journal, so a second machine reports the same rows', () => {
+  const w = world();
+  try {
+    w.host.tick();
+    w.host.tracker().record({ type: 'one-time-action', userRequest: 'x', agentResponse: 'y', owner: 'agent', blockedOn: 'external' });
+    expect(commitmentStoreReport(w.journal.view)).toMatchObject({ tracked: 1, open: 1, waiting: 1 });
+    expect(sentinelReport(w.journal.view).commitments).toMatchObject({ tracked: 1 });
   } finally { w.close(); }
 });

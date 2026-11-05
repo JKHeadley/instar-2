@@ -19,6 +19,17 @@ import { COMMITMENT_STORE_GENERATION, emptyCommitmentStore, type CommitmentStore
 
 const forward = { generation: COMMITMENT_STORE_GENERATION, additive: true } as const;
 const MAX_ROWS_PER_FRAME = 32, MAX_TEXT = 2048, MAX_TIMERS_PER_TICK = 32;
+/** Read back from the journal alone, for the status surfaces. */
+export function commitmentStoreReport(view: JournalView) {
+  const store = view.commitmentStore;
+  if (!store) return null;
+  const rows = store.order.map(id => store.rows[id]!), open = rows.filter(row => ['pending', 'verified', 'violated'].includes(row.status));
+  return { tracked: rows.length, open: open.length, waiting: open.filter(row => (row.blockedOn ?? 'none') !== 'none').length,
+    atRisk: open.filter(row => row.atRisk).length, paused: open.filter(row => row.beaconPaused).length,
+    violated: open.filter(row => row.status === 'violated').map(row => row.id),
+    checkInsUnsettled: open.filter(row => row.checkInReminderSendStartedAt).map(row => checkInSendId(row.id)),
+    checkInsFailed: rows.filter(row => row.checkInReminderFailedAt).map(row => row.id), lastSweep: store.ledger.at(-1) ?? null };
+}
 const clamp = (text: string) => text.length <= MAX_TEXT ? text : `${text.slice(0, MAX_TEXT - 1)}…`;
 export const mirrorKey = (id: number) => `commitment:${id}`;
 
@@ -82,7 +93,8 @@ export function createCommitmentHost(journal: { readonly view: JournalView; appe
         } catch { return { state: 'failed', errorClass: 'journal-refused' }; }
       },
       readHighWater: () => stored().highWater,
-      writeHighWater(seq) { append({ highWater: seq }); },
+      // The journal's own chain is the rewind authority; the frames already carry the sequence.
+      writeHighWater() {},
     },
     behavioralRules: {
       exists: () => stored().rules !== null,
@@ -157,6 +169,8 @@ export function createCommitmentHost(journal: { readonly view: JournalView; appe
 
   const tick = (): { ran: number; failures: string[] } => {
     const failures: string[] = [];
+    // A stop or expiry holds everything; the rows stay and resume with the next admitted owner (floor: stop).
+    if (journal.view.stop !== null || ports.now() >= journal.view.expires) return { ran: 0, failures };
     // Another owner advanced the journal while this one stood by: its rows win, rebuild from them.
     if (stored().frames !== live.frames + writes) {
       if (started) { live.tracker.stop(); live.beacon.stop(); }
@@ -172,18 +186,7 @@ export function createCommitmentHost(journal: { readonly view: JournalView; appe
     }
     return { ran: ready.length, failures };
   };
-  const report = () => {
-    const rows = live.tracker.getAll(), open = live.tracker.getActive();
-    return { tracked: rows.length, open: open.length,
-      waiting: open.filter(row => (row.blockedOn ?? 'none') !== 'none').length,
-      atRisk: open.filter(row => row.atRisk).length,
-      paused: open.filter(row => row.beaconPaused).length,
-      escalated: open.filter(row => row.escalated).length,
-      violated: open.filter(row => row.status === 'violated').map(row => row.id),
-      checkInsUnsettled: open.filter(row => row.checkInReminderSendStartedAt).map(row => checkInSendId(row.id)),
-      checkInsFailed: rows.filter(row => row.checkInReminderFailedAt).map(row => row.id),
-      lastSweep: stored().ledger.at(-1) ?? null, health: live.tracker.getHealth() };
-  };
+  const report = () => ({ ...commitmentStoreReport(journal.view), health: live.tracker.getHealth() });
   return { tick, report, tracker: () => live.tracker, beacon: () => live.beacon,
     runCheckIns: (): Promise<CheckInReminderPassReport> => live.checkIns.runPass(), stop() { live.tracker.stop(); live.beacon.stop(); due.clear(); } };
 }

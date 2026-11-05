@@ -24,6 +24,7 @@ import { commitmentOpen, commitmentWaitsOn, liveSummaries, obligationSchedule, o
   wallEpoch, type JournalRecord, type JournalView, type Turn } from './journal.js';
 import { openLoops } from './obligations.js';
 import { isStopCommand } from './status-command.js';
+import { commitmentStoreReport } from './commitment-host.js';
 import { SENTINEL_FAMILIES, type SentinelEventRow, type SentinelFamily, type SentinelView, type WorkSilenceView } from './sentinel-record.js';
 
 export const CONTEXT_SESSION = 'journal-context';
@@ -297,6 +298,7 @@ export function sentinelReport(view: JournalView, families: ReadonlySet<Sentinel
       waiting: promise.filter(([, entry]) => entry.closedAt === null && entry.outcome === 'waiting').map(([id]) => id),
       acted: promise.filter(([, entry]) => entry.outcome === 'acted').length },
     events: (sentinels?.events ?? []).slice(-10),
+    ...(view.commitmentStore ? { commitments: commitmentStoreReport(view) } : {}),
   };
 }
 
