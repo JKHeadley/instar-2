@@ -53,6 +53,8 @@ if (argv[0] === '--probe') {
     } catch (error) { code = error?.code ?? 'error'; }
     process.stdout.write(`${JSON.stringify({ path, mode: mode[0], ok, code })}\n`);
   }
+  // A successful probe must retain every row even while its pipe reader is delayed.
+  await new Promise(resolve => process.stdout.write('', resolve));
   process.exit(0);
 }
 
