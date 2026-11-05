@@ -1,3 +1,4 @@
+import { applyHubRecord, type HubRecord, type HubState } from './collaboration-hub.js';
 import { applyAttentionRecord, type AttentionRecord, type AttentionState } from './attention-queue.js';
 import { createPromiseStore, recordCommitments, closeCommitment, recordReplyLoop, schedulePromise, promiseRetryDelay as workRetryDelay, COMMITMENT_WAITS_ON } from '../../src/rungraph/promises.js';
 import type { CommitmentNote as CoreCommitmentNote, CommitmentClosure, CommitmentWaitsOn, ReplyLoop } from '../../src/rungraph/promises.js';
@@ -1083,7 +1084,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['attention', 'send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['collaboration', 'attention', 'send-format-refused', 'phase-timing', 'group-carry', 'request-transfer', 'test-copy', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1102,6 +1103,7 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['attention', 'sen
   'summary-reserve', 'summary-review-reserve', 'summary-uncertain', 'tool-turn', 'waiting']);
 
 export type JournalRecord =
+  | HubRecord
   | AttentionRecord
   | PhaseTiming
   // Non-additive: an older writer must not discard the no-repeat expectation.
@@ -1651,6 +1653,7 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   writtenOff?: string[];
   /** Part 18: the live sentinels' recorded decisions; absent until a sentinel records one. */
   attention?: AttentionState;
+  collaboration?: HubState;
   sentinels?: SentinelView }
 
 function reserveTokens(view: JournalView, key: string, kind: CallKind, input: number, output: number): void {
@@ -3917,6 +3920,10 @@ function projectRow(view: JournalView, row: JournalRecord, system?: SystemCheck,
   // generic read (`'state' in row`, `'failureClass' in row`) can fold a newer build's frame into this
   // build's counts and silently move the projection digest the two builds compare.
   if (!KNOWN_FRAME_KINDS.has(row.kind)) { admitForwardFrame(view, row); return; }
+  if (row.kind === 'collaboration') {
+    if (view.stop !== null) throw Error('collaboration: stopped journal');
+    view.collaboration = applyHubRecord(view.collaboration, row); return;
+  }
   if (row.kind === 'attention') {
     if (view.stop !== null) throw Error('attention: stopped journal');
     view.attention = applyAttentionRecord(view.attention, row, view.genesis.operator); return;

@@ -4575,3 +4575,27 @@ and full channel parity still require implementation and review. These are not
 claimed as replaced by the dashboard. The complete 1.x source/test baseline was
 retained for that adaptation. No hub-specific recorded model outputs were present
 in the supplied summary/review fixtures; those fixtures cannot prove hub parsers.
+
+### Row 88 collaboration consumer
+
+`collaboration-hub.ts` adapts the 1.x CollaborationSurfacer into the existing
+encrypted journal. `collaborationEndpoint` wraps the actual authenticated
+AgentEndpoint: only admitted envelopes enter the hub intake; lookup, refusal,
+unknown receipts and worker authority remain the endpoint's. A host supplies its
+existing effect doorway and current owner/stop/expiry checks. This component is
+not yet the journal runner's production Threadline composition; row 88 remains
+OPEN and its declaration remains dark.
+
+The routing retains one silent Threadline hub, one first-contact notice per
+conversation, parent-bound content, hub-only housekeeping, explicit target-topic
+binding and 409 for ambiguous implicit selection. Notice identities permit a new
+episode while suppressing duplicate delivery of the same episode. Prepared work
+can resume after durability returns; a replicated dispatch fence without a
+receipt remains unknown and cannot trigger a resend. Thread, intake and effect
+populations refuse new identities at their bounds without deleting evidence.
+`collaboration-hub.test.ts` exercises actual signed/encrypted transport custody,
+endpoint admission, encrypted journal restart/compaction and both routing sides.
+Its injected judgments and effect receipts are deterministic fixtures, not live
+model or Telegram evidence. Production composition, model capture/contract replay,
+independent standby receipts, commitment binding and complete channel parity are
+tracked by row 88 and the builder report; this component does not certify them.
