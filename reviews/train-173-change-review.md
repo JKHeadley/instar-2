@@ -27,6 +27,9 @@ Decision: train-173-C | No irreconcilable product conflict, no aborted merge and
 Decision: train-173-D | Run targeted foreground Studio checks at nice 10 with one worker, preserving assertions and reporting any host-dependent result. Full suite and release acceptance belong to the pipeline. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-173-PROGRESS.md
 Decision: train-173-desk | Apply the existing cint-L37 repin/build/rehash/replay chain. No inventory or owner pin changed. Recompute the canonical anchor hash for the combined shape and rules; regenerate from committed combined source on the real clock. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-173-PROGRESS.md
 
+Deferral: generated/conversion.json:1 | not-a-deferral=Generated governed text retained from approved main; no builder deferral.
+Deferral: generated/register.json:1 | not-a-deferral=Generated governed text regenerated from combined sources; no builder deferral.
+
 simplestRobustRoute: This is the simplest robust route: exact reviewed merges and existing register regeneration. No runtime integration machinery is added. Start guards are pinned ancestry and reviewed membership; end guards are targeted verification and desk acceptance; existing authority, resource, stop, durable intake and send-uniqueness floors remain. Captured replay is evidence of accounting behavior, not a claim of new unattended live operation or release health.
 80/20: Verify changed tests, direct consumers, journal regressions and required gates; the desk runs the full combined suite and independent review.
 VERDICT: author submission; no independent convergence claimed
