@@ -104,17 +104,33 @@ it('persistent native connection refusal queues durable recovery after one immed
     expect(w.journal.view.sendOutcomes[0]).toMatchObject({ outcome: 'refused',
       reason: expect.stringContaining('ECONNREFUSED/connect') });
     w.journal.close();
-    const reopened = world(dir, () => { throw Error('terminal refusal repeated'); });
-    await reopened.worker.drain();
-    expect(reopened.seen).toHaveLength(0);
+    let recoveryNow = 60999;
+    const reopened = world(dir, input => {
+      const count = join(dir, 'recovered-count.json');
+      const request = Buffer.from(JSON.stringify({ method: 'sendMessage', body: { chat_id: genesis.chat, text: 'an answer' }, timeoutMs: 10_000 })).toString('base64url');
+      const response = JSON.stringify({ ok: true, result: { message_id: 55, chat: { id: Number(genesis.chat) }, text: 'an answer' } });
+      const child = spawnSync(process.execPath, ['--import', resolve('tests/assembly/telegram-bot-api-round6-transport.mjs'),
+        resolve('src/assembly/telegram-bot-api-bridge.mjs'), request], { input: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        encoding: 'utf8', timeout: 15_000, env: { ...process.env, INSTAR_ROUND6_FAILURE: 'real-connect-recovery',
+          INSTAR_ROUND6_COUNT_FILE: count, INSTAR_ROUND6_RESPONSE_BASE64: Buffer.from(response).toString('base64') } });
+      expect(child.status, child.stderr).toBe(0);
+      expect(JSON.parse(readFileSync(count, 'utf8'))).toMatchObject({ fetches: 2, requests: 1 });
+      expect(input.provenance).toEqual(w.seen[0]!.provenance); expect(input.target).toBe(w.seen[0]!.target);
+      return classifyTelegramSend(JSON.parse(child.stdout), { chat: genesis.chat, expectedText: 'an answer' });
+    }, () => recoveryNow);
+    await reopened.worker.drain(); expect(reopened.seen).toHaveLength(0);
+    recoveryNow = 61000; await reopened.worker.drain();
+    expect(reopened.seen).toHaveLength(1); expect(reopened.contexts).toEqual([]);
+    expect(reopened.journal.view.order[0]?.sent).toBe(55);
+    await reopened.worker.drain(); expect(reopened.seen).toHaveLength(1);
     reopened.journal.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }, 60_000);
 
-function world(dir: string, send: (input: { target?: string; provenance?: unknown }) => number | null | SendOutcome) {
+function world(dir: string, send: (input: { target?: string; provenance?: unknown }) => number | null | SendOutcome, now = () => 1000) {
   const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis);
   const seen: { target?: string; provenance?: unknown }[] = [], contexts: string[] = [];
-  const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+  const worker = createJournalWorker(journal, { now, stopped: () => false,
     model: async (input: { context: string }) => { contexts.push(input.context); return 'an answer'; }, checkOutbound: () => {},
     send: async input => { seen.push(input); return send(input); } });
   return { journal, worker, seen, contexts };

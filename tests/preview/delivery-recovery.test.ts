@@ -128,7 +128,7 @@ it('exhausts recovery durably, sends one actionable notice, and never exposes th
 
 it.each(['stop', 'expiry', 'secret', 'denied', 'ttl'] as const)('recovery respects the %s boundary', async boundary => {
   const dir = mkdtempSync(join(tmpdir(), 'delivery-floor-')); let now = 1000, stopped = false, secret = false, calls = 0;
-  const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis);
+  const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, { ...genesis, ...(boundary === 'expiry' ? { expires: 61000 } : {}) });
   const worker = createJournalWorker(journal, { now: () => now, stopped: () => stopped, checkOutbound: () => { if (secret) throw Error('secret refused'); },
     model: async () => 'retained answer', send: async input => {
       if (input.target?.startsWith('delivery-notice:')) return 99;
@@ -138,7 +138,6 @@ it.each(['stop', 'expiry', 'secret', 'denied', 'ttl'] as const)('recovery respec
     worker.intake([update]); await worker.drain(); expect(calls).toBe(2);
     now = boundary === 'ttl' ? 1000 + TTL_MS : 61000;
     if (boundary === 'stop') stopped = true;
-    if (boundary === 'expiry') journal.view.expires = now; // host fixture only; no signed grant is changed
     if (boundary === 'secret') secret = true;
     await worker.drain().catch(error => { expect(String(error)).toMatch(/stop|expir|secret/iu); });
     expect(calls).toBe(boundary === 'denied' ? 3 : 2);
@@ -175,7 +174,7 @@ it('rate-limit waits retain the inherited regular budget but never outlive TTL',
   expect(recoveryDelay(limited, 0, 0, TTL_MS)).toBeNull();
 });
 
-it('replicated recovery hands the original signed payload to a successor and consumes one retry claim', async () => {
+it.each(['receipt', 'collection-lost'] as const)('replicated recovery preserves identity across handoff with %s', async receiptMode => {
   const { localAuthorityClient } = await import('./conversation-authority.js');
   const { createLeaseHolder } = await import('./two-machine-serving.js');
   const { openReplicaStore, localReplicaClient, createJournalShipper, createReplicatedDispatch, adoptReceivedCopy } = await import('./journal-replication.js');
@@ -207,14 +206,17 @@ it('replicated recovery hands the original signed payload to a successor and con
       cursor: 0, sleep: async ms => { now += ms; }, elapsed: () => now });
     let gate = dispatch(first, shipper);
     const worker = (lease: typeof first) => createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {}, model: async () => fixture.candidate,
+      reconcileSend: (target, subject) => gate.reconcile(target, subject),
       send: async input => {
-        const refuse = await gate.admit(input.target!, () => lease.fence() ? null : 'owner lost', undefined, input.retryAttempt);
+        if (input.target?.startsWith('delivery-notice:')) return 99;
+        const refuse = await gate.admit(input.target!, () => lease.fence() ? null : 'owner lost', undefined, input.retryAttempt, input.provenance!.contentHash);
         if (refuse) return refuse;
         sentSubjects.push({ target: input.target, provenance: input.provenance, text: input.text });
         const response = await fetch(endpoint, { method: 'POST', body: JSON.stringify(input) });
         const result = classifyTelegramSend({ kind: 'response', status: response.status, bytes: await response.text() }, input);
-        await gate.outcome(input.target!, result.kind, result.kind === 'refused' && result.retryAfterMs !== undefined);
-        return result;
+        await gate.outcome(input.target!, result.kind, result.kind === 'refused' && result.retryAfterMs !== undefined,
+          result.kind === 'accepted' ? { message: result.message, subject: input.provenance!.contentHash } : undefined);
+        return result.kind === 'accepted' && receiptMode === 'collection-lost' ? { kind: 'unknown', reason: 'local collection interrupted' } : result;
       } });
     const w = worker(first); w.intake([update]); await w.drain();
     expect(requests).toBe(1); expect(await shipper.drain()).toBe(true);
@@ -227,7 +229,13 @@ it('replicated recovery hands the original signed payload to a successor and con
       peer: localReplicaClient(aStore), conversation, machine: 'b', secret, epoch: () => second.fence()?.epoch ?? null, monotonic: () => now });
     gate = dispatch(second, shipping); now = 30999; await worker(second).drain(); expect(requests).toBe(1);
     now = 31000; await worker(second).drain(); expect(requests).toBe(2);
-    expect(sentSubjects[1]).toEqual(sentSubjects[0]); expect(journal.view.order[0]?.sent).toBe(123);
+    expect(sentSubjects[1]).toEqual(sentSubjects[0]);
+    if (receiptMode === 'collection-lost') {
+      expect(journal.view.order[0]?.sent).toBeUndefined();
+      journal.close(); journal = openPreviewJournal(join(bRoot, 'journal'), key, genesis);
+      await worker(second).drain();
+    }
+    expect(journal.view.order[0]?.sent).toBe(123);
     expect(authority.handle({ op: 'claim', fence: second.fence()!, key: `reply:${journal.view.order[0]!.id}`, attempt: 2 })).toMatchObject({ ok: false, state: 'sent' });
     await worker(second).drain(); expect(requests).toBe(2);
   } finally { journal.close(); authority.close(); await new Promise<void>(resolve => server.close(() => resolve())); rmSync(dir, { recursive: true, force: true }); }
@@ -249,4 +257,99 @@ it('the existing next-due wake resumes queued recovery without a new intake or t
     now = 31000; (fire as unknown as () => void)(); await running; expect(sends).toBe(2);
     wake.refresh(); expect(nextDeliveryRecoveryAt(journal.view)).toBeNull(); expect(fire).toBeNull();
   } finally { wake.close(); journal.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+it.each(['matching', 'wrong-subject', 'absent'] as const)('restart reconciles only a persisted %s receipt without a second send', async evidence => {
+  const dir = mkdtempSync(join(tmpdir(), 'delivery-reconcile-'));
+  let now = 1000, sends = 0;
+  const authorityPath = join(dir, 'authority');
+  let authority = openConversationAuthority({ path: authorityPath, conversation: 'row07', termMs: 300000, monotonic: () => now });
+  const acquired = authority.handle({ op: 'acquire', machine: 'a', incarnation: 'a:1' });
+  if (!acquired.ok || !acquired.fence) throw Error('lease missing');
+  const fence = acquired.fence;
+  let journal = openPreviewJournal(join(dir, 'journal'), key, genesis);
+  const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {}, model: async () => fixture.candidate,
+    send: async input => {
+      if (input.target?.startsWith('delivery-notice:')) return 99;
+      sends++;
+      expect(authority.handle({ op: 'claim', fence, key: input.target!, subject: input.provenance!.contentHash })).toMatchObject({ ok: true });
+      if (evidence !== 'absent') {
+        const receipt = { message: 77, subject: evidence === 'matching' ? input.provenance!.contentHash : `sha256:${'f'.repeat(64)}` };
+        expect(authority.handle({ op: 'outcome', fence, key: input.target!, state: 'sent', receipt })).toMatchObject({ ok: evidence === 'matching' });
+      }
+      return { kind: 'unknown', reason: 'local receipt collection interrupted' };
+    } });
+  try {
+    worker.intake([update]); await worker.drain(); expect(sends).toBe(1);
+    const turn = journal.view.order[0]!, target = `reply:${turn.id}`, subject = turn.intentProvenance!.contentHash;
+    expect(turn.sent).toBeUndefined();
+    journal.close(); authority.close(); now++;
+    authority = openConversationAuthority({ path: authorityPath, conversation: 'row07', termMs: 300000, monotonic: () => now });
+    now += 300001; // Restart conservatively holds the previous lease for a full term.
+    const next = authority.handle({ op: 'acquire', machine: 'b', incarnation: 'b:1' });
+    if (!next.ok || !next.fence) throw Error('successor lease missing');
+    expect(authority.handle({ op: 'receipt', fence, key: target, subject })).toMatchObject({ ok: false });
+    expect(authority.handle({ op: 'receipt', fence: next.fence, key: target, subject: 'wrong' })).toEqual({ ok: true });
+    journal = openPreviewJournal(join(dir, 'journal'), key, genesis);
+    const second = createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {}, model: async () => { throw Error('no model'); },
+      reconcileSend: async (key, hash) => {
+        const answer = authority.handle({ op: 'receipt', fence: next.fence!, key, subject: hash });
+        return answer.ok ? answer.receipt?.message ?? null : null;
+      }, send: async () => { sends++; throw Error('must not resend'); } });
+    await second.drain(); await second.drain();
+    expect(journal.view.order[0]!.sent).toBe(evidence === 'matching' ? 77 : undefined); expect(sends).toBe(1);
+    if (evidence === 'matching') expect(() => journal.append({ kind: 'send-reconciled', target, subject, message: 77, at: now })).toThrow(/reconciliation/);
+  } finally { journal.close(); authority.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+it.each(['withdrawn', 'unsettled'] as const)('a queued requested reply stays behind the %s authority fence', async boundary => {
+  const dir = mkdtempSync(join(tmpdir(), 'delivery-withdraw-'));
+  const start = Date.UTC(2026, 8, 26, 17), due = Date.UTC(2026, 9, 2, 16);
+  let now = start, attempted = 0;
+  const journal = openPreviewJournal(join(dir, 'journal'), key, { ...genesis, expires: due + TTL_MS });
+  const request = 'remind me Friday at 9 am to call Priya';
+  const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {},
+    model: async input => {
+      if (input.id.startsWith('requested-action:')) return 'Call Priya.';
+      if (input.question === request) return JSON.stringify({ reply: 'Okay.', memory: [], dated: [{ quote: request, when: 'Friday at 9 am', remind: true }] });
+      if (boundary === 'unsettled') return { state: 'uncertain' };
+      const reminders = (JSON.parse(input.context) as { reminders?: { id: string }[] }).reminders ?? [];
+      return JSON.stringify({ reply: 'Cancelled.', memory: [], cancelReminders: reminders.map(item => ({ id: item.id, quote: 'cancel the Priya reminder' })) });
+    }, send: async input => {
+      if (input.target?.startsWith('reply:requested-action:')) { attempted++; return { kind: 'refused', reason: 'telegram 429', retryAfterMs: 30000 }; }
+      return 77;
+    } });
+  try {
+    worker.intake([{ ...update, message: { ...update.message, text: request, date: start / 1000 } }]); await worker.drain();
+    now = due; await worker.sendRequested(); expect(attempted).toBe(1);
+    now += 30000;
+    worker.intake([{ update_id: update.update_id + 1, message: { ...update.message, text: 'cancel the Priya reminder', date: now / 1000 } }]);
+    await worker.drain(); await worker.drain(); expect(attempted).toBe(1);
+    const outcome = journal.view.sendOutcomes.find(item => item.target.startsWith('reply:requested-action:'))!;
+    expect(outcome).toBeDefined();
+    if (boundary === 'withdrawn') { expect(outcome.reason).toBe('requested action withdrawn before recovery'); expect(outcome).not.toHaveProperty('recovery'); }
+    else expect(outcome.recovery).toBeDefined();
+  } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('claim receipts reject corrupt, conflicting and unsigned evidence and cannot be mutated by a reader', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'delivery-receipt-owner-'));
+  const authority = openConversationAuthority({ path: join(dir, 'authority'), conversation: 'row07', termMs: 1000, monotonic: () => 0 });
+  try {
+    const acquired = authority.handle({ op: 'acquire', machine: 'a', incarnation: 'a:1' });
+    if (!acquired.ok || !acquired.fence) throw Error('lease');
+    const fence = acquired.fence, subject = `sha256:${'a'.repeat(64)}`, other = `sha256:${'b'.repeat(64)}`, key = 'reply:1';
+    expect(authority.handle({ op: 'claim', fence, key, subject })).toMatchObject({ ok: true });
+    for (const receipt of [{ message: 0, subject }, { message: 1.5, subject }, { message: 7, subject: other }])
+      expect(authority.handle({ op: 'outcome', fence, key, state: 'sent', receipt })).toMatchObject({ ok: false, reason: 'invalid' });
+    const receipt = { message: 7, subject };
+    expect(authority.handle({ op: 'outcome', fence, key, state: 'sent', receipt })).toMatchObject({ ok: true });
+    receipt.message = 8;
+    expect(authority.handle({ op: 'outcome', fence, key, state: 'sent', receipt })).toMatchObject({ ok: false });
+    const answer = authority.handle({ op: 'receipt', fence, key, subject });
+    expect(answer).toMatchObject({ ok: true, receipt: { message: 7, subject } });
+    if (answer.ok && answer.receipt) answer.receipt.message = 9;
+    expect(authority.handle({ op: 'receipt', fence, key, subject })).toMatchObject({ receipt: { message: 7 } });
+    expect(authority.handle({ op: 'claim', fence, key, attempt: 1, subject })).toMatchObject({ ok: false, state: 'sent' });
+  } finally { authority.close(); rmSync(dir, { recursive: true, force: true }); }
 });

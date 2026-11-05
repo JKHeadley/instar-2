@@ -2402,6 +2402,7 @@ async function main() {
       // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
       // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
       sendAdmits: true,
+      reconcileSend: async (target, subject) => shared ? shared.reconcile(target, subject) : null,
       send: async ({ text, expectedText, formatting, chat, thread: signedThread, replyTo, replyMarkup, target, retryAttempt, provenance, admit, current, observeSendPhase }) => {
         if (!journal.verifyOutbound(provenance, { target, chat, ...(signedThread === undefined ? {} : { thread: signedThread }), body: text }))
           return { kind: 'refused', reason: 'outbound provenance unsigned' };
@@ -2433,7 +2434,7 @@ async function main() {
           // dispatch-claim for this target is taken, immediately before the physical send. Until then it waits.
           const refused = await shared.admit(target, () => workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop
             ? 'stopped before dispatch' : !ownerHeld() ? 'conversation ownership lost before dispatch'
-              : current && !current() ? 'acknowledgement cancelled' : null, retryAttempt);
+              : current && !current() ? 'acknowledgement cancelled' : null, undefined, retryAttempt, provenance.contentHash);
           if (refused !== null) return refused;
         }
         if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
@@ -2486,7 +2487,7 @@ async function main() {
                 () => workingActivities.current(noticeTurn.id)?.running === true);
           }
           return outcome;
-        } finally { if (shared) await shared.outcome(target, outcome.kind, outcome.kind === 'refused' && Number.isSafeInteger(outcome.retryAfterMs) && outcome.retryAfterMs > 0); }
+        } finally { if (shared) await shared.outcome(target, outcome.kind, outcome.kind === 'refused' && Number.isSafeInteger(outcome.retryAfterMs) && outcome.retryAfterMs > 0, outcome.kind === 'accepted' ? { message: outcome.message, subject: provenance.contentHash } : undefined); }
       } });
     if (existsSync(stopPath)) throw Error('preview: stop latched');
     const activationPath = required(options, 'activation-record');
