@@ -341,7 +341,7 @@ it('an invalid recovered batch settles uncertain and does not wedge later input'
 
 // A process restart constructs a fresh, empty admission gate. It must neither block
 // other topics nor reopen a claim whose tools might already have executed.
-it.each(['complete', 'missing', 'unreadable', 'open-child', 'uncertain-child', 'wrong-parent', 'bad-receipt'] as const)(
+it.each(['complete', 'failed-child', 'duplicate-close', 'missing', 'unreadable', 'open-child', 'uncertain-child', 'wrong-parent', 'bad-receipt'] as const)(
   'fresh real admission gate recovers a batch with %s durable evidence', async evidence => {
     const f = fixture();
     const makeGate = () => createAdmissionGate({ append: (row: SessionWorkEdge | SessionWorkEdgeClose) => f.edges.push(row),
@@ -357,7 +357,10 @@ it.each(['complete', 'missing', 'unreadable', 'open-child', 'uncertain-child', '
       const child = nestedSessionWorkEdge(process, { id: 'child-1', tool: 'Task' }, 1000);
       f.edges.push(child);
       if (evidence !== 'open-child') f.edges.push(nestedSessionWorkClose(child,
-        evidence === 'uncertain-child' ? 'uncertain' : 'complete', 'recorded child result', 'receipt:child', 3, 1001));
+        evidence === 'uncertain-child' ? 'uncertain' : evidence === 'failed-child' ? 'failed' : 'complete',
+        'recorded child result', 'receipt:child', 3, 1001));
+      if (evidence === 'duplicate-close') f.edges.push(nestedSessionWorkClose(child,
+        'complete', 'duplicate child result', 'receipt:child-duplicate', 3, 1002));
       if (evidence === 'missing') f.edges.splice(0);
       if (evidence === 'wrong-parent') f.edges.splice(f.edges.indexOf(process), 1, { ...process, parent: 'other' });
       if (evidence === 'unreadable') f.unreadableEvidence();
@@ -373,8 +376,8 @@ it.each(['complete', 'missing', 'unreadable', 'open-child', 'uncertain-child', '
       expect(f.closed).toContain(old.claim);
       expect(f.delivered).toHaveLength(1);
       expect(f.state().topics['7']!.inputs.map(row => row.outcome?.state)).toEqual(
-        evidence === 'complete' ? ['complete', 'complete'] : ['uncertain', 'uncertain']);
-      if (evidence === 'complete') expect(f.state().topics['7']!.inputs.map(row => row.outcome?.text))
+        evidence === 'complete' || evidence === 'failed-child' ? ['complete', 'complete'] : ['uncertain', 'uncertain']);
+      if (evidence === 'complete' || evidence === 'failed-child') expect(f.state().topics['7']!.inputs.map(row => row.outcome?.text))
         .toEqual(old.inputs.map(row => row.outcome?.text));
       expect((await f.port.run(f.request('8:later'))).state).toBe('complete');
       expect((await f.port.run(f.request('7:later'))).state).toBe('complete');
