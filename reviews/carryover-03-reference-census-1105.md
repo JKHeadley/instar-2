@@ -25,10 +25,14 @@ Decision: c03-reference-race | Two real SCM_RIGHTS transfers repeatedly hide con
 
 Evidence: Native reference suite at af05b00e4 passed 11/11; process pair 72719/72721 reproduced the race on two successive scans while the receiving process read the synthetic 28-byte capture. A subsequent ordinary scan detected the holder. Closed-FD mmap and renamed hardlink/transferred-FD neighbors passed. Exact logs and PIDs are in the absolute lanes evidence directory. The existing native positive/unknown-holder pair is a separate acceptance condition, never replaced by these 11 tests.
 
+Publication: Existing build-register --replay publishes only shape evidence from an exact source commit. The existing merge-live-conformance --renew tool ran on Darwin with the declared runtime: before 9/10 (only stale certificate), after 10/10. It generated the one conformance update after actual contract execution; no certificate was hand-edited. Native renewal evidence is in the absolute lanes evidence directory under native-renewal.
+
+Native acceptance at 352e601ac4a5c2cc19e9261a3fce309ae1903741: unknown outside-cwd UID-498 holder PID 95954 was positively observed with an incarnation-bound FD and refused; the retired worker positive still admitted zero requests while PIDs 7136/47903/47905 persisted. The paired acceptance is 1/2, not completion. Direct host/process consumers and new native reference controls passed (43 passed / 1 positive-acceptance failure across four files). The scan race repeated with PIDs 9069/9071. No negative exclusion is enabled.
+
+Decision: c03-reference-publication | Renew the composition certificate only through the existing before/after native contract tool, then publish through the existing register replay. This clears byte-bound enforcement without changing the unresolved ownership result. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-reference-census-1105-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: Extend the existing inventory and use its positive reference facts at the current classifier boundary. FD-only and cwd/ancestry-only reads miss mappings and transferred/aliased descriptors. Incarnation brackets prevent misattribution on observed reuse; they do not prevent a transfer between reference reads. No-match therefore remains unknown unless evidence establishing a consistent current reference cut becomes available. No new confinement or authority is presumed necessary.
 80/20: Targeted native reference/transfer/race tests, inherited actual native positive/unknown-holder pair, direct consumers and static checks; independent review, batched full gate and installed live proof are desk gates. This record claims no native completion without the paired proof.
 VERDICT: author submission; no independent verdict or row03 completion
-
-Publication: Existing build-register --replay generated the shape-only register from exact source c8a2be8b01850e1435a1702750f54feab3877092. Architecture reports only the charter's R105 byte-bound native self-host certificate mismatch. The existing merge-live-conformance --renew tool was inspected; its before/after native contract must run before any certificate update. No certificate was hand-edited. Native execution is subject to the Studio load/priority restriction; unrun checks are explicitly listed in PROGRESS.
