@@ -4,7 +4,7 @@ Subject base: dc4cdaf483e926a3b22246b9fe86f55ab57954bc
 Review state: open
 Reviewed content: none
 Outcome: Connect authenticated Threadline intake to the canonical Five Run owner, current Six admission, Eight execution and Nine result-bound closure. Bind actual parent origins and checked peer results to the existing journal hub and active commitments. Retain the bounded copied hub model route and independent passkey tracking transport from the earlier commits. Unknown execution, cancellation and delivery remain owned; no serving installation or independent acceptance is asserted.
-Affected rules: 1, 4, 7, 10, 12, 14, 28, 31, 32, 36, 41, 46, 49, 52, 53, 57, 63, 67, 74, 75, 79, 81, 87, 95, 101, 102, 105, 113, 114, 115, 116, 119, 120
+Affected rules: 1, 4, 7, 10, 12, 14, 28, 31, 32, 36, 41, 46, 49, 52, 53, 57, 63, 67, 74, 75, 78, 79, 81, 84, 87, 95, 101, 102, 105, 113, 114, 115, 116, 119, 120
 Affected floors: secrets — existing credential custody, prompt concealment, copied secret regex and outbound guard; spend cap — durable bounded invocation reservations with lost outcomes retained; stop — current owner, peer, grant and stop checks before dispatch; no duplicate sends — existing dispatch fence and immutable identities; durable intake — exact tracking requests and signed acts retained in existing operator storage
 Operator questions: none
 Suggested tier: critical
@@ -96,6 +96,8 @@ Final publication source: 2c5f37adb1d5e61a255974c1f1797398550cd9d0; generation s
 Pinned-gate repair: shorten the two generated capability summaries to 117/118 characters while retaining detailed installation/acceptance limits in the README. Split the ten-run register CLI fixture into documentation-pin and owner-binding cases; preserve every assertion and the existing 120-second case bound. The first pushed-head gate recorded 118 passes, the brief-length failure and this physical timeout; no green result is inferred. Infrastructure 1.x comparison at f94fb584bf7cfdfe0bcb5ff4526e88af512d145d searched src/, docs/specs/ and history: no matching source-pin/owner-binding implementation; local-verify-fast-focused-preflight.md:32-43, test-runner-concurrency-bound.md, b74785e6e and84b2220f3 support bounded checks and honest timeout reporting. ONEX-LESSONS §6 read. No unrelated verifier machinery or group-kill behavior is copied.
 
 Decision: AQ88-r4-pinned-gate-repair | Keep generated capability summaries within their existing context limit and split independent CLI assertions within the same case timeout. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-88-production-composition-r4-1105-PROGRESS.md
+
+Post-gate publication: source 9fa73ae79f330cf0a4d7dcc5d219de7916e063b8; generation sha256:aedc4c3661fa99233cad7105728f5b3e34132343a3fc9857f5d8e1ec297919cd. Normal replay retains 299 entries/120 rules/34 terms/48 warnings/112 prerequisites and shape-only authority. Final pushed-head receipts follow in the desk report; the failed earlier gate remains recorded.
 
 ## Closing block
 
