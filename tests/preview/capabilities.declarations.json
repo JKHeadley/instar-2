@@ -710,16 +710,12 @@
     "schemaVersion": 1,
     "id": "preview.relationship-awareness",
     "kind": "features",
-    "status": "dark",
+    "status": "live",
     "requiredFacts": {
       "metrics": [
         "relationshipEmits",
         "groupCarryRefreshes"
-      ],
-      "gate": {
-        "test": "PREVIEW-RELATIONSHIP-AWARENESS",
-        "deadline": 1806451200000
-      }
+      ]
     },
     "profile": {
       "type": "Profile",

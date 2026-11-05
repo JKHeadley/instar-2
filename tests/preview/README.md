@@ -209,7 +209,19 @@ correction and forget projection, never as local-authoritative context. The port
 `RelationshipManager` (`relationship-manager.ts`, store and clock injected) answers who a name is
 over the journal's people read-only; records from two roots that know the same person collapse to
 one recordKey and are flagged for the operator when they differ, never merged silently
-(`relationship-cross-machine.test.ts`). Imported channel items (`--agent-state-dir`) count as
+(`relationship-cross-machine.test.ts`). The carry is kept current (the 1.x send side, ported): while a sealed
+disclosure grant names a private root as a carry source, that root emits one disclosure-minimized record per
+changed person into its own journal (`relationship-emit` frames, `relationship-emitter.ts`): a put on a new
+mention, attribute or confirmed link, a tombstone when a person is forgotten, corrected or merged into a wider
+name set; no grant, no emits. A carried group root applies its predecessor's emits after the snapshot
+(`group-carry-refresh` frames, `relationship-applier.ts`) under the same grant, audience, posture and stop
+checks as the carry, bound to the predecessor it read, in order, each record re-validated by the store schema,
+and refuses a second or re-seeded predecessor; the `refresh-group` command does this once, and the serving loop
+does it when a poll is empty, at most every 30 seconds, reading the predecessor's journal on this machine or
+the verified replica copy the owner shipped here. Serving unions the snapshot with every applied refresh, so a
+forgotten person leaves and a changed account replaces the old one; the quoted messages the snapshot carried
+stay as they were. A root one build back reads an emit frame as a declared forward frame and keeps its people
+rows; a refreshed group root is non-additive like the carry and is refused there. Imported channel items (`--agent-state-dir`) count as
 interactions of a person the operator already named, by the journal's own rule (the asserted sender
 is that person, or the text names them exactly), in the private root's view only: they never create
 a record or add a name, obey the operator's correct and forget rows, and never reach a group because
