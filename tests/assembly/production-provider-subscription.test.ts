@@ -209,7 +209,8 @@ it('bounds a pending physical child and never retries', async () => {
   const f = fixture({ pending: true });
   // Count at dispatch: a child can time out before Node reaches its own log write.
   // Absence of that write is not evidence that no physical invocation occurred.
-  const executed = vi.spyOn(f.input.io, 'execute');
+  const io: ProductionProviderIO = f.input.io;
+  const executed = vi.spyOn(io, 'execute');
   expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', { ...f.bounds, timeout: 100 })).state).toBe('uncertain');
   expect(executed.mock.calls.filter(([command]) => command.args.includes('--print'))).toHaveLength(1);
 });

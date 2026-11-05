@@ -15,7 +15,7 @@ Undo and recovery: revert this repair range; no installed service, live journal 
 Multi-machine posture: deliberately local native processes and isolated test roots; no cross-machine authority or state changes. Installed native conformance and deployment acceptance remain desk responsibilities.
 Layer below: the native supervisor can kill the guard before its report arrives; the accepted owner repair preserves a bounded report interval and UNKNOWN beyond it. Separately, synchronous npm/register child calls block the Vitest worker IPC loop, a lazy 19-launch signed-history seed consumes the recovery case deadline, and a short physical deadline may expire before child userland writes its diagnostic log. Existing async-child and beforeAll boundaries address those fixture mechanisms.
 Bug class: integration
-Bug evidence: reproducer=tests/preview/journal-agent.test.ts,tests/preview/review-layers-canary.test.ts,tests/preview/deadset-recovery.test.ts,tests/assembly/production-provider-subscription.test.ts,tests/preview/mcp-setup.test.ts,tests/e2e/harness-adapters-round7-regression.test.ts,tests/e2e/register.test.ts,tests/assembly/fixed-worker-monitor-native.test.ts
+Bug evidence: reproducer=tests/preview/journal-agent.test.ts
 Hook bypass: none
 Convergence: none
 Prompt review: fixture response samples and existing review questions are unchanged; only notice assertions and process execution boundaries change. No copied fixture answer or trigger is introduced into a model prompt, and neutral dispatch is unchanged.
@@ -29,6 +29,8 @@ Decision: repair-dispatch | count a physical invocation at dispatch instead of r
 The eight launcher failures reproduced as rejection of the activation reminder; all answer and review assertions remain. Existing docs/defects/vitest-worker-rpc-timeouts.md independently documents the synchronous-child mechanism. A passing rerun of the pending-child and installer tests is retained as such, not used to erase the supplied failures. The poison matrix retains all twelve combinations, and the register matrices retain all original acceptance, spoofing, stale pin and ambient bridge controls.
 
 Prior blocked items and live acceptance limits from the combined train remain open: CB6-MF-A confinement, CB7-R90 entering-force authority, CB1-MF5 trial-limit ownership, installed native conformance, real browser and deployment-specific activation agreement. This repair does not claim to close them. Register replay remains shape-only, not approval authority. No constitution wording changes are introduced here.
+
+Verification: build and typecheck pass. The first targeted batch passed 157 tests. The next batch passed 17 selected tests, including native accounted-slot, 150 ms STOPPED and 500 ms UNKNOWN report-stall neighbors, both poison-cut matrices and final launcher/canary assertions. No load generator or full suite was run. The desk rehash/repin refreshed the one preview owner artifact pin; register replay at 5d518d7e8 preserves 298 entries / 121 rules and shape-only authority. Remaining same-head checks are recorded in the pipeline progress.
 
 ## Closing block
 
