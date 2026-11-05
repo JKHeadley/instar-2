@@ -2,7 +2,7 @@
 
 Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
 Review state: frozen
-Reviewed content: sha256:4186740edb39fe7c07e9281106e95b2ca8e8258a2a873fe04d8e631dfd4bc36a
+Reviewed content: sha256:e1b214422be4b32a879c9c5d6f4d8e186600713a80e2578fdf8174423820541d
 Outcome: When an answer outcome is UNKNOWN, plainly report that task completion is unconfirmed, effects may have happened, the request and attempt are retained, and this attempt is not automatically repeated. Name the prerequisite for resuming without promising an unassigned retry. Preserve recorded tool-result counts and historical notice classification.
 Affected rules: 4, 26, 34, 36, 42, 49, 52, 55, 60, 70, 74, 89, 102, 111, 113, 116
 Affected floors: secrets — no raw tool text added; spend cap — no model calls added; stop — safety halt unchanged; no duplicate sends — existing intent and send receipts unchanged; durable intake — existing journal records unchanged.
@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: significant
 Tier rationale: Small user-facing fixed notice repair in the journal pipeline; no dispatch, permissions, schema, retry, stores or resource policy changes. Recorded replay and restart tests cover the changed surface; independent review and combined host gates remain required.
-Side effects: New UNKNOWN notices are longer and explicitly distinguish answer failure from task effects. Historical sent notices retain their exact bytes and loss classification. Success answers, safety halts, existing tool counts and send uniqueness stay on their existing paths.
+Side effects: New UNKNOWN notices are longer and explicitly distinguish answer failure from task effects. Historical sent notices retain their exact bytes and loss classification. Success answers, safety halts, existing tool counts and send uniqueness stay on their existing paths. The session-repair consumer test now asserts unconfirmed completion and no automatic retry for uncertain/throw outcomes; malformed replies retain their distinct failure wording.
 Undo and recovery: Revert this change; retained journal frames and intents require no migration. Never replay an uncertain effect or resend an already recorded intent as part of rollback.
 Multi-machine posture: Pure rendering from the same durable turn projection on every host; no new local state, store or ownership path.
 Layer below: Inspected model-uncertain projection, conversationSessionAnswer, existing session-work records, notice assembly, reply review exemption and delivered-history classification. The supplied target projection contains no verified PR outcome, tool count or queued retry; missing evidence cannot become a PR claim. Session closure is not evidence of task completion. Existing toolChecks counts returned results, not success.

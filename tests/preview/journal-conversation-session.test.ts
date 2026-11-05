@@ -290,7 +290,11 @@ it.each(['malformed', 'uncertain', 'throw'] as const)('delivers one honest outco
     expect(attempted).toBe(2);
     expect(f.journal.view.order[0]!.answerRetried).toBe(true);
     expect(f.sent).toHaveLength(1);
-    expect(f.sent[0]).toMatch(/couldn't|did not complete|could not/);
+    if (outcome === 'malformed') expect(f.sent[0]).toMatch(/couldn't|could not/);
+    else {
+      expect(f.sent[0]).toContain('Completion of your request is unconfirmed');
+      expect(f.sent[0]).toContain('This attempt is not automatically retried');
+    }
     await f.restart(); await f.worker.drain();
     expect(f.sent).toHaveLength(1); expect(attempted).toBe(2);
     expect(await f.replay()).toBe(1); expect(f.sent).toHaveLength(1);
