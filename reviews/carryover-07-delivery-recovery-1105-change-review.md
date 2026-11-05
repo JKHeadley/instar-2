@@ -28,9 +28,6 @@ Prompt review: No prompt wording or semantic classifier changes. The existing re
 
 ## Closing block
 
-simplestRobustRoute: Retain the payload in the existing journal projection and use its existing drain, signature, send port, receipt projection and replicated claim. An attempt ordinal is necessary because a delayed outcome could otherwise settle a later retry under the same lease. A durable start is necessary because a crash after endpoint acceptance must never become retry permission. Exact valid retry metadata prevents early sends. The original nine-step/24-hour bounds and per-topic rate floor bound resource use. Physical loopback tests exercise recovery unattended; final production acceptance belongs to the desk.
-80/20: Builder verification and compliance audit are in progress; whole-row source parity, independent review and fresh installed live proof remain unclaimed.
-VERDICT: author submission; independent review required
 
 Prompt finding: 4106b49fff07 | protocol-literal | Existing topic-awareness evidence instruction; unchanged by recovery. It prevents unsupported claims about attempted avenues.
 Prompt finding: 85544c20941f | protocol-literal | Existing fixed hold message; unchanged by recovery. It describes durable intake rather than conferring send authority.
@@ -48,3 +45,7 @@ DeliveryFailureSentinel's current recoverOrigin caller enters TelegramOriginRunt
 Whole-feature gaps remain explicit: the legacy five-failed-escalations/one-hour suspension and authenticated resume/config-rotation behavior has not been adapted or demonstrated as superseded; DeliveryRetryManager's typed inbox ACK deadlines, post-injection watchdog and all its callers have not completed the required 2.x code-and-test parity pass. Receipt reconciliation presently covers signed replies, continuation parts and started recovery targets through the shared claim owner; it does not establish the entire single-machine failed-receipt-storage recovery path of OriginUnrecordedReceipts. These are not missing fresh-live-evidence excuses. This branch must not receive whole-row completion credit until those source behaviors are resolved and reviewed.
 
 Registry update: Generated replay/shape-only register artifacts were rebuilt from committed source 8bf69f92b950445b611e56af1803dbff5c095b18 using the existing generator's explicit --commit input. This refresh changes provenance pins, not runtime authority or a native conformance declaration.
+
+simplestRobustRoute: Retain the payload in the existing journal projection and use its existing drain, signature, send port, receipt projection and replicated claim. An attempt ordinal is necessary because a delayed outcome could otherwise settle a later retry under the same lease. A durable start is necessary because a crash after endpoint acceptance must never become retry permission. Exact valid retry metadata prevents early sends. The original nine-step/24-hour bounds and per-topic rate floor bound resource use. Physical loopback tests exercise recovery unattended; final production acceptance belongs to the desk.
+80/20: Builder verification and compliance audit are in progress; whole-row source parity, independent review and fresh installed live proof remain unclaimed.
+VERDICT: author submission; independent review required
