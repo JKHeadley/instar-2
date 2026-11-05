@@ -787,6 +787,12 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
           if (!alive(session.name)) { config.io.save(replaceDelivery(config.io.load(), { ...row, state: 'uncertain' })); outcomes.push(`${row.operation}:uncertain`); continue; }
           verifyLive(session);
           const pane = capture(session.name);
+          // Carryover 08, 1.x PendingInjectStore: retain a never-dispatched input
+          // when readiness is temporarily unavailable. The caller owns the next
+          // bounded recovery attempt; no send or fresh authority is created here.
+          if (row.state === 'prepared' && row.redeliveries === 0 && classifyPaneReadiness(pane) !== 'ready') {
+            outcomes.push(`${row.operation}:awaiting-readiness`); continue;
+          }
           // A send already started can have completed and returned to the same
           // prompt. An unchanged pane cannot prove non-arrival in that window.
           if (row.state !== 'prepared' || digestOf(pane) !== row.baseline

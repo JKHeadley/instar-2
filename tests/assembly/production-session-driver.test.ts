@@ -576,6 +576,64 @@ it('redelivers a prepared no-arrival record once and refuses duplicate operation
   expect(f.calls.filter(row => row[0] === 'send-keys').every(row => row[2]?.endsWith(':'))).toBe(true);
 });
 
+// Carryover 08: PendingInjectStore retains a failed readiness delivery for the next recovery.
+it('keeps a never-started accepted question pending across restarts until its original prompt returns', () => {
+  const f = fixture(), id = f.launch();
+  f.onPrepared(() => { throw Error('restart before injection'); });
+  refused(f.deliver(id), 'restart before injection');
+  expect(f.journal.deliveries[0]?.state).toBe('prepared');
+  const input = { operation: 'deliver', processIdentity: id, intake: 'input', digest: hash('hello'), incarnation: 'inc' };
+  f.changePane('starting');
+  const restarted = createProductionSessionDriver(f.config);
+  expect(value(restarted.bootSweep())).toEqual(['deliver:awaiting-readiness']);
+  expect(f.journal.deliveries[0]).toMatchObject({ state: 'prepared', text: 'hello', redeliveries: 0 });
+  expect(f.sends).toBe(0);
+  refused(restarted.recoverDelivery(input));
+  expect(f.journal.deliveries[0]?.state).toBe('prepared');
+  f.changePane('❯ ');
+  const next = createProductionSessionDriver(f.config);
+  expect(value(next.recoverDelivery(input))).toBe('tmux-input:deliver');
+  expect(f.sends).toBe(2); // Literal text and one Enter, not two deliveries.
+  expect(value(next.bootSweep())).toEqual([]);
+  expect(value(createProductionSessionDriver(f.config).recoverDelivery(input))).toBe('tmux-input:deliver');
+  expect(f.sends).toBe(2);
+});
+
+it('does not replay a pending question at a different ready prompt', () => {
+  const f = fixture(), id = f.launch();
+  f.onPrepared(() => { throw Error('restart before injection'); }); refused(f.deliver(id));
+  f.changePane('starting');
+  expect(value(f.driver.bootSweep())).toEqual(['deliver:awaiting-readiness']);
+  f.changePane('unrelated output\n❯ ');
+  expect(value(createProductionSessionDriver(f.config).bootSweep())).toEqual(['deliver:uncertain']);
+  expect(f.sends).toBe(0);
+});
+
+it('does not keep a started send replayable merely because its pane is not ready', () => {
+  const f = fixture(), id = f.launch(); f.failNextSend(); refused(f.deliver(id));
+  f.changePane('starting');
+  const restarted = createProductionSessionDriver(f.config);
+  expect(value(restarted.bootSweep())).toEqual(['deliver:uncertain']);
+  f.changePane('❯ ');
+  expect(value(createProductionSessionDriver(f.config).bootSweep())).toEqual([]);
+  expect(f.journal.deliveries[0]?.state).toBe('uncertain');
+  expect(f.sends).toBe(0);
+});
+
+it('retained pending recovery still obeys stop and exact process identity', () => {
+  for (const boundary of ['stop', 'identity'] as const) {
+    const f = fixture(), id = f.launch();
+    f.onPrepared(() => { throw Error('restart before injection'); }); refused(f.deliver(id));
+    f.changePane('starting');
+    expect(value(f.driver.bootSweep())).toEqual(['deliver:awaiting-readiness']);
+    f.changePane('❯ ');
+    if (boundary === 'stop') f.stop(); else f.changeStamp('999:1000');
+    refused(createProductionSessionDriver(f.config).bootSweep(), boundary === 'stop' ? 'stop authority' : 'identity changed');
+    expect(f.sends).toBe(0);
+    expect(f.journal.deliveries[0]?.state).toBe('prepared');
+  }
+});
+
 it('reports changed-pane crash windows as uncertain and never silently sends again', () => {
   const f = fixture(), id = f.launch(); f.failNextSend(); refused(f.deliver(id));
   f.changePane('❯ output happened');
