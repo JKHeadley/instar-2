@@ -2,7 +2,7 @@
 // No process label, old mtime, or absence from the session list proves abandonment.
 import { execFile } from 'node:child_process';
 import { watch, realpathSync } from 'node:fs';
-import { createProcessInventory } from './process-inventory.mjs';
+import { createProcessInventory, PROCESS_INCARNATION_READER } from './process-inventory.mjs';
 import { createWorktreeInventory } from './worktree-inventory.mjs';
 
 const inside = (path, scope) => path === scope || path.startsWith(`${scope}/`);
@@ -13,14 +13,18 @@ const queryHost = (file, args) => new Promise(resolve => {
       // ps uses status 1 for a successful empty selection. Diagnostics, signals,
       // timeouts and every other failure remain unknown, never an empty census.
       const emptySelection = file === '/bin/ps' && error?.code === 1 && stdout === '' && stderr === '';
-      resolve(error && !emptySelection ? null : stdout);
+      // Reference reads need visible completeness failures, including successful
+      // commands with warnings. Never return diagnostics containing private names.
+      const references = args.includes('-FpfDti');
+      resolve(error && !emptySelection || references && stderr !== '' ? null : stdout);
     });
 });
 // Match the resource owner's existing settlement read: the runner cannot read
-// another UID's cwd on Darwin. This uses the installed read authority only;
+// another UID's vnode or exact start metadata on Darwin. This uses installed read authority only;
 // denied observation stays unknown and never changes installation permissions.
 export const queryWorktreeHost = async (file, args) => {
-  if (process.platform === 'darwin' && file === '/usr/sbin/lsof')
+  if (process.platform === 'darwin' && (file === '/usr/sbin/lsof'
+    || file === '/usr/bin/python3' && args[0] === '-c' && args[1] === PROCESS_INCARNATION_READER))
     return await queryHost('/usr/bin/sudo', ['-n', file, ...args]) ?? queryHost(file, args);
   return queryHost(file, args);
 };
@@ -122,9 +126,10 @@ export async function createHostWorktreeRecovery(ports) {
       } } };
       persist(); watchCheckout(path);
     }
-    const inventories = [];
+    const inventories = [], references = new Map();
     for (const path of Object.keys(state.checkouts)) {
       guard();
+      if (live.length) references.set(path, await processInventory.checkoutReferences(snapshot, path, guard));
       const census = createWorktreeInventory({ machine: ports.identity.machine, now: ports.now,
         freshForMs: 30000, limit: 64, query, observe: async checkout => {
           const known = state.checkouts[checkout], coverage = watched.get(checkout);
@@ -141,9 +146,11 @@ export async function createHostWorktreeRecovery(ports) {
         // if its worker writes more files. Its own activity must not enqueue itself.
         .filter(row => !state.checkouts[row.path]?.admittedSource
           || state.checkouts[row.path].admittedSource !== state.checkouts[row.path].source) };
-    // A nonempty harness census never establishes non-ownership. All such rows
-    // remain unknown, including a worker whose cwd is outside this checkout.
-    return { quietMs: 30000, worktrees, processes, ownership: () => new Map(live.map(row => [row.pid, 'unknown'])) };
+    // Positive kernel references veto independently of cwd, ancestry or launch
+    // membership. A sequential no-match scan cannot establish non-ownership:
+    // even unchanged PID/start populations can transfer an FD between reads.
+    return { quietMs: 30000, worktrees, processes, ownership: checkout => new Map(live.map(row =>
+      [row.pid, references.get(checkout)?.processes.get(row.pid)?.state === 'reference' ? 'owner' : 'unknown'])) };
   };
   const recovery = createWorktreeRecovery({ intake, route: ports.route, machine: ports.identity.machine,
     now: ports.now, stopped, observe });

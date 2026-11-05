@@ -9,6 +9,8 @@ import { createJournalWorktreeIntake } from './worktree-recovery-intake.js';
 import { createJournalWorker, openPreviewJournal, previewTestContext } from './journal-test-worker.js';
 // @ts-expect-error Physical host boundary is JavaScript.
 import { createHostWorktreeRecovery, queryWorktreeHost } from '../../scripts/host-worktree-recovery.mjs';
+// @ts-expect-error Existing trusted physical inventory is JavaScript.
+import { createProcessInventory } from '../../scripts/process-inventory.mjs';
 // @ts-expect-error Existing installed identity boundary is JavaScript.
 import { grantAcl, harnessAcl, HARNESS_TMP, HARNESS_USER, runnerUser, probeAccess } from './harness-user.mjs';
 
@@ -87,6 +89,12 @@ it.runIf(process.env.INSTAR_TEST_NATIVE_WORKTREE === '1').each(['retired', 'unkn
       const unknownCwd = await queryWorktreeHost('/usr/sbin/lsof',
         ['-a', '-d', 'cwd', '-p', unknownOutput.split('\n')[0]!, '-Fpn', '-w']);
       expect(unknownCwd).toContain(`n${realpathSync(HARNESS_TMP)}\n`);
+      const inventory = createProcessInventory({ query: queryWorktreeHost, now: () => now, monotonic: () => performance.now(),
+        identity: { machine: 'native-studio', hardwareProfile: 'darwin' }, uid, limit: 4096, freshForMs: 30000 });
+      const references = await inventory.checkoutReferences(await inventory.census(), directory);
+      expect(references.processes.get(Number(unknownOutput.split('\n')[0])))
+        .toMatchObject({ state: 'reference', kinds: ['fd'] });
+      console.info('native outside-cwd reference', references.processes.get(Number(unknownOutput.split('\n')[0])));
     }
     const route = { channel: 'native-observer', sender: 'studio', identityEpoch: 'fixture' };
     host = await createHostWorktreeRecovery({ scope: directory, identity: { machine: 'native-studio', hardwareProfile: 'darwin' },
