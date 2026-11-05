@@ -218,7 +218,10 @@ name set; no grant, no emits. A carried group root applies its predecessor's emi
 checks as the carry, bound to the predecessor it read, in order, each record re-validated by the store schema,
 and refuses a second or re-seeded predecessor; the `refresh-group` command does this once, and the serving loop
 does it when a poll is empty, at most every 30 seconds, reading the predecessor's journal on this machine or
-the verified replica copy the owner shipped here. Serving unions the snapshot with every applied refresh, so a
+the verified replica copy the owner shipped here. The served loop is proven on real roots through the cutover
+launcher harness (`relationship-served-cycle.test.ts`): emits appear only under the sealed source grant, a refresh
+only under the verified operator-only audience, and a new member, a re-seeded predecessor, a withdrawn grant or a
+stop leave both journals unchanged. Serving unions the snapshot with every applied refresh, so a
 forgotten person leaves and a changed account replaces the old one; the quoted messages the snapshot carried
 stay as they were. A root one build back reads an emit frame as a declared forward frame and keeps its people
 rows; a refreshed group root is non-additive like the carry and is refused there. Imported channel items (`--agent-state-dir`) count as

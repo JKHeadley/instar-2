@@ -47,9 +47,10 @@ step-2 diff added. Counts from `git diff --numstat 8e7df7f5 87a8efec`.
 | journal.ts (edit) | — | — | — | 27 |
 | journal-agent.mjs (edit) | — | — | — | 100 |
 | capabilities.ts, capabilities.declarations.json, relationship-journal.ts (edits) | — | — | — | 49 |
-| group-carry-cli.test.ts (edit: refresh-group case) | — | — | — | 93 |
+| group-carry-cli.test.ts (edit: refresh-group case) | — | — | — | 87 |
+| relationship-served-cycle.test.ts | 0 | 170 | 0 | 170 |
 
-Source: 2,178 carried / 1,760 adapted. Tests: 1,461 carried / 1,401 adapted (the per-record replication module of
+Source: 2,178 carried / 1,760 adapted. Tests: 1,461 carried / 1,565 adapted (the per-record replication module of
 2026-11-05: counts from `git diff --numstat bccfc149 31057753`). Fifteen further 1.x files
 (8,635-line `types.ts` included) are kept verbatim under `legacy-1x/relationships/` and are not compiled.
 
@@ -92,13 +93,17 @@ replication module's 45 cases fail whole against the base, whose journal has no 
   durable frame per batch, and its worker serves the current account with the forgotten person gone; the same
   refresh runs on machine B from the predecessor's verified replica copy against B's adopted group root; an
   unauthorized, stale, stopped, second or re-seeded predecessor is refused before any record is read; the shipped
-  `refresh-group` command does the same through the confined HTTP membership bridge (`group-carry-cli.test.ts`).
+  `refresh-group` command does the same through the confined HTTP membership bridge (`group-carry-cli.test.ts`);
+  the shipped `run` loop itself emits and refreshes per served cycle (`relationship-served-cycle.test.ts`, read back
+  through the shipped `status` command), and the test fails when the loop's step call is removed.
 
 Not demonstrated, so row 40 stays OPEN:
 
-- a live run on the exact head (no live claim is made here); the launcher's per-cycle emit/refresh step is wired
-  (`journal-agent.mjs`, `node --check` clean) and its engine is tested, but no launcher-level test drives the
-  step through a served cycle yet (follow-on);
+- a live run on the exact head (no live claim is made here); the launcher's per-cycle emit/refresh step is driven
+  through the shipped `run` loop by `relationship-served-cycle.test.ts` (cutover harness: the physical Telegram port
+  and the model route are the fixture's, every owner and the journal are real): a private root emits only under the
+  sealed source grant, a carried forum root refreshes when idle under the verified audience, and a new member, a
+  re-seeded predecessor, a withdrawn grant and a stop each leave the journals unchanged;
 - a live union of relationship records across two serving machines: 2.0 replicates whole journals, so the
   union read runs over carried and refreshed records inside one journal, not over two machines' independent
   stores; the two-machine case is proven over replica copies in process, not over two live runners;
