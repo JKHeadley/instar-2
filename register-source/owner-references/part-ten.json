@@ -50,7 +50,7 @@
       "id": "decodeInstallationSelectionAtOrigin",
       "module": {
         "path": "src/assembly/index.ts",
-        "hash": "sha256:f08fda556041a53f601464bb980e07f3435b74a152d07632bb2edeaf08417750"
+        "hash": "sha256:88787695206dc4edcf7859a2211063a16b655071d8753ac34f007e17610559f5"
       },
       "artifact": {
         "path": "src/assembly/installation-selection.ts",
@@ -61,7 +61,7 @@
       "id": "decodeHistoricalInstallationSelection",
       "module": {
         "path": "src/assembly/index.ts",
-        "hash": "sha256:f08fda556041a53f601464bb980e07f3435b74a152d07632bb2edeaf08417750"
+        "hash": "sha256:88787695206dc4edcf7859a2211063a16b655071d8753ac34f007e17610559f5"
       },
       "artifact": {
         "path": "src/assembly/installation-selection.ts",
@@ -72,7 +72,7 @@
       "id": "decodeProductionSignerReferenceAtOrigin",
       "module": {
         "path": "src/assembly/index.ts",
-        "hash": "sha256:f08fda556041a53f601464bb980e07f3435b74a152d07632bb2edeaf08417750"
+        "hash": "sha256:88787695206dc4edcf7859a2211063a16b655071d8753ac34f007e17610559f5"
       },
       "artifact": {
         "path": "src/assembly/production-signer-reference.ts",
@@ -83,7 +83,7 @@
       "id": "decodeHistoricalProductionSignerReference",
       "module": {
         "path": "src/assembly/index.ts",
-        "hash": "sha256:f08fda556041a53f601464bb980e07f3435b74a152d07632bb2edeaf08417750"
+        "hash": "sha256:88787695206dc4edcf7859a2211063a16b655071d8753ac34f007e17610559f5"
       },
       "artifact": {
         "path": "src/assembly/production-signer-reference.ts",
