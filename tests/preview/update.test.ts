@@ -6,7 +6,7 @@ import { spawnSync, execFileSync } from 'node:child_process';
 // @ts-expect-error Shipped installer JavaScript.
 import { updateRoot } from '../../scripts/update.mjs';
 // @ts-expect-error Shipped governance adapter uses the real constitutional binder.
-import { bindUpdateCandidate } from '../../scripts/update-governance.mjs';
+import { bindUpdateCheckpoints } from '../../scripts/update-governance.mjs';
 const roots: string[] = [];
 const scratch = () => { const p = mkdtempSync(join(tmpdir(), 'instar-update-')); roots.push(p); return p; };
 const originalCache = process.env.npm_config_cache;
@@ -18,16 +18,16 @@ afterEach(() => {
 const json = (p: string) => JSON.parse(readFileSync(p, 'utf8'));
 it('binds the actual candidate checkpoint and refuses missing, retired or weakened declarations', () => {
   const declarations = json('scripts/update.declarations.json');
-  expect(bindUpdateCandidate(declarations)).toBe('update.validateCandidate');
-  expect(() => bindUpdateCandidate([])).toThrow('needs exactly one');
+  expect(bindUpdateCheckpoints(declarations)).toBe('update.updateRoot');
+  expect(() => bindUpdateCheckpoints([])).toThrow('needs exactly one');
   for (const mutate of [
     (d: any) => { d.status = 'retired'; },
     (d: any) => { d.requiredFacts.failDirection = 'open'; },
     (d: any) => { d.requiredFacts.decidesAloneBasis = 'spend-past-a-cap'; },
   ]) {
     const altered = structuredClone(declarations);
-    mutate(altered.find((d: { id: string }) => d.id === 'update.validateCandidate'));
-    expect(() => bindUpdateCandidate(altered)).toThrow('P3-NF-19');
+    mutate(altered.find((d: { id: string }) => d.id === 'update.updateRoot'));
+    expect(() => bindUpdateCheckpoints(altered)).toThrow('P3-NF-19');
   }
 });
 function fixture(version = '0.2.0', body = 'export const migrations = [];', schema = 1) {

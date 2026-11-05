@@ -91,8 +91,8 @@ export async function updateRoot(directory, options = {}) {
     register('./slice-ts-loader.mjs', import.meta.url);
     return import('./update-governance.mjs');
   })();
-  const { bindUpdateCandidate } = await candidateBinding;
-  bindUpdateCandidate(load(new URL('./update.declarations.json', import.meta.url)));
+  const { bindUpdateCheckpoints } = await candidateBinding;
+  bindUpdateCheckpoints(load(new URL('./update.declarations.json', import.meta.url)));
   mkdirSync(root, { recursive: true, mode: 0o700 });
   const lock = join(root, '.update-lock');
   // Same unique-owner reclamation as judgment-captures: only a proven dead local

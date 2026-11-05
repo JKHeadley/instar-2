@@ -167,7 +167,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/update.test.ts",
-        "hash": "sha256:4fce5137df9147e699da45d58c4ae031e48adf26a6617ec492d9e68d35004acc"
+        "hash": "sha256:67a71e2df33373283626a28e432da3925a9dcf65d08ef60b58959294864a44e9"
       }
     }
   ],

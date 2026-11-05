@@ -188,6 +188,16 @@ it('the installed CLI repairs a stale existing default and the same runtime read
     const revoked = bytes(p);
     expect(run().stdout).toContain('Already on this release');
     expect(bytes(p)).toBe(revoked);
+    // The installed consumer must invoke the binding, not merely ship a sidecar.
+    const declarationPath = join(p, 'current/scripts/update.declarations.json');
+    const declarations = readFileSync(declarationPath, 'utf8');
+    const stateBeforeRefusal = readFileSync(join(p, 'update-state.json'), 'utf8');
+    writeFileSync(declarationPath, '[]');
+    expect(run().status).toBe(1);
+    expect(bytes(p)).toBe(revoked);
+    expect(readFileSync(join(p, 'update-state.json'), 'utf8')).toBe(stateBeforeRefusal);
+    writeFileSync(declarationPath, declarations);
+    expect(run().stdout).toContain('Already on this release');
     writeFileSync(join(p, 'mcp.json'), '{broken');
     expect(run().status).toBe(1); expect(bytes(p)).toBe('{broken');
   } finally {
