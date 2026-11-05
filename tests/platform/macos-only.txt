@@ -19,6 +19,7 @@ tests/preview/self-host-flat-live.test.ts
 tests/preview/self-host-tools.test.ts
 tests/preview/self-host.test.ts
 tests/preview/session-admission.test.ts
+tests/preview/session-connectors.test.ts
 tests/preview/session-volume.test.ts
 tests/preview/telegram-files.test.ts
 tests/preview/tool-paths.test.ts
