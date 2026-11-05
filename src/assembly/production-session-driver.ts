@@ -27,6 +27,9 @@ export interface SessionRecord {
   readonly promptWait?: Readonly<{ digest: string; firstAt: number; lastAt: number; samples: number }> | null;
   readonly deadlineHalt?: Readonly<{ deadline: number; at: number }>;
   readonly staleObservation?: SessionStaleRecord;
+  /** 1.x ActiveWorkSilenceSentinel neutral nudge: one bare Enter per open turn, recorded
+   * durably before the keystroke so a host restart can never send it twice. */
+  readonly nudge?: Readonly<{ at: number; turnStartedAt: number; fingerprint: string; reason: string }> | null;
 }
 export interface SessionContinuation {
   readonly pending?: Readonly<{ operation: string; digest: string; deadline: number }>;
@@ -129,6 +132,8 @@ export interface SessionActivityObservation {
   /** Absent on older adapters: cannot corroborate a stall. Idle is not proof of completion. */
   readonly activity?: 'active' | 'idle' | 'indeterminate' | 'unknown';
   readonly stale?: SessionStaleSignal; readonly controlPlane?: SessionControlPlaneSignal;
+  /** 1.x StallTriageNurse typed-but-not-submitted frame for the open accepted turn: a signal only. */
+  readonly typedUnsubmitted?: boolean;
 }
 /** Private full-context supervision evidence; never part of the public activity projection. */
 export interface SessionRecoveryObservation extends SessionActivityObservation {
@@ -274,6 +279,22 @@ export function classifyBlockingMenu(capture: string): boolean {
 export function classifyPaneActive(capture: string): boolean {
   return /(?:esc|ctrl\+c) to interrupt|\bworking(?:…|\.\.\.|\s*\()|\bgenerating\b|[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/i.test(tail(capture, 8));
 }
+/** Port of 1.x StallTriageNurse.detectTypedButNotSubmitted: the input box holds at least 20
+ * characters after the last prompt glyph and no processing indicator is visible, the exact
+ * frame left when a bracketed-paste delivery lost its trailing Enter. A structural signal only. */
+export function classifyTypedUnsubmitted(capture: string, framework: SessionFramework): boolean {
+  if (!capture || classifyPaneActive(capture) || classifyBlockingMenu(capture)) return false;
+  const lines = tail(capture, 12).split('\n');
+  const prompt = framework === 'codex-cli' ? /[❯›>]/u : /[❯›]/u;
+  const index = lines.map(line => prompt.test(line)).lastIndexOf(true);
+  if (index < 0) return false;
+  // The inherited processing glyphs disqualify the frame only from the input line down: scrollback
+  // above a quiet prompt always holds earlier tool and assistant markers.
+  if (/⎿|✶|⏺|Coalescing|thinking|esc to interrupt/i.test(lines.slice(index).join('\n'))) return false;
+  const line = lines[index]!, match = prompt.exec(line)!;
+  const after = line.slice(match.index + match[0].length).trim();
+  return after.length >= 20 && !/^(?:[─━]+|bypass permissions.*|shift\+tab to cycle.*|\? for shortcuts.*)$/iu.test(after);
+}
 /** A prompt can remain visible throughout work; only a changed, quiet idle frame closes a turn. */
 export function classifyPaneIdle(capture: string, framework: SessionFramework): boolean {
   const lines = tail(capture, 8).split('\n').filter(line => !/^[─━]+$/u.test(line))
@@ -356,6 +377,10 @@ export interface SessionStopPort {
   stop(input: SessionStopTarget): Result<readonly string[] | SessionStopRefusal>;
 }
 
+/** One neutral Enter to the exact live worker (1.x ActiveWorkSilenceSentinel nudge). */
+export type SessionNudgeInput = Readonly<{ processIdentity: string; claim: string; incarnation: string; reason: string }>;
+export type SessionNudgeResult = Readonly<{ state: 'nudged' | 'refused'; evidence: string }>;
+export type SessionRedeliverResult = Readonly<{ state: 'redelivered' | 'refused'; evidence: string }>;
 export function createProductionSessionDriver(config: ProductionSessionConfig): NativeHarnessDriverPort & SessionStopPort & Readonly<{
   continuationReady(identity: string): Result<boolean>;
   observeAsync(input: SessionObserveInput): Promise<SessionObserveResult>;
@@ -364,6 +389,9 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
   recoverDelivery(input: Readonly<{ operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }>): Result<string>;
   saveResume(identity: string, sessionId: string): Result<string>;
   recoverContext(identity: string, pending?: { operation: string; digest: string; deadline: number }): Result<string>;
+  nudge(input: SessionNudgeInput): Result<SessionNudgeResult>;
+  redeliver(input: Readonly<{ operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }>): Result<SessionRedeliverResult>;
+  recoverWorker(input: Readonly<{ operation: string; claim: string }>): Result<Readonly<{ identity: string; incarnation: string; deliveryDigest: string | null }> | null>;
 }> {
   ensure(config.operatorOwnUse === true && (config.confinement === 'unconfined' || config.confinement === 'admitted'),
     'explicit operator-own-use mode required');
@@ -445,7 +473,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const deadline = Math.min(started + config.turnDeadlineMs, session.continuation?.pending?.deadline ?? Infinity);
     ensure(deadline > started, 'context continuation deadline exhausted');
     const armed = { ...session, recovery, turnStartedAt: started, turnDeadline: deadline, closedAt: null, turnCloseEvidence: null,
-      rateRecovery: null, promptWait: null,
+      rateRecovery: null, promptWait: null, nudge: null,
       connectionRetry: null,
       turnBaseline: digestOf(capture(session.name)),
       turnReceiptIds: config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed')
@@ -681,14 +709,18 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         session = { ...session, staleObservation: stale };
         config.io.save(replaceSession(config.io.load(), session));
         const controlPlane = config.io.controlPlaneStatus?.();
+        // The typed-but-unsubmitted frame counts only for an open turn whose delivery was accepted.
+        const typedUnsubmitted = session.turnDeadline !== null && session.closedAt === null
+          && config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1)?.state === 'accepted'
+          && classifyTypedUnsubmitted(pane, config.framework);
         try {
-          config.observeActivity?.({ stale: staleSignal(stale), ...(controlPlane ? { controlPlane } : {}), subject: session.claim, incarnation: session.incarnation, launch: session.identity, at: physical?.at ?? config.now(), progress: pane.trim() ? digestOf(pane) : null,
+          config.observeActivity?.({ stale: staleSignal(stale), ...(controlPlane ? { controlPlane } : {}), ...(typedUnsubmitted ? { typedUnsubmitted: true } : {}), subject: session.claim, incarnation: session.incarnation, launch: session.identity, at: physical?.at ?? config.now(), progress: pane.trim() ? digestOf(pane) : null,
             wait: classifyPaneActive(pane) ? null : classifyStuckSignature(pane),
             activity: !pane.trim() ? 'unknown' : classifyPaneActive(pane) ? 'active'
               : classifyPaneIdle(pane, config.framework) ? 'idle' : 'indeterminate' });
         } catch { /* An advisory observer cannot fail the worker; its last sample becomes stale/unknown. */ }
         try {
-          config.observeRecovery?.({ stale: staleSignal(stale), ...(controlPlane ? { controlPlane } : {}), subject: session.claim, incarnation: session.incarnation, launch: session.identity,
+          config.observeRecovery?.({ stale: staleSignal(stale), ...(controlPlane ? { controlPlane } : {}), ...(typedUnsubmitted ? { typedUnsubmitted: true } : {}), subject: session.claim, incarnation: session.incarnation, launch: session.identity,
             terminal: pane, at: physical?.at ?? config.now(), progress: pane.trim() ? digestOf(pane) : null,
             wait: classifyPaneActive(pane) ? null : classifyStuckSignature(pane),
             activity: !pane.trim() ? 'unknown' : classifyPaneActive(pane) ? 'active'
@@ -971,6 +1003,94 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
       });
     },
     stop,
+    /** 1.x ActiveWorkSilenceSentinel nudge: one bare Enter to the exact live worker of an open accepted
+     * turn. Refused while the frame generates, shows a menu or a wait signature, while a continuation or
+     * throttle recovery owns the turn, and after one nudge for the same turn. The record is durable before
+     * the keystroke. It is input under the admitted delivery's own principal, never a new authority. */
+    nudge(input: SessionNudgeInput): Result<SessionNudgeResult> {
+      return lockedBoundary('ProductionSessionNudge', input, () => {
+        checkStop();
+        const session = loadSession(input.processIdentity);
+        ensure(session.claim === input.claim && session.incarnation === input.incarnation && input.reason.trim().length > 0,
+          'nudge target differs from the admitted worker');
+        const refuse = (evidence: string): SessionNudgeResult => ({ state: 'refused', evidence });
+        if (config.protectedSessions.includes(session.name)) return refuse('protected session is never nudged');
+        if (session.deadlineHalt || session.turnDeadline === null || session.closedAt !== null || session.turnStartedAt === null
+          || config.now() >= session.turnDeadline) return refuse('no open admitted turn; nothing to nudge');
+        if (session.continuation && session.continuation.state !== 'completed') return refuse('continuation delivery pending; no nudge');
+        if (session.rateRecovery) return refuse('throttle continuation owns this turn; no nudge');
+        if (config.io.load().deliveries.filter(row => row.identity === session.identity).at(-1)?.state !== 'accepted')
+          return refuse('delivery outcome is not accepted; no nudge');
+        if (session.nudge && session.nudge.turnStartedAt === session.turnStartedAt) return refuse('one neutral nudge per turn already sent');
+        verifyLive(session);
+        const pane = capture(session.name);
+        if (classifyPaneActive(pane)) return refuse('worker is generating; a nudge would be noise');
+        if (classifyBlockingMenu(pane)) return refuse('harness menu needs exact authorization; no input sent');
+        if (classifyStuckSignature(pane)) return refuse('wait signature owns this frame; native recovery, not a nudge');
+        const fingerprint = digestOf(pane);
+        config.io.save(replaceSession(config.io.load(), { ...session,
+          nudge: { at: config.now(), turnStartedAt: session.turnStartedAt, fingerprint, reason: input.reason } }));
+        checkStop(); verifyLive(session);
+        run(['send-keys', '-t', literalTarget(session.name), 'Enter']);
+        return { state: 'nudged', evidence: `nudge:${session.name}:${fingerprint}` };
+      });
+    },
+    /** 1.x TriageOrchestrator reinject_message: the exact accepted delivery, redelivered at most once
+     * (the existing `redeliveries` bound), only at a quiet idle prompt with no receipt for its turn.
+     * The record turns `sending` before any input; a crash there is a boot-sweep uncertainty, never a resend. */
+    redeliver(input: { operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }): Result<SessionRedeliverResult> {
+      return lockedBoundary('ProductionSessionRedeliver', input, () => {
+        checkStop();
+        const session = loadSession(input.processIdentity);
+        ensure(input.incarnation === session.incarnation && input.operation && input.intake, 'stale or empty redelivery');
+        const refuse = (evidence: string): SessionRedeliverResult => ({ state: 'refused', evidence });
+        const prior = config.io.load().deliveries.find(row => row.operation === input.operation);
+        if (!prior) return refuse('no recorded delivery to redeliver');
+        ensure(prior.identity === input.processIdentity && prior.intake === input.intake && prior.digest === input.digest,
+          'redelivery operation differs from durable intake');
+        if (prior.state !== 'accepted') return refuse('delivery outcome is not accepted; the boot sweep owns prepared and sending records');
+        if (prior.redeliveries !== 0) return refuse('one redelivery per delivery already used');
+        if (config.protectedSessions.includes(session.name)) return refuse('protected session is never redelivered to');
+        if (session.deadlineHalt || session.turnDeadline === null || session.closedAt !== null || config.now() >= session.turnDeadline)
+          return refuse('no open admitted turn; nothing to redeliver');
+        if (session.continuation && session.continuation.state !== 'completed') return refuse('continuation delivery pending; no redelivery');
+        if (session.rateRecovery) return refuse('throttle continuation owns this turn; no redelivery');
+        verifyLive(session);
+        const pane = capture(session.name);
+        if (classifyTypedUnsubmitted(pane, config.framework)) return refuse('input typed but not submitted; the neutral nudge is the exact repair');
+        if (!classifyPaneIdle(pane, config.framework) || classifyStuckSignature(pane)) return refuse('worker is not at a quiet idle prompt; the delivery may still be in flight');
+        const receipt = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
+          && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
+        if (receipt) return refuse('a turn receipt exists for this delivery; observe it instead of redelivering');
+        const text = config.resolveIntake(input.intake, input.digest);
+        ensure(digestOf(text) === input.digest, 'intake bytes differ from admitted digest');
+        const sending: DeliveryRecord = { ...prior, state: 'sending', redeliveries: 1, baseline: digestOf(pane) };
+        config.io.save(replaceDelivery(config.io.load(), sending));
+        armTurn(loadSession(input.processIdentity), 0);
+        sendText(loadSession(input.processIdentity), text);
+        const evidence = `tmux-input:${input.operation}:redelivered`;
+        config.io.save(replaceDelivery(config.io.load(), { ...sending, state: 'accepted', evidence }));
+        return { state: 'redelivered', evidence };
+      });
+    },
+    /** 1.x StaleSessionBackstop/ResumeQueue restoration lookup: the one live, identity-verified worker a
+     * registered claim still owns after a host restart, with its accepted delivery digest. Ambiguity,
+     * a halted worker or a protected session yields null; this never launches, sends or stops. */
+    recoverWorker(input: { operation: string; claim: string }): Result<Readonly<{ identity: string; incarnation: string; deliveryDigest: string | null }> | null> {
+      return lockedBoundary('ProductionSessionRecoverWorker', input, () => {
+        checkStop(); reconcileReservations();
+        const journal = config.io.load();
+        const rows = journal.sessions.filter(row => row.operation === input.operation && row.claim === input.claim
+          && namePattern.test(row.name) && alive(row.name));
+        if (rows.length !== 1) return null;
+        const session = rows[0]!;
+        if (session.deadlineHalt || config.protectedSessions.includes(session.name)) return null;
+        verifyLive(session);
+        const delivery = journal.deliveries.find(row => row.operation === input.operation && row.identity === session.identity);
+        return { identity: session.identity, incarnation: session.incarnation,
+          deliveryDigest: delivery?.state === 'accepted' ? delivery.digest : null };
+      });
+    },
     saveResume(identity: string, sessionId: string): Result<string> {
       return lockedBoundary('ProductionSessionResume', { identity, sessionId }, () => {
         const session = loadSession(identity);

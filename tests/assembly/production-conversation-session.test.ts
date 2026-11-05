@@ -1655,3 +1655,221 @@ it('nonfatal settled intervention retains its escalation delay across an unavail
     expect(f.state().inputs[0]?.processIntervention?.phase).toBe('settled');
   } finally { own.close(); }
 }, 60000);
+
+// Carryover 02 r4: 1.x ActiveWorkSilenceSentinel nudge/verification, SessionMonitor responsiveness, StallTriageNurse
+// fast path/cooldown/history/restart loop and TriageOrchestrator typed actions, all inside the existing owner.
+function nudgeFixture(mode = 'wait', options: { redeliver?: boolean; typed?: boolean; activity?: 'idle' | 'active' | 'indeterminate' } = {}) {
+  const f = stalledFixture(mode);
+  let progress = 'frozen-frame';
+  const observe = f.config.stallRecovery!.observe;
+  Object.assign(f.config.stallRecovery!, { observe: (worker: ConversationWorker) => ({ ...observe(worker)!, progress,
+    activity: options.activity ?? 'idle', ...(options.typed ? { typedUnsubmitted: true } : {}) }) });
+  f.adapter.describe = () => ({ version: 2, subsequentInput: true, output: 'reply-and-turn-end', resume: false, nudge: true, ...(options.redeliver ? { redeliver: true } : {}) });
+  const controls: { action: string; reason: string }[] = [];
+  let nudgeState: 'nudged' | 'refused' = 'nudged', redeliverState: 'redelivered' | 'refused' = 'redelivered';
+  const control = f.adapter.control;
+  f.adapter.control = async input => {
+    if (input.action === 'nudge' || input.action === 'redeliver') {
+      controls.push({ action: input.action, reason: input.reason });
+      if (input.action === 'nudge') expect(f.state().inputs[0]?.stall?.nudge?.state).toBe('requested');
+      else { expect(f.state().inputs[0]?.reinjection?.state).toBe('requested'); expect(input.delivery?.digest).toBe(f.delivered[0]!.digest); }
+      return input.action === 'nudge' ? { state: nudgeState, evidence: `${input.action}:fixture` } : { state: redeliverState, evidence: `${input.action}:fixture` };
+    }
+    return control(input);
+  };
+  return { ...f, controls, setProgress: (next: string) => { progress = next; },
+    refuseNudge: () => { nudgeState = 'refused'; }, refuseRedeliver: () => { redeliverState = 'refused'; } };
+}
+
+it('the neutral nudge precedes judgment: a frame that changes within thirty seconds recovers without a review', async () => {
+  const f = nudgeFixture('wait');
+  let ticks = -1;
+  f.config.io.wait = async ms => { f.advance(ms); if (f.controls.length === 1 && ++ticks === 0) f.setProgress('after-nudge'); if (ticks >= 2) f.finish(true); };
+  expect((await f.port.run(f.request('nudged'))).state).toBe('complete');
+  expect(f.controls).toEqual([{ action: 'nudge', reason: 'stall-triage:nudged:unresponsive' }]);
+  expect(f.reviews()).toBe(0); expect(f.launches).toHaveLength(1);
+  const history = f.state().triageHistory!;
+  expect(history.map(row => row.outcome)).toEqual(['sent: nudge:fixture', 'recovered: frame changed within the verification window']);
+  // SessionMonitor's ten-minute unresponsive trigger, not the thirty-minute silence threshold, requested it.
+  expect(history[0]!.at).toBeGreaterThanOrEqual(1000 + STALL_RECOVERY_LIMITS.unresponsiveMs);
+  expect(history[0]!.at).toBeLessThan(1000 + STALL_RECOVERY_LIMITS.silenceMs);
+  expect(f.state().inputs[0]?.settledAt).toBe(f.config.now());
+});
+
+it('a silent frame after the verification window is recorded, then one review follows; never a second nudge for the episode', async () => {
+  const f = nudgeFixture('wait');
+  expect((await f.port.run(f.request('silent'))).state).toBe('complete');
+  expect(f.controls).toHaveLength(1); expect(f.reviews()).toBe(1);
+  const nudge = f.state().triageHistory!.find(row => row.outcome.startsWith('verified-silent'));
+  expect(nudge).toBeDefined();
+  const reviewed = f.state().triageHistory!.find(row => row.outcome === 'reviewed')!;
+  expect(reviewed.at - f.state().triageHistory![0]!.at).toBeGreaterThanOrEqual(STALL_RECOVERY_LIMITS.nudgeVerifyMs);
+  expect(reviewed).toMatchObject({ trigger: 'unresponsive', decision: 'wait', action: 'wait' });
+});
+
+it('the typed-but-not-submitted frame nudges after the nurse cooldown, long before the responsiveness threshold', async () => {
+  const f = nudgeFixture('wait', { typed: true });
+  f.config.io.wait = async ms => { f.advance(ms); if (f.controls.length) f.finish(true); };
+  expect((await f.port.run(f.request('typed'))).state).toBe('complete');
+  expect(f.controls).toEqual([{ action: 'nudge', reason: 'stall-triage:typed:typed-unsubmitted' }]);
+  const at = f.state().triageHistory![0]!.at;
+  expect(at).toBeGreaterThanOrEqual(1000 + STALL_RECOVERY_LIMITS.cooldownMs); expect(at).toBeLessThan(1000 + STALL_RECOVERY_LIMITS.unresponsiveMs);
+  expect(f.reviews()).toBe(0);
+});
+
+it('an active frame keeps the ninety-minute frozen-indicator backstop: no nudge or review at ten minutes', async () => {
+  const f = nudgeFixture('wait', { activity: 'active' });
+  expect((await f.port.run(f.request('active'))).state).toBe('complete');
+  expect(f.controls).toEqual([]); expect(f.reviews()).toBe(0);
+  expect(f.state().triageHistory ?? []).toEqual([]);
+});
+
+it('a refused or uncertain nudge still allows the bounded review; a legacy adapter without the primitive reviews as before', async () => {
+  const f = nudgeFixture('wait'); f.refuseNudge();
+  expect((await f.port.run(f.request('refused'))).state).toBe('complete');
+  expect(f.controls).toHaveLength(1); expect(f.reviews()).toBe(1);
+  expect(f.state().triageHistory![0]).toMatchObject({ action: 'nudge', outcome: 'refused: nudge:fixture' });
+  const legacy = stalledFixture('wait');
+  expect((await legacy.port.run(legacy.request('legacy'))).state).toBe('complete');
+  expect(legacy.reviews()).toBe(1);
+  expect(legacy.state().triageHistory!.map(row => row.action)).toEqual(['wait']);
+});
+
+it('the hourly auto-action ceiling refuses the nudge before the keystroke and the review still runs', async () => {
+  const f = nudgeFixture('wait');
+  f.restore({ ...(f.state() ?? {}), version: 1, conversation: 'operator-1', epoch: 0, edge: null, worker: null, claim: null, incarnation: null, authority: null,
+    deadline: 0, turns: 0, inputs: [], close: null, reserved: false, spent: 0, claimCalls: 0,
+    triagePressure: { restarts: [], autoActions: [1, 2, 3, 4, 5] } });
+  const port = f.restart();
+  Object.assign(f.config.stallRecovery!, { reserve: (claim: string) => port.reserveReview(claim) });
+  expect((await port.run(f.request('ceiling'))).state).toBe('complete');
+  expect(f.controls).toEqual([]); expect(f.reviews()).toBe(1);
+  expect(f.state().triageHistory![0]).toMatchObject({ action: 'none', outcome: 'refused: auto-action ceiling' });
+  expect(f.state().inputs[0]?.stall?.nudge).toMatchObject({ state: 'refused' });
+});
+
+it.each([
+  { action: 'reinject', support: true, redelivered: true },
+  { action: 'reinject', support: false, redelivered: false },
+])('a message-lost judgment redelivers the exact accepted input at most once ($action, driver=$support)', async ({ support, redelivered }) => {
+  const f = nudgeFixture('wait', { redeliver: support }); f.refuseNudge();
+  Object.assign(f.config.stallRecovery!, { review: async () => ({ kind: 'triage', classification: 'message-lost', action: 'reinject',
+    confidence: 0.95, followUpMs: null, reason: 'prompt visible with the message pending' }) });
+  f.config.io.wait = async ms => { f.advance(ms); if (f.state().inputs[0]?.reinjection || f.config.now() > 2_000_000) f.finish(true); };
+  expect((await f.port.run(f.request('lost'))).state).toBe('complete');
+  expect(f.controls.filter(row => row.action === 'redeliver')).toHaveLength(redelivered ? 1 : 0);
+  expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+  if (redelivered) expect(f.state().inputs[0]?.reinjection).toMatchObject({ state: 'redelivered', evidence: 'redeliver:fixture' });
+  else expect(f.state().inputs[0]?.reinjection).toBeUndefined();
+  expect(f.state().triageHistory!.at(-1)).toMatchObject(redelivered ? { action: 'reinject', outcome: 'redelivered: redeliver:fixture' } : { decision: 'message-lost', outcome: 'reviewed' });
+});
+
+it('a message-lost judgment never redelivers once a tool effect happened after dispatch', async () => {
+  const f = nudgeFixture('effects-during-review', { redeliver: true }); f.refuseNudge();
+  const review = f.config.stallRecovery!.review;
+  // The fixture mode records one tool preparation during judgment; the judgment itself asks to reinject.
+  Object.assign(f.config.stallRecovery!, { review: async (evidence: Parameters<typeof review>[0]) => { await review(evidence);
+    return { kind: 'triage', classification: 'message-lost', action: 'reinject', confidence: 0.95, followUpMs: null, reason: 'prompt visible' }; } });
+  expect((await f.port.run(f.request('acted'))).state).toBe('complete');
+  expect(f.controls.filter(row => row.action === 'redeliver')).toHaveLength(0);
+  expect(f.state().inputs[0]?.reinjection).toBeUndefined();
+});
+
+it('suggest and uncomposed auto-interrupt judgments become a notice and a scheduled follow-up under the review ceiling', async () => {
+  const f = nudgeFixture('wait'); f.refuseNudge();
+  const decisions: string[] = [];
+  Object.assign(f.config.stallRecovery!, { review: async () => {
+    decisions.push('review');
+    return { kind: 'triage', classification: 'stuck-on-tool', action: decisions.length === 1 ? 'auto-interrupt' : 'suggest-interrupt',
+      confidence: 0.9, followUpMs: 5 * 60_000, reason: 'a command appears stuck' };
+  } });
+  f.config.io.wait = async ms => { f.advance(ms); if (f.config.now() > 8_000_000) f.finish(true); };
+  expect((await f.port.run(f.request('suggest'))).state).toBe('complete');
+  expect(decisions).toHaveLength(STALL_RECOVERY_LIMITS.reviews);
+  const history = f.state().triageHistory!.filter(row => row.outcome === 'reviewed');
+  expect(history.map(row => row.trigger)).toEqual(['unresponsive', 'follow-up', 'follow-up']);
+  // Follow-ups ran at the judged cadence, not the thirty-minute silence threshold, and never inside the cooldown.
+  for (let index = 1; index < history.length; index++) {
+    expect(history[index]!.at - history[index - 1]!.at).toBeGreaterThanOrEqual(5 * 60_000);
+    expect(history[index]!.at - history[index - 1]!.at).toBeLessThan(STALL_RECOVERY_LIMITS.silenceMs);
+  }
+  expect(f.launches).toHaveLength(1); expect(f.controls.filter(row => row.action !== 'nudge')).toEqual([]);
+  expect(f.state().inputs[0]?.stall?.notice).toContain('stuck-on-tool: suggest-interrupt');
+});
+
+it('an auto-restart judgment below the confidence floor is a notice; above it, the existing fenced replacement runs', async () => {
+  for (const confidence of [0.5, 0.9]) {
+    const f = nudgeFixture('frozen'); f.refuseNudge();
+    Object.assign(f.config.stallRecovery!, { review: async () => ({ kind: 'triage', classification: 'stuck-on-thinking', action: 'auto-restart',
+      confidence, followUpMs: null, reason: 'frozen frame' }) });
+    expect((await f.port.run(f.request(`restart-${confidence}`))).state).toBe('complete');
+    expect(f.launches).toHaveLength(confidence >= STALL_RECOVERY_LIMITS.confidenceFloor ? 2 : 1);
+    if (confidence >= STALL_RECOVERY_LIMITS.confidenceFloor) {
+      expect(f.state().triageHistory!.at(-1)).toMatchObject({ action: 'auto-restart', outcome: 'replaced: original input restored to a fresh worker' });
+      expect(f.state().triagePressure?.restarts).toHaveLength(1);
+    }
+  }
+});
+
+it('restart-loop pressure refuses a fourth automatic replacement within ten minutes, for supervised and lost workers alike', async () => {
+  const seeded = (f: ReturnType<typeof nudgeFixture>, restarts: number[]) => {
+    f.restore({ version: 1, conversation: 'operator-1', epoch: 0, edge: null, worker: null, claim: null, incarnation: null, authority: null,
+      deadline: 0, turns: 0, inputs: [], close: null, reserved: false, spent: 0, claimCalls: 0,
+      triagePressure: { restarts, autoActions: [] } });
+    const port = f.restart();
+    Object.assign(f.config.stallRecovery!, { reserve: (claim: string) => port.reserveReview(claim) });
+    return port;
+  };
+  const supervised = nudgeFixture('frozen'); supervised.refuseNudge();
+  // Three replacements inside the ten minutes before the supervised judgment at the responsiveness threshold.
+  const port = seeded(supervised, [500_000, 550_000, 600_000]);
+  expect((await port.run(supervised.request('loop'))).state).toBe('complete');
+  expect(supervised.launches).toHaveLength(1); expect(supervised.reviews()).toBe(1);
+  expect(supervised.state().triageHistory!.at(-1)).toMatchObject({ action: 'auto-restart', outcome: 'refused: restart loop pressure' });
+  expect(supervised.state().inputs[0]?.stall?.notice).toContain('restart loop pressure');
+  const lost = nudgeFixture('wait'); const lostPort = seeded(lost, [500, 700, 900]);
+  lost.config.io.wait = async ms => { lost.advance(ms); lost.exit(); };
+  const result = await lostPort.run(lost.request('lost-loop'));
+  expect(result).toMatchObject({ state: 'uncertain', detail: expect.stringContaining('restart loop pressure') });
+  expect(lost.launches).toHaveLength(1);
+  // Outside the window the brake releases: the same custody, seen later, allows a replacement again.
+  lost.advance(STALL_RECOVERY_LIMITS.restartLoopWindowMs);
+  const later = lost.restart();
+  expect(later.stallStatus!()[0]!.counts.restarts).toBe(0);
+});
+
+it('the pull-only status projection carries responsiveness, one deduplicated notice per unanswered message, and the funnel counts', async () => {
+  const f = nudgeFixture('wait');
+  const seen: ReturnType<NonNullable<ReturnType<typeof stalledFixture>['port']['stallStatus']>>[] = [];
+  Object.assign(f.config.stallRecovery!, { review: async () => { seen.push(f.port.stallStatus!()); seen.push(f.port.stallStatus!()); return 'wait'; } });
+  expect(f.port.stallStatus!()[0]).toMatchObject({ conversation: 'operator-1', worker: false, responsiveness: { state: 'healthy', userWaitMs: null, idleMs: null }, episode: null, notices: [] });
+  expect((await f.port.run(f.request('status'))).state).toBe('complete');
+  const [first, second] = seen[0]!.concat(seen[1]!);
+  expect(first).toMatchObject({ worker: true, responsiveness: { state: 'unresponsive' }, episode: { operation: 'status', phase: 'reviewed', nudge: 'verified-silent', activity: 'idle' } });
+  expect(first!.responsiveness.userWaitMs).toBeGreaterThanOrEqual(STALL_RECOVERY_LIMITS.unresponsiveMs);
+  expect(first!.notices).toHaveLength(1); expect(first!.notices[0]!.line).toContain('has no reply yet');
+  // The same unanswered message yields the same notice key: one notice per message, never one per poll.
+  expect(second!.notices).toEqual(first!.notices);
+  expect(first!.counts).toMatchObject({ nudges: 1, reviews: 1, interventions: 0, reinjections: 0, restarts: 0 });
+  const after = f.port.stallStatus!()[0]!;
+  expect(after).toMatchObject({ responsiveness: { state: 'healthy', userWaitMs: null }, episode: null, notices: [] });
+  expect(after.responsiveness.idleMs).toBe(0); expect(f.state().responsivenessNotice).toBeNull();
+  f.advance(STALL_RECOVERY_LIMITS.idleMs);
+  expect(f.port.stallStatus!()[0]!.responsiveness.state).toBe('idle');
+  // History and pressure custody survive a host restart with the owner's existing state.
+  const reopened = f.restart();
+  expect(reopened.stallStatus!()[0]!.counts).toMatchObject({ nudges: 1, reviews: 1, history: f.state().triageHistory!.length });
+});
+
+it('triage history is bounded to the inherited fifty rows', async () => {
+  const f = nudgeFixture('wait');
+  f.restore({ version: 1, conversation: 'operator-1', epoch: 0, edge: null, worker: null, claim: null, incarnation: null, authority: null,
+    deadline: 0, turns: 0, inputs: [], close: null, reserved: false, spent: 0, claimCalls: 0,
+    triageHistory: Array.from({ length: 50 }, (_, index) => ({ operation: `old-${index}`, at: index + 1, trigger: 'silence' as const, decision: 'wait', action: 'wait', outcome: 'reviewed' })) });
+  const port = f.restart();
+  Object.assign(f.config.stallRecovery!, { reserve: (claim: string) => port.reserveReview(claim) });
+  expect((await port.run(f.request('bounded'))).state).toBe('complete');
+  const history = f.state().triageHistory!;
+  expect(history).toHaveLength(STALL_RECOVERY_LIMITS.historyLimit);
+  expect(history[0]!.operation).not.toBe('old-0'); expect(history.at(-1)!.operation).toBe('bounded');
+});

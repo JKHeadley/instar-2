@@ -255,15 +255,20 @@ export type HarnessNormalizedObservation =
   | Readonly<{ kind: 'turn-end'; delivery: string; state: 'completed' | 'no-reply' | 'uncertain' }>
   | Readonly<{ kind: 'exit' | 'paused'; evidence: string; reason?: string; safetyDeadline?: number }>;
 interface ContinuingHarnessAdapterPort {
-  describe(): Readonly<{ version: 2; subsequentInput: true; output: 'reply-and-turn-end'; resume: boolean }>;
+  /** `nudge`/`redeliver`: the adapter can send one neutral Enter, or redeliver one exact accepted
+   * delivery, each bounded by the physical driver; absent means the host never requests them. */
+  describe(): Readonly<{ version: 2; subsequentInput: true; output: 'reply-and-turn-end'; resume: boolean; nudge?: true; redeliver?: true }>;
   launch(input: Readonly<{ operation: string; claim: string; artifact: string; incarnation: string; workingScope: string; restore?: { operation: string; digest: string; deadline: number } }>): Promise<HarnessWorkerHandle>;
   deliver(input: HarnessInputDelivery): Promise<Readonly<{ state: 'accepted' | 'busy-not-dispatched' | 'refused-not-dispatched' | 'uncertain'; evidence: string }>>;
   observe(input: HarnessWorkerHandle & Readonly<{ delivery: HarnessInputDelivery | null; cursor: number; limit: number }>): Promise<Readonly<{
     observations: readonly HarnessNormalizedObservation[]; cursor: number; complete: boolean }>>;
   /** Fresh affirmative idle fingerprint; null or an absent observer keeps the worker. */
   observeIdle?(input: HarnessWorkerHandle): Promise<string | null>;
-  control(input: HarnessWorkerHandle & Readonly<{ idleEvidence?: string; action: 'interrupt' | 'close' | 'compact'; authority: string; reason: string; delivery?: HarnessInputDelivery; deadline?: number }>): Promise<Readonly<{
-    state: 'closed' | 'refused' | 'uncertain' | 'resumed' | 'replace-required'; evidence: string }>>;
+  /** `nudge`: 1.x ActiveWorkSilenceSentinel's one neutral Enter to the exact live worker, refused while it
+   * generates, shows a menu, or already received one for the open turn. `redeliver`: 1.x TriageOrchestrator's
+   * reinject of the exact accepted delivery, at most once per delivery, only at a quiet prompt. */
+  control(input: HarnessWorkerHandle & Readonly<{ idleEvidence?: string; action: 'interrupt' | 'close' | 'compact' | 'nudge' | 'redeliver'; authority: string; reason: string; delivery?: HarnessInputDelivery; deadline?: number }>): Promise<Readonly<{
+    state: 'closed' | 'refused' | 'uncertain' | 'resumed' | 'replace-required' | 'nudged' | 'redelivered'; evidence: string }>>;
 }
 
 export interface PersistenceReceipt { readonly owner: 'part-ten'; readonly store: string; readonly position: string; readonly bytesDigest: Hash; readonly physicalHead: Hash; readonly durability: 'local-durable' }

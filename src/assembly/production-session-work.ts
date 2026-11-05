@@ -136,7 +136,11 @@ export interface SessionWorkLease {
 export interface SessionWorkConfig {
   /** The session driver this port delegates through, built with `resolveIntake` below. */
   readonly createDriver: (resolveIntake: (intake: string, digest: string) => string) => NativeHarnessDriverPort
-    & SessionStopPort & Readonly<{ continuationReady?(identity: string): Result<boolean>; observeAsync?(input: SessionObserveInput): Promise<SessionObserveResult>; observeIdle?(identity: string): Result<string | null>; recoverContext?(identity: string, pending?: { operation: string; digest: string; deadline: number }): Result<string> }>;
+    & SessionStopPort & Readonly<{ continuationReady?(identity: string): Result<boolean>; observeAsync?(input: SessionObserveInput): Promise<SessionObserveResult>; observeIdle?(identity: string): Result<string | null>; recoverContext?(identity: string, pending?: { operation: string; digest: string; deadline: number }): Result<string>;
+      /** Bounded physical primitives (1.x nudge/reinject) and the restart lookup; absent drivers never receive them. */
+      nudge?(input: Readonly<{ processIdentity: string; claim: string; incarnation: string; reason: string }>): Result<Readonly<{ state: 'nudged' | 'refused'; evidence: string }>>;
+      redeliver?(input: Readonly<{ operation: string; processIdentity: string; intake: string; digest: string; incarnation: string }>): Result<Readonly<{ state: 'redelivered' | 'refused'; evidence: string }>>;
+      recoverWorker?(input: Readonly<{ operation: string; claim: string }>): Result<Readonly<{ identity: string; incarnation: string; deliveryDigest: string | null }> | null> }>;
   readonly io: SessionWorkIO;
   /** The same registered supervisor and Eight effect composition used by the
    * continuing owner. Recovery records append to the existing session-work journal. */
