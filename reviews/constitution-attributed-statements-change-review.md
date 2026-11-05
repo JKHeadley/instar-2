@@ -1,8 +1,8 @@
 # Change review — Attributed Statements Trace to Their Source
 
 Subject base: ef4a964232b7baf17d8fc4cf1b8a248a95b6d513
-Review state: open
-Reviewed content: none
+Review state: frozen
+Reviewed content: sha256:febabbf4676508cfc7b21c73d745a8d2cbc2c7e1a657e1a6d10502adeb692792
 Outcome: Record the operator's approved wording as Rule 121, Attributed Statements Trace to Their Source: a statement credited to a person carries a pointer to the logged message and that person's own words, checked at writing and again at citing or enforcing; a label is never evidence; without a source it says so and never becomes that person's rule. A new rule in Needs building, because no check exists yet.
 Affected rules: 58, 89 (scope boundary: 89 covers who a delivered message is from, 58 logs model judgments; 121 covers a later claim about what a person said) and new 121. 119 applies to this change: it names its 1.x counterpart. Purpose unchanged. History preserves prior revisions; Rule 121 stays a coverage gap until its checks are built.
 Affected floors: secrets — no custody or revelation changes; spend cap — no provider calls or budget changes; stop — no cancellation changes; no duplicate sends — no dispatch changes; durable intake — no journal or admission changes.
