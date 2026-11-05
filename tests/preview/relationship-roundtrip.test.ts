@@ -168,3 +168,69 @@ it('refuses a second predecessor with its own valid grant, and a predecessor re-
   expect(served(w.destination.view)[0]!).toContain('city: Porto');
   b.source.close(); b.destination.close(); w.destination.close(); w.source.close();
 });
+
+it('carry before the first ordinary emit establishes tombstones for a subsequently forgotten person, including after reopen', async () => {
+  const w = await world();
+  expect(w.source.view.relationshipEmits).toHaveLength(0);
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false);
+  expect(w.destination.view.groupCarry!.emitsThrough).toBe(2);
+  expect(changeAfterCarry(w)).toEqual([1, 2, 3, 4]);
+  expect(refreshGroupCarry(w.destination, w.source, scope, permission(), true, now + 2000, () => false).result.applied).toBe(2);
+  expect(served(w.destination.view)).toHaveLength(1);
+  expect(served(w.destination.view)[0]).not.toContain('Ana Lima');
+  w.destination.close();
+  const reopened = openPreviewJournal(w.target, key);
+  expect(served(reopened.view)).toHaveLength(1);
+  expect(served(reopened.view)[0]).toContain('city: Porto');
+  reopened.close(); w.source.close();
+});
+
+it('a newly carried person since the previous emit is also baselined, and retry after a destination failure stays consistent', async () => {
+  const w = await world();
+  const ana = w.source.view.people.filter(p => p.name === 'Ana Lima');
+  w.source.view.people = w.source.view.people.filter(p => p.name !== 'Ana Lima');
+  const emitter = createRelationshipEmitter(w.source, { now: () => now, origin: ORIGIN, permission });
+  expect(emitRelationshipChanges(w.source, emitter, now, ORIGIN).puts).toHaveLength(1);
+  w.source.view.people.push(...ana);
+  const failed = { ...w.destination, append: () => { throw Error('injected destination append failure'); } };
+  expect(() => appendGroupCarry(failed, w.source, scope, permission(), true, now, () => false)).toThrow(/injected/u);
+  expect(w.source.view.relationshipEmits).toHaveLength(2);
+  expect(w.destination.view.groupCarry).toBeUndefined();
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false);
+  expect(w.source.view.relationshipEmits).toHaveLength(2);
+  expect(w.destination.view.groupCarry!.emitsThrough).toBe(2);
+  changeAfterCarry(w);
+  refreshGroupCarry(w.destination, w.source, scope, permission(), true, now + 2000, () => false);
+  expect(served(w.destination.view)).toHaveLength(1);
+  w.destination.close(); w.source.close();
+});
+
+it('refuses a replacement predecessor before the first refresh and preserves the initial people', async () => {
+  const w = await world();
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false);
+  const original = served(w.destination.view);
+  const replacement = { view: { ...w.source.view, genesis: { ...w.source.view.genesis, grant: 'TEST-replacement' } }, readOnly: true };
+  expect(() => refreshGroupCarry(w.destination, replacement, scope, permission(), true, now + 1, () => false)).toThrow(/predecessor lineage changed/u);
+  expect(w.destination.view.groupCarryRefreshes).toEqual([]);
+  expect(served(w.destination.view)).toEqual(original);
+  expect(refreshGroupCarry(w.destination, w.source, scope, permission(), true, now + 1, () => false).result.applied).toBe(0);
+  w.destination.close(); w.source.close();
+});
+
+it('a partially refused emit baseline never publishes a carry and retries without duplicate puts', async () => {
+  const w = await world();
+  const append = w.source.append.bind(w.source);
+  let writes = 0;
+  const interrupted = { ...w.source, append: (...args: Parameters<typeof w.source.append>) => {
+    if (++writes === 2) throw Error('injected source append failure');
+    return append(...args);
+  } };
+  expect(() => appendGroupCarry(w.destination, interrupted, scope, permission(), true, now, () => false)).toThrow(/baseline not durable/u);
+  expect(w.source.view.relationshipEmits).toHaveLength(1);
+  expect(w.destination.view.groupCarry).toBeUndefined();
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false);
+  expect(w.source.view.relationshipEmits).toHaveLength(2);
+  expect(w.destination.view.groupCarry!.emitsThrough).toBe(2);
+  expect(served(w.destination.view)).toHaveLength(2);
+  w.destination.close(); w.source.close();
+});

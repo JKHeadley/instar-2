@@ -36,7 +36,7 @@ import {
   type CarriedRefresh,
   type JournalEntry,
 } from './relationship-applier.js';
-import { appendGroupCarry, carriedRelationshipViews, carryOrigin } from './group-carry.js';
+import { appendGroupCarry, buildCarriedMemory, carriedRelationshipViews, carryOrigin } from './group-carry.js';
 import { createRelationshipEmitter, emitRelationshipChanges, tickAfter } from './relationship-emitter.js';
 import { RELATIONSHIP_RECORD_KIND, buildRelationshipRecordData, buildRelationshipTombstoneFromKey, deriveRelationshipRecordKey,
   type HlcTimestamp, type RelationshipRecord } from './relationship-store.js';
@@ -56,7 +56,8 @@ async function carried(options?: Parameters<typeof peopleWorld>[1]) {
   const dir = place('relationship-applier-'); dirs.push(dir);
   const w = await peopleWorld(dir, options);
   const audience = await verifyGroupAudience(scope, membership());
-  expect(appendGroupCarry(w.destination, w.source, scope, permission(), audience, now, () => false)).toBe('carried');
+  // Receiver unit fixture: a snapshot at stream sequence zero; carry's writer baseline is covered by roundtrip tests.
+  w.destination.append({ kind: 'group-carry', memory: buildCarriedMemory(w.source.view, scope, permission(), now), at: now });
   return { ...w, audience, lineage: lineageOf(w.source.view) };
 }
 
@@ -455,4 +456,45 @@ describe('refreshGroupCarry (authority and predecessor identity)', () => {
     expect(second!.hlc).toEqual(tickAfter(first!.hlc, now + 5, PEER));
     w.source.close(); w.destination.close();
   });
+});
+
+it('fences the first incoming stream and replay frame against the initial carry identity', async () => {
+  const w = await carried();
+  const replacement = createHash('sha256').update('replacement').digest('hex');
+  const a = new JournalSyncApplier({ destination: w.destination, scope, now: () => now });
+  expect(a.apply(PEER, [stream([record(1, PEER)], replacement)])).toMatchObject({ applied: 0, quarantined: 1 });
+  expect(w.destination.view.groupCarryRefreshes).toHaveLength(0);
+  const body = { scope, lineage: replacement, from: 0, through: 1, records: [JSON.stringify(record(1, PEER).data)], at: now };
+  const refresh = { ...body, digest: createHash('sha256').update(JSON.stringify(body)).digest('hex') };
+  expect(validCarriedRefresh(refresh, w.destination.view.groupCarry!, [])).toBe(false);
+  expect(() => w.destination.append({ kind: 'group-carry-refresh', refresh, at: now })).toThrow(/lineage refused/u);
+  expect(new JournalSyncApplier({ destination: w.destination, scope, now: () => now })
+    .apply(PEER, [stream([record(1, PEER)], w.lineage)]).applied).toBe(1);
+  w.source.close(); w.destination.close();
+});
+
+it('legacy carries use retained refresh evidence, never the first arriving stream, and still replay', async () => {
+  const dir = place('relationship-legacy-'); dirs.push(dir);
+  const fresh = await peopleWorld(dir);
+  const w = { ...fresh, lineage: lineageOf(fresh.source.view) };
+  // Restore the pre-lineage shape and its digest, as an authenticated old journal carries it.
+  const { lineage: _lineage, digest: _digest, ...body } = buildCarriedMemory(w.source.view, scope, permission(), now);
+  w.destination.append({ kind: 'group-carry', memory: { ...body, digest: createHash('sha256').update(JSON.stringify(body)).digest('hex') }, at: now });
+  const a = new JournalSyncApplier({ destination: w.destination, scope, now: () => now });
+  expect(a.apply(PEER, [stream([record(1, PEER)], w.lineage)])).toMatchObject({ applied: 0, quarantined: 1 });
+  expect(() => refreshGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false)).toThrow(/lineage unavailable/u);
+  // A historical authenticated refresh already retained by an old build is usable identity evidence.
+  const oldBody = { scope, lineage: w.lineage, from: 0, through: 1, records: [JSON.stringify(record(1, PEER).data)], at: now };
+  const oldRefresh = { ...oldBody, digest: createHash('sha256').update(JSON.stringify(oldBody)).digest('hex') };
+  expect(validCarriedRefresh(oldRefresh, w.destination.view.groupCarry!, [])).toBe(true);
+  w.destination.append({ kind: 'group-carry-refresh', refresh: oldRefresh, at: now });
+  expect(new JournalSyncApplier({ destination: w.destination, scope, now: () => now })
+    .apply(PEER, [stream([record(2, PEER)], w.lineage)]).applied).toBe(1);
+  const changed = { view: { ...w.source.view, genesis: { ...w.source.view.genesis, grant: 'TEST-other' } }, readOnly: true };
+  expect(() => refreshGroupCarry(w.destination, changed, scope, permission(), true, now, () => false)).toThrow(/lineage changed/u);
+  w.destination.close();
+  const replay = openPreviewJournal(w.target, key);
+  expect(replay.view.groupCarryRefreshes).toHaveLength(2);
+  expect(new JournalSyncApplier({ destination: replay, scope, now: () => now }).lastHeldSeq()).toBe(2);
+  replay.close(); w.source.close();
 });

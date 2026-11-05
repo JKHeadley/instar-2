@@ -412,10 +412,9 @@ export class JournalSyncApplier {
     const kind = stream.kind;
     const incarnation = typeof stream.incarnation === 'string' ? stream.incarnation : '';
 
-    // First batch ever for this predecessor: adopt its lineage (there is no old history to fence against).
+    // A stream is never evidence of its own predecessor identity (Rules 31, 95, 117).
     if (!meta.incarnation) {
-      if (!/^[a-f0-9]{64}$/u.test(incarnation)) { this.markRefused(meta, senderMachineId, kind, incarnation, result); return; }
-      meta.incarnation = incarnation;
+      this.markRefused(meta, senderMachineId, kind, incarnation, result); return;
     }
 
     // §3.4 rule 3 — LINEAGE FENCING. A KNOWN predecessor arriving with a different genesis identity is
@@ -696,9 +695,9 @@ export class JournalSyncApplier {
   private loadMeta(machineId: string): PeerMeta {
     const cached = this.metaCache.get(machineId);
     if (cached) return cached;
-    // The persisted half: the lineage the first refresh recorded and the seq held through it.
+    // Bind to the initial carry; older carries can reuse an already retained refresh identity.
     const refreshes = this.destination.view.groupCarryRefreshes;
-    const meta: PeerMeta = { incarnation: refreshes[0]?.lineage ?? '', kinds: {}, lineageRefused: false };
+    const meta: PeerMeta = { incarnation: this.destination.view.groupCarry?.lineage ?? refreshes[0]?.lineage ?? '', kinds: {}, lineageRefused: false };
     if (refreshes.length) this.ensureKind(meta, RELATIONSHIP_RECORD_KIND);
     this.metaCache.set(machineId, meta);
     return meta;
@@ -773,7 +772,7 @@ export function validCarriedRefresh(refresh: CarriedRefresh, carry: CarriedMemor
   if (digest !== hashBody(body) || Buffer.byteLength(JSON.stringify(refresh)) > DEFAULT_MAX_BATCH_BYTES + 4096) return false;
   if (JSON.stringify(refresh.scope) !== JSON.stringify(carry.scope) || !/^[a-f0-9]{64}$/u.test(refresh.lineage)) return false;
   const last = previous.at(-1);
-  if (last && last.lineage !== refresh.lineage) return false;
+  if ((carry.lineage !== undefined && carry.lineage !== refresh.lineage) || (last && last.lineage !== refresh.lineage)) return false;
   const from = last?.through ?? carry.emitsThrough ?? 0;
   if (refresh.from !== from || refresh.through !== from + refresh.records.length || !Number.isSafeInteger(refresh.at) || refresh.at <= 0) return false;
   return refreshedRecords(refresh) !== null;
@@ -798,7 +797,8 @@ export function refreshGroupCarry(destination: Journal, source: Pick<Journal, 'v
   if (source.view.genesis.forum === true || source.view.genesis.operator !== scope.operator || source.view.genesis.chat !== scope.operator
     || source.view.genesis.bot !== scope.bot || source.view.groupCarry !== undefined || source.view.channelItems.size)
     throw Error('group carry: source is not this operator private journal');
-  const lineage = lineageOf(source.view), held = destination.view.groupCarryRefreshes[0]?.lineage;
+  const lineage = lineageOf(source.view), held = previous.lineage ?? destination.view.groupCarryRefreshes[0]?.lineage;
+  if (held === undefined) throw Error('group carry: predecessor lineage unavailable in retained carry evidence');
   if (held !== undefined && held !== lineage) throw Error('group carry: predecessor lineage changed');
   const applier = new JournalSyncApplier({ destination, scope, now: () => now, ...(logger ? { logger } : {}) });
   const from = applier.lastHeldSeq();

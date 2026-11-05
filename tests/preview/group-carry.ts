@@ -11,8 +11,8 @@ import { localMinute, nextRecurringDay, type DatedItem } from './dated-memory.js
 import { journalRelationships } from './relationship-journal.js';
 import { buildRelationshipRecordData, mergeUnionToRelationships, originRecordFromData, renderForeignRelationshipContext, unionOfOriginRecords,
   type EnvelopeValidationCounters, type MergedRelationshipView, type OriginRecord } from './relationship-store.js';
-import { lastEmittedHlc, tickAfter } from './relationship-emitter.js';
-import { refreshedRecords, type CarriedRefresh } from './relationship-applier.js';
+import { createRelationshipEmitter, emitRelationshipChanges, lastEmittedHlc, tickAfter } from './relationship-emitter.js';
+import { lineageOf, refreshedRecords, type CarriedRefresh } from './relationship-applier.js';
 
 export type CarriedEntryKind = 'recall' | 'preference' | 'correction' | 'summary' | 'promise' | 'reminder' | 'person';
 export const CARRIED_ENTRY_KINDS: readonly CarriedEntryKind[] = ['recall', 'preference', 'correction', 'summary', 'promise', 'reminder', 'person'];
@@ -26,6 +26,8 @@ export interface CarriedMemory {
   /** The predecessor's relationship emit seq this snapshot supersedes (its emits through here are already in the
    *  `person` entries); a later refresh applies only emits after it. Absent in snapshots written before refreshes existed. */
   emitsThrough?: number;
+  /** Genesis identity fixed at the initial snapshot, before any refresh arrives. */
+  lineage?: string;
   digest: string;
 }
 export interface CarriedRequest { item: DatedItem; askedAt: number }
@@ -57,7 +59,7 @@ export function carriedPerson(entry: { kind: CarriedEntryKind; text: string }, s
 /** Exact bytes checked on replay; ciphertext authentication belongs to the existing journal. */
 export function validCarriedMemory(value: CarriedMemory): boolean {
   const { digest, ...body } = value;
-  return digest === hash(body) && Buffer.byteLength(JSON.stringify(value)) <= CARRY_MAX_BYTES
+  return digest === hash(body) && (value.lineage === undefined || /^[a-f0-9]{64}$/u.test(value.lineage)) && Buffer.byteLength(JSON.stringify(value)) <= CARRY_MAX_BYTES
     && Array.isArray(value.entries) && value.entries.every(e => typeof e.text === 'string' && typeof e.source === 'string'
       && Number.isSafeInteger(e.at) && CARRIED_ENTRY_KINDS.includes(e.kind)
       && (e.kind !== 'person' || carriedPerson(e, value.scope) !== null))
@@ -143,7 +145,7 @@ export function buildCarriedMemory(source: JournalView, scope: GroupCarryScope,
       askedAt: sentAt(turn.raw, turn.at) };
   });
   const body = { scope, sourceDigest: projectionDigest(source), grant: permission.grant, authorityDigest: permission.digest, at, entries, requests,
-    emitsThrough: source.relationshipEmits.length };
+    emitsThrough: source.relationshipEmits.length, lineage: lineageOf(source) };
   const carried = { ...body, digest: hash(body) };
   if (!validCarriedMemory(carried)) throw Error('group carry: snapshot exceeds the bounded carry size');
   return carried;
@@ -192,18 +194,23 @@ export function appendGroupCarry(destination: ReturnType<typeof openPreviewJourn
   const transfer = source.view.requestTransfer;
   if (transfer && (transfer.destinationRoot !== scope.destinationRoot || transfer.chat !== scope.chat))
     throw Error('group carry: predecessor requests already transferred to another root');
-  if (!transfer) {
-    const own = (id: string) => { const turn = source.view.turns.get(id); return turn !== undefined
-      && operatorWriter(source.view, turn, true) && !probeTurn(source.view, turn) && !retractedTurn(source.view, id); };
-    const open = openRequests(source.view).filter(item => own(item.source)
-      && !unsettledAfter(source.view, source.view.turns.get(item.source)!.update));
-    // Building first proves the whole snapshot, requests included, fits before anything is written to either root.
-    buildCarriedMemory(source.view, scope, permission, now, open);
-    if (stopped()) throw Error('group carry: stopped before append');
-    // Nothing to move leaves the predecessor byte-identical.
-    if (open.length) source.append({ kind: 'request-transfer', destinationRoot: scope.destinationRoot, chat: scope.chat,
-      requests: open.map(item => ({ source: item.source, quote: item.quote, when: item.when })), at: now });
-  }
+  const own = (id: string) => { const turn = source.view.turns.get(id); return turn !== undefined
+    && operatorWriter(source.view, turn, true) && !probeTurn(source.view, turn) && !retractedTurn(source.view, id); };
+  const open = transfer ? [] : openRequests(source.view).filter(item => own(item.source)
+    && !unsettledAfter(source.view, source.view.turns.get(item.source)!.update));
+  // Prove the whole snapshot, including requests, fits before writing either journal.
+  buildCarriedMemory(source.view, scope, permission, now, transfer?.requests ?? open);
+  if (stopped()) throw Error('group carry: stopped before append');
+  const origin = carryOrigin(scope);
+  const emitter = createRelationshipEmitter(source, { now: () => now, origin, permission: () => permission });
+  const baseline = emitRelationshipChanges(source, emitter, now, origin);
+  if (baseline.results.some(result => result.outcome !== 'emitted'))
+    throw Error('group carry: relationship baseline not durable');
+  buildCarriedMemory(source.view, scope, permission, now, transfer?.requests ?? open);
+  // An interrupted baseline is harmless: the journal witnesses make retry idempotent.
+  // Capture only after all current people have a durable emit, while both leases are held.
+  if (open.length) source.append({ kind: 'request-transfer', destinationRoot: scope.destinationRoot, chat: scope.chat,
+    requests: open.map(item => ({ source: item.source, quote: item.quote, when: item.when })), at: now });
   // No stop check between the two local records: splitting them strands requests until the carry is re-run.
   const memory = buildCarriedMemory(source.view, scope, permission, now);
   destination.append({ kind: 'group-carry', memory, at: now });
