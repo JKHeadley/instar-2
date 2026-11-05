@@ -2,7 +2,7 @@
 
 Subject base: b5806d1e015dc650cdc1dee2e0accab05a849d4b
 Review state: frozen
-Reviewed content: sha256:fc4fc0a4eab6413d3e54bfbe5173ce7d68f10683d918c4375ec32d0e24fcd7ab
+Reviewed content: sha256:d4dece1f63b36dabc6868ed25ab9416c56467e9c8786e533e4e2310780d5e9f0
 Outcome: Combine exact main c20b68d1d9b5744a72c243c4dc8a4b69114179d6 and reviewed row-40 head 3a89ebe1ba56c3290e6af25f46b739d9bf3cf648 on live b5806d1e015dc650cdc1dee2e0accab05a849d4b. Preserve browser behavior, relationship baselines and lineage, and main constitution text. Row 40 remains OPEN for installed/live/two-runner acceptance.
 Affected rules: 31, 32, 34, 37, 49, 70, 74, 90, 95, 101, 102, 111, 113, 116, 117, 119, 121.
 Affected floors: secrets — sealed grants and encrypted journals unchanged; spend cap — no added model call or budget; stop — existing admission and append checks unchanged; no duplicate sends — existing effect ownership and emit witnesses preserved; durable intake — both accepted journal baselines retained.
@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Integration includes the live journal, replication, constitution and register; use the inherited critical tier.
-Side effects: Generated artifacts bind the combined graph, including the live bootstrap shape and main rule hashes. The approvedConversion literal is recomputed from that combined anchor; no authority is granted by replay. Product edits merge without conflicting hunks. Frozen inherited reviews whose subjects changed are reopened, retaining historical evidence and dispositions. No live root or runner is touched.
+Side effects: Generated artifacts bind the combined graph, including the live bootstrap shape and main rule hashes. The approvedConversion literal is recomputed from that combined anchor; no authority is granted by replay. Product edits merge without conflicting hunks. The combined capability briefing exceeded the summary floor and dropped governing context in the tool turn; five concise README summaries recover 131 bytes while preserving every capability and full description. Frozen inherited reviews whose subjects changed are reopened, retaining historical evidence and dispositions. No live root or runner is touched.
 Undo and recovery: Keep the prior live build active until the independent gate and rollout. If rejected, retain this branch for repair; do not erase journal bytes or move either reviewed branch. Revert the integration as a new change if needed.
 Multi-machine posture: Retain the member implementation: source emits and receiver refreshes through replicated encrypted journals under writer leases, source disclosure grants and verified audience. No new transport or machine-local product state. WSL evidence is local; Studio owns installed/live/two-runner acceptance.
 Layer below: Inspected the pinned member report, initial-carry regression review, bootstrap anchor, build-register conversion check, owner-reference manifests and direct journal consumers. Both reviewed heads and live base remain ancestors. See the 1.x comparison below.
@@ -19,7 +19,7 @@ Bug evidence: none
 Hook bypass: none
 Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
-Prompt review: Reuse the reviewed group-carry guidance for relationship notes as quoted untrusted data. No additional model-facing wording is authored by integration. Existing recorded-shape fixtures in group-carry and journal tests are replayed; no fresh live-model or installed proof is asserted.
+Prompt review: Reuse the reviewed group-carry guidance for relationship notes as quoted untrusted data. Integration shortens five generated capability summaries by 131 bytes without changing their meanings or full Details; the failing default-context-floor assertions are the reproducer. The 23,459-byte guard and all source pins are unchanged. Existing recorded-shape fixtures in group-carry and journal tests are replayed; no fresh live-model or installed proof is asserted.
 Prompt finding: 4106b49fff07 | protocol-literal | Existing source-bound action claim protocol in journal.ts, retained unchanged; this change adds two frame kinds and view fields to journal.ts and touches no prompt literal; the test checks the protocol rather than a desired verdict.
 Prompt finding: 849db3a6296a | protocol-literal | Existing fixed empty-memory display literal in journal.ts, retained unchanged, not an added semantic classification rule.
 Prompt finding: 85544c20941f | protocol-literal | Existing held-session notice literal in journal.ts, retained unchanged by this change (frame kinds and view fields only); the test checks the delivered notice, not a desired semantic answer.
@@ -60,3 +60,7 @@ Decision: train-183-desk | Use the existing cint-L37 desk chain: repin, build, r
 simplestRobustRoute: Two ordinary exact-head merges and the established desk regeneration chain are the simplest robust route. No new product mechanism is introduced. Existing grant, audience, writer, stop, bounded-context and durable-journal guards remain. No unattended live acceptance is claimed.
 80/20: Verify the combined changed consumers and constitutional checks, then submit the exact pushed tree for independent Studio gate and live proof.
 VERDICT: author submission; independent review belongs to the desk.
+
+Decision: train-183-floor | Shorten five capability summaries by 131 bytes so summary and tool prompts retain required context under the unchanged guard; keep all feature rows and full Details, and replay recorded shapes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-183-PROGRESS.md
+
+Prompt-floor comparison: JKHeadley/instar main b80413b4a708599896ea31cc597578a3786bf0a1 src/memory/WorkingMemoryAssembler.ts uses tokenBudgets and tiered rendering; docs/specs/ASSEMBLER-CONTEXT-ENDPOINT-SPEC.md records the bounded assembly and history 2aaac4288. Reuse the 2.0 generated one-line briefing and exact envelope guard instead of adding another budgeter; full source descriptions remain. The ONEX memory/coherence lesson requires delivered context verification.
