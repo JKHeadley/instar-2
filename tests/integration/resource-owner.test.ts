@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The physical host remains JavaScript.
-import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, hostQuery, cpuMilliseconds, LIMIT_FILE, LIMIT_FILE_TEXT, limitedFileArgv, HOST_BOUNDS, startIdentity } from '../../scripts/resource-owner.mjs';
+import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, hostQuery, cpuMilliseconds, LIMIT_FILE, LIMIT_FILE_TEXT, LIMIT_SHELL, limitedFileArgv, HOST_BOUNDS, startIdentity } from '../../scripts/resource-owner.mjs';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 import { createHostResourceAllocation } from '../preview/six-host-resources.js';
 
@@ -246,7 +246,7 @@ it('recovery joins a sandboxed launch row by its recorded sandbox: a root-cwd su
     writeFileSync(ledgerPath, JSON.stringify({ version: 1, launches: { native: { pid: 41001, start, owner: { pid: 41000, start },
       members: { 41001: start }, workingArea: area, sandboxArea: area, allocation: 'native-set' } } }));
     const query = async (file: string, args: string[]) => {
-      if (file === '/bin/sh') return '256\n1024\nunlimited\nunlimited\n1024\n2048\n';
+      if (file === LIMIT_SHELL) return '256\n1024\nunlimited\nunlimited\n1024\n2048\n';
       if (file === '/bin/ps' && args[0] === '-U') return survivor === 'gone' ? '' : `41002 1 41002 501 4096 0:00.10 S ${childStart} /bin/sleep 60\n`;
       if (file === '/bin/ps' && args[0] === '-o') return args.at(-1) === '41002' && survivor !== 'gone' ? childStart : '';
       if (file === '/usr/sbin/lsof') return `p41002\nn${survivor === 'inside' ? area : '/'}\n`;
@@ -281,7 +281,7 @@ it('recovery checks more than the live 64-candidate bound, while an unreadable p
       pid: 41001, start, owner: { pid: 41000, start }, members: { 41001: start },
       workingArea: area, allocation: 'stale-set' } } }));
     const query = async (file: string, args: string[]) => {
-      if (file === '/bin/sh') return '256\n1024\nunlimited\nunlimited\n1024\n2048\n';
+      if (file === LIMIT_SHELL) return '256\n1024\nunlimited\nunlimited\n1024\n2048\n';
       if (file === '/bin/ps' && args[0] === '-U') return candidates.map(pid =>
         `${pid} 1 ${pid} 501 4096 0:00.10 S ${childStart} /bin/sleep 60`).join('\n') + '\n';
       if (file === '/bin/ps' && args[0] === '-o') return candidates.includes(Number(args.at(-1))) ? childStart : '';
@@ -707,7 +707,7 @@ it('treats denied observation as unknown: no unhandled rejection, maintenance de
     const denied = () => Promise.reject(Object.assign(Error('spawn EPERM'), { code: 'EPERM' }));
     const owner = createResourceOwner(ceilings({ aggregate: { launches: 3 }, reserveLaunches: 1 }));
     const attached = await owner.attach({ query: denied, statePath: join(root, 'resources.json'), priorityGate: shouldRunScheduledPriority });
-    expect(attached.inherited).toEqual({ state: 'unknown' });
+    expect(attached.inherited).toEqual({ state: 'unknown', shell: LIMIT_SHELL });
     const answer = owner.execute(input(root, hold), 'answer');
     await settle(500);
     expect(owner.snapshot().usage).toMatchObject({ observation: 'failed', level: 'unknown' });
@@ -789,7 +789,7 @@ it('lowers the process limit without forking under it: a launch already at its l
   // A limit of 1 sits below every real user's process count: exactly the state a transport child
   // reaches when other processes started after its headroom was counted. The shim must still exec
   // (it once forked `$(ulimit -H)` after lowering the soft limit, so the send read UNKNOWN).
-  const launch = (executable: string, args: string[]) => execFileSync('/bin/sh', limitedFileArgv({ label: 'REQUEST', executable,
+  const launch = (executable: string, args: string[]) => execFileSync(LIMIT_SHELL, limitedFileArgv({ label: 'REQUEST', executable,
     args, handles: 64, cpuSeconds: 5, processLimit: 1, env: { PATH: '/usr/bin:/bin' } }), { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } });
   expect(launch('/bin/echo', ['launched']).trim()).toBe('launched');
   expect(() => launch('/bin/sh', ['-c', '(/bin/echo forked); /bin/echo after'])).toThrow();
@@ -803,10 +803,10 @@ it('inherits the host CPU and file-handle limits and gives one worker the host p
   const inherited = execFileSync('/bin/sh', ['-c', command], { encoding: 'utf8' });
   const argv = limitedFileArgv({ label: 'CHECK', executable: '/bin/sh', args: ['-c', command],
     handles: null, cpuSeconds: null, processLimit: null, env: { PATH: '/usr/bin:/bin' } });
-  expect(execFileSync('/bin/sh', argv, { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } })).toBe(inherited);
+  expect(execFileSync(LIMIT_SHELL, argv, { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } })).toBe(inherited);
 });
 
-it('keeps the file shim identical to the one limit script, and holds the transport child\'s handles with argv[1] preserved', () => {
+it('keeps the file shim identical to the one limit script, and holds the transport child\'s handles with the label as the shim\'s $1', () => {
   expect(readFileSync(LIMIT_FILE, 'utf8')).toBe(LIMIT_FILE_TEXT);
   const root = dir();
   const report = script(root, 'report.mjs', `import { closeSync, openSync } from 'node:fs'; const held = [];
@@ -814,8 +814,9 @@ try { while (held.length < 999) held.push(openSync('/dev/null', 'r')); } catch {
 held.forEach(fd => closeSync(fd)); process.stdout.write(JSON.stringify({ args: process.argv.slice(2), handles: held.length }));`);
   const argv = limitedFileArgv({ label: 'REQUEST', executable: process.execPath, args: [report, 'REQUEST'], handles: 64, cpuSeconds: 5,
     processLimit: null, env: { PATH: '/usr/bin:/bin' } });
-  expect(argv[1]).toBe('REQUEST');
-  const out = JSON.parse(execFileSync('/bin/sh', argv, { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } }));
+  // The shell's flags come first, then the shim file, then the label the file shim drops as its $1.
+  expect(argv.slice(0, 3)).toEqual(['-p', LIMIT_FILE, 'REQUEST']);
+  const out = JSON.parse(execFileSync(LIMIT_SHELL, argv, { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } }));
   expect(out.args).toEqual(['REQUEST']);
   expect(out.handles).toBeLessThan(64);
 });

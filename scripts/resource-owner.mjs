@@ -13,8 +13,13 @@
 //     slots per work family (maintenance never takes the answer reserve);
 //   - per process: CPU time and open handles (RLIMIT_CPU, RLIMIT_NOFILE, soft and
 //     hard), inherited by every descendant, including one that leaves the group;
-//   - per user ID: RLIMIT_NPROC, lowered to the user's process count at launch plus
+//   - per user ID: RLIMIT_NPROC, lowered to the user's current count at launch plus
 //     the launch's process ceiling (subject: the user ID, reported as `uidProcesses`).
+//     The kernel's unit for that count differs by host and is reported as `unit`: Darwin
+//     counts the user's processes; Linux counts the user's tasks, threads included, so the
+//     count there is a thread census (`ps -L`) and the launched runtime's own threads spend
+//     the same headroom. Either way it is an observation plus the configured ceiling: never
+//     a reservation, and never a bound on the launched tree.
 // Enforced on observation (`sampled`): the tree's memory and process count against its
 // ceiling, and the aggregate; the tree's total handles are not observed (`unsupported`).
 //
@@ -99,6 +104,25 @@ const UNKNOWN = Symbol('unknown');
 // lowered, so no substitution forks under a lowered process limit (a count that rose
 // since it was read made that fork fail: a sent message read UNKNOWN). The shell's own variables (PWD, SHLVL, OLDPWD) are
 // removed by env(1), which execs in place, unless the caller supplied them.
+//
+// The shim runs under one fixed shell on every supported host: /bin/bash, which both macOS
+// and Linux ship. /bin/sh is not that shell: on Linux it is dash, whose ulimit has no `-u`
+// (its process-limit letter is `-p`, which in bash is the read-only pipe size), so the
+// process-limit query failed and the shim refused every launch with exit 125 before env, Node
+// or the network (measured on the Mama PC, 2026-11-05). No shell letter is portable for
+// RLIMIT_NPROC, so the shim names its interpreter instead of probing for one. `-p` keeps the
+// setters real: bash then ignores BASH_ENV, SHELLOPTS and exported functions from the launch
+// environment, so nothing in that environment can shadow the `ulimit` builtin. A missing
+// /bin/bash fails the spawn (no process id: `spawn-error` / `spawn-refused`), never falls
+// back to an unbounded shell; a primitive the shell cannot apply still exits 125 before exec.
+export const LIMIT_SHELL = '/bin/bash';
+const LIMIT_SHELL_FLAGS = Object.freeze(['-p']);
+/** The ps query whose row count is the user ID's current RLIMIT_NPROC usage on this host, with the
+ * kernel's own unit: Linux accounts every task (thread) of the user, Darwin every process. */
+export function uidLimitQuery(uid, hostPlatform = platform()) {
+  return hostPlatform === 'linux' ? ['-U', String(uid), '-L', '-o', 'lwp='] : ['-U', String(uid), '-o', 'pid='];
+}
+export const uidLimitUnit = (hostPlatform = platform()) => hostPlatform === 'linux' ? 'tasks' : 'processes';
 const SHELL_VARIABLES = Object.freeze(['PWD', 'SHLVL', 'OLDPWD']);
 const LIMIT_SCRIPT = [
   'if [ "$5" = gate ]; then read -r go <&3 || exit 125; [ "$go" = go ] || exit 125; exec 3<&-; fi',
@@ -113,16 +137,17 @@ const LIMIT_SCRIPT = [
   'exec /usr/bin/env $u "$@"'].join('\n');
 
 /** The same shim as a file, for a caller whose first argument is a fixed label (the Telegram bridge keeps
- * its request at argv[1]): the file drops the label, then runs LIMIT_SCRIPT unchanged. */
+ * its request at the script's $1): the file drops the label, then runs LIMIT_SCRIPT unchanged. Both argv
+ * forms are spawned as LIMIT_SHELL's arguments. */
 export const LIMIT_FILE = fileURLToPath(new URL('./limit-exec.sh', import.meta.url));
 export const LIMIT_FILE_TEXT = `shift\n${LIMIT_SCRIPT}\n`;
 export function limitedFileArgv({ label, executable, args, handles, cpuSeconds, processLimit, env }) {
-  return [LIMIT_FILE, label, handles === null ? '' : String(handles), cpuSeconds === null ? '' : String(cpuSeconds), processLimit === null ? '' : String(processLimit),
+  return [...LIMIT_SHELL_FLAGS, LIMIT_FILE, label, handles === null ? '' : String(handles), cpuSeconds === null ? '' : String(cpuSeconds), processLimit === null ? '' : String(processLimit),
     SHELL_VARIABLES.filter(name => env?.[name] === undefined).join(' '), '', executable, ...args];
 }
 /** The shim argv for one limited process: the one definition every launch uses. */
 export function limitedArgv({ executable, args, handles, cpuSeconds, processLimit, env, gated }) {
-  return ['-c', LIMIT_SCRIPT, 'instar-launch', handles === null ? '' : String(handles), cpuSeconds === null ? '' : String(cpuSeconds), processLimit === null ? '' : String(processLimit),
+  return [...LIMIT_SHELL_FLAGS, '-c', LIMIT_SCRIPT, 'instar-launch', handles === null ? '' : String(handles), cpuSeconds === null ? '' : String(cpuSeconds), processLimit === null ? '' : String(processLimit),
     SHELL_VARIABLES.filter(name => env?.[name] === undefined).join(' '), gated ? 'gate' : '', executable, ...args];
 }
 
@@ -554,14 +579,15 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     const text = await query('/bin/ps', ['-o', 'lstart=', '-p', String(pid)]);
     return text === null ? UNKNOWN : startIdentity(text) || null;
   }
-  /** The kernel process limit of the user ID: its current process count plus the launch ceiling.
-   * Its subject is the user ID (every process of that user counts), never the launched tree. */
+  /** The kernel process limit of the user ID: its current count in the kernel's own unit (Darwin
+   * processes, Linux tasks) plus the launch ceiling. Its subject is the user ID (everything of
+   * that user counts), never the launched tree. */
   async function processLimit() {
     const uid = typeof process.getuid === 'function' ? process.getuid() : null;
     if (uid === null || uid === 0) return { state: 'unavailable', subject: null, limit: null };
-    const listed = pids(await query('/bin/ps', ['-U', String(uid), '-o', 'pid=']));
+    const listed = pids(await query('/bin/ps', uidLimitQuery(uid)));
     return listed === null || listed.length === 0 ? { state: 'unavailable', subject: null, limit: null }
-      : { state: 'hard', subject: `uid:${uid}`, limit: listed.length + ceilings.launch.processCount };
+      : { state: 'hard', subject: `uid:${uid}`, unit: uidLimitUnit(), limit: listed.length + ceilings.launch.processCount };
   }
   /** This launch's live members in one census (recorded incarnations, group, ancestry and working
    * area); `null` when the census failed or was partial: absence is then unproven. */
@@ -645,7 +671,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     return new Promise(resolve => {
       let child;
       try {
-        child = spawn('/bin/sh', limitedArgv({ executable: input.executable, args: input.args, handles, cpuSeconds,
+        child = spawn(LIMIT_SHELL, limitedArgv({ executable: input.executable, args: input.args, handles, cpuSeconds,
           processLimit: limitValue, env: input.env, gated: true }), {
           cwd: input.cwd, env: { ...input.env, __CF_USER_TEXT_ENCODING: undefined, NODE_V8_COVERAGE: undefined },
           shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });
@@ -841,16 +867,18 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       for (const { set, launch } of open) if (!rows[launch]) settle(set, `never-launched:${launch}`);
     }
   }
+  /** The limits every launch inherits, read through the same shell and primitives the shim applies: a
+   * shell that is missing or cannot answer one of them leaves this `unknown` naming that shell. */
   async function observeInherited() {
-    const text = await query('/bin/sh', ['-c', 'ulimit -S -n; ulimit -H -n; ulimit -S -t; ulimit -H -t; ulimit -S -u; ulimit -H -u']);
+    const text = await query(LIMIT_SHELL, [...LIMIT_SHELL_FLAGS, '-c', 'ulimit -S -n; ulimit -H -n; ulimit -S -t; ulimit -H -t; ulimit -S -u; ulimit -H -u']);
     const values = text?.trim().split('\n').map(v => v.trim() === 'unlimited' ? 'unlimited' : Number(v));
     if (!values || values.length !== 6 || values.some(v => v !== 'unlimited' && !Number.isSafeInteger(v))) {
-      inherited = { state: 'unknown' }; return inherited;
+      inherited = { state: 'unknown', shell: LIMIT_SHELL }; return inherited;
     }
     const pair = (soft, hard) => ({ soft, hard });
     const effective = (hard, ceiling) => ceiling === null ? hard : hard === 'unlimited' ? ceiling : Math.min(hard, ceiling);
-    inherited = { state: 'observed', at: ports.now(), handles: pair(values[0], values[1]), cpuSeconds: pair(values[2], values[3]),
-      userProcesses: pair(values[4], values[5]),
+    inherited = { state: 'observed', at: ports.now(), shell: LIMIT_SHELL, handles: pair(values[0], values[1]), cpuSeconds: pair(values[2], values[3]),
+      userProcesses: { ...pair(values[4], values[5]), unit: uidLimitUnit() },
       effectivePerLaunch: { handleCount: effective(values[1], ceilings.launch.handleCount),
         cpuSeconds: effective(values[3], ceilings.launch.cpuMilliseconds === null ? null : Math.ceil(ceilings.launch.cpuMilliseconds / 1000)) } };
     return inherited;

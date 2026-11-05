@@ -65,18 +65,9 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     if (context.parentURL?.endsWith('/journal-agent.mjs') && specifier.endsWith('/production-provider.js'))
       return {url:${JSON.stringify(pathToFileURL(provider).href)},shortCircuit:true};
     return next(specifier,context);
-  }
-  // The shipped transport shim uses ulimit -u, unsupported by WSL's /bin/sh (dash).
-  // This scheduling test substitutes Linux thread-aware process headroom (the production census is macOS-specific).
-  // Handles, CPU, elapsed time and the kernel process ceiling still apply; this is not a host-conformance proof.
-  export async function load(url,context,next) {
-    const loaded=await next(url,context);
-    if(process.platform==='linux' && url.endsWith('/scripts/production-boot-io.mjs'))
-      return {...loaded,source:String(loaded.source).replaceAll("spawnSync('/bin/sh', argv","spawnSync('/bin/bash', argv")
-        .replaceAll("spawn('/bin/sh', argv","spawn('/bin/bash', argv").replace("['-U', String(uid), '-o', 'pid=']", "['-U', String(uid), '-L', '-o', 'lwp=']")
-        .replace('count + TRANSPORT_LIMITS.processCount', 'count + 32')};
-    return loaded;
   }`);
+  // The shipped transport runs unaltered on either host: its limit shell, user-ID census unit and Linux
+  // runtime composition are the product's own (scripts/resource-owner.mjs, scripts/production-boot-io.mjs).
   const endpointScript = join(world.directory, 'endpoint.mjs');
   const cancellation = { update_id: recorded.provenance.sourceUpdate + 1, message: {
     chat: { id: Number(world.configuration.chatId), type: 'private' }, from: { id: Number(world.configuration.operatorSenderId) },

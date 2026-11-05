@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, expect, it } from 'vitest';
 // @ts-expect-error Physical host adapter is JavaScript.
-import { createResourceOwner, RESOURCE_CEILINGS } from '../../scripts/resource-owner.mjs';
+import { createResourceOwner, LIMIT_SHELL, RESOURCE_CEILINGS } from '../../scripts/resource-owner.mjs';
 import { createHostResourceAllocation } from './six-host-resources.js';
 
 const roots: string[] = [];
@@ -48,7 +48,7 @@ function fixture() {
 }
 function query(state: 'gone' | 'member' | 'owner' | 'unknown-member' | 'unknown-owner' | 'failed-census') {
   return async (file: string, args: string[]) => {
-    if (file === '/bin/sh') return '256\n1024\nunlimited\nunlimited\n1024\n2048\n';
+    if (file === LIMIT_SHELL) return '256\n1024\nunlimited\nunlimited\n1024\n2048\n';
     if (file === '/bin/ps' && args[0] === '-U') return state === 'failed-census' ? null : '';
     if (file === '/bin/ps' && args[0] === '-o') {
       const pid = args.at(-1);

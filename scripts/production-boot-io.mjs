@@ -7,7 +7,7 @@ import { join, resolve, relative, isAbsolute } from 'node:path';
 import { homedir, userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { assertAgentPaths } from './agent-paths.mjs';
-import { hostResources, limitedFileArgv } from './resource-owner.mjs';
+import { hostResources, limitedFileArgv, LIMIT_SHELL, uidLimitQuery } from './resource-owner.mjs';
 
 /** Read native nonsecret preferences without following links or replacing malformed state. */
 function readInteractiveConfig(path) {
@@ -67,15 +67,29 @@ export function prepareSubscriptionInteractive(configDirectory, workingDirectory
 
 /** The transport child's own bounds: per-process handles, and user-ID process headroom. */
 const TRANSPORT_LIMITS = Object.freeze({ handleCount: 256, processCount: 4 });
-/** The user ID's current process count plus the transport headroom, or null when it cannot be read.
- * Its subject is the user ID, not the transport's tree: it caps a fork burst, never the tree's size. */
+/** The user ID's current count in the kernel's unit (Darwin processes, Linux tasks: see uidLimitQuery)
+ * plus the transport headroom, or null when it cannot be read. Its subject is the user ID, not the
+ * transport's tree: it caps a fork burst, never the tree's size. A count is an observation, never a
+ * reservation: anything the user starts between this read and the child's own startup spends the
+ * same headroom, and the child then fails before its network call (observed live, cint-L8). */
 function transportProcessLimit() {
   const uid = typeof process.getuid === 'function' ? process.getuid() : null;
   if (uid === null || uid === 0) return null;
   let count = 0;
-  try { count = execFileSync('/bin/ps', ['-U', String(uid), '-o', 'pid='], { encoding: 'utf8', timeout: 2000, env: { PATH: '/usr/bin:/bin' },
+  try { count = execFileSync('/bin/ps', uidLimitQuery(uid), { encoding: 'utf8', timeout: 2000, env: { PATH: '/usr/bin:/bin' },
     stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(line => line.trim()).length; } catch { count = 0; }
   return count > 0 ? count + TRANSPORT_LIMITS.processCount : null;
+}
+/** The transport child's closed environment. Its V8 heap is capped through NODE_OPTIONS on every host.
+ * On Linux the user-ID headroom above is spent in tasks, and a default Node runtime starts more threads
+ * than the four-task headroom (a four-worker V8 pool, its scheduler and the SIGUSR1 inspector listener:
+ * seven idle on Node 24), so the transport runtime there is composed to fit the unchanged headroom: one
+ * V8 worker, its scheduler, one libuv worker and the main thread, the inspector signal listener off. It
+ * does one request, so that parallelism is never needed. Darwin's environment is unchanged. */
+export function transportEnvironment(hostPlatform = process.platform) {
+  return hostPlatform === 'linux'
+    ? { PATH: '/usr/bin:/bin', NODE_OPTIONS: '--max-old-space-size=256 --v8-pool-size=1 --disable-sigusr1', UV_THREADPOOL_SIZE: '1' }
+    : { PATH: '/usr/bin:/bin', NODE_OPTIONS: '--max-old-space-size=256' };
 }
 
 export const productionStorageIO = Object.freeze({ pid: process.pid,
@@ -127,13 +141,13 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
     const request = Buffer.from(JSON.stringify({ method: input.method, body: input.body, timeoutMs: input.timeoutMs,
       captureDirectory: directory, identityBinding: input.identityBinding,
       ...(testEndpoint === null ? {} : { testEndpoint }) })).toString('base64url');
-    // A transport child through the same limit shim as every provider launch
+    // A transport child through the same limit shim and shell as every provider launch
     // (Rule 60): kernel-held per-process CPU time and handles, and user-ID process headroom (not a tree
     // bound: see resource-owner.mjs). Its V8 heap is capped through NODE_OPTIONS (argv is unchanged),
     // and its elapsed time and output by the bounds below. Its RSS is not held by any unprivileged
     // kernel limit on this host.
-    const env = { PATH: '/usr/bin:/bin', NODE_OPTIONS: '--max-old-space-size=256' };
-    // The request stays at argv[1] (the file shim's label), as the recorded transports read it.
+    const env = transportEnvironment();
+    // The request stays at the file shim's label (its $1), as the recorded transports read it.
     return { env, timeout: input.timeoutMs + 2000, argv: limitedFileArgv({ label: request, executable: process.execPath,
       args: [fileURLToPath(new URL('../src/assembly/telegram-bot-api-bridge.mjs', import.meta.url)), request],
       handles: TRANSPORT_LIMITS.handleCount, cpuSeconds: Math.ceil((input.timeoutMs + 2000) / 1000) + 1,
@@ -175,7 +189,7 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
     /** Sequential and waited on synchronously: short calls (identity, send, acknowledge). */
     invoke(input, credential) {
       const { env, timeout, argv } = launch(input);
-      const child = spawnSync('/bin/sh', argv, { input: credential, encoding: 'utf8', timeout, maxBuffer: MAX_TRANSPORT_BYTES,
+      const child = spawnSync(LIMIT_SHELL, argv, { input: credential, encoding: 'utf8', timeout, maxBuffer: MAX_TRANSPORT_BYTES,
         env, stdio: ['pipe', 'pipe', 'ignore'] });
       // Rule 26: an error label is no proof. Only a child that never got a process id sent nothing.
       if (child.error) return settle(null, '', !child.pid);
@@ -188,7 +202,7 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
       const { env, timeout, argv } = launch(input);
       return new Promise(resolve => {
         let child;
-        try { child = spawn('/bin/sh', argv, { env, stdio: ['pipe', 'pipe', 'ignore'] }); }
+        try { child = spawn(LIMIT_SHELL, argv, { env, stdio: ['pipe', 'pipe', 'ignore'] }); }
         catch { resolve(settle(null, '')); return; }
         let chunks = [], size = 0, failed = false;
         const fail = () => { failed = true; chunks = []; try { child.kill('SIGKILL'); } catch { /* already gone */ } };
