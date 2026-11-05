@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:03566f2caeaa6ebf9c0a2495456d45621efb47a11455b514ab1d1055e726a687",
-  "commit": "c71c9fb33e9e22cc5cb6a55f6456ed826e9449d7",
+  "generation": "sha256:23e5994c626b4cf5d507ba7cb7216ef470022c34a792a88b5ba61dafaebefe3a",
+  "commit": "7914158931f51e138b031939fcc4001f7d128e65",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -97,7 +97,7 @@
         "module": "src/effects",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "dark partial support for admitted exact-process signals, durable claims and independent settlement; installed recovery remains unproven."
+        "text": "dark partial support: admitted exact-process signals, durable claims and independent settlement; installed recovery unproven."
       },
       {
         "id": "process-control-kernel",
@@ -105,7 +105,7 @@
         "module": "src/assembly",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery remain unproven."
+        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery unproven."
       },
       {
         "id": "register-tooling",
@@ -243,7 +243,7 @@
         "module": "src/effects",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "dark partial support for admitted exact-process signals, durable claims and independent settlement; installed recovery remains unproven."
+        "text": "dark partial support: admitted exact-process signals, durable claims and independent settlement; installed recovery unproven."
       },
       {
         "id": "process-control-kernel",
@@ -251,7 +251,7 @@
         "module": "src/assembly",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery remain unproven."
+        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery unproven."
       },
       {
         "id": "register-tooling",
@@ -389,7 +389,7 @@
         "module": "src/effects",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "dark partial support for admitted exact-process signals, durable claims and independent settlement; installed recovery remains unproven."
+        "text": "dark partial support: admitted exact-process signals, durable claims and independent settlement; installed recovery unproven."
       },
       {
         "id": "process-control-kernel",
@@ -397,7 +397,7 @@
         "module": "src/assembly",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery remain unproven."
+        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery unproven."
       },
       {
         "id": "register-tooling",
@@ -535,7 +535,7 @@
         "module": "src/effects",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "dark partial support for admitted exact-process signals, durable claims and independent settlement; installed recovery remains unproven."
+        "text": "dark partial support: admitted exact-process signals, durable claims and independent settlement; installed recovery unproven."
       },
       {
         "id": "process-control-kernel",
@@ -543,7 +543,7 @@
         "module": "src/assembly",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery remain unproven."
+        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery unproven."
       },
       {
         "id": "register-tooling",
@@ -681,7 +681,7 @@
         "module": "src/effects",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "dark partial support for admitted exact-process signals, durable claims and independent settlement; installed recovery remains unproven."
+        "text": "dark partial support: admitted exact-process signals, durable claims and independent settlement; installed recovery unproven."
       },
       {
         "id": "process-control-kernel",
@@ -689,7 +689,7 @@
         "module": "src/assembly",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery remain unproven."
+        "text": "dark Linux-only process control with pinned target identity and worker ancestry; other hosts and installed recovery unproven."
       },
       {
         "id": "register-tooling",
