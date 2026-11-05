@@ -395,6 +395,36 @@ path is introduced. The automated test uses real temporary git state and
 recorded journal shapes; live deployment and user delivery are proved by the
 desk's proof-room run, not asserted by the library test.
 
+Clean-worktree reclamation (carryover row 86; docs/18 §7 P14-NF-66) is the inverse
+population: `src/assembly/worktree-reaper.ts` ports the 1.x `AgentWorktreeReaper`
+classifier, pass, per-path breaker, action-time recheck, fail-visible enumeration and
+one-time initial pass, and `scripts/worktree-reaper-git.mjs` ports `agentWorktreeGit`
+(residue-aware status, patch-equivalence and exact-head merged-PR evidence, locks,
+build marker, non-forced `git worktree remove`) and the enumeration-failure history
+store, over the same read-only `query`, `exists`, `observe`, `census` and
+`ownership` ports as the census above plus one separate `mutate` port. A checkout
+is reap-eligible only when its owner is absent, no session or index lock or
+build marker is present, no live process from a complete fresh same-machine
+census works inside it, its ownership join resolves every live process as a
+non-owner, its activity coverage spans the quiet window with no activity inside
+it, it is on a branch, its status is empty, and its head is merged. Dirty,
+unmerged, detached, in-use, fresh, residue-only and every unreadable, partial,
+stale or foreign reading keep the checkout under a named reason. Staleness is a
+gate, never a reason. Immediately before removal the same classifier reruns on a
+fresh single-checkout observation and the branch and head must be unchanged; any
+difference keeps it. Removal is the non-forced form only, so git itself refuses a
+checkout with any change; a refusal stays a typed refusal, feeds the per-path
+breaker, and is never read as a removal. The reaper ships disabled and dry-run
+with a bounded removal count per pass. It owns no timer, store or process: the
+composition binds its clock and stop beside the adapter, asks `due(now)` on its
+own bounded cycle, runs `reap()` and reads `snapshot()`, where a failed or
+partial enumeration reports `reclaimable: null`, never zero. The installed-path
+test removes exactly the merged, clean, unused, quiet checkout of a real
+repository and keeps every other one with its bytes. The typed Eight/Ten
+`git-mutation` effect, Part Six restart-surviving due and breaker pressure, and
+the production composition are not landed: until they are, the `mutate` port is
+the desk's to bind and the shipped default removes nothing.
+
 While a continuing conversation is answering an admitted operator message, its live adapter
 observations feed the host's current tool-admission projection. The journal may send one short
 `Status:` line per real tool step at about 2, 5 and 10 minutes from intake, then every 10
