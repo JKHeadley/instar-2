@@ -36,6 +36,8 @@ Decision: train-169-C | No irreconcilable product conflict; neither pinned head 
 Decision: train-169-D | Foreground targeted Studio tests only, nice 10 and one worker; no serving login or live-root action. No new host skips. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-169-PROGRESS.md
 Decision: train-169-desk | cint-L37 repin updated 0; build passed; all owner rehash counts 0. Register replay from e2a9960de3f96511e9d3956e5a6501654f2778e3 generated sha256:f6892a307a95feab537c043230f10feb0afec60f92ea45e6dfe120b321862c00 with 297 entries and 120 rules; shape-only authority. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-169-PROGRESS.md
 
+Decision: train-169-review-reopen | Whole-history Rule 109 check found the live browser MCP review frozen over regenerated outputs. Reopen it without changing connector code or claiming the prior verdict covers this combination. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-169-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary exact-head merges, preserve both behaviors, canonical conversion pin refresh and existing repin/build/rehash/replay. No added machinery. Start guards are exact ancestry and reviewed SHAs; end guards are targeted tests and desk independent/live acceptance; all five limit floors remain. No unattended live completion claimed.
