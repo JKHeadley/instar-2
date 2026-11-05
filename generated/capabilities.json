@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:46a68910f11c1cad2655807c1e2efe2c7c0a0d18ec72d4f72e6848b7c4bbf521",
-  "commit": "bd0d54f16f3cc0ad839c655adb5b2d814cffb362",
+  "generation": "sha256:8f7a2d7f8ffb4d4f55c10a787a7e3fd0685317cedbf8abb3da9861f68455894b",
+  "commit": "f5a8c8dd0de51021fab94ec5756fbf0c0051bb96",
   "launchers": {
     "bin/instar2.mjs": [
       {
@@ -25,7 +25,7 @@
         "module": "scripts",
         "availability": "available",
         "userFacing": false,
-        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. It does not authorize runtime activation, restart an agent or claim full automatic-update parity. Details and row-87 evidence: `docs/update.md`."
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Full row-87 parity remains unclaimed. Details and row-87 evidence: `docs/update.md`."
       },
       {
         "id": "intake-slice",
@@ -163,7 +163,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. It does not authorize runtime activation, restart an agent or claim full automatic-update parity. Details and row-87 evidence: `docs/update.md`."
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Full row-87 parity remains unclaimed. Details and row-87 evidence: `docs/update.md`."
       },
       {
         "id": "intake-slice",
@@ -299,9 +299,9 @@
         "id": "installed-update-verification",
         "status": "live",
         "module": "scripts",
-        "availability": "not-loaded",
+        "availability": "available",
         "userFacing": false,
-        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. It does not authorize runtime activation, restart an agent or claim full automatic-update parity. Details and row-87 evidence: `docs/update.md`."
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Full row-87 parity remains unclaimed. Details and row-87 evidence: `docs/update.md`."
       },
       {
         "id": "intake-slice",
@@ -439,7 +439,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. It does not authorize runtime activation, restart an agent or claim full automatic-update parity. Details and row-87 evidence: `docs/update.md`."
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Full row-87 parity remains unclaimed. Details and row-87 evidence: `docs/update.md`."
       },
       {
         "id": "intake-slice",
@@ -577,7 +577,7 @@
         "module": "scripts",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. It does not authorize runtime activation, restart an agent or claim full automatic-update parity. Details and row-87 evidence: `docs/update.md`."
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Full row-87 parity remains unclaimed. Details and row-87 evidence: `docs/update.md`."
       },
       {
         "id": "intake-slice",
@@ -713,9 +713,9 @@
         "id": "installed-update-verification",
         "status": "live",
         "module": "scripts",
-        "availability": "not-loaded",
+        "availability": "available",
         "userFacing": false,
-        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. It does not authorize runtime activation, restart an agent or claim full automatic-update parity. Details and row-87 evidence: `docs/update.md`."
+        "text": "The installed update command checks candidate identity and CLI syntax, rechecks optional migration postconditions and repairs known stale MCP defaults through a durable backup and transaction. Custom choices and revocations are preserved. The admitted runner checks releases and holds update-driven restarts for active work; the existing host watchdog selects installed releases and preserves its crash brake. Version plus healthy-poll evidence completes the retained handshake. Template SHA findings and live updater settings share the existing transaction; none of this authorizes activation. Full row-87 parity remains unclaimed. Details and row-87 evidence: `docs/update.md`."
       },
       {
         "id": "intake-slice",
