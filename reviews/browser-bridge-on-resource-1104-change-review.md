@@ -1,8 +1,8 @@
 # Change review — browser bridge on current live resource recovery
 
 Subject base: 47b9c8234e85856ca3aeee322927621139af4342
-Review state: frozen
-Reviewed content: sha256:094316dfd656ab51b6d7663e4bd9207c62d4593c8a3e743493d748b4dfe47228
+Review state: open
+Reviewed content: none
 Outcome: Merge the independently reviewed bounded owner GitHub read sequence onto the answering resource-recovery build, retaining its worker-slot repair. The only merge conflicts were generated register outputs; regenerate those against the merged source commit. The later connector file ACL and Claude-compatible MCP schema repairs are reviewed separately in browser-mcp-worker-read-1104-change-review.md; this combined record covers the updated exact content.
 Affected rules: 1, 4, 18, 28, 34, 36, 42, 44, 49, 55, 57, 60, 61, 62, 63, 66, 74, 78, 84, 95, 100, 101, 103, 111, 113, 116
 Affected floors: secrets — owner-side fixed DOM projection and scrub stay in place; spend cap — no model budget change; stop — the same claim and deadline bound every read; no duplicate sends — read-only operation admits no send or write; durable intake — existing effect preparation and exact grant remain prerequisites.
@@ -18,7 +18,7 @@ Layer below: Compared the two parent trees and the seven generated conflicts. No
 Bug class: none
 Bug evidence: none
 Hook bypass: none
-Convergence: claimed
+Convergence: none
 Prompt review: no prompt or model dispatch change.
 Skip: tests/preview/session-connectors.test.ts:60 | scope=the worker-account check requires a macOS harness host with passwordless sudo; cross-platform cases run elsewhere.
 Deferral: generated/register.json:1 | not-a-deferral=generated source hash was regenerated from the merged commit; the original branch's separate missing Part Two authority is unchanged and remains open.
