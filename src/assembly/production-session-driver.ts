@@ -59,9 +59,13 @@ export interface SessionIO {
 }
 /** Adapter-owned observations, never terminal content or authority to interrupt a worker. */
 export interface SessionActivityObservation {
-  readonly subject: string; readonly at: number; readonly progress: string | null; readonly wait: string | null;
+  readonly subject: string; readonly incarnation?: string; readonly launch?: string; readonly at: number; readonly progress: string | null; readonly wait: string | null;
   /** Absent on older adapters: cannot corroborate a stall. Idle is not proof of completion. */
   readonly activity?: 'active' | 'idle' | 'indeterminate' | 'unknown';
+}
+/** Private full-context supervision evidence; never part of the public activity projection. */
+export interface SessionRecoveryObservation extends SessionActivityObservation {
+  readonly incarnation: string; readonly launch: string; readonly terminal: string;
 }
 export interface ProductionSessionConfig {
   readonly operatorOwnUse: true; readonly confinement: 'unconfined' | 'admitted'; readonly framework: SessionFramework;
@@ -75,6 +79,7 @@ export interface ProductionSessionConfig {
   /** Advisory activity for registered work; a changed pane is activity, never proof of completion.
    * The owner records it in its existing work observation cycle. No terminal bytes leave this port. */
   readonly observeActivity?: (observation: SessionActivityObservation) => void;
+  readonly observeRecovery?: (observation: SessionRecoveryObservation) => void;
   /** Conversation replies require the authenticated lifecycle receipt, never pane heuristics. */
   readonly requireTurnHook?: boolean;
   /** Required exactly in `admitted` mode: the admission/completion command for a session's claim (its own
@@ -631,6 +636,21 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         if (config.stopped()) { stop(); return { phase: 'exit-observed' as const, evidence: session.identity, detail: 'stop authority active' }; }
         if (session.deadlineHalt) return { phase: 'exit-observed' as const, evidence: `safety-ceiling:deadline:${session.identity}`, detail: 'per-turn deadline exceeded; closure must be reconciled', safetyDeadline: session.deadlineHalt.deadline };
         if (!alive(session.name)) {
+          // A result may complete between the owner's final observation and exact retirement.
+          // Only the current turn's authenticated receipt plus bounded nonempty result can
+          // survive physical exit; process absence alone never manufactures completion.
+          if (config.requireTurnHook && input.resultAvailable === true) {
+            if (session.turnCloseEvidence)
+              return { phase: 'output-observed' as const, evidence: session.turnCloseEvidence, detail: 'recorded Stop hook closed turn before exit' };
+            const receipt = config.io.readInbox(session.name).filter(row => row.kind === 'turn-closed'
+              && (row.receiptId ? !session.turnReceiptIds?.includes(row.receiptId) : row.at > (session.turnStartedAt ?? Infinity))).at(-1);
+            if (receipt && session.turnStartedAt !== null && receipt.at >= session.turnStartedAt
+              && session.turnDeadline !== null && receipt.at <= config.now() && receipt.at <= session.turnDeadline) {
+              const evidence = `turn-closed:${session.name}:${receipt.at}`;
+              config.io.save(replaceSession(config.io.load(), { ...closeTurn(session, receipt.at), turnCloseEvidence: evidence }));
+              return { phase: 'output-observed' as const, evidence, detail: 'Stop hook and bounded result retained after exit' };
+            }
+          }
           const terminal = config.io.readTerminal?.(session.name);
           const worker = terminal?.workerExitClaim;
           const detail = terminal
@@ -641,11 +661,18 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
         verifyLive(session);
         const pane = capture(session.name);
         try {
-          config.observeActivity?.({ subject: session.claim, at: config.now(), progress: pane.trim() ? digestOf(pane) : null,
+          config.observeActivity?.({ subject: session.claim, incarnation: session.incarnation, launch: session.identity, at: config.now(), progress: pane.trim() ? digestOf(pane) : null,
             wait: classifyPaneActive(pane) ? null : classifyStuckSignature(pane),
             activity: !pane.trim() ? 'unknown' : classifyPaneActive(pane) ? 'active'
               : classifyPaneIdle(pane, config.framework) ? 'idle' : 'indeterminate' });
         } catch { /* An advisory observer cannot fail the worker; its last sample becomes stale/unknown. */ }
+        try {
+          config.observeRecovery?.({ subject: session.claim, incarnation: session.incarnation, launch: session.identity,
+            terminal: pane, at: config.now(), progress: pane.trim() ? digestOf(pane) : null,
+            wait: classifyPaneActive(pane) ? null : classifyStuckSignature(pane),
+            activity: !pane.trim() ? 'unknown' : classifyPaneActive(pane) ? 'active'
+              : classifyPaneIdle(pane, config.framework) ? 'idle' : 'indeterminate' });
+        } catch { /* Private evidence failure cannot affect the worker. */ }
         const rate = session.rateRecovery;
         if (rate && session.turnDeadline !== null && config.now() >= session.turnDeadline) {
           config.io.save(replaceSession(config.io.load(), { ...session, deadlineHalt: { deadline: session.turnDeadline, at: config.now() } }));

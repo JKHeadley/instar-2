@@ -843,3 +843,18 @@ it('renewal preserves the original parent deadline even when restarted with a la
   expect(f.port.available()).toBe(false);
   await f.port.close();
 });
+
+
+it('supervision charges the same parent allowance without consuming the worker checkpoint ordinal', async () => {
+  const f = fixture(2, 6, 16, 600000, true);
+  await f.port.run(f.request('7:task')); const claim = f.launches[0]!.worker.claim;
+  f.port.reserveReview(claim);
+  expect(f.state().topics['7']).toMatchObject({ spent: 2, claimCalls: 1 });
+  f.port.reserveCall(claim, 2);
+  expect(f.state().topics['7']).toMatchObject({ spent: 3, claimCalls: 2 });
+  expect(f.calls.map(row => row.ordinal)).toEqual([1, 2, 3]);
+  expect(new Set(f.calls.map(row => row.edge)).size).toBe(1);
+  expect(() => f.port.reserveReview('foreign')).toThrow(/unknown/);
+  f.failSave(); expect(() => f.port.reserveReview(claim)).toThrow('disk');
+  expect(f.calls.map(row => row.ordinal)).toEqual([1, 2, 3]);
+});

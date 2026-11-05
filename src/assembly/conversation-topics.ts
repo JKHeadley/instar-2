@@ -15,7 +15,7 @@ export interface ConversationTopicsState {
   readonly renewal?: SessionWorkEdgeClose | null;
 }
 export interface ConversationTopicsConfig extends Omit<ConversationSessionConfig, 'store' | 'createAdapter'> {
-  readonly topicConfig?: (topic: string) => Pick<ConversationSessionConfig, 'io' | 'resources' | 'authorized' | 'currentAuthority' | 'createAdapter' | 'prepareTurn'>;
+  readonly topicConfig?: (topic: string) => Pick<ConversationSessionConfig, 'io' | 'resources' | 'authorized' | 'currentAuthority' | 'createAdapter' | 'prepareTurn' | 'stallRecovery'>;
   /** Host measurements, injected: no ambient host I/O in the coordinator. */
   readonly capacity?: () => Promise<Readonly<{ admit: boolean; memoryPressure: boolean }>>;
   readonly maxSessions: number;
@@ -289,6 +289,13 @@ export function createConversationTopicsPort(config: ConversationTopicsConfig): 
         ensure(topic !== undefined, 'unknown topic claim'); hostFor(topic!).reserveCall(claim, ordinal);
         // The host state is persisted first. If the journal append fails, the hook refuses
         // dispatch; a call is never sent without a durable charge against the shared cap.
+        if (state.edge?.charge === 'per-call') config.append({ type: 'SessionWorkCall', schemaVersion: 1,
+          edge: state.edge.id, ordinal: spent(), at: config.now() });
+      },
+      reserveReview: (claim: string) => {
+        ensure(recovered && spent() < allowanceCalls(), 'installation review allowance exhausted or host recovering');
+        const topic = Object.keys(state.topics).find(key => state.topics[key]!.claim === claim);
+        ensure(topic !== undefined, 'unknown supervisor topic claim'); hostFor(topic!).reserveReview(claim);
         if (state.edge?.charge === 'per-call') config.append({ type: 'SessionWorkCall', schemaVersion: 1,
           edge: state.edge.id, ordinal: spent(), at: config.now() });
       },

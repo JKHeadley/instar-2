@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { prepareJournalEnvelope } from '../preview/journal-envelope.js';
 import { createHash } from 'node:crypto';
 import { expect, it } from 'vitest';
-import { createConversationSessionPort, conversationSessionPrompt, conversationSessionPolicy, CONVERSATION_SESSION_LIMITS } from '../../src/assembly/production-conversation-session.js';
+import { createConversationSessionPort, conversationSessionPrompt, conversationSessionPolicy, CONVERSATION_SESSION_LIMITS, observeStall, STALL_RECOVERY_LIMITS } from '../../src/assembly/production-conversation-session.js';
 import type { ConversationSessionConfig, ConversationState } from '../../src/assembly/production-conversation-session.js';
 import type { ConversationDelivery, ConversationWorker } from '../../src/assembly/conversation-harness-adapter.js';
 import type { HarnessAdapterPort } from '../../src/assembly/contracts.js';
@@ -1217,4 +1217,168 @@ it('replays the failed email turn: missing result stays uncertain, and the actua
   expect(prompt).toContain('Put that honest answer in the requested result file');
   expect(prompt).toContain('never invent account contents or completed actions');
   await f.port.close();
+});
+
+
+function stalledFixture(mode = 'frozen') {
+  const f = fixture(); f.finish(false);
+  Object.assign(f.config, { allowanceDeadline: 14_400_000, deadlineMs: 14_400_000, pollMs: 5000,
+    contextRecoveryAllowed: () => mode !== 'uncertain-send' });
+  let reviews = 0, observation = 0;
+  const admission = { refused: false, openDelegations: [] as SessionWorkEdge[],
+    uncertainEffects: mode === 'uncertain-effect' ? 1 : 0, toolPreparations: 0 };
+  f.config.io.admissionState = () => mode === 'helper' ? { ...admission, openDelegations: f.admissions } : admission;
+  const control = f.adapter.control;
+  f.adapter.control = async input => {
+    if (mode === 'effect-at-close' || mode === 'effect-completed-at-close') admission.toolPreparations++;
+    if (mode === 'result-at-close' || mode === 'effect-completed-at-close') f.finish(true);
+    return control(input);
+  };
+  const launch = f.adapter.launch;
+  f.adapter.launch = async input => {
+    if (input.restore) {
+      expect(f.state().inputs[0]?.workerRecovery).toBe('restoring');
+      expect(input.restore).toEqual({ operation: f.delivered[0]!.operation,
+        digest: f.delivered[0]!.digest, deadline: f.state().deadline });
+      f.finish(true);
+    }
+    return launch(input);
+  };
+  Object.assign(f.config, { stallRecovery: {
+    observe: (worker: ConversationWorker) => {
+      observation++;
+      return { ...worker, at: f.config.now(), progress: mode === 'progress' || mode === 'progress-race' && reviews > 0 ? String(observation) : 'frozen-frame',
+        activity: mode === 'unknown' ? 'unknown' : 'idle', waiting: mode === 'waiting' };
+    },
+    reserve: (claim: string) => { if (mode === 'charge-failure') throw Error('reservation write failed'); f.port.reserveReview(claim); },
+    review: async () => {
+      reviews++;
+      expect(f.state().inputs[0]?.stall?.phase).toBe('reviewed');
+      expect(f.state().spent).toBe(1 + reviews);
+      if (mode === 'result-arrives') f.finish(true);
+      if (mode === 'stop') f.stop();
+      if (mode === 'custody-lost') f.authorize(false);
+      if (mode === 'effects-during-review') admission.toolPreparations++;
+      if (mode === 'slow-review') f.advance(20_000);
+      if (mode === 'pressure') Object.assign(f.config.resources, { admit: async () => null });
+      return mode === 'wait' ? 'wait' : mode === 'unavailable' ? 'unknown' : 'recover';
+    },
+  } });
+  // Terminate negative simulations with an ordinary correlated reply, not a timeout kill.
+  const wait = f.config.io.wait;
+  f.config.io.wait = async ms => { await wait(ms); if (f.config.now() > 2_000_000) f.finish(true); };
+  return { ...f, reviews: () => reviews };
+}
+
+it.each(['frozen', 'slow-review'])('supervised %s work restores once with original input, destination and remaining allowance', async mode => {
+  const f = stalledFixture(mode); const request = f.request('frozen');
+  const result = await f.port.run(request);
+  expect(result.state).toBe('complete'); expect(f.reviews()).toBe(1);
+  expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(1);
+  expect(f.admissions[1]!.budget.calls).toBe(4);
+  expect(f.state().inputs[0]?.stall?.phase).toBe('continued');
+  expect(await f.port.run(request)).toEqual(result); expect(f.reviews()).toBe(1);
+});
+
+it.each(['progress', 'unknown', 'waiting', 'helper', 'uncertain-send', 'uncertain-effect'])('holds %s without supervisor spending or replacement', async mode => {
+  const f = stalledFixture(mode); await f.port.run(f.request(mode));
+  expect(f.reviews()).toBe(0); expect(f.launches).toHaveLength(1);
+});
+
+it.each(['wait', 'unavailable', 'effects-during-review', 'result-arrives', 'progress-race'])('holds %s after review and preserves ordinary completion', async mode => {
+  const f = stalledFixture(mode); expect((await f.port.run(f.request(mode))).state).toBe('complete');
+  expect(f.reviews()).toBe(1); expect(f.launches).toHaveLength(1);
+});
+
+it.each(['stop', 'custody-lost', 'effect-at-close'])('rechecks %s before a supervised replacement', async mode => {
+  const f = stalledFixture(mode); expect((await f.port.run(f.request(mode))).state).toBe('uncertain');
+  expect(f.reviews()).toBe(1); expect(f.launches).toHaveLength(1);
+  expect(f.state().inputs[0]?.request.operation).toBe(mode);
+});
+
+it('unknown, stale, changed identity and helper observations reset the corroboration clock', () => {
+  const worker = { claim: 'claim', incarnation: 'incarnation', launch: 'launch' };
+  const sample = { ...worker, at: 1000, progress: 'frame', activity: 'active' as const, waiting: false };
+  const episode = observeStall(null, sample, worker, 1000, false)!;
+  expect(observeStall(episode, { ...sample, at: 6000 }, worker, 6000, false)?.since).toBe(1000);
+  expect(observeStall(episode, { ...sample, at: 6001 }, worker, 6001, false)?.since).toBe(6001);
+  expect(observeStall(episode, sample, worker, 6001, false)).toBe(null);
+  expect(observeStall(episode, { ...sample, activity: 'unknown' }, worker, 1000, false)).toBe(null);
+  expect(observeStall(episode, { ...sample, launch: 'other' }, worker, 1000, false)).toBe(null);
+  expect(observeStall(episode, sample, worker, 1000, true)).toBe(null);
+  expect(STALL_RECOVERY_LIMITS).toMatchObject({ silenceMs: 1_800_000, frozenActiveMs: 5_400_000 });
+});
+
+const stalledRecordedShapes = JSON.parse(readFileSync(new URL('../preview/fixtures/work-recovery-2026-10-15.json', import.meta.url), 'utf8')) as {
+  workOutput: string; negativeOutputs: { id: string; shape: string; output: string | null }[];
+};
+it.each(stalledRecordedShapes.negativeOutputs)('returns recorded $shape ($id) through frozen recovery without inventing completion', async recorded => {
+  const f = stalledFixture(); f.answer(recorded.output ?? '');
+  const result = await f.port.run(f.request('recorded'));
+  expect(result.state).toBe(recorded.output?.trim() ? 'complete' : 'uncertain');
+  if (result.state === 'complete') expect(result.text).toBe(recorded.output);
+  expect(f.reviews()).toBe(1); expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(1);
+});
+it('returns the recorded obligation result after supervised replacement', async () => {
+  const f = stalledFixture(); f.answer(stalledRecordedShapes.workOutput);
+  expect(await f.port.run(f.request('recorded-work'))).toMatchObject({ state: 'complete', text: stalledRecordedShapes.workOutput });
+  expect(f.launches).toHaveLength(2);
+});
+
+
+it('a failed supervisor reservation never dispatches judgment or replacement', async () => {
+  const f = stalledFixture('charge-failure');
+  expect((await f.port.run(f.request('charge-failure'))).state).toBe('complete');
+  expect(f.reviews()).toBe(0); expect(f.launches).toHaveLength(1);
+  expect(f.state().inputs[0]?.stallReviews).toBe(1);
+});
+it('unchanged work gets bounded follow-up after a wait decision, then stops spending', async () => {
+  const f = stalledFixture('wait');
+  f.config.io.wait = async ms => { f.advance(ms); if (f.config.now() > 8_000_000) f.finish(true); };
+  expect((await f.port.run(f.request('bounded-review'))).state).toBe('complete');
+  expect(f.reviews()).toBe(3); expect(f.state().spent).toBe(4); expect(f.launches).toHaveLength(1);
+});
+
+
+it.each([false, true])('resource refusal queues exact restoration without duplicate delivery (reopen=%s)', async reopen => {
+  const f = stalledFixture('pressure'); const admit = f.config.resources.admit;
+  expect((await f.port.run(f.request('pressure'))).state).toBe('queued');
+  expect(f.launches).toHaveLength(1); expect(f.state().worker).toBe(null);
+  expect(f.state().inputs[0]).toMatchObject({ state: 'queued', workerRecovery: 'restoring',
+    recoveryQueued: { closedClaim: f.launches[0]!.claim, authority: 'existing-role' } });
+  const port = reopen ? f.restart() : f.port;
+  f.advance(60_000); Object.assign(f.config.resources, { admit });
+  await port.maintain();
+  expect(await port.collect('pressure')).toMatchObject({ outcome: { state: 'complete' } });
+  expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(1);
+  expect(f.state().inputs[0]?.recoveryQueued).toBe(null);
+});
+it('activity classification changes reset the silence clock even when frame bytes are unchanged', () => {
+  const worker = { claim: 'claim', incarnation: 'incarnation', launch: 'launch' };
+  const sample = { ...worker, at: 1000, progress: 'frame', activity: 'active' as const, waiting: false };
+  const episode = observeStall(null, sample, worker, 1000, false)!;
+  expect(observeStall(episode, { ...sample, at: 2000 }, worker, 2000, false)?.since).toBe(1000);
+  expect(observeStall(episode, { ...sample, at: 2000, activity: 'indeterminate' }, worker, 2000, false)?.since).toBe(2000);
+});
+
+
+it.each(['result-at-close', 'effect-completed-at-close'])('consumes the original correlated result arriving during retirement (%s) without launching a replacement', async mode => {
+  const f = stalledFixture(mode); f.answer(stalledRecordedShapes.workOutput);
+  expect(await f.port.run(f.request('result-at-close'))).toMatchObject({ state: 'complete',
+    text: stalledRecordedShapes.workOutput, detail: 'correlated reply recovered during worker retirement' });
+  expect(f.launches).toHaveLength(1); expect(f.delivered).toHaveLength(1);
+});
+it('the real admission checkpoint retains post-fence evidence for supervised recovery', async () => {
+  // @ts-expect-error physical checkpoint stays outside the pure core
+  const { createAdmissionGate } = await import('../preview/admission-gate.mjs');
+  const f = stalledFixture();
+  const gate = await createAdmissionGate({ append: () => {}, stopped: () => false, now: f.config.now });
+  f.config.io.prepareAdmission = (claim, edge) => gate.open(claim, { framework: 'claude-code', allowance: edge.budget.calls, edge });
+  f.config.io.admissionState = claim => gate.state(claim);
+  f.config.io.closeAdmission = claim => { gate.close(claim); };
+  try {
+    expect((await f.port.run(f.request('real-gate'))).state).toBe('complete');
+    expect(gate.state(f.launches[0]!.claim)).toMatchObject({ closed: true, uncertainEffects: 0, toolPreparations: 0, openDelegations: [] });
+    expect(f.launches).toHaveLength(2); expect(f.delivered).toHaveLength(1);
+  } finally { await gate.stop(); }
 });

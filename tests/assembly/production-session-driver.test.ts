@@ -24,7 +24,7 @@ const hash = (text: string) => `sha256:${createHash('sha256').update(text).diges
 const fixtureRoots: string[] = [];
 afterEach(() => { for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: Partial<Pick<ProductionSessionConfig,
-  'confinement' | 'toolAdmission' | 'modelGate' | 'turnDeadlineMs' | 'launchVia' | 'requireTurnHook' | 'observeActivity' | 'scratchDir'>> = {}) {
+  'confinement' | 'toolAdmission' | 'modelGate' | 'turnDeadlineMs' | 'launchVia' | 'requireTurnHook' | 'observeActivity' | 'observeRecovery' | 'scratchDir'>> = {}) {
   const f = assemblyRuntimeFixture(); let now = 1000, stopped = false, pane = '❯ ', sends = 0;
   const root = mkdtempSync(join(tmpdir(), 'instar-session-test-')); fixtureRoots.push(root);
   const homes = { a: join(root, 'login-a'), b: join(root, 'login-b') };
@@ -1001,7 +1001,9 @@ it('a new topic claim with prior history requires continuation even without a na
 it('reports recorded pane activity per owned claim without treating activity or empty captures as completion', () => {
   const recorded = JSON.parse(readFileSync(new URL('../preview/fixtures/work-silence-terminal-2026-10-14.json', import.meta.url), 'utf8'));
   const observations: Parameters<NonNullable<ProductionSessionConfig['observeActivity']>>[0][] = [];
-  const f = fixture('claude-code', { requireTurnHook: true, observeActivity: row => observations.push(row) });
+  const privateEvidence: Parameters<NonNullable<ProductionSessionConfig['observeRecovery']>>[0][] = [];
+  const f = fixture('claude-code', { requireTurnHook: true, observeActivity: row => observations.push(row),
+    observeRecovery: row => privateEvidence.push(row) });
   const identity = f.launch(); value(f.deliver(identity));
   for (const row of recorded.captures) {
     f.changePane(row.capture);
@@ -1011,6 +1013,8 @@ it('reports recorded pane activity per owned claim without treating activity or 
   expect(observations[1]).toMatchObject({ subject: 'topic', progress: hash(recorded.captures[1].capture.trim()), wait: null });
   expect(observations[2]?.progress).not.toBe(observations[1]?.progress);
   expect(JSON.stringify(observations)).not.toContain('Hullaballooing');
+  expect(privateEvidence[1]).toMatchObject({ launch: identity, incarnation: observations[1]?.incarnation,
+    subject: 'topic', terminal: recorded.captures[1].capture.trim() });
   expect(f.calls.filter(call => call[0] === 'kill-session')).toHaveLength(0);
 });
 
@@ -1421,7 +1425,9 @@ it('exports active and idle corroboration from recorded frames without claiming 
   const captures = JSON.parse(readFileSync(new URL('../preview/fixtures/work-silence-terminal-2026-10-14.json', import.meta.url), 'utf8')).captures;
   const idle = JSON.parse(readFileSync(new URL('../fixtures/claude-idle-2.1.280.json', import.meta.url), 'utf8')).pane.capture;
   const observations: Parameters<NonNullable<ProductionSessionConfig['observeActivity']>>[0][] = [];
-  const f = fixture('claude-code', { requireTurnHook: true, observeActivity: row => observations.push(row) });
+  const privateEvidence: Parameters<NonNullable<ProductionSessionConfig['observeRecovery']>>[0][] = [];
+  const f = fixture('claude-code', { requireTurnHook: true, observeActivity: row => observations.push(row),
+    observeRecovery: row => privateEvidence.push(row) });
   const id = f.launch(); value(f.deliver(id));
   for (const pane of [captures[0].capture, captures[1].capture, idle]) {
     f.changePane(pane);
@@ -1551,3 +1557,16 @@ it('replays recorded summary, uncertain, Jev, review and empty reply shapes besi
     expect(f.sends).toBe(sends);
   }
 });
+
+it.each(['complete', 'missing-result', 'missing-receipt', 'expired-receipt'] as const)(
+  'retirement preserves only the exact closed bounded result: %s', mode => {
+    const f = fixture('claude-code', { requireTurnHook: true });
+    const identity = f.launch(); value(f.deliver(identity));
+    f.time(mode === 'expired-receipt' ? 2100 : 1100);
+    if (mode !== 'missing-receipt') f.hook(mode === 'expired-receipt' ? 2100 : 1100);
+    value(f.driver.stop({ claim: 'topic', incarnation: 'inc', processIdentity: identity }));
+    const observed = value(f.driver.observe({ operation: 'deliver', processIdentity: identity,
+      resultAvailable: mode !== 'missing-result' }));
+    expect(observed.phase).toBe(mode === 'complete' ? 'output-observed' : 'exit-observed');
+    if (mode === 'complete') expect(observed.evidence).toMatch(/^turn-closed:/u);
+  });

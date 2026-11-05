@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { prepareStallReview, interpretStallReview, stallSample } from './stall-review.js';
 import { createOwnerBrowser, readOwnerBrowserBinding } from './owner-browser.mjs';
 import { nextObligationAt } from './journal.js';
 import { createNextDueWake } from '../../src/transport/index.js';
@@ -621,7 +622,7 @@ const recordShape = (path, role, layer, outcome, shape) => {
     durablePreviewWrite(path, saved);
   } catch { /* a diagnostics write never changes a model outcome */ }
 };
-const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
+const roleOf = id => id.startsWith('stall-triage:') ? 'stall-triage' : id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
   : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
 /** Rule 95, the fail direction of this consumer: may text around one complete Decision object be
  * discarded? The answer side says yes — the answer, a reply revision and the summary writer, which
@@ -640,12 +641,12 @@ const wrappedPolicyOf = role => role === 'answer' ? 'accept' : 'refuse';
  * (`summary:index:<n>`, {concepts}) -- and each of their consumers parses the answer as JSON. For them the runner
  * serializes the object, never the model (answer-reading.ts). Every other call's answer is prose or the conversation
  * protocol's own flat fields. Nothing branches on what the text means, only on which consumer asked. */
-const objectAnswerOf = id => /^summary:/u.test(id);
+const objectAnswerOf = id => /^(summary|stall-triage):/u.test(id);
 /** The registered live judgment a subscription call serves (model-call-boundary.ts). A revised
  * reply's held-class review is a reply review; the revision is the agent's own response to the
  * objections, with its own floor. A retrospective pass is its own judgment, and so is its duty follow-up
  * (`retrospective:N:duties`); its benchmark reruns (`retrospective:N:rerun:I`) replay an answer. */
-const judgmentOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review'
+const judgmentOf = id => id.startsWith('stall-triage:') ? 'stall-triage' : id.endsWith(':reply-review') || id.endsWith(':revision-review') || id.endsWith(':held-notice-review') ? 'reply-review'
   : id.endsWith(':reply-revision') ? 'reply-revision' : /^summary:.*:review$/u.test(id) ? 'summary-review'
   : /^summary:/u.test(id) ? 'summary' : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
 
@@ -2699,6 +2700,7 @@ async function main() {
           connectors: claim => sessionConnectors.get(claim)?.launch(),
           framework, executable: binding.entry().profile.executable, cwd: project, home: binding.entry().profile.home, configHome: binding.entry().profile.configDirectory,
           model: required(options, 'model'), context, io: { ...binding.physical(), transcriptExists: (...args) => (!handoff || handoff.resumeAllowed) && binding.physical().transcriptExists(...args) }, now: wallNow, stopped: binding.stopped, resolveIntake,
+          observeRecovery: observation => workActivity.set(observation.subject, observation),
           observeActivity: observation => {
             workActivity.set(observation.subject, observation);
             // This callback follows exact live process verification. A configured profile,
@@ -2737,6 +2739,19 @@ async function main() {
         return ({
         ...(conversationSession ? { recoveryEdges: () => journal.sessionWorkRecords(), conversation: `operator-${sha256(conversationOf(g)).slice(0, 32)}`, allowanceDeadline: journal.view.expires,
           contextRecoveryAllowed: () => journal.view.order.every(turn => !turn.intent || turn.sent !== undefined),
+          stallRecovery: {
+            observe: worker => stallSample(workActivity.get(worker.claim), worker),
+            reserve: claim => sessionWork.port.reserveReview(claim),
+            review: async evidence => {
+              const request = prepareStallReview(evidence, {
+              turn: operation => journal.view.turns.get(operation), observation: claim => workActivity.get(claim), now: wallNow,
+              protect: text => redact(concealSecretMaterial(text, heldSecretValues())).text,
+              writer: occurrence => envelopeWriter(journal.systemWriter('stall-triage', occurrence, wallNow())),
+              prepare: modelEnvelope
+              });
+              return request ? interpretStallReview(await invokeSubscription(request.prepared, request.id, undefined, request.deadline)) : 'unknown';
+            }
+          },
           authorized: binding.authorized, currentAuthority: () => binding.authority?.() ?? sessionWork.authority,
           workingActivity: (operation, claim, phase) => workingActivities.observe(operation, claim, phase),
           prepareInputFiles: operations => openConversationMedia({ tmp: join(project, '.tmp'), scope: String(topic ?? 'main'), operations,
@@ -3082,7 +3097,7 @@ async function main() {
       workActivity: () => {
         const active = new Set(Object.values(journal.view.activeSessionWork ?? {}).map(edge => edge.child));
         for (const subject of workActivity.keys()) if (!active.has(subject)) workActivity.delete(subject);
-        return [...workActivity.values()];
+        return [...workActivity.values()].map(({ terminal, ...publicObservation }) => publicObservation);
       },
       reground: () => sentinelSteps.push(() => worker.drain()),
       recoverContext: () => sentinelSteps.push(() => worker.summarizeIfNeeded(true)),
@@ -3272,11 +3287,12 @@ async function main() {
         sourceEvidence: [selectedActivation.reference], terminalEvidence: selectedActivation.reference,
         strength: 'attestation', maxMetadataBytes: policy.maxMetadataBytes,
         maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
-      const work = operation.startsWith('summary:') ? 'maintenance' : operation.endsWith(':reply-review') || operation.endsWith(':held-notice-review') ? 'review' : 'answer';
+      const work = operation.startsWith('summary:') ? 'maintenance' : operation.startsWith('stall-triage:') || operation.endsWith(':reply-review') || operation.endsWith(':held-notice-review') ? 'review' : 'answer';
       // A tool turn also ends on the journal's latched /stop and on tool-activation withdrawal: the resource
       // owner polls this every 25 ms and SIGKILLs the launch's own process group by its exact pid.
       const launchIO = createSubscriptionProviderIO({ repository: process.cwd(), runAs: runAsOf(selectedHarness),
         stopped: () => workerStop.value || existsSync(stopPath) || !selectedActive()
+          || (operation.startsWith('stall-triage:') && (journal.view.stop !== null || !ownerHeld()))
           || (toolTurn !== undefined && (journal.view.stop !== null || !toolsActive())), work });
       const physicalIO = { ...launchIO, execute: async input => {
         if (typeof input.stdin === 'string' && input.stdin.length > 0) modelLaunch.started();
