@@ -1,5 +1,21 @@
 [
   {
+    "revision": 20,
+    "date": "2026-11-05",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, 2026-11-05: \"approved\" [source: telegram 136110/139199 2026-11-05], answering the wording in 136110/139175. The requirement: \"it can tie back a paper trail of evidence to a specific conversation that is logged and recorded on how a statement or proclamation, originated, and evolved\" [source: telegram 136110/139097 2026-11-05]. Final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Add Rule 121, Attributed Statements Trace to Their Source, in Needs building, with its value rationale and the owed checks; update the group and total counts and the source note.",
+        "why": "Rule 89 covers who a delivered message is from and Rule 58 logs model judgments, but no rule covers a later claim about what a person said once it lives in a note or memory, so a rule credited to the operator could form with no logged message behind it.",
+        "ref": "Justin, 2026-11-05: \"approved\" [source: telegram 136110/139199 2026-11-05], answering the wording in 136110/139175. The requirement: \"it can tie back a paper trail of evidence to a specific conversation that is logged and recorded on how a statement or proclamation, originated, and evolved\" [source: telegram 136110/139097 2026-11-05]. Final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 19,
     "date": "2026-11-04",
     "status": "draft",
