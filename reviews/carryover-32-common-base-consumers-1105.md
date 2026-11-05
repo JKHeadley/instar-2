@@ -7,8 +7,8 @@ Outcome: Existing retrospective consumer tests exercise the restored correction-
 Affected rules: Rules 26/34/36/58/70/74/85/101/102/109/111/113/116.
 Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake retain existing production enforcement; only offline test fixtures change.
 Operator questions: none
-Suggested tier: routine
-Declared tier: routine
+Suggested tier: ordinary
+Declared tier: ordinary
 Tier rationale: No production code or captured provider bytes change. Test setup now supplies the two-question judgment already required by the tested port.
 Side effects: Tests exercise pending class-review obligations and budget both rows. The promise replay supplies an explicitly synthetic review, so its older correction does not stay owed solely because the stub omitted the new row. Historical cap replay separates current prompt additions from the original prompt hash.
 Undo and recovery: Revert the test adaptation; the original failures will return and production behavior remains unchanged.
