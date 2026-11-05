@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:3ba1f5a9884ddad29e3810a6d48d89e41177de3b04326bd10077e840f8540163",
-  "commit": "178cf055a6430c841edebca984e4f39494df6b1f",
+  "generation": "sha256:2d079f3134c6f571bb0cbab556bd37cb42019f44fd742b0f2d0b47d1c42797c4",
+  "commit": "b1a62c116b91641e8aad8c918811a2948dae969c",
   "launchers": {
     "bin/instar-production.mjs": [
       {
