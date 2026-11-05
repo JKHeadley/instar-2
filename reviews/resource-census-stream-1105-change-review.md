@@ -36,3 +36,5 @@ VERDICT: author submission; this record asserts no independent verdict — the r
 Publication: Fixture reference uses the existing owner canonical content hash; replay output is shape-only and does not certify native compatibility or delivered alarms.
 
 Native conformance: Existing merge-live-conformance --renew tool ran the actual ten local native cases before and after. Before9/10 only the stale certificate failed; after10/10 PASS. The tool alone updated the computed conformance hash to sha256:2bfdee011906e84e71d6a3e4e5d2860f5f1d2343342f40c74c734c9ce88bcb61. Evidence: .instar/lanes/resource-census-stream-1105-native-renewal/{before,after}.json; no provider or live model calls.
+
+Register publication: Shape-only replay generation sha256:2069fcec89299141b913cfdab0902a643ff3ae125af3da938c89c6f26397db15 from source a17ada1587777dae8291369396836fbb22b86151; register --check and lint (architecture plus register wiring, issues0) pass. Independent peer source rereview YES on fca3a8667; canonical Astra/full/combined pre/post gates remain required. Historical author-review check remains pending and is not represented as passing.
