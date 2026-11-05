@@ -29,10 +29,10 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing empty-memory-list res
 Decision: RESULT-NOTICE-1105-1 | Render only facts supported by the current durable turn; do not promote the desk's PR2750 or disk observations into universal task outcomes. State a prerequisite for resumption, never a new promise or retry assignment. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/session-result-notice-1105-PROGRESS.md
 Decision: RESULT-NOTICE-1105-2 | Keep old notice bytes recognized during history replay while new unsent UNKNOWN attempts use the clearer text; replay the supplied projection and success neighbors without inventing raw journal frames. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/session-result-notice-1105-PROGRESS.md
 
+Integration review: train-182 explicitly reopens this round because its combined merge changes a covered file, tests/preview/journal-conversation-session.test.ts, which the train174-cleanup-assertions-1105 lineage also edits; the ordinary merge keeps both edits. The previous frozen content and verdict remain in git history. reviews/train-182-change-review.md covers the merged candidate, whose desk review is still required.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: change the existing fixed notice and preserve old history recognition, with no extra model, store, schema, service, permission or retry machinery. Existing intake, secret, send uniqueness, stop and cap guards stay in force. No autonomous completion claim is made.
 80/20: The targeted defect is unclear UNKNOWN task reporting. Task-specific PR result extraction and ownership/retry infrastructure are not invented from absent evidence; remaining carryover16 coverage belongs to the existing desk row and combined review.
 VERDICT: Author submission for independent review; no independent acceptance or live deployment claimed.
-
-Integration review: train-182 explicitly reopens this round because its combined merge changes a covered file, tests/preview/journal-conversation-session.test.ts, which the train174-cleanup-assertions-1105 lineage also edits; the ordinary merge keeps both edits. The previous frozen content and verdict remain in git history. reviews/train-182-change-review.md covers the merged candidate, whose desk review is still required.
