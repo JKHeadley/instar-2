@@ -114,7 +114,8 @@ it('installed HTTP bind requires PIN and CSRF, preserves ambiguous 409, and rele
 
 it('topic result refuses a definite rejection and preserves all ambiguous responses as UNKNOWN', () => {
   expect(classifyTelegramTopic({ kind: 'response', status: 403, bytes: '{"ok":false}' }, 'Threadline').kind).toBe('refused');
-  for (const reply of [null, { kind: 'response', status: 500, bytes: '{}' }, { kind: 'response', status: 200, bytes: '{' },
+  expect(classifyTelegramTopic({ kind: 'uncertain', sent: false }, 'Threadline').kind).toBe('refused');
+  for (const reply of [null, { kind: 'uncertain' }, { kind: 'response', status: 500, bytes: '{}' }, { kind: 'response', status: 200, bytes: '{' },
     { kind: 'response', status: 200, bytes: '{"ok":true,"result":{"message_thread_id":77,"name":"other"}}' }])
     expect(classifyTelegramTopic(reply, 'Threadline').kind).toBe('unknown');
 });

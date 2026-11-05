@@ -36,6 +36,8 @@ Decision: AQ88-r3-publication | Regenerate the existing source roster and capabi
 
 Publication: source 9bf6b4489dc93be35675b89234f15d76e6f99e0e, generation sha256:375081c2fc702a6226caaccf624ed3d2a2f935c0af6a3494da89c8f5045f0c90; 297 entries, 118 rules, 34 terms, 48 warnings, 110 prerequisites. Replay is shape-only, never an activation. The native macOS certificate is unchanged and requires the Studio's real contract run.
 
+Rule 42 refinement: preserve the bridge's explicit sent:false proof as a refused topic effect; only ambiguous dispatch/receipt remains UNKNOWN. No retry is introduced.
+
 Recovery refinement: independent custody read or consumption failure leaves the signed act pending and never stops the main owner loop. An already delivered journal acknowledgement is consumed on recovery without applying it again; the real passkey/owner test injects both failure boundaries.
 
 ## Closing block

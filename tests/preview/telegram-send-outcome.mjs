@@ -44,7 +44,9 @@ export function classifyTelegramSend(reply, { chat, expectedText, thread, forum 
 /** createForumTopic has no sendMessage receipt. Its exact requested name and
  * positive thread identity are required; a lost/changed response stays UNKNOWN. */
 export function classifyTelegramTopic(reply, name) {
-  if (reply?.kind !== 'response') return { kind: 'unknown', reason: 'topic transport unconfirmed' };
+  if (reply?.kind !== 'response') return reply?.kind === 'uncertain' && reply.sent === false
+    ? { kind: 'refused', reason: 'topic transport proved no dispatch' }
+    : { kind: 'unknown', reason: 'topic transport unconfirmed' };
   let payload;
   try { payload = JSON.parse(reply.bytes); } catch { return { kind: 'unknown', reason: 'topic response malformed' }; }
   if (Number.isSafeInteger(reply.status) && reply.status >= 400 && reply.status < 500 && payload?.ok === false)
