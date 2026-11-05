@@ -26,6 +26,8 @@ Decision: c03-native-proof | Replace the refusal-only native test with strict si
 
 Evidence: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-native-ownership-1105-evidence/results.jsonl records commands, PIDs, heads and exit codes. rejected-native-7c250514aba6.log demonstrates unsafe admission; ancestry-before-7c250514aba6.log demonstrates three ancestry failures; focused-7c250514aba6.log demonstrates the guard repair. The rejected patch is not production code.
 
+Decision: c03-native-publication | Replay the register from exact source commit 034ac9bdca996a0e5c43342cb719ff2348c111e1 with the existing owner tool. Owner rehash and grounding repin changed zero hashes; architecture confirms the inherited native certificate still matches. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/carryover-03-native-ownership-1105-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: Reuse the current classifier and refuse unknown ownership. The attempted launch-membership shortcut is insufficient: a complete current process table does not establish unrelated ownership for an older unregistered checkout holder. The final source change only repairs the missing ancestry floor. Native completion requires additional authoritative non-ownership evidence from the existing launch owner; this submission does not invent a second classifier or claim that evidence exists.

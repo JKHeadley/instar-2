@@ -41,7 +41,7 @@ it.runIf(process.env.INSTAR_TEST_NATIVE_WORKTREE === '1').each(['retired', 'unkn
   await consumer.intake([{ update_id: 1, message: { message_id: 1, chat: { id: 7654321, type: 'private' },
     from: { id: 7654321 }, text: 'Continue my checkout work.' } }]);
   const source = journal.view.order[0]!.id;
-  // This unregistered worker is older than the registered root and has changed cwd.
+  // This unregistered worker is older than the registered root and runs outside the checkout.
   // Its open handle is direct evidence of continuing relevance, irrespective of name
   // or current ancestry. No signal or production process is involved.
   const unknown = neighbor === 'unknown' ? spawn('/usr/bin/sudo', ['-n', '-u', HARNESS_USER, process.execPath, '-e',
