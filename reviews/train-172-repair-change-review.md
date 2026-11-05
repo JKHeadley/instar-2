@@ -7,9 +7,9 @@ Outcome: Keep the physical process census usable with large unrelated argv and h
 Affected rules: 1, 26, 34, 37, 42, 44, 49, 60, 61, 70, 74, 95, 101, 102, 107, 108, 111, 112, 113, 116
 Affected floors: secrets — avoid collecting unrelated arguments; spend cap — no model or budget change; stop — preserve exact identity checks and real cleanup; no duplicate sends — dispatch unchanged; durable intake — journals unchanged.
 Operator questions: none
-Suggested tier: significant
-Declared tier: significant
-Tier rationale: Changes observation feeding resource settlement and test routing, while preserving all owner decisions and test assertions.
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Changes observation feeding resource settlement and test routing, with regenerated register publication; all owner decisions and test assertions remain.
 Side effects: Inventory command diagnostics now contain the executable name instead of argv. Its computed adapter digest changes. Vitest project exclusions inherit the resolved root exclusions while retaining ordinary/ordered scheduling.
 Undo and recovery: Revert the source repair and regenerate publication using existing tooling if rejected. Retained unresolved allocations are still reconciled only by the owner after verified absence; no journal or ledger migration. No live installation changed.
 Multi-machine posture: Inventory remains machine-local. Each installed release carries the repaired module through the existing updater. Shared test configuration preserves disjoint remote/Studio discovery and the unsplit population; no peer or conversation ownership changes.
@@ -23,11 +23,15 @@ Decision: train-172-repair-census | Collect executable names at the source inste
 Decision: train-172-repair-routing | Inherit resolved root exclusions through the public project hook, preserving all tests and both host partitions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-172-repair-PROGRESS.md
 Decision: train-172-repair-certificate | Preserve the stale native conformance declaration and report the exact R105 composition finding under the charter's desk-owned recertification exception. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-172-repair-PROGRESS.md
 
+Deferral: generated/register.json:1 | not-a-deferral=Existing governed obligations re-emitted by the unchanged register generator; no repair deferral.
+
 ## Verification
 
 Ninety-four targeted tests passed: 12 physical inventory, seven runner configuration, 46 media/Telegram/setup/tmux consumers, 24 native-loop and five resource-owner cases. Typecheck passed. The memory decision is tested with an injected reading and a real idle process. Native load and whole-sandbox signal cases were excluded only from this local invocation, with their source unchanged. The old full-run failures remain evidence; no full run or installed qualification is claimed here.
 
 The source-level negative controls retain failed and partial census behavior, unresolved cleanup when observation or signalling is unavailable, and the old argv query's buffer failure. Discovery compares both partitions with the full tracked population and checks the ordinary and ordered project assignments. Regenerated register output remains shape-only replay and confers no runtime authority.
+
+Publication: Existing desk rehash and repin tools changed zero pins. Register replay uses source commit 55a226cbc198896bfdb5c6469f17a65b17bc0e06, generation sha256:1d0d2cfb80d52995a0be6d4030fbea12dca105ef33bff1d2898dfbffbd306d8b, with 297 entries and 120 rules. This same review covers the source and derived publication commits.
 
 ## Closing block
 
